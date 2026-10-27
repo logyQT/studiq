@@ -25,6 +25,7 @@ import { useTranslations } from 'next-intl';
 import { Suspense, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { translateErrorCode } from '@/lib/error-messages';
 
 function JoinSkeleton() {
   return (
@@ -87,14 +88,14 @@ function JoinContent() {
         const result = await res.json();
 
         if (!res.ok || !result.success) {
-          toast.error(APP_ERRORS.BAD_REQUEST.code);
+          toast.error(t('invite_invalid'));
           router.replace('/register');
           return;
         }
 
         form.setValue('email', result.data.email);
       } catch {
-        toast.error(APP_ERRORS.INTERNAL_SERVER.code);
+        toast.error(translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code));
         router.replace('/register');
       } finally {
         setIsVerifying(false);
@@ -102,7 +103,7 @@ function JoinContent() {
     }
 
     verifyToken();
-  }, [token, router, form]);
+  }, [token, router, form, t, tErr]);
 
   async function onSubmit(values: RegisterInput) {
     try {
@@ -117,7 +118,7 @@ function JoinContent() {
       const result = await res.json();
 
       if (!result.success) {
-        toast.error(tErr(result.error || APP_ERRORS.INTERNAL_SERVER.code));
+        toast.error(translateErrorCode(tErr, result.error || APP_ERRORS.INTERNAL_SERVER.code));
         return;
       }
 
@@ -127,7 +128,7 @@ function JoinContent() {
 
       router.push('/login');
     } catch {
-      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
+      toast.error(translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code));
     }
   }
 

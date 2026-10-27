@@ -54,7 +54,7 @@ const editorPanel = (page: Page) =>
 const quizRows = (page: Page) =>
   page.locator('div.rounded-lg.border.p-3').filter({ hasText: /^\s*\d+\./ });
 
-const footer = (page: Page) => page.getByText(/^\d+ questions, \d+ pts$/);
+const footer = (page: Page) => page.getByText(/^\d+ (pytanie|pytania|pytań) · Suma punktów: \d+$/);
 
 test.describe('EDU quiz editor drag & drop (#160)', () => {
   test('dropping a question onto an empty quiz adds the first question', async ({ page }) => {
@@ -66,7 +66,7 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
 
       const emptyState = page.getByText(t('EduQuizEditPage.no_questions')).first();
       await expect(emptyState).toBeVisible();
-      await expect(footer(page)).toHaveText('0 questions, 0 pts');
+      await expect(footer(page)).toHaveText('0 pytań · Suma punktów: 0');
 
       const grip = editorPanel(page).locator('button.cursor-grab').first();
       await expect(grip).toBeVisible();
@@ -75,7 +75,7 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
 
       await expect(quizRows(page)).toHaveCount(1);
       await expect(quizRows(page).first()).toContainText('1.');
-      await expect(footer(page)).toHaveText('1 questions, 1 pts');
+      await expect(footer(page)).toHaveText('1 pytanie · Suma punktów: 1');
 
       // Persist explicitly (autosave is debounced by 5 s) and prove it survives a reload.
       const saved = page.waitForResponse(
@@ -89,7 +89,7 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
       await page.reload();
 
       await expect(quizRows(page)).toHaveCount(1);
-      await expect(footer(page)).toHaveText('1 questions, 1 pts');
+      await expect(footer(page)).toHaveText('1 pytanie · Suma punktów: 1');
     } finally {
       await page.request.delete(`/api/v1/teacher/quizzes/${quizId}`);
     }
@@ -120,7 +120,7 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
 
       await page.goto(`/edu/quizzes/${quizId}/edit`);
       await expect(quizRows(page)).toHaveCount(1);
-      await expect(footer(page)).toHaveText('1 questions, 1 pts');
+      await expect(footer(page)).toHaveText('1 pytanie · Suma punktów: 1');
 
       const panel = editorPanel(page);
       const firstItem = panel.locator('div.rounded-lg.border.p-3').first();
@@ -130,7 +130,7 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
 
       await expect(quizRows(page)).toHaveCount(2);
       await expect(quizRows(page).first()).toContainText(draggedContent);
-      await expect(footer(page)).toHaveText('2 questions, 2 pts');
+      await expect(footer(page)).toHaveText('2 pytania · Suma punktów: 2');
     } finally {
       await page.request.delete(`/api/v1/teacher/quizzes/${quizId}`);
     }

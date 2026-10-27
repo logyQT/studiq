@@ -23,10 +23,14 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { Loader2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { Lock, Loader2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
+import { SrLabel } from '@/components/shared/sr-label';
 
 const PERMISSION_GROUPS = [
   {
@@ -73,6 +77,14 @@ interface OrgRoleDetail extends OrgRole {
 
 export default function RolesPage() {
   const t = useTranslations('ManageRolesPage');
+  const router = useRouter();
+  // Role writes are plan-gated (`role.builder`) on the API (#259). The list itself
+  // is ungated and stays readable for every plan — /manage/members uses it too.
+  // `useFeature()` is a provisional `false` until /features/me resolves, so the
+  // write affordances stay fail-closed; `featuresPending` only suppresses the
+  // locked card, so entitled orgs never flash it.
+  const canBuild = useFeature()('role.builder');
+  const { isPending: featuresPending } = useFeatures();
   const [data, setData] = useState<OrgRole[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<OrgRole | null>(null);
@@ -194,21 +206,27 @@ export default function RolesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-        <Dialog open={creating} onOpenChange={setCreating}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              {t('new_role')}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t('create_title')}</DialogTitle>
-            </DialogHeader>
-            <RoleForm onSave={(r) => handleSave(r)} onCancel={() => setCreating(false)} t={t} />
-          </DialogContent>
-        </Dialog>
+        {canBuild && (
+          <Dialog open={creating} onOpenChange={setCreating}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                {t('new_role')}
+              </Button>
+            </DialogTrigger>
+            <DialogContent aria-describedby={undefined}>
+              <DialogHeader>
+                <DialogTitle>{t('create_title')}</DialogTitle>
+              </DialogHeader>
+              <RoleForm onSave={(r) => handleSave(r)} onCancel={() => setCreating(false)} t={t} />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
+
+      {!featuresPending && !canBuild && (
+        <RoleBuilderLockedCard onUpgrade={() => router.push('/pricing/org')} />
+      )}
 
       <Card>
         <CardHeader>
@@ -225,7 +243,7 @@ export default function RolesPage() {
                 <TableHead className="text-center">{t('col_type')}</TableHead>
                 <TableHead className="text-center">{t('col_members')}</TableHead>
                 <TableHead className="text-center">{t('col_permissions')}</TableHead>
-                <TableHead className="text-right">{t('col_actions')}</TableHead>
+                {canBuild && <TableHead className="text-right">{t('col_actions')}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -250,69 +268,77 @@ export default function RolesPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    {role.permissionCount} {t('col_permissions').toLowerCase()}
+                    {t('permissions_count', { count: role.permissionCount })}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openPermEditor(role)}>
-                        <ShieldCheck className="w-4 h-4" />
-                      </Button>
-                      <Dialog
-                        open={editing?.id === role.id}
-                        onOpenChange={(o) => !o && setEditing(null)}
-                      >
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={() => setEditing(role)}>
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>{t('edit_title')}</DialogTitle>
-                          </DialogHeader>
-                          {editing?.id === role.id && (
-                            <RoleForm
-                              initial={role}
-                              onSave={(r) => handleSave(r, role.id)}
-                              onCancel={() => setEditing(null)}
-                              t={t}
-                            />
-                          )}
-                        </DialogContent>
-                      </Dialog>
-                      {!role.isSystem && (
+                  {canBuild && (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openPermEditor(role)}>
+                          <ShieldCheck className="w-4 h-4" />
+                          <SrLabel k="role_permissions" values={{ name: role.name }} />
+                        </Button>
                         <Dialog
-                          open={deleting?.id === role.id}
-                          onOpenChange={(o) => !o && setDeleting(null)}
+                          open={editing?.id === role.id}
+                          onOpenChange={(o) => !o && setEditing(null)}
                         >
                           <DialogTrigger asChild>
-                            <Button variant="ghost" size="icon" onClick={() => setDeleting(role)}>
-                              <Trash2 className="w-4 h-4 text-destructive" />
+                            <Button variant="ghost" size="icon" onClick={() => setEditing(role)}>
+                              <Pencil className="w-4 h-4" />
+                              <SrLabel k="edit_role" values={{ name: role.name }} />
                             </Button>
                           </DialogTrigger>
-                          <DialogContent>
+                          <DialogContent aria-describedby={undefined}>
                             <DialogHeader>
-                              <DialogTitle>{t('delete_title')}</DialogTitle>
-                              <DialogDescription>{t('delete_desc')}</DialogDescription>
+                              <DialogTitle>{t('edit_title')}</DialogTitle>
                             </DialogHeader>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setDeleting(null)}>
-                                {t('common_cancel')}
-                              </Button>
-                              <Button variant="destructive" onClick={() => handleDelete(role.id)}>
-                                {t('common_delete')}
-                              </Button>
-                            </DialogFooter>
+                            {editing?.id === role.id && (
+                              <RoleForm
+                                initial={role}
+                                onSave={(r) => handleSave(r, role.id)}
+                                onCancel={() => setEditing(null)}
+                                t={t}
+                              />
+                            )}
                           </DialogContent>
                         </Dialog>
-                      )}
-                    </div>
-                  </TableCell>
+                        {!role.isSystem && (
+                          <Dialog
+                            open={deleting?.id === role.id}
+                            onOpenChange={(o) => !o && setDeleting(null)}
+                          >
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={() => setDeleting(role)}>
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                                <SrLabel k="delete_role" values={{ name: role.name }} />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>{t('delete_title')}</DialogTitle>
+                                <DialogDescription>{t('delete_desc')}</DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setDeleting(null)}>
+                                  {t('common_cancel')}
+                                </Button>
+                                <Button variant="destructive" onClick={() => handleDelete(role.id)}>
+                                  {t('common_delete')}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        )}
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
               {(!data || data.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell
+                    colSpan={canBuild ? 5 : 4}
+                    className="text-center py-8 text-muted-foreground"
+                  >
                     {t('no_roles')}
                   </TableCell>
                 </TableRow>
@@ -333,6 +359,29 @@ export default function RolesPage() {
         t={t}
         onSave={handleSavePermissions}
       />
+    </div>
+  );
+}
+
+/**
+ * Locked state shown when the org's plan lacks the `role.builder` feature (#259).
+ * Mirrors `BrandingLockedCard` (settings) and the `ai.chat` plan gate: the list
+ * stays readable, only the write UI is withheld.
+ */
+function RoleBuilderLockedCard({ onUpgrade }: { onUpgrade: () => void }) {
+  const t = useTranslations('ManageRolesPage');
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-dashed bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-2">
+        <Lock aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div>
+          <p className="text-sm font-medium">{t('locked_title')}</p>
+          <p className="text-sm text-muted-foreground">{t('locked_desc')}</p>
+        </div>
+      </div>
+      <Button variant="outline" size="sm" onClick={onUpgrade}>
+        {t('locked_cta')}
+      </Button>
     </div>
   );
 }
@@ -401,7 +450,10 @@ function PermissionEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent
+        aria-describedby={undefined}
+        className="max-w-2xl max-h-[80vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>{t('perms_title', { name: role?.name ?? '' })}</DialogTitle>
         </DialogHeader>

@@ -1,11 +1,13 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
+import type { IntervalUnit } from './flashcard-spaced-repetition.model';
 
 export const ReviewStateSchema = registry.register(
   'ReviewState',
   z.object({
     easinessFactor: z.number(),
-    intervalDays: z.number(),
+    intervalValue: z.number(),
+    intervalUnit: z.enum(['minutes', 'days']),
     repetitions: z.number(),
     nextReviewAt: z.string(),
     lastReviewedAt: z.string().nullable(),
@@ -38,6 +40,15 @@ export const PreparePracticeSchema = registry.register(
   }),
 );
 
+/**
+ * Request-level study mode (#617). Cram is side-effect-free, so the service has
+ * to be told the mode instead of inferring it from the client's UI state.
+ * Omitted → `'review'`, which keeps every pre-#617 caller byte-compatible.
+ */
+const PracticeModeSchema = z
+  .enum(['review', 'cram'], { error: ValidationErrorCode.INVALID_INPUT })
+  .default('review');
+
 export const LogPracticeSchema = registry.register(
   'LogFlashcardPracticeRequest',
   z.object({
@@ -54,6 +65,7 @@ export const LogPracticeSchema = registry.register(
       .max(5, { error: ValidationErrorCode.TOO_BIG })
       .optional(),
     sessionId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    mode: PracticeModeSchema,
   }),
 );
 
@@ -76,6 +88,7 @@ export const BatchPracticeSchema = registry.register(
   'BatchFlashcardPracticeRequest',
   z.object({
     items: z.array(BatchPracticeItemSchema).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    mode: PracticeModeSchema,
   }),
 );
 
@@ -107,6 +120,7 @@ export const CompleteSessionSchema = registry.register(
 );
 
 export type LogPracticeInput = z.infer<typeof LogPracticeSchema>;
+export type PracticeMode = z.infer<typeof PracticeModeSchema>;
 export type BatchPracticeItemInput = z.infer<typeof BatchPracticeItemSchema>;
 export type BatchPracticeInput = z.infer<typeof BatchPracticeSchema>;
 export type CompleteSessionInput = z.infer<typeof CompleteSessionSchema>;
@@ -150,7 +164,10 @@ export interface CardStatsItem {
   correctRate: number;
   lastPracticedAt: string | null;
   easinessFactor: number | null;
-  intervalDays: number | null;
+  /** Interval magnitude; the unit is recorded in `intervalUnit`. */
+  intervalValue: number | null;
+  /** Minutes for learning/relearning steps, days for review intervals. */
+  intervalUnit: IntervalUnit | null;
   nextReviewAt: string | null;
   repetitions: number | null;
   isLeech: boolean;
@@ -188,6 +205,12 @@ export interface StateBreakdown {
   review: number;
   relearning: number;
   leeched: number;
+  /** Cards with ≥1 practice attempt — whole accessible collection, never state-filtered. */
+  practicedCards: number;
+  /** Mean of per-card correct rates, 0–100 (0 when nothing practiced). */
+  averageAccuracy: number;
+  /** Mean easiness factor over reviewed cards (0 when none). */
+  averageEasinessFactor: number;
 }
 
 export interface CardStatsResponse {

@@ -7,6 +7,7 @@ import type { QueryKey } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
+  CheckCheck,
   Copy,
   Download,
   Eye,
@@ -34,6 +35,7 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { PageGrid } from '@/components/shared/page-grid';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
@@ -71,8 +73,9 @@ import { SpeedDial } from '@/components/shared/speed-dial';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDebounce } from '@/hooks/use-debounce';
 import { usePersistedState } from '@/hooks/use-persisted-state';
-import { useSelection } from '@/hooks/use-selection';
+import { isAllSelected, useSelection } from '@/hooks/use-selection';
 import { getGradientHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface DeckDetailScreenProps {
   deckId: string;
@@ -96,6 +99,9 @@ export function DeckDetailScreen({
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
+  // `/app/ai` is student-only (the proxy bounces educators to `/edu`), so the
+  // generator entry point has to stay inside the current dashboard.
+  const aiHref = `${basePath.startsWith('/edu') ? '/edu/ai' : '/app/ai'}?deckId=${deckId}`;
 
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -144,6 +150,9 @@ export function DeckDetailScreen({
     url: `/api/v1/flashcards/decks/${deckId}`,
     enabled: !!deckId,
   });
+
+  // The deck name is the breadcrumb leaf; the raw deck UUID must never render.
+  useBreadcrumbLabel(deckId, currentDeck?.name);
 
   const { data: allDecksData } = useApiQuery<{
     items: Deck[];
@@ -262,6 +271,10 @@ export function DeckDetailScreen({
   });
 
   const selection = useSelection();
+  const allSelected = isAllSelected(
+    flashcards.map((fc) => fc.id),
+    selection.selectedIds,
+  );
   const [importOpen, setImportOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({});
@@ -283,7 +296,6 @@ export function DeckDetailScreen({
     viewTopicId: null,
     addTopicOpen: false,
     manageTopicOpen: false,
-    topicActionIds: [],
     selectedIds: [],
     bulkDeleteOpen: false,
     bulkMoveOpen: false,
@@ -325,7 +337,6 @@ export function DeckDetailScreen({
     setD((prev) => ({
       ...prev,
       activeFlashcardId: fc.id,
-      topicActionIds: [],
       addTopicOpen: true,
     }));
   }, []);
@@ -425,25 +436,6 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, deckDeleteOpen: false }));
   }
 
-  async function handleAddTopicConfirm() {
-    const fc = flashcards.find((f) => f.id === d.activeFlashcardId);
-    if (!fc || d.topicActionIds.length === 0) return;
-    const currentIds = fc.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
-    const newIds = [...new Set([...currentIds, ...d.topicActionIds])];
-    try {
-      await apiPut(`/api/v1/flashcards/${d.activeFlashcardId}`, {
-        front: fc.front,
-        back: fc.back,
-        topicIds: newIds,
-      });
-      queryClient.invalidateQueries({ queryKey: flashcardQueryKey });
-      toast.success(t('topic_added'));
-    } catch {
-      toast.error(t('save_failed'));
-    }
-    setD((prev) => ({ ...prev, addTopicOpen: false, topicActionIds: [] }));
-  }
-
   const handleEnterSelectionMode = selection.handleEnterSelectionMode;
 
   async function handleBulkDelete() {
@@ -453,7 +445,7 @@ export function DeckDetailScreen({
       await batchDeleteCards.mutateAsync({ ids });
       selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkDeleteOpen: false }));
-      toast.success(t('flashcard_deleted'));
+      toast.success(t('bulk_deleted', { count: ids.length }));
     } catch {
       toast.error(t('delete_failed'));
     }
@@ -482,7 +474,7 @@ export function DeckDetailScreen({
       await batchMoveCards.mutateAsync({ ids, sourceDeckId: deckId, targetDeckId });
       selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkMoveOpen: false, bulkMoveTargetDeckId: null }));
-      toast.success(t('bulk_moved'));
+      toast.success(t('bulk_moved', { count: ids.length }));
     } catch {
       toast.error(t('move_failed'));
     }
@@ -496,7 +488,7 @@ export function DeckDetailScreen({
       await batchCopyCards.mutateAsync({ ids, targetDeckId });
       selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkCopyOpen: false, bulkCopyTargetDeckId: null }));
-      toast.success(t('flashcard_copied'));
+      toast.success(t('bulk_copied', { count: ids.length }));
     } catch {
       toast.error(t('copy_failed'));
     }
@@ -518,13 +510,11 @@ export function DeckDetailScreen({
     onMoveTargetDeckIdChange: (moveTargetDeckId) => setD((prev) => ({ ...prev, moveTargetDeckId })),
     onCopyTargetDeckIdChange: (copyTargetDeckId) => setD((prev) => ({ ...prev, copyTargetDeckId })),
 
-    onTopicActionIdsChange: (topicActionIds) => setD((prev) => ({ ...prev, topicActionIds })),
     onDelete: handleDelete,
     onMove: handleMove,
     onCopy: handleCopy,
     onDeckUpdate: handleDeckUpdate,
     onDeckDelete: handleDeckDelete,
-    onAddTopicConfirm: handleAddTopicConfirm,
     onBulkDelete: handleBulkDelete,
     onBulkTopics: handleBulkTopics,
     onBulkMove: handleBulkMove,
@@ -598,6 +588,7 @@ export function DeckDetailScreen({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <MoreVertical className="h-4 w-4" />
+                <SrLabel k="more_actions_deck" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -749,12 +740,32 @@ export function DeckDetailScreen({
           permission('deck.update', { createdBy: currentDeck?.created_by }) &&
           permission('flashcard.create', { createdBy: user?.id })
         }
-        onGenerate={() => router.push(`/app/ai?deckId=${deckId}`)}
+        onGenerate={() => router.push(aiHref)}
         onCreateNew={() => setD((prev) => ({ ...prev, createCardOpen: true }))}
         t={t}
       />
 
       <h3 className="text-lg font-semibold max-sm:block hidden">{t('flashcards_section')}</h3>
+
+      {selection.isSelecting && flashcards.length > 0 && (
+        <div className="flex items-center gap-2 py-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              allSelected
+                ? selection.handleDeselectAll()
+                : selection.handleSelectAll(flashcards.map((fc) => fc.id))
+            }
+          >
+            <CheckCheck className="mr-1.5 h-4 w-4" />
+            {allSelected ? t('deselect_all') : t('select_all')}
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {t('n_selected', { count: selection.selectedIds.size })}
+          </span>
+        </div>
+      )}
 
       <PageGrid
         isLoading={false}
@@ -970,7 +981,7 @@ export function DeckDetailScreen({
                     {
                       icon: Sparkles,
                       label: t('generate'),
-                      onClick: () => router.push(`/app/ai?deckId=${deckId}`),
+                      onClick: () => router.push(aiHref),
                     },
                   ]
                 : []),

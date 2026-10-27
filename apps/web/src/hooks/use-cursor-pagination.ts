@@ -15,10 +15,14 @@ interface UseCursorPaginationOptions {
 
 interface UseCursorPaginationResult<T> {
   items: T[];
+  /** Total matching items (ignoring pagination) from the first page, when the API provides it. */
+  total: number | undefined;
   fetchNextPage: () => void;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
 }
 
 export function useCursorPagination<T>({
@@ -39,7 +43,7 @@ export function useCursorPagination<T>({
   const result = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam }) =>
-      apiGet<{ items: T[]; nextCursor: string | null; hasMore: boolean }>(
+      apiGet<{ items: T[]; nextCursor: string | null; hasMore: boolean; total?: number }>(
         `${url}?${queryString}${pageParam ? `&cursor=${pageParam}` : ''}`,
       ),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
@@ -55,9 +59,12 @@ export function useCursorPagination<T>({
 
   return {
     items,
+    total: result.data?.pages[0]?.total,
     fetchNextPage: result.fetchNextPage,
     hasNextPage: result.hasNextPage,
     isFetchingNextPage: result.isFetchingNextPage,
     isLoading: result.isLoading,
+    isError: result.isError,
+    refetch: result.refetch,
   };
 }

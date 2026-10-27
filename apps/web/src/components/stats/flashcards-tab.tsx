@@ -17,9 +17,10 @@ import {
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
+import { formatDateTime } from '@/lib/datetime';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +44,15 @@ function StateBadge({ state }: { state: CardStatsItem['state'] }) {
 
 function ExpandableRow({ item }: { item: CardStatsItem }) {
   const t = useTranslations('AppStatsPage');
+  const locale = useLocale();
   const [expanded, setExpanded] = useState(false);
+
+  const intervalLabel =
+    item.intervalValue == null || !item.intervalUnit
+      ? '--'
+      : item.intervalUnit === 'minutes'
+        ? t('interval_minutes', { count: item.intervalValue })
+        : t('interval_days', { count: item.intervalValue });
 
   return (
     <>
@@ -79,7 +88,7 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
         <td className="py-3 px-4 text-sm tabular-nums">
           {item.easinessFactor?.toFixed(2) ?? '--'}
         </td>
-        <td className="py-3 px-4 text-sm tabular-nums">{item.intervalDays ?? '--'}</td>
+        <td className="py-3 px-4 text-sm tabular-nums">{intervalLabel}</td>
         <td className="py-3 px-4 text-right">
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -125,7 +134,15 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
             </div>
             {item.lastPracticedAt && (
               <p className="mt-3 text-xs text-muted-foreground">
-                {t('last_practiced')}: {new Date(item.lastPracticedAt).toLocaleString()}
+                {t('last_practiced')}: {formatDateTime(item.lastPracticedAt, locale)}
+              </p>
+            )}
+            {item.nextReviewAt && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t('next_review_line', {
+                  date: formatDateTime(item.nextReviewAt, locale),
+                  interval: intervalLabel,
+                })}
               </p>
             )}
           </td>
@@ -152,27 +169,7 @@ export function FlashcardsTab() {
     url: '/api/v1/flashcards/practice/states',
   });
 
-  const items = useMemo(() => cardsData?.items ?? [], [cardsData]);
-
-  const summaryCards = useMemo(() => {
-    const totalPracticed = items.filter((i) => i.totalAttempts > 0).length;
-    const avgAccuracy =
-      totalPracticed > 0
-        ? Math.round(
-            items.filter((i) => i.totalAttempts > 0).reduce((sum, i) => sum + i.correctRate, 0) /
-              totalPracticed,
-          )
-        : 0;
-    const avgEF =
-      items.filter((i) => i.easinessFactor).length > 0
-        ? items
-            .filter((i) => i.easinessFactor)
-            .reduce((sum, i) => sum + (i.easinessFactor ?? 0), 0) /
-          items.filter((i) => i.easinessFactor).length
-        : 0;
-
-    return { totalPracticed, avgAccuracy, avgEF };
-  }, [items]);
+  const items = cardsData?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -185,19 +182,31 @@ export function FlashcardsTab() {
         />
         <StatCard
           title={t('practiced_cards')}
-          value={summaryCards.totalPracticed}
+          value={stateBreakdown ? stateBreakdown.practicedCards : '...'}
           icon={Play}
           variant="emerald"
         />
         <StatCard
           title={t('average_accuracy')}
-          value={summaryCards.totalPracticed > 0 ? `${summaryCards.avgAccuracy}%` : '--'}
+          value={
+            stateBreakdown
+              ? stateBreakdown.practicedCards > 0
+                ? `${stateBreakdown.averageAccuracy}%`
+                : '--'
+              : '...'
+          }
           icon={Sparkles}
           variant="violet"
         />
         <StatCard
           title={t('average_easiness')}
-          value={summaryCards.avgEF > 0 ? summaryCards.avgEF.toFixed(2) : '--'}
+          value={
+            stateBreakdown
+              ? stateBreakdown.averageEasinessFactor > 0
+                ? stateBreakdown.averageEasinessFactor.toFixed(2)
+                : '--'
+              : '...'
+          }
           icon={RotateCcw}
           variant="amber"
         />

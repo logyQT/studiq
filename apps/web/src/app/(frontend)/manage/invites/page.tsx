@@ -32,13 +32,16 @@ import {
   TableRow,
 } from '@studiq/ui';
 import { Copy, Plus, X } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { formatDate } from '@/lib/datetime';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface OrgRole {
   id: string;
   name: string;
+  displayName?: string;
 }
 
 interface InviteRow {
@@ -46,10 +49,31 @@ interface InviteRow {
   orgRoleId: string;
 }
 
+type InviteRowError = 'missing_email' | 'missing_role';
+
+/**
+ * A row is either fully valid or explicitly flagged. A completely blank row is
+ * ignored (the form always keeps one), but a half-filled one must never be
+ * dropped silently: the previous `.filter()` sent the other rows and reported
+ * success for a batch that never included this person (MGR-INV-02).
+ */
+function rowError(row: InviteRow): InviteRowError | null {
+  const hasEmail = row.email.trim().length > 0;
+  const hasRole = Boolean(row.orgRoleId);
+  if (!hasEmail && !hasRole) return null;
+  if (!hasEmail) return 'missing_email';
+  if (!hasRole) return 'missing_role';
+  return null;
+}
+
 interface InvitationResult {
+  /** The address the manager submitted for this row — the only identifier shown. */
+  email: string;
   success: boolean;
-  data?: { inviteLink?: string };
+  data?: { invitationId?: string; inviteLink?: string; inviteCode?: string };
   error?: string;
+  /** Set once the invitation is revoked, so the dead link is no longer offered. */
+  cancelled?: boolean;
 }
 
 interface Invitation {
@@ -64,6 +88,7 @@ interface Invitation {
 
 export default function InvitationsPage() {
   const t = useTranslations('ManageInvitationsPage');
+  const locale = useLocale();
   const [orgRoles, setOrgRoles] = useState<OrgRole[]>([]);
   const [invites, setInvites] = useState<InviteRow[]>([{ email: '', orgRoleId: '' }]);
   const [results, setResults] = useState<InvitationResult[]>([]);
@@ -115,11 +140,26 @@ export default function InvitationsPage() {
     setInvites(invites.filter((_, i) => i !== index));
   }
 
+  // Derived, no extra state: a partially filled row is visible as an inline
+  // error the moment it becomes incomplete, and blocks the send.
+  const rowErrors = invites.map(rowError);
+  const incompleteRowNumbers = rowErrors
+    .map((error, index) => (error ? index + 1 : null))
+    .filter((row): row is number => row !== null);
+  const hasIncompleteRows = incompleteRowNumbers.length > 0;
+
   async function handleSend() {
-    const validInvites = invites
+    // Defensive guard: the button is disabled while a row is incomplete, but a
+    // direct submit (Enter key) must not send a batch that skips a row.
+    if (hasIncompleteRows) {
+      toast.error(t('incomplete_rows', { rows: incompleteRowNumbers.join(', ') }));
+      return;
+    }
+
+    const payload = invites
       .filter((i) => i.email.trim() && i.orgRoleId)
-      .map((i) => ({ email: i.email, targetOrgRoleId: i.orgRoleId }));
-    if (validInvites.length === 0) {
+      .map((i) => ({ email: i.email.trim(), targetOrgRoleId: i.orgRoleId }));
+    if (payload.length === 0) {
       toast.error(t('no_invites'));
       return;
     }
@@ -129,21 +169,26 @@ export default function InvitationsPage() {
       const res = await fetch('/api/v1/organization/invites/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invitations: validInvites }),
+        body: JSON.stringify({ invitations: payload }),
       });
 
-      const resJson = await res.json();
-      const bulkResults = resJson?.data?.results ?? [];
-      if (bulkResults.length) {
-        setResults([...bulkResults, ...results]);
-        toast.success(
-          t('invitations_sent', {
-            count: bulkResults.filter((r: InvitationResult) => r.success).length,
-          }),
-        );
-        setInvites([{ email: '', orgRoleId: '' }]);
-        fetchInvitations();
+      const resJson = await res.json().catch(() => null);
+      const bulkResults: InvitationResult[] = Array.isArray(resJson?.data?.results)
+        ? resJson.data.results
+        : [];
+
+      // The endpoint is all-or-nothing: anything short of a 2xx carrying one
+      // result per entry is a failure. Never report a partial send as success,
+      // and keep the rows so the manager can retry.
+      if (!res.ok || !resJson?.success || bulkResults.length !== payload.length) {
+        toast.error(t('send_failed'));
+        return;
       }
+
+      setResults([...bulkResults, ...results]);
+      toast.success(t('invitations_sent', { count: bulkResults.length }));
+      setInvites([{ email: '', orgRoleId: '' }]);
+      fetchInvitations();
     } catch {
       toast.error(t('send_failed'));
     } finally {
@@ -177,6 +222,10 @@ export default function InvitationsPage() {
       const json = await res.json();
       if (json.success) {
         toast.success(t('revoke_success'));
+        // Mark the send result of exactly this invitation as cancelled (#258).
+        setResults((prev) =>
+          prev.map((r) => (r.data?.invitationId === invitationId ? { ...r, cancelled: true } : r)),
+        );
         fetchInvitations();
       }
     } catch {
@@ -210,59 +259,84 @@ export default function InvitationsPage() {
           <CardDescription>{t('card_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {invites.map((invite, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <div className="flex-1">
-                <Label className="sr-only" htmlFor={`email-${i}`}>
-                  {t('email_label')}
-                </Label>
-                <Input
-                  id={`email-${i}`}
-                  type="email"
-                  value={invite.email}
-                  onChange={(e) => updateInvite(i, 'email', e.target.value)}
-                  placeholder={t('email_placeholder')}
-                />
+          {invites.map((invite, i) => {
+            const error = rowErrors[i];
+            const errorId = `row-error-${i}`;
+            return (
+              <div key={i} className="space-y-1">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <Label className="sr-only" htmlFor={`email-${i}`}>
+                      {t('email_label')}
+                    </Label>
+                    <Input
+                      id={`email-${i}`}
+                      type="email"
+                      value={invite.email}
+                      onChange={(e) => updateInvite(i, 'email', e.target.value)}
+                      placeholder={t('email_placeholder')}
+                      aria-invalid={error === 'missing_email'}
+                      aria-describedby={error === 'missing_email' ? errorId : undefined}
+                    />
+                  </div>
+                  <div className="w-40">
+                    <Label className="sr-only" htmlFor={`role-${i}`}>
+                      {t('role_label')}
+                    </Label>
+                    <Select
+                      value={invite.orgRoleId}
+                      onValueChange={(v) => updateInvite(i, 'orgRoleId', v)}
+                    >
+                      <SelectTrigger
+                        id={`role-${i}`}
+                        aria-invalid={error === 'missing_role'}
+                        aria-describedby={error === 'missing_role' ? errorId : undefined}
+                      >
+                        <SelectValue placeholder={t('role_label')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {orgRoles.map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.displayName ?? role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {invites.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="mt-0"
+                      onClick={() => removeInviteRow(i)}
+                    >
+                      <X className="size-4" />
+                      <SrLabel k="remove_row" values={{ number: i + 1 }} />
+                    </Button>
+                  )}
+                </div>
+                {error && (
+                  <p id={errorId} className="text-xs text-destructive">
+                    {t(
+                      error === 'missing_email'
+                        ? 'row_error_missing_email'
+                        : 'row_error_missing_role',
+                      {
+                        row: i + 1,
+                      },
+                    )}
+                  </p>
+                )}
               </div>
-              <div className="w-40">
-                <Label className="sr-only" htmlFor={`role-${i}`}>
-                  {t('role_label')}
-                </Label>
-                <Select
-                  value={invite.orgRoleId}
-                  onValueChange={(v) => updateInvite(i, 'orgRoleId', v)}
-                >
-                  <SelectTrigger id={`role-${i}`}>
-                    <SelectValue placeholder={t('role_label')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {orgRoles.map((role) => (
-                      <SelectItem key={role.id} value={role.id}>
-                        {role.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {invites.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="mt-0"
-                  onClick={() => removeInviteRow(i)}
-                >
-                  <X className="size-4" />
-                </Button>
-              )}
-            </div>
-          ))}
+            );
+          })}
 
           <Button variant="outline" size="sm" onClick={addInviteRow}>
             <Plus className="size-4 mr-1" />
             {t('add_member')}
           </Button>
 
-          <Button onClick={handleSend} className="w-full" disabled={sending}>
+          <Button onClick={handleSend} className="w-full" disabled={sending || hasIncompleteRows}>
             {t('send_invitations')}
           </Button>
         </CardContent>
@@ -276,14 +350,48 @@ export default function InvitationsPage() {
           <CardContent className="space-y-2">
             {results.map((result, index) => (
               <div
-                key={index}
-                className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                key={`${index}-${result.email}`}
+                data-testid="invite-result-row"
+                className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted rounded-lg"
               >
+                <div className="space-y-1">
+                  <span className="text-sm font-medium break-all">{result.email}</span>
+                  {!result.cancelled && result.data?.inviteCode && (
+                    <p className="font-mono text-xs break-all text-muted-foreground">
+                      {t('code_label')}: {result.data.inviteCode}
+                    </p>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={result.success ? 'default' : 'destructive'}>
-                    {result.success ? t('success') : t('failed')}
+                  <Badge
+                    variant={
+                      result.cancelled ? 'outline' : result.success ? 'default' : 'destructive'
+                    }
+                  >
+                    {result.cancelled
+                      ? t('result_cancelled')
+                      : result.success
+                        ? t('success')
+                        : t('failed')}
                   </Badge>
-                  {result.data?.inviteLink && (
+                  {!result.cancelled && result.data?.inviteCode && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(result.data!.inviteCode!);
+                        toast.success(t('link_copied'));
+                      }}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      {t('copy_code')}
+                    </Button>
+                  )}
+                  {!result.cancelled && result.data?.inviteLink && (
+                    // TODO(#604): keep this copy button as the fallback once
+                    // e-mail delivery lands. Decided future shape: Mailer port +
+                    // SMTP/log adapters, copy-link fallback, per-org rate limit,
+                    // PL/EN templates.
                     <Button
                       variant="ghost"
                       size="sm"
@@ -352,7 +460,10 @@ export default function InvitationsPage() {
                       <TableCell className="font-medium">{inv.email}</TableCell>
                       <TableCell>
                         {inv.isAccepted ? (
-                          <span className="text-sm">{inv.orgRoleName}</span>
+                          <span className="text-sm">
+                            {orgRoles.find((r) => r.name === inv.orgRoleName)?.displayName ??
+                              inv.orgRoleName}
+                          </span>
                         ) : (
                           <Select
                             value={inv.targetOrgRoleId}
@@ -364,7 +475,7 @@ export default function InvitationsPage() {
                             <SelectContent>
                               {orgRoles.map((role) => (
                                 <SelectItem key={role.id} value={role.id}>
-                                  {role.name}
+                                  {role.displayName ?? role.name}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -375,7 +486,7 @@ export default function InvitationsPage() {
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(inv.createdAt).toLocaleDateString()}
+                        {formatDate(inv.createdAt, locale)}
                       </TableCell>
                       <TableCell className="text-right">
                         {!inv.isAccepted && (

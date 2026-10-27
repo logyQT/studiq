@@ -12,11 +12,26 @@ import type {
   DueCountResponse,
   DueFlashcardItem,
   FlashcardRow,
+  PracticeMode,
   PracticeSummary,
+  StateBreakdown,
 } from '@studiq/server/models/flashcard-practice.model';
-import type { Rating } from '@studiq/server/models/flashcard-spaced-repetition.model';
+import type { IntervalUnit, Rating } from '@studiq/server/models/flashcard-spaced-repetition.model';
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+/** Zero envelope for `getStateBreakdown` when the call is impossible or the RPC fails. */
+const EMPTY_STATE_BREAKDOWN: StateBreakdown = {
+  totalCards: 0,
+  neverPracticed: 0,
+  learning: 0,
+  review: 0,
+  relearning: 0,
+  leeched: 0,
+  practicedCards: 0,
+  averageAccuracy: 0,
+  averageEasinessFactor: 0,
+};
 
 export class FlashcardPracticeService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -28,7 +43,14 @@ export class FlashcardPracticeService {
     responseTimeMs?: number,
     confidenceLevel?: number,
     sessionId?: string,
+    mode: PracticeMode = 'review',
   ): Promise<ServiceResult<unknown>> {
+    // Cram is side-effect-free (#606/#617): no flashcard_practice row, no
+    // flashcard_review_state write, no new_cards_introduced bump — therefore no
+    // user_daily_activity trigger either. Session history is recorded by
+    // completeSession() (flashcard_study_sessions.mode = 'cram').
+    if (mode === 'cram') return success({ practice: null, reviewState: null });
+
     const supabase = await this.createClient();
 
     const { data: practice, error } = await supabase
@@ -61,6 +83,11 @@ export class FlashcardPracticeService {
   }
 
   async batch(data: BatchPracticeInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    // Cram performs zero DB statements (#606/#617) — stronger than "skip the
+    // schedule write", and it makes the "no practice row / no review-state row /
+    // no daily-budget burn" acceptance true by construction, not by filtering.
+    if (data.mode === 'cram') return success({ success: true, results: [] });
+
     const supabase = await this.createClient();
     const results: Array<{ flashcardId: string; isLeech: boolean }> = [];
 
@@ -232,6 +259,7 @@ export class FlashcardPracticeService {
           flashcard_id: flashcardId,
           easiness_factor: result.newEasinessFactor,
           interval_days: result.newInterval,
+          interval_unit: result.intervalUnit,
           repetitions: result.newRepetitions,
           next_review_at: nextReviewAt.toISOString(),
           last_reviewed_at: new Date().toISOString(),
@@ -450,20 +478,13 @@ export class FlashcardPracticeService {
     });
   }
 
-  async getStateBreakdown(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+  async getStateBreakdown(ctx: RequestContext): Promise<ServiceResult<StateBreakdown>> {
     const supabase = await this.createClient();
 
     const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
 
     if (filter._impossible) {
-      return success({
-        totalCards: 0,
-        neverPracticed: 0,
-        learning: 0,
-        review: 0,
-        relearning: 0,
-        leeched: 0,
-      });
+      return success({ ...EMPTY_STATE_BREAKDOWN });
     }
 
     const { data, error } = await supabase.rpc('get_practice_state_breakdown', {
@@ -473,26 +494,10 @@ export class FlashcardPracticeService {
     });
 
     if (error) {
-      return success({
-        totalCards: 0,
-        neverPracticed: 0,
-        learning: 0,
-        review: 0,
-        relearning: 0,
-        leeched: 0,
-      });
+      return success({ ...EMPTY_STATE_BREAKDOWN });
     }
 
-    return success(
-      data as {
-        totalCards: number;
-        neverPracticed: number;
-        learning: number;
-        review: number;
-        relearning: number;
-        leeched: number;
-      },
-    );
+    return success(data as StateBreakdown);
   }
 
   async getStatsForFlashcard(
@@ -638,7 +643,8 @@ export class FlashcardPracticeService {
             : 0,
         lastPracticedAt: practice?.lastPracticedAt ?? null,
         easinessFactor: state?.easiness_factor ?? null,
-        intervalDays: state?.interval_days ?? null,
+        intervalValue: state?.interval_days ?? null,
+        intervalUnit: (state?.interval_unit as IntervalUnit | null) ?? null,
         nextReviewAt: state?.next_review_at ?? null,
         repetitions: state?.repetitions ?? null,
         isLeech,
@@ -763,7 +769,7 @@ export class FlashcardPracticeService {
     const { data: reviewStates } = await supabase
       .from('flashcard_review_state')
       .select(
-        'flashcard_id, easiness_factor, interval_days, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, lapse_count, is_leech',
+        'flashcard_id, easiness_factor, interval_days, interval_unit, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, lapse_count, is_leech',
       )
       .eq('user_id', ctx.userId)
       .in('flashcard_id', matchingIds);
@@ -795,7 +801,8 @@ export class FlashcardPracticeService {
           reviewState: state
             ? {
                 easinessFactor: state.easiness_factor,
-                intervalDays: state.interval_days,
+                intervalValue: state.interval_days,
+                intervalUnit: state.interval_unit as IntervalUnit,
                 repetitions: state.repetitions,
                 nextReviewAt: state.next_review_at,
                 lastReviewedAt: state.last_reviewed_at,

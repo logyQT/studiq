@@ -1,11 +1,13 @@
 'use client';
 
 import { Badge, Button, Input } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { Check, ExternalLink, Layers, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
 interface FlashcardData {
@@ -14,12 +16,19 @@ interface FlashcardData {
   topic?: string;
 }
 
+/** Deck the generated cards are saved into, when the chat was opened from a deck. */
+export interface DeckTarget {
+  id: string;
+  name: string;
+}
+
 interface FlashcardBlockProps {
   flashcards?: FlashcardData[];
   deckName?: string;
   loading?: boolean;
   count?: number;
   readOnly?: boolean;
+  targetDeck?: DeckTarget | null;
 }
 
 export function FlashcardBlock({
@@ -28,9 +37,11 @@ export function FlashcardBlock({
   loading = false,
   count,
   readOnly = false,
+  targetDeck,
 }: FlashcardBlockProps) {
   const t = useTranslations('AiChatPage');
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   // The AI chat is reachable from both the student and the educator dashboards,
   // so the saved-deck link has to stay inside the current dashboard.
   const deckBasePath = pathname.startsWith('/edu') ? '/edu' : '/app';
@@ -58,28 +69,39 @@ export function FlashcardBlock({
     if (visibleCards.length === 0) return;
     setSaving(true);
     try {
-      const deckRes = await fetch('/api/v1/flashcards/decks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-      if (!deckRes.ok) throw new Error('Failed to create deck');
-      const deckData = await deckRes.json();
-      const deckId: string = deckData.data?.id;
-      if (!deckId) throw new Error('No deck ID returned');
+      let deckId = targetDeck?.id;
+      const createdNewDeck = !deckId;
+      if (!deckId) {
+        const deckRes = await fetch('/api/v1/flashcards/decks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!deckRes.ok) throw new Error('Failed to create deck');
+        const deckData = await deckRes.json();
+        deckId = deckData.data?.id;
+        if (!deckId) throw new Error('No deck ID returned');
+      }
 
       const batchRes = await fetch('/api/v1/flashcards/batch/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cards: visibleCards.map((c) => ({ front: c.front, back: c.back })),
-          deckIds: [deckId],
+          deckId,
         }),
       });
       if (!batchRes.ok) throw new Error('Failed to create flashcards');
 
       setSavedDeckId(deckId);
-      toast.success(t('flashcard_deck_created', { count: visibleCards.length }));
+      // Deck and card lists are cached with `staleTime: Infinity`; without this
+      // the deck the user returns to keeps showing the old card count.
+      void queryClient.invalidateQueries({ queryKey: flashcardKeys.all });
+      toast.success(
+        createdNewDeck
+          ? t('flashcard_deck_created', { count: visibleCards.length })
+          : t('flashcard_saved', { count: visibleCards.length }),
+      );
     } catch {
       toast.error(t('flashcard_save_failed'));
     } finally {
@@ -146,17 +168,25 @@ export function FlashcardBlock({
             <span className="text-xs text-muted-foreground/60">({removedCount} removed)</span>
           )}
         </div>
-        {!readOnly && (
-          <div className="flex items-center gap-2">
-            <Pencil className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-7 text-xs"
-              placeholder={t('flashcard_deck_name')}
-            />
-          </div>
-        )}
+        {!readOnly &&
+          (targetDeck ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Layers className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+              <span className="truncate">
+                {t('flashcard_saving_to_deck', { deck: targetDeck.name })}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Pencil className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-7 text-xs"
+                placeholder={t('flashcard_deck_name')}
+              />
+            </div>
+          ))}
       </div>
 
       {/* Scrollable card grid */}
@@ -215,7 +245,9 @@ export function FlashcardBlock({
           ) : (
             <Layers className="mr-2 h-3 w-3" />
           )}
-          {t('flashcard_save_deck', { count: visibleCards.length })}
+          {targetDeck
+            ? t('flashcard_save_into_deck', { count: visibleCards.length })
+            : t('flashcard_save_deck', { count: visibleCards.length })}
         </Button>
       )}
     </div>

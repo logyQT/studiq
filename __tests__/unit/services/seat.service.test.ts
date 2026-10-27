@@ -1,4 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import { MAX_SEAT_POOL_TOTAL } from '@studiq/server/models/seat.model';
 import { SeatService } from '@studiq/server/services/seat.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -103,6 +105,89 @@ describe('SeatService', () => {
       expect(result.success).toBe(false);
       if (result.success) return;
       expect(result.error).toBe('INTERNAL_SERVER');
+    });
+  });
+
+  describe('addPool', () => {
+    const input = { planKey: 'campus', quantity: 5 };
+
+    it('creates a pool when none exists for the plan', async () => {
+      const read = chain(null);
+      const write = chain({ id: 'pool-1', plan_key: 'campus', total: 5, assigned: 0 });
+      mock.from.mockReturnValueOnce(read).mockReturnValueOnce(write);
+
+      const result = await service.addPool(ctx, input);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data).toEqual({ id: 'pool-1', planKey: 'campus', total: 5, assigned: 0 });
+      expect(write.insert).toHaveBeenCalledWith({
+        organization_id: orgId,
+        plan_key: 'campus',
+        total: 5,
+      });
+      expect(write.update).not.toHaveBeenCalled();
+    });
+
+    it('increments an existing pool', async () => {
+      const read = chain({ id: 'pool-1', total: 5 });
+      const write = chain({ id: 'pool-1', plan_key: 'campus', total: 8, assigned: 0 });
+      mock.from.mockReturnValueOnce(read).mockReturnValueOnce(write);
+
+      const result = await service.addPool(ctx, { planKey: 'campus', quantity: 3 });
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data.total).toBe(8);
+      expect(write.update).toHaveBeenCalledWith({ total: 8 });
+    });
+
+    it('accepts an increment that lands exactly on the int4 bound', async () => {
+      const read = chain({ id: 'pool-1', total: 5 });
+      const write = chain({
+        id: 'pool-1',
+        plan_key: 'campus',
+        total: MAX_SEAT_POOL_TOTAL,
+        assigned: 0,
+      });
+      mock.from.mockReturnValueOnce(read).mockReturnValueOnce(write);
+
+      const result = await service.addPool(ctx, {
+        planKey: 'campus',
+        quantity: MAX_SEAT_POOL_TOTAL - 5,
+      });
+
+      expect(result.success).toBe(true);
+      expect(write.update).toHaveBeenCalledWith({ total: MAX_SEAT_POOL_TOTAL });
+    });
+
+    it('rejects an increment that would overflow int4 without writing (#266)', async () => {
+      const read = chain({ id: 'pool-1', total: 5 });
+      mock.from.mockReturnValueOnce(read);
+
+      const result = await service.addPool(ctx, {
+        planKey: 'campus',
+        quantity: MAX_SEAT_POOL_TOTAL,
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.details?.[0]?.message).toBe(ValidationErrorCode.TOO_BIG);
+      expect(result.details?.[0]?.path).toEqual(['quantity']);
+      // No write attempt: a second table call would have no mock and throw.
+      expect(read.update).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns FORBIDDEN when no activeOrgId', async () => {
+      const noOrgCtx = { ...ctx, activeOrgId: null };
+
+      const result = await service.addPool(noOrgCtx, input);
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('FORBIDDEN');
     });
   });
 

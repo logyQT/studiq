@@ -13,26 +13,17 @@ import {
 } from '@studiq/ui';
 import { Loader2, Minus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
+import { getVisibleLimitKeys } from '@/lib/pricing-limits';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
-
-const SORTED_LIMIT_KEYS = [
-  'max_flashcards',
-  'max_decks',
-  'max_questions',
-  'max_question_banks',
-  'max_quiz_attempts_per_day',
-  'max_ai_tokens_per_day',
-  'max_students',
-  'max_groups',
-  'max_storage_mb',
-];
 
 export default function AppBillingPage() {
   const t = useTranslations('BillingPage');
   const pt = useTranslations('PricingPage');
   const locale = useLocale();
   const { user } = useAuth();
+  const accountType = (user?.app_metadata?.account_type as string | undefined) ?? 'student';
   const { data: plan, isLoading } = useApiQuery<PlanInfo>({
     queryKey: ['me', 'plan'],
     url: '/api/v1/me/plan',
@@ -54,8 +45,7 @@ export default function AppBillingPage() {
   });
 
   function getFeatureLabel(key: string): string {
-    const label = pt(`feature_${key}`);
-    return label.startsWith('feature_') ? key : label;
+    return getFeatureLabelShared(key, pt);
   }
 
   function getLimitLabel(key: string): string {
@@ -63,7 +53,7 @@ export default function AppBillingPage() {
     return label.startsWith('limit_') ? key : label;
   }
 
-  const visibleLimits = SORTED_LIMIT_KEYS.filter((k) => k in plan.limits);
+  const visibleLimits = getVisibleLimitKeys([plan], accountType);
 
   return (
     <div className="max-w-2xl space-y-6">

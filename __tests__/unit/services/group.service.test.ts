@@ -179,6 +179,23 @@ describe('GroupService', () => {
       expect(result.data).toEqual(group);
     });
 
+    it('stores a blank description as null on create', async () => {
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      const insertBuilder = qb({
+        id: 'g-1',
+        name: 'New Group',
+        description: null,
+        created_at: 'x',
+      });
+      mock.from.mockReturnValueOnce(insertBuilder);
+
+      await service.createGroup(ctx, { name: 'New Group', description: '  ' });
+
+      expect(insertBuilder.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ description: null }),
+      );
+    });
+
     it('returns error on insert failure', async () => {
       mock.from.mockReturnValueOnce(qb([], null, 0));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
@@ -207,6 +224,38 @@ describe('GroupService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(group);
+    });
+
+    it.each([
+      ['null', null],
+      ['empty string', ''],
+      ['whitespace-only string', '   '],
+    ])('clears the description when given %s', async (_label, description) => {
+      const builder = qb({ id: 'g-1', name: 'G', description: null, created_at: '2024-01-01' });
+      mock.from.mockReturnValueOnce(builder);
+
+      await service.updateGroup(ctx, 'g-1', { description });
+
+      expect(builder.update).toHaveBeenCalledWith({ description: null });
+    });
+
+    it('trims a non-empty description', async () => {
+      const builder = qb({ id: 'g-1', name: 'G', description: 'x', created_at: '2024-01-01' });
+      mock.from.mockReturnValueOnce(builder);
+
+      await service.updateGroup(ctx, 'g-1', { description: '  x  ' });
+
+      expect(builder.update).toHaveBeenCalledWith({ description: 'x' });
+    });
+
+    it('leaves the description untouched when the key is absent', async () => {
+      const builder = qb({ id: 'g-1', name: 'New', description: 'old', created_at: '2024-01-01' });
+      mock.from.mockReturnValueOnce(builder);
+
+      await service.updateGroup(ctx, 'g-1', { name: 'New' });
+
+      expect(builder.update).toHaveBeenCalledWith({ name: 'New' });
+      expect(builder.update.mock.calls[0][0]).not.toHaveProperty('description');
     });
 
     it('returns NOT_FOUND when group not found', async () => {

@@ -69,6 +69,29 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 
 ---
 
+## Issue Ownership
+
+**Assigned work belongs to whoever is assigned.** Before you touch an issue, look at it:
+
+```bash
+gh issue view <n> --json number,state,assignees
+```
+
+- **Any assignee other than your operator means stop.** Do not design it, code it, branch for it, or open a PR for it — even if it looks trivial, even if it is unblocked, even if you think you are helping. Say `skipped #<n>: owned by <login>` and move on.
+- **Claim what you pick up.** The first time you start an issue, assign your operator *before* the first commit:
+
+  ```bash
+  gh issue edit <n> --add-assignee <operator-login>
+  ```
+
+  The operator login is the human you work for — `QA_OPERATOR_GH` in automated crews, `logyQT` on this repo. It is **not** the bot/agent account that authors the PR.
+- **Never unassign or reassign** someone else's issue. Only the operator can hand an issue over; if they do, reassign it first, then start.
+- **Bots do not count as owners** (`dependabot`, `github-actions`). An issue assigned only to a bot is fair game.
+
+This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch time and refuses foreign-owned issues, and holds a merge if ownership changes mid-flight. Crews that work outside the pipeline rely on this rule directly.
+
+---
+
 ## Commands
 
 `package.json` at the repo root is the **source of truth** — if anything below disagrees with it, trust `package.json`.
@@ -318,7 +341,7 @@ Use the right client for the context — there is **no browser-side Supabase cli
 Next.js 16 uses `proxy.ts` — **do NOT rename it to `middleware.ts`**:
 
 - `apps/web/src/proxy.ts` — main app: refreshes the Supabase session, then applies `routeRules`. It **skips `/api/*` entirely** — API auth is enforced per route by `withAuth()`.
-- `apps/admin/src/proxy.ts` — admin app: Ed25519 PEM signature gate (`x-admin-signature` / `x-admin-timestamp` headers) for `/api/*`; UI pages pass through. Empty `ADMIN_PEM_KEYS` = allow-all in dev, deny-all in production.
+- `apps/admin/src/proxy.ts` — admin app: Ed25519 PEM signature gate (`x-admin-signature` / `x-admin-timestamp` headers) for `/api/*`. `ADMIN_PEM_KEYS` is a JSON keyring (`[{ id, key, scopes, expiresAt? }]`) with per-key scopes and attribution; the signature covers method + path + canonical query + timestamp + `sha256(body)`. Empty `ADMIN_PEM_KEYS` = allow-all in dev, deny-all in production; a non-empty ring with no valid entries fails closed everywhere. The verified key id is forwarded as `x-admin-key-id`. See `docs/decisions/0007-admin-api-auth.md`.
 
 Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order:
 1. If the user is logged in and `redirectIfAuthenticatedByAccountType` / `redirectIfAuthenticated` matches → redirect by account type
@@ -431,6 +454,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. Public-by-design prefixes must be added to the catch-all exclusion in `packages/server/src/config/routes.config.ts`.
 - **New UI routes**: add a `RouteRule` to `packages/server/src/config/routes.config.ts` if the route needs auth, account-type restrictions, or a logged-in redirect.
 - **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it) and schema in `supabase/schemas/`
+- **Supabase `eq(col, null)` is not `IS NULL`** — `.eq('organization_id', ctx.activeOrgId)` with `activeOrgId === null` serialises to `organization_id=eq.null`, which Postgres rejects on a `uuid` column (`22P02`, surfacing as a 500 — #148). For NOT NULL org columns guard first (`if (!ctx.activeOrgId) return failure('FORBIDDEN')`); for nullable-org personal content apply the org filter only when set (`if (ctx.activeOrgId) query = query.eq(...)`), matching `accessibleFilter`'s `own` scope.
 - **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun lint's `oxc/no-barrel-file` rule enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `oxc/no-barrel-file` is disabled for those two files.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — a hand-run root `bun check` must stay at zero errors; use the per-workspace scripts for app code.
 

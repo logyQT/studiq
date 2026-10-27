@@ -61,6 +61,11 @@ export const featureKeys = {
   me: ['features', 'me'] as const,
 };
 
+export const aiKeys = {
+  all: ['ai'] as const,
+  usage: ['ai', 'usage'] as const,
+};
+
 export const groupKeys = {
   all: ['groups'] as const,
   list: (orgId?: string) => ['groups', 'list', orgId] as const,
@@ -76,6 +81,8 @@ export const organizationKeys = {
 
 export const questionReportKeys = {
   all: ['question-reports'] as const,
+  list: (filters?: Record<string, string | undefined>) =>
+    ['question-reports', 'list', filters] as const,
   detail: (id: string) => ['question-reports', id] as const,
   unreadCount: ['question-reports', 'unread-count'] as const,
 };
@@ -111,7 +118,20 @@ export const quizAttemptKeys = {
   all: ['quiz', 'attempts'] as const,
 };
 
+export const studentStatsKeys = {
+  all: ['stats', 'student'] as const,
+};
+
 export const searchKeys = {
   all: ['search'] as const,
   query: (q: string) => ['search', q] as const,
+};
+
+export const paymentKeys = {
+  all: ['me', 'payments'] as const,
+};
+
+export const statusKeys = {
+  all: ['status'] as const,
+  health: ['status', 'health'] as const,
 };

@@ -1,4 +1,4 @@
-import type { Nullable } from '@studiq/authz';
+import { isOrgAdminRole, type Nullable } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -15,6 +15,18 @@ export type MockCheckoutSession = {
   url: string;
 };
 
+/**
+ * The (mock) Stripe event fields the service may trust. The caller identity is
+ * deliberately absent: it comes from the authenticated RequestContext
+ * (`ctx.userId`), never from the request body.
+ */
+export type MockWebhookEvent = {
+  type: string;
+  session_id: string;
+  plan_id: string;
+  org_id?: string;
+};
+
 export class MockStripeService {
   constructor(
     private createClient: () => Promise<SupabaseClient>,
@@ -23,25 +35,33 @@ export class MockStripeService {
 
   /**
    * A plan can be bought only if it exists, is active and is meant for the buyer's account type.
-   * Reports whether it is an organization plan (bought for an org, not for the buyer).
+   * Reports whether it is an organization plan (bought for an org, not for the buyer) and the
+   * catalog values that are snapshotted into the purchase history.
    */
   private async assertPlanPurchasable(
     planKey: string,
     accountType: string,
-  ): Promise<ServiceResult<{ isOrgPlan: boolean }>> {
+  ): Promise<
+    ServiceResult<{ isOrgPlan: boolean; planName: string; amount: number; currency: string }>
+  > {
     const supabase = await this.createClient();
 
     const { data: plan } = await supabase
       .from('subscription_plans')
-      .select('key, is_active, for_account_type')
+      .select('key, name, is_active, for_account_type, price_monthly, currency')
       .eq('key', planKey)
       .maybeSingle();
 
-    if (!plan || !plan.is_active) return failure('BAD_REQUEST');
+    if (!plan?.is_active) return failure('BAD_REQUEST');
     if (plan.for_account_type && plan.for_account_type !== accountType) {
       return failure('FORBIDDEN');
     }
-    return success({ isOrgPlan: plan.for_account_type === 'manager' });
+    return success({
+      isOrgPlan: plan.for_account_type === 'manager',
+      planName: plan.name ?? plan.key,
+      amount: plan.price_monthly ?? 0,
+      currency: plan.currency ?? 'PLN',
+    });
   }
 
   /** An organization plan can be bought only by an admin of that organization. */
@@ -63,7 +83,7 @@ export class MockStripeService {
 
     const role = membership?.org_roles as { name?: string } | { name?: string }[] | undefined;
     const roleName = Array.isArray(role) ? role[0]?.name : role?.name;
-    if (roleName !== 'admin') return failure('FORBIDDEN');
+    if (!isOrgAdminRole(roleName)) return failure('FORBIDDEN');
     return success(undefined);
   }
 
@@ -90,44 +110,66 @@ export class MockStripeService {
   }
 
   async handleWebhook(
-    event: {
-      type: string;
-      session_id: string;
-      plan_id: string;
-      user_id: string;
-      org_id?: string;
-    },
+    event: MockWebhookEvent,
     accountType: string,
+    // The authenticated caller (ctx.userId), never the request body.
+    userId: string,
   ): Promise<ServiceResult<void>> {
     if (event.type !== 'checkout.session.completed') return success(undefined);
 
     const purchasable = await this.assertPlanPurchasable(event.plan_id, accountType);
     if (isFailure(purchasable)) return purchasable;
 
+    // `profiles` is write-locked for `authenticated` (see migration
+    // 20261022000001_profiles_write_lockdown.sql) and `apply_org_plan` is
+    // service-role only, so entitlement writes use the admin client, never the
+    // caller's session.
+    const admin = this.createAdminClient();
+
     if (purchasable.data.isOrgPlan) {
-      const admin = await this.assertOrgAdmin(event.org_id, event.user_id);
-      if (isFailure(admin)) return admin;
+      const adminMembership = await this.assertOrgAdmin(event.org_id, userId);
+      if (isFailure(adminMembership)) return adminMembership;
 
       // organizations.plan alone changes nothing: features and limits are
       // snapshots, so the DB function moves the plan and re-syncs them.
-      const { error: planError } = await this.createAdminClient().rpc('apply_org_plan', {
+      const { error: planError } = await admin.rpc('apply_org_plan', {
         p_org_id: event.org_id,
         p_plan: event.plan_id,
       });
       if (planError) return toDbFailure(planError);
+    } else {
+      // An organization purchase changes the organization, never the buyer's
+      // personal plan: a manager's personal plan is the free `launch` tier and
+      // applies only outside an organization (#228). Only a plan bought for the
+      // buyer themselves updates `profiles.personal_plan_key`.
+      const { error } = await admin
+        .from('profiles')
+        .update({ personal_plan_key: event.plan_id })
+        .eq('id', userId);
+
+      if (error) return toDbFailure(error);
     }
 
-    // profiles is write-locked for `authenticated` (see migration
-    // 20261022000001_profiles_write_lockdown.sql) so a plan upgrade must go
-    // through the service-role client, not the caller's session.
-    const admin = this.createAdminClient();
+    // Append-only purchase log for "Historia płatności" (#392). The entitlement
+    // write above (`organizations.plan` or `profiles.personal_plan_key`) stays
+    // the source of truth; this row only records what was bought, at the
+    // catalog price read during this request.
+    // `session_id` is unique, so a replayed webhook collapses onto the same row
+    // (`ignoreDuplicates` → ON CONFLICT DO NOTHING).
+    const { error: paymentError } = await admin.from('payments').upsert(
+      {
+        user_id: userId,
+        organization_id: purchasable.data.isOrgPlan ? (event.org_id ?? null) : null,
+        plan_key: event.plan_id,
+        plan_name: purchasable.data.planName,
+        amount: purchasable.data.amount,
+        currency: purchasable.data.currency,
+        session_id: event.session_id,
+      },
+      { onConflict: 'session_id', ignoreDuplicates: true },
+    );
 
-    const { error } = await admin
-      .from('profiles')
-      .update({ personal_plan_key: event.plan_id })
-      .eq('id', event.user_id);
-
-    if (error) return toDbFailure(error);
+    if (paymentError) return toDbFailure(paymentError);
 
     return success(undefined);
   }

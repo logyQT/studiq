@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import { AccountType, isOrgAdminRole, ORG_ADMIN_ROLE, type RequestContext } from '@studiq/authz';
 import {
   accessibleFilter,
   buildQueryFilter,
@@ -259,5 +259,22 @@ describe('authz (unified lib)', () => {
       expect(await can(groupCtx, 'deck.read', foreignDeck)).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
     });
+  });
+});
+
+describe('isOrgAdminRole', () => {
+  it('accepts only the exact admin role name', () => {
+    expect(isOrgAdminRole(ORG_ADMIN_ROLE)).toBe(true);
+    expect(isOrgAdminRole('admin')).toBe(true);
+  });
+
+  it('rejects every other value', () => {
+    for (const role of ['Admin', 'teacher', 'member', '', null, undefined]) {
+      expect(isOrgAdminRole(role)).toBe(false);
+    }
+  });
+
+  it('pins the token to the database role name', () => {
+    expect(ORG_ADMIN_ROLE).toBe('admin');
   });
 });

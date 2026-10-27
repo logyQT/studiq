@@ -7,6 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { quizKeys } from '@/lib/query-keys';
 
 interface QuizQuestion {
@@ -37,22 +38,13 @@ export function QuizDetailClient() {
     url: `/api/v1/teacher/quizzes/${id}`,
   });
 
+  // The quiz name is the breadcrumb leaf; the raw quiz UUID must never render.
+  useBreadcrumbLabel(id, quiz?.name);
+
   const deleteMutation = useApiMutation<void, void>({
     mutationFn: async () => {
       const res = await fetch(`/api/v1/teacher/quizzes/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
-    },
-    invalidateKeys: [quizKeys.all],
-  });
-
-  const createAssignmentMutation = useApiMutation<unknown, void>({
-    mutationFn: async () => {
-      const res = await fetch(`/api/v1/teacher/quizzes/${id}/create-assignment`, {
-        method: 'POST',
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
     },
     invalidateKeys: [quizKeys.all],
   });
@@ -65,15 +57,6 @@ export function QuizDetailClient() {
       router.push('/edu/quizzes');
     } catch {
       toast.error('Delete failed');
-    }
-  };
-
-  const handleCreateAssignment = async () => {
-    try {
-      const assignment = await createAssignmentMutation.mutateAsync();
-      router.push(`/edu/assignments/${(assignment as { id: string }).id}`);
-    } catch {
-      toast.error('Failed to create assignment');
     }
   };
 
@@ -115,9 +98,11 @@ export function QuizDetailClient() {
               <Edit className="w-4 h-4 mr-1" /> {t('edit')}
             </Button>
           </Link>
-          <Button variant="outline" size="sm" onClick={handleCreateAssignment}>
-            <Send className="w-4 h-4 mr-1" /> {t('create_assignment')}
-          </Button>
+          <Link href={`/edu/assignments/new?quizId=${id}`}>
+            <Button variant="outline" size="sm">
+              <Send className="w-4 h-4 mr-1" /> {t('create_assignment')}
+            </Button>
+          </Link>
           <Button variant="destructive" size="sm" onClick={handleDelete}>
             <Trash2 className="w-4 h-4 mr-1" /> {t('delete')}
           </Button>

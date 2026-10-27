@@ -3,7 +3,7 @@
 > **AI architecture reference:** [`docs/ai.md`](../ai.md) — unified doc covering architecture, tools, security, and extension guide.
 
 Status: ACTIVE
-Last updated: 2026-09-17
+Last updated: 2026-10-24
 
 ## Decisions (locked)
 
@@ -40,7 +40,9 @@ Last updated: 2026-09-17
 - Phase B.5 (seat cleanup) before Phase C — C2 extracts the post-cleanup FeatureResolver
 - Phase C: monorepo scaffold + admin detach (C1-C7 done) ✅, admin rebuild + server extraction next
 - Phase E: move main app to `apps/web/` (after admin is stable)
-- Phase D: agentic testing — **deferred**; see [PR #77](https://github.com/logyQT/studiq/pull/77)
+- Phase D: agentic testing — **split and deferred**: mechanical cases become the deterministic
+  Playwright suite in [`docs/e2e-campaign.md`](../e2e-campaign.md); judgement-heavy cases stay
+  agentic (see [PR #77](https://github.com/logyQT/studiq/pull/77))
 
 ---
 
@@ -237,7 +239,7 @@ Route handlers needed:
 | `/api/v1/user-overrides` | `userOverrideController` | GET, POST |
 | `/api/v1/user-overrides/[id]` | `userOverrideController` | GET, PUT, DELETE |
 | `/api/v1/subscription-plans` | `subscriptionPlanAdminController` | GET, POST |
-| `/api/v1/subscription-plans/[key]` | `subscriptionPlanAdminController` | GET, PUT, DELETE |
+| `/api/v1/subscription-plans/[id]` | `subscriptionPlanAdminController` | GET, PUT, DELETE |
 
 **Auth for admin API routes**: No `withAuth` wrapper — the PEM proxy
 gates all `/api/*` requests. Controllers run with full service-role

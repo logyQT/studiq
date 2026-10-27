@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
+import { SrLabel } from '@/components/shared/sr-label';
 
 const DISMISS_KEY = 'onboarding_dismissed';
 
@@ -91,6 +92,7 @@ export function OnboardingChecklist() {
           </div>
           <Button variant="ghost" size="icon" className="size-7" onClick={handleDismiss}>
             <X className="size-4" />
+            <SrLabel k="dismiss_checklist" />
           </Button>
         </div>
         <CardDescription>{allDone ? t('all_done_desc') : t('description')}</CardDescription>

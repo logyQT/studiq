@@ -16,6 +16,7 @@ import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { DeckContextMenu } from '@/components/flashcards/context-menus/deck-context-menu';
 import { getGradientHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface DeckCardProps {
   deck: Deck;
@@ -144,6 +145,7 @@ export const DeckCard = memo(
                   className="h-8 w-8 text-muted-foreground/80 hover:text-foreground shrink-0 -mr-1"
                 >
                   <MoreVertical className="h-4 w-4" />
+                  <SrLabel k="more_actions_for" values={{ name: deck.name }} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -216,6 +218,7 @@ export const DeckCard = memo(
                       className="h-8 w-8 text-muted-foreground hover:text-foreground"
                     >
                       <MoreVertical className="h-4 w-4" />
+                      <SrLabel k="more_actions_for" values={{ name: deck.name }} />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -247,8 +250,8 @@ export const DeckCard = memo(
             )}
           </div>
 
-          <div className="mt-auto flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2">
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div className="flex min-w-0 items-center gap-2">
               <Badge
                 variant="secondary"
                 className="bg-secondary/50 text-secondary-foreground hover:bg-secondary/70 border-transparent shadow-none font-medium px-2.5 py-0.5"
@@ -267,7 +270,7 @@ export const DeckCard = memo(
                 <Badge
                   key={name}
                   variant="outline"
-                  className="font-medium px-2.5 py-0.5 text-muted-foreground"
+                  className="max-w-full truncate font-medium px-2.5 py-0.5 text-muted-foreground"
                 >
                   {name}
                 </Badge>
@@ -277,7 +280,7 @@ export const DeckCard = memo(
             <Button
               variant="ghost"
               size="sm"
-              className="gap-1.5 text-primary hover:text-primary hover:bg-primary/10 font-semibold px-2 -mr-2 transition-colors"
+              className="ml-auto shrink-0 gap-1.5 text-primary hover:text-primary hover:bg-primary/10 font-semibold px-2 -mr-2 transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
                 router.push(`${basePath}/${deck.id}`);

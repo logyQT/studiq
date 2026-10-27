@@ -89,6 +89,14 @@ describe('QuizTeacherService', () => {
 
       expect(result.success).toBe(true);
     });
+
+    it('returns FORBIDDEN without an active org and never queries (#148)', async () => {
+      const result = await service.create({ name: 'My Quiz' }, { ...ctx, activeOrgId: null });
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
   });
 
   describe('list', () => {
@@ -114,6 +122,18 @@ describe('QuizTeacherService', () => {
       if (result.success) {
         expect(result.data).toEqual([]);
       }
+    });
+
+    it('returns FORBIDDEN when there is no active organization', async () => {
+      const result = await service.list({ ...ctx, activeOrgId: null });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('FORBIDDEN');
+      }
+      // The guard must short-circuit before any query: a null org used to reach
+      // PostgREST as `organization_id=eq.null` and blew up with 22P02 -> 500.
+      expect(mock.from).not.toHaveBeenCalled();
     });
   });
 

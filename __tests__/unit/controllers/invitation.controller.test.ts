@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 function createMockInvitationService() {
   return {
     createInvitation: vi.fn(),
+    createInvitationsBulk: vi.fn(),
     getInvitationByToken: vi.fn(),
+    acceptInvitation: vi.fn(),
   };
 }
 
@@ -140,9 +142,68 @@ describe('InvitationController', () => {
     });
   });
 
+  describe('accept', () => {
+    it('passes the trimmed token through and returns the joined organization', async () => {
+      const data = { id: 'org-1', name: 'Test Org', orgRoleId: 'role-member' };
+      mockService.acceptInvitation.mockResolvedValueOnce(success(data));
+
+      const response = await controller.accept(mockCtx, { token: '  bare-code  ' });
+
+      expect(response).toEqual({ success: true, statusCode: 200, data });
+      expect(mockService.acceptInvitation).toHaveBeenCalledWith(mockCtx, 'bare-code');
+    });
+
+    // #317: the accept body used to be cast, so a non-string reached the service
+    // (and the DB) unchecked. It is validated like every other request body.
+    it.each([
+      ['missing', {}],
+      ['non-string', { token: 42 }],
+      ['blank', { token: '   ' }],
+    ])('returns 422 naming the token for a %s body', async (_label, body) => {
+      const response = await controller.accept(mockCtx, body);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(((response as any).details ?? []).map((issue: any) => issue.path)).toContainEqual([
+        'token',
+      ]);
+      expect(mockService.acceptInvitation).not.toHaveBeenCalled();
+    });
+
+    it('returns NOT_FOUND when the invitation is unknown', async () => {
+      mockService.acceptInvitation.mockResolvedValueOnce(failure('NOT_FOUND'));
+
+      const response = await controller.accept(mockCtx, { token: 'nope' });
+
+      expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
+    });
+  });
+
   describe('createBulk', () => {
-    it('returns results for each invitation', async () => {
-      mockService.createInvitation.mockResolvedValue(success({ inviteLink: undefined }));
+    it('returns one result per invitation', async () => {
+      mockService.createInvitationsBulk.mockResolvedValueOnce(
+        success([
+          {
+            email: 'john@example.com',
+            success: true,
+            data: {
+              success: true,
+              invitationId: 'inv-1',
+              inviteLink: 'http://localhost:3000/join?token=token-1',
+            },
+          },
+          {
+            email: 'jane@example.com',
+            success: true,
+            data: {
+              success: true,
+              invitationId: 'inv-2',
+              inviteLink: 'http://localhost:3000/join?token=token-2',
+            },
+          },
+        ]),
+      );
 
       const response = await controller.createBulk(mockCtx, {
         invitations: [
@@ -153,19 +214,68 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toHaveProperty('results');
       expect((response as any).data.results.length).toBe(2);
+      expect((response as any).data.results[0].data.invitationId).toBe('inv-1');
+      // #313: the controller passes the copyable link through unchanged.
+      expect((response as any).data.results[0].data.inviteLink).toBe(
+        'http://localhost:3000/join?token=token-1',
+      );
+      expect((response as any).data.results[1].data.inviteLink).toBe(
+        'http://localhost:3000/join?token=token-2',
+      );
+      // MGR-INV-02: every row is attributable to the address that was submitted.
+      expect((response as any).data.results.map((r: any) => r.email)).toEqual([
+        'john@example.com',
+        'jane@example.com',
+      ]);
     });
 
-    it('returns UNPROCESSABLE_ENTITY for invalid bulk input', async () => {
-      const response = await controller.createBulk(mockCtx, { invitations: [] });
+    it('returns UNPROCESSABLE_ENTITY naming the incomplete entry', async () => {
+      const response = await controller.createBulk(mockCtx, {
+        invitations: [{ email: 'john@example.com' }],
+      });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(((response as any).details ?? []).map((issue: any) => issue.path)).toContainEqual([
+        'invitations',
+        0,
+        'targetOrgRoleId',
+      ]);
+      // The schema rejected the batch before the service was called.
+      expect(mockService.createInvitationsBulk).not.toHaveBeenCalled();
     });
 
-    it('handles service failures gracefully during bulk', async () => {
-      mockService.createInvitation.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
+    it('rejects the whole batch instead of answering a partial success', async () => {
+      mockService.createInvitationsBulk.mockResolvedValueOnce(
+        failure('UNPROCESSABLE_ENTITY', [
+          {
+            code: 'custom',
+            message: 'VALIDATION_INVALID_ROLE',
+            path: ['invitations', 1, 'targetOrgRoleId'],
+          },
+        ]),
+      );
+
+      const response = await controller.createBulk(mockCtx, {
+        invitations: [
+          { email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' },
+          { email: 'jane@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440002' },
+        ],
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).data).toBeUndefined();
+      expect((response as any).details).toEqual([
+        expect.objectContaining({ path: ['invitations', 1, 'targetOrgRoleId'] }),
+      ]);
+    });
+
+    it('returns a non-200 when the service fails', async () => {
+      mockService.createInvitationsBulk.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.createBulk(mockCtx, {
         invitations: [
@@ -173,8 +283,9 @@ describe('InvitationController', () => {
         ],
       });
 
-      expect(response.success).toBe(true);
-      expect((response as any).data.results[0].success).toBe(false);
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(500);
+      expect((response as any).data).toBeUndefined();
     });
   });
 });

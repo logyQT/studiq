@@ -1,0 +1,23 @@
+# Normalize every text file to LF, both in the repository and on checkout,
+# regardless of the developer's `core.autocrlf` setting. Windows Git installs
+# commonly default to `autocrlf=true`, which rewrites checkouts to CRLF and made
+# `bun fmt --check` fail on ~900 unrelated files (see #129).
+* text=auto eol=lf
+
+# Binary assets: never EOL-convert, diff or merge them as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.mp4 binary
+*.mp3 binary
+*.zip binary
+*.docx binary

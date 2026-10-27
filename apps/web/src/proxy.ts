@@ -5,6 +5,7 @@ import { roleGuard } from '@studiq/server/guards/role.guard';
 import { APP_ERRORS } from '@studiq/server/lib/errors';
 import { updateSession } from '@studiq/server/lib/supabase/session';
 import { type NextRequest, NextResponse } from 'next/server';
+import { toSafeInternalPath } from '@/lib/safe-redirect';
 
 const ACCOUNT_TYPE_REDIRECTS: Record<string, string> = {
   [AccountType.MANAGER]: '/manage',
@@ -45,8 +46,15 @@ export async function proxy(request: NextRequest) {
 
   // 2. Handle "Redirect if Authenticated" (e.g., /login -> /dashboard)
   if (user) {
+    // A signed-in user opening `/login?next=<path>` (a reload, a retry, or a
+    // back-navigation after logging in) must land on the deep link, not the
+    // dashboard — otherwise the `?next=` target is silently dropped (#458).
+    // Validated once here; the account-type rule below still applies to the
+    // target because the redirect goes through the proxy again.
+    const safeNext = toSafeInternalPath(request.nextUrl.searchParams.get('next'), request.url);
+
     if (matchedRule.redirectIfAuthenticatedByAccountType) {
-      const destination = matchedRule.redirectIfAuthenticatedByAccountType[accountType];
+      const destination = safeNext ?? matchedRule.redirectIfAuthenticatedByAccountType[accountType];
 
       if (destination) {
         const url = new URL(destination, request.url);
@@ -55,7 +63,7 @@ export async function proxy(request: NextRequest) {
     }
 
     if (matchedRule.redirectIfAuthenticated) {
-      const url = new URL(matchedRule.redirectIfAuthenticated, request.url);
+      const url = new URL(safeNext ?? matchedRule.redirectIfAuthenticated, request.url);
       return preserveCookies(supabaseResponse, NextResponse.redirect(url));
     }
   }
@@ -70,7 +78,10 @@ export async function proxy(request: NextRequest) {
       return preserveCookies(supabaseResponse, res);
     } else {
       const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('next', path);
+      // Keep the query string: a signed-out `/app/study/quiz?type=open` must
+      // come back to that exact URL after login. Re-validated by
+      // `toSafeInternalPath` on the way in and on the login page.
+      loginUrl.searchParams.set('next', `${path}${request.nextUrl.search}`);
       return preserveCookies(supabaseResponse, NextResponse.redirect(loginUrl));
     }
   }

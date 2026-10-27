@@ -378,7 +378,7 @@ New namespaces: `QuizBuilder`, `Documents`, `TeacherDashboard` — ~60-80 keys.
 
 ## Phase 5: Student Experience 📋
 
-> Personalize the student-facing app. Engagement features, visual progress tracking.
+> Personalize the student-facing app. Dashboard, spaced-repetition improvements, visual progress tracking.
 
 **Priority**: MEDIUM — improves retention.
 
@@ -397,15 +397,7 @@ New namespaces: `QuizBuilder`, `Documents`, `TeacherDashboard` — ~60-80 keys.
 - Fuzz factor (small offset to prevent card clumping)
 - Daily study goal setting + progress tracking
 
-### Subphase 5C: Gamification
-
-- Streak tracking (consecutive days with practice)
-- XP/points system
-- Achievement badges (milestones: first quiz, 10-day streak, 1000 cards)
-- Optional per-group leaderboard
-- New tables: `achievements`, `user_daily_activity`
-
-### Subphase 5D: Stats Enhancement
+### Subphase 5C: Stats Enhancement
 
 - Charts + trends over time + subject breakdown on `/app/statistics`
 - Performance trends (line chart: quiz scores over time)
@@ -557,7 +549,7 @@ Phase 0
 |------------------------|-------------|---------------------|
 | Phase 1 (Groups) | Phase 4A (Basic AI) | Phase 5A (Dashboard) |
 | Phase 2 (Sharing) | Phase 4B (Voice) | Phase 5B (SRS) |
-| Phase 3 (Teacher Tools) | Phase 4C (Personalized) | Phase 5C (Gamification) |
+| Phase 3 (Teacher Tools) | Phase 4C (Personalized) | Phase 5C (Stats) |
 
 Tracks A and B can run fully in parallel. Track C starts after Phase 1.
 

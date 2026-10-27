@@ -1,5 +1,6 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
   Badge,
   Button,
@@ -28,9 +29,11 @@ import {
   TableRow,
 } from '@studiq/ui';
 import { Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useApiQuery } from '@/hooks/use-api';
+import { formatDate } from '@/lib/datetime';
 
 interface Pool {
   id: string;
@@ -56,15 +59,6 @@ interface Assignment {
   assignedAt: string;
 }
 
-const PLAN_LABELS: Record<string, string> = {
-  launch: 'StudiQ Launch',
-  team: 'StudiQ Team',
-  hub: 'StudiQ Hub',
-  pro: 'StudiQ Pro',
-  master: 'StudiQ Master',
-  campus: 'StudiQ Campus',
-};
-
 /** Maps plan_key → compatible account tier (matches seat.service.ts PLAN_TIER_MAP). */
 const PLAN_TIER_MAP: Record<string, string> = {
   base: 'student',
@@ -88,6 +82,9 @@ const ROLE_TIER_MAP: Record<string, string> = {
   member: 'student',
 };
 
+/** Storage bound of `org_seat_pools.total` (Postgres int4) — mirrors seat.model.ts. */
+const MAX_SEAT_POOL_TOTAL = 2_147_483_647;
+
 /** Plans available for purchase as seat add-ons. */
 const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
   { key: 'ace', label: 'StudiQ Ace', tier: 'student' },
@@ -99,6 +96,12 @@ const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
 
 export default function ManageSeatsPage() {
   const t = useTranslations('ManageSeatsPage');
+  const locale = useLocale();
+  const { data: plans } = useApiQuery<PlanInfo[]>({
+    queryKey: ['subscription-plans', 'active'],
+    url: '/api/v1/subscription-plans',
+  });
+  const planName = (key: string) => plans?.find((p) => p.key === key)?.name ?? key;
   const [pools, setPools] = useState<Pool[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -108,7 +111,14 @@ export default function ManageSeatsPage() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedPoolId, setSelectedPoolId] = useState('');
   const [purchasePlanKey, setPurchasePlanKey] = useState('');
-  const [purchaseQty, setPurchaseQty] = useState(1);
+  const [purchaseQtyInput, setPurchaseQtyInput] = useState('1');
+  const purchaseQty = purchaseQtyInput.trim() === '' ? NaN : Number(purchaseQtyInput);
+  const existingPlanTotal = pools.find((p) => p.planKey === purchasePlanKey)?.total ?? 0;
+  const maxPurchasable = MAX_SEAT_POOL_TOTAL - existingPlanTotal;
+  const qtyValid =
+    Number.isInteger(purchaseQty) && purchaseQty >= 1 && purchaseQty <= maxPurchasable;
+  const qtyTooLarge = Number.isFinite(purchaseQty) && purchaseQty > maxPurchasable;
+  const qtyInvalid = purchaseQtyInput.trim() !== '' && !qtyValid && !qtyTooLarge;
   const [assigning, setAssigning] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [unassigning, setUnassigning] = useState<string | null>(null);
@@ -186,7 +196,7 @@ export default function ManageSeatsPage() {
   }
 
   async function handlePurchase() {
-    if (!purchasePlanKey || purchaseQty < 1) return;
+    if (!purchasePlanKey || !qtyValid) return;
     setPurchasing(true);
     try {
       const res = await fetch('/api/v1/organization/seats/pools', {
@@ -197,14 +207,16 @@ export default function ManageSeatsPage() {
 
       const data = await res.json();
       if (!data.success) {
-        toast.error(t('purchase_failed'));
+        toast.error(
+          data.error === 'UNPROCESSABLE_ENTITY' ? t('quantity_too_large') : t('purchase_failed'),
+        );
         return;
       }
 
       toast.success(t('purchase_success'));
       setPurchaseDialogOpen(false);
       setPurchasePlanKey('');
-      setPurchaseQty(1);
+      setPurchaseQtyInput('1');
       loadData();
     } catch {
       toast.error(t('purchase_failed'));
@@ -221,7 +233,18 @@ export default function ManageSeatsPage() {
           <p className="text-muted-foreground">{t('description')}</p>
         </div>
         <div className="flex gap-2">
-          <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
+          <Dialog
+            open={purchaseDialogOpen}
+            onOpenChange={(open) => {
+              // Reset on open: Anuluj and the success path close the dialog without
+              // going through onOpenChange, so resetting on close would be skipped.
+              if (open) {
+                setPurchasePlanKey('');
+                setPurchaseQtyInput('1');
+              }
+              setPurchaseDialogOpen(open);
+            }}
+          >
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Plus className="size-4 mr-2" />
@@ -254,10 +277,21 @@ export default function ManageSeatsPage() {
                   <input
                     type="number"
                     min={1}
-                    value={purchaseQty}
-                    onChange={(e) => setPurchaseQty(Math.max(1, Number(e.target.value)))}
+                    max={maxPurchasable}
+                    step={1}
+                    value={purchaseQtyInput}
+                    onChange={(e) => setPurchaseQtyInput(e.target.value)}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   />
+                  {qtyTooLarge ? (
+                    <p role="alert" className="text-xs font-medium text-destructive">
+                      {t('quantity_too_large')}
+                    </p>
+                  ) : qtyInvalid ? (
+                    <p role="alert" className="text-xs font-medium text-destructive">
+                      {t('quantity_invalid')}
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <DialogFooter>
@@ -266,7 +300,7 @@ export default function ManageSeatsPage() {
                 </Button>
                 <Button
                   onClick={handlePurchase}
-                  disabled={!purchasePlanKey || purchaseQty < 1 || purchasing}
+                  disabled={!purchasePlanKey || !qtyValid || purchasing}
                 >
                   {purchasing && <Loader2 className="size-4 mr-2 animate-spin" />}
                   {t('confirm_purchase')}
@@ -274,7 +308,18 @@ export default function ManageSeatsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <Dialog
+            open={assignDialogOpen}
+            onOpenChange={(open) => {
+              // Reset on open: Anuluj and the success path close the dialog without
+              // going through onOpenChange, so resetting on close would be skipped.
+              if (open) {
+                setSelectedUserId('');
+                setSelectedPoolId('');
+              }
+              setAssignDialogOpen(open);
+            }}
+          >
             <DialogTrigger asChild>
               <Button>
                 <Plus className="size-4 mr-2" />
@@ -339,7 +384,7 @@ export default function ManageSeatsPage() {
                           : pools;
                         return compatible.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
-                            {PLAN_LABELS[p.planKey] || p.planKey}
+                            {planName(p.planKey)}
                             <span className="text-muted-foreground ml-2">
                               ({p.assigned}/{p.total})
                             </span>
@@ -394,14 +439,16 @@ export default function ManageSeatsPage() {
                   <TableBody>
                     {pools.map((pool) => {
                       const available = pool.total - pool.assigned;
+                      // Only flag a pool once seats have actually been assigned; a fresh
+                      // single-seat pool (1/0/1) is not "low", it is simply untouched.
                       const nearFull =
-                        pool.total > 0 && available <= Math.max(1, Math.floor(pool.total * 0.2));
+                        pool.total > 0 &&
+                        pool.assigned > 0 &&
+                        available <= Math.max(1, Math.floor(pool.total * 0.2));
 
                       return (
                         <TableRow key={pool.id}>
-                          <TableCell className="font-medium">
-                            {PLAN_LABELS[pool.planKey] || pool.planKey}
-                          </TableCell>
+                          <TableCell className="font-medium">{planName(pool.planKey)}</TableCell>
                           <TableCell className="text-right">{pool.total}</TableCell>
                           <TableCell className="text-right">{pool.assigned}</TableCell>
                           <TableCell className="text-right">
@@ -452,14 +499,15 @@ export default function ManageSeatsPage() {
                             <span>{a.userFullName || a.userEmail || a.userId}</span>
                           </div>
                         </TableCell>
-                        <TableCell>{PLAN_LABELS[a.planKey] || a.planKey}</TableCell>
+                        <TableCell>{planName(a.planKey)}</TableCell>
                         <TableCell className="text-muted-foreground text-sm">
-                          {new Date(a.assignedAt).toLocaleDateString()}
+                          {formatDate(a.assignedAt, locale)}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={t('release_seat')}
                             onClick={() => handleUnassign(a.id)}
                             disabled={unassigning === a.id}
                           >

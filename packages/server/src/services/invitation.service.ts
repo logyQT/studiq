@@ -1,12 +1,20 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { normalizeInviteToken } from '@studiq/server/lib/invite-token';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ZodIssue } from 'zod';
+
+/** The one place the copyable registration link is built, so link and code cannot drift. */
+function buildInviteLink(baseUrl: string, token: string): string {
+  return `${baseUrl}/join?token=${token}`;
+}
 
 /** Internal invitation shape used by preview + accept. Never sent to a caller. */
 interface LoadedInvite {
@@ -136,6 +144,40 @@ export class InvitationService {
   }
 
   /**
+   * Single source of truth for "may `userId` grant `orgRoleId`?" — the same
+   * function the invitations INSERT policy calls. Runs on the service-role
+   * client with an explicit actor, so it also works under the integration
+   * harness (whose user client is a service client) and cannot be spoofed:
+   * `p_actor` is always `ctx.userId` from the verified JWT.
+   */
+  private async canAssignRole(userId: string, orgRoleId: string): Promise<ServiceResult<boolean>> {
+    const { data, error } = await this.createAdminClient().rpc('can_assign_org_role', {
+      p_actor: userId,
+      p_role_id: orgRoleId,
+    });
+
+    if (error) return toDbFailure(error);
+    return success(data === true);
+  }
+
+  /**
+   * App-layer mirror of the invitations INSERT policy: rejects before any write.
+   * All-or-nothing, so one un-grantable role rejects the whole batch and nothing
+   * is inserted (same contract as the 422 role check above it).
+   */
+  private async assertCanAssignRoles(
+    ctx: RequestContext,
+    orgRoleIds: string[],
+  ): Promise<ServiceResult<void>> {
+    for (const orgRoleId of new Set(orgRoleIds)) {
+      const authority = await this.canAssignRole(ctx.userId, orgRoleId);
+      if (!authority.success) return authority;
+      if (authority.data !== true) return failure('FORBIDDEN');
+    }
+    return success(undefined);
+  }
+
+  /**
    * The inviter must still be allowed to grant the target role. Re-checked at
    * preview and accept: an invitation minted by a manager who was later demoted
    * (or by a member who should never have had the capability) is dead.
@@ -143,18 +185,22 @@ export class InvitationService {
   private async isInviteAuthorized(invite: LoadedInvite): Promise<boolean> {
     if (!invite.inviterId) return false;
 
-    const { data, error } = await this.createAdminClient().rpc('can_assign_org_role', {
-      p_actor: invite.inviterId,
-      p_role_id: invite.targetOrgRoleId,
-    });
-
-    return !error && data === true;
+    const authority = await this.canAssignRole(invite.inviterId, invite.targetOrgRoleId);
+    // An RPC error means the invitation cannot be proven valid, as before.
+    return authority.success && authority.data === true;
   }
 
   async createInvitation(
     ctx: RequestContext,
     data: CreateInviteInput,
-  ): Promise<ServiceResult<{ success: boolean; inviteLink: string | undefined }>> {
+  ): Promise<
+    ServiceResult<{
+      success: boolean;
+      invitationId: string;
+      inviteLink: string;
+      inviteCode: string;
+    }>
+  > {
     const supabase = await this.createClient();
 
     // The body may only *select* one of the caller's memberships, never extend
@@ -170,8 +216,21 @@ export class InvitationService {
     );
     if (!roleCheck.success) return roleCheck;
 
+    // May this caller grant that role at all? The INSERT policy asks the same
+    // question, but RLS is bypassed by the service-role client (integration
+    // harness, admin flows), so the endpoint must not rely on it (#189).
+    const authority = await this.assertCanAssignRoles(ctx, [data.targetOrgRoleId]);
+    if (!authority.success) return authority;
+
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // The link is the only delivery path for an invitation (#313, e-mail is
+    // #604), so a missing public origin must fail before the row is written —
+    // same position the bulk path uses. Otherwise the manager is left with an
+    // "Oczekujące" row that can never be handed to the invitee.
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!baseUrl) return failure('INTERNAL_SERVER');
 
     const { data: invitation, error: insertError } = await supabase
       .from('invitations')
@@ -182,21 +241,174 @@ export class InvitationService {
         inviter_id: ctx.userId,
         expires_at: expiresAt.toISOString(),
       })
-      .select('token')
+      .select('id, token')
       .single();
 
     if (insertError) return toDbFailure(insertError);
 
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
-    if (!baseUrl) {
-      return failure('INTERNAL_SERVER');
-    }
-    const inviteLink = `${baseUrl}/join?token=${invitation.token}`;
-
+    // TODO(#604): deliver this link by e-mail instead of relying on the copy
+    // button. Decided future shape: Mailer port + SMTP/log adapters, copy-link
+    // fallback, per-org rate limit, PL/EN templates. The mailer must reuse this
+    // exact `inviteLink` (one source of truth) and a send failure must never
+    // roll back the row or the returned link (#313 fallback).
     return success({
       success: true,
-      inviteLink: process.env.NODE_ENV === 'development' ? inviteLink : undefined,
+      invitationId: invitation.id,
+      inviteLink: buildInviteLink(baseUrl, invitation.token),
+      // The creator already holds the token inside `inviteLink`; returning it
+      // separately lets the UI show/copy the bare code without widening the
+      // sensitive list endpoint.
+      inviteCode: invitation.token,
     });
+  }
+
+  /**
+   * Bulk invite is all-or-nothing: every entry is checked before anything is
+   * written, and the rows land in a single multi-row INSERT (atomic in
+   * PostgreSQL), so a rejected entry can never leave a half-sent batch behind
+   * (MGR-INV-02).
+   *
+   * A batch is single-tenant by contract: the organization is resolved once and
+   * every entry with an explicit `organizationId` must name that same org.
+   */
+  async createInvitationsBulk(
+    ctx: RequestContext,
+    invitations: CreateInviteInput[],
+  ): Promise<
+    ServiceResult<
+      Array<{
+        email: string;
+        success: true;
+        data: { success: true; invitationId: string; inviteLink: string; inviteCode: string };
+      }>
+    >
+  > {
+    if (invitations.length === 0) return failure('BAD_REQUEST');
+
+    const supabase = await this.createClient();
+
+    // Same membership gate as the single create: the body may only select one
+    // of the caller's orgs, never extend the tenant (#242).
+    const targetOrg = await this.resolveTargetOrganization(
+      supabase,
+      ctx,
+      invitations[0].organizationId,
+    );
+    if (!targetOrg.success) return targetOrg;
+
+    const organizationId = targetOrg.data;
+
+    const foreignOrgIssues: ZodIssue[] = [];
+    invitations.forEach((invite, index) => {
+      if (invite.organizationId && invite.organizationId !== organizationId) {
+        foreignOrgIssues.push({
+          code: 'custom',
+          message: ValidationErrorCode.INVALID_INPUT,
+          path: ['invitations', index, 'organizationId'],
+        });
+      }
+    });
+    if (foreignOrgIssues.length > 0) return failure('UNPROCESSABLE_ENTITY', foreignOrgIssues);
+
+    // Checked before any write: an invite that was inserted before this check
+    // could not have produced a usable link anyway, so it would be an orphan.
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!baseUrl) return failure('INTERNAL_SERVER');
+
+    const roleIds = [...new Set(invitations.map((invite) => invite.targetOrgRoleId))];
+    const { data: orgRoles, error: roleError } = await supabase
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .in('id', roleIds);
+
+    if (roleError) return toDbFailure(roleError);
+
+    const foundRoleIds = new Set((orgRoles ?? []).map((role) => role.id as string));
+    const roleIssues: ZodIssue[] = [];
+    invitations.forEach((invite, index) => {
+      if (!foundRoleIds.has(invite.targetOrgRoleId)) {
+        roleIssues.push({
+          code: 'custom',
+          message: ValidationErrorCode.INVALID_ROLE,
+          path: ['invitations', index, 'targetOrgRoleId'],
+        });
+      }
+    });
+    if (roleIssues.length > 0) return failure('UNPROCESSABLE_ENTITY', roleIssues);
+
+    // Grant authority for every distinct target role, before any write. RLS
+    // enforces the same predicate on INSERT, but the endpoint must not depend on
+    // RLS being in the path (#189).
+    const authority = await this.assertCanAssignRoles(ctx, roleIds);
+    if (!authority.success) return authority;
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // One statement = one transaction: per-row RLS still applies, so a denied
+    // role fails the whole insert and leaves zero rows behind.
+    const { data: created, error: insertError } = await supabase
+      .from('invitations')
+      .insert(
+        invitations.map((invite) => ({
+          email: invite.email,
+          target_org_role_id: invite.targetOrgRoleId,
+          organization_id: organizationId,
+          inviter_id: ctx.userId,
+          expires_at: expiresAt.toISOString(),
+        })),
+      )
+      .select('id, token, email');
+
+    if (insertError) return toDbFailure(insertError);
+    if (created?.length !== invitations.length) return failure('INTERNAL_SERVER');
+
+    // `INSERT ... SELECT` does not promise result order, so map by e-mail back
+    // to the input order the page renders. Duplicate addresses are
+    // interchangeable (each still gets its own row and token).
+    const createdByEmail = new Map<string, Array<{ id: string; token: string }>>();
+    for (const row of created) {
+      const key = row.email as string;
+      const bucket = createdByEmail.get(key) ?? [];
+      bucket.push({ id: row.id, token: row.token });
+      createdByEmail.set(key, bucket);
+    }
+
+    // Each result carries the submitted address: it is the only identifier the
+    // manager sees in „Wyniki”, and the invite table is sorted newest-first, so
+    // position alone cannot attribute a status (MGR-INV-02).
+    const results: Array<{
+      email: string;
+      success: true;
+      data: { success: true; invitationId: string; inviteLink: string; inviteCode: string };
+    }> = [];
+
+    for (const invite of invitations) {
+      const row = createdByEmail.get(invite.email)?.shift();
+      if (!row) return failure('INTERNAL_SERVER');
+
+      results.push({
+        email: invite.email,
+        success: true,
+        data: {
+          success: true,
+          invitationId: row.id,
+          // Always returned, in every environment: the copied link is the only
+          // delivery path until #604 adds e-mail (#313).
+          // TODO(#604): send one message per created row using the same
+          // decided shape: Mailer port + SMTP/log adapters, copy-link fallback,
+          // per-org rate limit, PL/EN templates. A send failure must not fail
+          // the batch — every row keeps its link above.
+          inviteLink: buildInviteLink(baseUrl, row.token),
+          // Same value as the token inside `inviteLink`, exposed so the manager
+          // can also copy the bare code the join field accepts.
+          inviteCode: row.token,
+        },
+      });
+    }
+
+    return success(results);
   }
 
   async getInvitationByToken(token: string): Promise<
@@ -211,7 +423,12 @@ export class InvitationService {
       'NOT_FOUND' | 'GONE'
     >
   > {
-    const invite = await this.loadInvite(token);
+    // The join screens ask for a „kod”, but „Kopiuj link” copies a URL. Accept
+    // either: both surfaces converge here, and a link is never sent to the DB.
+    const inviteToken = normalizeInviteToken(token);
+    if (!inviteToken) return failure('NOT_FOUND');
+
+    const invite = await this.loadInvite(inviteToken);
     if (!invite) return failure('NOT_FOUND');
     if (!this.isInviteUsable(invite)) return failure('GONE');
     if (!(await this.isInviteAuthorized(invite))) return failure('GONE');
@@ -252,7 +469,12 @@ export class InvitationService {
     // (#182) is still enforced below, in the same order as before.
     const supabase = this.createAdminClient();
 
-    const invite = await this.loadInvite(token);
+    // Preview and claim must normalise identically, or a pasted link would
+    // preview and then match zero rows on the single-use claim.
+    const inviteToken = normalizeInviteToken(token);
+    if (!inviteToken) return failure('NOT_FOUND');
+
+    const invite = await this.loadInvite(inviteToken);
     if (!invite) return failure('NOT_FOUND');
     if (!this.isInviteUsable(invite)) return failure('GONE');
 
@@ -303,7 +525,7 @@ export class InvitationService {
     const { data: claimed, error: claimError } = await supabase
       .from('invitations')
       .update({ is_accepted: true })
-      .eq('token', token)
+      .eq('token', inviteToken)
       .not('is_accepted', 'is', true)
       .select('id')
       .maybeSingle();

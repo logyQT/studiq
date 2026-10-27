@@ -90,14 +90,22 @@ describe('StripeController', () => {
       expect(mockService.handleWebhook).not.toHaveBeenCalled();
     });
 
-    it("applies the caller's own event and passes the account type", async () => {
+    it("applies the caller's own event and passes the authenticated identity", async () => {
       mockService.handleWebhook.mockResolvedValueOnce({ success: true, data: undefined });
       const response = await controller.handleWebhook(mockCtx, validEvent);
       expect(response.success).toBe(true);
       expect(mockService.handleWebhook).toHaveBeenCalledWith(
-        expect.objectContaining({ plan_id: 'spark', user_id: 'u-1' }),
+        expect.objectContaining({ type: 'checkout.session.completed', plan_id: 'spark' }),
         'student',
+        'u-1', // ctx.userId, not the body value
       );
+    });
+
+    it('never forwards the body user_id to the service (#227)', async () => {
+      mockService.handleWebhook.mockResolvedValueOnce({ success: true, data: undefined });
+      const response = await controller.handleWebhook(mockCtx, validEvent);
+      expect(response.success).toBe(true);
+      expect(mockService.handleWebhook.mock.calls[0][0]).not.toHaveProperty('user_id');
     });
 
     it('returns 403 when the plan is not meant for the account type', async () => {

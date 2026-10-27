@@ -16,6 +16,11 @@ export class QuizTeacherService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
   async create(data: CreateQuizInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    // quizzes.organization_id is NOT NULL: without a verified active org there is no tenant to
+    // create the quiz in. Guard before inserting — a null org would fail with 23502 → 400,
+    // the wrong contract for an authenticated caller that simply has no active org (#148).
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
     const supabase = await this.createClient();
 
     const { data: quiz, error } = await supabase
@@ -35,6 +40,14 @@ export class QuizTeacherService {
 
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
+
+    // Quizzes are strictly org-scoped, and postgrest serialises a null value as
+    // `eq.null`, which Postgres rejects for a uuid column (22P02 → 500). A caller
+    // without a membership-verified active org is authenticated but has no tenant
+    // scope, so reject the request before it reaches the database (#147).
+    if (!ctx.activeOrgId) {
+      return failure('FORBIDDEN');
+    }
 
     const { data, error } = await supabase
       .from('quizzes')

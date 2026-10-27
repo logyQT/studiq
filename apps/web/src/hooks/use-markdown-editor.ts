@@ -1,8 +1,11 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useCallback, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { apiUploadFile } from '@/lib/api';
 import { formatMarkdown } from '@/lib/format-markdown';
+import { mediaUploadErrorKey } from '@/lib/media-upload-error';
 
 function wrapSelection(
   textarea: HTMLTextAreaElement | null,
@@ -48,8 +51,8 @@ export function useMarkdownEditor(
   onFrontChange: (value: string) => void,
   onBackChange: (value: string) => void,
 ) {
-  const [preview, setPreview] = useState(false);
   const [activeSide, setActiveSide] = useState<'front' | 'back'>('front');
+  const tUpload = useTranslations('MediaUpload');
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounter = useRef(0);
@@ -57,15 +60,20 @@ export function useMarkdownEditor(
   const backRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const activeTextarea = activeSide === 'front' ? frontRef.current : backRef.current;
+  // Read the ref at call time: during render the refs are still null on the first
+  // mount, so a value captured in render would stay null until something re-renders.
+  const getActiveTextarea = useCallback(
+    () => (activeSide === 'front' ? frontRef.current : backRef.current),
+    [activeSide],
+  );
   const activeValue = activeSide === 'front' ? front : back;
   const activeOnChange = activeSide === 'front' ? onFrontChange : onBackChange;
 
   const wrap = useCallback(
     (before: string, after: string, defaultText?: string) => {
-      wrapSelection(activeTextarea, activeValue, activeOnChange, before, after, defaultText);
+      wrapSelection(getActiveTextarea(), activeValue, activeOnChange, before, after, defaultText);
     },
-    [activeTextarea, activeValue, activeOnChange],
+    [getActiveTextarea, activeValue, activeOnChange],
   );
 
   const handleUpload = useCallback(
@@ -76,23 +84,28 @@ export function useMarkdownEditor(
           '/api/v1/flashcards/media/upload',
           file,
         );
+        // Resolve the textarea only after the upload round-trip has completed.
+        const textarea = getActiveTextarea();
         const isAudio = file.type.startsWith('audio/');
         if (isAudio) {
           insertAtCursor(
-            activeTextarea,
+            textarea,
             activeValue,
             activeOnChange,
             `<audio controls src="${result.url}"></audio>`,
           );
         } else {
           const name = file.name.replace(/\.[^.]+$/, '');
-          insertAtCursor(activeTextarea, activeValue, activeOnChange, `![${name}](${result.url})`);
+          insertAtCursor(textarea, activeValue, activeOnChange, `![${name}](${result.url})`);
         }
+      } catch (error) {
+        // The rejection used to escape unhandled: the spinner stopped and nothing was shown.
+        toast.error(tUpload(mediaUploadErrorKey(error)));
       } finally {
         setUploading(false);
       }
     },
-    [activeTextarea, activeValue, activeOnChange],
+    [getActiveTextarea, activeValue, activeOnChange, tUpload],
   );
 
   const handlePickFile = useCallback(
@@ -106,9 +119,9 @@ export function useMarkdownEditor(
 
   const insertText = useCallback(
     (text: string) => {
-      insertAtCursor(activeTextarea, activeValue, activeOnChange, text);
+      insertAtCursor(getActiveTextarea(), activeValue, activeOnChange, text);
     },
-    [activeTextarea, activeValue, activeOnChange],
+    [getActiveTextarea, activeValue, activeOnChange],
   );
 
   const formatBothSides = useCallback(() => {
@@ -144,8 +157,6 @@ export function useMarkdownEditor(
   );
 
   return {
-    preview,
-    setPreview,
     activeSide,
     setActiveSide,
     uploading,

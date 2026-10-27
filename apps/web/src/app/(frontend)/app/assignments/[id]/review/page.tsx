@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { reviewAttemptId, type StudentAssignmentAttemptState } from '@/lib/assignment-attempts';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
@@ -42,22 +43,28 @@ export default function ReviewAssignmentPage() {
   const attemptIdParam = searchParams.get('attemptId');
 
   // A bookmarked /review URL has no attempt id; fall back to the latest
-  // submitted attempt — the same row the detail page links to.
+  // submitted attempt — the same row the detail page links to. The assignment is
+  // always fetched: its `show_results` decides whether there is a review to
+  // render at all (#374).
   const { data: assignment, isLoading: isAssignmentLoading } = useApiQuery<
-    StudentAssignmentAttemptState & { id: string }
+    StudentAssignmentAttemptState & { id: string; show_results: boolean; title: string }
   >({
     queryKey: studentAssignmentKeys.detail(id),
     url: `/api/v1/assignments/${id}`,
-    enabled: !attemptIdParam,
     staleTime: 0,
   });
 
-  const attemptId = reviewAttemptId(attemptIdParam, assignment);
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
+
+  const resultsHidden = assignment?.show_results === false;
+  const attemptId = resultsHidden ? null : reviewAttemptId(attemptIdParam, assignment);
 
   const { data: review, isLoading: isReviewLoading } = useApiQuery<ReviewData>({
     queryKey: ['assignment-review', attemptId],
     url: `/api/v1/quiz/${attemptId}`,
-    enabled: !!attemptId,
+    // Do not fire a doomed 403 request once the flag is known to be off.
+    enabled: !!attemptId && !isAssignmentLoading && !resultsHidden,
     // Review data changes when a teacher grades/leaves feedback; the default
     // Infinity would keep a pre-grading snapshot for 30 min.
     staleTime: 0,

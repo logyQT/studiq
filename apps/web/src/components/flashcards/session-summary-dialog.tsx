@@ -1,6 +1,9 @@
 'use client';
 
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Badge,
   Button,
   Dialog,
@@ -10,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@studiq/ui';
-import { ArrowLeft, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 interface SessionSummaryData {
@@ -22,12 +25,15 @@ interface SessionSummaryData {
 
 interface SessionSummaryDialogProps {
   data: SessionSummaryData;
+  /** The session ended because the queue has no cards left — nothing can be re-run. */
+  queueExhausted?: boolean;
   onPracticeAgain?: () => void;
   onBackToSetup: () => void;
 }
 
 export function SessionSummaryDialog({
   data,
+  queueExhausted = false,
   onPracticeAgain,
   onBackToSetup,
 }: SessionSummaryDialogProps) {
@@ -35,6 +41,7 @@ export function SessionSummaryDialog({
   const modeKey = data.mode as 'review' | 'cram' | 'quick';
   const practiceAgainLabel = t(`practice_again_${modeKey}` as const);
   const backLabel = t(`back_${modeKey}` as const);
+  const showPracticeAgain = Boolean(onPracticeAgain) && !queueExhausted;
 
   const percentage =
     data.cardsStudied > 0 ? Math.round((data.cardsCorrect / data.cardsStudied) * 100) : 0;
@@ -88,8 +95,16 @@ export function SessionSummaryDialog({
           </div>
         </div>
 
+        {queueExhausted && (
+          <Alert className="border-emerald-500/30 bg-emerald-500/5">
+            <CheckCircle2 className="text-emerald-500" />
+            <AlertTitle>{t('all_caught_up')}</AlertTitle>
+            <AlertDescription>{t('all_caught_up_desc')}</AlertDescription>
+          </Alert>
+        )}
+
         <DialogFooter className="flex justify-center gap-3 sm:justify-center">
-          {onPracticeAgain && (
+          {showPracticeAgain && (
             <Button variant="outline" onClick={onPracticeAgain}>
               <RotateCcw className="mr-2 h-4 w-4" /> {practiceAgainLabel}
             </Button>

@@ -143,6 +143,60 @@ forEachCopy((copyId) => {
       expect(groupMember).toBeTruthy();
     });
 
+    // #317: the exact issue repro — „Kopiuj link” copies a URL and the student
+    // pastes it into „Kod zaproszenia”. The link must be accepted server-side.
+    it('accepts the full inviteLink returned by „Kopiuj link” (#317)', async () => {
+      const fixture = await before({ role: 'manager', org: true });
+      createdOrgIds.push(fixture.orgId!);
+      const student = await createTestUser({ role: 'student' });
+      const { memberRoleId } = await roleIds(fixture.orgId!);
+
+      mockUser(fixture.user);
+      const inviteRes = await invitePost(
+        createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: student.email, targetOrgRoleId: memberRoleId }),
+          },
+          { active_org_id: fixture.orgId! },
+        ),
+      );
+      expect(inviteRes.status).toBe(201);
+      const inviteBody = await inviteRes.json();
+      const inviteLink = inviteBody.data.inviteLink as string;
+      expect(inviteLink).toContain('/join?token=');
+
+      mockUser(student);
+      const acceptRes = await acceptPost(
+        createNextRequest('http://localhost/api/v1/organization/invites/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // A real paste can carry surrounding whitespace.
+          body: JSON.stringify({ token: `  ${inviteLink}\n` }),
+        }),
+      );
+      expect(acceptRes.status).toBe(200);
+
+      const supabase = createServiceClient();
+      const { data: membership } = await supabase
+        .from('org_members')
+        .select('organization_id, user_id')
+        .eq('organization_id', fixture.orgId!)
+        .eq('user_id', student.id)
+        .maybeSingle();
+      expect(membership).toBeTruthy();
+
+      const { data: invitation } = await supabase
+        .from('invitations')
+        .select('is_accepted')
+        .eq('organization_id', fixture.orgId!)
+        .eq('email', student.email)
+        .single();
+      expect(invitation?.is_accepted).toBe(true);
+    });
+
     it('rejects a used invite and keeps a removed member out (#256)', async () => {
       const fixture = await before({ role: 'manager', org: true });
       createdOrgIds.push(fixture.orgId!);

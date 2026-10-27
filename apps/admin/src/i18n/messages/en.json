@@ -9,7 +9,9 @@
     "edit": "Edit",
     "back": "Back",
     "none": "None",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "unauthorized": "Unauthorized — the admin API rejected this request. In PEM mode the browser cannot sign requests, so data cannot be loaded.",
+    "load_failed": "Could not load data ({code})."
   },
   "DashboardLayout": {
     "admin_overview": "Overview",
@@ -54,7 +56,10 @@
     "empty": "No feature flags found.",
     "delete_title": "Delete Feature Flag",
     "delete_desc": "Are you sure you want to delete the flag \"{key}\"? This action cannot be undone.",
-    "save_failed": "Save failed ({code})"
+    "save_failed": "Save failed ({code})",
+    "all_flags_exist": "All code-defined flags already exist",
+    "error_exists": "A flag with this key already exists.",
+    "error_validation": "The submitted flag data is invalid."
   },
   "SubscriptionPlans": {
     "title": "Subscription Plans",
@@ -73,6 +78,8 @@
     "empty": "No subscription plans found.",
     "delete_title": "Delete Plan",
     "delete_desc": "Are you sure you want to delete the plan \"{name}\"? This action cannot be undone.",
+    "delete_failed_in_use": "This plan cannot be deleted because organizations or users are still assigned to it.",
+    "delete_failed": "Could not delete the plan ({code}).",
     "no_features": "No features or limits configured for this plan.",
     "features_label": "Features",
     "limits_label": "Limits",
@@ -110,7 +117,6 @@
     "toggle_details": "Show details",
     "empty_active": "No users found.",
     "empty_deleted": "No deleted users.",
-    "load_failed": "Could not load users ({code}).",
     "action_failed": "Action failed ({code})",
     "page_of_total": "Page {page} of {totalPages} ({total} total)",
     "previous_page": "Previous page",
@@ -132,6 +138,8 @@
     "col_user": "User ID",
     "col_feature": "Feature Key",
     "col_enabled": "Enabled",
+    "enabled_yes": "Yes",
+    "enabled_no": "No",
     "col_reason": "Reason",
     "col_expires": "Expires",
     "empty": "No user overrides found.",

@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
 import { resolveNeedsOnboarding } from '@/lib/onboarding';
-import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
+import { aiKeys, featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 export type OrgMembership = {
   id: string;
@@ -18,6 +18,12 @@ export type OrgMembership = {
   /** Org branding (issue #108) — only honored when the `branding` feature is on. */
   logo_url?: string | null;
   brand_color?: string | null;
+};
+
+type SwitchOrgVariables = {
+  orgId: string;
+  /** Explicit user-initiated switch → land on the account-type dashboard. */
+  navigate?: boolean;
 };
 
 export function useOrgs() {
@@ -39,17 +45,17 @@ export function useOrgs() {
   });
 
   const switchOrgMutation = useMutation({
-    mutationFn: async (orgId: string) => {
+    mutationFn: async ({ orgId }: SwitchOrgVariables) => {
       await apiPost('/api/v1/me/orgs/switch', { orgId });
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (_data, { orgId, navigate }) => {
       // The active org is server state (the `active_org_id` cookie) that has
       // just changed. Flip the cached isActive flag immediately so org-scoped
       // query keys re-resolve on this tick instead of waiting for the
       // /api/v1/me/orgs refetch, which would leave the old org's key (and its
       // cached rows) observed while the new cookie is already live.
       queryClient.setQueryData<OrgMembership[]>(['orgs'], (prev) =>
-        prev?.map((o) => ({ ...o, isActive: o.id === variables })),
+        prev?.map((o) => ({ ...o, isActive: o.id === orgId })),
       );
       queryClient.invalidateQueries({ queryKey: ['orgs'] });
 
@@ -57,6 +63,17 @@ export function useOrgs() {
       // on the server and both hooks cache for 5 minutes.
       queryClient.invalidateQueries({ queryKey: permissionKeys.all });
       queryClient.invalidateQueries({ queryKey: featureKeys.all });
+
+      // The effective AI token budget is resolved from the seat/personal/org
+      // plan (`limitsResolver.getEffectiveLimit`), so the cached daily counter
+      // belongs to the previous org (#379).
+      queryClient.invalidateQueries({ queryKey: aiKeys.all });
+
+      // Managers resolve `/api/v1/me/plan` from the active org; students and
+      // educators get their seat plan when seated in the org, otherwise their
+      // personal plan (#181, #270). Still invalidate so switching orgs refreshes
+      // the plan shown on billing/settings.
+      queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
 
       // Report rows are scoped to the active org for an org admin, so the
       // previous org's inbox (`staleTime: Infinity`) must not survive a switch.
@@ -67,7 +84,13 @@ export function useOrgs() {
       // refetch would write the new org's rows under the old org's cache key.
       // The key change is what drives their refetch — every org-scoped list
       // query is keyed by `activeOrg.id` (#135, #216).
-      const switchedOrg = orgs.find((o) => o.id === variables);
+      //
+      // `navigate` is only set for an explicit user-initiated switch. The
+      // implicit auto-select below must not push a dashboard URL: it runs right
+      // after login and would override the `?next=` deep link (#458).
+      if (!navigate) return;
+
+      const switchedOrg = orgs.find((o) => o.id === orgId);
       const jwtAccountType = user?.app_metadata?.account_type as string | undefined;
       const ROLE_TO_ACCOUNT_TYPE: Record<string, string> = {
         admin: 'manager',
@@ -95,7 +118,9 @@ export function useOrgs() {
     if (needsOnboarding) return;
     if (!isLoading && orgs.length > 0 && !activeOrg && !hasAutoSelected.current) {
       hasAutoSelected.current = true;
-      switchOrgMutation.mutate(orgs[0].id);
+      // No `navigate`: right after login this runs while the user is being
+      // routed to the `?next=` deep link, and a dashboard push would win (#458).
+      switchOrgMutation.mutate({ orgId: orgs[0].id });
     }
   }, [needsOnboarding, orgs, activeOrg, isLoading, switchOrgMutation]);
 
@@ -107,8 +132,12 @@ export function useOrgs() {
     // they do not fetch under a `null` org and then refetch under the real one
     // (content → skeleton → content flicker on a cold load).
     isPending,
+    // `true` whenever a request is in flight, including a background refetch
+    // over cached data. The onboarding guards need the settled rule
+    // (`!isPending && !isFetching`) so they never decide on stale data (#305).
+    isFetching,
     needsOnboarding,
-    switchOrg: switchOrgMutation.mutate,
+    switchOrg: (orgId: string) => switchOrgMutation.mutate({ orgId, navigate: true }),
     isSwitching: switchOrgMutation.isPending,
   };
 }

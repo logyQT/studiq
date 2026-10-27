@@ -2,7 +2,7 @@
 
 ## Motivation
 
-Phase 1 (org_role_features + org_limits) gives org admins role-level feature toggles and org-wide capacity caps. Phase 2 adds **per-user tier control** via seat-based licensing.
+Phase 1 (`org_role_features`; limits resolve live from `organizations.plan → plan_limits`) gives org admins role-level feature toggles and org-wide capacity caps. Phase 2 adds **per-user tier control** via seat-based licensing.
 
 Managers need to control which individual users get which tier of features — not just what roles can do. A school might want:
 
@@ -12,7 +12,10 @@ Managers need to control which individual users get which tier of features — n
 
 They pay per seat, not per org tier. Unassigned seats are unused capacity.
 
-Seats **replace** `org_role_features` in the resolution chain: when a user has a seat, their seat's plan determines features and limits. No seat = falls back to `org_role_features` (Phase 1).
+Seats **upgrade** `org_role_features`: when a user has a seat, the seat's plan
+adds features on top of the role's snapshot (admin-only keys are stripped
+unless the role is the org admin). A user with no seat keeps the role's
+snapshot. Limits for a seated user come from the seat plan only.
 
 ## New tables
 
@@ -41,18 +44,22 @@ create table public.org_seat_assignments (
 
 ## Feature resolution (Phase 2, supersedes Phase 1)
 
+The full chain is canonical in [`docs/limits.md`](../limits.md). The seat adds
+one delta:
+
 ```
-ctx.activeOrgId set?
-  ├─ Has a seat assignment in this org?
-  │   ├─ Yes → resolve features/limits from seat's plan_key
-  │   │         (via plan_features / plan_limits tables)
-  │   └─ No  → resolve from org_role_features / org_limits
-  └─ No org → personal plan
+ctx.activeOrgId set and the user has a seat assignment in this org?
+  ├─ Yes → features = org_role_features (base, if the role has rows)
+  │                 + seat plan's plan_features (additive)
+  │                 − admin-only keys unless the role has org.manage
+  │         limits  = seat plan's plan_limits only
+  └─ No  → Phase 1 resolution (org role snapshot, else org plan; limits
+           = max(personal plan, org plan) from plan_limits)
 ```
 
-When a seat is present, `org_role_features` is **ignored** for that user — the seat's plan is the full feature set. No mixing, no layering.
-
-Role still determines RBAC permissions (what actions a user can perform), but features (plan entitlements like AI chat, advanced stats) come from the seat.
+Role still determines RBAC permissions (what actions a user can perform); a
+seat adds plan entitlements (AI chat, advanced stats, …) on top of the role's
+snapshot.
 
 ## Triggers
 
@@ -137,9 +144,15 @@ Default allocations per plan are defined in a new `plan_seat_allocations` table 
 
 ## Limits
 
-A seated user's limits come **entirely from their seat's plan** (`plan_limits`). No mixing with personal plan or `org_limits`.
+A seat only raises the per-member keys (`max_flashcards`, `max_questions`,
+`max_decks`, `max_question_banks`, `max_quiz_attempts_per_day`,
+`max_ai_tokens_per_day`): a seated user resolves those from the seat's plan
+(`plan_limits`). Org-scope capacity (`max_students`, `max_groups`) always comes
+from the organization's plan, so a seat never raises it.
 
-An unseated user still uses `org_limits` + personal plan max (Phase 1 behavior).
+An unseated member in an org uses the organization's plan for every key; the
+personal plan applies only outside an org context. There is no per-org limit
+table (#229) and no `max(personal, org)` mixing (#233).
 
 ## Assignment flow
 
@@ -206,20 +219,20 @@ Click "Assign" → drawer opens:
 | Piece | Why |
 |-------|-----|
 | `org_role_features` | Still the fallback for unseated users |
-| `org_limits` | Still the fallback for unseated users |
-| `handle_new_organization` trigger | Extended to also seed default seat pools |
-| `personal_plan_key` | Unchanged — used outside org context |
+| `plan_limits` | Template for every plan; org capacity resolves live from `organizations.plan → plan_limits` |
+| `handle_new_organization` trigger | Roles/permissions/features only — pools are created on demand (no default pools since Phase B.5) |
+| `personal_plan_key` | Unchanged — used outside org context (for a manager it is the free `launch` tier; an org purchase never writes it, #228) |
 | RBAC permissions | Unchanged — role determines actions, seat determines features |
 
 ## What changes from Phase 1
 
 | Area | Phase 1 | Phase 2 adds |
 |------|---------|-------------|
-| Resolution chain | `activeOrgId → org_role_features → personal` | `activeOrgId → seat → org_role_features → personal` |
-| Org creation | Seeds roles + permissions + features + limits | Also seeds default seat pools |
-| `plan.resolver.ts` | Checks `org_role_features` | Checks seat assignment first, then falls back |
+| Resolution chain | `activeOrgId → org_role_features → personal` | Features: `activeOrgId → org_role_features (base) + seat plan (additive) → personal`. Limits: `seat plan → else max(personal, org plan)` (superseded by #233: the org plan alone governs in a verified org, and a manager never contributes a personal plan — #228) |
+| Org creation | Seeds roles + permissions + features + limits | Seat pools/assignments created on demand (no default pools since B.5) |
+| `feature.resolver.ts` / `limits.resolver.ts` | Checks `org_role_features` | Check the seat assignment first, then fall back |
 | Admin UI | Feature toggles per role | Seat pools dashboard + assignment drawer |
-| API | PUT features + limits | PUT/GET seat pools, POST/DELETE assignments |
+| API | `PUT` role permissions endpoint exists; features write is planned; no per-org limits API | PUT/GET seat pools, POST/DELETE assignments |
 
 ## Billing (deferred to Phase 3)
 
@@ -234,7 +247,7 @@ Phase 3 will connect `total` to Stripe subscription item quantities, with prorat
 
 1. **Migration** — `CREATE TABLE org_seat_pools` + `org_seat_assignments` + triggers
 2. **Extend `handle_new_organization`** — seed default seat pools
-3. **Update `plan.resolver.ts`** — check seat assignment before `org_role_features`
+3. **Update `feature.resolver.ts` + `limits.resolver.ts`** — check the seat assignment before `org_role_features`
 4. **Admin API endpoints** — CRUD for pools + assignments
 5. **Admin UI** — pools dashboard + assignment drawer
 6. **Tests** — seat assignment resolution, hard block, pool count integrity

@@ -21,9 +21,12 @@ import {
   TableRow,
 } from '@studiq/ui';
 import { BookOpen, ClipboardList, Target, TrendingDown, TrendingUp, Users } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts';
+
+import { formatDate } from '@/lib/datetime';
+import { hasTeacherActivity } from '@/lib/stats';
 
 type StudentRow = {
   id: string;
@@ -42,12 +45,6 @@ type DailyPoint = {
   activeStudents: number;
 };
 
-type QuizItem = {
-  difficulty: string;
-  attempts: number;
-  avgScore: number;
-};
-
 type MetricComp = { current: number; previous: number };
 
 type ActivityData = {
@@ -59,11 +56,13 @@ type ActivityData = {
   };
   dailyActivity: DailyPoint[];
   students: StudentRow[];
-  quizzes: QuizItem[];
 };
 
 function TrendIndicator({ current, previous }: MetricComp) {
-  if (previous === 0) return null;
+  const t = useTranslations('TeacherActivityPage');
+  if (previous === 0) {
+    return <span className="text-xs text-muted-foreground ml-1">{t('no_previous_data')}</span>;
+  }
   const diff = current - previous;
   const pct = Math.round((diff / previous) * 100);
   if (pct === 0) return <span className="text-xs text-muted-foreground ml-1">→ 0%</span>;
@@ -77,20 +76,32 @@ function TrendIndicator({ current, previous }: MetricComp) {
   );
 }
 
-function formatLastActive(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  if (hours < 1) return 'Today';
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 const RANGES = ['7d', '30d', '90d'] as const;
+
+/**
+ * Parses a date-only `YYYY-MM-DD` chart key as a **local** midnight. `new Date('2026-10-22')`
+ * would parse as UTC, shifting the rendered day in negative-offset time zones (#251).
+ */
+const parseDay = (value: string): Date => {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
 
 export default function TeacherActivityPage() {
   const t = useTranslations('TeacherActivityPage');
+  const locale = useLocale();
+  // X axis: day + month only, in the app locale (pl 22.10 / en 10/22).
+  const formatDayTick = (value: string): string =>
+    parseDay(value).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' });
+  const formatLastActive = (dateStr: string | null): string => {
+    if (!dateStr) return '—';
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    if (hours < 1) return t('today');
+    if (hours < 24) return t('hours_ago', { hours });
+    const days = Math.floor(hours / 24);
+    return t('days_ago', { days });
+  };
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('7d');
   const [data, setData] = useState<ActivityData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,7 +111,7 @@ export default function TeacherActivityPage() {
     try {
       const res = await fetch(`/api/v1/stats/teacher/activity?range=${range}`);
       const json = await res.json();
-      setData(json.data || json);
+      setData(res.ok && json.success ? json.data : null);
     } catch {
       setData(null);
     } finally {
@@ -173,7 +184,7 @@ export default function TeacherActivityPage() {
           <Skeleton className="h-72 rounded-xl" />
           <Skeleton className="h-64 rounded-xl" />
         </div>
-      ) : !data ? (
+      ) : !data || !hasTeacherActivity(data) ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             {t('no_data')}
@@ -195,7 +206,9 @@ export default function TeacherActivityPage() {
                     <p className="text-3xl font-bold">{card.value}</p>
                     <TrendIndicator current={card.metric.current} previous={card.metric.previous} />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{t('vs_previous')}</p>
+                  {card.metric.previous !== 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">{t('vs_previous')}</p>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -229,10 +242,7 @@ export default function TeacherActivityPage() {
                     tick={{ fontSize: 11 }}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(d: string) => {
-                      const date = new Date(d);
-                      return `${date.getMonth() + 1}/${date.getDate()}`;
-                    }}
+                    tickFormatter={formatDayTick}
                   />
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                   <YAxis
@@ -245,7 +255,7 @@ export default function TeacherActivityPage() {
                   <Tooltip
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(value) => new Date(String(value)).toLocaleDateString()}
+                        labelFormatter={(value) => formatDate(parseDay(String(value)), locale)}
                       />
                     }
                   />
@@ -316,53 +326,6 @@ export default function TeacherActivityPage() {
                           >
                             {s.status === 'active' ? '🟢 ' : s.status === 'recent' ? '🟡 ' : '🔴 '}
                             {t(`status_${s.status}`)}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quiz_activity')}</CardTitle>
-              <CardDescription>{t(`range_${range}`)}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('quiz_difficulty')}</TableHead>
-                    <TableHead className="text-right">{t('quiz_attempts')}</TableHead>
-                    <TableHead className="text-right">{t('quiz_avg_score')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.quizzes.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                        {t('no_data')}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    data.quizzes.map((q) => (
-                      <TableRow key={q.difficulty}>
-                        <TableCell className="capitalize">{q.difficulty}</TableCell>
-                        <TableCell className="text-right">{q.attempts}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge
-                            variant={
-                              q.avgScore >= 70
-                                ? 'default'
-                                : q.avgScore >= 40
-                                  ? 'secondary'
-                                  : 'destructive'
-                            }
-                          >
-                            {q.avgScore}%
                           </Badge>
                         </TableCell>
                       </TableRow>

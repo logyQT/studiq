@@ -26,6 +26,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { translateErrorCode } from '@/lib/error-messages';
 
 export default function PasswordResetPage() {
   const t = useTranslations('PasswordResetPage');
@@ -51,7 +52,7 @@ export default function PasswordResetPage() {
       const result = await response.json();
 
       if (!result.success) {
-        toast.error(tErr(result.error || APP_ERRORS.INTERNAL_SERVER.code));
+        toast.error(translateErrorCode(tErr, result.error || APP_ERRORS.INTERNAL_SERVER.code));
         setStatus('error');
         return;
       }
@@ -59,7 +60,7 @@ export default function PasswordResetPage() {
       setStatus('success');
     } catch (error) {
       console.error(error);
-      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
+      toast.error(translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code));
       setStatus('error');
     }
   }

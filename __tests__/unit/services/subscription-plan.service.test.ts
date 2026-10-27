@@ -14,6 +14,7 @@ function qb(data: any, error: any = null) {
   b.neq = vi.fn(() => b);
   b.in = vi.fn(() => b);
   b.order = vi.fn(() => b);
+  b.limit = vi.fn(() => b);
   b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
   b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
   b.then = promise.then.bind(promise);
@@ -116,56 +117,168 @@ describe('SubscriptionPlanService', () => {
   });
 
   describe('getMyPlan', () => {
-    it('returns org plan when activeOrgId set', async () => {
-      const org = { plan: 'base' };
-      const plan = {
-        id: 'p-1',
-        key: 'base',
-        name: 'Base',
+    function mockTables(
+      tables: Record<string, unknown>,
+      errors: Record<string, { message: string }> = {},
+    ) {
+      mock.from.mockImplementation((table: string) =>
+        qb(tables[table] ?? null, errors[table] ?? null),
+      );
+    }
+
+    function planRow(key: string, forAccountType: string | null = null) {
+      return {
+        id: `p-${key}`,
+        key,
+        name: key,
         description: null,
         price_monthly: 0,
+        price_yearly: 0,
         currency: 'PLN',
         sort_order: 0,
         is_active: true,
+        for_account_type: forAccountType,
       };
-      const features = [{ feature_key: 'quiz' }];
-      const limits = [{ plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
-      mock.from.mockReturnValueOnce(qb(org));
-      mock.from.mockReturnValueOnce(qb(plan));
-      mock.from.mockReturnValueOnce(qb(features));
-      mock.from.mockReturnValueOnce(qb(limits));
+    }
+
+    it('returns the seat plan to a seated student in an active org (#270)', async () => {
+      mockTables({
+        org_seat_assignments: { pool_id: 'pool-1' },
+        org_seat_pools: { plan_key: 'ace' },
+        subscription_plans: planRow('ace'),
+        plan_features: [{ feature_key: 'ai.chat' }, { feature_key: 'advanced.stats' }],
+        plan_limits: [
+          { plan_key: 'ace', limit_key: 'max_ai_tokens_per_day', limit_value: 200000 },
+          { plan_key: 'ace', limit_key: 'max_decks', limit_value: 200 },
+        ],
+      });
+
+      const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('ace');
+      expect(result.data.limits.max_ai_tokens_per_day).toBe(200000);
+      expect(result.data.limits.max_decks).toBe(200);
+      expect(result.data.features).toEqual(expect.arrayContaining(['ai.chat', 'advanced.stats']));
+      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+    });
+
+    it('returns the seat plan to a seated educator in an active org (#270)', async () => {
+      mockTables({
+        org_seat_assignments: { pool_id: 'pool-1' },
+        org_seat_pools: { plan_key: 'ace' },
+        subscription_plans: planRow('ace'),
+        plan_features: [{ feature_key: 'ai.chat' }],
+      });
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        accountType: 'educator' as any,
+        activeOrgId: 'org-1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('ace');
+      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+    });
+
+    it('returns the org plan for a manager in an active org (#181)', async () => {
+      mockTables({
+        org_seat_assignments: { pool_id: 'pool-1' },
+        organizations: { plan: 'hub' },
+        subscription_plans: planRow('hub', 'manager'),
+        plan_features: [{ feature_key: 'documents' }],
+        plan_limits: [{ plan_key: 'hub', limit_key: 'max_groups', limit_value: 3 }],
+      });
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        accountType: 'manager' as any,
+        activeOrgId: 'org-1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('hub');
+      expect(result.data.limits.max_groups).toBe(3);
+      // Managers are the org's billing contact: the seat never overrides the org plan.
+      expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
+    });
+
+    it('returns the personal plan for an unseated student in an active org (#181)', async () => {
+      mockTables({
+        profiles: { personal_plan_key: 'base' },
+        subscription_plans: planRow('base', 'student'),
+      });
 
       const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
 
       expect(result.success).toBe(true);
       expect(result.data.key).toBe('base');
+      expect(mock.from).toHaveBeenCalledWith('org_seat_assignments');
+      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+    });
+
+    it('returns the personal plan for an unseated educator in an active org (#181)', async () => {
+      mockTables({
+        profiles: { personal_plan_key: 'lite' },
+        subscription_plans: planRow('lite', 'educator'),
+      });
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        accountType: 'educator' as any,
+        activeOrgId: 'org-1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('lite');
+    });
+
+    it('falls back to the personal plan when a manager has no org plan', async () => {
+      mockTables({
+        profiles: { personal_plan_key: 'launch' },
+        subscription_plans: planRow('launch', 'manager'),
+      });
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        accountType: 'manager' as any,
+        activeOrgId: 'org-1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('launch');
+    });
+
+    it('returns the manager free personal plan with no active org (#228)', async () => {
+      mockTables({
+        profiles: { personal_plan_key: 'launch' },
+        subscription_plans: planRow('launch', 'manager'),
+      });
+
+      const result = await service.getMyPlan({ ...ctx, accountType: 'manager' as any });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('launch');
+      expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
 
     it('returns personal plan when no org', async () => {
-      const profile = { personal_plan_key: 'free' };
-      const plan = {
-        id: 'p-2',
-        key: 'free',
-        name: 'Free',
-        description: null,
-        price_monthly: 0,
-        currency: 'PLN',
-        sort_order: 0,
-        is_active: true,
-      };
-      mock.from.mockReturnValueOnce(qb(profile)); // profile
-      mock.from.mockReturnValueOnce(qb(plan)); // plan
-      mock.from.mockReturnValueOnce(qb([])); // features
-      mock.from.mockReturnValueOnce(qb([])); // limits
+      mockTables({
+        profiles: { personal_plan_key: 'free' },
+        subscription_plans: planRow('free'),
+      });
 
       const result = await service.getMyPlan(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data.key).toBe('free');
+      expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
     it('returns NOT_FOUND when no plan key', async () => {
-      mock.from.mockReturnValueOnce(qb(null, null)); // no profile
+      mockTables({});
 
       const result = await service.getMyPlan({ ...ctx, activeOrgId: null });
 
@@ -174,9 +287,34 @@ describe('SubscriptionPlanService', () => {
     });
 
     it('returns NOT_FOUND when plan not found', async () => {
-      mock.from.mockReturnValueOnce(qb(null, null)); // no profile
-      // no org, falls to profile
+      mockTables({ profiles: { personal_plan_key: 'base' } });
+
       const result = await service.getMyPlan({ ...ctx, activeOrgId: null });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns NOT_FOUND when the seat plan key has no plan row', async () => {
+      mockTables({
+        org_seat_assignments: { pool_id: 'pool-1' },
+        org_seat_pools: { plan_key: 'ace' },
+      });
+
+      const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns an error when the org query fails', async () => {
+      mockTables({}, { organizations: { message: 'DB error' } });
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        accountType: 'manager' as any,
+        activeOrgId: 'org-1',
+      });
 
       expect(result.success).toBe(false);
     });
@@ -203,6 +341,73 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getPersonalPlan(ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('reports the free manager plan for a manager carrying a purchased org plan (#228)', async () => {
+      // Legacy checkout rows copied the bought org plan into the personal plan.
+      // Managers have no paid personal plan, so the row is inert: report the
+      // free manager tier instead of the org plan.
+      const paidOrgPlan = {
+        id: 'p-hub',
+        key: 'hub',
+        name: 'StudiQ Hub',
+        description: null,
+        price_monthly: 1999,
+        price_yearly: 0,
+        currency: 'PLN',
+        sort_order: 9,
+        is_active: true,
+        for_account_type: 'manager',
+      };
+      const freeManagerPlan = {
+        id: 'p-launch',
+        key: 'launch',
+        name: 'StudiQ Launch',
+        description: null,
+        price_monthly: 0,
+        price_yearly: 0,
+        currency: 'PLN',
+        sort_order: 3,
+        is_active: true,
+        for_account_type: 'manager',
+      };
+      mock.from
+        .mockReturnValueOnce(qb({ personal_plan_key: 'hub' }))
+        .mockReturnValueOnce(qb(paidOrgPlan))
+        .mockReturnValueOnce(qb(freeManagerPlan))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]));
+
+      const result = await service.getPersonalPlan({ ...ctx, accountType: 'manager' as any });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.key).toBe('launch');
+    });
+
+    it('keeps a manager on the free personal plan without an extra catalog lookup (#228)', async () => {
+      const freeManagerPlan = {
+        id: 'p-launch',
+        key: 'launch',
+        name: 'StudiQ Launch',
+        description: null,
+        price_monthly: 0,
+        price_yearly: 0,
+        currency: 'PLN',
+        sort_order: 3,
+        is_active: true,
+        for_account_type: 'manager',
+      };
+      mock.from
+        .mockReturnValueOnce(qb({ personal_plan_key: 'launch' }))
+        .mockReturnValueOnce(qb(freeManagerPlan))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]));
+
+      const result = await service.getPersonalPlan({ ...ctx, accountType: 'manager' as any });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.key).toBe('launch');
+      expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
     it('returns NOT_FOUND when no plan key', async () => {
@@ -353,6 +558,18 @@ describe('SubscriptionPlanService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns CONFLICT when a plan is still referenced by organizations or users', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'p-1' }));
+      mock.from.mockReturnValueOnce(
+        qb(undefined, { code: '23503', message: 'violates foreign key constraint' }),
+      );
+
+      const result = await service.delete('p-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
     });
   });
 });

@@ -96,6 +96,8 @@ forEachCopy((copyId) => {
         expect(row.completed_at).toBeTruthy();
         expect(row.score).toBe(2);
         expect(row.total_questions).toBe(3);
+        // #329 — the history badge divides by the auto-gradable questions only.
+        expect(row.gradable_questions).toBe(3);
         expect(row.assignment_id).toBeNull();
       });
 

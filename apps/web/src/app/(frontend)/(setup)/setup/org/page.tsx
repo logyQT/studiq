@@ -39,8 +39,9 @@ export default function OrgSetupPage() {
       // org is active server-side; the client cache is the only stale piece. Refetch it
       // *before* leaving this screen: `manage/layout.tsx` bounces back to /setup/org
       // while `['orgs']` still holds the cached empty list.
-      // `refetchType: 'all'` also refetches the inactive entry — under /setup there is
-      // no useOrgs() observer, and the default 'active' would only mark it stale.
+      // `refetchType: 'all'` also refetches the inactive entry: a `useOrgs()`
+      // observer (setup header/chooser) may or may not be mounted here, and the
+      // default 'active' would only mark the entry stale.
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
 
       const cachedOrgs = queryClient.getQueryData<Array<{ id: string }>>(['orgs']);

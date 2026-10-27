@@ -1,5 +1,6 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
   Badge,
   Button,
@@ -8,12 +9,29 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Skeleton,
 } from '@studiq/ui';
 import { Mail } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { useApiQuery } from '@/hooks/use-api';
 
 export default function ManageBillingPage() {
   const t = useTranslations('BillingPage');
+  const { user } = useAuth();
+  // /me/plan resolves the active organization's plan first (personal plan only as fallback).
+  const { data: myPlan, isLoading: planLoading } = useApiQuery<PlanInfo>({
+    queryKey: ['me', 'plan'],
+    url: '/api/v1/me/plan',
+    enabled: !!user,
+  });
+  const { data: plans, isLoading: plansLoading } = useApiQuery<PlanInfo[]>({
+    queryKey: ['subscription-plans', 'active'],
+    url: '/api/v1/subscription-plans',
+  });
+  const planName = myPlan
+    ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name ?? myPlan.key)
+    : null;
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -29,7 +47,11 @@ export default function ManageBillingPage() {
               <CardTitle>{t('current_plan')}</CardTitle>
               <CardDescription>{t('org_plan')}</CardDescription>
             </div>
-            <Badge variant="secondary">{t('basic')}</Badge>
+            {planLoading || plansLoading ? (
+              <Skeleton className="h-6 w-24" />
+            ) : planName ? (
+              <Badge variant="secondary">{planName}</Badge>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

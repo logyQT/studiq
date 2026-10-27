@@ -1,5 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
-import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
+import {
+  accessibleFilter,
+  check,
+  Permission,
+  resolveGroupResourceIds,
+} from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -33,11 +38,8 @@ export class QuestionBankService {
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
 
-    const { count: bankCount } = await supabase
-      .from('question_banks')
-      .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
-    await limitsResolver.checkLimit(ctx, 'max_question_banks', bankCount ?? 0);
+    const bankCount = await this.countOwned(supabase, ctx);
+    await limitsResolver.checkLimit(ctx, 'max_question_banks', bankCount);
 
     const { data: bank, error } = await supabase
       .from('question_banks')
@@ -94,29 +96,16 @@ export class QuestionBankService {
     if (queryParams?.owner && queryParams.owner !== 'all') {
       if (queryParams.owner === 'mine') {
         query = query.eq('created_by', ctx.userId);
-      } else if (queryParams.owner === 'group') {
-        if (ctx.activeOrgId) {
-          query = query
-            .neq('created_by', ctx.userId)
-            .eq('organization_id', ctx.activeOrgId)
-            .eq('visibility', 'group');
-        } else {
-          return success({ items: [], nextCursor: null, hasMore: false });
-        }
       }
     }
 
-    // Filter to banks shared with a group the caller belongs to
-    if (queryParams?.groupFilter === 'mine') {
-      if (ctx.groupIds.length === 0)
+    // Explicit group filter (#595): an extra AND after RBAC, so an unknown/foreign group id
+    // can only narrow the result — never widen it.
+    if (queryParams?.groups?.length) {
+      const groupBankIds = await resolveGroupResourceIds('question_bank', queryParams.groups);
+      if (groupBankIds.length === 0)
         return success({ items: [], nextCursor: null, hasMore: false });
-      const { data: groupBanks } = await supabase
-        .from('bank_groups')
-        .select('bank_id')
-        .in('group_id', ctx.groupIds);
-      const bankIds = [...new Set((groupBanks ?? []).map((r) => r.bank_id as string))];
-      if (bankIds.length === 0) return success({ items: [], nextCursor: null, hasMore: false });
-      query = query.in('id', bankIds);
+      query = query.in('id', groupBankIds);
     }
 
     if (queryParams?.q) {
@@ -306,11 +295,8 @@ export class QuestionBankService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const { count: bankCount } = await supabase
-      .from('question_banks')
-      .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
-    await limitsResolver.checkLimit(ctx, 'max_question_banks', bankCount ?? 0, data.banks.length);
+    const bankCount = await this.countOwned(supabase, ctx);
+    await limitsResolver.checkLimit(ctx, 'max_question_banks', bankCount, data.banks.length);
 
     const banks = data.banks.map((b) => ({
       name: b.name,
@@ -351,6 +337,23 @@ export class QuestionBankService {
     if (error) return toDbFailure(error);
 
     return success({ deleted: data.ids.length });
+  }
+
+  /**
+   * Count the caller's banks for the limit check (#233): inside an org the count
+   * is scoped to content owned by the caller **in that org**, so personal-space
+   * banks never consume the org plan's capacity.
+   */
+  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+    let query = supabase
+      .from('question_banks')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+
+    if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
+
+    const { count } = await query;
+    return count ?? 0;
   }
 }
 export const questionBankService = wrapService(

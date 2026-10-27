@@ -16,13 +16,15 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { apiPost, apiPut } from '@/lib/api';
 import { getGradientHex } from '@/lib/color-utils';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
 interface TopicDialogsProps {
+  deckId: string;
   t: ReturnType<typeof useTranslations>;
   topics: Topic[];
   flashcards: Flashcard[];
@@ -33,8 +35,6 @@ interface TopicDialogsProps {
   onAddTopicOpenChange: (open: boolean) => void;
   manageTopicOpen: boolean;
   onManageTopicOpenChange: (open: boolean) => void;
-  onTopicActionIdsChange: (ids: string[]) => void;
-  onAddTopicConfirm: () => void;
 }
 
 function getTopicIds(fc: Flashcard | undefined) {
@@ -42,6 +42,7 @@ function getTopicIds(fc: Flashcard | undefined) {
 }
 
 export function TopicDialogs({
+  deckId,
   t,
   topics,
   flashcards,
@@ -52,13 +53,25 @@ export function TopicDialogs({
   onAddTopicOpenChange,
   manageTopicOpen,
   onManageTopicOpenChange,
-  onTopicActionIdsChange: _onTopicActionIdsChange,
-  onAddTopicConfirm: _onAddTopicConfirm,
 }: TopicDialogsProps) {
   const queryClient = useQueryClient();
   const [newTopicName, setNewTopicName] = useState('');
   const [creatingTopic, setCreatingTopic] = useState(false);
-  const [topicActionIds, setTopicActionIds] = useState<string[]>([]);
+  const [topicActionIds, setTopicActionIds] = useState<string[] | null>(null);
+
+  // The parent closes the dialog by flipping `open`, which never fires Radix's
+  // onOpenChange — so reset the pending selection whenever the dialog opens,
+  // closes or switches card, covering every close path.
+  useEffect(() => {
+    setTopicActionIds(null);
+  }, [manageTopicOpen, activeFlashcardId]);
+
+  // Same keys the deck-detail screen invalidates after card mutations
+  // (the card list is `['flashcards', deckId, ...]`, deck counts live under `decks`).
+  const invalidateDeckCards = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
+    queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+  }, [queryClient, deckId]);
 
   const handleCreateAndLinkTopic = useCallback(async () => {
     const name = newTopicName.trim();
@@ -79,32 +92,58 @@ export function TopicDialogs({
         topicIds: newIds,
       });
       queryClient.invalidateQueries({ queryKey: topicKeys.all });
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      invalidateDeckCards();
       setNewTopicName('');
       onAddTopicOpenChange(false);
+      toast.success(t('topic_added'));
     } catch {
-      // error handled by parent
+      toast.error(t('save_failed'));
     } finally {
       setCreatingTopic(false);
     }
-  }, [newTopicName, activeFlashcardId, flashcards, queryClient, onAddTopicOpenChange]);
+  }, [
+    newTopicName,
+    activeFlashcardId,
+    flashcards,
+    queryClient,
+    invalidateDeckCards,
+    onAddTopicOpenChange,
+    t,
+  ]);
 
   const handleManageTopicsConfirm = useCallback(async () => {
     if (!activeFlashcardId) return;
     const fc = flashcards.find((f) => f.id === activeFlashcardId);
     if (!fc) return;
+    const currentIds = getTopicIds(fc);
+    const nextIds = topicActionIds ?? currentIds;
+    const added = nextIds.some((id) => !currentIds.includes(id));
+    const removed = currentIds.some((id) => !nextIds.includes(id));
+    if (!added && !removed) {
+      onManageTopicOpenChange(false);
+      return;
+    }
     try {
       await apiPut<Flashcard>(`/api/v1/flashcards/${fc.id}`, {
         front: fc.front,
         back: fc.back,
-        topicIds: topicActionIds,
+        topicIds: nextIds,
       });
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      invalidateDeckCards();
       onManageTopicOpenChange(false);
+      if (removed) toast.success(t('topic_removed'));
+      if (added) toast.success(t('topic_added'));
     } catch {
-      // error handled by parent
+      toast.error(t('save_failed'));
     }
-  }, [activeFlashcardId, topicActionIds, flashcards, queryClient, onManageTopicOpenChange]);
+  }, [
+    activeFlashcardId,
+    topicActionIds,
+    flashcards,
+    invalidateDeckCards,
+    onManageTopicOpenChange,
+    t,
+  ]);
 
   return (
     <>
@@ -246,10 +285,11 @@ export function TopicDialogs({
                               back: fc.back,
                               topicIds: newIds,
                             });
-                            queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+                            invalidateDeckCards();
                             onAddTopicOpenChange(false);
+                            toast.success(t('topic_added'));
                           } catch {
-                            // error handled by parent
+                            toast.error(t('save_failed'));
                           }
                         }}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
@@ -297,7 +337,6 @@ export function TopicDialogs({
         open={manageTopicOpen}
         onOpenChange={(open) => {
           if (!open) {
-            setTopicActionIds([]);
             onManageTopicOpenChange(false);
           }
         }}
@@ -315,7 +354,7 @@ export function TopicDialogs({
               return (
                 <MultiSelect
                   options={topicOptions}
-                  selected={topicActionIds.length > 0 ? topicActionIds : currentIds}
+                  selected={topicActionIds ?? currentIds}
                   onChange={(ids) => setTopicActionIds(ids)}
                   placeholder={t('manage_topic_select')}
                 />

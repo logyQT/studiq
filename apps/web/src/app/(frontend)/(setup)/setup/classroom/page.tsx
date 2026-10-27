@@ -25,6 +25,7 @@ import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { featureKeys, permissionKeys } from '@/lib/query-keys';
+import { SrLabel } from '@/components/shared/sr-label';
 
 const ClassroomFormSchema = z.object({
   name: z
@@ -85,12 +86,15 @@ export default function ClassroomPage() {
       // set the `active_org_id` cookie), but `['orgs']` still holds the empty
       // list cached before it existed. Refresh it here, before the invite step
       // (an invite failure must not leave the org context stale).
-      // `refetchType: 'all'` is required: under `/setup` no `useOrgs()` observer
-      // is mounted, so the default `active`-only refetch would fetch nothing.
+      // `refetchType: 'all'` is still required: the inactive cache entry must be
+      // refetched, and the caller may leave this screen before a default
+      // `active`-only refetch runs. A `useOrgs()` observer (setup header/chooser)
+      // may or may not be mounted here.
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
       // Permission scopes and plan features are resolved from the active org on
-      // the server and cache for 5 minutes. No observer here, so they are only
-      // marked stale and refetch on mount in `/edu` (as in `useOrgs.switchOrgMutation`).
+      // the server and cache for 5 minutes. No permission/feature observer here,
+      // so they are only marked stale and refetch on mount in `/edu` (as in
+      // `useOrgs.switchOrgMutation`).
       queryClient.invalidateQueries({ queryKey: permissionKeys.all });
       queryClient.invalidateQueries({ queryKey: featureKeys.all });
 
@@ -186,6 +190,7 @@ export default function ClassroomPage() {
                         onClick={() => remove(index)}
                       >
                         <X className="size-4" />
+                        <SrLabel k="remove_row" values={{ number: index + 1 }} />
                       </Button>
                     </div>
                   ))}

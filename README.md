@@ -57,6 +57,7 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | [Architecture](docs/architecture.md)           | High-level design, layers, data flow |
 | [Authentication](docs/authentication.md)       | Auth flow, RBAC, route rules         |
 | [Database](docs/database.md)                   | Schema, migrations, seeds            |
+| [Plans, Features & Limits](docs/limits.md)     | Plan templates, feature/limit resolution, seats |
 | [API](docs/api.md)                             | API routes, controllers, services    |
 | [Project Structure](docs/project-structure.md) | Folder layout, conventions           |
 | [Testing](docs/testing.md)                     | Test strategy, running tests         |
@@ -127,7 +128,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318  # OTLP collector (SDK default
 # OTEL_SDK_DISABLED=true
 
 # ── Admin app only (apps/admin/.env) ──────────────────────────────────
-ADMIN_PEM_KEYS=                                  # comma-separated base64 Ed25519 SPKI public keys
+ADMIN_PEM_KEYS=                                  # JSON keyring: [{ id, key, scopes, expiresAt? }] — see apps/admin/.env.example
 
 # ── Local Supabase Studio only (optional) ─────────────────────────────
 # Referenced by supabase/config.toml [studio] — not read by the app itself
@@ -191,7 +192,7 @@ __tests__/                    # All tests (root-level, shared by both apps)
   e2e/                        # Playwright E2E specs
   helpers/  mocks/  setup.ts  # Test utilities
 docs/                         # Documentation (onboarding, architecture, API, AI...)
-  decisions/                  # Architecture Decision Records (0001-0006)
+  decisions/                  # Architecture Decision Records (0001-0007)
   plans/                      # Implementation plans (+ archive/)
 scripts/                      # Repo tooling: spin, pr, switch-branch, lint guards
 ```

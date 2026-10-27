@@ -108,11 +108,13 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
     (e: React.DragEvent) => {
       e.preventDefault();
       const file = e.dataTransfer.files?.[0];
-      if (file && (file.name.endsWith('.csv') || file.type === 'text/csv')) {
+      if (file && (file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv')) {
         handleFile(file);
+      } else if (file) {
+        toast.error(t('csv_parse_error'));
       }
     },
-    [handleFile],
+    [handleFile, t],
   );
 
   const handleFileSelect = useCallback(

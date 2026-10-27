@@ -1,10 +1,12 @@
 import type { RequestContext } from '@studiq/authz';
+import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
+import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
 import {
   IN_PROGRESS_QUESTION_SELECT,
   REVIEW_QUESTION_SELECT,
 } from '@studiq/server/lib/question-view';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -56,7 +58,43 @@ export class QuizAttemptService {
       .order('started_at', { ascending: false });
 
     if (error) return toDbFailure(error);
-    return success(data);
+
+    const attempts = data ?? [];
+    if (attempts.length === 0) return success([]);
+
+    // `total_questions` includes `open` questions, which are never auto-graded
+    // (#329). The history badge needs its own denominator; the shared helper
+    // derives it from the attempt snapshot join so no counter is rewritten and
+    // no migration is needed — and so the stats aggregates use the same rule
+    // (#619).
+    const gradable = await gradableQuestionCounts(
+      supabase,
+      attempts.map((attempt) => attempt.id),
+    );
+    if (isFailure(gradable)) return gradable;
+
+    const withGradable = attempts.map((attempt) => ({
+      ...attempt,
+      gradable_questions: gradable.data.get(attempt.id) ?? 0,
+    }));
+
+    // A direct API call must not bypass the teacher's „Pokaż wyniki” switch, even
+    // though the web UI filters assignment attempts out of this list (#374).
+    if (!withGradable.some((attempt) => attempt.assignment_id)) return success(withGradable);
+
+    const hidden = await hiddenResultAssignmentIds(
+      supabase,
+      withGradable.map((attempt) => attempt.assignment_id),
+    );
+    if (isFailure(hidden)) return hidden;
+
+    return success(
+      withGradable.map((attempt) =>
+        attempt.assignment_id && hidden.data.has(attempt.assignment_id)
+          ? { ...attempt, score: null }
+          : attempt,
+      ),
+    );
   }
 
   async getById(
@@ -77,6 +115,16 @@ export class QuizAttemptService {
     // A finished attempt is a review: it may show which option was correct and
     // the explanation. A running attempt never may (#331).
     const isCompleted = attempt.completed_at !== null;
+
+    // The review payload is a result: withhold it while the assignment's
+    // „Pokaż wyniki” is off. A running attempt still resumes, so „Kontynuuj”
+    // keeps working; practice attempts have no assignment flag (#374).
+    if (isCompleted && attempt.assignment_id) {
+      const hidden = await hiddenResultAssignmentIds(supabase, [attempt.assignment_id]);
+      if (isFailure(hidden)) return hidden;
+      if (hidden.data.size > 0) return failure('FORBIDDEN');
+    }
+
     // Drafts are served as `answers` below; the raw column is never serialised.
     const { draft_answers: draftAnswers, ...attemptFields } = attempt;
 
@@ -194,7 +242,7 @@ export class QuizAttemptService {
   async submit(
     data: SubmitQuizAttemptInput,
     ctx: RequestContext,
-  ): Promise<ServiceResult<{ score: number; totalQuestions: number }>> {
+  ): Promise<ServiceResult<{ score: number | null; totalQuestions: number }>> {
     const supabase = await this.createClient();
 
     const { data: attempt, error: attemptCheckError } = await supabase
@@ -208,12 +256,16 @@ export class QuizAttemptService {
     if (attempt.completed_at) return failure('BAD_REQUEST');
 
     // Check deadline if this attempt belongs to an assignment
+    let showResults = true;
     if (attempt.assignment_id) {
       const { data: assignment } = await supabase
         .from('teacher_assignments')
-        .select('deadline')
+        .select('deadline, show_results')
         .eq('id', attempt.assignment_id)
         .single();
+
+      // Fail closed: a missing row hides the result.
+      showResults = !resultsHidden(assignment);
 
       if (assignment?.deadline) {
         const graceEnd = new Date(assignment.deadline);
@@ -305,7 +357,7 @@ export class QuizAttemptService {
 
     if (answersError) return toDbFailure(answersError);
 
-    return success({ score, totalQuestions: data.answers.length });
+    return success({ score: showResults ? score : null, totalQuestions: data.answers.length });
   }
 }
 export const quizAttemptService = wrapService(

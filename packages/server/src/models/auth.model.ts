@@ -3,11 +3,26 @@ import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
+// A name part is one or more ASCII/Polish letters plus the separators a real
+// name can contain: a hyphen for double-barrelled surnames („Anna-Maria”) and an
+// ASCII or typographic apostrophe for Irish/English names („Jan O'Brien”,
+// „O’Brien”) — #302.
+const NAME_PART = "[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ'’-]+";
+
+// Normalize before validating: `.trim()` is the first check, so every later
+// check (and the parsed output) sees the trimmed value. A whitespace-only name
+// collapses to "" and is reported as required instead of counting its spaces
+// towards `min(2)` (#303). Only single spaces may separate name parts — the old
+// `\s` class admitted tabs/newlines, making any 2+ whitespace characters a
+// "valid" name and letting padded values reach user metadata untrimmed.
 export const NameSchema = z
   .string({ error: ValidationErrorCode.NAME_REQUIRED })
+  .trim()
   .nonempty({ error: ValidationErrorCode.NAME_REQUIRED })
   .min(2, { error: ValidationErrorCode.NAME_TOO_SHORT })
-  .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT });
+  .regex(new RegExp(`^${NAME_PART}(?: ${NAME_PART})*$`), {
+    error: ValidationErrorCode.NAME_INVALID_FORMAT,
+  });
 
 export const passwordSchema = z
   .string({ error: ValidationErrorCode.PASSWORD_REQUIRED })
@@ -17,13 +32,19 @@ export const passwordSchema = z
   .regex(/[A-Z]/, { error: ValidationErrorCode.PASSWORD_MISSING_UPPERCASE })
   .regex(/[0-9]/, { error: ValidationErrorCode.PASSWORD_MISSING_NUMBER });
 
+// Presence before format: an empty/missing e-mail must report EMAIL_REQUIRED,
+// not EMAIL_INVALID. Chaining `.email().nonempty()` runs both checks on `""` and
+// yields both codes; the pipe stops after the presence failure (#299).
+const requiredEmailSchema = z
+  .string({ error: ValidationErrorCode.EMAIL_REQUIRED })
+  .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED })
+  .pipe(z.email({ error: ValidationErrorCode.EMAIL_INVALID }));
+
 export const RegisterSchema = registry.register(
   'RegisterRequest',
   z.object({
     name: NameSchema,
-    email: z
-      .email({ error: ValidationErrorCode.EMAIL_INVALID })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
+    email: requiredEmailSchema,
     password: passwordSchema,
     accountType: z.enum(['student', 'educator', 'manager'], {
       error: ValidationErrorCode.INVALID_INPUT,
@@ -42,9 +63,7 @@ export const RegisterSchema = registry.register(
 export const LoginSchema = registry.register(
   'LoginRequest',
   z.object({
-    email: z
-      .email({ error: ValidationErrorCode.EMAIL_INVALID })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
+    email: requiredEmailSchema,
     password: z
       .string({ error: ValidationErrorCode.PASSWORD_REQUIRED })
       .nonempty({ error: ValidationErrorCode.PASSWORD_REQUIRED }),
@@ -54,9 +73,7 @@ export const LoginSchema = registry.register(
 export const forgotPasswordSchema = registry.register(
   'ForgotPasswordRequest',
   z.object({
-    email: z
-      .email({ error: ValidationErrorCode.EMAIL_INVALID })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
+    email: requiredEmailSchema,
   }),
 );
 

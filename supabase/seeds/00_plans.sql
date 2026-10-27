@@ -264,8 +264,7 @@ INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
   ('master', 'max_groups', -1),
   ('master', 'max_students', -1),
   ('master', 'max_quiz_attempts_per_day', -1),
-  ('master', 'max_ai_tokens_per_day', -1),
-  ('master', 'max_storage_mb', -1)
+  ('master', 'max_ai_tokens_per_day', -1)
 ON CONFLICT DO NOTHING;
 
 -- Advanced tier — Campus (org)
@@ -277,8 +276,7 @@ INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
   ('campus', 'max_groups', -1),
   ('campus', 'max_students', -1),
   ('campus', 'max_quiz_attempts_per_day', -1),
-  ('campus', 'max_ai_tokens_per_day', -1),
-  ('campus', 'max_storage_mb', -1)
+  ('campus', 'max_ai_tokens_per_day', -1)
 ON CONFLICT DO NOTHING;
 
 -- NOTE: Section 8 (plan_seat_allocations) removed in Phase B.5.

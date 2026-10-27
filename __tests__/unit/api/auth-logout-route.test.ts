@@ -1,3 +1,4 @@
+import { NextRequest } from 'next/server';
 import { describe, expect, it, vi } from 'vitest';
 import { NEXT_COOKIE_EPOCH, reSerializeThroughNext } from '#test/helpers/next-cookie-round-trip';
 
@@ -20,11 +21,16 @@ vi.mock('@studiq/server/controllers/auth.controller', () => ({
   authController: { logout },
 }));
 
+import { TRACE_ID_HEADER } from '@studiq/server/lib/with-public-tracing';
 import { POST } from '@/app/(backend)/api/v1/auth/logout/route';
+
+function request() {
+  return new NextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' });
+}
 
 describe('POST /api/v1/auth/logout (#186)', () => {
   it('deletes the active_org_id cookie and keeps the response body', async () => {
-    const res = await POST();
+    const res = await POST(request());
     const header = res.headers.get('set-cookie');
 
     expect(res.status).toBe(200);
@@ -38,11 +44,17 @@ describe('POST /api/v1/auth/logout (#186)', () => {
     });
   });
 
+  it('carries x-trace-id so the logout is searchable in Tempo/Loki (#301)', async () => {
+    const res = await POST(request());
+
+    expect(res.headers.get(TRACE_ID_HEADER)).toMatch(/^[0-9a-f]{32}$/);
+  });
+
   it('keeps the deletion after Next re-serializes the Set-Cookie headers', async () => {
     // `supabase.auth.signOut()` mutates cookies() on this route, which makes Next
     // re-parse and re-serialize every Set-Cookie header. A `maxAge: 0` deletion is
     // dropped by that round-trip and leaves an empty session cookie behind.
-    const res = await POST();
+    const res = await POST(request());
     const headers = reSerializeThroughNext(res);
     const header = headers.find((cookie) => cookie.startsWith('active_org_id'));
 
@@ -58,7 +70,7 @@ describe('POST /api/v1/auth/logout (#186)', () => {
       error: 'INTERNAL_SERVER',
     });
 
-    const res = await POST();
+    const res = await POST(request());
     const headers = reSerializeThroughNext(res);
     const header = headers.find((cookie) => cookie.startsWith('active_org_id'));
 

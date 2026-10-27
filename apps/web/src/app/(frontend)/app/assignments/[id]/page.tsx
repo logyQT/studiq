@@ -1,12 +1,13 @@
 'use client';
 
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
-import { ArrowLeft, Clock, FileQuestion, Lock, Timer } from 'lucide-react';
+import { ArrowLeft, Award, Clock, FileQuestion, Lock, Timer } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import {
   type AttemptSummary,
   attemptsLeft,
@@ -24,7 +25,9 @@ interface AssignmentDetail extends StudentAssignmentAttemptState {
   start_time: string | null;
   time_limit_min: number | null;
   question_count: number;
+  total_points: number;
   shuffle_questions: boolean;
+  show_results: boolean;
 }
 
 export default function StudentAssignmentDetailPage() {
@@ -39,6 +42,9 @@ export default function StudentAssignmentDetailPage() {
     queryKey: studentAssignmentKeys.detail(id),
     url: `/api/v1/assignments/${id}`,
   });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   const startMutation = useApiMutation<unknown, void>({
     mutationFn: async () => {
@@ -134,6 +140,16 @@ export default function StudentAssignmentDetailPage() {
             <p className="text-2xl font-bold">{assignment.question_count}</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+              <Award className="w-3 h-3" /> {t('points')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{assignment.total_points}</p>
+          </CardContent>
+        </Card>
         {assignment.time_limit_min && (
           <Card>
             <CardHeader className="pb-2">
@@ -199,15 +215,21 @@ export default function StudentAssignmentDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-lg font-bold">
-              {t('score', {
-                earned: lastCompleted.score,
-                total: lastCompleted.total_points || lastCompleted.total_questions,
-              })}
-            </p>
-            <Link href={`/app/assignments/${id}/review?attemptId=${lastCompleted.id}`}>
-              <Button variant="outline">{t('view_review')}</Button>
-            </Link>
+            {assignment.show_results ? (
+              <>
+                <p className="text-lg font-bold">
+                  {t('score', {
+                    earned: lastCompleted.score ?? 0,
+                    total: lastCompleted.total_points || lastCompleted.total_questions,
+                  })}
+                </p>
+                <Link href={`/app/assignments/${id}/review?attemptId=${lastCompleted.id}`}>
+                  <Button variant="outline">{t('view_review')}</Button>
+                </Link>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('results_hidden')}</p>
+            )}
           </CardContent>
         </Card>
       )}

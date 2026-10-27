@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
+import { newCardsProgress } from '@/lib/new-cards-progress';
 import { flashcardKeys } from '@/lib/query-keys';
 
 interface StudySettings {
@@ -49,8 +50,8 @@ export function LearnContent() {
   const totalDue = dueCount?.count ?? 0;
   const remainingNew = settings?.remainingNewCards ?? 0;
   const newCardsPerDay = settings?.newCardsPerDay ?? 20;
-  const newProgress =
-    newCardsPerDay > 0 ? ((newCardsPerDay - remainingNew) / newCardsPerDay) * 100 : 100;
+  const introducedToday = settings?.newCardsIntroduced ?? 0;
+  const newProgress = newCardsProgress(introducedToday, newCardsPerDay);
 
   const showDue = totalDue > 0;
   const showNew = !showDue && remainingNew > 0;
@@ -99,7 +100,9 @@ export function LearnContent() {
                 <Brain className="size-8 text-primary" />
                 <div>
                   <p className="text-2xl font-bold">{totalDue}</p>
-                  <p className="text-sm text-muted-foreground">{t('cards_due')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('cards_due', { count: totalDue })}
+                  </p>
                 </div>
               </div>
             )}
@@ -110,13 +113,15 @@ export function LearnContent() {
                   <Sparkles className="size-8 text-emerald-500" />
                   <div>
                     <p className="text-2xl font-bold">{remainingNew}</p>
-                    <p className="text-sm text-muted-foreground">{t('new_cards_available')}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {t('new_cards_available', { count: remainingNew })}
+                    </p>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">
-                      {t('daily_progress', { remaining: remainingNew, total: newCardsPerDay })}
+                      {t('daily_progress', { introduced: introducedToday, total: newCardsPerDay })}
                     </span>
                     <span className="font-medium">{Math.round(newProgress)}%</span>
                   </div>
@@ -185,6 +190,13 @@ export function LearnContent() {
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               {t('all_caught_up_desc')}
             </p>
+            {/* Cram is always available, so an empty due/new queue must not dead-end (#617). */}
+            <p className="text-sm text-muted-foreground text-center max-w-sm">
+              {t('cram_available')}
+            </p>
+            <Button variant="outline" onClick={() => router.push('/app/study/cram')}>
+              <Play data-icon="inline-start" /> {t('start_cram')}
+            </Button>
           </CardContent>
         </Card>
       )}

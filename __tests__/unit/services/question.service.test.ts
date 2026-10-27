@@ -81,6 +81,33 @@ describe('QuestionService', () => {
       expect(mock.from).toHaveBeenCalledWith('questions');
     });
 
+    it('counts only the caller content in the active org (#233)', async () => {
+      const mockQuestion = { id: 'q-1', type: 'open', content: 'Q1' };
+      const countChain = chain([], 0);
+      mock.from.mockReturnValueOnce(countChain);
+      mock.from.mockReturnValue(chain(mockQuestion));
+
+      await service.create(
+        { type: 'open', content: 'Q1', answers: [] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(countChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countChain.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    });
+
+    it('does not filter the count by org outside an org context (#233)', async () => {
+      const mockQuestion = { id: 'q-1', type: 'open', content: 'Q1' };
+      const countChain = chain([], 0);
+      mock.from.mockReturnValueOnce(countChain);
+      mock.from.mockReturnValue(chain(mockQuestion));
+
+      await service.create({ type: 'open', content: 'Q1', answers: [] }, ctx);
+
+      expect(countChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countChain.eq).not.toHaveBeenCalledWith('organization_id', expect.anything());
+    });
+
     it('creates an open question without inserting any options', async () => {
       const mockQuestion = { id: 'q-open', type: 'open', content: 'Explain' };
 
@@ -351,6 +378,41 @@ describe('QuestionService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect(mock.from).toHaveBeenCalledWith('question_options');
+    });
+
+    it('does not filter by organization_id when there is no active org (#148)', async () => {
+      const updated = { id: 'q-1', content: 'Updated' };
+      const updateChain = chain(updated);
+
+      mock.from.mockReturnValueOnce(updateChain);
+      mock.from.mockReturnValueOnce(chain(updated));
+
+      const result = await service.update('q-1', { content: 'Updated' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(updateChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      // `.eq('organization_id', null)` would serialise to `eq.null` → 22P02 → 500, so the
+      // tenant filter must be absent entirely (not merely "not null").
+      expect(
+        updateChain.eq.mock.calls.filter(([column]: [string]) => column === 'organization_id'),
+      ).toEqual([]);
+    });
+
+    it('filters by organization_id when an org is active (#148)', async () => {
+      const updated = { id: 'q-1', content: 'Updated' };
+      const updateChain = chain(updated);
+
+      mock.from.mockReturnValueOnce(updateChain);
+      mock.from.mockReturnValueOnce(chain(updated));
+
+      const result = await service.update(
+        'q-1',
+        { content: 'Updated' },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(updateChain.eq).toHaveBeenCalledWith('organization_id', 'org-1');
     });
   });
 

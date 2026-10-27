@@ -34,6 +34,7 @@ import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
+import { useFeature } from '@/hooks/use-feature';
 import {
   type AddableOrgMember,
   ensureMemberRoles,
@@ -41,6 +42,7 @@ import {
   type GroupMemberRole,
   toGroupMemberOptions,
 } from '@/lib/group-role';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface Group {
   id: string;
@@ -57,6 +59,11 @@ interface GroupManagementScreenProps {
 }
 
 export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
+  // Write actions need the `group.manage` feature (the API enforces it with
+  // `requireFeature`). While `/features/me` is in flight the checker returns a
+  // provisional `false`, so the controls stay hidden until it resolves and
+  // entitled users never see a flash of actions that would fail with 403.
+  const canWrite = useFeature()('group.manage');
   const [data, setData] = useState<Group[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Group | null>(null);
@@ -79,7 +86,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
     load();
   }, [load]);
 
-  async function handleSave(group: { name: string; description?: string }, id?: string) {
+  async function handleSave(group: { name: string; description?: string | null }, id?: string) {
     const url = id ? `/api/v1/organization/groups/${id}` : '/api/v1/organization/groups';
     const method = id ? 'PUT' : 'POST';
 
@@ -132,20 +139,22 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-        <Dialog open={creating} onOpenChange={setCreating}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              {t('new_group')}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t('create_title')}</DialogTitle>
-            </DialogHeader>
-            <GroupForm onSave={(g) => handleSave(g)} onCancel={() => setCreating(false)} t={t} />
-          </DialogContent>
-        </Dialog>
+        {canWrite && (
+          <Dialog open={creating} onOpenChange={setCreating}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                {t('new_group')}
+              </Button>
+            </DialogTrigger>
+            <DialogContent aria-describedby={undefined}>
+              <DialogHeader>
+                <DialogTitle>{t('create_title')}</DialogTitle>
+              </DialogHeader>
+              <GroupForm onSave={(g) => handleSave(g)} onCancel={() => setCreating(false)} t={t} />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
@@ -182,12 +191,13 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                   <TableCell className="text-center">{group.teacherCount}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      {group.canManage ? (
+                      {group.canManage && canWrite ? (
                         <>
                           <Button
                             variant="ghost"
                             size="icon"
                             title={t('manage_members')}
+                            aria-label={t('manage_members')}
                             onClick={() => setManagingMembers(group)}
                           >
                             <Users className="w-4 h-4" />
@@ -196,9 +206,10 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                             <DialogTrigger asChild>
                               <Button variant="ghost" size="icon" onClick={() => setEditing(group)}>
                                 <Pencil className="w-4 h-4" />
+                                <SrLabel k="edit_group" values={{ name: group.name }} />
                               </Button>
                             </DialogTrigger>
-                            <DialogContent>
+                            <DialogContent aria-describedby={undefined}>
                               <DialogHeader>
                                 <DialogTitle>{t('edit_title')}</DialogTitle>
                               </DialogHeader>
@@ -218,6 +229,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                           >
                             <Button variant="ghost" size="icon" onClick={() => setDeleting(group)}>
                               <Trash2 className="w-4 h-4 text-destructive" />
+                              <SrLabel k="delete_group" values={{ name: group.name }} />
                             </Button>
                             <DialogContent>
                               <DialogHeader>
@@ -240,12 +252,14 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                         </>
                       ) : (
                         <>
-                          <span
-                            title={t('not_owned')}
-                            className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
-                          >
-                            <Lock className="w-4 h-4" />
-                          </span>
+                          {!group.canManage && (
+                            <span
+                              title={t('not_owned')}
+                              className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
+                            >
+                              <Lock className="w-4 h-4" />
+                            </span>
+                          )}
                           <ReportQuestionDialog groupId={group.id} />
                         </>
                       )}
@@ -265,7 +279,10 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={!!managingMembers} onOpenChange={(o) => !o && setManagingMembers(null)}>
+      <Dialog
+        open={canWrite && !!managingMembers}
+        onOpenChange={(o) => !o && setManagingMembers(null)}
+      >
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('manage_members')}</DialogTitle>
@@ -438,7 +455,7 @@ function GroupForm({
   t,
 }: {
   initial?: Group;
-  onSave: (group: { name: string; description?: string }) => Promise<void>;
+  onSave: (group: { name: string; description?: string | null }) => Promise<void>;
   onCancel: () => void;
   t: (key: string) => string;
 }) {
@@ -447,9 +464,26 @@ function GroupForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // `required` accepts spaces, so guard the whitespace-only case here; the API
+    // rejects it too, but a toast explains it instead of a generic failure.
+    const trimmedName = name.trim();
+    if (trimmedName.length === 0) {
+      toast.error(t('name_required'));
+      return;
+    }
+    if (trimmedName.length < 3) {
+      toast.error(t('name_too_short'));
+      return;
+    }
+    const trimmed = description.trim();
+    // Edit: always send the key (null clears it). Create: omit when empty.
     await onSave({
-      name,
-      description: description || undefined,
+      name: trimmedName,
+      ...(initial
+        ? { description: trimmed === '' ? null : trimmed }
+        : trimmed
+          ? { description: trimmed }
+          : {}),
     });
   }
 
@@ -457,7 +491,7 @@ function GroupForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label>{t('name_label')}</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} required />
       </div>
       <div className="space-y-2">
         <Label>{t('description_label')}</Label>

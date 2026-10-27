@@ -1,6 +1,7 @@
 'use client';
 
 import type { Deck } from '@studiq/server/models/flashcard-deck.model';
+import { Button, Card, Skeleton } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckSquare,
@@ -22,12 +23,16 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { SpeedDial } from '@/components/shared/speed-dial';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
+import { useApiMutation } from '@/hooks/use-api';
+import { useCursorPagination } from '@/hooks/use-cursor-pagination';
+import { useDebounce } from '@/hooks/use-debounce';
+import { useGroupOptions } from '@/hooks/use-group-options';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
-import { apiDelete, apiPost, apiPut } from '@/lib/api';
-import { flashcardKeys, groupKeys } from '@/lib/query-keys';
+import { usePersistedState } from '@/hooks/use-persisted-state';
+import { useSelection } from '@/hooks/use-selection';
+import { apiDelete, apiPost, apiPut, isNetworkError } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
 
 const ImportDialog = dynamic(
   () =>
@@ -42,12 +47,6 @@ const DeckFormDialog = dynamic(() =>
   })),
 );
 
-import { Button, Card, Skeleton } from '@studiq/ui';
-import { useCursorPagination } from '@/hooks/use-cursor-pagination';
-import { useDebounce } from '@/hooks/use-debounce';
-import { usePersistedState } from '@/hooks/use-persisted-state';
-import { useSelection } from '@/hooks/use-selection';
-
 interface DeckManagementScreenProps {
   apiBase: string;
   basePath: string;
@@ -56,38 +55,51 @@ interface DeckManagementScreenProps {
 
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
   const { activeOrg, isPending: orgsPending } = useOrgs();
-  const feature = useFeature();
   const permission = usePermission();
-
-  const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
-    queryKey: groupKeys.list(activeOrg?.id),
-    url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && feature('group.manage'),
-  });
-  const { data: myGroupsData } = useApiQuery<
-    Array<{ id: string; name: string; organizationId: string }>
-  >({
-    queryKey: groupKeys.my,
-    url: '/api/v1/me/groups',
-  });
-  const myGroupsInOrg = (myGroupsData ?? []).filter((g) => g.organizationId === activeOrg?.id);
-  const groupNameMap = new Map<string, string>([
-    ...myGroupsInOrg.map((g) => [g.id, g.name] as const),
-    ...(groupsData ?? []).map((g) => [g.id, g.name] as const),
-  ]);
-  const showGroupFilter = myGroupsInOrg.length > 0 || (groupsData?.length ?? 0) > 0;
+  const {
+    groupsData,
+    options: groupOptions,
+    myGroupIds,
+    groupNameMap,
+    ready: groupsReady,
+  } = useGroupOptions();
   const queryClient = useQueryClient();
 
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
-  const [owner, setOwner] = usePersistedState('flashcard_decks_owner', 'all');
-  const [groupFilter, setGroupFilter] = usePersistedState('flashcard_decks_group_filter', 'all');
+  const [rawOwner, setOwner] = usePersistedState('flashcard_decks_owner', 'all');
+  // A legacy persisted `group` must never be forwarded: the API now rejects it (#595).
+  const owner = rawOwner === 'mine' ? 'mine' : 'all';
+  const [groupIds, setGroupIds] = usePersistedState<string[]>('flashcard_decks_group_ids', []);
   const [sortBy, setSortBy] = usePersistedState('flashcard_decks_sort_by', 'created_at');
   const [sortOrder, setSortOrder] = usePersistedState('flashcard_decks_sort_order', 'desc');
   const [includeSuspended, setIncludeSuspended] = useState(false);
 
+  const optionIds = new Set(groupOptions.map((group) => group.id));
+  // Org switch / lost membership must never leave stale ids in the request.
+  const effectiveGroupIds = groupIds.filter((id) => optionIds.has(id));
+  const groupsParam = effectiveGroupIds.join(',') || undefined;
+
+  // One-shot migration from the retired `all|mine` group toggle (#595).
+  const legacyMigrationDone = useRef(false);
+  useEffect(() => {
+    if (!groupsReady || legacyMigrationDone.current) return;
+    legacyMigrationDone.current = true;
+    const legacy = localStorage.getItem('flashcard_decks_group_filter');
+    if (legacy !== null) localStorage.removeItem('flashcard_decks_group_filter');
+    if (legacy === null) return;
+    try {
+      if (JSON.parse(legacy) === 'mine') {
+        setGroupIds((prev) => (prev.length > 0 ? prev : myGroupIds));
+      }
+    } catch {
+      /* ignore malformed legacy state */
+    }
+  }, [groupsReady, myGroupIds, setGroupIds]);
+
   const {
     items: decks,
+    total,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -97,7 +109,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       {
         q: debouncedSearch,
         owner,
-        groupFilter,
+        groups: groupsParam,
         sortBy,
         sortOrder,
         includeSuspended: includeSuspended ? 'true' : undefined,
@@ -108,14 +120,16 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     filters: {
       q: debouncedSearch || undefined,
       owner: owner !== 'all' ? owner : undefined,
-      groupFilter: groupFilter !== 'all' ? groupFilter : undefined,
+      groups: groupsParam,
       sortBy,
       sortOrder,
       includeSuspended: includeSuspended ? 'true' : undefined,
     },
     limit: 24,
     staleTime: Infinity,
-    enabled: !orgsPending,
+    // Hold the first paint while a persisted selection waits for its options, so the list
+    // never briefly shows unfiltered rows.
+    enabled: !orgsPending && !(groupIds.length > 0 && !groupsReady),
   });
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -234,8 +248,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       setDialogOpen(false);
       setEditing(null);
       toast.success(editing ? t('deck_updated') : t('deck_created'));
-    } catch {
-      toast.error(t('save_failed'));
+    } catch (error) {
+      toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
     }
   }
 
@@ -272,8 +286,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       await batchToggleSuspend.mutateAsync({ deckIds: ids, suspended });
       toast.success(suspended ? t('deck_suspended') : t('deck_unsuspended'));
       handleClearSelection();
-    } catch {
-      toast.error(t('save_failed'));
+    } catch (error) {
+      toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
     }
   }
 
@@ -282,8 +296,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       await apiPut(`/api/v1/flashcards/decks/${deck.id}`, { suspended: !deck.suspended });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       toast.success(deck.suspended ? t('deck_unsuspended') : t('deck_suspended'));
-    } catch {
-      toast.error(t('save_failed'));
+    } catch (error) {
+      toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
     }
   }
 
@@ -307,9 +321,10 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         onOwnerChange={(v) => {
           setOwner(v);
         }}
-        groupFilter={groupFilter}
-        onGroupFilterChange={setGroupFilter}
-        showGroupFilter={showGroupFilter}
+        groupIds={effectiveGroupIds}
+        onGroupIdsChange={setGroupIds}
+        groupOptions={groupOptions}
+        myGroupIds={myGroupIds}
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(sb, so) => {
@@ -322,6 +337,10 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         onCreateNew={openCreate}
         t={t}
       />
+
+      {!isLoading && !orgsPending && total !== undefined && (
+        <p className="text-sm text-muted-foreground">{t('decks_count', { count: total })}</p>
+      )}
 
       <PageGrid
         cols={4}
@@ -430,6 +449,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         visibilityGroupLabel={t('visibility_group')}
         groupsPlaceholder={t('groups_placeholder')}
         groupsEmptyText={t('groups_empty')}
+        groupsRequiredText={t('groups_required')}
       />
 
       <DeleteConfirmDialog

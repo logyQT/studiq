@@ -6,12 +6,15 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
+import { studentStatsKeys } from '@/lib/query-keys';
+import { SrLabel } from '@/components/shared/sr-label';
 
 const DISMISS_KEY = 'app_onboarding_dismissed';
 
 interface StudentStats {
   totalQuizzes: number;
-  avgScore: number;
+  /** `null` = no attempt had a gradable denominator yet (#619); not read here. */
+  avgScore: number | null;
   totalQuestionsCreated: number;
   flashcardsPracticed: number;
   flashcardAccuracy: number;
@@ -30,9 +33,12 @@ export function OnboardingChecklist() {
       return false;
     }
   });
+  // Same key and options as the dashboard counters so both share one cache
+  // entry and refetch on every mount (#347).
   const { data: stats, isLoading } = useApiQuery<StudentStats>({
-    queryKey: ['stats', 'student'],
+    queryKey: studentStatsKeys.all,
     url: '/api/v1/stats/student',
+    staleTime: 0,
   });
 
   if (dismissed || isLoading) return null;
@@ -52,7 +58,7 @@ export function OnboardingChecklist() {
     },
   ];
 
-  if (items.every((i) => i.done)) return null;
+  const allDone = items.every((i) => i.done);
 
   function handleDismiss() {
     setDismissed(true);
@@ -69,13 +75,14 @@ export function OnboardingChecklist() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Rocket className="size-5 text-primary" />
-            <CardTitle className="text-lg">{t('title')}</CardTitle>
+            <CardTitle className="text-lg">{allDone ? t('all_done_title') : t('title')}</CardTitle>
           </div>
           <Button variant="ghost" size="icon-xs" onClick={handleDismiss}>
             <X className="size-4" />
+            <SrLabel k="dismiss_checklist" />
           </Button>
         </div>
-        <CardDescription>{t('description')}</CardDescription>
+        <CardDescription>{allDone ? t('all_done_desc') : t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <ul className="space-y-2">

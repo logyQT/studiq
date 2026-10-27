@@ -3,7 +3,7 @@
 import type { StateBreakdown } from '@studiq/server/models/flashcard-practice.model';
 import type { ActivityResponse, WeakPointsResponse } from '@studiq/server/models/stats.model';
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, StatCard } from '@studiq/ui';
-import { AlertTriangle, Brain, CalendarDays, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Brain, CalendarDays, CheckCircle2, TrendingUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { DailyActivityChart } from '@/components/stats/daily-activity-chart';
@@ -11,6 +11,7 @@ import { StateBreakdownChart } from '@/components/stats/state-breakdown-chart';
 import { WeakPointsList } from '@/components/stats/weak-points-list';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
+import { summarizeWeeklyActivity } from '@/lib/stats';
 
 export function OverviewTab() {
   const t = useTranslations('AppStatsPage');
@@ -31,16 +32,24 @@ export function OverviewTab() {
     url: '/api/v1/stats/weak-points',
   });
 
-  const reviewsThisWeek = (activity?.items ?? []).reduce((sum, d) => sum + d.reviews_count, 0);
+  // „Powtórki w tym tygodniu” and „Poprawne” are a fixed last-7-days metric; the range
+  // selector only recalcs the chart, so both cards read the same weekly window (#383).
+  const weekly = summarizeWeeklyActivity(activity?.items);
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           title={t('reviews_this_week')}
-          value={activityLoading ? '...' : reviewsThisWeek}
+          value={activityLoading ? '...' : weekly.reviews}
           icon={CalendarDays}
           variant="blue"
+        />
+        <StatCard
+          title={t('correct')}
+          value={activityLoading ? '...' : weekly.correct}
+          icon={CheckCircle2}
+          variant="emerald"
         />
         <StatCard
           title={t('due_today')}
@@ -91,7 +100,7 @@ export function OverviewTab() {
             {!states ? (
               <Skeleton className="h-48 w-full" />
             ) : (
-              <div className="min-h-[260px] flex items-center justify-center">
+              <div className="min-h-[260px]">
                 <StateBreakdownChart states={states} />
               </div>
             )}

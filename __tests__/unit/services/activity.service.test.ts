@@ -79,7 +79,7 @@ describe('ActivityService', () => {
       expect(result.success).toBe(false);
     });
 
-    it('returns activity with students and quizzes', async () => {
+    it('returns summary, daily activity and students', async () => {
       const students = [{ user_id: 's-1' }];
       const profiles = [{ id: 's-1', email: 's@test.com', full_name: 'Student' }];
       const activity = [
@@ -94,35 +94,26 @@ describe('ActivityService', () => {
         },
       ];
       const lastPractice = [{ user_id: 's-1', practiced_at: new Date().toISOString() }];
-      const attempts = [
-        {
-          score: 90,
-          total_questions: 10,
-          config: { difficulty: 'medium' },
-          completed_at: new Date().toISOString(),
-        },
-      ];
 
       mock.from.mockReturnValueOnce(qb(students)); // org_members
       mock.from.mockReturnValueOnce(qb(profiles)); // profiles
       mock.from.mockReturnValueOnce(qb(activity)); // user_daily_activity
       mock.from.mockReturnValueOnce(qb(lastPractice)); // flashcard_practice
-      const attemptsBuilder = qb(attempts);
-      mock.from.mockReturnValueOnce(attemptsBuilder); // quiz_attempts
 
       const result = await service.getClassActivity(ctx, { range: '7d' });
 
       expect(result.success).toBe(true);
       expect(result.data.students).toHaveLength(1);
       expect(result.data.students[0].name).toBe('Student');
-      // Assignment attempts are scored in points; they don't belong to the
-      // practice-quiz difficulty report (#167).
-      expect(attemptsBuilder.is).toHaveBeenCalledWith('assignment_id', null);
+      // The dead difficulty breakdown is gone: the endpoint must no longer read
+      // quiz_attempts at all (#208).
+      expect(mock.from).toHaveBeenCalledTimes(4);
+      expect(mock.from.mock.calls.map(([table]) => table)).not.toContain('quiz_attempts');
+      expect(result.data).not.toHaveProperty('quizzes');
     });
 
     it('handles 30d range', async () => {
       mock.from.mockReturnValueOnce(qb([{ user_id: 's-1' }]));
-      mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
@@ -134,7 +125,6 @@ describe('ActivityService', () => {
 
     it('handles 90d range', async () => {
       mock.from.mockReturnValueOnce(qb([{ user_id: 's-1' }]));
-      mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));

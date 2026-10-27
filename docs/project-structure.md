@@ -87,7 +87,7 @@ studiq/
 │   └── setup.ts                      # Test bootstrap
 │
 ├── docs/                             # Project documentation (onboarding, architecture, api, ai...)
-│   ├── decisions/                    # Architecture Decision Records (0001-0006)
+│   ├── decisions/                    # Architecture Decision Records (0001-0007)
 │   └── plans/                        # Implementation plans (+ archive/)
 │
 ├── scripts/                          # Repo tooling (spin, pr, switch-branch, lint guards)

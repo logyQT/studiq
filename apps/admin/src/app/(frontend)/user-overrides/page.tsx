@@ -26,6 +26,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
+import { QueryError } from '@/app/(frontend)/components/query-error';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -60,7 +61,12 @@ export default function UserOverridesPage() {
   const tc = useTranslations('Common');
   const queryClient = useQueryClient();
 
-  const { data: overrides = [], isLoading } = useQuery({
+  const {
+    data: overrides = [],
+    error,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.userOverrides.all,
     queryFn: () => apiGet<UserOverride[]>('/user-overrides'),
   });
@@ -153,6 +159,8 @@ export default function UserOverridesPage() {
         <CardContent>
           {isLoading ? (
             <p className="text-muted-foreground">{tc('loading')}</p>
+          ) : isError ? (
+            <QueryError error={error} />
           ) : (
             <Table>
               <TableHeader>
@@ -172,7 +180,7 @@ export default function UserOverridesPage() {
                     <TableCell className="font-mono text-sm">{o.feature_key}</TableCell>
                     <TableCell>
                       <span className={o.is_enabled ? 'text-green-600' : 'text-muted-foreground'}>
-                        {o.is_enabled ? tc('confirm') : tc('cancel')}
+                        {o.is_enabled ? t('enabled_yes') : t('enabled_no')}
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-48 truncate">
@@ -207,7 +215,7 @@ export default function UserOverridesPage() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editing ? t('edit') : t('create')}</DialogTitle>
           </DialogHeader>

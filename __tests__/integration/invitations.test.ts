@@ -33,8 +33,10 @@ forEachCopy((copyId) => {
 
     let fixture!: BeforeResult;
     let student!: TestUserFixture;
+    let teacher!: TestUserFixture;
     let orgId!: string;
     let adminRoleId!: string;
+    let memberRoleId!: string;
     /** Second manager — under no circumstances may they touch org A's invites. */
     let foreignFixture!: BeforeResult;
     let foreignOrgId!: string;
@@ -62,6 +64,31 @@ forEachCopy((copyId) => {
         .single();
       if (!adminRole) throw new Error('Admin role not found for fixture org');
       adminRoleId = adminRole.id;
+
+      const { data: memberRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'member')
+        .single();
+      if (!memberRole) throw new Error('Member role not found for fixture org');
+      memberRoleId = memberRole.id;
+
+      // #189: an org teacher is an edu-classroom inviter — may grant the system
+      // member role only, never admin.
+      const { data: teacherRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'teacher')
+        .single();
+      if (!teacherRole) throw new Error('Teacher role not found for fixture org');
+      teacher = await createTestUser({ role: 'educator' });
+      await seedOrgMembership({
+        organizationId: orgId,
+        userId: teacher.id,
+        orgRoleId: teacherRole.id,
+      });
 
       // MGR-INV-03: a manager of a different organization.
       foreignFixture = await before({ role: 'manager', org: true });
@@ -99,6 +126,7 @@ forEachCopy((copyId) => {
       applyRegisteredMock(copyId);
       await cleanupInvitations(fixture.user.id);
       await cleanupInvitations(student.id);
+      await cleanupInvitations(teacher.id);
       await cleanupInvitations(foreignFixture.user.id);
     });
 
@@ -117,6 +145,7 @@ forEachCopy((copyId) => {
     describe('POST /api/v1/organization/invites', () => {
       it('creates an invitation as manager and returns 201', async () => {
         mockUser(fixture.user);
+        const email = `invite-${copyId}-${Date.now()}@example.com`;
 
         const req = createNextRequest(
           'http://localhost/api/v1/organization/invites',
@@ -124,7 +153,7 @@ forEachCopy((copyId) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email: `invite-${copyId}-${Date.now()}@example.com`,
+              email,
               targetOrgRoleId: adminRoleId,
               organizationId: orgId,
             }),
@@ -137,6 +166,24 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(201);
         expect(body.success).toBe(true);
+        expect(body.data.success).toBe(true);
+
+        // #313: the manager must receive the copyable link in every environment
+        // (this suite does not run under NODE_ENV=development), and it must carry
+        // the token that was actually persisted for this address.
+        const { data: row, error } = await createServiceClient()
+          .from('invitations')
+          .select('token')
+          .eq('email', email)
+          .single();
+        if (error) throw new Error(`Failed to read invitation token: ${error.message}`);
+
+        expect(typeof body.data.inviteLink).toBe('string');
+        const link = new URL(body.data.inviteLink);
+        expect(link.pathname).toBe('/join');
+        expect(link.searchParams.get('token')).toBe(row.token);
+        // #317: the creator gets the bare code too, so „Kopiuj kod” works.
+        expect(body.data.inviteCode).toBe(row.token);
       });
 
       // #242: the body-supplied organizationId must not extend the caller's
@@ -320,6 +367,59 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(403);
         expect(body.success).toBe(false);
       });
+
+      // #189: grant authority is evaluated by the endpoint, not just by the
+      // INSERT policy — a teacher may only grant the system `member` role.
+      it('returns 403 when an org teacher invites the admin role (#189)', async () => {
+        mockUser(teacher);
+        const email = `qa-teacher-admin-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, targetOrgRoleId: adminRoleId }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('FORBIDDEN');
+
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('id')
+          .eq('email', email);
+        expect(data).toEqual([]);
+      });
+
+      // #189 control: teachers must keep inviting students, so the new gate
+      // must not over-restrict the classroom flow.
+      it('allows an org teacher to invite the member role (#189 control)', async () => {
+        mockUser(teacher);
+        const email = `qa-teacher-member-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, targetOrgRoleId: memberRoleId }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+      });
     });
 
     describe('GET /api/v1/organization/invites?token=...', () => {
@@ -351,6 +451,51 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(200);
         expect(body.data.email).toBe(`valid-${copyId}@example.com`);
+      });
+
+      // #317: the preview field accepts the „Kopiuj link” URL too.
+      it('returns the invitation when the pasted value is the full invite link (#317)', async () => {
+        mockUser(fixture.user);
+
+        const supabase = createServiceClient();
+        const token = Array.from({ length: 32 }, () =>
+          Math.floor(Math.random() * 16).toString(16),
+        ).join('');
+        const email = `link-${copyId}-${Date.now()}@example.com`;
+        const { error } = await supabase.from('invitations').insert({
+          email,
+          target_org_role_id: adminRoleId,
+          token,
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          inviter_id: fixture.user.id,
+          organization_id: orgId,
+        });
+        if (error) throw new Error(`Failed to insert invitation: ${error.message}`);
+
+        const link = `http://localhost:3012/join?token=${token.toUpperCase()}`;
+        const response = await inviteGet(
+          createNextRequest(
+            `http://localhost/api/v1/organization/invites?token=${encodeURIComponent(link)}`,
+          ),
+        );
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.email).toBe(email);
+      });
+
+      it('returns 404 for a link that carries no token (#317)', async () => {
+        mockUser(fixture.user);
+
+        const response = await inviteGet(
+          createNextRequest(
+            `http://localhost/api/v1/organization/invites?token=${encodeURIComponent(
+              'http://localhost:3012/join',
+            )}`,
+          ),
+        );
+
+        expect(response.status).toBe(404);
       });
 
       it('returns 404 when token does not exist', async () => {
@@ -487,6 +632,12 @@ forEachCopy((copyId) => {
       it('bulk creates invitations and returns 200', async () => {
         mockUser(fixture.user);
 
+        const stamp = Date.now();
+        const emails = [
+          `bulk1-${copyId}-${stamp}@example.com`,
+          `bulk2-${copyId}-${stamp}@example.com`,
+        ];
+
         const req = createNextRequest(
           'http://localhost/api/v1/organization/invites/bulk',
           {
@@ -494,14 +645,8 @@ forEachCopy((copyId) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               invitations: [
-                {
-                  email: `bulk1-${copyId}-${Date.now()}@example.com`,
-                  targetOrgRoleId: adminRoleId,
-                },
-                {
-                  email: `bulk2-${copyId}-${Date.now()}@example.com`,
-                  targetOrgRoleId: adminRoleId,
-                },
+                { email: emails[0], targetOrgRoleId: adminRoleId },
+                { email: emails[1], targetOrgRoleId: adminRoleId },
               ],
             }),
           },
@@ -514,6 +659,90 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(200);
         expect(body.success).toBe(true);
         expect(Array.isArray(body.data.results)).toBe(true);
+        // MGR-INV-02: „Wyniki” needs one attributed status per entered address.
+        expect(body.data.results.map((r: { email: string }) => r.email)).toEqual(emails);
+
+        // #313: every manager-visible row is individually deliverable — each
+        // result carries the link for the token persisted against that address.
+        const { data: rows, error } = await createServiceClient()
+          .from('invitations')
+          .select('email, token')
+          .in('email', emails);
+        if (error) throw new Error(`Failed to read invitation tokens: ${error.message}`);
+        const tokenByEmail = new Map(
+          (rows ?? []).map((row) => [row.email as string, row.token as string]),
+        );
+
+        for (const result of body.data.results as Array<{
+          email: string;
+          data: { inviteLink?: string; inviteCode?: string };
+        }>) {
+          expect(typeof result.data.inviteLink).toBe('string');
+          const link = new URL(result.data.inviteLink as string);
+          expect(link.pathname).toBe('/join');
+          expect(link.searchParams.get('token')).toBe(tokenByEmail.get(result.email));
+          // #317: the bare code is returned per row alongside the link.
+          expect(result.data.inviteCode).toBe(tokenByEmail.get(result.email));
+        }
+      });
+
+      // #189: the endpoint itself rejects a role the caller may not grant,
+      // before any write — a teacher may only grant the system member role.
+      it('returns 403 when an org teacher bulk-invites the admin role (#189)', async () => {
+        mockUser(teacher);
+        const email = `qa-bulk-teacher-admin-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [{ email, targetOrgRoleId: adminRoleId }],
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('FORBIDDEN');
+
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('id')
+          .eq('email', email);
+        expect(data).toEqual([]);
+      });
+
+      it('returns 403 when a student bulk-invites (#189)', async () => {
+        mockUser(student);
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [
+                {
+                  email: `qa-bulk-student-${copyId}-${Date.now()}@example.com`,
+                  targetOrgRoleId: memberRoleId,
+                },
+              ],
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
       });
 
       it('returns 422 when invitations array is empty', async () => {
@@ -534,6 +763,87 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(422);
         expect(body.success).toBe(false);
+      });
+
+      // MGR-INV-02: a batch is all-or-nothing. One bad entry must reject the
+      // whole request and leave no invitation behind.
+      it('rejects the whole batch when one role belongs to another organization', async () => {
+        mockUser(fixture.user);
+
+        const stamp = Date.now();
+        const emails = [
+          `bulk-ok-${copyId}-${stamp}@example.com`,
+          `bulk-foreign-${copyId}-${stamp}@example.com`,
+        ];
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [
+                { email: emails[0], targetOrgRoleId: adminRoleId },
+                { email: emails[1], targetOrgRoleId: foreignAdminRoleId },
+              ],
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+
+        const supabase = createServiceClient();
+        const { data: leftover } = await supabase
+          .from('invitations')
+          .select('id, email')
+          .in('email', emails);
+        // Not even the valid first entry was written.
+        expect(leftover ?? []).toEqual([]);
+      });
+
+      it('rejects the whole batch when one entry has no role and writes no rows', async () => {
+        mockUser(fixture.user);
+
+        const stamp = Date.now();
+        const emails = [
+          `bulk-missing-ok-${copyId}-${stamp}@example.com`,
+          `bulk-missing-role-${copyId}-${stamp}@example.com`,
+        ];
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [
+                { email: emails[0], targetOrgRoleId: adminRoleId },
+                { email: emails[1] },
+              ],
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.issues).toBeDefined();
+
+        const supabase = createServiceClient();
+        const { data: leftover } = await supabase
+          .from('invitations')
+          .select('id, email')
+          .in('email', emails);
+        expect(leftover ?? []).toEqual([]);
       });
     });
 

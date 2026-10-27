@@ -1,7 +1,9 @@
 import type { RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
+import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { isLimitKey, LIMITS, type LimitKey } from '@studiq/server/services/limit.catalog';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -12,96 +14,68 @@ export interface UsageInfo {
   resetsAt: string;
 }
 
+/**
+ * Daily AI token budget (#379). Enforcement (`/api/v1/ai/chat`) and the
+ * read-only usage endpoint share this key so the counter always reports the
+ * same limit the chat rejects on.
+ */
+export const AI_TOKENS_LIMIT_KEY: LimitKey = 'max_ai_tokens_per_day';
+
+/**
+ * Resolves plan limits for the caller's current context.
+ *
+ * Rule (#233): in a verified org context the organization's plan governs every
+ * limit; a seat may raise only per-member (`scope: 'user'`) keys, never
+ * org-scope capacity; the personal plan applies only outside a verified org
+ * context; a missing `plan_limits` row is `0` (blocked) in every path.
+ */
 export class LimitsResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-  /**
-   * Effective limit for the caller's current context: a seated user gets the
-   * seat's plan only; otherwise the highest value of the personal plan and —
-   * for verified org members — the organization's plan (`organizations.plan` →
-   * `plan_limits`). `-1` means unlimited, `0` means no limit is defined.
-   */
-  async getEffectiveLimit(ctx: RequestContext, limitKey: string): Promise<number> {
+  /** Effective limit for the caller's current context (see the class rule). */
+  async getEffectiveLimit(ctx: RequestContext, limitKey: LimitKey): Promise<number> {
     const supabase = await this.createClient();
 
-    // In org context: check seat assignment first (Phase 2)
-    if (ctx.activeOrgId) {
+    if (!isLimitKey(limitKey)) {
+      warn('limits.resolver: unknown limit key', { limitKey });
+      return 0;
+    }
+
+    const scope = LIMITS[limitKey].scope;
+    const orgId = ctx.activeOrgId;
+
+    if (!orgId) {
+      // No org context: personal plan for user-scope keys, no org capacity for
+      // org-scope keys.
+      return scope === 'org' ? 0 : this.personalLimit(supabase, ctx.userId, limitKey);
+    }
+
+    // A seat only raises per-member keys; org-scope capacity always belongs to
+    // the org plan.
+    if (scope === 'user') {
       const seatPlanKey = await getSeatPlanKey(ctx, supabase);
-
-      if (seatPlanKey) {
-        // Seated user: limits come from seat's plan only
-        const { data: pl } = await supabase
-          .from('plan_limits')
-          .select('limit_value')
-          .eq('plan_key', seatPlanKey)
-          .eq('limit_key', limitKey)
-          .maybeSingle();
-
-        return pl?.limit_value ?? 0;
-      }
+      if (seatPlanKey) return this.planLimit(supabase, seatPlanKey, limitKey);
     }
 
-    // No seat (or no org context): personal plan + org plan fallback
-    const limits: number[] = [];
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('personal_plan_key')
-      .eq('id', ctx.userId)
-      .maybeSingle();
-
-    if (profile?.personal_plan_key) {
-      const { data: pl } = await supabase
-        .from('plan_limits')
-        .select('limit_value')
-        .eq('plan_key', profile.personal_plan_key)
-        .eq('limit_key', limitKey)
-        .maybeSingle();
-      if (pl) limits.push(pl.limit_value);
+    // `active_org_id` is a client-controlled cookie: only a real `org_members`
+    // row makes it a tenant scope. A forged/stale id falls back to the
+    // personal plan for user keys and grants no org capacity for org keys.
+    if (!(await this.isMember(supabase, orgId, ctx.userId))) {
+      return scope === 'org' ? 0 : this.personalLimit(supabase, ctx.userId, limitKey);
     }
 
-    // Org capacity: organizations.plan → plan_limits (org_limits is gone, #229).
-    // `active_org_id` is a client-controlled cookie, so only trust it for an
-    // actual member: verify the caller's `org_members` row for that org. Using
-    // membership (not `orgRoleId`) keeps an org member with a missing role id on
-    // the org plan, while a spoofed cookie has no row and falls back to the
-    // personal plan. The `"Org members read organization"` RLS policy also hides
-    // foreign orgs, but this keeps the boundary explicit and independent of it.
-    if (ctx.activeOrgId) {
-      const { data: membership } = await supabase
-        .from('org_members')
-        .select('organization_id')
-        .eq('organization_id', ctx.activeOrgId)
-        .eq('user_id', ctx.userId)
-        .maybeSingle();
-
-      if (membership) {
-        const { data: org } = await supabase
-          .from('organizations')
-          .select('plan')
-          .eq('id', ctx.activeOrgId)
-          .maybeSingle();
-
-        if (org?.plan) {
-          const { data: pl } = await supabase
-            .from('plan_limits')
-            .select('limit_value')
-            .eq('plan_key', org.plan)
-            .eq('limit_key', limitKey)
-            .maybeSingle();
-          if (pl) limits.push(pl.limit_value);
-        }
-      }
+    const orgPlanKey = await this.orgPlanKey(supabase, orgId);
+    if (!orgPlanKey) {
+      warn('limits.resolver: organization has no plan', { organizationId: orgId, limitKey });
+      return 0;
     }
 
-    if (limits.length === 0) return 0;
-    if (limits.includes(-1)) return -1;
-    return Math.max(...limits);
+    return this.planLimit(supabase, orgPlanKey, limitKey);
   }
 
   async checkLimit(
     ctx: RequestContext,
-    limitKey: string,
+    limitKey: LimitKey,
     currentCount: number,
     increment = 1,
   ): Promise<void> {
@@ -114,8 +88,9 @@ export class LimitsResolver {
   /**
    * Org-centric limit check: capacity is governed by the organization's plan
    * (organizations.plan → plan_limits), never by the acting user's personal
-   * plan. Used where the actor is not yet in the org context — e.g. a student
-   * accepting an invitation. Missing limits default to unlimited (-1).
+   * plan or a seat. Used where the actor is not yet in the org context — e.g. a
+   * student accepting an invitation. A missing `plan_limits` row is `0`
+   * (blocked); an unknown organization is `NOT_FOUND`.
    *
    * Deliberately has **no** ctx-membership gate: it takes an explicit
    * organization id and runs before membership exists (invite accept), so the
@@ -127,37 +102,23 @@ export class LimitsResolver {
    */
   async checkOrgLimit(
     organizationId: string,
-    limitKey: string,
+    limitKey: LimitKey,
     currentCount: number,
     increment = 1,
     client?: SupabaseClient,
   ): Promise<void> {
     const supabase = client ?? (await this.createClient());
 
-    const limits: number[] = [];
+    const orgPlanKey = await this.orgPlanKey(supabase, organizationId);
+    if (!orgPlanKey) throw new AppError('NOT_FOUND');
 
-    const { data: org } = await supabase
-      .from('organizations')
-      .select('plan')
-      .eq('id', organizationId)
-      .maybeSingle();
-    if (org?.plan) {
-      const { data: pl } = await supabase
-        .from('plan_limits')
-        .select('limit_value')
-        .eq('plan_key', org.plan)
-        .eq('limit_key', limitKey)
-        .maybeSingle();
-      if (pl) limits.push(pl.limit_value);
-    }
-
-    const limit = limits.length === 0 ? -1 : Math.max(...limits);
+    const limit = await this.planLimit(supabase, orgPlanKey, limitKey);
     if (limit !== -1 && currentCount + increment > limit) {
       throw new AppError('USAGE_LIMIT_EXCEEDED');
     }
   }
 
-  async getUsage(ctx: RequestContext, limitKey: string): Promise<UsageInfo> {
+  async getUsage(ctx: RequestContext, limitKey: LimitKey): Promise<UsageInfo> {
     const limit = await this.getEffectiveLimit(ctx, limitKey);
 
     const today = new Date().toISOString().slice(0, 10);
@@ -218,6 +179,77 @@ export class LimitsResolver {
         ai_output_tokens: outputTokens,
       });
     }
+  }
+
+  /** `profiles.personal_plan_key` → `plan_limits`; a missing plan blocks (`0`). */
+  private async personalLimit(
+    supabase: SupabaseClient,
+    userId: string,
+    limitKey: LimitKey,
+  ): Promise<number> {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const planKey = profile?.personal_plan_key;
+    if (!planKey) {
+      warn('limits.resolver: profile has no personal plan', { userId, limitKey });
+      return 0;
+    }
+
+    return this.planLimit(supabase, planKey, limitKey);
+  }
+
+  /** `organizations.plan` for the given org, or `null` when the org is unknown. */
+  private async orgPlanKey(
+    supabase: SupabaseClient,
+    organizationId: string,
+  ): Promise<string | null> {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('plan')
+      .eq('id', organizationId)
+      .maybeSingle();
+
+    return org?.plan ?? null;
+  }
+
+  private async isMember(
+    supabase: SupabaseClient,
+    organizationId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const { data: membership } = await supabase
+      .from('org_members')
+      .select('organization_id')
+      .eq('organization_id', organizationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    return membership != null;
+  }
+
+  /** One plan's value for a key. A missing row is `0` (blocked) — never unlimited. */
+  private async planLimit(
+    supabase: SupabaseClient,
+    planKey: string,
+    limitKey: LimitKey,
+  ): Promise<number> {
+    const { data: planLimit } = await supabase
+      .from('plan_limits')
+      .select('limit_value')
+      .eq('plan_key', planKey)
+      .eq('limit_key', limitKey)
+      .maybeSingle();
+
+    if (!planLimit) {
+      warn('limits.resolver: plan is missing a limit', { planKey, limitKey });
+      return 0;
+    }
+
+    return planLimit.limit_value;
   }
 }
 export const limitsResolver = wrapService(

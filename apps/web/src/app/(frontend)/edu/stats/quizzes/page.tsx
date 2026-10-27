@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react';
 
 type QuizData = {
   id: string;
-  title: string;
+  title: string | null;
   totalAttempts: number;
   avgScore: number;
   avgCompletionRate: number;
@@ -78,7 +78,9 @@ export default function TeacherQuizStats() {
               <TableBody>
                 {quizzes.map((quiz) => (
                   <TableRow key={quiz.id}>
-                    <TableCell className="font-medium">{quiz.title}</TableCell>
+                    <TableCell className="font-medium">
+                      {quiz.title || t('untitled_quiz')}
+                    </TableCell>
                     <TableCell className="text-right">{quiz.totalAttempts}</TableCell>
                     <TableCell className="text-right">
                       <Badge

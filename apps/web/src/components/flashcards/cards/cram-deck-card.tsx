@@ -5,6 +5,7 @@ import { Badge, Button, Card } from '@studiq/ui';
 import { Play } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { getGradientHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface CramDeckCardProps {
   deck: Deck;
@@ -67,6 +68,7 @@ export function CramDeckCard({ deck, onStart, t }: CramDeckCardProps) {
           }}
         >
           <Play className="h-4 w-4" />
+          <SrLabel k="start_cram" values={{ name: deck.name }} />
         </Button>
       </div>
 

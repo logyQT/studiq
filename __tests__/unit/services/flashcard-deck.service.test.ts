@@ -150,6 +150,57 @@ describe('FlashcardDeckService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
+    it('counts only the caller content in the active org (#233)', async () => {
+      const countBuilder = qb([], null, 0);
+      mock.from.mockReturnValueOnce(countBuilder);
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1' }));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1', name: 'Study Deck' }));
+
+      await service.create({ name: 'Study Deck' }, { ...ctx, activeOrgId: 'org-1' });
+
+      expect(countBuilder.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    });
+
+    it('does not filter the count by org outside an org context (#233)', async () => {
+      const countBuilder = qb([], null, 0);
+      mock.from.mockReturnValueOnce(countBuilder);
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1' }));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1', name: 'Study Deck' }));
+
+      await service.create({ name: 'Study Deck' }, ctx);
+
+      expect(countBuilder.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countBuilder.eq).not.toHaveBeenCalledWith('organization_id', expect.anything());
+    });
+
+    // #139 — group visibility without a single share link is only visible to the creator.
+    it('rejects a group deck with no groupIds before touching the database', async () => {
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group' },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('rejects a group deck with an empty groupIds list', async () => {
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group', groupIds: [] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
     it('links a group deck when the caller teaches the requested groups', async () => {
       const mockDeck = { id: 'd-1', name: 'Group Deck', created_by: ctx.userId };
       mock.from.mockReturnValueOnce(qb([], null, 0)); // deck count
@@ -256,6 +307,7 @@ describe('FlashcardDeckService', () => {
       ];
       mock.from.mockReturnValueOnce(qb([], null));
       mock.from.mockReturnValueOnce(qb(decks));
+      mock.from.mockReturnValueOnce(qb(null, null, 1));
 
       const result = await service.list(ctx);
 
@@ -263,9 +315,62 @@ describe('FlashcardDeckService', () => {
       expect(result.data).toBeDefined();
     });
 
+    it('returns the total of all matching decks, independent of page size', async () => {
+      const decks = [
+        { id: 'd-1', name: 'A' },
+        { id: 'd-2', name: 'B' },
+        { id: 'd-3', name: 'C' },
+      ];
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(decks));
+      mock.from.mockReturnValueOnce(qb(null, null, 57));
+
+      const result = await service.list(ctx, { limit: 2 } as any);
+
+      expect(result.success).toBe(true);
+      const data = result.data as { items: unknown[]; hasMore: boolean; total: number };
+      expect(data.items).toHaveLength(2);
+      expect(data.hasMore).toBe(true);
+      expect(data.total).toBe(57);
+    });
+
+    it('counts with a head query that applies the same filters but not cursor or limit', async () => {
+      const pageQb = qb([{ id: 'd-1', name: 'A' }]);
+      const countQb = qb(null, null, 4);
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
+
+      const cursor = Buffer.from(JSON.stringify({ v: '2025-01-01T00:00:00Z', id: 'd-0' })).toString(
+        'base64url',
+      );
+      const result = await service.list(ctx, {
+        owner: 'mine',
+        q: 'bio',
+        cursor,
+        limit: 10,
+      } as any);
+
+      expect((result.data as { total: number }).total).toBe(4);
+      expect(countQb.select).toHaveBeenCalledWith('id', { count: 'exact', head: true });
+      // owner + search filters are applied to both queries
+      expect(countQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      const searchOr = 'name.ilike.%bio%,description.ilike.%bio%';
+      expect(countQb.or).toHaveBeenCalledWith(searchOr);
+      expect(pageQb.or).toHaveBeenCalledWith(searchOr);
+      // cursor + limit only on the page query
+      expect(pageQb.limit).toHaveBeenCalledWith(11);
+      expect(pageQb.or).toHaveBeenCalledTimes(2);
+      expect(countQb.or).toHaveBeenCalledTimes(1);
+      expect(countQb.limit).not.toHaveBeenCalled();
+      expect(countQb.order).not.toHaveBeenCalled();
+    });
+
     it('returns INTERNAL_SERVER when query fails', async () => {
       mock.from.mockReturnValueOnce(qb([], null));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+      mock.from.mockReturnValueOnce(qb(null, null, 0));
 
       const result = await service.list(ctx);
 
@@ -273,29 +378,78 @@ describe('FlashcardDeckService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
-    it('returns empty result for groupFilter=mine when the caller has no groups', async () => {
-      mock.from.mockReturnValueOnce(qb([], null));
-      mock.from.mockReturnValueOnce(qb([], null));
+    it('never queries deck_groups when groups is empty', async () => {
+      const suspendedQb = qb([], null);
+      const pageQb = qb([], null);
+      const countQb = qb(null, null, 0);
+      mock.from.mockReturnValueOnce(suspendedQb);
+      mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
 
-      const result = await service.list(ctx, { groupFilter: 'mine' } as any);
+      await service.list(ctx, { groups: [] } as any);
 
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+        'suspended_decks',
+        'flashcard_decks',
+        'flashcard_decks',
+      ]);
+      expect(pageQb.in).not.toHaveBeenCalled();
     });
 
-    it('filters to decks shared with the caller groups when groupFilter=mine', async () => {
-      const groupCtx = { ...ctx, groupIds: ['g-1'] };
-      const decks = [
-        { id: 'd-1', name: 'Group Deck', flashcard_count: 0, groupIds: ['g-1'], suspended: false },
-      ];
-      mock.from.mockReturnValueOnce(qb([], null));
-      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }], null));
-      mock.from.mockReturnValueOnce(qb(decks));
+    it('narrows both the page and the total count to the resolved group deck ids', async () => {
+      const pageQb = qb([{ id: 'd-1', name: 'Group Deck' }]);
+      const countQb = qb(null, null, 1);
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }], null)); // deck_groups
+      mock.from.mockReturnValueOnce(qb([{ id: 'd-1' }], null)); // group-visible decks
+      mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
 
-      const result = await service.list(groupCtx, { groupFilter: 'mine' } as any);
+      const result = await service.list({ ...ctx, groupIds: ['g-1'] }, {
+        groups: ['g-1'],
+      } as any);
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
+      expect(pageQb.in).toHaveBeenCalledWith('id', ['d-1']);
+      expect(countQb.in).toHaveBeenCalledWith('id', ['d-1']);
+    });
+
+    it('returns an empty page without running the list query when no deck matches the groups', async () => {
+      const pageQb = qb([]);
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
+      mock.from.mockReturnValueOnce(qb([], null)); // deck_groups → no linked decks
+
+      const result = await service.list({ ...ctx, groupIds: ['g-1'] }, {
+        groups: ['g-1'],
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+        total: 0,
+      });
+      expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(pageQb.in).not.toHaveBeenCalled();
+    });
+
+    it('composes the group filter with owner=mine', async () => {
+      const pageQb = qb([]);
+      const countQb = qb(null, null, 0);
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }], null));
+      mock.from.mockReturnValueOnce(qb([{ id: 'd-1' }], null));
+      mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
+
+      await service.list({ ...ctx, groupIds: ['g-1'] }, { owner: 'mine', groups: ['g-1'] } as any);
+
+      expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(pageQb.in).toHaveBeenCalledWith('id', ['d-1']);
+      expect(countQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countQb.in).toHaveBeenCalledWith('id', ['d-1']);
     });
   });
 
@@ -478,19 +632,56 @@ describe('FlashcardDeckService', () => {
       );
     });
 
-    it('clears group links for an empty groupIds list without calling the guard', async () => {
+    // #139 — a group deck must be unshared by switching visibility, never by
+    // emptying the link list (that would leave `visibility='group'` with 0 links).
+    it('rejects an empty groupIds list on a group deck', async () => {
       const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId, visibility: 'group' };
-      const cleared = { id: 'd-1', name: 'Original', created_by: ctx.userId, groupIds: [] };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+
+      const result = await service.update('d-1', { groupIds: [] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      // Only the existence read happened — no deck update, no link delete.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('clears stale group links for an empty groupIds list on a personal deck', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'personal',
+      };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // delete links
       mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
-      mock.from.mockReturnValueOnce(qb(cleared)); // getById
+      mock.from.mockReturnValueOnce(qb({ ...existing, groupIds: [] })); // getById
 
       const result = await service.update('d-1', { groupIds: [] }, ctx);
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('rejects switching a personal deck to group without a groupIds list', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'personal',
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+
+      const result = await service.update('d-1', { visibility: 'group' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledTimes(1);
     });
 
     it('clears group links when a partial PUT switches the deck to personal', async () => {

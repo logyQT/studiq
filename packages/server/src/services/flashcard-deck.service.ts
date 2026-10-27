@@ -1,5 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
-import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
+import {
+  accessibleFilter,
+  check,
+  Permission,
+  resolveGroupResourceIds,
+} from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -24,17 +29,18 @@ export class FlashcardDeckService {
     const supabase = await this.createClient();
 
     const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
+    // A group-visible deck without a single share link is visible only to its creator (#139).
+    if (data.visibility === 'group' && groupIds.length === 0) {
+      return failure('UNPROCESSABLE_ENTITY');
+    }
     if (groupIds.length > 0) {
       const shareCheck = await groupService.canShareContentToGroups(ctx, groupIds, ctx.activeOrgId);
       if (isFailure(shareCheck)) return failure(shareCheck.error);
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
 
-    const { count: deckCount } = await supabase
-      .from('flashcard_decks')
-      .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
-    await limitsResolver.checkLimit(ctx, 'max_decks', deckCount ?? 0);
+    const deckCount = await this.countOwned(supabase, ctx);
+    await limitsResolver.checkLimit(ctx, 'max_decks', deckCount);
 
     if (data.flashcardIds && data.flashcardIds.length > 0) {
       const denied = await this.assertFlashcardsUpdatable(supabase, data.flashcardIds, ctx);
@@ -139,57 +145,51 @@ export class FlashcardDeckService {
     const supabase = await this.createClient();
 
     const filter = await accessibleFilter(ctx, Permission.DECK_READ, 'deck');
-    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (filter._impossible)
+      return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
     const includeSuspended = queryParams?.includeSuspended ?? false;
 
-    let query = supabase
-      .from('flashcard_decks')
-      .select('*, flashcard_count:flashcards(count), deck_groups(group_id)');
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
-
-    // Exclude suspended decks by default
-    if (!includeSuspended && suspendedIds.size > 0) {
-      query = query.not('id', 'in', `(${[...suspendedIds].join(',')})`);
+    // Owner filter on top of RBAC
+    // Explicit group filter (#595): an extra AND on top of what RBAC already allows, so an
+    // unknown/foreign group id can only narrow the result — never widen it.
+    let groupIds: string[] | null = null;
+    if (queryParams?.groups?.length) {
+      groupIds = await resolveGroupResourceIds('deck', queryParams.groups);
+      if (groupIds.length === 0)
+        return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
     }
 
-    // Apply owner filter on top of RBAC
-    if (queryParams?.owner && queryParams.owner !== 'all') {
-      if (queryParams.owner === 'mine') {
-        query = query.eq('created_by', ctx.userId);
-      } else if (queryParams.owner === 'group') {
-        if (ctx.activeOrgId) {
-          query = query
-            .neq('created_by', ctx.userId)
-            .eq('organization_id', ctx.activeOrgId)
-            .eq('visibility', 'group');
-        } else {
-          return success({ items: [], nextCursor: null, hasMore: false });
-        }
+    // Every filter (RBAC, suspended, owner, group, search) lives here and is shared by the page
+    // query and the total-count query, so `total` always matches the visible set. The cursor and
+    // limit are applied to the page query only, which keeps `total` stable while paging.
+    const buildFiltered = (select: string, options?: { count: 'exact'; head: true }) => {
+      let q = supabase.from('flashcard_decks').select(select, options);
+
+      if (filter.or) q = q.or(filter.or);
+      if (filter.created_by) q = q.eq('created_by', filter.created_by);
+      if (filter.organization_id) q = q.eq('organization_id', filter.organization_id);
+
+      // Exclude suspended decks by default
+      if (!includeSuspended && suspendedIds.size > 0) {
+        q = q.not('id', 'in', `(${[...suspendedIds].join(',')})`);
       }
-    }
 
-    // Filter to decks shared with a group the caller belongs to
-    if (queryParams?.groupFilter === 'mine') {
-      if (ctx.groupIds.length === 0)
-        return success({ items: [], nextCursor: null, hasMore: false });
-      const { data: groupDecks } = await supabase
-        .from('deck_groups')
-        .select('deck_id')
-        .in('group_id', ctx.groupIds);
-      const deckIds = [...new Set((groupDecks ?? []).map((r) => r.deck_id as string))];
-      if (deckIds.length === 0) return success({ items: [], nextCursor: null, hasMore: false });
-      query = query.in('id', deckIds);
-    }
+      if (queryParams?.owner === 'mine') {
+        q = q.eq('created_by', ctx.userId);
+      }
 
-    // Apply search
-    if (queryParams?.q) {
-      query = query.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
-    }
+      if (groupIds) q = q.in('id', groupIds);
+
+      if (queryParams?.q) {
+        q = q.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
+      }
+      return q;
+    };
+
+    let query = buildFiltered('*, flashcard_count:flashcards(count), deck_groups(group_id)');
+    const countQuery = buildFiltered('id', { count: 'exact', head: true });
 
     // Apply sorting with tie-breaker
     const sortBy = queryParams?.sortBy ?? 'created_at';
@@ -209,10 +209,11 @@ export class FlashcardDeckService {
       );
     }
 
-    const { data, error } = await query;
+    const [{ data, error }, { count, error: countError }] = await Promise.all([query, countQuery]);
     if (error) return toDbFailure(error);
+    if (countError) return toDbFailure(countError);
 
-    const rows = data as Array<Record<string, unknown>> | null;
+    const rows = data as unknown as Array<Record<string, unknown>> | null;
     const hasMore = (rows?.length ?? 0) > pageSize;
     const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
     const items = sliced.map((item) => {
@@ -233,7 +234,8 @@ export class FlashcardDeckService {
       items: items as unknown as Deck[],
       nextCursor,
       hasMore,
-    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean });
+      total: count ?? 0,
+    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean; total: number });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -313,6 +315,18 @@ export class FlashcardDeckService {
         : data.groupIds !== undefined
           ? [...new Set(data.groupIds)]
           : null; // visibility stayed 'group' and no list was sent → keep existing links
+
+    // The resulting state must never be "group" with zero links (#139):
+    //  - an explicit empty list is always invalid;
+    //  - "no list sent" is only valid when the deck already was group-visible
+    //    (it inherits the links; this also blocks activating stale links on a personal deck).
+    // Unsharing a group deck has to go through `{ visibility: 'personal' }`.
+    const groupWithoutLinks =
+      effectiveVisibility === 'group' &&
+      (requestedGroupIds !== null
+        ? requestedGroupIds.length === 0
+        : existing.visibility !== 'group');
+    if (groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
 
     if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
       // The link must belong to the CONTENT's org, not the caller's current UI org.
@@ -430,7 +444,8 @@ export class FlashcardDeckService {
       description: d.description ?? null,
       created_by: ctx.userId,
       organization_id: ctx.activeOrgId,
-      visibility: d.visibility ?? 'personal',
+      // Bulk create cannot assign groups, so it can only produce personal decks (#139).
+      visibility: 'personal',
     }));
 
     const { data: created, error } = await supabase
@@ -497,6 +512,23 @@ export class FlashcardDeckService {
     }
 
     return success({ updated: deckIds.length });
+  }
+
+  /**
+   * Count the caller's decks for the limit check (#233): inside an org the count
+   * is scoped to content owned by the caller **in that org**, so personal-space
+   * decks never consume the org plan's capacity.
+   */
+  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+    let query = supabase
+      .from('flashcard_decks')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+
+    if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
+
+    const { count } = await query;
+    return count ?? 0;
   }
 }
 export const flashcardDeckService = wrapService(

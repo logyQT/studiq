@@ -14,7 +14,7 @@ ticket for the fix.
 
 - Cause: `getEffectiveLimit(ctx, 'max_students')` resolved limits from the *accepting
   student's* personal plan (`base` has no `max_students` row) → `[]` → `0` → blocked.
-- Fix: new `PlanResolver.checkOrgLimit(orgId, key, count)` — capacity resolved against the
+- Fix: new `LimitsResolver.checkOrgLimit(orgId, key, count)` — capacity resolved against the
   invitation's **organization** (org `plan` → `plan_limits`, derived live; the per-org
   override table was removed in #229, default `-1`). `acceptInvitation` now uses it.
   `regression: invite-accept.test.ts`, members suite exercises the real accept route
@@ -46,13 +46,6 @@ ticket for the fix.
 |------|---------|-------------------|
 | Question banks | ~~No `POST /api/v1/question-banks`~~ — route now exists at `api/v1/questions/banks`; helper creates banks via the real API | — |
 | Subjects | No subject create route | Service-role insert (not yet used by helper — add when a subject is needed) |
-
-### Minor API shape gaps (route exists but response is incomplete)
-
-- `POST /api/v1/organization/invites` returns `inviteLink` only when
-  `NODE_ENV === 'development'`. In tests it is `undefined`, so the helper reads the token
-  from the `invitations` table. Suggest: always return the token/link (it is already
-  env-gated for prod; exposing token helps API consumers).
 
 ## Not defects (seeding notes)
 

@@ -24,14 +24,15 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { PageToolbar } from '@/components/shared/page-toolbar';
+import { ScopeGroupFilter } from '@/components/shared/scope-group-filter';
 import { SpeedDial } from '@/components/shared/speed-dial';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useApiMutation } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
-import { useFeature } from '@/hooks/use-feature';
+import { useGroupOptions } from '@/hooks/use-group-options';
 import { useOrgs } from '@/hooks/use-orgs';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
-import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
+import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
 interface TopicManagementScreenProps {
   apiBase: string;
@@ -41,23 +42,24 @@ interface TopicManagementScreenProps {
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
   const { activeOrg, isPending: orgsPending } = useOrgs();
-  const feature = useFeature();
-
-  const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
-    queryKey: groupKeys.list(activeOrg?.id),
-    url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && feature('group.manage'),
-  });
+  const { groupsData, options: groupOptions, myGroupIds, ready: groupsReady } = useGroupOptions();
 
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
   const [owner, setOwner] = useState('all');
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
+
+  const optionIds = new Set(groupOptions.map((group) => group.id));
+  // Org switch / lost membership must never leave stale ids in the request.
+  const effectiveGroupIds = groupIds.filter((id) => optionIds.has(id));
+  const groupsParam = effectiveGroupIds.join(',') || undefined;
 
   const filters = {
     q: debouncedSearch || undefined,
     owner: owner !== 'all' ? owner : undefined,
+    groups: groupsParam,
     sortBy,
     sortOrder,
   };
@@ -83,7 +85,8 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     initialPageParam: '',
     staleTime: Infinity,
     refetchOnMount: false,
-    enabled: !orgsPending,
+    // Hold the first paint while a selection waits for its options.
+    enabled: !orgsPending && !(groupIds.length > 0 && !groupsReady),
   });
 
   const topics = topicsData?.pages.flatMap((page) => page.items) ?? [];
@@ -318,15 +321,15 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
             )
           }
         >
-          <Select value={owner} onValueChange={setOwner}>
-            <SelectTrigger className="w-35 truncate">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('owner_all')}</SelectItem>
-              <SelectItem value="mine">{t('owner_mine')}</SelectItem>
-            </SelectContent>
-          </Select>
+          <ScopeGroupFilter
+            owner={owner}
+            onOwnerChange={setOwner}
+            groupIds={effectiveGroupIds}
+            onGroupIdsChange={setGroupIds}
+            options={groupOptions}
+            myGroupIds={myGroupIds}
+            t={t}
+          />
 
           <Select
             value={`${sortBy}:${sortOrder}`}

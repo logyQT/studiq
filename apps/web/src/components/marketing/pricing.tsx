@@ -1,18 +1,38 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { ArrowRight, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { useApiQuery } from '@/hooks/use-api';
+import { formatPlanPrice, pickLandingPlans } from '@/lib/landing-pricing';
+
+/** Placeholder while the real plan prices load (or when they cannot be loaded). */
+const NO_PRICE = '—';
 
 export function Pricing() {
   const t = useTranslations('LandingPage');
+  const pt = useTranslations('PricingPage');
+  const locale = useLocale();
+
+  const { data: student } = useApiQuery<PlanInfo[]>({
+    queryKey: ['subscription-plans', 'active', 'student'],
+    url: '/api/v1/subscription-plans?for=student',
+  });
+  const { data: manager } = useApiQuery<PlanInfo[]>({
+    queryKey: ['subscription-plans', 'active', 'manager'],
+    url: '/api/v1/subscription-plans?for=manager',
+  });
+  const { free, premium, organizationFrom } = pickLandingPlans(student ?? [], manager ?? []);
+
+  const price = (plan: PlanInfo | null) => (plan ? formatPlanPrice(plan, locale) : NO_PRICE);
 
   const plans = [
     {
-      name: 'Free',
-      price: '$0',
-      period: '/forever',
+      name: t('pricing_free_name'),
+      price: price(free),
+      period: '',
       desc: t('pricing_free_desc'),
       features: [t('free_questions'), t('free_flashcards'), t('free_quizzes'), t('free_stats')],
       cta: t('cta_start'),
@@ -20,9 +40,9 @@ export function Pricing() {
       variant: 'outline' as const,
     },
     {
-      name: 'Premium',
-      price: '$9.99',
-      period: '/month',
+      name: t('pricing_premium_name'),
+      price: price(premium),
+      period: premium ? pt('period_month') : '',
       desc: t('pricing_premium_desc'),
       features: [
         t('free_questions'),
@@ -33,26 +53,28 @@ export function Pricing() {
         t('ai_generate_flashcards'),
         t('ai_exam_sim'),
       ],
-      cta: 'Start Premium Trial',
+      cta: t('pricing_premium_cta'),
       href: '/register',
       variant: 'default' as const,
       popular: true,
     },
     {
-      name: 'University',
-      price: 'Custom',
-      period: '',
+      name: t('pricing_university_name'),
+      price: organizationFrom
+        ? t('pricing_from', { price: formatPlanPrice(organizationFrom, locale) })
+        : NO_PRICE,
+      period: organizationFrom ? pt('period_month') : '',
       desc: t('pricing_university_desc'),
       features: [
-        'Everything in Premium',
-        'Organization management',
-        'Role-based access',
-        'Bulk invitations',
-        'University analytics',
-        'Dedicated support',
+        t('pricing_university_feature_premium'),
+        t('pricing_university_feature_management'),
+        t('pricing_university_feature_roles'),
+        t('pricing_university_feature_invites'),
+        t('pricing_university_feature_analytics'),
+        t('pricing_university_feature_support'),
       ],
-      cta: 'Contact Sales',
-      href: '/pricing',
+      cta: t('pricing_contact_cta'),
+      href: '/contact',
       variant: 'outline' as const,
     },
   ];
@@ -67,11 +89,13 @@ export function Pricing() {
         <div className="grid sm:grid-cols-3 gap-6">
           {plans.map((plan) => (
             <Card
-              key={plan.name}
+              key={plan.href + plan.name}
               className={plan.popular ? 'border-primary shadow-lg relative' : 'border-border/50'}
             >
               {plan.popular && (
-                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
+                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
+                  {pt('most_popular')}
+                </Badge>
               )}
               <CardHeader>
                 <CardTitle className="text-xl">{plan.name}</CardTitle>

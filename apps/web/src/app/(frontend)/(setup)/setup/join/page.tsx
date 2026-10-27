@@ -1,11 +1,13 @@
 'use client';
 
 import { Badge, Button, Card, Input, Label, OrgAvatar, Separator } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Loader2, ShieldAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 type VerifyState = 'idle' | 'verifying' | 'valid' | 'invalid';
 
@@ -19,13 +21,15 @@ interface InviteData {
 export default function JoinPage() {
   const t = useTranslations('SetupPage');
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [inviteCode, setInviteCode] = useState('');
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [verifyState, setVerifyState] = useState<VerifyState>('idle');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!inviteCode || inviteCode.length < 10) {
+    const code = inviteCode.trim();
+    if (!code) {
       setInviteData(null);
       setVerifyState('idle');
       return;
@@ -34,9 +38,7 @@ export default function JoinPage() {
     const timer = setTimeout(async () => {
       setVerifyState('verifying');
       try {
-        const res = await fetch(
-          `/api/v1/organization/invites?token=${encodeURIComponent(inviteCode)}`,
-        );
+        const res = await fetch(`/api/v1/organization/invites?token=${encodeURIComponent(code)}`);
         const result = await res.json();
         if (!res.ok || !result.success) {
           setVerifyState('invalid');
@@ -47,7 +49,7 @@ export default function JoinPage() {
             organizationName: result.data.organizationName,
             organizationId: result.data.organizationId,
             orgRoleName: result.data.orgRoleName,
-            token: inviteCode,
+            token: code,
           });
         }
       } catch {
@@ -68,7 +70,28 @@ export default function JoinPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: inviteData.token }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).
+        if (err.error === 'USAGE_LIMIT_EXCEEDED' || err.error === 'ERROR_USAGE_LIMIT_EXCEEDED') {
+          toast.error(t('org_full'));
+          return;
+        }
+        throw new Error();
+      }
+      // #310: the accept route made this org active (the `active_org_id` cookie is
+      // set), but `['orgs']` still holds the empty list cached at login. Without
+      // this, `/edu` sees zero orgs and bounces back to `/setup`.
+      // `refetchType: 'all'` is still required: the inactive cache entry must be
+      // refetched, and the caller may leave this screen before a default
+      // `active`-only refetch runs. A `useOrgs()` observer (setup header/chooser)
+      // may or may not be mounted here.
+      await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
+      // Permission scopes, plan features and question reports are resolved from the
+      // active org and cached. They are only marked stale here and refetch on mount.
+      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
       router.push('/edu');
     } catch {
       toast.error(t('join_failed'));

@@ -1,5 +1,6 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
   Badge,
   Button,
@@ -15,14 +16,17 @@ import {
 import { Lock } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPut, apiUploadFile } from '@/lib/api';
+import { isDraftSaved, resolveBrandColor } from '@/lib/brand-color';
+import { formatDate } from '@/lib/datetime';
 
 interface OrganizationDetail {
   id: string;
@@ -57,7 +61,22 @@ function BrandingLockedCard({ onUpgrade }: { onUpgrade: () => void }) {
 
 export default function SettingsPage() {
   const t = useTranslations('ManageSettingsPage');
+  const locale = useLocale();
   const router = useRouter();
+  const { user } = useAuth();
+  // /me/plan resolves the active organization's plan first (personal plan only as fallback).
+  const { data: myPlan, isLoading: planLoading } = useApiQuery<PlanInfo>({
+    queryKey: ['me', 'plan'],
+    url: '/api/v1/me/plan',
+    enabled: !!user,
+  });
+  const { data: plans, isLoading: plansLoading } = useApiQuery<PlanInfo[]>({
+    queryKey: ['subscription-plans', 'active'],
+    url: '/api/v1/subscription-plans',
+  });
+  const planName = myPlan
+    ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name ?? myPlan.key)
+    : null;
   const { activeOrg } = useOrgs();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -80,11 +99,13 @@ export default function SettingsPage() {
     enabled: !!activeOrg?.id,
   });
 
-  const [brandColor, setBrandColor] = useState('#000000');
+  // The colour being picked; null until the user changes it (then the saved colour shows).
+  const [draftColor, setDraftColor] = useState<string | null>(null);
+  const displayColor = resolveBrandColor(draftColor, organization?.brand_color);
 
   useEffect(() => {
-    if (organization?.brand_color) setBrandColor(organization.brand_color);
-  }, [organization?.brand_color]);
+    if (isDraftSaved(draftColor, organization?.brand_color)) setDraftColor(null);
+  }, [draftColor, organization?.brand_color]);
 
   const updateColor = useApiMutation({
     mutationFn: (color: string) =>
@@ -115,14 +136,13 @@ export default function SettingsPage() {
 
   async function handleColorSave() {
     try {
-      await updateColor.mutateAsync(brandColor);
+      await updateColor.mutateAsync(displayColor);
       toast.success(t('color_updated'));
     } catch {
       toast.error(t('save_failed'));
     }
   }
 
-  const displayColor = organization?.brand_color ?? brandColor;
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">{t('title')}</h2>
@@ -149,9 +169,7 @@ export default function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t('created')}</p>
                 <p className="text-sm">
-                  {organization.created_at
-                    ? new Date(organization.created_at).toLocaleDateString()
-                    : '—'}
+                  {organization.created_at ? formatDate(organization.created_at, locale) : '—'}
                 </p>
               </div>
 
@@ -207,7 +225,7 @@ export default function SettingsPage() {
                       id="brand-color"
                       type="color"
                       value={displayColor}
-                      onChange={(e) => setBrandColor(e.target.value)}
+                      onChange={(e) => setDraftColor(e.target.value)}
                       className="h-9 w-16 p-1"
                     />
                     <span className="text-sm text-muted-foreground">{displayColor}</span>
@@ -231,9 +249,13 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            <Badge variant="default" className="text-sm px-3 py-1">
-              {t('basic_plan')}
-            </Badge>
+            {planLoading || plansLoading ? (
+              <Skeleton className="h-6 w-24" />
+            ) : planName ? (
+              <Badge variant="default" className="text-sm px-3 py-1">
+                {planName}
+              </Badge>
+            ) : null}
             <span className="text-sm text-muted-foreground">{t('managed_by_admins')}</span>
           </div>
         </CardContent>

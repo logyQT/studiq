@@ -28,10 +28,13 @@ import { useMemo } from 'react';
 import { OnboardingChecklist } from '@/components/app/onboarding-checklist';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
+import { studentStatsKeys } from '@/lib/query-keys';
+import { formatScorePercent } from '@/lib/stats';
 
 interface StudentStats {
   totalQuizzes: number;
-  avgScore: number;
+  /** `null` = no attempt had a gradable denominator yet (nothing to score, #619). */
+  avgScore: number | null;
   totalQuestionsCreated: number;
   flashcardsPracticed: number;
   flashcardAccuracy: number;
@@ -46,9 +49,13 @@ export default function AppOverviewPage() {
   const router = useRouter();
   const { user } = useAuth();
 
+  // Stats are derived from decks, cards, reviews and quiz attempts that many
+  // screens mutate, so refetch on every dashboard mount instead of serving the
+  // cached copy (#347). The checklist reads the same key and options.
   const { data: stats, isLoading } = useApiQuery<StudentStats>({
-    queryKey: ['stats', 'student'],
+    queryKey: studentStatsKeys.all,
     url: '/api/v1/stats/student',
+    staleTime: 0,
   });
 
   const todayStr = useMemo(
@@ -106,7 +113,7 @@ export default function AppOverviewPage() {
         />
         <StatCard
           title={t('avg_score')}
-          value={isLoading ? '...' : `${stats?.avgScore ?? 0}%`}
+          value={isLoading ? '...' : formatScorePercent(stats?.avgScore)}
           icon={Target}
           variant="emerald"
         />

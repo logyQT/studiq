@@ -15,10 +15,12 @@ import { QuestionFormDialog } from '@/components/questions/shared/question-form-
 import { QuestionTable } from '@/components/questions/shared/question-table';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface QuestionBankDetailScreenProps {
   bankId: string;
@@ -50,6 +52,9 @@ export function QuestionBankDetailScreen({
     queryFn: () => apiGet<QuestionBank>(`/api/v1/questions/banks/${bankId}`),
     staleTime: Infinity,
   });
+
+  // The bank name is the breadcrumb leaf; the raw bank UUID must never render.
+  useBreadcrumbLabel(bankId, bank?.name);
 
   const { data: questions = [], isLoading: questionsLoading } = useQuery({
     queryKey: questionKeys.list({ bankId }),
@@ -124,6 +129,7 @@ export function QuestionBankDetailScreen({
         <Button variant="ghost" size="icon" asChild>
           <Link href={`${basePath}`}>
             <ArrowLeft className="h-4 w-4" />
+            <SrLabel k="back" />
           </Link>
         </Button>
         <div className="flex-1">

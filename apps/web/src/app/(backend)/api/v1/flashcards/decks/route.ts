@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
     const query = {
       q: searchParams.get('q') ?? undefined,
       owner: searchParams.get('owner') ?? undefined,
+      groups: searchParams.get('groups') ?? undefined,
+      // Removed by #595: forwarded so the schema rejects the retired param with a 422.
       groupFilter: searchParams.get('groupFilter') ?? undefined,
       sortBy: searchParams.get('sortBy') ?? undefined,
       sortOrder: searchParams.get('sortOrder') ?? undefined,

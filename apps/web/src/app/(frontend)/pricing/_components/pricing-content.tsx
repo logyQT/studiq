@@ -10,6 +10,8 @@ import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
+import { getFeatureLabel, type PricingTranslator } from '@/lib/pricing-features';
+import { getVisibleLimitKeys } from '@/lib/pricing-limits';
 
 const PLAN_ID_MAP: Record<string, string | null> = {
   base: null,
@@ -41,39 +43,12 @@ const CTA_KEY_MAP: Record<string, string> = {
   campus: 'cta_campus',
 };
 
-const SORTED_LIMIT_KEYS = [
-  'max_flashcards',
-  'max_decks',
-  'max_questions',
-  'max_question_banks',
-  'max_quiz_attempts_per_day',
-  'max_ai_tokens_per_day',
-  'max_students',
-  'max_groups',
-  'max_storage_mb',
-];
-
-function getFeatureLabel(key: string, t: (k: string) => string): string {
-  const labels: Record<string, string> = {
-    flashcards: t('feature_flashcards'),
-    quiz: t('feature_quiz'),
-    ai: t('feature_ai'),
-    quiz_builder: t('feature_quiz_builder'),
-    documents: t('feature_documents'),
-    org_manage: t('feature_org_manage'),
-    advanced_stats: t('feature_advanced_stats'),
-    group_manage: t('feature_group_manage'),
-    member_manage: t('feature_member_manage'),
-    role_builder: t('feature_role_builder'),
-    branding: t('feature_branding'),
-  };
-  return labels[key] ?? key;
-}
-
-function formatLimitValue(key: string, value: number, t: (k: string) => string): string {
+function formatLimitValue(key: string, value: number, t: PricingTranslator): string {
   if (value === -1) return t('limit_unlimited');
   if (key === 'max_ai_tokens_per_day') {
-    return value >= 1000 ? `${(value / 1000).toLocaleString()}k / day` : `${value} / day`;
+    return t('limit_per_day', {
+      value: value >= 1000 ? `${(value / 1000).toLocaleString()}k` : String(value),
+    });
   }
   return value.toLocaleString();
 }
@@ -89,12 +64,16 @@ export function PlanCard({
   plan: PlanInfo;
   isCurrentPlan: boolean;
   user: unknown;
-  t: (key: string) => string;
+  t: PricingTranslator;
   accountType: string;
   /** Active organization; organization plans are bought for it. */
   orgId?: string;
 }) {
   const locale = useLocale();
+  const descKey = `plan_${plan.key}_desc`;
+  const description = t.has(descKey) ? t(descKey) : (plan.description ?? '');
+  const ctaKey = CTA_KEY_MAP[plan.key];
+  const ctaLabel = ctaKey && t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
   const popular =
     accountType === 'student'
       ? plan.key === 'ace'
@@ -120,14 +99,12 @@ export function PlanCard({
       <CardHeader className="pb-4">
         <CardTitle className="text-xl">{plan.name}</CardTitle>
         <p className="text-sm">
-          {t(`plan_${plan.key}_desc`)
-            .split(';')
-            .map((part, i) => (
-              <span key={i} className={i === 1 ? 'text-xs text-muted-foreground' : ''}>
-                {i > 0 && <br />}
-                {part}
-              </span>
-            ))}
+          {description.split(';').map((part, i) => (
+            <span key={i} className={i === 1 ? 'text-xs text-muted-foreground' : ''}>
+              {i > 0 && <br />}
+              {part}
+            </span>
+          ))}
         </p>
       </CardHeader>
       <CardContent className="flex flex-col flex-1">
@@ -161,11 +138,11 @@ export function PlanCard({
             orgId={plan.forAccountType === 'manager' ? orgId : undefined}
             className="w-full"
           >
-            {t(CTA_KEY_MAP[plan.key] as any)}
+            {ctaLabel}
           </CheckoutButton>
         ) : (
           <Button className="w-full" variant={popular ? 'default' : 'outline'} asChild>
-            <Link href={user ? '/app' : '/register'}>{t(CTA_KEY_MAP[plan.key] as any)}</Link>
+            <Link href={user ? '/app' : '/register'}>{ctaLabel}</Link>
           </Button>
         )}
       </CardContent>
@@ -183,9 +160,13 @@ export function PricingContent({ accountType }: { accountType: string }) {
     url: `/api/v1/subscription-plans?for=${accountType}`,
   });
 
+  // Managers are the org's billing contact: their current plan is the active
+  // organization's plan, the same `/me/plan` query `/manage/billing` uses (#228).
+  // Students/educators keep reading their own personal plan (#181).
+  const isManager = accountType === 'manager';
   const { data: currentPlan } = useApiQuery<PlanInfo>({
-    queryKey: ['me', 'personal-plan'],
-    url: '/api/v1/me/personal-plan',
+    queryKey: ['me', isManager ? 'plan' : 'personal-plan'],
+    url: isManager ? '/api/v1/me/plan' : '/api/v1/me/personal-plan',
     enabled: !!user,
   });
 
@@ -198,7 +179,7 @@ export function PricingContent({ accountType }: { accountType: string }) {
 
   const allFeatures = plans ? [...new Set(plans.flatMap((p) => p.features))].sort() : [];
 
-  const visibleLimitKeys = SORTED_LIMIT_KEYS.filter((lk) => plans?.some((p) => lk in p.limits));
+  const visibleLimitKeys = getVisibleLimitKeys(plans, accountType);
 
   return (
     <MainLayout>

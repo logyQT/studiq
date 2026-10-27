@@ -25,6 +25,9 @@ forEachCopy((copyId) => {
     let adminRoleId!: string;
     let memberRoleId!: string;
     let member!: TestUserFixture;
+    let foreignFixture!: BeforeResult;
+    let foreignOrgId!: string;
+    let foreignAdminRoleId!: string;
 
     beforeAll(async () => {
       fixture = await before({
@@ -51,6 +54,18 @@ forEachCopy((copyId) => {
         .eq('name', 'member')
         .single();
       memberRoleId = memberRole!.id;
+
+      // #189: a manager of a different org, used to prove a no-op delete/update
+      // is NOT_FOUND instead of a misleading 200.
+      foreignFixture = await before({ role: 'manager', org: true });
+      foreignOrgId = foreignFixture.orgId!;
+      const { data: foreignAdminRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', foreignOrgId)
+        .eq('name', 'admin')
+        .single();
+      foreignAdminRoleId = foreignAdminRole!.id;
     });
 
     beforeEach(() => {
@@ -61,6 +76,9 @@ forEachCopy((copyId) => {
     afterAll(async () => {
       if (orgId) {
         await cleanupOrganizationDeep(orgId);
+      }
+      if (foreignOrgId) {
+        await cleanupOrganizationDeep(foreignOrgId);
       }
     });
 
@@ -167,6 +185,45 @@ forEachCopy((copyId) => {
         expect(body.success).toBe(false);
       });
 
+      // #189: changeRole already returns NOT_FOUND for a 0-row update — this
+      // locks the cross-org case so a management endpoint never fakes success.
+      it('returns 404 for a manager of another org (#189)', async () => {
+        const target = await createTestUser({ role: 'student' });
+        await seedOrgMembership({
+          organizationId: orgId,
+          userId: target.id,
+          orgRoleId: memberRoleId,
+        });
+        mockUser(foreignFixture.user);
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/members',
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              targetUserId: target.id,
+              newOrgRoleId: foreignAdminRoleId,
+            }),
+          },
+          { active_org_id: foreignOrgId },
+        );
+
+        const response = await PUT(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+
+        const { data } = await createServiceClient()
+          .from('org_members')
+          .select('org_role_id')
+          .eq('organization_id', orgId)
+          .eq('user_id', target.id)
+          .single();
+        expect(data?.org_role_id).toBe(memberRoleId);
+      });
+
       it('returns 401 when not authenticated', async () => {
         mockUser(null);
 
@@ -256,6 +313,56 @@ forEachCopy((copyId) => {
           .eq('id', pool?.id as string)
           .single();
         expect(poolAfter?.assigned).toBe(0);
+      });
+
+      // #189: a 0-row delete used to answer {"success":true}. A foreign org's
+      // manager must get 404 and the target membership must be untouched.
+      it('returns 404 for a manager of another org and keeps the membership (#189)', async () => {
+        const supabase = createServiceClient();
+        const target = await createTestUser({ role: 'student' });
+        await seedOrgMembership({
+          organizationId: orgId,
+          userId: target.id,
+          orgRoleId: memberRoleId,
+        });
+
+        mockUser(foreignFixture.user);
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/members?userId=${target.id}`,
+          { method: 'DELETE' },
+          { active_org_id: foreignOrgId },
+        );
+
+        const response = await DELETE(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+
+        const { data } = await supabase
+          .from('org_members')
+          .select('user_id')
+          .eq('organization_id', orgId)
+          .eq('user_id', target.id);
+        expect(data).toEqual([{ user_id: target.id }]);
+      });
+
+      it('returns 404 when the target is not a member of the active org (#189)', async () => {
+        const stranger = await createTestUser({ role: 'student' });
+        mockUser(fixture.user);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/members?userId=${stranger.id}`,
+          { method: 'DELETE' },
+          { active_org_id: orgId },
+        );
+
+        const response = await DELETE(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('NOT_FOUND');
       });
 
       it('returns 400 when userId is empty', async () => {

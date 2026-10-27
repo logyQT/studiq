@@ -16,8 +16,9 @@ import {
 } from '@studiq/ui';
 import { ArrowLeft, Users } from 'lucide-react';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { formatDate } from '@/lib/datetime';
 
 type Member = {
   id: string;
@@ -29,6 +30,7 @@ type Member = {
 
 export default function ClassroomMembersPage() {
   const t = useTranslations('ClassroomMembersPage');
+  const locale = useLocale();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -86,9 +88,7 @@ export default function ClassroomMembersPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{member.email}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">
-                        {new Date(member.created_at).toLocaleDateString()}
-                      </Badge>
+                      <Badge variant="secondary">{formatDate(member.created_at, locale)}</Badge>
                     </TableCell>
                   </TableRow>
                 ))}

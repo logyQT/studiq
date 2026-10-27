@@ -1,5 +1,6 @@
 'use client';
 
+import { FEATURES } from '@studiq/authz';
 import {
   Button,
   Card,
@@ -13,6 +14,11 @@ import {
   DialogTitle,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Switch,
   Table,
   TableBody,
@@ -26,6 +32,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
+import { QueryError } from '@/app/(frontend)/components/query-error';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -60,7 +67,12 @@ export default function FeatureFlagsPage() {
   const tc = useTranslations('Common');
   const queryClient = useQueryClient();
 
-  const { data: flags = [], isLoading } = useQuery({
+  const {
+    data: flags = [],
+    error,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.featureFlags.all,
     queryFn: () => apiGet<FeatureFlag[]>('/feature-flags'),
   });
@@ -71,6 +83,16 @@ export default function FeatureFlagsPage() {
   const [deleteTarget, setDeleteTarget] = useState<FeatureFlag | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const existingKeys = new Set(flags.map((flag) => flag.key));
+  const missingKeys = FEATURES.filter((key) => !existingKeys.has(key));
+  const canCreate = !isLoading && !isError && missingKeys.length > 0;
+
+  function mapError(error: Error): string {
+    if (error.message === 'CONFLICT') return t('error_exists');
+    if (error.message === 'UNPROCESSABLE_ENTITY') return t('error_validation');
+    return t('save_failed', { code: error.message });
+  }
+
   const createMutation = useMutation({
     mutationFn: (data: FormData) => apiPost('/feature-flags', data),
     onSuccess: () => {
@@ -79,7 +101,7 @@ export default function FeatureFlagsPage() {
       setForm(EMPTY_FORM);
       setFormError(null);
     },
-    onError: (error: Error) => setFormError(t('save_failed', { code: error.message })),
+    onError: (error: Error) => setFormError(mapError(error)),
   });
 
   const updateMutation = useMutation({
@@ -98,7 +120,7 @@ export default function FeatureFlagsPage() {
       setForm(EMPTY_FORM);
       setFormError(null);
     },
-    onError: (error: Error) => setFormError(t('save_failed', { code: error.message })),
+    onError: (error: Error) => setFormError(mapError(error)),
   });
 
   const deleteMutation = useMutation({
@@ -111,7 +133,7 @@ export default function FeatureFlagsPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, key: missingKeys[0] ?? '' });
     setFormError(null);
     setDialogOpen(true);
   }
@@ -142,10 +164,15 @@ export default function FeatureFlagsPage() {
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-2" />
-          {t('create')}
-        </Button>
+        <div className="flex items-center gap-3">
+          {!isLoading && !isError && !canCreate && (
+            <span className="text-sm text-muted-foreground">{t('all_flags_exist')}</span>
+          )}
+          <Button onClick={openCreate} disabled={!canCreate}>
+            <Plus className="h-4 w-4 mr-2" />
+            {t('create')}
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -155,6 +182,8 @@ export default function FeatureFlagsPage() {
         <CardContent>
           {isLoading ? (
             <p className="text-muted-foreground">{tc('loading')}</p>
+          ) : isError ? (
+            <QueryError error={error} />
           ) : (
             <Table>
               <TableHeader>
@@ -205,7 +234,7 @@ export default function FeatureFlagsPage() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editing ? t('edit') : t('create')}</DialogTitle>
           </DialogHeader>
@@ -217,13 +246,28 @@ export default function FeatureFlagsPage() {
             )}
             <div className="space-y-2">
               <Label htmlFor="key">{t('col_key')}</Label>
-              <Input
-                id="key"
-                value={form.key}
-                onChange={(e) => setForm({ ...form, key: e.target.value })}
-                disabled={!!editing}
-                required
-              />
+              {editing ? (
+                <Input id="key" value={form.key} disabled />
+              ) : (
+                <Select
+                  value={form.key}
+                  onValueChange={(v) => {
+                    setForm({ ...form, key: v });
+                    setFormError(null);
+                  }}
+                >
+                  <SelectTrigger id="key">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {missingKeys.map((key) => (
+                      <SelectItem key={key} value={key} className="font-mono text-sm">
+                        {key}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="name">{t('col_name')}</Label>
@@ -264,7 +308,10 @@ export default function FeatureFlagsPage() {
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 {tc('cancel')}
               </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+              <Button
+                type="submit"
+                disabled={createMutation.isPending || updateMutation.isPending || !form.key}
+              >
                 {tc('save')}
               </Button>
             </DialogFooter>

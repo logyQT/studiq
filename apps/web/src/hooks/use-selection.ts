@@ -2,6 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+/**
+ * True when every id is selected. Ids that are selected but no longer listed (a filter or a
+ * reload changed the list) do not count against "all selected".
+ */
+export function isAllSelected<T extends string>(ids: readonly T[], selected: ReadonlySet<T>) {
+  return ids.length > 0 && ids.every((id) => selected.has(id));
+}
+
 export function useSelection<T extends string>() {
   const [selectedIds, setSelectedIds] = useState<Set<T>>(new Set());
   const [isSelecting, setIsSelecting] = useState(false);

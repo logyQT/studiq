@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -7,6 +7,7 @@ import type {
   CreateSubscriptionPlanInput,
   UpdateSubscriptionPlanInput,
 } from '@studiq/server/models/subscription-plan.model';
+import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface PlanInfo {
@@ -106,12 +107,35 @@ export class SubscriptionPlanService {
     );
   }
 
+  /**
+   * The caller's current plan.
+   *
+   * A student's/educator's seat assignment in the active org is the entitlement
+   * they actually hold: `LimitsResolver` resolves limits from the seat plan only
+   * and `FeatureResolver` adds the seat plan's features, so the plan page shows
+   * that same seat plan (#270). Without a seat, a student's/educator's
+   * `active_org_id` membership must not replace their own plan with the
+   * organization's (#181).
+   *
+   * Organization plans (`subscription_plans.for_account_type = 'manager'`) belong
+   * to managers; they resolve the active org's plan and fall back to their
+   * personal plan when no org plan is available. An organization purchase
+   * changes only `organizations.plan`: it never writes the buyer's personal plan
+   * (#228), so the fallback is the manager's own free `launch` tier.
+   */
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.createClient();
 
     let planKey: string | null = null;
 
-    if (ctx.activeOrgId) {
+    // Seated member (student/educator): the seat plan is the effective plan.
+    // Managers keep resolving the org plan because they are the org's billing
+    // contact (#181).
+    if (ctx.activeOrgId && ctx.accountType !== AccountType.MANAGER) {
+      planKey = await getSeatPlanKey(ctx, supabase);
+    }
+
+    if (!planKey && ctx.activeOrgId && ctx.accountType === AccountType.MANAGER) {
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .select('plan')
@@ -123,7 +147,8 @@ export class SubscriptionPlanService {
     }
 
     if (!planKey) {
-      // Fall back to personal plan for standalone users
+      // Unseated non-managers (and managers without an org plan) use their
+      // personal plan.
       const { data: profile } = await supabase
         .from('profiles')
         .select('personal_plan_key')
@@ -164,6 +189,16 @@ export class SubscriptionPlanService {
     );
   }
 
+  /**
+   * The caller's personal plan (`profiles.personal_plan_key`).
+   *
+   * Managers have no paid personal plan (#228): an organization purchase never
+   * writes the buyer's personal plan, and a manager's personal plan is the free
+   * `launch` tier used only outside an organization. Rows written by checkout
+   * before that invariant existed may still hold a paid organization plan; they
+   * are reported as the free manager plan instead of the org plan they were
+   * copied from.
+   */
   async getPersonalPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.createClient();
 
@@ -176,14 +211,37 @@ export class SubscriptionPlanService {
     const planKey = profile?.personal_plan_key;
     if (!planKey) return failure('NOT_FOUND');
 
-    const { data: plan, error: planError } = await supabase
+    const { data: storedPlan, error: planError } = await supabase
       .from('subscription_plans')
       .select('*')
       .eq('key', planKey)
       .maybeSingle();
 
     if (planError) return toDbFailure(planError);
-    if (!plan) return failure('NOT_FOUND');
+    if (!storedPlan) return failure('NOT_FOUND');
+
+    // A manager's personal plan is never an organization plan (#228). Legacy
+    // rows that still point at a paid manager plan resolve to the free manager
+    // tier (`launch` in the seed catalog) instead of the org plan they were
+    // copied from. Everyone else gets the stored plan verbatim.
+    let plan = storedPlan;
+    const isPaidOrgPlan =
+      storedPlan.for_account_type === 'manager' && (storedPlan.price_monthly ?? 0) > 0;
+    if (ctx.accountType === AccountType.MANAGER && isPaidOrgPlan) {
+      const { data: freeManagerPlan, error: freePlanError } = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .eq('for_account_type', 'manager')
+        .eq('price_monthly', 0)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (freePlanError) return toDbFailure(freePlanError);
+      if (!freeManagerPlan) return failure('NOT_FOUND');
+      plan = freeManagerPlan;
+    }
 
     const { data: planFeatures, error: pfError } = await supabase
       .from('plan_features')
@@ -343,7 +401,13 @@ export class SubscriptionPlanService {
 
     const { error } = await supabase.from('subscription_plans').delete().eq('id', id);
 
-    if (error) return toDbFailure(error);
+    if (error) {
+      // profiles.personal_plan_key / organizations.plan still reference this key
+      // (both FKs are NO ACTION), so the DB rejects the delete. Report it as a
+      // conflict instead of a generic bad request so the admin knows why.
+      if (error.code === '23503') return failure('CONFLICT');
+      return toDbFailure(error);
+    }
 
     return success({ success: true });
   }

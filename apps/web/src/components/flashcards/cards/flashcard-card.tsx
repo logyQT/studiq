@@ -14,7 +14,9 @@ import { MoreVertical } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { FlashcardContextMenu } from '@/components/flashcards/context-menus/flashcard-context-menu';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { getTopicColorHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface FlashcardCardProps {
   fc: Flashcard;
@@ -35,6 +37,15 @@ interface FlashcardCardProps {
   onManageTopics: (fc: Flashcard) => void;
   onViewByTopic: (fc: Flashcard, topicId: string) => void;
 }
+
+// Compact list preview: flatten heading sizes/margins so a `#` heading doesn't blow up the card.
+const COMPACT_MD =
+  '[&_:is(h1,h2,h3,h4,h5,h6)]:text-[length:inherit] [&_:is(h1,h2,h3,h4,h5,h6)]:mt-0 [&_:is(h1,h2,h3,h4,h5,h6)]:mb-0';
+
+// Links open in a new tab; don't let their clicks also toggle card selection.
+const stopLinkClick = (e: React.MouseEvent) => {
+  if ((e.target as HTMLElement).closest('a')) e.stopPropagation();
+};
 
 export const FlashcardCard = memo(function FlashcardCard({
   fc,
@@ -73,17 +84,22 @@ export const FlashcardCard = memo(function FlashcardCard({
       <div className="sm:hidden px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            {selectable && (
-              <Checkbox
-                checked={selected}
-                onCheckedChange={() => onToggleSelect?.(fc.id)}
-                className="h-4 w-4 mr-2 align-middle inline-block"
-                onClick={(e) => e.stopPropagation()}
-              />
-            )}
-            <span className="text-sm font-semibold text-foreground truncate min-w-0 inline-block align-middle">
-              {fc.front}
-            </span>
+            <div className="flex items-center">
+              {selectable && (
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={() => onToggleSelect?.(fc.id)}
+                  className="h-4 w-4 mr-2 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              )}
+              <div
+                className="text-sm font-semibold text-foreground min-w-0 max-h-[1lh] overflow-hidden"
+                onClick={stopLinkClick}
+              >
+                <MarkdownRenderer content={fc.front} className={COMPACT_MD} />
+              </div>
+            </div>
           </div>
           {!selectable && (
             <DropdownMenu>
@@ -95,6 +111,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreVertical className="h-3 w-3" />
+                  <SrLabel k="more_actions_flashcard" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -128,7 +145,12 @@ export const FlashcardCard = memo(function FlashcardCard({
         {/* Clean Separator line */}
         <div className="my-1.5 border-t border-border/50" />
 
-        <p className="text-sm text-muted-foreground/90 line-clamp-2">{fc.back}</p>
+        <div
+          className="text-sm text-muted-foreground/90 max-h-[2lh] overflow-hidden"
+          onClick={stopLinkClick}
+        >
+          <MarkdownRenderer content={fc.back} className={COMPACT_MD} />
+        </div>
 
         {fcTopics.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
@@ -170,6 +192,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreVertical className="h-3 w-3" />
+                  <SrLabel k="more_actions_flashcard" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -201,14 +224,24 @@ export const FlashcardCard = memo(function FlashcardCard({
         )}
 
         <div className="min-w-0 pr-6">
-          <p className="text-base font-semibold text-foreground truncate">{fc.front}</p>
+          <div
+            className="text-base font-semibold text-foreground max-h-[1lh] overflow-hidden"
+            onClick={stopLinkClick}
+          >
+            <MarkdownRenderer content={fc.front} className={COMPACT_MD} />
+          </div>
         </div>
 
         {/* Clean Separator line */}
         <div className="my-2 border-t border-border/50" />
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-muted-foreground/90 line-clamp-3">{fc.back}</p>
+          <div
+            className="text-sm text-muted-foreground/90 max-h-[3lh] overflow-hidden"
+            onClick={stopLinkClick}
+          >
+            <MarkdownRenderer content={fc.back} className={COMPACT_MD} />
+          </div>
         </div>
 
         {fcTopics.length > 0 && (

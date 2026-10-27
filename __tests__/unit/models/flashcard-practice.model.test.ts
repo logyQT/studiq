@@ -1,4 +1,7 @@
-import { LogPracticeSchema } from '@studiq/server/models/flashcard-practice.model';
+import {
+  BatchPracticeSchema,
+  LogPracticeSchema,
+} from '@studiq/server/models/flashcard-practice.model';
 import { describe, expect, it } from 'vitest';
 
 describe('LogPracticeSchema', () => {
@@ -55,6 +58,44 @@ describe('LogPracticeSchema', () => {
       wasCorrect: true,
       sessionId: 'not-a-uuid',
     });
+    expect(result.success).toBe(false);
+  });
+
+  it('defaults mode to "review" when omitted (#617)', () => {
+    const result = LogPracticeSchema.safeParse({ wasCorrect: true });
+    expect(result.success).toBe(true);
+    expect(result.data?.mode).toBe('review');
+  });
+
+  it('accepts the cram mode (#617)', () => {
+    const result = LogPracticeSchema.safeParse({ wasCorrect: true, mode: 'cram' });
+    expect(result.success).toBe(true);
+    expect(result.data?.mode).toBe('cram');
+  });
+
+  it('rejects an unknown mode (#617)', () => {
+    const result = LogPracticeSchema.safeParse({ wasCorrect: true, mode: 'bogus' });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('BatchPracticeSchema', () => {
+  const items = [{ flashcardId: '550e8400-e29b-41d4-a716-446655440000', wasCorrect: true }];
+
+  it('defaults mode to "review" when omitted (#617)', () => {
+    const result = BatchPracticeSchema.safeParse({ items });
+    expect(result.success).toBe(true);
+    expect(result.data?.mode).toBe('review');
+  });
+
+  it('accepts the cram mode (#617)', () => {
+    const result = BatchPracticeSchema.safeParse({ items, mode: 'cram' });
+    expect(result.success).toBe(true);
+    expect(result.data?.mode).toBe('cram');
+  });
+
+  it('rejects an unknown mode (#617)', () => {
+    const result = BatchPracticeSchema.safeParse({ items, mode: 'bogus' });
     expect(result.success).toBe(false);
   });
 });

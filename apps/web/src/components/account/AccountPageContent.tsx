@@ -13,20 +13,25 @@ import {
   UserAvatar,
 } from '@studiq/ui';
 import { Loader2, Lock, Mail, PenLine, User } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
-import { apiPost, apiPut } from '@/lib/api';
+import { ApiError, apiPost, apiPut, getFieldErrorCode, getFieldErrorCodes } from '@/lib/api';
+import { formatDate } from '@/lib/datetime';
 
 export function AccountPageContent() {
   const t = useTranslations('AccountPage');
   const tErr = useTranslations('Errors');
-  const { user } = useAuth();
+  const locale = useLocale();
+  const { user, refresh } = useAuth();
   const { activeOrg } = useOrgs();
 
-  const [name, setName] = useState(user?.user_metadata?.name || '');
+  // `null` until the user edits, so the field follows the stored name as it loads (hard reload)
+  // without overwriting what has been typed.
+  const [draftName, setDraftName] = useState<string | null>(null);
+  const name = draftName ?? user?.user_metadata?.name ?? '';
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -35,7 +40,7 @@ export function AccountPageContent() {
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || '';
   const role = (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) as string;
-  const createdAt = user?.created_at ? new Date(user.created_at).toLocaleDateString() : '';
+  const createdAt = user?.created_at ? formatDate(user.created_at, locale) : '';
 
   async function handleSaveName() {
     if (!name.trim() || name === user?.user_metadata?.name) return;
@@ -43,8 +48,13 @@ export function AccountPageContent() {
     try {
       await apiPut('/api/v1/auth/profile', { name: name.trim() });
       toast.success(t('name_saved'));
-    } catch {
-      toast.error(t('name_saved'));
+      await refresh();
+      setDraftName(null);
+    } catch (err) {
+      const validationCode = getFieldErrorCode(err, 'name');
+      toast.error(
+        validationCode && tErr.has(validationCode) ? tErr(validationCode) : t('name_update_failed'),
+      );
     } finally {
       setIsSavingName(false);
     }
@@ -72,10 +82,17 @@ export function AccountPageContent() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
-      const code = err instanceof Error ? err.message : '';
-      if (code === 'INVALID_CURRENT_PASSWORD') {
+      // The API returns every violated password rule in `issues.properties.password.errors`;
+      // surface them so the user knows what to fix instead of a generic failure.
+      const reasons = getFieldErrorCodes(err, 'password')
+        .filter((code) => tErr.has(code))
+        .map((code) => tErr(code));
+
+      if (reasons.length > 0) {
+        toast.error(reasons.join(' '));
+      } else if (err instanceof ApiError && err.code === 'INVALID_CURRENT_PASSWORD') {
         toast.error(t('invalid_current_password'));
-      } else if (code === 'RATE_LIMITED') {
+      } else if (err instanceof ApiError && err.code === 'RATE_LIMITED') {
         toast.error(t('too_many_attempts'));
       } else {
         toast.error(t('password_update_failed'));
@@ -131,7 +148,7 @@ export function AccountPageContent() {
                 <Input
                   id="name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => setDraftName(e.target.value)}
                   className="pl-9"
                 />
               </div>
@@ -140,7 +157,7 @@ export function AccountPageContent() {
                 disabled={isSavingName || !name.trim() || name === user?.user_metadata?.name}
               >
                 {isSavingName && <Loader2 className="size-4 mr-2 animate-spin" />}
-                {isSavingName ? t('saving') : 'Save'}
+                {isSavingName ? t('saving') : t('save_name')}
               </Button>
             </div>
           </div>
@@ -202,8 +219,12 @@ export function AccountPageContent() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="pl-9"
+                aria-describedby="password-requirements"
               />
             </div>
+            <p id="password-requirements" className="text-muted-foreground text-xs">
+              {t('password_requirements')}
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">{t('confirm_password')}</Label>

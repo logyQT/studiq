@@ -65,7 +65,38 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     await expect(page.locator('#role-1')).toHaveText(roleLabel);
 
     await page.locator('#email-1').fill('qa-admin-default@example.com');
-    await page.getByRole('button', { name: t('ManageInvitationsPage.send_invitations') }).click();
+
+    // MGR-INV-02: an e-mail without a role used to be dropped silently and the
+    // remaining rows were reported as a clean success. Now the row is named
+    // inline and the send is blocked.
+    await expect(page.locator('#row-error-1')).toHaveText(
+      /Wiersz 2: wybierz rolę\.|Row 2: choose a role\./i,
+    );
+    await expect(page.locator('#role-1')).toHaveAttribute('aria-invalid', 'true');
+
+    const sendButton = page.getByRole('button', {
+      name: t('ManageInvitationsPage.send_invitations'),
+    });
+    await expect(sendButton).toBeDisabled();
+
+    // Even a forced click must not reach the API while the batch is incomplete.
+    await sendButton.click({ force: true });
+    expect(bulkRequests).toBe(0);
+  });
+
+  test('an all-blank form still reports no_invites instead of a row error', async ({ page }) => {
+    let bulkRequests = 0;
+    page.on('request', (req) => {
+      if (req.url().includes(BULK_INVITES_URL)) bulkRequests += 1;
+    });
+
+    await expect(page.locator('#row-error-0')).toHaveCount(0);
+
+    const sendButton = page.getByRole('button', {
+      name: t('ManageInvitationsPage.send_invitations'),
+    });
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
 
     await expect(page.getByText(t('ManageInvitationsPage.no_invites'))).toBeVisible();
     expect(bulkRequests).toBe(0);
@@ -84,14 +115,14 @@ test.describe('Manage invitations — role defaults (#241)', () => {
         body: JSON.stringify({
           success: true,
           statusCode: 200,
-          data: { results: [{ success: true }] },
+          data: { results: [{ email: 'qa-role-reset@example.com', success: true }] },
         }),
       });
     });
 
     await page.locator('#email-0').fill('qa-role-reset@example.com');
     await page.locator('#role-0').click();
-    await page.getByRole('option', { name: 'member', exact: true }).click();
+    await page.getByRole('option', { name: 'Student', exact: true }).click();
 
     // Await the intercepted POST before asserting the reset state, so the
     // assertion can't race the request.
@@ -112,5 +143,75 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     // Regression: the reset row used to be re-seeded with the first role (admin).
     await expect(page.locator('#email-0')).toHaveValue('');
     await expect(page.locator('#role-0')).toHaveText(roleLabel);
+  });
+
+  // MGR-INV-02: „Wyniki” used to render unattributed status badges, so a manager
+  // could not tell which entered address a result belonged to.
+  test('every „Wyniki” row names the e-mail it belongs to', async ({ page }) => {
+    const emails = ['qa-results-a@example.com', 'qa-results-b@example.com'];
+
+    await page.route(`**${BULK_INVITES_URL}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          statusCode: 200,
+          data: {
+            results: emails.map((email, index) => ({
+              email,
+              success: true,
+              data: {
+                success: true,
+                invitationId: `inv-${index}`,
+                inviteLink: `http://localhost:3000/join?token=token-${index}`,
+                inviteCode: `code-${index}`,
+              },
+            })),
+          },
+        }),
+      });
+    });
+
+    for (const [index, email] of emails.entries()) {
+      if (index > 0) {
+        await page.getByRole('button', { name: t('ManageInvitationsPage.add_member') }).click();
+      }
+      await page.locator(`#email-${index}`).fill(email);
+      await page.locator(`#role-${index}`).click();
+      await page.getByRole('option', { name: 'Student', exact: true }).click();
+    }
+
+    await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes(BULK_INVITES_URL) && res.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: t('ManageInvitationsPage.send_invitations') }).click(),
+    ]);
+
+    // Each address is rendered once and its own row carries the status/actions.
+    for (const [index, email] of emails.entries()) {
+      const emailCell = page.getByText(email, { exact: true });
+      await expect(emailCell).toHaveCount(1);
+
+      // Row is anchored by a test id, not by DOM nesting depth, so wrapping the
+      // e-mail + code in a sub-div cannot silently break this guard again.
+      const row = page.getByTestId('invite-result-row').filter({ hasText: email });
+      await expect(row).toHaveCount(1);
+
+      await expect(row).toContainText(t('ManageInvitationsPage.success'));
+      await expect(row).toContainText(`code-${index}`);
+      await expect(
+        row.getByRole('button', { name: t('ManageInvitationsPage.copy_code') }),
+      ).toBeVisible();
+      await expect(
+        row.getByRole('button', { name: t('ManageInvitationsPage.copy_link') }),
+      ).toBeVisible();
+    }
+
+    // Rows keep the submitted order, so address ↔ result is unambiguous.
+    const firstEmail = await page.getByText(emails[0], { exact: true }).boundingBox();
+    const secondEmail = await page.getByText(emails[1], { exact: true }).boundingBox();
+    expect(firstEmail!.y).toBeLessThan(secondEmail!.y);
   });
 });

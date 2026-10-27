@@ -167,6 +167,7 @@ forEachCopy((copyId) => {
       expect(callbackRes.status).toBe(307);
       expect(callbackRes.headers.get('location')).toBe('http://localhost/login');
       expect(callbackRes.headers.get('set-cookie')).toContain(`active_org_id=${orgId}`);
+      expect(callbackRes.headers.get('x-trace-id')).toMatch(/^[0-9a-f]{32}$/);
 
       const { data: accepted } = await supabase
         .from('invitations')
@@ -339,6 +340,7 @@ forEachCopy((copyId) => {
       // Activation still redirects (login is not blocked), just without an org.
       expect(callbackRes.status).toBe(307);
       expect(callbackRes.headers.get('set-cookie')).toBeNull();
+      expect(callbackRes.headers.get('x-trace-id')).toMatch(/^[0-9a-f]{32}$/);
 
       const { data: accepted } = await supabase
         .from('invitations')

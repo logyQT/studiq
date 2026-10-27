@@ -34,10 +34,12 @@ import {
   UserAvatar,
 } from '@studiq/ui';
 import { Search, Shield, UserMinus } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { formatDate } from '@/lib/datetime';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface GroupInfo {
   id: string;
@@ -69,6 +71,7 @@ interface OrgRole {
 
 export default function MembersPage() {
   const t = useTranslations('ManageMembersPage');
+  const locale = useLocale();
   const { user } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
@@ -257,14 +260,14 @@ export default function MembersPage() {
           />
         </div>
         <Select value={filterRole} onValueChange={setFilterRole}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" aria-label={t('role_filter')}>
             <SelectValue placeholder={t('role_filter')} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t('all_roles')}</SelectItem>
-            {['teacher', 'member'].map((r) => (
-              <SelectItem key={r} value={r}>
-                {t(`role_${r}`)}
+            {roles.map((r) => (
+              <SelectItem key={r.id} value={r.name}>
+                {r.displayName ?? r.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -295,7 +298,9 @@ export default function MembersPage() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <span className="text-sm text-muted-foreground">{m.orgRoleName}</span>
+                  <span data-testid="member-role" className="text-sm text-muted-foreground">
+                    {roles.find((r) => r.name === m.orgRoleName)?.displayName ?? m.orgRoleName}
+                  </span>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
@@ -311,7 +316,7 @@ export default function MembersPage() {
                   </div>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {new Date(m.created_at).toLocaleDateString()}
+                  {formatDate(m.created_at, locale)}
                 </TableCell>
                 <TableCell className="text-right">
                   {m.id === user?.id ? (
@@ -342,6 +347,7 @@ export default function MembersPage() {
                       </Select>
                       <Button variant="ghost" size="icon" onClick={() => setRemoveId(m.id)}>
                         <UserMinus className="h-4 w-4 text-destructive" />
+                        <SrLabel k="remove_member" values={{ name: m.full_name || m.email }} />
                       </Button>
                     </div>
                   )}
@@ -395,7 +401,7 @@ export default function MembersPage() {
       </AlertDialog>
 
       <Dialog open={!!managingMember} onOpenChange={(o) => !o && setManagingMember(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader>
             <DialogTitle>
               {t('manage_groups_title', {

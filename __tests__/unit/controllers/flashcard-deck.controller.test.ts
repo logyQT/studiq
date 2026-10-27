@@ -4,7 +4,14 @@ import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return { create: vi.fn(), list: vi.fn(), getById: vi.fn(), update: vi.fn(), delete: vi.fn() };
+  return {
+    create: vi.fn(),
+    list: vi.fn(),
+    getById: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    bulkCreate: vi.fn(),
+  };
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -58,6 +65,53 @@ describe('FlashcardDeckController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
       expect((response as any).error).toBe('INTERNAL_SERVER');
+    });
+
+    // #361 — a whitespace-only name is empty, and never reaches the service.
+    it('returns UNPROCESSABLE_ENTITY for a whitespace-only name', async () => {
+      const response = await controller.create({ name: '   ' }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).details[0].path).toEqual(['name']);
+      expect((response as any).details[0].message).toBe('VALIDATION_REQUIRED');
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+
+    it('trims a padded name before calling the service', async () => {
+      mockService.create.mockResolvedValueOnce(success({ id: 'd-1', name: 'Deck' }));
+
+      const response = await controller.create({ name: '  Deck  ' }, mockCtx);
+
+      expect(response.success).toBe(true);
+      expect(mockService.create).toHaveBeenCalledWith({ name: 'Deck' }, mockCtx);
+    });
+
+    // #139 — group visibility requires at least one group to share to.
+    it('returns UNPROCESSABLE_ENTITY for a group deck with an empty groupIds list', async () => {
+      const response = await controller.create(
+        { name: 'Study Deck', visibility: 'group', groupIds: [] },
+        mockCtx,
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).details[0].path).toEqual(['groupIds']);
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+
+    it('returns UNPROCESSABLE_ENTITY for a group deck with no groupIds field', async () => {
+      const response = await controller.create(
+        { name: 'Study Deck', visibility: 'group' },
+        mockCtx,
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(mockService.create).not.toHaveBeenCalled();
     });
   });
 
@@ -137,6 +191,17 @@ describe('FlashcardDeckController', () => {
       expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
+    // #361 — a whitespace-only name is empty, and never reaches the service.
+    it('returns UNPROCESSABLE_ENTITY for a whitespace-only name', async () => {
+      const response = await controller.update('d-1', { name: '   ' }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).details[0].path).toEqual(['name']);
+      expect(mockService.update).not.toHaveBeenCalled();
+    });
+
     it('returns FORBIDDEN when service returns failure', async () => {
       mockService.update.mockResolvedValueOnce(failure('FORBIDDEN'));
 
@@ -155,6 +220,28 @@ describe('FlashcardDeckController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
       expect((response as any).error).toBe('INTERNAL_SERVER');
+    });
+  });
+
+  describe('bulkCreate', () => {
+    it('returns success when service bulk creates successfully', async () => {
+      const created = [{ id: 'd-1', name: 'Deck' }];
+      mockService.bulkCreate.mockResolvedValueOnce(success(created));
+
+      const response = await controller.bulkCreate({ decks: [{ name: 'Deck' }] }, mockCtx);
+
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(201);
+      expect(mockService.bulkCreate).toHaveBeenCalledWith({ decks: [{ name: 'Deck' }] }, mockCtx);
+    });
+
+    it('returns UNPROCESSABLE_ENTITY for a whitespace-only name', async () => {
+      const response = await controller.bulkCreate({ decks: [{ name: '   ' }] }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(mockService.bulkCreate).not.toHaveBeenCalled();
     });
   });
 

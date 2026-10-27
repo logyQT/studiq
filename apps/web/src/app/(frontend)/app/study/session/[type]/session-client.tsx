@@ -16,12 +16,14 @@ import {
 import { ArrowLeft, Brain, Check, Loader2, Minus, X, Zap } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlashcardFlip } from '@/components/flashcards/flashcard-flip';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
 import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import { applyCramAction, cramActionForRating } from '@/lib/cram-queue';
+import { formatDateTime } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
 
 interface Flashcard {
@@ -140,6 +142,7 @@ interface SessionClientProps {
 
 export default function SessionClient(props: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
+  const locale = useLocale();
   const router = useRouter();
 
   const config =
@@ -159,7 +162,7 @@ export default function SessionClient(props: SessionClientProps) {
   const topicIds = useMemo(() => props.topics?.split(',').filter(Boolean) ?? [], [props.topics]);
 
   const sessionIdRef = useRef<string>(generateUUID());
-  const [startedAt] = useState(() => Date.now());
+  const [startedAt, setStartedAt] = useState(() => Date.now());
   const processingRef = useRef(false);
   const answeredCountRef = useRef(0);
   const pendingUpdatesRef = useRef<
@@ -169,6 +172,12 @@ export default function SessionClient(props: SessionClientProps) {
   const leechedCardIdsRef = useRef<Set<string>>(new Set());
   const [suspendedIds, setSuspendedIds] = useState<Set<string>>(new Set());
   const [cards, setCards] = useState<Flashcard[]>([]);
+  /**
+   * Cram's working queue, consumed from the front. `cards` stays the immutable
+   * shuffled deck (also the "deck loaded / non-empty" source) so that
+   * „Wkuj ponownie" can rebuild the queue without re-fetching (#617).
+   */
+  const [cramQueue, setCramQueue] = useState<Flashcard[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,8 +202,16 @@ export default function SessionClient(props: SessionClientProps) {
   >(null);
 
   useEffect(() => {
+    if (isCram && !props.deckId) router.replace('/app/study/cram');
+  }, [isCram, props.deckId, router]);
+
+  useEffect(() => {
     let cancelled = false;
     const fetchInitial = async () => {
+      // `/app/study/session/cram` without a deck has no queue to cram. The
+      // redirect effect above sends the user to the deck picker; returning here
+      // keeps the loader up (and avoids loading due cards in cram mode).
+      if (isCram && !props.deckId) return;
       setLoading(true);
       setError(null);
       try {
@@ -206,8 +223,9 @@ export default function SessionClient(props: SessionClientProps) {
           }
           const body = await res.json();
           if (cancelled) return;
-          const mapped = mapCards(body.data);
-          setCards(shuffleArray(mapped));
+          const shuffled = shuffleArray(mapCards(body.data));
+          setCards(shuffled);
+          setCramQueue(shuffled);
           setHasMore(false);
         } else {
           const params = new URLSearchParams();
@@ -244,7 +262,7 @@ export default function SessionClient(props: SessionClientProps) {
     [cards, suspendedIds],
   );
 
-  const currentCard = visibleCards[currentIndex] ?? null;
+  const currentCard = isCram ? (cramQueue[0] ?? null) : (visibleCards[currentIndex] ?? null);
   const cardState = useMemo(() => getCardStateInfo(currentCard, t), [currentCard, t]);
 
   const fetchDueCards = useCallback(async (): Promise<Flashcard[]> => {
@@ -272,6 +290,9 @@ export default function SessionClient(props: SessionClientProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Request-level mode (#617): cram is side-effect-free server-side, so
+          // the request stays (defence in depth) but writes nothing.
+          mode,
           items: batch.map((b) => ({ ...b, sessionId: sessionIdRef.current })),
         }),
       });
@@ -291,7 +312,7 @@ export default function SessionClient(props: SessionClientProps) {
     } catch {
       pendingUpdatesRef.current.unshift(...batch);
     }
-  }, []);
+  }, [mode]);
 
   const showLeechDialog = useCallback((cardId: string): Promise<'suspend' | 'keep'> => {
     return new Promise((resolve) => {
@@ -388,17 +409,6 @@ export default function SessionClient(props: SessionClientProps) {
       return;
     }
 
-    if (isCram) {
-      const anyUnsuspended = visibleCards.some((c) => !suspendedIds.has(c.id));
-      if (anyUnsuspended) {
-        setCurrentIndex(0);
-        setFlipped(false);
-      } else {
-        setSessionComplete(true);
-      }
-      return;
-    }
-
     if (hasMore) {
       const moreCards = await fetchDueCards();
       if (moreCards.length === 0) {
@@ -413,7 +423,7 @@ export default function SessionClient(props: SessionClientProps) {
     } else {
       setAllCaughtUp(true);
     }
-  }, [visibleCards, currentIndex, isCram, hasMore, fetchDueCards, suspendedIds]);
+  }, [visibleCards, currentIndex, hasMore, fetchDueCards, suspendedIds]);
 
   const handleAnswer = useCallback(
     async (wasCorrect: boolean, confidenceLevel: number) => {
@@ -441,13 +451,24 @@ export default function SessionClient(props: SessionClientProps) {
         }
 
         setExitDirection(confidenceLevel <= 2 ? 'left' : 'right');
+
+        if (isCram) {
+          const nextQueue = applyCramAction(cramQueue, cramActionForRating(confidenceLevel));
+          if (nextQueue.length === 0) {
+            setCramQueue(nextQueue);
+            setSessionComplete(true);
+            return;
+          }
+          setCramQueue(nextQueue);
+          setFlipped(false);
+          return;
+        }
+
         await advanceCard();
 
-        if (!isCram) {
-          const remaining = visibleCards.filter((c) => !suspendedIds.has(c.id)).length;
-          if (remaining <= REFILL_THRESHOLD) {
-            refillQueue();
-          }
+        const remaining = visibleCards.filter((c) => !suspendedIds.has(c.id)).length;
+        if (remaining <= REFILL_THRESHOLD) {
+          refillQueue();
         }
       } finally {
         processingRef.current = false;
@@ -459,6 +480,7 @@ export default function SessionClient(props: SessionClientProps) {
       isLimited,
       targetCount,
       isCram,
+      cramQueue,
       sendBatchUpdate,
       advanceCard,
       refillQueue,
@@ -468,6 +490,9 @@ export default function SessionClient(props: SessionClientProps) {
   );
 
   useEffect(() => {
+    // Cram has no scheduling effect, so a leech dialog would only block a deck
+    // card behind a modal that cannot change anything (#617).
+    if (isCram) return;
     if (!currentCard || leechDialogCardId) return;
     const id = currentCard.id;
     if (leechedCardIdsRef.current.has(id) || cardState.isLeech) {
@@ -479,6 +504,7 @@ export default function SessionClient(props: SessionClientProps) {
       });
     }
   }, [
+    isCram,
     currentCard?.id,
     currentCard,
     cardState.isLeech,
@@ -487,16 +513,37 @@ export default function SessionClient(props: SessionClientProps) {
     advanceCard,
   ]);
 
-  const backUrl = '/app/study';
+  const backUrl = isCram ? '/app/study/cram' : '/app/study';
 
   const handlePracticeAgain = useCallback(() => {
-    router.refresh();
-  }, [router]);
+    if (!isCram) {
+      router.refresh();
+      return;
+    }
+
+    // Restart the same deck in place — no reload, no re-fetch. Each finished
+    // round is its own flashcard_study_sessions row, hence the fresh session id.
+    sessionIdRef.current = generateUUID();
+    setStartedAt(Date.now());
+    hasFinalisedRef.current = false;
+    answeredCountRef.current = 0;
+    pendingUpdatesRef.current = [];
+    leechedCardIdsRef.current = new Set();
+    setCramQueue(shuffleArray(cards));
+    setCurrentIndex(0);
+    setFlipped(false);
+    setCorrectCount(0);
+    setTotalAnswered(0);
+    setSummaryData(null);
+    setSessionComplete(false);
+    setAllCaughtUp(false);
+    setSuspendedIds(new Set());
+  }, [isCram, cards, router]);
 
   const handleBackToSetup = useCallback(async () => {
     await sendBatchUpdate();
     router.push(backUrl);
-  }, [sendBatchUpdate, router]);
+  }, [sendBatchUpdate, router, backUrl]);
 
   const flippedRef = useRef(flipped);
   const terminalRef = useRef(sessionComplete || allCaughtUp);
@@ -592,6 +639,7 @@ export default function SessionClient(props: SessionClientProps) {
       <div className="mx-auto max-w-2xl py-8">
         <SessionSummaryDialog
           data={summaryData}
+          queueExhausted={allCaughtUp}
           onPracticeAgain={sessionComplete && !allCaughtUp ? handlePracticeAgain : undefined}
           onBackToSetup={handleBackToSetup}
         />
@@ -600,6 +648,16 @@ export default function SessionClient(props: SessionClientProps) {
   }
 
   if (!currentCard) {
+    // A terminal session finalises asynchronously (batch flush → summary). Show
+    // the loader so the brief card-less frame never reads „Brak dostępnych fiszek".
+    if (sessionComplete || allCaughtUp) {
+      return (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      );
+    }
     return <div className="flex justify-center py-12">{t('no_flashcards_available')}</div>;
   }
 
@@ -608,6 +666,42 @@ export default function SessionClient(props: SessionClientProps) {
     cardState.labelKey === 'card_state_learning' ||
     cardState.labelKey === 'card_state_relearning' ||
     cardState.labelKey === 'card_state_new';
+
+  // Cram's four actions are mode-defined, not card-state-defined (#617), so the
+  // labels follow the session mode — the mapping itself lives in `cram-queue.ts`.
+  const ratingLabels = isCram
+    ? {
+        again: t('rating_again_cram'),
+        hard: t('rating_hard_cram'),
+        good: t('rating_good_cram'),
+        easy: t('rating_easy_cram'),
+      }
+    : isLearningState
+      ? {
+          again: t('rating_again_learning'),
+          hard: t('rating_hard_learning'),
+          good: t('rating_good_learning'),
+          easy: t('rating_easy_learning'),
+        }
+      : {
+          again: t('rating_again'),
+          hard: t('rating_hard'),
+          good: t('rating_good'),
+          easy: t('rating_easy'),
+        };
+
+  const reviewState = currentCard.reviewState as {
+    nextReviewAt?: string | null;
+    intervalValue?: number | null;
+    intervalUnit?: string | null;
+  } | null;
+  const nextReviewAt = reviewState?.nextReviewAt ?? null;
+  const nextReviewInterval =
+    reviewState?.intervalValue == null || !reviewState.intervalUnit
+      ? null
+      : reviewState.intervalUnit === 'minutes'
+        ? t('interval_minutes', { count: reviewState.intervalValue })
+        : t('interval_days', { count: reviewState.intervalValue });
 
   return (
     <>
@@ -758,10 +852,25 @@ export default function SessionClient(props: SessionClientProps) {
             </motion.div>
           </AnimatePresence>
 
-          {isLearningState && (
+          {!flipped && (
+            <p className="text-center text-sm text-muted-foreground">
+              {t('click_hint', { action: t('reveal_answer') })}
+            </p>
+          )}
+
+          {!isCram && isLearningState && (
             <div className="text-center text-sm text-muted-foreground">
               {t('step_indicator', { step: (cardState.step ?? 0) + 1 })}
             </div>
+          )}
+
+          {nextReviewAt && (
+            <p className="text-center text-xs text-muted-foreground">
+              {t('next_review_line', {
+                date: formatDateTime(nextReviewAt, locale),
+                interval: nextReviewInterval ?? '--',
+              })}
+            </p>
           )}
 
           <div
@@ -776,8 +885,7 @@ export default function SessionClient(props: SessionClientProps) {
               aria-keyshortcuts="1"
               style={{ boxShadow: '0 0 8px rgba(239,68,68,0.12)' }}
             >
-              <X className="mr-1.5 size-4 text-red-500" />{' '}
-              {isLearningState ? t('rating_again_learning') : t('rating_again')}
+              <X className="mr-1.5 size-4 text-red-500" /> {ratingLabels.again}
             </Button>
             <Button
               variant="ghost"
@@ -785,8 +893,7 @@ export default function SessionClient(props: SessionClientProps) {
               aria-keyshortcuts="3"
               style={{ boxShadow: '0 0 8px rgba(217,119,6,0.12)' }}
             >
-              <Check className="mr-1.5 size-4 text-amber-500" />{' '}
-              {isLearningState ? t('rating_good_learning') : t('rating_good')}
+              <Check className="mr-1.5 size-4 text-amber-500" /> {ratingLabels.good}
             </Button>
             <Button
               variant="ghost"
@@ -794,8 +901,7 @@ export default function SessionClient(props: SessionClientProps) {
               aria-keyshortcuts="2"
               style={{ boxShadow: '0 0 8px rgba(249,115,22,0.12)' }}
             >
-              <Minus className="mr-1.5 size-4 text-orange-500" />{' '}
-              {isLearningState ? t('rating_hard_learning') : t('rating_hard')}
+              <Minus className="mr-1.5 size-4 text-orange-500" /> {ratingLabels.hard}
             </Button>
             <Button
               variant="ghost"
@@ -803,8 +909,7 @@ export default function SessionClient(props: SessionClientProps) {
               aria-keyshortcuts="4"
               style={{ boxShadow: '0 0 8px rgba(34,197,94,0.12)' }}
             >
-              <Zap className="mr-1.5 size-4 text-green-500" />{' '}
-              {isLearningState ? t('rating_easy_learning') : t('rating_easy')}
+              <Zap className="mr-1.5 size-4 text-green-500" /> {ratingLabels.easy}
             </Button>
           </div>
         </div>
@@ -813,10 +918,10 @@ export default function SessionClient(props: SessionClientProps) {
           shortcuts={[
             { key: 'Space', label: t('rating_flip') },
             { key: 'p', label: t('play_audio') },
-            { key: '1', label: t('rating_again') },
-            { key: '2', label: t('rating_hard') },
-            { key: '3', label: t('rating_good') },
-            { key: '4', label: t('rating_easy') },
+            { key: '1', label: ratingLabels.again },
+            { key: '2', label: ratingLabels.hard },
+            { key: '3', label: ratingLabels.good },
+            { key: '4', label: ratingLabels.easy },
           ]}
         />
       </div>

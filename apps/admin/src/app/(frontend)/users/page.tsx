@@ -43,6 +43,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { Fragment, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
+import { QueryError } from '@/app/(frontend)/components/query-error';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -105,13 +106,7 @@ export default function UsersPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const {
-    data,
-    error: listError,
-    isLoading,
-    isFetching,
-    isError,
-  } = useQuery({
+  const { data, error, isLoading, isFetching, isError } = useQuery({
     queryKey: queryKeys.users.list(status, page, search),
     queryFn: () => {
       const params = new URLSearchParams({ status, page: String(page), perPage: String(PER_PAGE) });
@@ -302,9 +297,7 @@ export default function UsersPage() {
           {isLoading ? (
             <p className="text-muted-foreground">{tc('loading')}</p>
           ) : isError ? (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {t('load_failed', { code: listError?.message ?? tc('error') })}
-            </p>
+            <QueryError error={error} />
           ) : (
             <Table>
               <TableHeader>
@@ -460,7 +453,7 @@ export default function UsersPage() {
 
       {/* Create user dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('create')}</DialogTitle>
           </DialogHeader>
@@ -536,7 +529,7 @@ export default function UsersPage() {
 
       {/* Change role dialog */}
       <Dialog open={!!roleTarget} onOpenChange={(open) => !open && setRoleTarget(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('change_role')}</DialogTitle>
           </DialogHeader>

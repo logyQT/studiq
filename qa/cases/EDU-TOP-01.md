@@ -16,9 +16,10 @@ Zalogowany teacher1.
 1. Otwórz /edu/topics.
 2. Utwórz temat „Algebra”.
 3. Zmień nazwę, a następnie usuń.
-4. Sprawdź filtry Wszystkie / Moje / Udostępnione.
+4. Sprawdź filtr zakresu Wszystkie / Moje i filtr grup („Dowolna grupa” / „Moje grupy”).
 
 ## Expected result
 
 - Toasty utworzenia/aktualizacji/usunięcia; pusta nazwa → „Nazwa tematu jest wymagana”.
 - Temat powiązany z fiszkami/pytaniami pokazuje poprawną liczbę fiszek.
+- Filtry: Wszystkie / Moje + multi-select grup; brak opcji „Udostępnione”.

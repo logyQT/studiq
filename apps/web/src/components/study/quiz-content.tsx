@@ -14,6 +14,11 @@ import {
   FieldLabel,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Slider,
 } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
@@ -25,18 +30,23 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
+import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost } from '@/lib/api';
-import { quizAttemptKeys } from '@/lib/query-keys';
+import { quizAttemptKeys, topicKeys } from '@/lib/query-keys';
 
 interface QuizAttempt {
   id: string;
-  score: number;
+  /** `null` = results withheld by the assignment's „Pokaż wyniki” switch (#374). */
+  score: number | null;
   total_questions: number;
   total_points: number | null;
+  /** Questions that can be auto-graded (`type !== 'open'`) — the score denominator (#329). */
+  gradable_questions: number;
   assignment_id: string | null;
   config: {
     questionTypes?: string[];
     questionCount?: number;
+    topicIds?: string[];
   } | null;
   started_at: string;
   completed_at: string | null;
@@ -45,10 +55,13 @@ interface QuizAttempt {
 type CompletedQuizAttempt = QuizAttempt & { completed_at: string };
 
 const QUESTION_TYPE_OPTIONS = [
-  { value: 'mcq', label: 'MCQ' },
-  { value: 'true_false', label: 'True/False' },
-  { value: 'open', label: 'Open' },
+  { value: 'mcq', labelKey: 'type_mcq' },
+  { value: 'true_false', labelKey: 'type_true_false' },
+  { value: 'open', labelKey: 'type_open' },
 ] as const;
+
+/** Radix `Select` cannot use an empty string, so „Wszystkie przedmioty” needs a sentinel. */
+const ALL_TOPICS = '__all__';
 
 export function QuizContent() {
   const t = useTranslations('AppFlashcardStudyPage');
@@ -58,6 +71,7 @@ export function QuizContent() {
   const queryClient = useQueryClient();
   const feature = useFeature();
   const hasAccess = feature('quiz');
+  const { activeOrg, isPending: orgsPending } = useOrgs();
 
   const { data: attemptsData, isLoading: attemptsLoading } = useApiQuery<QuizAttempt[]>({
     queryKey: quizAttemptKeys.all,
@@ -66,8 +80,16 @@ export function QuizContent() {
   });
   const attempts = attemptsData;
 
+  const { data: topicsData } = useApiQuery<{ items: Array<{ id: string; name: string }> }>({
+    queryKey: topicKeys.options(activeOrg?.id),
+    url: '/api/v1/topics?limit=100',
+    enabled: !orgsPending,
+  });
+  const topics = topicsData?.items ?? [];
+
   const [quizTypes, setQuizTypes] = useState<string[]>([]);
   const [quizCount, setQuizCount] = useState(10);
+  const [quizTopicId, setQuizTopicId] = useState<string>(ALL_TOPICS);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
 
   const inProgressAttempt = attempts?.find((a) => !a.completed_at) ?? null;
@@ -90,19 +112,20 @@ export function QuizContent() {
       const data = await apiPost<{ id: string }>('/api/v1/quiz/new', {
         ...(quizTypes.length > 0 ? { questionTypes: quizTypes } : {}),
         questionCount: quizCount,
+        ...(quizTopicId !== ALL_TOPICS ? { topicIds: [quizTopicId] } : {}),
       });
       await queryClient.invalidateQueries({ queryKey: quizAttemptKeys.all });
       router.push(`/app/study/session/quiz/${data.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('NOT_FOUND')) {
-        toast.error('No questions found matching your criteria. Create some questions first!');
+        toast.error(tQuiz('no_questions_found'));
       } else if (msg.includes('BAD_REQUEST')) {
-        toast.error('Not enough questions available. Try fewer questions or add more content.');
+        toast.error(tQuiz('not_enough_questions'));
       } else if (msg.includes('UNPROCESSABLE_ENTITY')) {
-        toast.error('Please select at least one question type');
+        toast.error(tQuiz('select_question_type'));
       } else {
-        toast.error('Failed to generate quiz');
+        toast.error(tQuiz('generate_failed'));
       }
     } finally {
       setQuizSubmitting(false);
@@ -156,7 +179,9 @@ export function QuizContent() {
             ) : (
               <ul className="flex flex-col divide-y">
                 {completedAttempts.map((attempt) => {
-                  const total = attempt.total_points ?? attempt.total_questions;
+                  // Open answers are never auto-graded, so they must not sit in
+                  // the denominator (an all-open attempt shows `-` instead of `0/0`).
+                  const total = attempt.gradable_questions;
                   return (
                     <li
                       key={attempt.id}
@@ -167,7 +192,7 @@ export function QuizContent() {
                       </span>
                       <div className="flex shrink-0 items-center gap-3">
                         <Badge variant="secondary">
-                          {total > 0 ? `${attempt.score}/${total}` : '-'}
+                          {attempt.score !== null && total > 0 ? `${attempt.score}/${total}` : '-'}
                         </Badge>
                         <Button variant="outline" size="sm" asChild>
                           <Link href={`/app/study/session/quiz/${attempt.id}/review`}>
@@ -202,6 +227,27 @@ export function QuizContent() {
         </CardHeader>
         <CardContent>
           <FieldGroup>
+            {topics.length > 0 && (
+              <Field orientation="vertical">
+                <FieldLabel>{t('quiz_subject')}</FieldLabel>
+                <FieldContent>
+                  <Select value={quizTopicId} onValueChange={setQuizTopicId}>
+                    <SelectTrigger className="w-full" aria-label={t('quiz_subject')}>
+                      <SelectValue placeholder={t('quiz_subject_placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_TOPICS}>{t('quiz_subject_placeholder')}</SelectItem>
+                      {topics.map((topic) => (
+                        <SelectItem key={topic.id} value={topic.id}>
+                          {topic.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FieldContent>
+              </Field>
+            )}
+
             <Field orientation="vertical">
               <FieldLabel>{t('quiz_types')}</FieldLabel>
               <FieldContent>
@@ -213,7 +259,7 @@ export function QuizContent() {
                         onCheckedChange={() => toggleQuizType(opt.value)}
                         id={`quiz-type-${opt.value}`}
                       />
-                      <Label htmlFor={`quiz-type-${opt.value}`}>{opt.label}</Label>
+                      <Label htmlFor={`quiz-type-${opt.value}`}>{tQuiz(opt.labelKey)}</Label>
                     </div>
                   ))}
                 </div>

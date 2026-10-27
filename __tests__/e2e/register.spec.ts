@@ -10,6 +10,7 @@ const submitButton = t('RegisterPage.register_button');
 const successHeading = t('RegisterPage.success_header');
 const successDesc = t('RegisterPage.success_description');
 const activationHint = t('RegisterPage.activation_instructions');
+const accountTypeStudent = t('RegisterPage.account_type_student');
 
 const errNameRequired = t('Errors.ERROR_NAME_REQUIRED');
 const errEmailRequired = t('Errors.ERROR_EMAIL_REQUIRED');
@@ -49,6 +50,52 @@ test.describe('Registration Flow', () => {
 
     // Registration form inputs must no longer be visible
     await expect(page.getByLabel(nameLabel)).not.toBeVisible();
+  });
+
+  // #302 / AUT-04: a hyphen and an apostrophe are valid name characters. The
+  // register form uses the shared `NameSchema` as its resolver, so these names
+  // must reach the API and show the activation card instead of the format error.
+  test('Positive: names with a hyphen or apostrophe are accepted', async ({ page }) => {
+    for (const [tag, name] of [
+      ['hyphen', 'Anna-Maria Nowak'],
+      ['apostrophe', "Jan O'Brien"],
+    ] as const) {
+      await page.goto('/register');
+
+      const nameInput = page.getByLabel(nameLabel);
+      await nameInput.click();
+      await nameInput.fill(name);
+      await expect(nameInput).toHaveValue(name);
+      await page.getByLabel(emailLabel).fill(`${tag}_${Date.now()}@example.com`);
+      await page.getByLabel(passwordLabel).fill('StrongPassword1');
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: accountTypeStudent }).click();
+
+      await page.getByRole('button', { name: submitButton }).click();
+
+      await expect(page.getByText(errNameInvalid)).toHaveCount(0);
+      await expect(page.getByText(successHeading)).toBeVisible();
+      await expect(page.getByText(activationHint)).toBeVisible();
+    }
+  });
+
+  // #300 / AUT-05: a duplicate address is answered with the same neutral 202 as
+  // a fresh registration — no 500, no account-enumeration signal, no error toast.
+  test('Positive: existing e-mail shows the neutral activation message, not an error', async ({
+    page,
+  }) => {
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('Jan Testowy');
+    await expect(nameInput).toHaveValue('Jan Testowy');
+    await page.getByLabel(emailLabel).fill('student1@dev.local');
+    await page.getByLabel(passwordLabel).fill('Passw0rd123!');
+
+    await page.getByRole('button', { name: submitButton }).click();
+
+    await expect(page.getByText(successHeading)).toBeVisible();
+    await expect(page.getByText(activationHint)).toBeVisible();
+    await expect(page.getByText(/INTERNAL_SERVER/)).toHaveCount(0);
   });
 
   // -------------------------------------------------------------------------
@@ -151,5 +198,32 @@ test.describe('Registration Flow', () => {
     await page.getByRole('button', { name: submitButton }).click();
 
     await expect(page.getByText(errNameInvalid)).toBeVisible();
+  });
+
+  // -------------------------------------------------------------------------
+  // NEGATIVE – whitespace-only name (#303 / AUT-04)
+  // -------------------------------------------------------------------------
+
+  // The shared `NameSchema` is the form resolver, so a blank-looking name must
+  // fail client-side and never reach the API.
+  test('Negative: whitespace-only name is blocked and sends no request', async ({ page }) => {
+    let registerCalls = 0;
+    page.on('request', (req) => {
+      if (req.method() === 'POST' && req.url().includes('/api/v1/auth/register'))
+        registerCalls += 1;
+    });
+
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('   ');
+    await expect(nameInput).toHaveValue('   ');
+    await page.getByLabel(emailLabel).fill('ws@example.com');
+    await page.getByLabel(passwordLabel).fill('StrongPassword1');
+
+    await page.getByRole('button', { name: submitButton }).click();
+
+    await expect(page.getByText(errNameRequired)).toBeVisible();
+    await expect(page).toHaveURL(/\/register/);
+    expect(registerCalls).toBe(0);
   });
 });

@@ -1,37 +1,47 @@
-import { createListQuerySchema } from '@studiq/server/lib/query-list';
+import { createListQuerySchema, groupsParamSchema } from '@studiq/server/lib/query-list';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
+const DeckNameSchema = z
+  .string({ error: ValidationErrorCode.REQUIRED })
+  .trim()
+  .nonempty({ error: ValidationErrorCode.REQUIRED })
+  .min(1, { error: ValidationErrorCode.TOO_SHORT })
+  .max(128, { error: ValidationErrorCode.TOO_LONG });
+
 export const CreateDeckSchema = registry.register(
   'CreateFlashcardDeckRequest',
-  z.object({
-    name: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(128, { error: ValidationErrorCode.TOO_LONG }),
-    description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    flashcardIds: z.array(z.uuid()).optional(),
-    groupIds: z.array(z.string().uuid()).optional(),
-    visibility: z.enum(['personal', 'group']).optional(),
-  }),
+  z
+    .object({
+      name: DeckNameSchema,
+      description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+      flashcardIds: z.array(z.uuid()).optional(),
+      groupIds: z.array(z.string().uuid()).optional(),
+      visibility: z.enum(['personal', 'group']).optional(),
+    })
+    // A group-visible deck with no share link is readable only by its creator (#139).
+    .refine((d) => d.visibility !== 'group' || (d.groupIds?.length ?? 0) > 0, {
+      error: ValidationErrorCode.REQUIRED,
+      path: ['groupIds'],
+    }),
 );
 
 export const UpdateDeckSchema = registry.register(
   'UpdateFlashcardDeckRequest',
-  z.object({
-    name: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(128, { error: ValidationErrorCode.TOO_LONG })
-      .optional(),
-    description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    flashcardIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
-    groupIds: z.array(z.string().uuid()).optional(),
-    suspended: z.boolean().optional(),
-    visibility: z.enum(['personal', 'group']).optional(),
-  }),
+  z
+    .object({
+      name: DeckNameSchema.optional(),
+      description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+      flashcardIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+      groupIds: z.array(z.string().uuid()).optional(),
+      suspended: z.boolean().optional(),
+      visibility: z.enum(['personal', 'group']).optional(),
+    })
+    // `groupIds === undefined` means "keep the existing links" — only the service can judge that.
+    .refine((d) => d.visibility !== 'group' || d.groupIds === undefined || d.groupIds.length > 0, {
+      error: ValidationErrorCode.REQUIRED,
+      path: ['groupIds'],
+    }),
 );
 
 export const BatchDeleteDeckSchema = registry.register(
@@ -49,8 +59,10 @@ export const DeckListQuerySchema = registry.register(
     sortColumns: ['created_at', 'updated_at', 'name'] as const,
     maxLimit: 500,
   }).extend({
-    owner: z.enum(['all', 'mine', 'group', 'shared']).optional().default('all'),
-    groupFilter: z.enum(['all', 'mine']).optional().default('all'),
+    owner: z.enum(['all', 'mine']).optional().default('all'),
+    groups: groupsParamSchema,
+    // Removed by #595 — the route still forwards it so it 422s instead of being silently stripped.
+    groupFilter: z.never({ error: ValidationErrorCode.INVALID_INPUT }).optional(),
     includeSuspended: z.coerce.boolean().optional().default(false),
   }),
 );
@@ -61,13 +73,8 @@ export const BulkCreateDeckSchema = registry.register(
     decks: z
       .array(
         z.object({
-          name: z
-            .string({ error: ValidationErrorCode.REQUIRED })
-            .nonempty({ error: ValidationErrorCode.REQUIRED })
-            .min(1, { error: ValidationErrorCode.TOO_SHORT })
-            .max(128, { error: ValidationErrorCode.TOO_LONG }),
+          name: DeckNameSchema,
           description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-          visibility: z.enum(['personal', 'group']).optional(),
         }),
       )
       .min(1, { error: ValidationErrorCode.TOO_FEW }),

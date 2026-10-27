@@ -12,6 +12,20 @@ export function datetimeLocalToUTC(localValue: string): string {
   return new Date(localValue).toISOString();
 }
 
+/**
+ * Date-only text in the app locale (pl → 22.10.2026, en → 10/22/2026).
+ * Pass the locale from `useLocale()` — never rely on the runtime default,
+ * which follows the browser/server, not the `NEXT_LOCALE` cookie (#251).
+ */
+export function formatDate(value: string | Date, locale: string): string {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  return date.toLocaleDateString(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+}
+
 export function formatDateTime(isoString: string, locale: string): string {
   const date = new Date(isoString);
   return date.toLocaleDateString(locale, {

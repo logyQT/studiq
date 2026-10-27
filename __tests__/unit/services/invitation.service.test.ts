@@ -80,6 +80,9 @@ describe('InvitationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    // The grant-authority RPC (#189) sits between the role lookup and the
+    // insert; happy-path tests are allowed to grant by default.
+    mock.rpc.mockResolvedValue({ data: true, error: null });
     service = new InvitationService(
       async () => mock as any,
       () => mock as any,
@@ -95,7 +98,7 @@ describe('InvitationService', () => {
     function createBuilders({
       membership = { organization_id: 'uni-1' } as any,
       role = { id: 'member' } as any,
-      insert = { token: 'abc123' } as any,
+      insert = { id: 'inv-1', token: 'abc123' } as any,
       insertError = null as any,
     } = {}) {
       const membershipQb = qb(membership);
@@ -112,7 +115,9 @@ describe('InvitationService', () => {
       const { membershipQb, roleQb, insertQb } = createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
-      vi.stubEnv('NODE_ENV', 'development');
+      // #313: the link is the only delivery path, so it must be returned in a
+      // production build too — not just under NODE_ENV=development.
+      vi.stubEnv('NODE_ENV', 'production');
 
       const result = await service.createInvitation(managerCtx, {
         email: 'john@example.com',
@@ -121,7 +126,13 @@ describe('InvitationService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect((result.data as any).inviteLink).toContain('abc123');
+      expect(result.data).toEqual({
+        success: true,
+        invitationId: 'inv-1',
+        inviteLink: 'http://localhost:3000/join?token=abc123',
+        inviteCode: 'abc123',
+      });
+      expect((result.data as any).invitationId).toBe('inv-1');
 
       // The membership probe is scoped to the caller AND the target org.
       expect(membershipQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
@@ -217,6 +228,43 @@ describe('InvitationService', () => {
       expect(mock.from).not.toHaveBeenCalledWith('invitations');
     });
 
+    // #189: grant authority is evaluated by the endpoint itself, before the
+    // write — not just inferred from the INSERT policy.
+    it('returns FORBIDDEN when the caller may not grant the target role (#189)', async () => {
+      const { insertQb } = createBuilders();
+      mock.rpc.mockResolvedValue({ data: false, error: null });
+
+      const result = await service.createInvitation(managerCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: 'member',
+        organizationId: 'uni-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.rpc).toHaveBeenCalledWith('can_assign_org_role', {
+        p_actor: 'test-user-id',
+        p_role_id: 'member',
+      });
+      expect(insertQb.insert).not.toHaveBeenCalled();
+    });
+
+    // A failed authority RPC must fail closed, never fall through to the insert.
+    it('returns INTERNAL_SERVER when the authority RPC errors (#189)', async () => {
+      const { insertQb } = createBuilders();
+      mock.rpc.mockResolvedValue({ data: null, error: { message: 'boom', code: 'XX000' } });
+
+      const result = await service.createInvitation(managerCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: 'member',
+        organizationId: 'uni-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+      expect(insertQb.insert).not.toHaveBeenCalled();
+    });
+
     it('returns FORBIDDEN when manager has no organizationId and no active org', async () => {
       const result = await service.createInvitation(managerCtx, {
         email: 'john@example.com',
@@ -232,7 +280,6 @@ describe('InvitationService', () => {
       const { insertQb } = createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
-      vi.stubEnv('NODE_ENV', 'development');
 
       const result = await service.createInvitation(educatorCtx, {
         email: 'john@example.com',
@@ -259,8 +306,8 @@ describe('InvitationService', () => {
       expect(mock.from).not.toHaveBeenCalled();
     });
 
-    it('returns INTERNAL_SERVER when SITE_URL is not set', async () => {
-      createBuilders();
+    it('returns INTERNAL_SERVER when SITE_URL is not set and writes nothing', async () => {
+      const { insertQb } = createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
 
@@ -271,6 +318,9 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
+      // The guard runs before the INSERT: no orphan "Oczekujące" row that can
+      // never be delivered (#313).
+      expect(insertQb.insert).not.toHaveBeenCalled();
 
       vi.unstubAllEnvs();
     });
@@ -287,6 +337,290 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
+
+      vi.unstubAllEnvs();
+    });
+  });
+
+  // MGR-INV-02: bulk is all-or-nothing. Every entry is checked before any write
+  // and the rows land in a single INSERT, so a rejected entry cannot leave a
+  // half-sent batch behind.
+  describe('createInvitationsBulk', () => {
+    const memberRole = '550e8400-e29b-41d4-a716-446655440001';
+    const adminRole = '550e8400-e29b-41d4-a716-446655440002';
+
+    function bulkBuilders({
+      membership = { organization_id: 'uni-1' } as any,
+      roles = [{ id: memberRole }, { id: adminRole }] as any,
+      rolesError = null as any,
+      created = [
+        { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
+        { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
+      ] as any,
+      insertError = null as any,
+    } = {}) {
+      const membershipQb = qb(membership);
+      const rolesQb = qb(roles, rolesError);
+      const insertQb = qb(created, insertError);
+      mock.from
+        .mockReturnValueOnce(membershipQb)
+        .mockReturnValueOnce(rolesQb)
+        .mockReturnValueOnce(insertQb);
+      return { membershipQb, rolesQb, insertQb };
+    }
+
+    const invitations = [
+      { email: 'john@example.com', targetOrgRoleId: memberRole },
+      { email: 'jane@example.com', targetOrgRoleId: adminRole },
+    ];
+
+    it('inserts every row in one statement and returns the results in input order', async () => {
+      const { rolesQb, insertQb } = bulkBuilders();
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+      // #313: every row carries its own copyable link, production included.
+      vi.stubEnv('NODE_ENV', 'production');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(true);
+      const results = (result as any).data as Array<{
+        email: string;
+        success: boolean;
+        data: { invitationId: string; inviteLink: string; inviteCode: string };
+      }>;
+      // The DB returned the rows in a different order: mapping must follow the
+      // request order, not the insert response order.
+      expect(results.map((r) => r.data.invitationId)).toEqual(['inv-1', 'inv-2']);
+      // Per-row attribution: each address gets the link for its own token.
+      expect(results[0].data.inviteLink).toBe('http://localhost:3000/join?token=token-1');
+      expect(results[1].data.inviteLink).toBe('http://localhost:3000/join?token=token-2');
+      // The bare code is returned alongside the link, so it can be copied too.
+      expect(results[0].data.inviteCode).toBe('token-1');
+      expect(results[1].data.inviteCode).toBe('token-2');
+      // MGR-INV-02: every result names the address it belongs to, in input order.
+      expect(results.map((r) => r.email)).toEqual(['john@example.com', 'jane@example.com']);
+
+      // One role pre-flight query, scoped to the resolved org.
+      expect(rolesQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
+      expect(rolesQb.in).toHaveBeenCalledWith('id', [memberRole, adminRole]);
+
+      // One multi-row INSERT: same expires_at for all rows.
+      expect(insertQb.insert).toHaveBeenCalledTimes(1);
+      const rows = insertQb.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({
+        email: 'john@example.com',
+        target_org_role_id: memberRole,
+        organization_id: 'uni-1',
+        inviter_id: 'test-user-id',
+      });
+      expect(rows[0].expires_at).toBe(rows[1].expires_at);
+
+      vi.unstubAllEnvs();
+    });
+
+    it('labels duplicate addresses individually instead of collapsing them', async () => {
+      bulkBuilders({
+        created: [
+          { id: 'inv-3', token: 'token-3', email: 'john@example.com' },
+          { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
+          { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
+        ] as any,
+      });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
+        invitations[0],
+        invitations[1],
+        invitations[0],
+      ]);
+
+      expect(result.success).toBe(true);
+      const results = (result as any).data as Array<{
+        email: string;
+        data: { invitationId: string };
+      }>;
+      expect(results.map((r) => r.email)).toEqual([
+        'john@example.com',
+        'jane@example.com',
+        'john@example.com',
+      ]);
+      // Still one distinct invitation (and link) per submitted row.
+      expect(new Set(results.map((r) => r.data.invitationId)).size).toBe(3);
+
+      vi.unstubAllEnvs();
+    });
+
+    it('returns UNPROCESSABLE_ENTITY naming an unknown/foreign role and writes nothing', async () => {
+      const { insertQb } = bulkBuilders({ roles: [{ id: memberRole }] });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((result as any).details).toEqual([
+        expect.objectContaining({
+          message: 'VALIDATION_INVALID_ROLE',
+          path: ['invitations', 1, 'targetOrgRoleId'],
+        }),
+      ]);
+      expect(insertQb.insert).not.toHaveBeenCalled();
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+      vi.unstubAllEnvs();
+    });
+
+    // #189: every distinct granted role is checked before the write; one
+    // un-grantable role rejects the whole batch (all-or-nothing, like the 422).
+    it('returns FORBIDDEN and writes nothing when the caller may not grant a target role (#189)', async () => {
+      const { insertQb } = bulkBuilders();
+      mock.rpc.mockImplementation(async (_fn: string, args: { p_role_id: string }) => ({
+        data: args.p_role_id === memberRole,
+        error: null,
+      }));
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(insertQb.insert).not.toHaveBeenCalled();
+      expect(mock.rpc).toHaveBeenCalledTimes(2);
+      expect(mock.rpc).toHaveBeenNthCalledWith(1, 'can_assign_org_role', {
+        p_actor: 'test-user-id',
+        p_role_id: memberRole,
+      });
+      expect(mock.rpc).toHaveBeenNthCalledWith(2, 'can_assign_org_role', {
+        p_actor: 'test-user-id',
+        p_role_id: adminRole,
+      });
+
+      vi.unstubAllEnvs();
+    });
+
+    it('checks each distinct target role only once (#189)', async () => {
+      bulkBuilders({
+        created: [
+          { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
+          { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
+          { id: 'inv-3', token: 'token-3', email: 'john@example.com' },
+        ] as any,
+      });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
+        invitations[0],
+        invitations[1],
+        invitations[0],
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(mock.rpc).toHaveBeenCalledTimes(2);
+
+      vi.unstubAllEnvs();
+    });
+
+    it('returns UNPROCESSABLE_ENTITY when entries point at different organizations', async () => {
+      mock.from.mockReturnValueOnce(qb({ organization_id: 'uni-1' }));
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
+        { ...invitations[0], organizationId: 'uni-1' },
+        { ...invitations[1], organizationId: 'uni-2' },
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((result as any).details).toEqual([
+        expect.objectContaining({
+          message: 'VALIDATION_INVALID_INPUT',
+          path: ['invitations', 1, 'organizationId'],
+        }),
+      ]);
+      // Stopped at the tenant boundary: no role lookup, no insert.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('org_roles');
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+      vi.unstubAllEnvs();
+    });
+
+    it('returns FORBIDDEN when the caller is not a member of the target org', async () => {
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'org-foreign' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+    });
+
+    it('returns INTERNAL_SERVER when SITE_URL is missing and writes nothing', async () => {
+      bulkBuilders();
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+      vi.unstubAllEnvs();
+    });
+
+    it('returns INTERNAL_SERVER when the single insert fails', async () => {
+      bulkBuilders({ created: null, insertError: { message: 'DB error' } });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+
+      vi.unstubAllEnvs();
+    });
+
+    // A role policy denial fails the whole statement, so nothing is written.
+    it('returns FORBIDDEN when RLS denies the batch insert', async () => {
+      bulkBuilders({ created: null, insertError: { message: 'denied', code: '42501' } });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
 
       vi.unstubAllEnvs();
     });
@@ -361,6 +695,39 @@ describe('InvitationService', () => {
         p_actor: 'manager-1',
         p_role_id: 'role-member',
       });
+    });
+
+    // #317: „Kopiuj link” copies a URL, but this field asks for the 32-hex code.
+    // The preview must look up the code inside the link, never the URL itself.
+    it('extracts the bare code from the pasted „Kopiuj link” URL', async () => {
+      const code = 'c8a0b04e7082116c09a28ce717f83d5f';
+      const query = qb(inviteRow());
+      mock.from.mockReturnValueOnce(query);
+
+      const result = await service.getInvitationByToken(
+        `  http://localhost:3012/join?token=${code.toUpperCase()}  `,
+      );
+
+      expect(result.success).toBe(true);
+      // Uppercase hex is folded to the lowercase column value.
+      expect(query.eq).toHaveBeenCalledWith('token', code);
+      expect(query.eq).not.toHaveBeenCalledWith('token', expect.stringContaining('http'));
+    });
+
+    it('returns NOT_FOUND without querying for a link that carries no token', async () => {
+      const result = await service.getInvitationByToken('http://localhost:3012/join');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns NOT_FOUND without querying for an empty token', async () => {
+      const result = await service.getInvitationByToken('   ');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
     // #236: the public preview is unauthenticated, so the request-scoped client
@@ -730,6 +1097,50 @@ describe('InvitationService', () => {
         'group_members',
       ]);
       expect(memberQb.update).not.toHaveBeenCalled();
+    });
+
+    // #317: the pasted link must normalise identically for the lookup and the
+    // single-use claim, otherwise a valid link previews but fails to join (410).
+    it('normalises a pasted invite link for the lookup and the claim', async () => {
+      const code = 'c8a0b04e7082116c09a28ce717f83d5f';
+      const admin = adminClient();
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+      const lookupQb = qb(invitation);
+      const claimQb = qb({ id: 'inv-1' });
+      admin.from
+        .mockReturnValueOnce(lookupQb)
+        .mockReturnValueOnce(countQb(2))
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(claimQb)
+        .mockReturnValueOnce(qb(null))
+        .mockReturnValueOnce(qb({ id: 'group-1' }))
+        .mockReturnValue(qb(null));
+
+      const result = await service.acceptInvitation(
+        joiningCtx,
+        `http://localhost:3012/join?token=${code.toUpperCase()}`,
+      );
+
+      expect(result.success).toBe(true);
+      expect(lookupQb.eq).toHaveBeenCalledWith('token', code);
+      expect(claimQb.eq).toHaveBeenCalledWith('token', code);
+    });
+
+    it('returns NOT_FOUND without touching the DB for a link with no token', async () => {
+      const admin = adminClient();
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+
+      const result = await service.acceptInvitation(joiningCtx, 'https://example.com/x');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(admin.from).not.toHaveBeenCalled();
     });
 
     it('rejects the accept when the token was already claimed concurrently (GONE)', async () => {

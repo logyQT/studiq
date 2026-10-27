@@ -34,6 +34,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question-browser';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { parsePointsInput } from '@/lib/quiz-editor';
 import { quizKeys } from '@/lib/query-keys';
 
@@ -117,6 +118,7 @@ function SortableQuestion({
   onPointsChange: (id: string, points: number) => void;
   pointsLabel: string;
 }) {
+  const t = useTranslations('EduQuizEditPage');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: question.question_id,
   });
@@ -157,7 +159,9 @@ function SortableQuestion({
           label={pointsLabel}
           onChange={(points) => onPointsChange(question.question_id, points)}
         />
-        <span className="text-sm text-muted-foreground">pts</span>
+        <span className="text-sm text-muted-foreground">
+          {t('points_unit', { points: question.points })}
+        </span>
       </div>
       <button
         onClick={() => onRemove(question.question_id)}
@@ -221,6 +225,9 @@ export function EditQuizClient() {
     queryKey: quizKeys.detail(id),
     url: `/api/v1/teacher/quizzes/${id}`,
   });
+
+  // The quiz name is the breadcrumb label; the raw quiz UUID must never render.
+  useBreadcrumbLabel(id, quiz?.name);
 
   useEffect(() => {
     if (quiz && !initialLoaded.current) {
@@ -412,7 +419,7 @@ export function EditQuizClient() {
               <Card>
                 <CardContent className="space-y-4 pt-6">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Name</Label>
+                    <Label htmlFor="name">{t('name_label')}</Label>
                     <Input
                       id="name"
                       value={name}
@@ -423,7 +430,7 @@ export function EditQuizClient() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
+                    <Label htmlFor="description">{t('description_label')}</Label>
                     <Textarea
                       id="description"
                       value={description}
@@ -498,7 +505,7 @@ export function EditQuizClient() {
               {!('content' in activeDragItem) && (
                 <>
                   <span className="text-sm text-muted-foreground shrink-0">
-                    {activeDragItem.points} pts
+                    {t('points_short', { points: activeDragItem.points })}
                   </span>
                   <button className="text-muted-foreground">
                     <Trash2 className="w-4 h-4" />
@@ -517,7 +524,8 @@ export function EditQuizClient() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">
-              {questions.length} questions, {totalPoints} pts
+              {t('questions_count', { count: questions.length })} · {t('total_points')}:{' '}
+              {totalPoints}
             </span>
             {hasUnsavedChanges && (
               <span className="text-sm text-amber-600 flex items-center gap-1.5">
@@ -533,7 +541,10 @@ export function EditQuizClient() {
       </div>
 
       <Dialog open={browseOpen} onOpenChange={setBrowseOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent
+          aria-describedby={undefined}
+          className="max-w-2xl max-h-[80vh] overflow-y-auto"
+        >
           <DialogHeader>
             <DialogTitle>{t('add_questions')}</DialogTitle>
           </DialogHeader>

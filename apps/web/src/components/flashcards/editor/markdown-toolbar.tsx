@@ -1,13 +1,17 @@
 'use client';
 
-import { Button, Popover, PopoverContent, PopoverTrigger } from '@studiq/ui';
+import { Button, Input, Popover, PopoverContent, PopoverTrigger } from '@studiq/ui';
 import {
   Bold,
   Heading1,
   Heading2,
   Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
   Image,
   Italic,
+  Link,
   List,
   ListOrdered,
   Loader2,
@@ -52,6 +56,17 @@ export function MarkdownToolbar({
 }: MarkdownToolbarProps) {
   const [tableSize, setTableSize] = useState({ rows: 1, cols: 1 });
   const [tableOpen, setTableOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+
+  const confirmLink = () => {
+    const url = linkUrl.trim();
+    if (!url) return;
+    // wrap() reads the textarea selection at call time; a blurred textarea keeps it.
+    wrap('[', `](${url})`, t('link_default_text'));
+    setLinkOpen(false);
+    setLinkUrl('');
+  };
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -59,7 +74,7 @@ export function MarkdownToolbar({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => wrap('**', '**', 'bold')}
+          onClick={() => wrap('**', '**', t('bold_default_text'))}
           aria-label={t('toolbar_bold')}
           title={t('toolbar_bold')}
         >
@@ -68,12 +83,50 @@ export function MarkdownToolbar({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => wrap('*', '*', 'italic')}
+          onClick={() => wrap('*', '*', t('italic_default_text'))}
           aria-label={t('toolbar_italic')}
           title={t('toolbar_italic')}
         >
           <Italic className="h-4 w-4" />
         </Button>
+        <Popover
+          open={linkOpen}
+          onOpenChange={(open) => {
+            setLinkOpen(open);
+            if (!open) setLinkUrl('');
+          }}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t('toolbar_link')}
+              title={t('toolbar_link')}
+            >
+              <Link className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" sideOffset={8} className="w-72 p-3">
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                confirmLink();
+              }}
+            >
+              <Input
+                autoFocus
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder={t('link_url_prompt')}
+                aria-label={t('link_url_prompt')}
+              />
+              <Button type="submit" size="sm" disabled={!linkUrl.trim()}>
+                {t('link_insert')}
+              </Button>
+            </form>
+          </PopoverContent>
+        </Popover>
         <Button
           variant="ghost"
           size="sm"
@@ -100,6 +153,33 @@ export function MarkdownToolbar({
           title={t('toolbar_heading3')}
         >
           <Heading3 className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => wrap('#### ', '')}
+          aria-label={t('toolbar_heading4')}
+          title={t('toolbar_heading4')}
+        >
+          <Heading4 className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => wrap('##### ', '')}
+          aria-label={t('toolbar_heading5')}
+          title={t('toolbar_heading5')}
+        >
+          <Heading5 className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => wrap('###### ', '')}
+          aria-label={t('toolbar_heading6')}
+          title={t('toolbar_heading6')}
+        >
+          <Heading6 className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost"

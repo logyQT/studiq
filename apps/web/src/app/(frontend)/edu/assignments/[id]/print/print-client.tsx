@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface PrintData {
@@ -63,6 +64,9 @@ export default function PrintAssignmentClient() {
     url: `/api/v1/teacher/assignments/${id}`,
   });
 
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
+
   useEffect(() => {
     setSettings(loadSettings());
   }, []);
@@ -90,7 +94,7 @@ export default function PrintAssignmentClient() {
           .bubble { display: inline-flex; align-items: center; gap: 0.3em; }
           .bubble-circle { width: 14px; height: 14px; border: 1.5px solid #000; border-radius: 50%; display: inline-block; }
           .checkbox-box { width: 14px; height: 14px; border: 1.5px solid #000; display: inline-block; }
-          .answer-key { page-break-before: always; }
+          .answer-key { break-before: page; page-break-before: always; }
           .answer-key .correct { color: #070; font-weight: bold; }
         }
         @media screen {
@@ -111,18 +115,27 @@ export default function PrintAssignmentClient() {
 
       <div className="flex gap-8 mb-8">
         {settings.showNameField && (
-          <div>
-            <span className="font-medium">{t('name')}:</span> _______________________________
+          <div className="flex min-w-0 flex-1 items-end gap-2">
+            <span className="font-medium shrink-0">{t('name')}</span>
+            <span className="min-w-0 flex-1 border-b border-current" aria-hidden="true">
+              &nbsp;
+            </span>
           </div>
         )}
         {settings.showClassField && (
-          <div>
-            <span className="font-medium">{t('class')}:</span> _______________________________
+          <div className="flex min-w-0 flex-1 items-end gap-2">
+            <span className="font-medium shrink-0">{t('class')}</span>
+            <span className="min-w-0 flex-1 border-b border-current" aria-hidden="true">
+              &nbsp;
+            </span>
           </div>
         )}
         {settings.showDateField && (
-          <div>
-            <span className="font-medium">{t('date')}:</span> _______________________________
+          <div className="flex min-w-0 flex-1 items-end gap-2">
+            <span className="font-medium shrink-0">{t('date')}</span>
+            <span className="min-w-0 flex-1 border-b border-current" aria-hidden="true">
+              &nbsp;
+            </span>
           </div>
         )}
       </div>

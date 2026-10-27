@@ -15,10 +15,17 @@ function qb(data: any, error: any = null, count?: number) {
   b.not = vi.fn(() => b);
   b.order = vi.fn(() => b);
   b.lte = vi.fn(() => b);
+  // The gradable-question helper pages its query (PostgREST caps at 1000 rows).
+  b.range = vi.fn(() => b);
   b.then = promise.then.bind(promise);
   b.catch = promise.catch.bind(promise);
   b.finally = promise.finally.bind(promise);
   return b;
+}
+
+/** Gradable (`questions.type`) rows for the `quiz_attempt_questions` join. */
+function gradableRows(attemptId: string, count: number, type = 'mcq') {
+  return Array.from({ length: count }, () => ({ attempt_id: attemptId, questions: { type } }));
 }
 
 describe('StatsService', () => {
@@ -42,31 +49,34 @@ describe('StatsService', () => {
   });
 
   describe('getTeacherStats', () => {
-    it('returns basic stats', async () => {
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
-        }),
-      });
+    beforeEach(() => {
+      mock.rpc.mockResolvedValue({ data: [], error: null });
+    });
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [{ id: 'fc-1' }], error: null }),
-        }),
-      });
+    it('returns totals, the type split and the subject distribution', async () => {
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-1', name: 'Historia' }]));
 
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ totalQuestions: 1, totalFlashcards: 1 });
+      expect(result.data).toEqual({
+        totalQuestions: 1,
+        totalFlashcards: 1,
+        subject: { byType: { mcq: 1 }, problematicQuestions: [] },
+        bySubject: [{ subjectId: 'bank-1', subjectName: 'Historia', questionCount: 1 }],
+      });
     });
 
     it('scopes question/flashcard counts to the active organization', async () => {
       const orgCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
-      const questionsBuilder = qb([{ id: 'q-1' }]);
+      const questionsBuilder = qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]);
       const flashcardsBuilder = qb([{ id: 'fc-1' }]);
+      const banksBuilder = qb([{ id: 'bank-1', name: 'Historia' }]);
       mock.from.mockReturnValueOnce(questionsBuilder);
       mock.from.mockReturnValueOnce(flashcardsBuilder);
+      mock.from.mockReturnValueOnce(banksBuilder);
 
       const result = await service.getTeacherStats(orgCtx);
 
@@ -74,85 +84,389 @@ describe('StatsService', () => {
       expect(questionsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
       expect(flashcardsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
     });
+
+    it('groups questions by bank and counts types, sorted by Polish name', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'q-1', type: 'mcq', bank_id: 'bank-geo' },
+          { id: 'q-2', type: 'true_false', bank_id: 'bank-his' },
+          { id: 'q-3', type: 'open', bank_id: 'bank-his' },
+          { id: 'q-4', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-5', type: 'mcq', bank_id: 'bank-gone' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'bank-his', name: 'Historia' },
+          { id: 'bank-geo', name: 'Geografia i Nauka' },
+        ]),
+      );
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({ mcq: 3, true_false: 1, open: 1 });
+      // localeCompare('pl'): Geografia before Historia; the bank missing from the
+      // lookup (RLS / left-org edge case) keeps a null name and sorts last.
+      expect(result.data.bySubject).toEqual([
+        { subjectId: 'bank-geo', subjectName: 'Geografia i Nauka', questionCount: 1 },
+        { subjectId: 'bank-his', subjectName: 'Historia', questionCount: 3 },
+        { subjectId: 'bank-gone', subjectName: null, questionCount: 1 },
+      ]);
+    });
+
+    it('narrows only the type split when a subject is selected', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'q-1', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-2', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-3', type: 'true_false', bank_id: 'bank-his' },
+          { id: 'q-4', type: 'mcq', bank_id: 'bank-geo' },
+          { id: 'q-5', type: 'open', bank_id: 'bank-geo' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'bank-his', name: 'Historia' },
+          { id: 'bank-geo', name: 'Geografia i Nauka' },
+        ]),
+      );
+
+      const result = await service.getTeacherStats(ctx, { subjectId: 'bank-his' });
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({ mcq: 2, true_false: 1 });
+      // Totals and the by-subject overview stay global.
+      expect(result.data.totalQuestions).toBe(5);
+      expect(result.data.bySubject).toEqual([
+        { subjectId: 'bank-geo', subjectName: 'Geografia i Nauka', questionCount: 2 },
+        { subjectId: 'bank-his', subjectName: 'Historia', questionCount: 3 },
+      ]);
+    });
+
+    it('matches an uppercase subject id as Postgres would', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'q-1', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-2', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-3', type: 'true_false', bank_id: 'bank-his' },
+          { id: 'q-4', type: 'mcq', bank_id: 'bank-geo' },
+          { id: 'q-5', type: 'open', bank_id: 'bank-geo' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'bank-his', name: 'Historia' },
+          { id: 'bank-geo', name: 'Geografia i Nauka' },
+        ]),
+      );
+
+      const result = await service.getTeacherStats(ctx, { subjectId: 'BANK-HIS' });
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({ mcq: 2, true_false: 1 });
+      expect(result.data.totalQuestions).toBe(5);
+      expect(result.data.bySubject).toHaveLength(2);
+    });
+
+    it('yields an empty type split for a foreign subject id without widening the query', async () => {
+      const questionsBuilder = qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-his' }]);
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-his', name: 'Historia' }]));
+
+      const result = await service.getTeacherStats(ctx, {
+        subjectId: '00000000-0000-4000-8020-000000000099',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({});
+      expect(result.data.totalQuestions).toBe(1);
+      expect(questionsBuilder.eq).toHaveBeenCalledWith('created_by', 'test-user-id');
+    });
+
+    it('skips the bank lookup when there are no questions', async () => {
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        totalQuestions: 0,
+        totalFlashcards: 1,
+        subject: { byType: {}, problematicQuestions: [] },
+        bySubject: [],
+      });
+      expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(mock.from).not.toHaveBeenCalledWith('question_banks');
+    });
+
+    it('returns the problematic questions from the RPC (#204)', async () => {
+      const problematic = [
+        {
+          id: 'q-1',
+          content: 'Który rok uważa się za datę chrztu Polski?',
+          type: 'mcq',
+          correctRate: 0.4,
+          totalAnswers: 5,
+        },
+      ];
+      mock.rpc.mockResolvedValue({ data: problematic, error: null });
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-1', name: 'Historia' }]));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.problematicQuestions).toEqual(problematic);
+      // No active org: the RPC scopes learners to every org the caller shares.
+      expect(mock.rpc).toHaveBeenCalledWith('get_teacher_problematic_questions', {
+        p_user_id: 'test-user-id',
+        p_organization_id: null,
+        p_bank_id: null,
+      });
+    });
+
+    it('passes the active org and the normalized bank id to the RPC', async () => {
+      const orgCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-his' }]));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-his', name: 'Historia' }]));
+
+      await service.getTeacherStats(orgCtx, { subjectId: 'BANK-HIS' });
+
+      expect(mock.rpc).toHaveBeenCalledWith('get_teacher_problematic_questions', {
+        p_user_id: 'test-user-id',
+        p_organization_id: 'org-1',
+        p_bank_id: 'bank-his',
+      });
+    });
+
+    it('returns a failure when the problematic-questions RPC fails', async () => {
+      mock.rpc.mockResolvedValue({ data: null, error: { message: 'boom', code: 'XX000' } });
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-1', name: 'Historia' }]));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('falls back to an empty list when the RPC returns null', async () => {
+      mock.rpc.mockResolvedValue({ data: null, error: null });
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.problematicQuestions).toEqual([]);
+    });
   });
 
   describe('getStudentStats', () => {
     it('returns student stats with attempts and practice', async () => {
       const attempts = [
-        { score: 8, total_questions: 10, started_at: '2024-01-01', config: {} },
-        { score: 6, total_questions: 10, started_at: '2024-01-02', config: {} },
+        {
+          id: 'a-1',
+          score: 8,
+          total_questions: 10,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+        {
+          id: 'a-2',
+          score: 6,
+          total_questions: 10,
+          started_at: '2024-01-02',
+          config: {},
+          assignment_id: null,
+        },
       ];
       const practice = [
         { was_correct: true, practiced_at: '2024-01-01' },
         { was_correct: false, practiced_at: '2024-01-02' },
       ];
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: attempts, error: null }),
-          }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: practice, error: null }),
-          }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            lte: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
-          }),
-        }),
-      });
+      mock.from
+        .mockReturnValueOnce(qb(attempts)) // quiz_attempts
+        // Closed-only practice: the denominator is unchanged (#619).
+        .mockReturnValueOnce(qb([...gradableRows('a-1', 10), ...gradableRows('a-2', 10)]))
+        .mockReturnValueOnce(qb(practice)) // flashcard_practice
+        .mockReturnValueOnce(qb([{ id: 'q-1' }])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
 
       const result = await service.getStudentStats(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data.totalQuizzes).toBe(2);
       expect(result.data.avgScore).toBe(70);
+      expect(result.data.bestScore).toBe(80);
       expect(result.data.totalQuestionsCreated).toBe(1);
       expect(result.data.flashcardsPracticed).toBe(2);
       expect(result.data.flashcardAccuracy).toBe(50);
-      expect(result.data.attemptsOverTime.length).toBe(2);
+      expect(result.data.attemptsOverTime).toEqual([
+        { date: '2024-01-01', score: 8, total: 10, percentage: 80 },
+        { date: '2024-01-02', score: 6, total: 10, percentage: 60 },
+      ]);
+    });
+
+    it('divides a mixed practice attempt by its closed questions, not total_questions (#619)', async () => {
+      const attempts = [
+        {
+          id: 'a-1',
+          score: 2,
+          total_questions: 3,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+      ];
+      // Two closed questions + one open answer: the review headline says 2 of 2
+      // closed, so stats must not report 67 %.
+      const gradable = qb([...gradableRows('a-1', 2), ...gradableRows('a-1', 1, 'open')]);
+
+      mock.from
+        .mockReturnValueOnce(qb(attempts)) // quiz_attempts
+        .mockReturnValueOnce(gradable) // quiz_attempt_questions
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(gradable.in).toHaveBeenCalledWith('attempt_id', ['a-1']);
+      expect(result.data.avgScore).toBe(100);
+      expect(result.data.bestScore).toBe(100);
+      expect(result.data.attemptsOverTime).toEqual([
+        { date: '2024-01-01', score: 2, total: 2, percentage: 100 },
+      ]);
+    });
+
+    it('leaves an all-open practice attempt out of the score aggregates (#619)', async () => {
+      const attempts = [
+        {
+          id: 'a-open',
+          score: 0,
+          total_questions: 1,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+        {
+          id: 'a-closed',
+          score: 2,
+          total_questions: 2,
+          started_at: '2024-01-02',
+          config: {},
+          assignment_id: null,
+        },
+      ];
+      const gradable = qb([...gradableRows('a-open', 1, 'open'), ...gradableRows('a-closed', 2)]);
+
+      mock.from
+        .mockReturnValueOnce(qb(attempts))
+        .mockReturnValueOnce(gradable)
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([], null, 0))
+        .mockReturnValueOnce(qb([], null, 0))
+        .mockReturnValueOnce(qb([], null, 0));
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      // The open attempt is still a taken quiz (a count is not a result), but it
+      // has no denominator, so it never contributes a fabricated 0 %.
+      expect(result.data.totalQuizzes).toBe(2);
+      expect(result.data.avgScore).toBe(100);
+      expect(result.data.bestScore).toBe(100);
+      expect(result.data.attemptsOverTime).toEqual([
+        { date: '2024-01-02', score: 2, total: 2, percentage: 100 },
+      ]);
+    });
+
+    it('reports null averages when every practice attempt is all-open (#619)', async () => {
+      const attempts = [
+        {
+          id: 'a-open',
+          score: 0,
+          total_questions: 1,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+      ];
+
+      mock.from
+        .mockReturnValueOnce(qb(attempts))
+        .mockReturnValueOnce(qb(gradableRows('a-open', 1, 'open')))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([], null, 0))
+        .mockReturnValueOnce(qb([], null, 0))
+        .mockReturnValueOnce(qb([], null, 0));
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.totalQuizzes).toBe(1);
+      expect(result.data.avgScore).toBeNull();
+      expect(result.data.bestScore).toBeNull();
+      expect(result.data.attemptsOverTime).toEqual([]);
+    });
+
+    it('fails closed when the gradable-question lookup fails (#619)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          qb([
+            {
+              id: 'a-1',
+              score: 2,
+              total_questions: 3,
+              started_at: '2024-01-01',
+              config: {},
+              assignment_id: null,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
 
     it('uses total_points as the denominator for assignment attempts (#167)', async () => {
       const attemptsBuilder = qb([
         {
+          id: 'a-1',
           score: 3,
           total_questions: 4,
           total_points: 5,
           started_at: '2024-01-01',
           config: {},
+          assignment_id: 'assignment-1',
         },
       ]);
 
       mock.from
         .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
+        .mockReturnValueOnce(qb([{ id: 'assignment-1', show_results: true }])) // teacher_assignments
         .mockReturnValueOnce(qb([])) // flashcard_practice
         .mockReturnValueOnce(qb([])) // questions
         .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
@@ -163,30 +477,101 @@ describe('StatsService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.avgScore).toBe(60);
+      expect(result.data.bestScore).toBe(60);
       expect(result.data.attemptsOverTime[0]).toEqual({
         date: '2024-01-01',
         score: 3,
         total: 5,
         percentage: 60,
       });
+      // Assignment attempts stay teacher-graded: no closed-question lookup.
+      expect(mock.from).not.toHaveBeenCalledWith('quiz_attempt_questions');
     });
 
-    it('returns zero stats when no data exists', async () => {
-      const c: any = {};
-      c.select = vi.fn(() => c);
-      c.eq = vi.fn(() => c);
-      c.order = vi.fn(() => c);
-      c.lte = vi.fn(() => c);
-      c.then = (onfulfilled: any) => Promise.resolve({ data: [], error: null }).then(onfulfilled);
-      mock.from.mockReturnValue(c);
+    it('excludes hidden assignment attempts from the score aggregates (#374)', async () => {
+      const attemptsBuilder = qb([
+        {
+          id: 'a-practice',
+          score: 8,
+          total_questions: 10,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+        {
+          score: 3,
+          total_questions: 4,
+          total_points: 4,
+          started_at: '2024-01-02',
+          config: {},
+          assignment_id: 'assignment-visible',
+        },
+        {
+          score: 4,
+          total_questions: 4,
+          total_points: 4,
+          started_at: '2024-01-03',
+          config: {},
+          assignment_id: 'assignment-hidden',
+        },
+      ]);
+      const assignmentsBuilder = qb([
+        { id: 'assignment-visible', show_results: true },
+        { id: 'assignment-hidden', show_results: false },
+      ]);
+
+      mock.from
+        .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
+        .mockReturnValueOnce(assignmentsBuilder) // teacher_assignments
+        .mockReturnValueOnce(qb(gradableRows('a-practice', 10))) // quiz_attempt_questions
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(assignmentsBuilder.in).toHaveBeenCalledWith('id', [
+        'assignment-visible',
+        'assignment-hidden',
+      ]);
+      // Practice (80 %) + visible assignment (75 %) — the hidden attempt is gone.
+      expect(result.data.avgScore).toBe(78);
+      expect(result.data.bestScore).toBe(80);
+      expect(result.data.attemptsOverTime.map((a: { score: number }) => a.score)).toEqual([8, 3]);
+      // A count is not a result, so the hidden attempt still counts as taken.
+      expect(result.data.totalQuizzes).toBe(3);
+    });
+
+    it('fails closed when the hidden-assignment lookup fails (#374)', async () => {
+      mock.from
+        .mockReturnValueOnce(qb([{ score: 3, total_questions: 4, assignment_id: 'assignment-1' }]))
+        .mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('reports no averages when no data exists', async () => {
+      mock.from.mockReturnValue(qb([]));
 
       const result = await service.getStudentStats(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data.totalQuizzes).toBe(0);
-      expect(result.data.avgScore).toBe(0);
+      // No attempt has a gradable denominator, so there is no result to show
+      // (#619) — `—` in the UI, never a fabricated 0 %.
+      expect(result.data.avgScore).toBeNull();
+      expect(result.data.bestScore).toBeNull();
+      expect(result.data.attemptsOverTime).toEqual([]);
       expect(result.data.flashcardsPracticed).toBe(0);
       expect(result.data.flashcardAccuracy).toBe(0);
+      // Nothing to look up: the gradable query only runs for practice attempts.
+      expect(mock.from).not.toHaveBeenCalledWith('quiz_attempt_questions');
     });
 
     it('scopes content counts to the active organization, but not activity logs', async () => {
@@ -262,13 +647,51 @@ describe('StatsService', () => {
       expect(mock.from).toHaveBeenCalledWith('org_members');
     });
 
-    it('aggregates only completed attempts of the org students', async () => {
+    it('computes completion as completed / started per quiz and scopes to org students', async () => {
       const membersBuilder = qb([{ user_id: 's-1' }]);
       const attemptsBuilder = qb([
-        { id: 'a-1', score: 8, total_questions: 10, config: { title: 'Quiz A' } },
-        { id: 'a-2', score: 6, total_questions: 10, config: { title: 'Quiz A' } },
-        { id: 'a-3', score: 5, total_questions: 20, config: { title: 'Quiz B' } },
-        { id: 'a-4', score: 0, total_questions: 4, config: null },
+        {
+          id: 'a-1',
+          score: 8,
+          total_questions: 10,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: { title: 'Quiz A' },
+        },
+        {
+          id: 'a-2',
+          score: 6,
+          total_questions: 10,
+          completed_at: '2024-01-01T11:00:00Z',
+          config: { title: 'Quiz A' },
+        },
+        {
+          id: 'a-3',
+          score: 0,
+          total_questions: 10,
+          completed_at: null,
+          config: { title: 'Quiz A' },
+        },
+        {
+          id: 'a-4',
+          score: 5,
+          total_questions: 20,
+          completed_at: '2024-01-01T12:00:00Z',
+          config: { title: 'Quiz B' },
+        },
+        {
+          id: 'a-5',
+          score: 0,
+          total_questions: 4,
+          completed_at: '2024-01-01T13:00:00Z',
+          config: null,
+        },
+        {
+          id: 'a-6',
+          score: 0,
+          total_questions: 4,
+          completed_at: null,
+          config: { title: 'Quiz C' },
+        },
       ]);
       mock.from.mockReturnValueOnce(membersBuilder);
       mock.from.mockReturnValueOnce(attemptsBuilder);
@@ -278,33 +701,286 @@ describe('StatsService', () => {
       expect(membersBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
       expect(membersBuilder.eq).toHaveBeenCalledWith('org_roles.name', 'member');
       expect(attemptsBuilder.in).toHaveBeenCalledWith('user_id', ['s-1']);
-      expect(attemptsBuilder.is).toHaveBeenCalledWith('assignment_id', null);
-      expect(attemptsBuilder.not).toHaveBeenCalledWith('completed_at', 'is', null);
+      // #212: completion is completed / started, so unfinished attempts must be
+      // fetched (they feed the denominator only). Assignment attempts are
+      // included: each attempt is normalised to its own percentage, so points
+      // and correct-answer counts are comparable (#203).
+      expect(attemptsBuilder.not).not.toHaveBeenCalledWith('completed_at', 'is', null);
+      expect(attemptsBuilder.is).not.toHaveBeenCalled();
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual([
         {
           id: 'Quiz A',
           title: 'Quiz A',
-          totalAttempts: 2,
-          avgScore: 7,
-          avgCompletionRate: 10,
+          totalAttempts: 3, // 2 completed + 1 abandoned
+          avgScore: 70, // (80 + 60) / 2 — the abandoned attempt never scores
+          avgCompletionRate: 67, // 2 / 3
         },
         {
           id: 'Quiz B',
           title: 'Quiz B',
           totalAttempts: 1,
-          avgScore: 5,
-          avgCompletionRate: 20,
+          avgScore: 25, // 5/20
+          avgCompletionRate: 100,
         },
         {
-          id: 'Untitled Quiz',
-          title: 'Untitled Quiz',
+          id: '',
+          title: null,
           totalAttempts: 1,
-          avgScore: 0,
-          avgCompletionRate: 4,
+          avgScore: 0, // 0/4
+          avgCompletionRate: 100,
+        },
+        {
+          id: 'Quiz C',
+          title: 'Quiz C',
+          totalAttempts: 1,
+          avgScore: 0, // nothing completed, so the mean stays 0
+          avgCompletionRate: 0, // 0 / 1
         },
       ]);
+    });
+
+    it('normalises assignment attempts by total_points and names them after the quiz (#203, #207)', async () => {
+      // The issue's EDU-ST-02 fixture: five completed assignment attempts scored
+      // 3/4, 2/4, 4/4, 3/4, 3/4 → 75 %, not the raw mean of 3 points. They carry
+      // no `config` (the assignment flow never writes one), so the label has to
+      // come from the assignment → quiz relation instead of „Untitled Quiz”.
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb(
+        [3, 2, 4, 3, 3].map((score, index) => ({
+          id: `a-${index}`,
+          score,
+          total_questions: 4,
+          total_points: 4,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: null,
+          assignment_id: 'as-1',
+        })),
+      );
+      const assignmentsBuilder = qb([{ id: 'as-1', title: 'Assignment title', quiz_id: 'quiz-1' }]);
+      const quizzesBuilder = qb([{ id: 'quiz-1', name: 'Historia — Średniowiecze' }]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
+      mock.from.mockReturnValueOnce(quizzesBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(attemptsBuilder.select).toHaveBeenCalledWith(expect.stringContaining('assignment_id'));
+      expect(assignmentsBuilder.in).toHaveBeenCalledWith('id', ['as-1']);
+      expect(assignmentsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(quizzesBuilder.in).toHaveBeenCalledWith('id', ['quiz-1']);
+      expect(quizzesBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: 'Historia — Średniowiecze',
+          title: 'Historia — Średniowiecze',
+          totalAttempts: 5,
+          avgScore: 75,
+          avgCompletionRate: 100,
+        },
+      ]);
+    });
+
+    it('falls back to the assignment title when the assignment has no quiz (#207)', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 3,
+          total_questions: 4,
+          total_points: 4,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: null,
+          assignment_id: 'as-1',
+        },
+      ]);
+      const assignmentsBuilder = qb([{ id: 'as-1', title: 'Ad-hoc assignment', quiz_id: null }]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      // No quiz id to resolve, so the quizzes lookup is skipped entirely.
+      expect(mock.from).toHaveBeenCalledTimes(3);
+      expect(mock.from).not.toHaveBeenCalledWith('quizzes');
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: 'Ad-hoc assignment',
+          title: 'Ad-hoc assignment',
+          totalAttempts: 1,
+          avgScore: 75,
+          avgCompletionRate: 100,
+        },
+      ]);
+    });
+
+    it('keeps a deleted or other-org assignment untitled instead of crashing (#207)', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 2,
+          total_questions: 4,
+          total_points: 4,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: null,
+          assignment_id: 'as-gone',
+        },
+      ]);
+      // RLS / org filter hides the assignment: the lookup returns no rows.
+      const assignmentsBuilder = qb([]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: '',
+          title: null,
+          totalAttempts: 1,
+          avgScore: 50,
+          avgCompletionRate: 100,
+        },
+      ]);
+    });
+
+    it('prefers a stored config.title over the assignment and quiz names (#207)', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 8,
+          total_questions: 10,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: { title: 'Practice title' },
+          assignment_id: 'as-1',
+        },
+      ]);
+      const assignmentsBuilder = qb([{ id: 'as-1', title: 'Assignment title', quiz_id: 'quiz-1' }]);
+      const quizzesBuilder = qb([{ id: 'quiz-1', name: 'Historia — Średniowiecze' }]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
+      mock.from.mockReturnValueOnce(quizzesBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: 'Practice title',
+          title: 'Practice title',
+          totalAttempts: 1,
+          avgScore: 80,
+          avgCompletionRate: 100,
+        },
+      ]);
+    });
+
+    it('skips both assignment lookups for a practice-only page (#207)', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 8,
+          total_questions: 10,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: { title: 'Quiz A' },
+          assignment_id: null,
+        },
+      ]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(mock.from).not.toHaveBeenCalledWith('teacher_assignments');
+      expect(mock.from).not.toHaveBeenCalledWith('quizzes');
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('returns a failure when the assignment lookup fails (#207)', async () => {
+      mock.from.mockReturnValueOnce(qb([{ user_id: 's-1' }]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            id: 'a-1',
+            score: 0,
+            total_questions: 4,
+            completed_at: null,
+            config: null,
+            assignment_id: 'as-1',
+          },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb(null, { message: 'boom', code: 'XX000' }));
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(false);
+    });
+
+    it('returns a failure when the quiz lookup fails (#207)', async () => {
+      mock.from.mockReturnValueOnce(qb([{ user_id: 's-1' }]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            id: 'a-1',
+            score: 0,
+            total_questions: 4,
+            completed_at: null,
+            config: null,
+            assignment_id: 'as-1',
+          },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([{ id: 'as-1', title: 'Assignment', quiz_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'boom', code: 'XX000' }));
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(false);
+    });
+
+    it('guards a zero denominator', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 0,
+          total_questions: 0,
+          total_points: 0,
+          completed_at: null,
+          config: null,
+        },
+      ]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: '',
+          title: null,
+          totalAttempts: 1,
+          avgScore: 0,
+          avgCompletionRate: 0,
+        },
+      ]);
+      expect(Number.isNaN(result.data?.[0]?.avgScore)).toBe(false);
     });
 
     it('returns a failure when the org members query fails', async () => {

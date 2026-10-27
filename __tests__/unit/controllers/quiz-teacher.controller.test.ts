@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { QuizTeacherController } from '@studiq/server/controllers/quiz-teacher.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -60,6 +61,27 @@ describe('QuizTeacherController', () => {
       }
     });
 
+    it('returns 422 when name is whitespace only', async () => {
+      const response = await controller.create({ name: '   ' }, mockCtx);
+
+      expect(response.success).toBe(false);
+      if (!response.success) {
+        expect(response.statusCode).toBe(422);
+        expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(response.details?.[0].path).toEqual(['name']);
+        expect(response.details?.[0].message).toBe(ValidationErrorCode.REQUIRED);
+      }
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+
+    it('passes the trimmed name to the service', async () => {
+      mockService.create.mockResolvedValueOnce(success({ id: 'quiz-1', name: 'My Quiz' }));
+
+      await controller.create({ name: '  My Quiz  ' }, mockCtx);
+
+      expect(mockService.create).toHaveBeenCalledWith({ name: 'My Quiz' }, mockCtx);
+    });
+
     it('returns error when service fails', async () => {
       mockService.create.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
@@ -80,6 +102,14 @@ describe('QuizTeacherController', () => {
       const response = await controller.list(mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: quizzes });
+    });
+
+    it('returns 403 when the service reports FORBIDDEN', async () => {
+      mockService.list.mockResolvedValueOnce(failure('FORBIDDEN'));
+
+      const response = await controller.list({ ...mockCtx, activeOrgId: null });
+
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
     });
   });
 
@@ -131,6 +161,18 @@ describe('QuizTeacherController', () => {
       }
     });
 
+    it('returns 422 when name is whitespace only', async () => {
+      const response = await controller.bulkSave('quiz-1', { name: '   ', questions: [] }, mockCtx);
+
+      expect(response.success).toBe(false);
+      if (!response.success) {
+        expect(response.statusCode).toBe(422);
+        expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(response.details?.[0].message).toBe(ValidationErrorCode.REQUIRED);
+      }
+      expect(mockService.bulkSave).not.toHaveBeenCalled();
+    });
+
     it('propagates service error', async () => {
       mockService.bulkSave.mockResolvedValueOnce(failure('NOT_FOUND'));
 
@@ -156,6 +198,17 @@ describe('QuizTeacherController', () => {
       const response = await controller.update('quiz-1', { name: 'Updated' }, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: updated });
+    });
+
+    it('returns 422 when name is whitespace only', async () => {
+      const response = await controller.update('quiz-1', { name: '   ' }, mockCtx);
+
+      expect(response.success).toBe(false);
+      if (!response.success) {
+        expect(response.statusCode).toBe(422);
+        expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      }
+      expect(mockService.update).not.toHaveBeenCalled();
     });
   });
 

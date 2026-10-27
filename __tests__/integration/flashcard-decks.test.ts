@@ -135,6 +135,43 @@ forEachCopy((copyId) => {
         expect(body.success).toBe(false);
       });
 
+      // #361 — a whitespace-only name is empty, not a valid title.
+      it('returns 422 when name is whitespace-only', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/flashcards/decks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: '   ' }),
+        });
+
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.issues.properties.name.errors).toEqual([
+          'VALIDATION_REQUIRED',
+          'VALIDATION_TOO_SHORT',
+        ]);
+      });
+
+      it('trims a padded name', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/flashcards/decks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: '  deck-Padded  ' }),
+        });
+
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.data.name).toBe('deck-Padded');
+      });
+
       it('returns 401 when not authenticated', async () => {
         mockUser(null);
 
@@ -355,6 +392,25 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(200);
         expect(Array.isArray(body.data?.items)).toBe(true);
         expect(body.data?.items?.length).toBeGreaterThanOrEqual(5);
+        expect(body.data?.total).toBeGreaterThanOrEqual(body.data?.items?.length);
+      });
+
+      it('keeps total stable across pages (cursor does not shrink it)', async () => {
+        mockUser(teacher.user);
+
+        const first = await (
+          await GET(createNextRequest('http://localhost/api/v1/flashcards/decks?limit=2'))
+        ).json();
+        expect(first.data.hasMore).toBe(true);
+        const second = await (
+          await GET(
+            createNextRequest(
+              `http://localhost/api/v1/flashcards/decks?limit=2&cursor=${first.data.nextCursor}`,
+            ),
+          )
+        ).json();
+
+        expect(second.data.total).toBe(first.data.total);
       });
 
       it('returns 401 when not authenticated', async () => {

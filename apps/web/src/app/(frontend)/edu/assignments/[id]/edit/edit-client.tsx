@@ -15,6 +15,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { dbToDatetimeLocal } from '@/lib/datetime';
 import { assignmentKeys } from '@/lib/query-keys';
 
@@ -40,6 +41,9 @@ export default function EditAssignmentClient() {
     queryKey: assignmentKeys.detail(id),
     url: `/api/v1/teacher/assignments/${id}`,
   });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');

@@ -36,6 +36,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { translateErrorCode } from '@/lib/error-messages';
 import { cn } from '@/lib/utils';
 
 export default function RegisterPage() {
@@ -61,13 +62,13 @@ export default function RegisterPage() {
       const result = await response.json();
 
       if (!result.success) {
-        toast.error(tErr(result.error || APP_ERRORS.INTERNAL_SERVER.code));
+        toast.error(translateErrorCode(tErr, result.error || APP_ERRORS.INTERNAL_SERVER.code));
         return;
       }
 
       setIsSuccess(true);
     } catch {
-      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
+      toast.error(translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code));
     }
   }
 

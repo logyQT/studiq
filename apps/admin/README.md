@@ -41,7 +41,7 @@ All under `/api/v1/`. Controllers live in `src/server/controllers/`, services in
 | `user-overrides` | GET, POST |
 | `user-overrides/[id]` | GET, PUT, DELETE |
 | `subscription-plans` | GET, POST |
-| `subscription-plans/[key]` | GET, PUT, DELETE |
+| `subscription-plans/[id]` | GET, PUT, DELETE |
 | `organizations` | GET |
 | `organizations/[id]` | GET (with details) |
 | `users` | GET (list, `?status=&page=&perPage=&search=`), POST |
@@ -52,7 +52,24 @@ All under `/api/v1/`. Controllers live in `src/server/controllers/`, services in
 
 ## Auth
 
-API routes use PEM signature verification (Ed25519) via `proxy.ts`. In local dev (`ADMIN_PEM_KEYS` empty), all requests pass through. See [issue #106](https://github.com/logyQT/studiq/issues/106) for planned scoped key support.
+API routes use Ed25519 PEM signatures via `proxy.ts`. `ADMIN_PEM_KEYS` is a JSON
+keyring (`[{ id, key, scopes, expiresAt? }]`) — see `.env.example` for the format
+and the full scope vocabulary. In local dev (empty `ADMIN_PEM_KEYS`) all requests
+pass through; an empty ring in production denies everything, and a non-empty ring
+with zero valid entries denies everything everywhere.
+
+Requests are signed over `METHOD\npathname\ncanonical-query\ntimestamp\nsha256(body)`,
+so query strings and bodies cannot be swapped. Sign one with:
+
+```bash
+bun scripts/admin-sign.ts gen --id ops-local --scopes feature-flags:read
+bun scripts/admin-sign.ts sign GET http://localhost:4000/api/v1/feature-flags
+```
+
+The gate forwards the verified key id as `x-admin-key-id` and writes one audit
+record per authenticated request. The browser panel itself cannot sign requests in
+PEM mode — that is option B in
+[`docs/decisions/0007-admin-api-auth.md`](../../docs/decisions/0007-admin-api-auth.md).
 
 ## Database
 

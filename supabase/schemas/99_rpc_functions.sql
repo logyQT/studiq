@@ -64,7 +64,7 @@ BEGIN
   with_state AS (
     SELECT
       m.id, m.front, m.back, m.created_at,
-      rs.easiness_factor, rs.interval_days, rs.repetitions,
+      rs.easiness_factor, rs.interval_days, rs.interval_unit, rs.repetitions,
       rs.next_review_at, rs.last_reviewed_at, rs.last_quality,
       rs.learning_state, rs.learning_step, rs.lapse_count, rs.is_leech
     FROM matching m
@@ -100,7 +100,8 @@ BEGIN
       'reviewState', CASE WHEN c.easiness_factor IS NOT NULL THEN
         json_build_object(
           'easinessFactor', c.easiness_factor,
-          'intervalDays', c.interval_days,
+          'intervalValue', c.interval_days,
+          'intervalUnit', c.interval_unit,
           'repetitions', c.repetitions,
           'nextReviewAt', c.next_review_at,
           'lastReviewedAt', c.last_reviewed_at,
@@ -248,7 +249,8 @@ $$;
 -- get_practice_state_breakdown
 -- Counts flashcards by practice state
 -- (never_practiced, learning, review,
---  relearning, leeched) for a user.
+--  relearning, leeched) and the collection-wide
+-- summary (practiced, accuracy, easiness) for a user.
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION public.get_practice_state_breakdown(
@@ -257,49 +259,21 @@ CREATE OR REPLACE FUNCTION public.get_practice_state_breakdown(
   p_organization_id uuid DEFAULT NULL
 )
 RETURNS json
-LANGUAGE plpgsql
+LANGUAGE sql
+STABLE
 AS $$
-DECLARE
-  total int;
-  never_practiced int;
-  learning_count int;
-  review_count int;
-  relearning_count int;
-  leeched_count int;
-BEGIN
-  IF p_created_by IS NOT NULL AND p_organization_id IS NOT NULL THEN
-    SELECT COUNT(*) INTO total
+  WITH scoped AS (
+    SELECT f.id
     FROM public.flashcards f
-    WHERE f.created_by = p_created_by AND f.organization_id = p_organization_id
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-    SELECT
-      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
-      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
-    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
-    FROM public.flashcards f
-    LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.created_by = p_created_by AND f.organization_id = p_organization_id
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-  ELSIF p_organization_id IS NOT NULL THEN
-    SELECT COUNT(*) INTO total
-    FROM public.flashcards f
-    WHERE f.organization_id = p_organization_id
+    WHERE (p_created_by IS NULL OR f.created_by = p_created_by)
+      AND (p_organization_id IS NULL OR f.organization_id = p_organization_id)
       AND (
-        f.created_by = p_user_id
-        OR EXISTS (
-          SELECT 1 FROM public.deck_groups dg
+        p_organization_id IS NULL           -- created_by-only scope: no org restriction
+        OR p_created_by IS NOT NULL         -- own cards inside the org
+        OR f.created_by = p_user_id         -- group scope: own
+        OR EXISTS (                          -- group scope: deck shared with one of my groups
+          SELECT 1
+          FROM public.deck_groups dg
           JOIN public.group_members gm ON gm.group_id = dg.group_id
           WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
         )
@@ -307,90 +281,41 @@ BEGIN
       AND NOT EXISTS (
         SELECT 1 FROM public.suspended_decks sd
         WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-    SELECT
-      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
-      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
-    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
-    FROM public.flashcards f
-    LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.organization_id = p_organization_id
-      AND (
-        f.created_by = p_user_id
-        OR EXISTS (
-          SELECT 1 FROM public.deck_groups dg
-          JOIN public.group_members gm ON gm.group_id = dg.group_id
-          WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
-        )
       )
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-  ELSIF p_created_by IS NOT NULL THEN
-    SELECT COUNT(*) INTO total
-    FROM public.flashcards f
-    WHERE f.created_by = p_created_by
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-    SELECT
-      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
-      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
-    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
-    FROM public.flashcards f
+  ),
+  card_state AS (
+    SELECT s.id, rs.flashcard_id, rs.learning_state, rs.is_leech, rs.easiness_factor
+    FROM scoped s
     LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.created_by = p_created_by
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-  ELSE
-    SELECT COUNT(*) INTO total
-    FROM public.flashcards f
-    WHERE NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-    SELECT
-      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
-      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
-    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
-    FROM public.flashcards f
-    LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-  END IF;
-
-  RETURN json_build_object(
-    'totalCards', total,
-    'neverPracticed', never_practiced,
-    'learning', learning_count,
-    'review', review_count,
-    'relearning', relearning_count,
-    'leeched', leeched_count
-  );
-END;
+      ON rs.flashcard_id = s.id AND rs.user_id = p_user_id
+  ),
+  card_practice AS (
+    SELECT p.flashcard_id,
+           COUNT(*) AS attempts,
+           COUNT(*) FILTER (WHERE p.was_correct) AS correct
+    FROM public.flashcard_practice p
+    JOIN scoped s ON s.id = p.flashcard_id
+    WHERE p.user_id = p_user_id
+    GROUP BY p.flashcard_id
+  )
+  SELECT json_build_object(
+    'totalCards', (SELECT COUNT(*) FROM scoped)::int,
+    'neverPracticed', COUNT(*) FILTER (WHERE cs.flashcard_id IS NULL)::int,
+    'learning', COUNT(*) FILTER (WHERE cs.learning_state = 'learning' AND NOT cs.is_leech)::int,
+    'review', COUNT(*) FILTER (WHERE cs.learning_state = 'review' AND NOT cs.is_leech)::int,
+    'relearning', COUNT(*) FILTER (WHERE cs.learning_state = 'relearning' AND NOT cs.is_leech)::int,
+    'leeched', COUNT(*) FILTER (WHERE cs.is_leech)::int,
+    'practicedCards', COUNT(*) FILTER (WHERE cp.attempts > 0)::int,
+    'averageAccuracy', COALESCE(
+      ROUND(AVG(CASE WHEN cp.attempts > 0
+        THEN ROUND(cp.correct * 100.0 / cp.attempts)   -- per-card %, matches the UI's correctRate
+      END)), 0
+    )::int,
+    'averageEasinessFactor', COALESCE(ROUND(AVG(cs.easiness_factor)::numeric, 2), 0)
+  )
+  FROM scoped s
+  LEFT JOIN card_state cs ON cs.id = s.id
+  LEFT JOIN card_practice cp ON cp.flashcard_id = s.id;
 $$;
 
 -- ==========================================
@@ -453,7 +378,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.get_teacher_stats(
   p_flashcard_ids uuid[],
   p_user_id uuid,
-  p_deck_id uuid DEFAULT NULL
+  p_deck_id uuid DEFAULT NULL,
+  p_organization_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -462,6 +388,8 @@ SET search_path = ''
 AS $$
 DECLARE
   v_flashcard_ids uuid[];
+  v_organization_id uuid;
+  v_roster_students int;              -- NULL stays NULL: "no org" is not "0 students"
   result jsonb;
 BEGIN
   IF p_deck_id IS NOT NULL THEN
@@ -474,11 +402,66 @@ BEGIN
     v_flashcard_ids := p_flashcard_ids;
   END IF;
 
+  -- Authorization: only the caller's own dashboard, or the service role
+  -- (backend/tests), may aggregate. Anything else fails with 42501 instead of
+  -- returning another user's practice data.
+  IF auth.role() IS DISTINCT FROM 'service_role' THEN
+    IF p_user_id IS DISTINCT FROM auth.uid() THEN
+      RAISE EXCEPTION 'get_teacher_stats may only be called for the authenticated user'
+        USING ERRCODE = '42501';
+    END IF;
+
+    -- SECURITY DEFINER bypasses RLS, so a crafted p_flashcard_ids could still
+    -- aggregate practice rows of another tenant's cards. Narrow the request to
+    -- cards the caller can read (own, or in one of their organizations) — the
+    -- same floor as the public.flashcards policy.
+    SELECT ARRAY_AGG(DISTINCT f.id)
+    INTO v_flashcard_ids
+    FROM public.flashcards f
+    WHERE f.id = ANY(v_flashcard_ids)
+      AND (
+        f.created_by = auth.uid()
+        OR f.organization_id IN (
+          SELECT c.organization_id FROM public.rls_caller_org_ids() c
+        )
+      );
+
+    -- #460: SECURITY DEFINER must not trust the org parameter on its own — a
+    -- crafted call would otherwise become a cross-tenant roster oracle.
+    IF p_organization_id IS NOT NULL
+       AND p_organization_id IN (
+         SELECT c.organization_id FROM public.rls_caller_org_ids() c
+       ) THEN
+      v_organization_id := p_organization_id;
+    END IF;
+  ELSE
+    v_organization_id := p_organization_id;   -- service role: backend + integration tests
+  END IF;
+
+  -- Roster: distinct learners in the caller's groups of the active
+  -- organization. `ctx.groupIds` spans every org, so the groups are re-filtered
+  -- by organization, and the group must also contain the caller.
+  IF v_organization_id IS NOT NULL THEN
+    SELECT COUNT(DISTINCT learner.user_id)::int
+    INTO v_roster_students
+    FROM public.groups g
+    JOIN public.group_members learner ON learner.group_id = g.id
+    WHERE g.organization_id = v_organization_id
+      AND learner.role = 'member'
+      AND learner.user_id <> p_user_id
+      AND EXISTS (
+        SELECT 1 FROM public.group_members caller
+        WHERE caller.group_id = g.id AND caller.user_id = p_user_id
+      );
+  END IF;
+
   IF v_flashcard_ids IS NULL OR array_length(v_flashcard_ids, 1) IS NULL OR array_length(v_flashcard_ids, 1) = 0 THEN
     RETURN jsonb_build_object(
       'summary', jsonb_build_object(
         'totalDecks', 0, 'totalFlashcards', 0, 'totalPractices', 0,
-        'totalStudents', 0, 'overallAccuracy', 0, 'averageEasinessFactor', 0,
+        'practicingStudents', 0,
+        'rosterStudents', v_roster_students,
+        'overallAccuracy', 0, 'averageEasinessFactor', 0,
         'difficultyBreakdown', jsonb_build_object('easy', 0, 'medium', 0, 'hard', 0, 'new', 0)
       ),
       'byDeck', '[]'::jsonb,
@@ -525,7 +508,9 @@ BEGIN
         (SELECT COUNT(*) FROM decks)::int AS total_decks,
         array_length(v_flashcard_ids, 1) AS total_flashcards,
         (SELECT COUNT(*) FROM practices)::int AS total_practices,
-        (SELECT COUNT(DISTINCT user_id) FROM practices)::int AS total_students,
+        -- #460: the caller is not a student of their own deck.
+        (SELECT COUNT(DISTINCT user_id) FROM practices WHERE user_id <> p_user_id)::int
+          AS practicing_students,
         CASE
           WHEN (SELECT COUNT(*) FROM practices) > 0
           THEN ROUND(
@@ -665,7 +650,8 @@ BEGIN
       'totalDecks', (SELECT total_decks FROM summary),
       'totalFlashcards', (SELECT total_flashcards FROM summary),
       'totalPractices', (SELECT total_practices FROM summary),
-      'totalStudents', (SELECT total_students FROM summary),
+      'practicingStudents', (SELECT practicing_students FROM summary),
+      'rosterStudents', v_roster_students,
       'overallAccuracy', (SELECT overall_accuracy FROM summary),
       'averageEasinessFactor', (SELECT avg_ef FROM summary),
       'difficultyBreakdown', jsonb_build_object(
@@ -734,5 +720,92 @@ BEGIN
     );
 
   RETURN v_count;
+END;
+$$;
+
+-- ==========================================
+-- get_teacher_problematic_questions (#204, EDU-ST-02)
+-- Per-question accuracy for the caller's own questions, aggregated in SQL so
+-- the PostgREST 1000-row cap cannot truncate the answer sample. One answer per
+-- (attempt, question) via bool_or, matching the submit scoring rule; `open`
+-- questions are excluded because an ungraded row is `is_correct = false`.
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION public.get_teacher_problematic_questions(
+  p_user_id uuid,
+  p_organization_id uuid DEFAULT NULL,
+  p_bank_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  result jsonb;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role'
+     AND p_user_id IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'get_teacher_problematic_questions may only be called for the authenticated user'
+      USING ERRCODE = '42501';
+  END IF;
+
+  WITH scoped_questions AS (
+    SELECT q.id, q.type::text AS type, q.content
+    FROM public.questions q
+    WHERE q.created_by = p_user_id
+      AND (p_organization_id IS NULL OR q.organization_id = p_organization_id)
+      AND (p_bank_id IS NULL OR q.bank_id = p_bank_id)
+  ),
+  visible_students AS (
+    SELECT DISTINCT om.user_id
+    FROM public.org_members om
+    JOIN public.org_roles r ON r.id = om.org_role_id
+    WHERE r.name = 'member'
+      AND om.organization_id IN (
+        SELECT mine.organization_id
+        FROM public.org_members mine
+        WHERE mine.user_id = p_user_id
+          AND (p_organization_id IS NULL OR mine.organization_id = p_organization_id)
+      )
+  ),
+  attempt_answers AS (
+    SELECT sa.question_id, sa.attempt_id, bool_or(sa.is_correct) AS was_correct
+    FROM public.student_answers sa
+    JOIN public.quiz_attempts qa ON qa.id = sa.attempt_id
+    JOIN scoped_questions sq ON sq.id = sa.question_id
+    WHERE qa.completed_at IS NOT NULL
+      AND qa.user_id IS DISTINCT FROM p_user_id
+      AND qa.user_id IN (SELECT user_id FROM visible_students)
+    GROUP BY sa.question_id, sa.attempt_id
+  ),
+  answer_stats AS (
+    SELECT question_id,
+           COUNT(*)::int AS total_answers,
+           COUNT(*) FILTER (WHERE was_correct)::int AS correct_answers
+    FROM attempt_answers
+    GROUP BY question_id
+  )
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', sq.id,
+        'content', sq.content,
+        'type', sq.type,
+        'correctRate', ROUND(st.correct_answers::numeric / st.total_answers, 4),
+        'totalAnswers', st.total_answers
+      )
+      ORDER BY st.correct_answers::numeric / st.total_answers ASC, sq.content ASC
+    ),
+    '[]'::jsonb
+  )
+  INTO result
+  FROM scoped_questions sq
+  JOIN answer_stats st ON st.question_id = sq.id
+  WHERE sq.type <> 'open'
+    AND st.correct_answers::numeric / st.total_answers < 0.5;
+
+  RETURN result;
 END;
 $$;
