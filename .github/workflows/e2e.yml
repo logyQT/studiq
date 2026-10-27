@@ -35,6 +35,9 @@ jobs:
       # The config falls back to the CPU count on CI (4 here). Override only if
       # the runner is bigger.
       E2E_WORKERS: '4'
+      # admin-api is a nightly/manual leg: three assertions don't justify
+      # building the admin app on every PR (its gate logic is unit-tested).
+      E2E_INCLUDE_ADMIN: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '' }}
 
     steps:
       - uses: actions/checkout@v7
