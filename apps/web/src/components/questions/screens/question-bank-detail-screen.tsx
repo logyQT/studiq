@@ -55,7 +55,11 @@ export function QuestionBankDetailScreen({
 
   const access = bankAccess(
     !!bank,
-    !!bank && permission('question_bank.update', { createdBy: bank.created_by }),
+    !!bank &&
+      permission('question_bank.update', {
+        createdBy: bank.created_by,
+        orgId: bank.organization_id ?? undefined,
+      }),
   );
 
   // The bank name is the breadcrumb leaf; the raw bank UUID must never render.
