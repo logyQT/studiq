@@ -72,6 +72,8 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role;
 -- the unused get_accessible_* family (only integration tests call those, with
 -- the service client).
 REVOKE ALL ON FUNCTION public.apply_org_plan(uuid, text) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.admin_platform_stats() FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.admin_daily_stats(integer) FROM authenticated, anon;
 REVOKE ALL ON FUNCTION public.rls_audit() FROM authenticated, anon;
 REVOKE ALL ON FUNCTION public.has_org_feature(uuid, uuid, text) FROM authenticated, anon;
 REVOKE ALL ON FUNCTION public.is_org_manager(uuid, uuid) FROM authenticated, anon;

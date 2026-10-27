@@ -62,6 +62,8 @@ describe('anon role grants (#191)', () => {
   // functions to PUBLIC, so the SECURITY DEFINER RPCs were callable with the
   // public anon key even after the table grants were revoked.
   it.each([
+    ['admin_platform_stats', {}],
+    ['admin_daily_stats', { p_days: 30 }],
     [
       'get_teacher_stats',
       {
