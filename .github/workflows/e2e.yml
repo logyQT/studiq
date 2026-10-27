@@ -22,10 +22,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Lint then types, cheapest first. Formatting is enforced by the git hooks
-  # (pre-commit auto-formats, pre-push checks) and not here: `bun lint` requires
-  # a canary build, and `bun fmt` output drifts between canary builds — a
-  # format gate on a moving formatter fails on files that are clean locally.
+  # Cheapest first, in the order a failure is cheapest to explain: formatting,
+  # lint, types. Everything else waits on this.
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -33,12 +31,17 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2.2.0
         with:
-          bun-version: canary
+          # Pinned: `bun lint` is canary-only, but `bun fmt` output differs
+          # between canary builds — an unpinned canary flags files that are
+          # clean for the developer's build.
+          bun-version: 1.4.4-canary.20261027.1
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
+      - name: Format
+        run: bun run format:check
       - name: Lint
         run: bun run lint
       - name: Typecheck
@@ -52,7 +55,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2.2.0
         with:
-          bun-version: canary
+          # Pinned: `bun lint` is canary-only, but `bun fmt` output differs
+          # between canary builds — an unpinned canary flags files that are
+          # clean for the developer's build.
+          bun-version: 1.4.4-canary.20261027.1
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
@@ -68,7 +74,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2.2.0
         with:
-          bun-version: canary
+          # Pinned: `bun lint` is canary-only, but `bun fmt` output differs
+          # between canary builds — an unpinned canary flags files that are
+          # clean for the developer's build.
+          bun-version: 1.4.4-canary.20261027.1
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
@@ -116,9 +125,11 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2.2.0
         with:
-          # `bun lint` is canary-only; keep this in step with
-          # scripts/check-bun-version.ts.
-          bun-version: canary
+          # Pinned: `bun lint` is canary-only, but `bun fmt` output differs
+          # between canary builds — an unpinned canary flags files that are
+          # clean for the developer's build. Keep in step with
+          # scripts/check-bun-version.ts (>= 1.4.4).
+          bun-version: 1.4.4-canary.20261027.1
 
       - name: Cache bun install
         uses: actions/cache@v6
