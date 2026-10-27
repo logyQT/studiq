@@ -109,12 +109,16 @@ export default defineConfig({
     // a cold route change can blow past a spec's action timeout, and under
     // parallel workers it is the difference between a real failure and a
     // timeout. The build is a no-op (~1 s) when nothing changed.
-    {
-      command: 'bun run build && bun run start',
-      url: 'http://localhost:3000',
-      reuseExistingServer: !process.env.CI,
-      timeout: 300 * 1000,
-    },
+    ...(process.env.E2E_SKIP_WEB_WS === '1'
+      ? []
+      : [
+          {
+            command: 'bun run build && bun run start',
+            url: 'http://localhost:3000',
+            reuseExistingServer: !process.env.CI,
+            timeout: 300 * 1000,
+          },
+        ]),
     // The admin API project needs its own server (the keyring is module-cached
     // at boot, so a reused keyless server would make the signed-request spec
     // lie). Skip it locally with E2E_SKIP_ADMIN_WS=1 when :4000 is not free.
