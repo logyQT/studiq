@@ -28,17 +28,21 @@ describe('createMailerFromEnv', () => {
     expect(createMailerFromEnv({ MAIL_DRIVER: '  ' })).toBeNull();
   });
 
-  it('selects the log adapter outside production', () => {
+  it('selects the log adapter in a development run', () => {
     expect(createMailerFromEnv({ MAIL_DRIVER: 'log', NODE_ENV: 'development' })).toBeInstanceOf(
       LogMailer,
     );
   });
 
-  it('refuses the log adapter in production (it prints invitation links)', () => {
-    expect(() => createMailerFromEnv({ MAIL_DRIVER: 'log', NODE_ENV: 'production' })).toThrow(
-      MailConfigError,
-    );
-  });
+  it.each(['production', 'staging', 'preview', 'test', undefined])(
+    'refuses the log adapter unless NODE_ENV is development (%s)',
+    (nodeEnv) => {
+      // It prints recipients and invitation links, so it fails closed everywhere else.
+      expect(() => createMailerFromEnv({ MAIL_DRIVER: 'log', NODE_ENV: nodeEnv })).toThrow(
+        MailConfigError,
+      );
+    },
+  );
 
   it('selects the SMTP adapter when its settings are complete', () => {
     const env = {

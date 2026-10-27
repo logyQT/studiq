@@ -114,7 +114,7 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000       # canonical URL (invite links, 
 # ── Invitation e-mail (optional) ──────────────────────────────────────
 # Read by packages/server/src/lib/mailer. Unset / none = no mail is sent and the
 # copyable invite link stays the only delivery path. A bad value stops the server at boot.
-MAIL_DRIVER=                                     # none (default) | log (dev only) | smtp
+MAIL_DRIVER=                                     # none (default) | log (NODE_ENV=development only) | smtp
 MAIL_FROM=                                       # smtp: sender, e.g. StudiQ <no-reply@your-domain.com>
 MAIL_SMTP_HOST=                                  # smtp: 127.0.0.1 locally (Inbucket), the relay in production
 MAIL_SMTP_PORT=                                  # smtp: 54325 locally (Inbucket), 587 / 465 in production

@@ -22,7 +22,7 @@ function required(env: Env, name: string): string {
  *
  * - `MAIL_DRIVER` unset or `none`: no mail is sent (the copyable invite link stays the
  *   delivery path). This is the default, so nothing changes until an operator opts in.
- * - `MAIL_DRIVER=log`: print messages to the log (development only).
+ * - `MAIL_DRIVER=log`: print messages to the log (NODE_ENV=development only).
  * - `MAIL_DRIVER=smtp`: `MAIL_FROM`, `MAIL_SMTP_HOST`, `MAIL_SMTP_PORT` required;
  *   `MAIL_SMTP_SECURE=true` for implicit TLS; `MAIL_SMTP_USER` + `MAIL_SMTP_PASS` together.
  *
@@ -35,9 +35,11 @@ export function createMailerFromEnv(env: Env = process.env): Mailer | null {
   if (driver === '' || driver === 'none') return null;
 
   if (driver === 'log') {
-    if (env.NODE_ENV === 'production') {
+    // Fail closed: the log adapter writes recipients and invitation links (a bearer capability) to
+    // the log store, so only an explicit development run may use it, never staging or preview.
+    if (env.NODE_ENV !== 'development') {
       throw new MailConfigError(
-        'MAIL_DRIVER=log prints invitation links and is not allowed in production',
+        'MAIL_DRIVER=log prints invitation links and is only allowed when NODE_ENV=development',
       );
     }
     return new LogMailer();

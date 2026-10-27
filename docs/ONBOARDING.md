@@ -267,7 +267,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
-# Optional: deliver invitation e-mails to the local Inbucket (http://127.0.0.1:54324).
+# Optional: deliver invitation e-mails to the local Inbucket (http://127.0.0.1:54324). Uncomment
+# `smtp_port` in supabase/config.toml first (and offset it per parallel slot).
 # Without it the copyable invite link is the only delivery path.
 # MAIL_DRIVER=smtp
 # MAIL_FROM=StudiQ <no-reply@studiq.local>
