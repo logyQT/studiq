@@ -1,8 +1,6 @@
-import { expect, type Page, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { t } from '#test/e2e/utils';
-
-const email = 'teacher1@dev.local';
-const password = 'pass';
+import { expect, test } from '#test/e2e/fixtures/tenant';
 
 const newBankButton = t('QuestionBankManagement.new_bank');
 const editBankTitle = t('QuestionBankManagement.edit_bank');
@@ -17,17 +15,6 @@ const cancelButton = t('Common.common_cancel');
 
 function uniqueBankName(prefix: string) {
   return `QA371 ${prefix} ${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
-}
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel(t('LoginPage.email_label')).fill(email);
-  await page.getByLabel(t('LoginPage.password_label')).fill(password);
-  await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/edu/);
-  // Login ends with router.refresh(); wait for that transition to finish so the
-  // dashboard is interactive and cannot remount the screen under our clicks.
-  await page.waitForLoadState('networkidle');
 }
 
 // The card renders both the mobile and the desktop layout; only one is visible per viewport.
@@ -82,8 +69,10 @@ async function deleteBankFromMenu(page: Page, name: string) {
 }
 
 test.describe('Question bank card menu', () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page);
+  test.use({ seed: 'content' });
+
+  test.beforeEach(async ({ page, loginAs }) => {
+    await loginAs('teacher');
     await openBanksPage(page);
   });
 

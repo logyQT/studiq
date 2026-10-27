@@ -56,3 +56,6 @@ test-results
 .dev/
 .worktrees
 apps/admin/.env.local
+
+# e2e seeder output
+__tests__/e2e/.seed/

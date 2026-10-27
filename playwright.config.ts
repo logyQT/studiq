@@ -24,6 +24,9 @@ export default defineConfig({
   // Directory where your E2E tests are located
   testDir: './__tests__/e2e',
 
+  // Seeds one isolated tenant per test before the suite starts (scripts/e2e-seed.ts).
+  globalSetup: './__tests__/e2e/global-setup.ts',
+
   // Run tests in files in parallel
   fullyParallel: true,
 
