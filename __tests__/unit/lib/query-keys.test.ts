@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import { assignmentKeys, flashcardKeys, questionKeys, topicKeys } from '@/lib/query-keys';
@@ -159,5 +160,46 @@ describe('flashcardKeys.afterDeckSuspend (#365)', () => {
 
   it('leaves unrelated queries alone', () => {
     expect(invalidatedAfterSuspend([['topics', 'paginated', null, {}]])).toEqual([false]);
+  });
+});
+
+describe('a finished study session refreshes the statistics (#365)', () => {
+  const cardsStats = [
+    'flashcards',
+    'practice',
+    'cards-stats',
+    { state: 'all', sortBy: 'next_review_at' },
+  ];
+  const cached = [
+    cardsStats,
+    ['flashcards', 'practice', 'states'],
+    ['flashcards', 'stats', 'teacher'],
+    ['flashcards', 'decks', 'list'],
+  ];
+
+  it('invalidates cards-stats, states, due counts and deck progress', () => {
+    const client = new QueryClient();
+    for (const key of cached) client.setQueryData(key, 'cached');
+    for (const queryKey of flashcardKeys.afterStudySession) {
+      client.invalidateQueries({ queryKey: [...queryKey] });
+    }
+    expect(cached.map((key) => client.getQueryState(key)?.isInvalidated)).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  it('is what the session client runs after it posts the session', () => {
+    const source = readFileSync(
+      'apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx',
+      'utf8',
+    );
+    const afterComplete = source.slice(
+      source.indexOf('/api/v1/flashcards/practice/sessions/complete'),
+    );
+    expect(afterComplete).toContain('flashcardKeys.afterStudySession');
+    expect(afterComplete).toContain('invalidateQueries');
   });
 });
