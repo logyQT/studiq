@@ -111,6 +111,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # service-role key — server only, never ship to the client
 NEXT_PUBLIC_SITE_URL=http://localhost:3000       # canonical URL (invite links, sitemap)
 
+# ── Invitation e-mail (optional) ──────────────────────────────────────
+# Read by packages/server/src/lib/mailer. Unset / none = no mail is sent and the
+# copyable invite link stays the only delivery path. A bad value stops the server at boot.
+MAIL_DRIVER=                                     # none (default) | log (NODE_ENV=development only) | smtp
+MAIL_FROM=                                       # smtp: sender, e.g. StudiQ <no-reply@your-domain.com>
+MAIL_SMTP_HOST=                                  # smtp: 127.0.0.1 locally (Inbucket), the relay in production
+MAIL_SMTP_PORT=                                  # smtp: 54325 locally (Inbucket), 587 / 465 in production
+MAIL_SMTP_SECURE=                                # smtp: true for implicit TLS (port 465)
+MAIL_SMTP_USER=                                  # smtp: set together with MAIL_SMTP_PASS
+MAIL_SMTP_PASS=
+
 # ── LLM provider (optional — powers AI flashcard generation) ──────────
 # Read by packages/server/src/ai/model.ts
 LLM_PROVIDER=                                    # default: opencode

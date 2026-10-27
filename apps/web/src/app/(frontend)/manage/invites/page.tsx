@@ -158,7 +158,12 @@ export default function InvitationsPage() {
 
     const payload = invites
       .filter((i) => i.email.trim() && i.orgRoleId)
-      .map((i) => ({ email: i.email.trim(), targetOrgRoleId: i.orgRoleId }));
+      .map((i) => ({
+        email: i.email.trim(),
+        targetOrgRoleId: i.orgRoleId,
+        // Language of the invitation e-mail, once one is delivered (#604).
+        locale: locale === 'en' ? 'en' : 'pl',
+      }));
     if (payload.length === 0) {
       toast.error(t('no_invites'));
       return;
