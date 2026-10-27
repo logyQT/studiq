@@ -14,10 +14,13 @@ ADM-FLG-01.
 ## Prerequisite context
 
 ### ADM-FLG-01 — Lista flag
+
 _Warunek wstępny: Baza po resecie._
+
 1. Otwórz /feature-flags.
 
 Expected:
+
 - Tabela: Klucz, Nazwa, Opis, Włączona, Wdrożenie %, Akcje; flagi: group.manage, member.manage, role.builder, branding + pozostałe z migracji.
 - Pusta baza: „Brak flag funkcji.”
 

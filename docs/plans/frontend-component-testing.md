@@ -63,15 +63,15 @@ The `flashcard-testing-pipeline.md` doc already scoped a focused test effort for
 
 ## Current state summary
 
-| What exists | What's missing |
-|---|---|
-| Vitest with `node` environment | No browser mode config for component tests |
-| 116 server tests (services, controllers, models, guards) | Zero `.test.tsx` files |
-| 100+ app components (`src/components/`) | No `vitest-browser-react` or rendering helpers |
-| 30+ UI primitives (`packages/ui/src/components/ui/`) | No provider wrappers (QueryClient, next-intl, etc.) |
-| `@/` and `#test/` aliases in Vitest + tsconfig | No component test setup |
-| 10 Playwright E2E specs (`__tests__/e2e/`) | No component-level interaction tests |
-| `flashcard-testing-pipeline.md` scoped for AI chat | Not yet executed |
+| What exists                                              | What's missing                                      |
+| -------------------------------------------------------- | --------------------------------------------------- |
+| Vitest with `node` environment                           | No browser mode config for component tests          |
+| 116 server tests (services, controllers, models, guards) | Zero `.test.tsx` files                              |
+| 100+ app components (`src/components/`)                  | No `vitest-browser-react` or rendering helpers      |
+| 30+ UI primitives (`packages/ui/src/components/ui/`)     | No provider wrappers (QueryClient, next-intl, etc.) |
+| `@/` and `#test/` aliases in Vitest + tsconfig           | No component test setup                             |
+| 10 Playwright E2E specs (`__tests__/e2e/`)               | No component-level interaction tests                |
+| `flashcard-testing-pipeline.md` scoped for AI chat       | Not yet executed                                    |
 
 ---
 
@@ -87,19 +87,19 @@ This eliminates the jsdom/happy-dom trade-off entirely. Radix portals, focus man
 
 **Decision:** `vitest-browser-react` replaces `@testing-library/react` + `@testing-library/jest-dom` + `@testing-library/user-event`. No Testing Library packages needed.
 
-| Old (Testing Library) | New (Browser Mode) | Replacement |
-|---|---|---|
-| `@testing-library/react` (`render`, `screen`) | `vitest-browser-react` (`render`) + `page` from `vitest/browser` | Direct replacement |
-| `@testing-library/jest-dom` (`.toBeInTheDocument()`) | `expect.element()` auto-retrying assertions | Built into Vitest browser assertions |
-| `@testing-library/user-event` | `userEvent` from `vitest/browser` | Higher fidelity — drives events via CDP, not synthetic dispatch |
+| Old (Testing Library)                                | New (Browser Mode)                                               | Replacement                                                     |
+| ---------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------- |
+| `@testing-library/react` (`render`, `screen`)        | `vitest-browser-react` (`render`) + `page` from `vitest/browser` | Direct replacement                                              |
+| `@testing-library/jest-dom` (`.toBeInTheDocument()`) | `expect.element()` auto-retrying assertions                      | Built into Vitest browser assertions                            |
+| `@testing-library/user-event`                        | `userEvent` from `vitest/browser`                                | Higher fidelity — drives events via CDP, not synthetic dispatch |
 
 **Rejected alternatives:**
 
-| Alternative | Why rejected |
-|---|---|
-| **Testing Library with jsdom/happy-dom** | We chose browser mode; Testing Library is redundant |
-| **Storybook interaction tests** | Separate build system; underpowered vs Vitest; adds maintenance burden |
-| **React `test-utils`** | `act()` only, no query helpers, no matchers — not worth it |
+| Alternative                              | Why rejected                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------------- |
+| **Testing Library with jsdom/happy-dom** | We chose browser mode; Testing Library is redundant                    |
+| **Storybook interaction tests**          | Separate build system; underpowered vs Vitest; adds maintenance burden |
+| **React `test-utils`**                   | `act()` only, no query helpers, no matchers — not worth it             |
 
 ### Q3: Where do component tests live? — STILL OPEN (browser mode doesn't change this)
 
@@ -107,15 +107,16 @@ Browser mode doesn't affect file locations — this remains a monorepo structure
 
 Currently server tests live under `__tests__/`. After Phase C, the monorepo has `packages/ui/` and `apps/web/` (plus `apps/admin/`). Several options:
 
-| Option | Structure | Pros | Cons |
-|---|---|---|---|
-| **A. Keep in `__tests__/`** | `__tests__/components/*.test.tsx` next to existing `__tests__/unit/` | Consistent with current structure; single test runner config | Mixes server + client tests; doesn't follow monorepo boundaries |
-| **B. Colocate in `packages/ui/`** | `packages/ui/src/components/ui/__tests__/*.test.tsx` or `packages/ui/__tests__/` | UI primitive tests live with the code; natural after Phase C | Only covers `packages/ui` — app-level components (`src/components/`) still need a home |
-| **C. Colocate everywhere** | `src/components/flashcards/__tests__/deck-card.test.tsx` | Tests next to the code they cover | Breaks the `__tests__/` convention; lots of scattered `__tests__/` dirs |
-| **D. Hybrid: `packages/ui/__tests__/` + `__tests__/components/`** | UI primitives tested in the package; app components tested in the root `__tests__/` | Follows monorepo boundaries; app tests stay centralized | Two locations to maintain; slightly inconsistent |
-| **E. Per-app `__tests__/`** | `apps/web/__tests__/components/` | Clean monorepo structure | Requires moving the existing `__tests__/` dir into `apps/web/` — big migration |
+| Option                                                            | Structure                                                                           | Pros                                                         | Cons                                                                                   |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| **A. Keep in `__tests__/`**                                       | `__tests__/components/*.test.tsx` next to existing `__tests__/unit/`                | Consistent with current structure; single test runner config | Mixes server + client tests; doesn't follow monorepo boundaries                        |
+| **B. Colocate in `packages/ui/`**                                 | `packages/ui/src/components/ui/__tests__/*.test.tsx` or `packages/ui/__tests__/`    | UI primitive tests live with the code; natural after Phase C | Only covers `packages/ui` — app-level components (`src/components/`) still need a home |
+| **C. Colocate everywhere**                                        | `src/components/flashcards/__tests__/deck-card.test.tsx`                            | Tests next to the code they cover                            | Breaks the `__tests__/` convention; lots of scattered `__tests__/` dirs                |
+| **D. Hybrid: `packages/ui/__tests__/` + `__tests__/components/`** | UI primitives tested in the package; app components tested in the root `__tests__/` | Follows monorepo boundaries; app tests stay centralized      | Two locations to maintain; slightly inconsistent                                       |
+| **E. Per-app `__tests__/`**                                       | `apps/web/__tests__/components/`                                                    | Clean monorepo structure                                     | Requires moving the existing `__tests__/` dir into `apps/web/` — big migration         |
 
 **Questions for discussion:**
+
 - After Phase C, should `apps/web/` absorb the current `src/` and `__tests__/` entirely?
 - Do we want component tests discoverable via `bun test:components` from root, or per-workspace `bun --filter @studiq/web test:components`?
 - What does the Vitest workspace config look like post-restructure?
@@ -135,12 +136,12 @@ vitest.config.ts  (root)
 
 **Options:**
 
-| Approach | How | When to use |
-|---|---|---|
-| **Vitest `projects` (inline)** | Multiple config objects in root `vitest.config.ts` | Simple, keeps one config file |
-| **Vitest workspace file** | `vitest.workspace.ts` pointing to per-package configs | Post Phase C, when packages have their own vitest configs |
-| **Per-file `@vitest-environment` docblock** | `// @vitest-environment happy-dom` at top of each `.test.tsx` | Quick start, no config changes; doesn't scale |
-| **Per-directory env override** | `environment: { 'src/**/*.tsx': 'happy-dom' }` in vitest config | Middle ground — one line per directory pattern |
+| Approach                                    | How                                                             | When to use                                               |
+| ------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------- |
+| **Vitest `projects` (inline)**              | Multiple config objects in root `vitest.config.ts`              | Simple, keeps one config file                             |
+| **Vitest workspace file**                   | `vitest.workspace.ts` pointing to per-package configs           | Post Phase C, when packages have their own vitest configs |
+| **Per-file `@vitest-environment` docblock** | `// @vitest-environment happy-dom` at top of each `.test.tsx`   | Quick start, no config changes; doesn't scale             |
+| **Per-directory env override**              | `environment: { 'src/**/*.tsx': 'happy-dom' }` in vitest config | Middle ground — one line per directory pattern            |
 
 **Question:** Do we want to do the minimal thing now (per-file docblock or per-directory env) and fully clean up during Phase C, or do we go straight to the multi-project config?
 
@@ -148,24 +149,24 @@ vitest.config.ts  (root)
 
 This is the hardest part. Most app components depend on multiple providers:
 
-| Dependency | Used by | Mocking options |
-|---|---|---|
-| `QueryClientProvider` (TanStack) | All data-fetching components | **Real** provider (no mock) — fast, in-memory, standard pattern |
-| `next-intl` (i18n) | Nearly everything | Three options (see below) |
-| `next/navigation` (router) | Components with `useRouter`, `usePathname`, `useSearchParams` | `vi.mock('next/navigation')` with `vi.fn()` stubs |
-| `next-themes` | Theme-aware components | `vi.mock()` returning `{ theme: 'light' }` |
-| `useCan()` / auth context | RBAC-gated UI | Mock to return permissive defaults; override per test |
-| `sonner` (toasts) | Action-triggering components | `vi.mock()` to no-op or spy |
-| `@dnd-kit/*` | Drag-and-drop components | Real provider (dnd-kit works in happy-dom) or mock if slow |
+| Dependency                       | Used by                                                       | Mocking options                                                 |
+| -------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------- |
+| `QueryClientProvider` (TanStack) | All data-fetching components                                  | **Real** provider (no mock) — fast, in-memory, standard pattern |
+| `next-intl` (i18n)               | Nearly everything                                             | Three options (see below)                                       |
+| `next/navigation` (router)       | Components with `useRouter`, `usePathname`, `useSearchParams` | `vi.mock('next/navigation')` with `vi.fn()` stubs               |
+| `next-themes`                    | Theme-aware components                                        | `vi.mock()` returning `{ theme: 'light' }`                      |
+| `useCan()` / auth context        | RBAC-gated UI                                                 | Mock to return permissive defaults; override per test           |
+| `sonner` (toasts)                | Action-triggering components                                  | `vi.mock()` to no-op or spy                                     |
+| `@dnd-kit/*`                     | Drag-and-drop components                                      | Real provider (dnd-kit works in happy-dom) or mock if slow      |
 
 **next-intl mocking — the deep question:**
 
-| Option | How | Pros | Cons |
-|---|---|---|---|
-| **A. Mock the hook** | `vi.mock('next-intl/navigation', () => ({ useTranslations: () => (key) => key }))` | Simple, no locale setup; key IS the visible text | Doesn't test actual translations; can't verify correct key usage |
-| **B. Mock with lookup** | Provide `en.json` messages; mock returns `messages[locale][key]` | Tests actual translated text; catches missing keys | Slower; need to import message files; coupling to message structure |
-| **C. Skip mocking** | Wrap in real `NextIntlClientProvider` with `en` messages | Full integration; no mocking | Heavy setup; every render needs message files; fragile to message changes |
-| **D. Per-component choice** | Let test authors pick A, B, or C per file | Flexible | Inconsistent; no team standard |
+| Option                      | How                                                                                | Pros                                               | Cons                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------- |
+| **A. Mock the hook**        | `vi.mock('next-intl/navigation', () => ({ useTranslations: () => (key) => key }))` | Simple, no locale setup; key IS the visible text   | Doesn't test actual translations; can't verify correct key usage          |
+| **B. Mock with lookup**     | Provide `en.json` messages; mock returns `messages[locale][key]`                   | Tests actual translated text; catches missing keys | Slower; need to import message files; coupling to message structure       |
+| **C. Skip mocking**         | Wrap in real `NextIntlClientProvider` with `en` messages                           | Full integration; no mocking                       | Heavy setup; every render needs message files; fragile to message changes |
+| **D. Per-component choice** | Let test authors pick A, B, or C per file                                          | Flexible                                           | Inconsistent; no team standard                                            |
 
 **Question:** Which approach should be the **default**? (Individual tests can always deviate with explicit justification.)
 
@@ -187,15 +188,16 @@ The testing pyramid for frontend:
 
 **Possible tiers:**
 
-| Tier | What | Example components | Testing approach |
-|---|---|---|---|
-| **Tier 0: Pure hooks** | `useMemo`/`useCallback` with no provider deps | `use-ai-chat.ts` (transformation logic) | `renderHook()` from `@testing-library/react`, no provider wrappers needed |
-| **Tier 1: UI primitives** | Shadcn components with zero or minimal app deps | `Badge`, `Alert`, `Spinner`, `Button`, `Card` | Render + assert DOM; no provider wrappers |
-| **Tier 2: Layout/shared** | Components with 1-2 provider deps | `LanguageToggle`, `ThemeToggle`, `PageToolbar`, `Footer` | Render with provider wrapper; mock router + i18n |
-| **Tier 3: Feature screens** | Full screens with data fetching, RBAC, routing | `DeckManagementScreen`, `QuestionBankManagementScreen` | Heavy mocking; may not be worth it vs. E2E |
-| **Tier 4: Complex interactions** | Drag-and-drop, rich text editor, multi-step forms | `FlashcardEditor`, `ImportDialog` | Interaction testing with `user-event`; slow, fragile |
+| Tier                             | What                                              | Example components                                       | Testing approach                                                          |
+| -------------------------------- | ------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Tier 0: Pure hooks**           | `useMemo`/`useCallback` with no provider deps     | `use-ai-chat.ts` (transformation logic)                  | `renderHook()` from `@testing-library/react`, no provider wrappers needed |
+| **Tier 1: UI primitives**        | Shadcn components with zero or minimal app deps   | `Badge`, `Alert`, `Spinner`, `Button`, `Card`            | Render + assert DOM; no provider wrappers                                 |
+| **Tier 2: Layout/shared**        | Components with 1-2 provider deps                 | `LanguageToggle`, `ThemeToggle`, `PageToolbar`, `Footer` | Render with provider wrapper; mock router + i18n                          |
+| **Tier 3: Feature screens**      | Full screens with data fetching, RBAC, routing    | `DeckManagementScreen`, `QuestionBankManagementScreen`   | Heavy mocking; may not be worth it vs. E2E                                |
+| **Tier 4: Complex interactions** | Drag-and-drop, rich text editor, multi-step forms | `FlashcardEditor`, `ImportDialog`                        | Interaction testing with `user-event`; slow, fragile                      |
 
 **Questions for discussion:**
+
 - Do we stop at Tiers 0-2 (high ROI, fast, stable) and leave Tiers 3-4 to E2E?
 - Or do we push into Tier 3 for critical user flows (deck CRUD, flashcard save)?
 - Is the `flashcard-testing-pipeline.md` scope (AI chat components) Tier 2 or Tier 3?
@@ -204,12 +206,12 @@ The testing pyramid for frontend:
 
 **Decision:** Browser mode's built-in ARIA snapshots (`toMatchInlineAriaSnapshot`) replace `jest-axe` for accessibility testing — no extra dependency needed.
 
-| Approach | Tool | Status |
-|---|---|---|
-| **ARIA snapshots** | `expect.element(modal).toMatchInlineAriaSnapshot()` — built into Vitest browser mode | ✅ Use this |
-| **DOM snapshots** | `toMatchSnapshot()` | ❌ Brittle to CSS/classname changes; skip |
-| **Visual regression** | Chromatic, Percy, Playwright screenshot | ❌ Heavy CI cost; revisit when design system is mature |
-| **jest-axe** | Accessibility assertions | ❌ Redundant — ARIA snapshots cover this in browser mode |
+| Approach              | Tool                                                                                 | Status                                                   |
+| --------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| **ARIA snapshots**    | `expect.element(modal).toMatchInlineAriaSnapshot()` — built into Vitest browser mode | ✅ Use this                                              |
+| **DOM snapshots**     | `toMatchSnapshot()`                                                                  | ❌ Brittle to CSS/classname changes; skip                |
+| **Visual regression** | Chromatic, Percy, Playwright screenshot                                              | ❌ Heavy CI cost; revisit when design system is mature   |
+| **jest-axe**          | Accessibility assertions                                                             | ❌ Redundant — ARIA snapshots cover this in browser mode |
 
 **Question:** Do we want DOM snapshots at all, or is "assert specific elements exist" sufficient? Should we add `jest-axe` for accessibility checks as a separate concern?
 
@@ -269,38 +271,38 @@ This is **not a plan** — it's a sequence of decisions to make and work to do, 
 
 ### Coverage phase (iterative)
 
-| Wave | What | Est. effort |
-|---|---|---|
-| **Wave 1** | Pure hooks (`use-ai-chat.ts` etc.) — `renderHook()`, no DOM | Small |
-| **Wave 2** | UI primitives from `packages/ui/` — Badge, Alert, Button, Spinner | Small |
-| **Wave 3** | Layout components — LanguageToggle, ThemeToggle, Footer, PageToolbar | Medium |
-| **Wave 4** | Shared components — DeleteConfirmDialog, BulkActionBar, MarkdownRenderer | Medium |
-| **Wave 5** | Feature components (if in scope) — DeckCard, FlashcardToolbar, etc. | Large |
+| Wave       | What                                                                     | Est. effort |
+| ---------- | ------------------------------------------------------------------------ | ----------- |
+| **Wave 1** | Pure hooks (`use-ai-chat.ts` etc.) — `renderHook()`, no DOM              | Small       |
+| **Wave 2** | UI primitives from `packages/ui/` — Badge, Alert, Button, Spinner        | Small       |
+| **Wave 3** | Layout components — LanguageToggle, ThemeToggle, Footer, PageToolbar     | Medium      |
+| **Wave 4** | Shared components — DeleteConfirmDialog, BulkActionBar, MarkdownRenderer | Medium      |
+| **Wave 5** | Feature components (if in scope) — DeckCard, FlashcardToolbar, etc.      | Large       |
 
 ---
 
 ## Alternatives considered and rejected
 
-| Alternative | Why rejected |
-|---|---|
-| **jsdom** | Simulated DOM — Radix portals, focus management, CSS layout don't work correctly. Redundant with browser mode which gives us a real browser for free (Playwright already installed) |
-| **happy-dom** | Same as jsdom — simulated DOM, lighter but still inaccurate. No advantage over browser mode when Playwright is already in the stack |
-| **Testing Library + jsdom/happy-dom** | We chose browser mode; `vitest-browser-react` replaces the entire Testing Library stack |
-| **Cypress Component Testing** | Different toolchain from existing Vitest; heavier runner; no benefit over Vitest browser mode for our needs |
-| **Storybook as primary test surface** | Adds a parallel build system, separate config, and a whole UI to maintain. Interaction tests in Storybook are underpowered vs. Vitest. Could be added later for documentation/design system purposes, but not as a testing strategy |
-| **Skip component tests, rely only on E2E** | E2E is slow, flaky by nature, and expensive to maintain. Can't test edge cases, error states, or accessibility at scale. Component tests are the fast feedback loop |
-| **Only test `packages/ui` (skip app components)** | Misses the actual bug surface — all past frontend bugs were in app components (`src/components/ai/`), not in shadcn primitives |
-| **Full visual regression (Chromatic/Percy)** | Heavy CI cost, requires dedicated infrastructure, overkill for current project stage. Browser mode's ARIA snapshots cover accessibility; revisit visual regression when design system is mature |
+| Alternative                                       | Why rejected                                                                                                                                                                                                                        |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **jsdom**                                         | Simulated DOM — Radix portals, focus management, CSS layout don't work correctly. Redundant with browser mode which gives us a real browser for free (Playwright already installed)                                                 |
+| **happy-dom**                                     | Same as jsdom — simulated DOM, lighter but still inaccurate. No advantage over browser mode when Playwright is already in the stack                                                                                                 |
+| **Testing Library + jsdom/happy-dom**             | We chose browser mode; `vitest-browser-react` replaces the entire Testing Library stack                                                                                                                                             |
+| **Cypress Component Testing**                     | Different toolchain from existing Vitest; heavier runner; no benefit over Vitest browser mode for our needs                                                                                                                         |
+| **Storybook as primary test surface**             | Adds a parallel build system, separate config, and a whole UI to maintain. Interaction tests in Storybook are underpowered vs. Vitest. Could be added later for documentation/design system purposes, but not as a testing strategy |
+| **Skip component tests, rely only on E2E**        | E2E is slow, flaky by nature, and expensive to maintain. Can't test edge cases, error states, or accessibility at scale. Component tests are the fast feedback loop                                                                 |
+| **Only test `packages/ui` (skip app components)** | Misses the actual bug surface — all past frontend bugs were in app components (`src/components/ai/`), not in shadcn primitives                                                                                                      |
+| **Full visual regression (Chromatic/Percy)**      | Heavy CI cost, requires dedicated infrastructure, overkill for current project stage. Browser mode's ARIA snapshots cover accessibility; revisit visual regression when design system is mature                                     |
 
 ---
 
 ## Risks
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Phase C takes longer than expected | Component testing delayed further | Start with `flashcard-testing-pipeline.md` scope (AI chat) as a narrow proof of concept that's less affected by restructure |
-| Provider mocking becomes a maintenance burden | Tests break when providers change | Keep the wrapper thin; prefer real providers over mocks where possible (QueryClient is real, not mocked) |
-| Team adoption: writing tests is slower than writing code | Feature velocity concern | Start with Tier 0-1 (fast, obvious value); make it easy to run (`bun test:components`); demonstrate bug-catching ROI early |
+| Risk                                                     | Impact                            | Mitigation                                                                                                                  |
+| -------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Phase C takes longer than expected                       | Component testing delayed further | Start with `flashcard-testing-pipeline.md` scope (AI chat) as a narrow proof of concept that's less affected by restructure |
+| Provider mocking becomes a maintenance burden            | Tests break when providers change | Keep the wrapper thin; prefer real providers over mocks where possible (QueryClient is real, not mocked)                    |
+| Team adoption: writing tests is slower than writing code | Feature velocity concern          | Start with Tier 0-1 (fast, obvious value); make it easy to run (`bun test:components`); demonstrate bug-catching ROI early  |
 
 ---
 

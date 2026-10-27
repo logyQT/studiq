@@ -20,16 +20,16 @@
 
 ## What Changes
 
-| Area | Change |
-|------|--------|
-| Visibility enum | Remove `'org'`. Keep `'personal'` + `'group'`. |
-| Assignment model | M:N via `deck_groups`, `bank_groups`, `topic_groups` tables. No `group_id` on leaf items. |
-| DB queries | Postgres RPCs instead of double-queries or nested joins. |
-| Content inheritance | Flashcards → deck, Questions → bank through existing assignment tables. |
-| Teacher read scope | Content from their groups + own personal content. |
-| Teacher member scope | `listMembers` returns only members of teacher's groups. |
-| Default group | Auto-created on org creation. New members auto-joined. Placeholder name, revisit P3. |
-| Seed data | Adjust seed to use `'group'` visibility + default group assignments. |
+| Area                 | Change                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| Visibility enum      | Remove `'org'`. Keep `'personal'` + `'group'`.                                            |
+| Assignment model     | M:N via `deck_groups`, `bank_groups`, `topic_groups` tables. No `group_id` on leaf items. |
+| DB queries           | Postgres RPCs instead of double-queries or nested joins.                                  |
+| Content inheritance  | Flashcards → deck, Questions → bank through existing assignment tables.                   |
+| Teacher read scope   | Content from their groups + own personal content.                                         |
+| Teacher member scope | `listMembers` returns only members of teacher's groups.                                   |
+| Default group        | Auto-created on org creation. New members auto-joined. Placeholder name, revisit P3.      |
+| Seed data            | Adjust seed to use `'group'` visibility + default group assignments.                      |
 
 ---
 
@@ -236,16 +236,16 @@ type PermissionScope = 'own' | 'organization' | 'group' | 'any' | 'granted';
 
 ### 9. Update teacher role permissions in seed
 
-| Permission | Current teacher scope | P2 teacher scope |
-|-----------|----------------------|------------------|
-| `flashcard.read` | `organization` | `group` |
-| `flashcard_deck.read` | `organization` | `group` |
-| `question.read` | `organization` | `group` |
-| `question_bank.read` | `organization` | `group` |
-| `topic.read` | `organization` | `group` |
-| `*.create` | `organization` | `organization` (unchanged) |
-| `*.update` | `organization` | `group` |
-| `*.delete` | `own` | `own` (unchanged) |
+| Permission            | Current teacher scope | P2 teacher scope           |
+| --------------------- | --------------------- | -------------------------- |
+| `flashcard.read`      | `organization`        | `group`                    |
+| `flashcard_deck.read` | `organization`        | `group`                    |
+| `question.read`       | `organization`        | `group`                    |
+| `question_bank.read`  | `organization`        | `group`                    |
+| `topic.read`          | `organization`        | `group`                    |
+| `*.create`            | `organization`        | `organization` (unchanged) |
+| `*.update`            | `organization`        | `group`                    |
+| `*.delete`            | `own`                 | `own` (unchanged)          |
 
 ### 10. Update `buildQueryFilter`
 
@@ -346,6 +346,7 @@ async listDecks(ctx: RequestContext) {
 ### 14. Content services — create/update with `groupIds`
 
 **Create:**
+
 ```typescript
 async createDeck(ctx: RequestContext, data: CreateDeckInput & { groupIds?: string[] }) {
   checkPermission(ctx, Permission.FLASHCARD_DECK_CREATE, null);
@@ -374,6 +375,7 @@ async createDeck(ctx: RequestContext, data: CreateDeckInput & { groupIds?: strin
 ```
 
 **Update:**
+
 ```typescript
 async updateDeck(ctx: RequestContext, id: string, data: UpdateDeckInput & { groupIds?: string[] }) {
   // Fetch existing, checkPermission, update fields
@@ -414,6 +416,7 @@ async getDeckById(ctx: RequestContext, id: string) {
 ### 16. Content services — update/delete permission check
 
 On update/delete, after fetching the resource:
+
 - If `visibility = 'group'`, find the deck's groups via `deck_groups`
 - If caller is not creator and not admin, check `groupService.isTeacherInGroup()` for at least one group
 - If no match, throw FORBIDDEN
@@ -458,7 +461,8 @@ Add to `createOrganization`:
 ```typescript
 // After org is created:
 const defaultGroupName = ctx.locale === 'en' ? 'Members' : 'Członkowie';
-const { data: group, error: ge } = await supabase.from('groups')
+const { data: group, error: ge } = await supabase
+  .from('groups')
   .insert({
     organization_id: org.id,
     name: defaultGroupName,
@@ -469,7 +473,8 @@ const { data: group, error: ge } = await supabase.from('groups')
   .single();
 if (ge) throw mapSupabaseError(ge);
 
-const { error: me } = await supabase.from('group_members')
+const { error: me } = await supabase
+  .from('group_members')
   .insert({ group_id: group.id, user_id: ctx.userId, role: 'teacher' });
 if (me) throw mapSupabaseError(me);
 ```
@@ -479,14 +484,16 @@ if (me) throw mapSupabaseError(me);
 When an invitation is accepted, after `org_members` insert:
 
 ```typescript
-const { data: defaultGroup } = await supabase.from('groups')
+const { data: defaultGroup } = await supabase
+  .from('groups')
   .select('id')
   .eq('organization_id', orgId)
   .eq('is_default', true)
   .single();
 
 if (defaultGroup) {
-  await supabase.from('group_members')
+  await supabase
+    .from('group_members')
     .insert({ group_id: defaultGroup.id, user_id: newMemberId, role: 'member' });
 }
 ```
@@ -498,20 +505,29 @@ if (defaultGroup) {
 ### 20. Updated schemas
 
 **`flashcard-deck.model.ts`:**
-```typescript
-const CreateFlashcardDeckSchema = registry.register('CreateFlashcardDeckRequest', z.object({
-  name: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }),
-  description: z.string().optional(),
-  visibility: z.enum(['personal', 'group'], { error: ValidationErrorCode.INVALID_INPUT }),
-  groupIds: z.array(z.string().uuid()).optional(),
-}));
 
-const UpdateFlashcardDeckSchema = registry.register('UpdateFlashcardDeckRequest', z.object({
-  name: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }).optional(),
-  description: z.string().optional(),
-  visibility: z.enum(['personal', 'group'], { error: ValidationErrorCode.INVALID_INPUT }).optional(),
-  groupIds: z.array(z.string().uuid()).optional(),
-}));
+```typescript
+const CreateFlashcardDeckSchema = registry.register(
+  'CreateFlashcardDeckRequest',
+  z.object({
+    name: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }),
+    description: z.string().optional(),
+    visibility: z.enum(['personal', 'group'], { error: ValidationErrorCode.INVALID_INPUT }),
+    groupIds: z.array(z.string().uuid()).optional(),
+  }),
+);
+
+const UpdateFlashcardDeckSchema = registry.register(
+  'UpdateFlashcardDeckRequest',
+  z.object({
+    name: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }).optional(),
+    description: z.string().optional(),
+    visibility: z
+      .enum(['personal', 'group'], { error: ValidationErrorCode.INVALID_INPUT })
+      .optional(),
+    groupIds: z.array(z.string().uuid()).optional(),
+  }),
+);
 ```
 
 Same pattern for `question-bank.model.ts` and `topic.model.ts`.
@@ -531,6 +547,7 @@ Minimal change — controllers already parse the full body and pass it. Just ens
 ### 22. Content create/edit forms
 
 **Visibility selector:**
+
 ```
 [Personal]  [Group]
 ```
@@ -539,6 +556,7 @@ Minimal change — controllers already parse the full body and pass it. Just ens
 - `Group` = select one or more groups
 
 **Group multi-select** (shown when Group is selected):
+
 - Dropdown/combobox with checkboxes
 - Teachers: shows groups where they have `teacher` role
 - Admin: shows all org groups
@@ -582,48 +600,48 @@ Minimal change — controllers already parse the full body and pass it. Just ens
 
 ## Execution Order
 
-| # | Step | Files |
-|---|------|-------|
-| 1 | Migration: add `is_default` to `groups`, alter enum | `20260706000001_alter_visibility.sql` |
-| 2 | Migration: assignment tables + indexes | `20260706000002_create_assignment_tables.sql` |
-| 3 | Migration: content RPCs (5x) + helper RPC | `20260706000003_create_content_rpcs.sql` |
-| 4 | RBAC: add `'group'` scope to `PermissionScope` | `src/types/` + `src/lib/rbac.ts` |
-| 5 | RBAC: update `buildQueryFilter` for `'group'` scope | `src/lib/rbac.ts` |
-| 6 | RBAC: update `checkPermission` for group-scoped resources | `src/lib/rbac.ts` |
-| 7 | RBAC: update seed teacher permissions (`.read` → `'group'`) | seed file |
-| 8 | Group service: add `getUserGroupIds`, `isTeacherInGroup`, `isUserInGroup` | `src/server/services/group.service.ts` |
-| 9 | Org service: auto-create default group | `src/server/services/organization.service.ts` |
-| 10 | Invitation service: auto-join default group | `src/server/services/invitation.service.ts` |
-| 11 | Flashcard-deck service: RPC for list, groupIds for create/update, scope check for single-item | `src/server/services/flashcard-deck.service.ts` |
-| 12 | Flashcard service: RPC for list | `src/server/services/flashcard.service.ts` |
-| 13 | Question-bank service: RPC for list, groupIds for create/update | `src/server/services/question-bank.service.ts` |
-| 14 | Question service: RPC for list | `src/server/services/question.service.ts` |
-| 15 | Topic service: RPC for list, groupIds for create/update | `src/server/services/topic.service.ts` |
-| 16 | Member service: filter by group for teacher scope | `src/server/services/organization-member.service.ts` |
-| 17 | Content models: add `groupIds` to create/update schemas | 3 model files |
-| 18 | Content controllers: no structural change, just pass through | 5 controller files |
-| 19 | Frontend: content create/edit forms (visibility + group picker) | ~3 form components |
-| 20 | Frontend: content list views (group badges, filter) | ~3 list components |
-| 21 | Frontend: members page teacher isolation | `manage/members/page.tsx` |
-| 22 | Seed data: adjust for group visibility + default groups | seed file |
-| 23 | i18n: new keys | `en.json`, `pl.json` |
-| 24 | Lint + build | — |
+| #   | Step                                                                                          | Files                                                |
+| --- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 1   | Migration: add `is_default` to `groups`, alter enum                                           | `20260706000001_alter_visibility.sql`                |
+| 2   | Migration: assignment tables + indexes                                                        | `20260706000002_create_assignment_tables.sql`        |
+| 3   | Migration: content RPCs (5x) + helper RPC                                                     | `20260706000003_create_content_rpcs.sql`             |
+| 4   | RBAC: add `'group'` scope to `PermissionScope`                                                | `src/types/` + `src/lib/rbac.ts`                     |
+| 5   | RBAC: update `buildQueryFilter` for `'group'` scope                                           | `src/lib/rbac.ts`                                    |
+| 6   | RBAC: update `checkPermission` for group-scoped resources                                     | `src/lib/rbac.ts`                                    |
+| 7   | RBAC: update seed teacher permissions (`.read` → `'group'`)                                   | seed file                                            |
+| 8   | Group service: add `getUserGroupIds`, `isTeacherInGroup`, `isUserInGroup`                     | `src/server/services/group.service.ts`               |
+| 9   | Org service: auto-create default group                                                        | `src/server/services/organization.service.ts`        |
+| 10  | Invitation service: auto-join default group                                                   | `src/server/services/invitation.service.ts`          |
+| 11  | Flashcard-deck service: RPC for list, groupIds for create/update, scope check for single-item | `src/server/services/flashcard-deck.service.ts`      |
+| 12  | Flashcard service: RPC for list                                                               | `src/server/services/flashcard.service.ts`           |
+| 13  | Question-bank service: RPC for list, groupIds for create/update                               | `src/server/services/question-bank.service.ts`       |
+| 14  | Question service: RPC for list                                                                | `src/server/services/question.service.ts`            |
+| 15  | Topic service: RPC for list, groupIds for create/update                                       | `src/server/services/topic.service.ts`               |
+| 16  | Member service: filter by group for teacher scope                                             | `src/server/services/organization-member.service.ts` |
+| 17  | Content models: add `groupIds` to create/update schemas                                       | 3 model files                                        |
+| 18  | Content controllers: no structural change, just pass through                                  | 5 controller files                                   |
+| 19  | Frontend: content create/edit forms (visibility + group picker)                               | ~3 form components                                   |
+| 20  | Frontend: content list views (group badges, filter)                                           | ~3 list components                                   |
+| 21  | Frontend: members page teacher isolation                                                      | `manage/members/page.tsx`                            |
+| 22  | Seed data: adjust for group visibility + default groups                                       | seed file                                            |
+| 23  | i18n: new keys                                                                                | `en.json`, `pl.json`                                 |
+| 24  | Lint + build                                                                                  | —                                                    |
 
 ---
 
 ## What's NOT in P2
 
-| Item | Reason |
-|------|--------|
-| Teacher group creation | Deferred to P3: needs `group.manage` permission for teachers |
-| Default group naming/customization | Placeholder name, revisit P3 |
-| Group reordering / hierarchy | Flat is sufficient |
-| Direct flashcard/question assignment to groups | Inheritance via container is good enough |
-| Full CRUD for assignment tables (add/remove groups from content without full update) | Update endpoint covers it for now |
-| Group-member-scoped delete for teachers | Teachers only delete own content (`own` scope) |
-| Student-facing group UI | Per design principle: groups invisible to students |
-| Custom group roles beyond teacher/member | Simple roles suffice |
-| Content scoping for quizzes / quiz attempts | User-generated, not content-owned |
+| Item                                                                                 | Reason                                                       |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| Teacher group creation                                                               | Deferred to P3: needs `group.manage` permission for teachers |
+| Default group naming/customization                                                   | Placeholder name, revisit P3                                 |
+| Group reordering / hierarchy                                                         | Flat is sufficient                                           |
+| Direct flashcard/question assignment to groups                                       | Inheritance via container is good enough                     |
+| Full CRUD for assignment tables (add/remove groups from content without full update) | Update endpoint covers it for now                            |
+| Group-member-scoped delete for teachers                                              | Teachers only delete own content (`own` scope)               |
+| Student-facing group UI                                                              | Per design principle: groups invisible to students           |
+| Custom group roles beyond teacher/member                                             | Simple roles suffice                                         |
+| Content scoping for quizzes / quiz attempts                                          | User-generated, not content-owned                            |
 
 ---
 

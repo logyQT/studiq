@@ -3,11 +3,11 @@ global:
 
 scrape_configs:
   # Application metrics exported by the OTel Collector (namespace: studiq).
-  - job_name: "studiq"
+  - job_name: 'studiq'
     static_configs:
-      - targets: ["otel-collector:8889"]
+      - targets: ['otel-collector:8889']
 
   # The Collector's own runtime telemetry.
-  - job_name: "otel-collector"
+  - job_name: 'otel-collector'
     static_configs:
-      - targets: ["otel-collector:8888"]
+      - targets: ['otel-collector:8888']

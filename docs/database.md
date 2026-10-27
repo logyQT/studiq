@@ -81,65 +81,65 @@ supabase/
 
 Seed files are located in `supabase/seeds/` and are organized by domain:
 
-| File | Purpose |
-|------|---------|
-| `01_users.sql` | Auth users, identities, profile roles |
-| `02_subjects.sql` | Sample subjects |
-| `03_questions.sql` | Sample questions |
-| `04_question_answers.sql` | Question answers |
-| `05_flashcards.sql` | Sample flashcards |
-| `06_flashcard_topics.sql` | Flashcard topics |
-| `06_quiz_attempts.sql` | Quiz attempts |
-| `07_flashcard_decks.sql` | Flashcard decks |
-| `08_flashcard_practice.sql` | Practice history |
-| `09_perms.sql` | RBAC permissions |
+| File                        | Purpose                               |
+| --------------------------- | ------------------------------------- |
+| `01_users.sql`              | Auth users, identities, profile roles |
+| `02_subjects.sql`           | Sample subjects                       |
+| `03_questions.sql`          | Sample questions                      |
+| `04_question_answers.sql`   | Question answers                      |
+| `05_flashcards.sql`         | Sample flashcards                     |
+| `06_flashcard_topics.sql`   | Flashcard topics                      |
+| `06_quiz_attempts.sql`      | Quiz attempts                         |
+| `07_flashcard_decks.sql`    | Flashcard decks                       |
+| `08_flashcard_practice.sql` | Practice history                      |
+| `09_perms.sql`              | RBAC permissions                      |
 
 ## Table Domains
 
 ### Users & Profiles
 
-| Table | Description |
-|-------|-------------|
-| `profiles` | User profiles with role, university_id, and metadata |
-| `universities` | University organizations |
-| `university_members` | University membership records |
-| `invitations` | Token-based invitation system |
-| `university_subscriptions` | University subscription plans |
-| `user_subscriptions` | Individual user subscriptions |
+| Table                      | Description                                          |
+| -------------------------- | ---------------------------------------------------- |
+| `profiles`                 | User profiles with role, university_id, and metadata |
+| `universities`             | University organizations                             |
+| `university_members`       | University membership records                        |
+| `invitations`              | Token-based invitation system                        |
+| `university_subscriptions` | University subscription plans                        |
+| `user_subscriptions`       | Individual user subscriptions                        |
 
 ### Learning System
 
-| Table | Description |
-|-------|-------------|
-| `subjects` | Course subjects owned by users |
-| `questions` | Questions with type, difficulty, and content |
-| `question_answers` | Multiple choice answers for questions |
-| `flashcards` | Flashcard content (front/back) |
-| `flashcard_topics` | Topic groupings for flashcards |
-| `flashcard_decks` | User-defined flashcard collections |
-| `flashcard_topic_assignments` | Flashcard-to-topic relationships |
-| `flashcard_deck_assignments` | Flashcard-to-deck relationships |
+| Table                         | Description                                  |
+| ----------------------------- | -------------------------------------------- |
+| `subjects`                    | Course subjects owned by users               |
+| `questions`                   | Questions with type, difficulty, and content |
+| `question_answers`            | Multiple choice answers for questions        |
+| `flashcards`                  | Flashcard content (front/back)               |
+| `flashcard_topics`            | Topic groupings for flashcards               |
+| `flashcard_decks`             | User-defined flashcard collections           |
+| `flashcard_topic_assignments` | Flashcard-to-topic relationships             |
+| `flashcard_deck_assignments`  | Flashcard-to-deck relationships              |
 
 ### Quiz System
 
-| Table | Description |
-|-------|-------------|
-| `quiz_attempts` | User quiz sessions |
-| `quiz_attempt_questions` | Questions within a quiz attempt |
-| `quiz_answers` | User's selected answers with correctness |
+| Table                    | Description                              |
+| ------------------------ | ---------------------------------------- |
+| `quiz_attempts`          | User quiz sessions                       |
+| `quiz_attempt_questions` | Questions within a quiz attempt          |
+| `quiz_answers`           | User's selected answers with correctness |
 
 ### Practice Tracking
 
-| Table | Description |
-|-------|-------------|
-| `flashcard_practice` | Flashcard practice history with correctness tracking |
-| `flashcard_review_state` | SM-2 spaced repetition state per flashcard |
+| Table                    | Description                                          |
+| ------------------------ | ---------------------------------------------------- |
+| `flashcard_practice`     | Flashcard practice history with correctness tracking |
+| `flashcard_review_state` | SM-2 spaced repetition state per flashcard           |
 
 ### RBAC (Role-Based Access Control)
 
-| Table | Description |
-|-------|-------------|
-| `permissions` | Static list of permission names (e.g. `flashcard.read`) |
+| Table              | Description                                                        |
+| ------------------ | ------------------------------------------------------------------ |
+| `permissions`      | Static list of permission names (e.g. `flashcard.read`)            |
 | `role_permissions` | Maps roles to permissions with scopes (`own`, `university`, `any`) |
 
 ## Database Access

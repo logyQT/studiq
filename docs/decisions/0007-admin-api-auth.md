@@ -13,7 +13,7 @@ The admin app (`apps/admin`, port 4000) has no user session: its API routes skip
 only authorization point. Before this decision it was one anonymous boolean:
 
 - `ADMIN_PEM_KEYS` was a comma-separated list of bare Ed25519 SPKI keys. Any valid
-  key opened every route; the gate could not tell *which* key signed.
+  key opened every route; the gate could not tell _which_ key signed.
 - The signature covered only `METHOD path timestamp`. Query strings
   (`?search=<email>`) and request bodies (`account_type`, plan limits, flag
   rollouts) were unbound, so a captured signature could be replayed with different
@@ -69,7 +69,7 @@ Status mapping keeps the QA contract: missing/stale/future timestamp or expired 
 - Breaking env format, by design: an existing comma-separated value must be
   regenerated with `gen`.
 - Still env-based: revocation needs an edit + restart, and `expiresAt` only bounds
-  the window when set. There is no nonce, so an *identical* request replays inside
+  the window when set. There is no nonce, so an _identical_ request replays inside
   ±5 minutes.
 - Audit is log-only. The admin app has no `instrumentation.ts`, so records land on
   `console`; a durable `admin_audit_log` table is a separate change.

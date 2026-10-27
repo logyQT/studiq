@@ -14,12 +14,12 @@ Tempo / TraceQL.
 docker compose up -d
 ```
 
-| UI | URL |
-|----|-----|
-| Grafana | http://localhost:3001 (`admin` / `admin`) |
-| Prometheus | http://localhost:9090 |
-| Tempo API | http://localhost:3200 |
-| Loki | http://localhost:3100 |
+| UI         | URL                                       |
+| ---------- | ----------------------------------------- |
+| Grafana    | http://localhost:3001 (`admin` / `admin`) |
+| Prometheus | http://localhost:9090                     |
+| Tempo API  | http://localhost:3200                     |
+| Loki       | http://localhost:3100                     |
 
 The Next.js app sends OTLP (traces + metrics + logs) to the OTel Collector on
 `http://localhost:4318` (SDK default). Make sure `OTEL_SDK_DISABLED` is **not**
@@ -38,11 +38,11 @@ The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc):
         "command": ["mcp-grafana", "-t", "stdio"],
         "environment": {
           "GRAFANA_URL": "http://localhost:3001",
-          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}"
-        }
-      }
-    }
-  }
+          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}",
+        },
+      },
+    },
+  },
 }
 ```
 

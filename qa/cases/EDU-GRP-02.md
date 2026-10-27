@@ -14,11 +14,14 @@ Grupa z EDU-GRP-01.
 ## Prerequisite context
 
 ### EDU-GRP-01 — Lista i tworzenie grup
+
 _Warunek wstępny: T1 (plan Lite – group.manage)._
+
 1. Otwórz /edu/groups.
 2. Kliknij „Nowa grupa”, nazwa „Grupa testowa”, opis; zapisz.
 
 Expected:
+
 - Lista grup z kolumnami Nazwa / Członkowie / Nauczyciele / Akcje.
 - Toast „Grupa utworzona”.
 

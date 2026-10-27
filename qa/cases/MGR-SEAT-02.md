@@ -14,11 +14,14 @@ Pula z MGR-SEAT-01.
 ## Prerequisite context
 
 ### MGR-SEAT-01 — Zakup miejsc (symulacja)
+
 _Warunek wstępny: M1._
+
 1. Kliknij „Kup miejsca”, wybierz plan i ilość 3, kliknij „Kup”.
 2. Spróbuj ilości 0 oraz ujemnej.
 
 Expected:
+
 - Toast „Miejsca dodane do puli”; pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne.
 - Przycisk „Kup” jest nieaktywny bez planu lub przy ilości < 1.
 

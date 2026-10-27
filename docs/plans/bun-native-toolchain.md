@@ -17,7 +17,7 @@ existing gate is weakened, no product code changes beyond two lint findings the 
 reports and the formatter's own output.
 
 - Bun **1.4.4** (currently `1.4.4-canary`, see below) provides the three tools; `engines.bun` is
-  `>=1.4.4-canary` because the canary sorts *below* `1.4.4` in semver.
+  `>=1.4.4-canary` because the canary sorts _below_ `1.4.4` in semver.
 - `biome.json` and `@biomejs/biome` are gone; `bunfig.toml` is the single config.
 - `bun fmt` replaces the Biome formatter:
   - `printWidth = 100`, `singleQuote = true` (Prettier defaults for everything else match the
@@ -28,22 +28,23 @@ reports and the formatter's own output.
   `tsconfig.json`, follows project references and reports tsc-shaped errors.
 - `bun lint` replaces `biome ci`. Rule mapping:
 
-  | Biome | Bun lint |
-  | --- | --- |
-  | `correctness/noUnusedVariables`, `noUnusedImports` | `@typescript-eslint/no-unused-vars` (default) |
-  | `correctness/useExhaustiveDependencies` (error) | `react-hooks/exhaustive-deps` (error) |
-  | `style/noRestrictedImports` (`./**`, `../**`) | `no-restricted-imports` patterns, off for `packages/**` |
-  | `performance/noBarrelFile` | `oxc/no-barrel-file` with `threshold = 0` so any `export *` counts (off for `packages/*/src/index.ts`) |
-  | `performance/noReExportAll` | covered by `oxc/no-barrel-file` |
-  | `suspicious/noExplicitAny` off | `@typescript-eslint/no-explicit-any` off |
-  | `a11y/*` off, `useButtonType` off | `jsx-a11y/*` off, `react/button-has-type` off |
-  | `suspicious/useIterableCallbackReturn` off | `array-callback-return` off |
-  | `suspicious/noEmptyBlockStatements` off | `no-empty` off |
-  | `useHookAtTopLevel` off in `__tests__` | `react-hooks/rules-of-hooks` off in `__tests__` |
+  | Biome                                              | Bun lint                                                                                               |
+  | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+  | `correctness/noUnusedVariables`, `noUnusedImports` | `@typescript-eslint/no-unused-vars` (default)                                                          |
+  | `correctness/useExhaustiveDependencies` (error)    | `react-hooks/exhaustive-deps` (error)                                                                  |
+  | `style/noRestrictedImports` (`./**`, `../**`)      | `no-restricted-imports` patterns, off for `packages/**`                                                |
+  | `performance/noBarrelFile`                         | `oxc/no-barrel-file` with `threshold = 0` so any `export *` counts (off for `packages/*/src/index.ts`) |
+  | `performance/noReExportAll`                        | covered by `oxc/no-barrel-file`                                                                        |
+  | `suspicious/noExplicitAny` off                     | `@typescript-eslint/no-explicit-any` off                                                               |
+  | `a11y/*` off, `useButtonType` off                  | `jsx-a11y/*` off, `react/button-has-type` off                                                          |
+  | `suspicious/useIterableCallbackReturn` off         | `array-callback-return` off                                                                            |
+  | `suspicious/noEmptyBlockStatements` off            | `no-empty` off                                                                                         |
+  | `useHookAtTopLevel` off in `__tests__`             | `react-hooks/rules-of-hooks` off in `__tests__`                                                        |
 
   The dedicated `scripts/check-import-paths.ts` and
   `scripts/check-migration-timestamps.ts` guards still run in `bun run lint`, so alias and
   migration rules are enforced by the same command as before.
+
 - Hooks keep the same shape: pre-commit `bun fmt --staged` + `lint` + `typecheck:all`,
   pre-push `format:check` + `lint` + `typecheck:all` + `test:unit` + merge-conflict check.
 - `scripts/check-bun-version.ts` fails fast, with upgrade instructions, when the running Bun
@@ -82,7 +83,7 @@ Two lint findings appeared that Biome did not report. Both are behaviour-preserv
 - `topic-dialogs.tsx`: `getTopicIds` was a pure closure-free helper, so it moved to module scope
   and left the `useCallback` dependency list. No behaviour change.
 - `detail-client.tsx`: the save-debounce effect listed `setTargetsMutation.mutate`; the new
-  engine wants the owner of that property. Listing the mutation *object* would be a bug — its
+  engine wants the owner of that property. Listing the mutation _object_ would be a bug — its
   identity changes every render, so the effect (and its 500 ms `mutate`) would re-arm in a loop.
   Instead the stable `mutate` reference is captured once (`const saveTargets = …mutate`) and the
   effect depends on `saveTargets`.
@@ -90,7 +91,7 @@ Two lint findings appeared that Biome did not report. Both are behaviour-preserv
 ### Behavioural deltas worth knowing
 
 - **Pre-commit safe fixes are preserved; import sorting is not.** On `main`,
-  `bunx biome check --write {staged_files}` formatted *and* applied Biome's safe lint fixes and
+  `bunx biome check --write {staged_files}` formatted _and_ applied Biome's safe lint fixes and
   organized imports. The hook now runs `bun fmt --staged` plus
   `bun lint --no-script --staged --fix` (both `stage_fixed: true`), which restores the safe lint
   fixes. Bun has no import-sort assist, so import ordering is no longer auto-applied on commit —
