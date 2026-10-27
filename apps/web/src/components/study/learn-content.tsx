@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 import { newCardsProgress } from '@/lib/new-cards-progress';
 import { flashcardKeys } from '@/lib/query-keys';
+import { DailyGoalCard } from '@/components/study/daily-goal-card';
 
 interface StudySettings {
   remainingNewCards: number;
@@ -71,6 +72,7 @@ export function LearnContent() {
 
   return (
     <div className="flex flex-col gap-6">
+      <DailyGoalCard />
       {isLoading ? (
         <Card>
           <CardHeader>

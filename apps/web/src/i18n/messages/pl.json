@@ -1495,6 +1495,24 @@
     "n_selected": "{count} wybranych",
     "select_cards": "Wybierz"
   },
+  "StudyGoal": {
+    "title": "Dzienny cel powtórek",
+    "description": "Ile fiszek chcesz powtórzyć każdego dnia",
+    "set_goal": "Ustaw cel",
+    "change": "Zmień",
+    "not_set": "Nie ustawiono celu. Wybierz liczbę powtórek na dzień, a zobaczysz tu swój postęp.",
+    "progress": "{done} z {goal}",
+    "reached": "Cel na dziś osiągnięty. Świetna robota!",
+    "remaining": "{count, plural, one {Została # powtórka} few {Zostały # powtórki} other {Zostało # powtórek}} do celu",
+    "field_label": "Powtórek dziennie",
+    "field_hint": "Liczba od 0 do {max}; 0 wyłącza cel.",
+    "off": "Wyłącz",
+    "save": "Zapisz cel",
+    "cancel": "Anuluj",
+    "goal_saved": "{count, plural, one {Cel: # powtórka dziennie} few {Cel: # powtórki dziennie} other {Cel: # powtórek dziennie}}",
+    "goal_off": "Dzienny cel wyłączony",
+    "save_failed": "Nie udało się zapisać celu. Spróbuj ponownie."
+  },
   "AppFlashcardStudyPage": {
     "tab_study": "Nauka",
     "tab_cram_deck": "Wkuwanie",
