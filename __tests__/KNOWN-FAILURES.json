@@ -58,11 +58,54 @@
       "expectedBehaviour": "Logout responds 200 and clears the active_org_id cookie (empty value, Expires 1970, no Max-Age).",
       "suggestedFix": "Pass a request, matching the other auth tests: `logoutPost(createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' }))`. No production-code change is needed.",
       "ownershipNote": "Untouched by the 3x removal and by the tenant-seeder migration; the test file has no forEachCopy usage and did not change."
+    },
+    {
+      "id": "integration-members-foreign-manager-delete",
+      "suite": "integration",
+      "file": "__tests__/integration/members.test.ts",
+      "describe": "Members Integration > DELETE /api/v1/organization/members",
+      "test": "returns 404 for a manager of another org and keeps the membership (#189)",
+      "location": "__tests__/integration/members.test.ts:343",
+      "preExisting": true,
+      "reproducesInIsolation": false,
+      "onlyWithFileParallelism": true,
+      "relatedToRecentChanges": false,
+      "error": {
+        "type": "AssertionError",
+        "message": "expected [] to deeply equal [ Array(1) ]",
+        "stack": ["__tests__/integration/members.test.ts:343:20"]
+      },
+      "cause": "Only reproduces when the integration files run in parallel (`fileParallelism: true`). The test deletes a membership through the route and then reads `org_members` back: under load the row is already gone, so the 'membership must be untouched' assertion sees []. Passes in isolation and in the serial run.",
+      "expectedBehaviour": "A manager of another org gets 404 and the target's membership stays in place.",
+      "suggestedFix": "Run the suite with `--no-file-parallelism` (524/525, only the documented logout failure) until the cross-file interference is isolated; do not weaken the assertion.",
+      "ownershipNote": "File was touched by the tenant-seeder commit (seedOrgMembership/createTestUser call sites), but this failure does not reproduce at any commit in isolation or serially."
+    },
+    {
+      "id": "integration-members-stranger-delete",
+      "suite": "integration",
+      "file": "__tests__/integration/members.test.ts",
+      "describe": "Members Integration > DELETE /api/v1/organization/members",
+      "test": "returns 404 when the target is not a member of the active org (#189)",
+      "location": "__tests__/integration/members.test.ts:359",
+      "preExisting": true,
+      "reproducesInIsolation": false,
+      "onlyWithFileParallelism": true,
+      "relatedToRecentChanges": false,
+      "error": {
+        "type": "AssertionError",
+        "message": "expected 403 to be 404 // Object.is equality",
+        "stack": ["__tests__/integration/members.test.ts:359:31"]
+      },
+      "cause": "Parallel-only. The request is rejected as FORBIDDEN (403) instead of NOT_FOUND (404), i.e. the caller is resolved as a non-manager at the moment the route runs — the same cross-file interference that hits the neighbouring case. Passes in isolation and serially.",
+      "expectedBehaviour": "Deleting a non-member as an org manager answers 404 NOT_FOUND.",
+      "suggestedFix": "Same as the previous entry: run serially (`--no-file-parallelism`) until the shared-state race is isolated.",
+      "ownershipNote": "Same file and commit as the entry above."
     }
   ],
   "environmentNotes": [
     "No test under __tests__/integration needs the web app on :3000 or the admin app on :4000. The `http://localhost` URLs in those tests are only parsed by createNextRequest (__tests__/integration/test-utils.ts); no request is sent to them. The only real HTTP calls go to Supabase REST/Storage on :54321.",
     "If Supabase local is not running, integration suites fail during setup with `seed <email>: fetch failed` from __tests__/helpers/tenant-seed.ts (ensureAccount). That is an environment failure, not a test failure; start Supabase and re-run.",
-    "Playwright e2e was not run. It is the only layer that needs the app: Playwright boots :3000 itself via `webServer`, and the admin-api project also boots :4000 (skip locally with E2E_SKIP_ADMIN_WS=1)."
+    "Playwright e2e was not run. It is the only layer that needs the app: Playwright boots :3000 itself via `webServer`, and the admin-api project also boots :4000 (skip locally with E2E_SKIP_ADMIN_WS=1).",
+    "Integration under `--file-parallelism` (the vitest default) can flake on __tests__/integration/members.test.ts: two DELETE-member cases fail only when other files run concurrently (documented above with `onlyWithFileParallelism: true`). The serial run is the baseline: 524/525 with the single pre-existing logout failure."
   ]
 }
