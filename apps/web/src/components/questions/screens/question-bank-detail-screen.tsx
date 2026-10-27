@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { CreateFromQuestionDialog } from '@/components/flashcards/dialogs/create-from-question-dialog';
 import { QuestionFormDialog } from '@/components/questions/shared/question-form-dialog';
 import { QuestionTable } from '@/components/questions/shared/question-table';
+import { QuestionBankTransfer } from '@/components/questions/shared/question-transfer';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
@@ -67,6 +68,9 @@ export function QuestionBankDetailScreen({
         orgId: bank.organization_id ?? undefined,
       }),
   );
+
+  // Import and export are for people who may change the bank.
+  const canManageBank = access.canCreateQuestion;
 
   // The bank name is the breadcrumb leaf; the raw bank UUID must never render.
   useBreadcrumbLabel(bankId, bank?.name);
@@ -195,6 +199,7 @@ export function QuestionBankDetailScreen({
             <p className="text-sm text-muted-foreground mt-1">{bank.description}</p>
           )}
         </div>
+        {canManageBank && <QuestionBankTransfer bankId={bankId} />}
         {access.canCreateQuestion && (
           <Button onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" /> {t('create_question')}
