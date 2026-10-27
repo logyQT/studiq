@@ -40,6 +40,9 @@ test.describe('Registration Flow', () => {
     await expect(nameInput).toHaveValue('Jan Kowalski');
     await page.getByLabel(emailLabel).fill(uniqueEmail);
     await page.getByLabel(passwordLabel).fill('StrongPassword1');
+    // Account type is required (the combobox stays `[invalid]` otherwise).
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: accountTypeStudent }).click();
 
     await page.getByRole('button', { name: submitButton }).click();
 
@@ -90,6 +93,8 @@ test.describe('Registration Flow', () => {
     await expect(nameInput).toHaveValue('Jan Testowy');
     await page.getByLabel(emailLabel).fill('student1@dev.local');
     await page.getByLabel(passwordLabel).fill('Passw0rd123!');
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: accountTypeStudent }).click();
 
     await page.getByRole('button', { name: submitButton }).click();
 
