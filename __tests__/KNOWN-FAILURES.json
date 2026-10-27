@@ -31,7 +31,28 @@
       "failed": 0
     },
     "lint": "clean",
-    "typecheck": "clean (724 files)"
+    "typecheck": "clean (724 files)",
+    "e2e": {
+      "chromium": {
+        "tests": 119,
+        "passed": 116,
+        "skipped": 3,
+        "failed": 0
+      },
+      "firefox": {
+        "tests": 119,
+        "passed": 116,
+        "skipped": 3,
+        "failed": 0
+      },
+      "webkit": {
+        "tests": 119,
+        "passed": 81,
+        "failed": 38,
+        "skipped": 0,
+        "status": "deferred"
+      }
+    }
   },
   "failures": [
     {
@@ -107,5 +128,19 @@
     "If Supabase local is not running, integration suites fail during setup with `seed <email>: fetch failed` from __tests__/helpers/tenant-seed.ts (ensureAccount). That is an environment failure, not a test failure; start Supabase and re-run.",
     "Playwright e2e was not run. It is the only layer that needs the app: Playwright boots :3000 itself via `webServer`, and the admin-api project also boots :4000 (skip locally with E2E_SKIP_ADMIN_WS=1).",
     "Integration under `--file-parallelism` (the vitest default) can flake on __tests__/integration/members.test.ts: two DELETE-member cases fail only when other files run concurrently (documented above with `onlyWithFileParallelism: true`). The serial run is the baseline: 524/525 with the single pre-existing logout failure."
+  ],
+  "deferredWork": [
+    {
+      "id": "e2e-webkit-login-form",
+      "layer": "e2e",
+      "project": "webkit",
+      "status": "deferred",
+      "deferredOn": "2026-10-27",
+      "scope": "38 tests, all in the dev-seed specs that sign in through the login form: ai-assistant, checkout-org, flashcard-editor, flashcard-toolbar-fresh-editor, join-invite, manage-account-pages, manage-invites, manage-members-role, manage-role-plan-gate variants. Tenant-based specs (API login) pass on WebKit.",
+      "symptom": "The submit click does not navigate; the test dies on `page.waitForURL(landing)` (30 s). The failure snapshot shows the login form with the **email field empty** and the inline error 'Adres e-mail jest wymagany.', while the password field still contains 'pass'.",
+      "evidence": "Filling the same field on a settled page survives in all three engines (chromium/firefox/webkit: immediate === after 1 s === second fill). The value is only lost when the fill happens during the first render, so this is a hydration race that WebKit loses consistently because it hydrates slower — not a WebKit form/cookie incompatibility. The same symptom appeared once on chromium during a loaded run.",
+      "suggestedFix": "Prefer moving the remaining dev-seed specs to an API login helper (POST /api/v1/auth/login through page.request, then navigate) — the tenant fixture already proves that path is stable on all three engines. If the form must stay under test, wait for a hydration marker before filling and assert `toHaveValue` before submitting.",
+      "baseline": "Chromium and Firefox are green (116/119, 3 skipped). WebKit is out of the merged baseline until this pass; do not treat its failures as regressions."
+    }
   ]
 }
