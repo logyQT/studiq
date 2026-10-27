@@ -1,5 +1,6 @@
 import {
   BatchPracticeSchema,
+  CompleteSessionSchema,
   LogPracticeSchema,
 } from '@studiq/server/models/flashcard-practice.model';
 import { describe, expect, it } from 'vitest';
@@ -97,5 +98,26 @@ describe('BatchPracticeSchema', () => {
   it('rejects an unknown mode (#617)', () => {
     const result = BatchPracticeSchema.safeParse({ items, mode: 'bogus' });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('CompleteSessionSchema durationMs', () => {
+  const base = {
+    sessionId: '00000000-0000-4000-8000-000000000001',
+    startedAt: '2026-10-27T10:00:00.000Z',
+    completedAt: '2026-10-27T10:10:00.000Z',
+    cardsStudied: 5,
+    cardsCorrect: 4,
+    mode: 'review' as const,
+  };
+
+  it('accepts up to two hours', () => {
+    expect(CompleteSessionSchema.safeParse({ ...base, durationMs: 7_200_000 }).success).toBe(true);
+  });
+
+  it('refuses an eight hour session: it cannot be stored', () => {
+    expect(CompleteSessionSchema.safeParse({ ...base, durationMs: 28_800_000 }).success).toBe(
+      false,
+    );
   });
 });

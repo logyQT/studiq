@@ -1657,6 +1657,13 @@
     "content_required": "Treść pytania jest wymagana"
   },
   "StudentInsights": {
+    "load_error": "Nie udało się wczytać statystyk.",
+    "retry": "Spróbuj ponownie",
+    "duration_lt_min": "< 1 min",
+    "study_time_note": "Sesje zamknięte bez dokończenia nie są wliczane do czasu nauki.",
+    "mastery_note": "Nie wliczamy quizów z zadań od nauczyciela ani pytań otwartych.",
+    "mastery_thin": "mało danych (poniżej {min} odpowiedzi)",
+    "mastery_more": "{count, plural, one {…i # temat więcej} few {…i # tematy więcej} other {…i # tematów więcej}}",
     "range_days": "{days} dni",
     "study_time_title": "Czas nauki",
     "study_time_empty": "W tym okresie nie ma jeszcze czasu nauki. Powtórz fiszki albo rozwiąż test.",

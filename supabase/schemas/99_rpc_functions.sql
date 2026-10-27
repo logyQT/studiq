@@ -897,7 +897,7 @@ LANGUAGE plpgsql
 STABLE
 SECURITY INVOKER
 SET search_path = ''
-AS $
+AS $$
 DECLARE
   v_days integer := GREATEST(1, LEAST(COALESCE(p_days, 30), 365));
   v_since timestamptz := now() - make_interval(days => GREATEST(1, LEAST(COALESCE(p_days, 30), 365)));
@@ -910,7 +910,11 @@ BEGIN
   END IF;
 
   WITH time_rows AS (
-    SELECT (fs.completed_at AT TIME ZONE 'UTC')::date AS day, fs.duration_ms::bigint AS ms
+    -- Both sources are clamped the same way: the session duration is sent by the client, so an
+    -- open tab must not become eight hours of study.
+    SELECT
+      (fs.completed_at AT TIME ZONE 'UTC')::date AS day,
+      GREATEST(0, LEAST(fs.duration_ms::bigint, 7200000)) AS ms
     FROM public.flashcard_study_sessions fs
     WHERE fs.user_id = p_user_id AND fs.completed_at >= v_since
     UNION ALL
@@ -918,7 +922,7 @@ BEGIN
     -- is not eight hours of study.
     SELECT
       (qa.completed_at AT TIME ZONE 'UTC')::date,
-      LEAST(EXTRACT(EPOCH FROM (qa.completed_at - qa.started_at)) * 1000, 7200000)::bigint
+      GREATEST(0, LEAST(EXTRACT(EPOCH FROM (qa.completed_at - qa.started_at)) * 1000, 7200000))::bigint
     FROM public.quiz_attempts qa
     WHERE qa.user_id = p_user_id
       AND qa.completed_at IS NOT NULL
@@ -1058,7 +1062,7 @@ BEGIN
 
   RETURN result;
 END;
-$;
+$$;
 
 -- ==========================================
 -- get_teacher_problematic_questions (#204, EDU-ST-02)

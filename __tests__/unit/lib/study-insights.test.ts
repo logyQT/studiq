@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { StudentInsightsController } from '@studiq/server/controllers/student-insights.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
@@ -10,7 +11,9 @@ import { StudentInsightsService } from '@studiq/server/services/student-insights
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   busiestWeekday,
+  hiddenMasteryCount,
   masteryLevel,
+  MIN_MASTERY_ANSWERS,
   MIN_BUCKET_REVIEWS,
   retentionSample,
   splitDuration,
@@ -236,5 +239,57 @@ describe('StudentInsightsController', () => {
       success: false,
       statusCode: 500,
     });
+  });
+});
+
+describe('hiddenMasteryCount (#657 review)', () => {
+  const item = (n: number, activity = 1): TopicMasteryItem => ({
+    topicId: `t${n}`,
+    name: `Topic ${n}`,
+    quizAnswers: activity,
+    quizAccuracy: 50,
+    flashcardReviews: 0,
+    flashcardAccuracy: null,
+    accuracy: 50,
+  });
+
+  it('is the number of active topics the card cannot show', () => {
+    const items = Array.from({ length: 14 }, (_, i) => item(i));
+    expect(hiddenMasteryCount(items, 10)).toBe(4);
+  });
+
+  it('does not count topics without activity or a list that fits', () => {
+    expect(hiddenMasteryCount([item(1), item(2, 0)], 10)).toBe(0);
+    expect(hiddenMasteryCount([], 10)).toBe(0);
+  });
+
+  it('treats few answers as a hint, not a verdict', () => {
+    expect(MIN_MASTERY_ANSWERS).toBeGreaterThan(1);
+  });
+});
+
+describe('the three insight cards report failures (#657 review)', () => {
+  const dir = 'apps/web/src/components/stats';
+  it.each(['study-time-card', 'topic-mastery-card', 'retention-curve-card'])(
+    '%s shows an error with a retry before any empty state',
+    (name) => {
+      const source = readFileSync(`${dir}/${name}.tsx`, 'utf8');
+      expect(source).toContain('isError');
+      expect(source).toContain('<InsightsError onRetry');
+      expect(source.indexOf('<InsightsError')).toBeLessThan(source.search(/_empty'/));
+    },
+  );
+
+  it('the SQL clamps both time sources to 0..2 h and the declarative copy matches', () => {
+    const migration = readFileSync(
+      'supabase/migrations/20261027110000_student_insights.sql',
+      'utf8',
+    );
+    const schema = readFileSync('supabase/schemas/99_rpc_functions.sql', 'utf8');
+    expect(migration.match(/GREATEST\(0, LEAST\(/g)).toHaveLength(2);
+    expect(schema.match(/GREATEST\(0, LEAST\(/g)?.length).toBeGreaterThanOrEqual(2);
+    // the declarative copy once lost a `$` at each end of the body
+    expect(schema).not.toMatch(/^\$;$/m);
+    expect(schema).not.toMatch(/^AS \$$/m);
   });
 });

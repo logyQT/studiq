@@ -13,6 +13,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
+import { InsightsError } from '@/components/stats/insights-error';
 import { useStudentInsights } from '@/hooks/use-student-insights';
 import { busiestWeekday, splitDuration, weekdayNames } from '@/lib/study-insights';
 
@@ -23,10 +24,11 @@ export function StudyTimeCard() {
   const t = useTranslations('StudentInsights');
   const locale = useLocale();
   const [days, setDays] = useState<(typeof RANGES)[number]>(30);
-  const { data, isLoading } = useStudentInsights(days);
+  const { data, isLoading, isError, refetch } = useStudentInsights(days);
 
   const duration = (ms: number) => {
     const { hours, minutes } = splitDuration(ms);
+    if (hours === 0 && minutes === 0 && ms > 0) return t('duration_lt_min');
     if (hours === 0) return t('duration_min', { minutes });
     return minutes === 0 ? t('duration_h', { hours }) : t('duration_h_min', { hours, minutes });
   };
@@ -58,8 +60,10 @@ export function StudyTimeCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {isLoading || !time ? (
+        {isLoading ? (
           <Skeleton className="h-56 w-full" />
+        ) : isError || !time ? (
+          <InsightsError onRetry={() => refetch()} />
         ) : time.totalMs === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">{t('study_time_empty')}</p>
         ) : (
@@ -96,11 +100,18 @@ export function StudyTimeCard() {
                 <BarChart data={chart} margin={{ left: 0, right: 8, top: 8 }}>
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis tickLine={false} axisLine={false} width={36} allowDecimals={false} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={52}
+                    allowDecimals={false}
+                    unit=" min"
+                  />
                   <Tooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="minutes" fill="var(--color-minutes)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ChartContainer>
+              <p className="text-xs text-muted-foreground">{t('study_time_note')}</p>
               {busiest !== null && (
                 <p className="text-sm text-muted-foreground">
                   {t('busiest_day', { day: longNames[busiest] })}

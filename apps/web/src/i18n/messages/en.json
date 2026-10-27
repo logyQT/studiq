@@ -1677,6 +1677,13 @@
     "content_required": "Question content is required"
   },
   "StudentInsights": {
+    "load_error": "Could not load the statistics.",
+    "retry": "Try again",
+    "duration_lt_min": "< 1 min",
+    "study_time_note": "Sessions closed without finishing are not counted in the study time.",
+    "mastery_note": "Quizzes from teacher assignments and open questions are not included.",
+    "mastery_thin": "little data (under {min} answers)",
+    "mastery_more": "{count, plural, one {…and # more topic} other {…and # more topics}}",
     "range_days": "{days} days",
     "study_time_title": "Study time",
     "study_time_empty": "No study time in this period yet. Review flashcards or take a quiz.",

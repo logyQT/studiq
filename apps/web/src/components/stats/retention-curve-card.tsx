@@ -12,6 +12,7 @@ import {
 } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
+import { InsightsError } from '@/components/stats/insights-error';
 import { useStudentInsights } from '@/hooks/use-student-insights';
 import { MIN_BUCKET_REVIEWS, retentionSample } from '@/lib/study-insights';
 
@@ -24,7 +25,7 @@ const DAYS = 30;
  */
 export function RetentionCurveCard() {
   const t = useTranslations('StudentInsights');
-  const { data, isLoading } = useStudentInsights(DAYS);
+  const { data, isLoading, isError, refetch } = useStudentInsights(DAYS);
 
   const buckets = data?.retention ?? [];
   const sample = retentionSample(buckets);
@@ -45,6 +46,8 @@ export function RetentionCurveCard() {
       <CardContent className="space-y-3">
         {isLoading ? (
           <Skeleton className="h-56 w-full" />
+        ) : isError ? (
+          <InsightsError onRetry={() => refetch()} />
         ) : sample === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">{t('retention_empty')}</p>
         ) : (

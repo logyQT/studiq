@@ -54,6 +54,15 @@ export function visibleMastery(items: readonly TopicMasteryItem[], limit = 10): 
     .slice(0, limit);
 }
 
+/** Topics with activity that `visibleMastery` leaves out, so the card can say so. */
+export function hiddenMasteryCount(items: readonly TopicMasteryItem[], limit = 10): number {
+  const active = items.filter((item) => item.quizAnswers + item.flashcardReviews > 0).length;
+  return Math.max(0, active - limit);
+}
+
+/** A mastery percentage built on fewer answers than this is a hint, not a verdict. */
+export const MIN_MASTERY_ANSWERS = 5;
+
 /** Colour band of a mastery bar: below 50 % needs work, from 80 % is solid. */
 export function masteryLevel(accuracy: number): 'low' | 'medium' | 'high' {
   if (accuracy >= 80) return 'high';
