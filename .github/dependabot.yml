@@ -24,13 +24,18 @@ updates:
     groups:
       opentelemetry:
         patterns: ["@opentelemetry/*"]
+      # The AI SDK packages are released in lockstep: @ai-sdk/react 4 pulls
+      # ai 7 as a nested dependency, so bumping it alone leaves two SDK
+      # generations talking different UI-message protocols.
+      ai-sdk:
+        patterns: ["ai", "@ai-sdk/*"]
       production-minor-patch:
         dependency-type: "production"
-        exclude-patterns: ["@opentelemetry/*"]
+        exclude-patterns: ["@opentelemetry/*", "ai", "@ai-sdk/*"]
         update-types: ["minor", "patch"]
       development-minor-patch:
         dependency-type: "development"
-        exclude-patterns: ["@opentelemetry/*"]
+        exclude-patterns: ["@opentelemetry/*", "ai", "@ai-sdk/*"]
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "build(deps)"
