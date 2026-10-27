@@ -18,12 +18,19 @@ updates:
     # Only minor/patch bumps are grouped. Major versions arrive as separate
     # PRs so a single bump (e.g. recharts 3, react-resizable-panels 4) can be
     # migrated and reviewed on its own instead of landing in one mega-PR.
+    #
+    # OTel is the exception: 0.x "minors" are breaking (sdk-node 0.300 needs
+    # resources/sdk-metrics 3.x), so the whole family moves in one PR.
     groups:
+      opentelemetry:
+        patterns: ["@opentelemetry/*"]
       production-minor-patch:
         dependency-type: "production"
+        exclude-patterns: ["@opentelemetry/*"]
         update-types: ["minor", "patch"]
       development-minor-patch:
         dependency-type: "development"
+        exclude-patterns: ["@opentelemetry/*"]
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "build(deps)"
