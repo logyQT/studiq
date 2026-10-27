@@ -38,7 +38,7 @@ export default defineConfig({
 
   workers: (() => {
     const raw = Number(process.env.E2E_WORKERS);
-    return Number.isInteger(raw) && raw > 0 ? raw : 16;
+    return Number.isInteger(raw) && raw > 0 ? raw : 8;
   })(),
 
   // Reporter to use. See https://playwright.dev/docs/test-reporters
