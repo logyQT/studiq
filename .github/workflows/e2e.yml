@@ -1,0 +1,95 @@
+name: e2e
+
+# Start manual + nightly. Flip on `pull_request` once the suite has stayed green
+# for a week; the job is ~15 min cold on a stock GitHub runner.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    # ubuntu-latest = 4 vCPU / 16 GB / ~14 GB free disk. The suite needs
+    # Supabase (~5 GB of images with studio/logflare/edge excluded), node_modules
+    # (1.5 GB), the Next build (~1 GB after dropping .next/cache) and two
+    # browsers (~0.5 GB) — it fits, but only just.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      # The config falls back to the CPU count on CI (4 here). Override only if
+      # the runner is bigger.
+      E2E_WORKERS: '4'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # `bun lint` is canary-only; keep this in step with
+          # scripts/check-bun-version.ts.
+          bun-version: canary
+
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Start Supabase
+        # studio/logflare/vector/edge-runtime are not used by the app; skipping
+        # them saves ~4 GB of pulls and a couple of minutes.
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+
+      - name: Write env files
+        # Local Supabase keys are deterministic, so nothing here is a secret.
+        run: |
+          eval "$(bunx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "OTEL_SDK_DISABLED=true"
+          } > apps/web/.env
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } > apps/admin/.env
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install browsers
+        run: bunx playwright install --with-deps chromium firefox
+
+      # Playwright's webServer builds and starts both apps (bun run build &&
+      # bun run start), so there is no separate build step to keep in sync.
+      - name: Run Playwright
+        run: bunx playwright test --shuffle --reporter=line
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop --no-backup || true
