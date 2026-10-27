@@ -52,6 +52,9 @@ test.describe('Markdown toolbar on a freshly opened flashcard dialog', () => {
     await expect(front).toHaveValue(/^# /);
 
     await front.fill('');
+    // Wait for the controlled value to settle: clicking the toolbar before the
+    // editor state catches up applies the bullet marker to the stale heading.
+    await expect(front).toHaveValue('');
     await front.click();
     await page
       .getByRole('button', { name: t('FlashcardEditorComponent.toolbar_bullet_list') })
