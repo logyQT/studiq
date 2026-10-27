@@ -47,6 +47,7 @@ export type Keyring = {
  */
 const RESOURCE_SCOPES: Record<string, readonly string[]> = {
   organizations: ['read'],
+  stats: ['read'],
   'feature-flags': ['read', 'write'],
   'plan-features': ['read', 'write'],
   'plan-limits': ['read', 'write'],

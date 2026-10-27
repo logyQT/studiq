@@ -159,6 +159,9 @@ describe('admin PEM gate — scope map', () => {
     const table: Array<[string, string, string | null]> = [
       ['GET', '/api/v1/organizations', 'organizations:read'],
       ['GET', '/api/v1/organizations/org-1', 'organizations:read'],
+      ['GET', '/api/v1/stats', 'stats:read'],
+      ['GET', '/api/v1/stats/daily', 'stats:read'],
+      ['POST', '/api/v1/stats', null],
       ['GET', '/api/v1/feature-flags', 'feature-flags:read'],
       ['POST', '/api/v1/feature-flags', 'feature-flags:write'],
       ['GET', '/api/v1/feature-flags/flag-1', 'feature-flags:read'],
