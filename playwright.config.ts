@@ -1,3 +1,4 @@
+import { cpus } from 'node:os';
 import { defineConfig, devices } from '@playwright/test';
 import { deterministicAdminTestKey, ringEntry, ringJson } from '#test/helpers/admin-pem';
 
@@ -41,7 +42,8 @@ export default defineConfig({
     if (Number.isInteger(raw) && raw > 0) return raw;
     // One project is fastest at 8 (16 hammer the same app path); the full
     // matrix is fastest at 16 (the extra slots land on different projects).
-    return process.env.CI ? 16 : 8;
+    // On CI follow the runner: a 4-core GitHub runner cannot feed 16 browsers.
+    return process.env.CI ? Math.max(2, Math.min(16, cpus().length)) : 8;
   })(),
 
   // Reporter to use. See https://playwright.dev/docs/test-reporters
