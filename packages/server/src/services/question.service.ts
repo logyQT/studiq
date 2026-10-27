@@ -6,6 +6,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateQuestionInput,
+  QuestionListQuery,
   UpdateQuestionInput,
 } from '@studiq/server/models/question.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
@@ -44,6 +45,11 @@ function withTopics<T extends { question_topic_assignments?: QuestionTopicLink[]
 function questionSelect(topicFilter = false) {
   const embed = `question_topic_assignments${topicFilter ? '!inner' : ''}(topic_id, topics(id, name))`;
   return `*, question_answers:question_options(*), ${embed}`;
+}
+
+/** `%`, `_` and `\` are wildcards / escapes in LIKE: a search for "50%" must mean the text. */
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
 export class QuestionService {
@@ -106,17 +112,24 @@ export class QuestionService {
 
   async list(
     ctx: RequestContext,
-    filters?: { bankId?: string; topicIds?: string; type?: string },
+    filters?: Partial<QuestionListQuery>,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
+    const page = filters?.page;
+    const limit = filters?.limit ?? 25;
+    const paged = page !== undefined;
+
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
-    if (filter._impossible) return success([]);
+    if (filter._impossible) return success(paged ? { items: [], total: 0, page, limit } : []);
 
     const topicIds = filters?.topicIds?.split(',').filter(Boolean) ?? [];
     const hasTopicFilter = topicIds.length > 0;
 
-    let query = supabase.from('questions').select(questionSelect(hasTopicFilter));
+    const columns = questionSelect(hasTopicFilter);
+    let query = paged
+      ? supabase.from('questions').select(columns, { count: 'exact' })
+      : supabase.from('questions').select(columns);
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
@@ -128,13 +141,26 @@ export class QuestionService {
     if (hasTopicFilter)
       query = query.filter('question_topic_assignments.topic_id', 'in', `(${topicIds.join(',')})`);
     if (filters?.type) query = query.eq('type', filters.type);
+    if (filters?.search) query = query.ilike('content', `%${escapeLike(filters.search)}%`);
 
-    const { data, error } = await query;
+    if (filters?.sortBy || paged) {
+      // `id` as the tie-breaker keeps pages stable when many rows share the sort value.
+      query = query
+        .order(filters?.sortBy ?? 'created_at', { ascending: filters?.sortOrder === 'asc' })
+        .order('id');
+    }
+    if (paged) query = query.range((page - 1) * limit, page * limit - 1);
+
+    const { data, error, count } = await query;
+    // PostgREST answers a range past the last row with PGRST103 (416). A page that no longer
+    // exists (rows deleted, stale link) is an empty page, not a server error.
+    if (paged && error?.code === 'PGRST103') return success({ items: [], total: 0, page, limit });
     if (error) return toDbFailure(error);
     // `select()` receives a dynamic projection string, so PostgREST cannot infer
     // the row shape here; the cast matches the embed declared above.
     const rows = (data ?? []) as unknown as QuestionTopicRow[];
-    return success(rows.map((row) => withTopics(row)));
+    const items = rows.map((row) => withTopics(row));
+    return success(paged ? { items, total: count ?? items.length, page, limit } : items);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {

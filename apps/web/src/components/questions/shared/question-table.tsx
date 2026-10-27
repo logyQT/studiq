@@ -18,13 +18,29 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { ArrowUpDown, Layers, Pencil, Search, Trash2, X } from 'lucide-react';
+import {
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  Pencil,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 
 interface QuestionTableProps {
+  /** The current page, already searched, filtered and sorted by the server. */
   questions: Question[];
   isLoading: boolean;
+  /** A page change or a filter is in flight: the previous rows stay visible, dimmed. */
+  isFetching?: boolean;
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
   search: string;
   onSearchChange: (value: string) => void;
   typeFilter: string;
@@ -47,6 +63,11 @@ interface QuestionTableProps {
 export function QuestionTable({
   questions,
   isLoading,
+  isFetching = false,
+  total,
+  page,
+  pageSize,
+  onPageChange,
   search,
   onSearchChange,
   typeFilter,
@@ -63,20 +84,8 @@ export function QuestionTable({
   emptyText,
   t,
 }: QuestionTableProps) {
-  const filtered = questions.filter((q) => {
-    const matchesSearch = q.content.toLowerCase().includes(search.toLowerCase());
-    const matchesType = typeFilter === 'all' || q.type === typeFilter;
-    return matchesSearch && matchesType;
-  });
-
-  const sorted = [...filtered].sort((a, b) => {
-    const dir = sortOrder === 'asc' ? 1 : -1;
-    if (sortBy === 'content') return a.content.localeCompare(b.content) * dir;
-    if (sortBy === 'type') return a.type.localeCompare(b.type) * dir;
-    if (sortBy === 'created_at')
-      return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
-    return 0;
-  });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const hasFilters = search.trim() !== '' || typeFilter !== 'all';
 
   function toggleSort(field: string) {
     if (sortBy === field) {
@@ -141,7 +150,7 @@ export function QuestionTable({
         </Select>
       </div>
 
-      <Card className="p-0 gap-0">
+      <Card className={`p-0 gap-0 transition-opacity ${isFetching ? 'opacity-60' : ''}`}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -153,7 +162,7 @@ export function QuestionTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sorted.map((q) => (
+            {questions.map((q) => (
               <TableRow key={q.id}>
                 <TableCell className="max-w-md truncate font-medium">{q.content}</TableCell>
                 <TableCell>
@@ -219,16 +228,46 @@ export function QuestionTable({
                 </TableCell>
               </TableRow>
             ))}
-            {sorted.length === 0 && (
+            {questions.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {emptyText ?? t('no_questions')}
+                  {emptyText ?? (hasFilters ? t('no_results') : t('no_questions'))}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </Card>
+
+      {total > 0 && (
+        <nav
+          className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground"
+          aria-label={t('pagination')}
+        >
+          <span>{t('total_count', { count: total })}</span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={page <= 1}
+              onClick={() => onPageChange(page - 1)}
+              aria-label={t('previous_page')}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span>{t('page_of', { page, pages: pageCount })}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={page >= pageCount}
+              onClick={() => onPageChange(page + 1)}
+              aria-label={t('next_page')}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

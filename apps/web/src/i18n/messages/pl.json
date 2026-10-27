@@ -2435,6 +2435,12 @@
     "mcq": "Wielokrotnego wyboru",
     "true_false_label": "Prawda / Fałsz",
     "open_label": "Otwarte",
+    "pagination": "Podział na strony",
+    "total_count": "{count, plural, one {# pytanie} few {# pytania} other {# pytań}}",
+    "page_of": "Strona {page} z {pages}",
+    "previous_page": "Poprzednia strona",
+    "next_page": "Następna strona",
+    "no_results": "Brak pytań pasujących do filtrów.",
     "create_flashcard_title": "Utwórz fiszkę z tego pytania"
   },
   "CreateFlashcardFromQuestion": {

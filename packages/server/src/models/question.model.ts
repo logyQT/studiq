@@ -3,6 +3,25 @@ import { registry, z } from '@studiq/server/lib/zod';
 
 export const QuestionTypeEnum = z.enum(['mcq', 'true_false', 'open']);
 
+/**
+ * Query of `GET /api/v1/questions`. Without `page` the endpoint keeps answering with the
+ * whole list (quiz builder, assignments); with `page` it answers `{ items, total, page, limit }`
+ * and search, type filter and sort run in the database (#651).
+ */
+export const QuestionListQuerySchema = registry.register(
+  'QuestionListQuery',
+  z.object({
+    bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    topicIds: z.string().optional(),
+    type: QuestionTypeEnum.optional(),
+    search: z.string().trim().max(100, { error: ValidationErrorCode.TOO_LONG }).optional(),
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    sortBy: z.enum(['created_at', 'content', 'type']).optional(),
+    sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  }),
+);
+
 export const CreateQuestionSchema = registry.register(
   'CreateQuestionRequest',
   z
@@ -83,6 +102,7 @@ export const UpdateQuestionSchema = registry.register(
     ),
 );
 
+export type QuestionListQuery = z.infer<typeof QuestionListQuerySchema>;
 export type CreateQuestionInput = z.infer<typeof CreateQuestionSchema>;
 export type UpdateQuestionInput = z.infer<typeof UpdateQuestionSchema>;
 
@@ -107,4 +127,12 @@ export interface Question {
   updated_at: string;
   question_answers: QuestionAnswer[];
   topics?: Array<{ id: string; name: string }>;
+}
+
+/** Answer of `GET /api/v1/questions` when `page` is given. */
+export interface PaginatedQuestions {
+  items: Question[];
+  total: number;
+  page: number;
+  limit: number;
 }

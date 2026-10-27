@@ -1,10 +1,10 @@
 'use client';
 
-import type { Question } from '@studiq/server/models/question.model';
+import type { PaginatedQuestions, Question } from '@studiq/server/models/question.model';
 import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import type { Topic } from '@studiq/server/models/topic.model';
 import { Button } from '@studiq/ui';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Eye, Plus } from 'lucide-react';
 import Link from 'next/link';
 import type { useTranslations } from 'next-intl';
@@ -16,12 +16,15 @@ import { QuestionTable } from '@/components/questions/shared/question-table';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
+import { useDebounce } from '@/hooks/use-debounce';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { bankAccess } from '@/lib/bank-access';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
 import { SrLabel } from '@/components/shared/sr-label';
+
+const QUESTIONS_PAGE_SIZE = 25;
 
 interface QuestionBankDetailScreenProps {
   bankId: string;
@@ -43,6 +46,7 @@ export function QuestionBankDetailScreen({
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -66,11 +70,40 @@ export function QuestionBankDetailScreen({
   // The bank name is the breadcrumb leaf; the raw bank UUID must never render.
   useBreadcrumbLabel(bankId, bank?.name);
 
-  const { data: questions = [], isLoading: questionsLoading } = useQuery({
-    queryKey: questionKeys.list({ bankId }),
-    queryFn: () => apiGet<Question[]>(`/api/v1/questions?bankId=${bankId}`),
+  // Search, type filter, sort and paging all run on the server (#651); the typed text is
+  // debounced so a request is not sent per keystroke, and the previous page stays on screen
+  // while the next one loads.
+  const debouncedSearch = useDebounce(search.trim(), 300);
+  const listParams = {
+    bankId,
+    page: String(page),
+    limit: String(QUESTIONS_PAGE_SIZE),
+    search: debouncedSearch || undefined,
+    type: typeFilter === 'all' ? undefined : typeFilter,
+    sortBy,
+    sortOrder,
+  };
+  const {
+    data: questionsPage,
+    isLoading: questionsLoading,
+    isFetching: questionsFetching,
+  } = useQuery({
+    queryKey: questionKeys.list(listParams),
+    queryFn: () => {
+      const query = new URLSearchParams(
+        Object.entries(listParams).filter((entry): entry is [string, string] => !!entry[1]),
+      );
+      return apiGet<PaginatedQuestions>(`/api/v1/questions?${query}`);
+    },
+    placeholderData: keepPreviousData,
     staleTime: Infinity,
   });
+  const questions: Question[] = questionsPage?.items ?? [];
+  const total = questionsPage?.total ?? 0;
+
+  // Land on the last page that still exists after deleting the last row of a page.
+  const lastPage = Math.max(1, Math.ceil(total / QUESTIONS_PAGE_SIZE));
+  if (questionsPage && page > lastPage) setPage(lastPage);
 
   const { data: topicsData } = useApiQuery<{ items: Topic[] }>({
     queryKey: topicKeys.options(activeOrg?.id),
@@ -168,15 +201,27 @@ export function QuestionBankDetailScreen({
       <QuestionTable
         questions={questions}
         isLoading={questionsLoading}
+        isFetching={questionsFetching}
+        total={total}
+        page={page}
+        pageSize={QUESTIONS_PAGE_SIZE}
+        onPageChange={setPage}
         search={search}
-        onSearchChange={setSearch}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
         typeFilter={typeFilter}
-        onTypeFilterChange={setTypeFilter}
+        onTypeFilterChange={(value) => {
+          setTypeFilter(value);
+          setPage(1);
+        }}
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(sb, so) => {
           setSortBy(sb);
           setSortOrder(so);
+          setPage(1);
         }}
         onEdit={openEdit}
         onDelete={setDeleteId}

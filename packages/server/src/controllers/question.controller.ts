@@ -8,7 +8,11 @@ import { AppError } from '@studiq/server/lib/errors';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import { CreateQuestionSchema, UpdateQuestionSchema } from '@studiq/server/models/question.model';
+import {
+  CreateQuestionSchema,
+  QuestionListQuerySchema,
+  UpdateQuestionSchema,
+} from '@studiq/server/models/question.model';
 import { type QuestionService, questionService } from '@studiq/server/services/question.service';
 
 export class QuestionController {
@@ -49,15 +53,19 @@ export class QuestionController {
     return controllerResponse.created(question.data);
   }
 
-  async list(
-    ctx: RequestContext,
-    filters?: {
-      bankId?: string;
-      topicIds?: string;
-      type?: string;
-    },
-  ): Promise<ControllerResponse> {
-    const questions = await this.questionService.list(ctx, filters);
+  async list(ctx: RequestContext, query?: unknown): Promise<ControllerResponse> {
+    const parsed = QuestionListQuerySchema.safeParse(query ?? {});
+
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+
+    const questions = await this.questionService.list(ctx, parsed.data);
 
     if (isFailure(questions)) {
       return controllerResponse.error(questions.error);

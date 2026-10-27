@@ -2455,6 +2455,12 @@
     "mcq": "Multiple Choice",
     "true_false_label": "True / False",
     "open_label": "Open Answer",
+    "pagination": "Pagination",
+    "total_count": "{count, plural, one {# question} other {# questions}}",
+    "page_of": "Page {page} of {pages}",
+    "previous_page": "Previous page",
+    "next_page": "Next page",
+    "no_results": "No questions match the filters.",
     "create_flashcard_title": "Create a flashcard from this question"
   },
   "CreateFlashcardFromQuestion": {

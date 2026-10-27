@@ -14,16 +14,22 @@ export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {
     const { searchParams } = new URL(req.url);
 
-    const bankId = searchParams.get('bankId') || undefined;
-    const topicIds = searchParams.get('topicIds') || undefined;
-    const type = searchParams.get('type') || undefined;
-    const filters: Record<string, string> = {};
-    if (bankId) filters.bankId = bankId;
-    if (topicIds) filters.topicIds = topicIds;
-    if (type) filters.type = type;
+    // Blank params mean "not set": the callers build the query string from optional filters.
+    const query: Record<string, string> = {};
+    for (const key of [
+      'bankId',
+      'topicIds',
+      'type',
+      'search',
+      'page',
+      'limit',
+      'sortBy',
+      'sortOrder',
+    ]) {
+      const value = searchParams.get(key);
+      if (value) query[key] = value;
+    }
 
-    return toNextResponse(
-      await questionController.list(ctx, Object.keys(filters).length > 0 ? filters : undefined),
-    );
+    return toNextResponse(await questionController.list(ctx, query));
   });
 }
