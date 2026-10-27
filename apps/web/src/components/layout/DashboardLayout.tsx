@@ -5,6 +5,7 @@ import type React from 'react';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppSearch } from '@/components/layout/app-search';
 import { DashboardBreadcrumbs } from '@/components/layout/DashboardBreadcrumbs';
+import { NotificationBell } from '@/components/layout/notification-bell';
 import { BreadcrumbProvider } from '@/components/providers/BreadcrumbProvider';
 import { cn } from '@/lib/utils';
 
@@ -25,6 +26,9 @@ export function DashboardLayout({
               <SidebarTrigger className="-ml-1" />
               <Separator orientation="vertical" className="mr-2 h-4" />
               <DashboardBreadcrumbs />
+            </div>
+            <div className="ml-auto flex items-center gap-1 px-4">
+              <NotificationBell />
             </div>
           </header>
           <div className="flex flex-1 flex-col min-h-0">

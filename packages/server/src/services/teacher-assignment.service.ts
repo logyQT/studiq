@@ -14,6 +14,11 @@ import type {
   UpdateTeacherAssignmentInput,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  type Notifier,
+  noopNotifier,
+  notificationService,
+} from '@studiq/server/services/notification.service';
 
 /**
  * The `draft_answers` column is only ever served through
@@ -66,7 +71,11 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 }
 
 export class TeacherAssignmentService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(
+    private createClient: () => Promise<SupabaseClient>,
+    /** Tells students about a published assignment and a first grade; none in unit tests. */
+    private notifier: Notifier = noopNotifier,
+  ) {}
 
   async create(
     data: CreateTeacherAssignmentInput,
@@ -263,6 +272,14 @@ export class TeacherAssignmentService {
 
     if (count === 0) return failure('BAD_REQUEST');
 
+    // Only the first publication tells the students; changing the deadline of a published
+    // assignment later must not notify them again.
+    const { data: before } = await supabase
+      .from('teacher_assignments')
+      .select('status')
+      .eq('id', id)
+      .single();
+
     const updateData: Record<string, unknown> = {
       status: 'published',
       updated_at: new Date().toISOString(),
@@ -278,6 +295,10 @@ export class TeacherAssignmentService {
       .single();
 
     if (error) return toDbFailure(error);
+
+    if (before?.status !== 'published') {
+      await this.notifier.assignmentPublished({ assignmentId: id, teacherId: ctx.userId });
+    }
     return success(updated);
   }
 
@@ -557,12 +578,13 @@ export class TeacherAssignmentService {
 
     const { data: attempt } = await supabase
       .from('quiz_attempts')
-      .select('id')
+      .select('id, graded_at')
       .eq('assignment_id', id)
       .eq('user_id', studentId)
       .single();
 
     if (!attempt) return failure('NOT_FOUND');
+    const firstGrade = !attempt.graded_at;
 
     // The bound is per question (`assignment_questions.points`), so it cannot
     // live in the Zod schema. Reject before writing: points above the maximum
@@ -619,6 +641,9 @@ export class TeacherAssignmentService {
       .eq('id', attempt.id);
 
     if (gradeError) return toDbFailure(gradeError);
+
+    // Every saved answer re-stamps `graded_at`; the student is told once, at the first grade.
+    if (firstGrade) await this.notifier.assignmentGraded({ assignmentId: id, studentId });
 
     return success(null);
   }
@@ -1127,6 +1152,6 @@ export class TeacherAssignmentService {
   }
 }
 export const teacherAssignmentService = wrapService(
-  new TeacherAssignmentService(createClient),
+  new TeacherAssignmentService(createClient, notificationService),
   'teacher-assignment.service',
 );

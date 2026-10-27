@@ -48,7 +48,8 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
      public.resource_permissions,
      public.user_feature_overrides,
      public.profiles,
-     public.payments
+     public.payments,
+     public.notifications
   FROM authenticated;
 
 -- Destructive maintenance privileges are never used through PostgREST.
