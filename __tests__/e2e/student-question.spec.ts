@@ -1,19 +1,9 @@
-import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
-
-const email = 'student1@dev.local';
-const password = 'pass';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
 test.describe('Student Question Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    const emailInput = page.getByLabel(t('LoginPage.email_label'));
-    await emailInput.click();
-    await emailInput.fill(email);
-    await expect(emailInput).toHaveValue(email);
-    await page.getByLabel(t('LoginPage.password_label')).fill(password);
-    await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-    await page.waitForURL(/\/app/);
+    await signIn(page, 'student');
   });
 
   test('Student edits and deletes an own question', async ({ page }) => {
