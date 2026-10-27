@@ -428,7 +428,10 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             onToggleSelect={() => handleToggleSelect(bank.id)}
             basePath={basePath}
             t={t}
-            canUpdate={permission('question_bank.update', { createdBy: bank.created_by })}
+            canUpdate={permission('question_bank.update', {
+              createdBy: bank.created_by,
+              orgId: bank.organization_id ?? undefined,
+            })}
             canDelete={permission('question_bank.delete', { createdBy: bank.created_by })}
             onEdit={() => openEdit(bank)}
             onDelete={() => setDeleteId(bank.id)}
