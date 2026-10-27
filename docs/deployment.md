@@ -19,6 +19,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=https://your-domain.com
 
+# Invitation e-mail (optional). Unset keeps the copyable invite link as the only delivery path.
+# MAIL_DRIVER=smtp              # none (default) | smtp (the log driver is refused in production)
+# MAIL_FROM=StudiQ <no-reply@your-domain.com>
+# MAIL_SMTP_HOST=smtp.your-provider.com
+# MAIL_SMTP_PORT=587            # 465 together with MAIL_SMTP_SECURE=true
+# MAIL_SMTP_USER=...            # credentials only via the host's secret store, never in the repo
+# MAIL_SMTP_PASS=...
+
 # LLM / AI Provider (optional — only if using AI features)
 LLM_PROVIDER=openai
 LLM_API_KEY=your-openai-api-key
