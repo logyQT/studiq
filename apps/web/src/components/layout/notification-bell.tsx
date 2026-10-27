@@ -5,7 +5,7 @@ import { Button, Popover, PopoverContent, PopoverTrigger } from '@studiq/ui';
 import { Bell, ClipboardCheck, FileCheck2, Flag, UserPlus } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -15,6 +15,7 @@ import {
   notificationArea,
   notificationHref,
   notificationParams,
+  OPEN_NOTIFICATIONS_EVENT,
   unreadBadge,
 } from '@/lib/notifications';
 import { formatRelativeTime } from '@/lib/relative-time';
@@ -38,13 +39,19 @@ export function NotificationBell() {
   const area = notificationArea(pathname);
 
   const [open, setOpen] = useState(false);
-  const { data, isLoading } = useNotifications();
+  const { data, isLoading, isError, refetch } = useNotifications();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
 
   const unread = data?.unreadCount ?? 0;
   const badge = unreadBadge(unread);
   const items = data?.items ?? [];
+
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_NOTIFICATIONS_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_NOTIFICATIONS_EVENT, onOpen);
+  }, []);
 
   function openItem(item: NotificationItem) {
     if (!item.readAt) markRead.mutate(item.id);
@@ -55,6 +62,10 @@ export function NotificationBell() {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
+      {/* A new notification is announced politely; the badge itself is hidden from assistive tech. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {unread > 0 ? t('button_unread', { count: unread }) : ''}
+      </span>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -90,6 +101,14 @@ export function NotificationBell() {
         <div className="max-h-96 overflow-y-auto">
           {isLoading ? (
             <p className="p-4 text-center text-sm text-muted-foreground">{t('loading')}</p>
+          ) : isError && !data ? (
+            // A failed read is not "no notifications", and the badge must not read 0 for it.
+            <div role="alert" className="space-y-2 p-4 text-center">
+              <p className="text-sm text-muted-foreground">{t('load_error')}</p>
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                {t('retry')}
+              </Button>
+            </div>
           ) : items.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
           ) : (

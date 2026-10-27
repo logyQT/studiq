@@ -481,6 +481,11 @@ export class TeacherAssignmentService {
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
 
+    // Every target must belong to the assignment's organisation: the ids come from the request,
+    // and notifications and results are fanned out from them (#235).
+    const foreign = await this.hasForeignTargets(supabase, id, data, ctx);
+    if (foreign) return failure('BAD_REQUEST');
+
     await supabase.from('assignment_targets').delete().eq('assignment_id', id);
 
     const rows: Array<{
@@ -1130,6 +1135,44 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
     return success({ imageUrl });
+  }
+
+  /** True when a group or student of `data` is not part of the assignment's organisation. */
+  private async hasForeignTargets(
+    supabase: SupabaseClient,
+    assignmentId: string,
+    data: SetTargetsInput,
+    ctx: RequestContext,
+  ): Promise<boolean> {
+    const groupIds = [...new Set(data.groupIds ?? [])];
+    const studentIds = [...new Set(data.studentIds ?? [])];
+    if (groupIds.length === 0 && studentIds.length === 0) return false;
+
+    const { data: assignment } = await supabase
+      .from('teacher_assignments')
+      .select('organization_id')
+      .eq('id', assignmentId)
+      .single();
+    const organizationId = assignment?.organization_id ?? ctx.activeOrgId;
+    if (!organizationId) return true;
+
+    if (groupIds.length > 0) {
+      const { data: groups } = await supabase
+        .from('groups')
+        .select('id')
+        .in('id', groupIds)
+        .eq('organization_id', organizationId);
+      if ((groups?.length ?? 0) !== groupIds.length) return true;
+    }
+    if (studentIds.length > 0) {
+      const { data: members } = await supabase
+        .from('org_members')
+        .select('user_id')
+        .in('user_id', studentIds)
+        .eq('organization_id', organizationId);
+      if ((members?.length ?? 0) !== studentIds.length) return true;
+    }
+    return false;
   }
 
   private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {

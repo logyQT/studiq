@@ -310,6 +310,8 @@
     "SUCCESS_PASSWORD_UPDATED": "Hasło zostało zmienione. Witaj z powrotem!"
   },
   "Notifications": {
+    "load_error": "Nie udało się wczytać powiadomień",
+    "retry": "Spróbuj ponownie",
     "title": "Powiadomienia",
     "button": "Powiadomienia",
     "button_unread": "Powiadomienia, {count, plural, one {# nieprzeczytane} few {# nieprzeczytane} other {# nieprzeczytanych}}",
@@ -334,6 +336,7 @@
     "session_new": "Nowe fiszki"
   },
   "DashboardLayout": {
+    "notifications": "Powiadomienia",
     "ai_chat": "Asystent Q",
     "edu_overview": "Przegląd",
     "edu_questions": "Pytania",

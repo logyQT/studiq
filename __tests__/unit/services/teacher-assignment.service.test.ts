@@ -602,11 +602,14 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('setTargets', () => {
+    const owned = () => chain({ id: assignmentId, created_by: userId, organization_id: orgId });
+
     it('sets group and student targets', async () => {
       mock.from
-        .mockReturnValueOnce(
-          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-        )
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ organization_id: orgId })) // the assignment's organisation
+        .mockReturnValueOnce(chain([{ id: 'g-1' }])) // the group is in it
+        .mockReturnValueOnce(chain([{ user_id: 's-1' }])) // and so is the student
         .mockReturnValueOnce(chain(null))
         .mockReturnValue(chain(null));
 
@@ -617,6 +620,36 @@ describe('TeacherAssignmentService', () => {
       );
 
       expect(result.success).toBe(true);
+    });
+
+    it('refuses a group of another organisation and writes nothing (#235)', async () => {
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ organization_id: orgId }))
+        .mockReturnValueOnce(chain([])) // no group of this organisation matches
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { groupIds: ['g-foreign'] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'BAD_REQUEST' });
+      const tables = mock.from.mock.calls.map(([table]: [string]) => table);
+      expect(tables).not.toContain('assignment_targets');
+    });
+
+    it('refuses a student who is not in the assignment organisation', async () => {
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ organization_id: orgId }))
+        .mockReturnValueOnce(chain([{ user_id: 's-1' }])) // only one of the two is a member
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(
+        assignmentId,
+        { studentIds: ['s-1', 's-foreign'] },
+        ctx,
+      );
+
+      expect(result).toMatchObject({ success: false, error: 'BAD_REQUEST' });
     });
 
     it('clears targets when no groups or students', async () => {

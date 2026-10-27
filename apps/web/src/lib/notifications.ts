@@ -67,3 +67,6 @@ export function unreadBadge(count: number): string {
   if (count <= 0) return '';
   return count > 9 ? '9+' : String(count);
 }
+
+/** Fired by the user-menu entry; the bell listens and opens its popover. */
+export const OPEN_NOTIFICATIONS_EVENT = 'studiq:open-notifications';

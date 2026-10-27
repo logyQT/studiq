@@ -90,6 +90,8 @@ describe('NotificationService: reading', () => {
     });
     expect(list.eq).toHaveBeenCalledWith('user_id', 'user-1');
     expect(list.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    // Rows inserted together share a timestamp: the id keeps their order stable.
+    expect(list.order).toHaveBeenCalledWith('id', { ascending: false });
     expect(list.limit).toHaveBeenCalledWith(15);
     expect(list.is).not.toHaveBeenCalled();
     expect(unread.is).toHaveBeenCalledWith('read_at', null);
@@ -213,6 +215,9 @@ describe('NotificationService: producers', () => {
           error: null,
         }),
       ],
+      org_members: [
+        builder({ data: [{ user_id: 'a' }, { user_id: 'b' }, { user_id: 'extra' }], error: null }),
+      ],
       notifications: [insert],
     });
 
@@ -226,6 +231,50 @@ describe('NotificationService: producers', () => {
       payload: { assignmentId: 'a1', title: 'Kartkówka z fizyki' },
     });
     expect(admin.calls.group_members[0].eq).toHaveBeenCalledWith('role', 'member');
+  });
+
+  it("resolves group members through the assignment's organisation, never from the raw id", async () => {
+    const insert = builder();
+    const { admin, service: s } = service({
+      teacher_assignments: [assignment],
+      assignment_targets: [
+        builder({ data: [{ group_id: 'g-other-org', student_id: null }], error: null }),
+      ],
+      group_members: [builder({ data: [], error: null })],
+      notifications: [insert],
+    });
+
+    await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
+
+    const members = admin.calls.group_members[0];
+    expect(members.select).toHaveBeenCalledWith('user_id, groups!inner(organization_id)');
+    expect(members.eq).toHaveBeenCalledWith('groups.organization_id', 'org-1');
+    expect(insert.insert).not.toHaveBeenCalled();
+  });
+
+  it('drops recipients that are not members of the assignment organisation', async () => {
+    const insert = builder();
+    const { admin, service: s } = service({
+      teacher_assignments: [assignment],
+      assignment_targets: [
+        builder({
+          data: [
+            { group_id: 'g1', student_id: null },
+            { group_id: null, student_id: 'foreign-student' },
+          ],
+          error: null,
+        }),
+      ],
+      group_members: [builder({ data: [{ user_id: 'a' }, { user_id: 'left-org' }], error: null })],
+      org_members: [builder({ data: [{ user_id: 'a' }], error: null })],
+      notifications: [insert],
+    });
+
+    await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
+
+    const rows = insert.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows.map((r) => r.user_id)).toEqual(['a']);
+    expect(admin.calls.org_members[0].eq).toHaveBeenCalledWith('organization_id', 'org-1');
   });
 
   it('sends nothing when there are no recipients', async () => {
@@ -248,6 +297,7 @@ describe('NotificationService: producers', () => {
       ],
       assignment_targets: [builder({ data: [{ group_id: 'g1', student_id: null }], error: null })],
       group_members: [builder({ data: students, error: null })],
+      org_members: [builder({ data: students, error: null })],
       // A copy: the fake client takes builders off the front of the queue.
       notifications: [...inserts],
     });

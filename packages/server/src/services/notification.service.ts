@@ -106,6 +106,8 @@ export class NotificationService implements Notifier {
       .select('id, type, payload, organization_id, read_at, created_at')
       .eq('user_id', ctx.userId)
       .order('created_at', { ascending: false })
+      // Equal timestamps (a fan-out inserts many rows at once) keep a stable order.
+      .order('id', { ascending: false })
       .limit(options.limit);
     if (options.unread) items = items.is('read_at', null);
 
@@ -169,7 +171,7 @@ export class NotificationService implements Notifier {
     await this.safely('assignment_published', async () => {
       const admin = this.createAdminClient();
       const assignment = await this.assignment(input.assignmentId);
-      if (!assignment) return;
+      if (!assignment?.organizationId) return;
 
       const { data: targets, error } = await admin
         .from('assignment_targets')
@@ -184,18 +186,34 @@ export class NotificationService implements Notifier {
         if (target.group_id) groupIds.push(target.group_id as string);
       }
 
+      // A target is a raw id the request supplied, so the recipients are never taken from it
+      // as they are: groups are resolved through the assignment's organisation, and every
+      // recipient must still be a member of it. Otherwise a teacher of two organisations could
+      // push one tenant's assignment title into another tenant's bell.
       if (groupIds.length > 0) {
         const { data: members, error: membersError } = await admin
           .from('group_members')
-          .select('user_id')
+          .select('user_id, groups!inner(organization_id)')
           .in('group_id', groupIds)
-          .eq('role', 'member');
+          .eq('role', 'member')
+          .eq('groups.organization_id', assignment.organizationId);
         if (membersError) throw membersError;
         for (const member of members ?? []) recipients.add(member.user_id as string);
       }
 
       // The teacher may sit in the group too; they know they published it.
       recipients.delete(input.teacherId);
+
+      if (recipients.size > 0) {
+        const { data: orgMembers, error: orgError } = await admin
+          .from('org_members')
+          .select('user_id')
+          .eq('organization_id', assignment.organizationId)
+          .in('user_id', [...recipients]);
+        if (orgError) throw orgError;
+        const inOrg = new Set((orgMembers ?? []).map((m) => m.user_id as string));
+        for (const id of [...recipients]) if (!inOrg.has(id)) recipients.delete(id);
+      }
 
       await this.insert(
         [...recipients].map((userId) => ({

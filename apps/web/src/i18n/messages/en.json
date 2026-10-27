@@ -328,6 +328,8 @@
     "SUCCESS_PASSWORD_UPDATED": "Password has been updated. Welcome back!"
   },
   "Notifications": {
+    "load_error": "Notifications could not be loaded",
+    "retry": "Try again",
     "title": "Notifications",
     "button": "Notifications",
     "button_unread": "Notifications, {count} unread",
@@ -352,6 +354,7 @@
     "session_new": "New cards"
   },
   "DashboardLayout": {
+    "notifications": "Notifications",
     "ai_chat": "Q Assistant",
     "edu_overview": "Overview",
     "edu_questions": "Questions",
