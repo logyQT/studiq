@@ -2382,6 +2382,8 @@
     "actions": "Actions",
     "no_questions": "No questions in this bank. Create your first question!",
     "back_to_banks": "Back to Banks",
+    "read_only_notice": "Bank preview. Only its author or a teacher can add and change questions.",
+    "no_questions_read_only": "There are no questions in this bank.",
     "delete_title": "Delete question?",
     "delete_desc": "This will permanently delete this question and all its answers. This action cannot be undone.",
     "mcq": "Multiple Choice",

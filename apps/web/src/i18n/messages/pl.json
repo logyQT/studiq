@@ -2362,6 +2362,8 @@
     "actions": "Akcje",
     "no_questions": "Brak pytań w tym banku. Utwórz swoje pierwsze pytanie!",
     "back_to_banks": "Powrót do banków",
+    "read_only_notice": "Podgląd banku. Pytania może dodawać i zmieniać tylko jego autor lub nauczyciel.",
+    "no_questions_read_only": "Brak pytań w tym banku.",
     "delete_title": "Usunąć pytanie?",
     "delete_desc": "To trwale usunie to pytanie i wszystkie jego odpowiedzi. Tej akcji nie można cofnąć.",
     "mcq": "Wielokrotnego wyboru",
