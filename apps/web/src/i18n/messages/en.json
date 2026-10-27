@@ -64,7 +64,7 @@
   },
   "Shortcuts": {
     "title": "Keyboard shortcuts",
-    "description": "Shortcuts do not work while you type in a text field.",
+    "description": "Shortcuts do not work while you type in a text field. The list shows the main ones.",
     "button_title": "Keyboard shortcuts (?)",
     "then": "then",
     "group_general": "General",

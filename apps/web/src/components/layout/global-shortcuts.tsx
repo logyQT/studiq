@@ -14,9 +14,13 @@ import { useTranslations } from 'next-intl';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   createSequenceMatcher,
+  isApplePlatform,
+  isIgnorableKeyEvent,
   isTypingTarget,
+  modifierLabels,
   NAV_SHORTCUTS,
   type NavShortcut,
+  overlayOpen,
   sequencesDisabled,
   shortcutArea,
 } from '@/lib/shortcuts';
@@ -61,13 +65,6 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-/** A modal or menu is open: the page behind it must not react to letters. */
-function overlayOpen(): boolean {
-  return !!document.querySelector(
-    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]',
-  );
-}
-
 /**
  * Keyboard shortcuts of the dashboards (#665): `?` opens the help dialog, `g` then a letter goes
  * to a page of the current area. Nothing fires while typing, with a modifier held, behind an open
@@ -79,12 +76,37 @@ export function GlobalShortcuts() {
   const pathname = usePathname();
   const area = shortcutArea(pathname);
   const [open, setOpen] = useState(false);
+  const [apple, setApple] = useState(false);
+  const mod = modifierLabels(apple);
 
   const nav = area ? NAV_SHORTCUTS[area] : NO_SHORTCUTS;
   // One matcher per area: moving to another area forgets a half-typed sequence.
   const matcher = useMemo(() => createSequenceMatcher(nav), [nav]);
 
   const navDisabled = sequencesDisabled(pathname);
+
+  useEffect(() => {
+    setApple(isApplePlatform(navigator));
+  }, []);
+
+  // A half-typed `g` must not survive a route change, the dialog opening or closing, or the tab
+  // losing the focus: the next letter would then navigate from under the user.
+  useEffect(() => {
+    matcher.reset();
+  }, [matcher, pathname, open]);
+
+  useEffect(() => {
+    const reset = () => matcher.reset();
+    const onVisibility = () => {
+      if (document.hidden) matcher.reset();
+    };
+    window.addEventListener('blur', reset);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('blur', reset);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [matcher]);
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
@@ -94,8 +116,13 @@ export function GlobalShortcuts() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (isTypingTarget(document.activeElement)) return;
+      // Held keys are ignored without touching the pending prefix; typing, chords and IME
+      // composition cancel it.
+      if (e.repeat) return;
+      if (isIgnorableKeyEvent(e) || isTypingTarget(document.activeElement)) {
+        matcher.reset();
+        return;
+      }
 
       if (e.key === '?') {
         if (overlayOpen() && !open) return;
@@ -104,7 +131,10 @@ export function GlobalShortcuts() {
         return;
       }
 
-      if (open || overlayOpen() || navDisabled || !area) return;
+      if (open || overlayOpen() || navDisabled || !area) {
+        matcher.reset();
+        return;
+      }
       const href = matcher.press(e.key);
       if (href) {
         e.preventDefault();
@@ -127,7 +157,7 @@ export function GlobalShortcuts() {
         <div className="space-y-5">
           <Group title={t('group_general')}>
             <Row keys={['?']} label={t('help')} />
-            <Row keys={['Ctrl', 'K']} label={t('search')} then="+" />
+            <Row keys={[mod.ctrl, 'K']} label={t('search')} then="+" />
             <Row keys={['/']} label={t('search_slash')} />
             <Row keys={['Esc']} label={t('close')} />
           </Group>
@@ -149,7 +179,7 @@ export function GlobalShortcuts() {
             <Row keys={['Space']} label={t('study_flip')} />
             <Row keys={['1', '2', '3', '4']} label={t('study_rate')} then="/" />
             <Row keys={['P']} label={t('study_audio')} />
-            <Row keys={['Alt', 'K']} label={t('study_panel')} then="+" />
+            <Row keys={[mod.alt, 'K']} label={t('study_panel')} then="+" />
           </Group>
         </div>
       </DialogContent>

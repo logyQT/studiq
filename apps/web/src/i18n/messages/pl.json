@@ -64,7 +64,7 @@
   },
   "Shortcuts": {
     "title": "Skróty klawiszowe",
-    "description": "Skróty nie działają, gdy piszesz w polu tekstowym.",
+    "description": "Skróty nie działają, gdy piszesz w polu tekstowym. Lista pokazuje najważniejsze z nich.",
     "button_title": "Skróty klawiszowe (?)",
     "then": "potem",
     "group_general": "Ogólne",

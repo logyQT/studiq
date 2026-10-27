@@ -59,6 +59,42 @@ export function isTypingTarget(element: Element | null | undefined): boolean {
   return role === 'textbox' || role === 'combobox' || role === 'searchbox';
 }
 
+/** A modal or menu is open: the page behind it must not react to letters or digits. */
+export function overlayOpen(root: ParentNode = document): boolean {
+  return !!root.querySelector(
+    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]',
+  );
+}
+
+export interface KeyEventLike {
+  key: string;
+  repeat?: boolean;
+  isComposing?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+}
+
+/**
+ * Key events that are never a shortcut: a modifier chord, an auto-repeat (holding `g` must not
+ * read as `g g`) and input-method composition (`isComposing`, or the `Process` key some
+ * browsers report instead).
+ */
+export function isIgnorableKeyEvent(e: KeyEventLike): boolean {
+  return !!(e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing || e.key === 'Process');
+}
+
+/** macOS and iOS show ⌘ and ⌥ where other platforms show Ctrl and Alt. */
+export function isApplePlatform(
+  nav: { platform?: string; userAgent?: string } | undefined,
+): boolean {
+  return /mac|iphone|ipad|ipod/i.test(`${nav?.platform ?? ''} ${nav?.userAgent ?? ''}`);
+}
+
+export function modifierLabels(apple: boolean): { ctrl: string; alt: string } {
+  return apple ? { ctrl: '⌘', alt: '⌥' } : { ctrl: 'Ctrl', alt: 'Alt' };
+}
+
 /** Pages where the keyboard is already busy (the study session uses Space and 1-4). */
 export function sequencesDisabled(pathname: string | null | undefined): boolean {
   return (pathname ?? '').startsWith('/app/study/session');

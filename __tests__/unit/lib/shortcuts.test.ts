@@ -3,8 +3,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   createSequenceMatcher,
+  isApplePlatform,
+  isIgnorableKeyEvent,
   isTypingTarget,
+  modifierLabels,
   NAV_SHORTCUTS,
+  overlayOpen,
   type ShortcutArea,
   sequencesDisabled,
   shortcutArea,
@@ -178,5 +182,89 @@ describe('NAV_SHORTCUTS', () => {
         expect(labels[labelKey], `${locale}: Shortcuts.nav.${labelKey}`).toBeTruthy();
       }
     }
+  });
+});
+
+describe('isIgnorableKeyEvent (#665 review)', () => {
+  it('ignores auto-repeat, so holding g never reads as g g', () => {
+    expect(isIgnorableKeyEvent({ key: 'g', repeat: true })).toBe(true);
+  });
+
+  it('ignores IME composition in both forms browsers report it', () => {
+    expect(isIgnorableKeyEvent({ key: 'g', isComposing: true })).toBe(true);
+    expect(isIgnorableKeyEvent({ key: 'Process' })).toBe(true);
+  });
+
+  it('ignores modifier chords', () => {
+    expect(isIgnorableKeyEvent({ key: 'g', ctrlKey: true })).toBe(true);
+    expect(isIgnorableKeyEvent({ key: 'g', metaKey: true })).toBe(true);
+    expect(isIgnorableKeyEvent({ key: 'g', altKey: true })).toBe(true);
+  });
+
+  it('lets a plain key through', () => {
+    expect(isIgnorableKeyEvent({ key: 'g' })).toBe(false);
+  });
+});
+
+describe('overlayOpen', () => {
+  // The unit environment has no DOM: a stand-in root answers the selector the way a page would.
+  const rootWith = (matches: string[]) =>
+    ({
+      querySelector: (selector: string) =>
+        matches.some((m) => selector.includes(m)) ? ({} as Element) : null,
+    }) as unknown as ParentNode;
+
+  it('asks for an open dialog, alert dialog or menu', () => {
+    const asked: string[] = [];
+    const root = {
+      querySelector: (selector: string) => {
+        asked.push(selector);
+        return null;
+      },
+    } as unknown as ParentNode;
+
+    expect(overlayOpen(root)).toBe(false);
+    for (const role of ['dialog', 'alertdialog', 'menu']) {
+      expect(asked[0]).toContain(`[role="${role}"][data-state="open"]`);
+    }
+  });
+
+  it('is true when such a layer exists, false otherwise', () => {
+    expect(overlayOpen(rootWith(['dialog']))).toBe(true);
+    expect(overlayOpen(rootWith([]))).toBe(false);
+  });
+});
+
+describe('modifier labels per platform', () => {
+  it('detects Apple platforms', () => {
+    expect(isApplePlatform({ platform: 'MacIntel' })).toBe(true);
+    expect(isApplePlatform({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)' })).toBe(true);
+    expect(isApplePlatform({ platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)' })).toBe(
+      false,
+    );
+    expect(isApplePlatform(undefined)).toBe(false);
+  });
+
+  it('shows ⌘ and ⌥ on Apple platforms, Ctrl and Alt elsewhere', () => {
+    expect(modifierLabels(true)).toEqual({ ctrl: '⌘', alt: '⌥' });
+    expect(modifierLabels(false)).toEqual({ ctrl: 'Ctrl', alt: 'Alt' });
+  });
+});
+
+describe('where the guards are wired (#665 QA)', () => {
+  const read = (path: string) => readFileSync(path, 'utf8');
+
+  it('the study session ignores its keys while a layer is open', () => {
+    const session = read('apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx');
+    expect(session).toContain('if (overlayOpen()) return;');
+  });
+
+  it('the global handler drops repeats and resets the pending prefix on route, blur and hide', () => {
+    const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
+    expect(global).toContain('if (e.repeat) return;');
+    expect(global).toContain('isIgnorableKeyEvent(e)');
+    expect(global).toContain("window.addEventListener('blur', reset)");
+    expect(global).toContain("document.addEventListener('visibilitychange'");
+    expect(global).toMatch(/\[matcher, pathname, open\]/);
   });
 });
