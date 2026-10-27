@@ -17,9 +17,10 @@ export default function EduUpgradePage() {
     url: '/api/v1/subscription-plans?for=educator',
   });
 
+  // The effective plan (the seat plan of a seated teacher), the same one the plan page shows (#270).
   const { data: currentPlan } = useApiQuery<PlanInfo>({
-    queryKey: ['me', 'personal-plan'],
-    url: '/api/v1/me/personal-plan',
+    queryKey: ['me', 'plan'],
+    url: '/api/v1/me/plan',
     enabled: !!user,
   });
 
