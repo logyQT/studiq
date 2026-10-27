@@ -6,6 +6,7 @@ import { GripVertical, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { type ChangeEvent, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
+import { useDebounce } from '@/hooks/use-debounce';
 
 interface BrowseQuestion {
   id: string;
@@ -79,11 +80,18 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
   });
   const banks = banksData?.items;
 
+  // The server filters by the search term, so the term is part of the cache key (otherwise a
+  // list filtered by one term is served for another) and of the URL through URLSearchParams
+  // (a raw `&`, `#`, `+` or `%` in the text would corrupt the query).
+  const debouncedSearch = useDebounce(search.trim(), 300);
+  const params = new URLSearchParams();
+  if (selectedBankId) params.set('bankId', selectedBankId);
+  if (debouncedSearch) params.set('search', debouncedSearch);
+  const queryString = params.toString();
+
   const { data: questions } = useApiQuery<BrowseQuestion[]>({
-    queryKey: ['questions', selectedBankId ?? 'all'],
-    url: selectedBankId
-      ? `/api/v1/questions?bankId=${selectedBankId}${search ? `&search=${search}` : ''}`
-      : `/api/v1/questions${search ? `?search=${search}` : ''}`,
+    queryKey: ['questions', selectedBankId ?? 'all', debouncedSearch],
+    url: `/api/v1/questions${queryString ? `?${queryString}` : ''}`,
   });
 
   const allQuestions = (questions ?? []).filter((q) => !existingIds.has(q.id));
@@ -110,6 +118,7 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
         </select>
         <Input
           placeholder={t('search_questions_placeholder')}
+          maxLength={100}
           value={search}
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
             setSearch(e.target.value);

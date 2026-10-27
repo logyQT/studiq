@@ -47,9 +47,12 @@ function questionSelect(topicFilter = false) {
   return `*, question_answers:question_options(*), ${embed}`;
 }
 
-/** `%`, `_` and `\` are wildcards / escapes in LIKE: a search for "50%" must mean the text. */
+/**
+ * `%`, `_` and `\` are wildcards / escapes in LIKE: a search for "50%" must mean the text. PostgREST
+ * also maps `*` to a wildcard in its `ilike` values.
+ */
 function escapeLike(term: string): string {
-  return term.replace(/[\\%_]/g, (c) => `\\${c}`);
+  return term.replace(/[\\%_*]/g, (c) => `\\${c}`);
 }
 
 export class QuestionService {
@@ -123,25 +126,36 @@ export class QuestionService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
     if (filter._impossible) return success(paged ? { items: [], total: 0, page, limit } : []);
 
-    const topicIds = filters?.topicIds?.split(',').filter(Boolean) ?? [];
+    const topicIds = filters?.topicIds ?? [];
     const hasTopicFilter = topicIds.length > 0;
-
     const columns = questionSelect(hasTopicFilter);
-    let query = paged
-      ? supabase.from('questions').select(columns, { count: 'exact' })
-      : supabase.from('questions').select(columns);
 
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+    // One place builds the filter chain, so the rows of a page and the total that drives the
+    // pager can never be scoped differently.
+    const buildFiltered = (options?: { count: 'exact'; head?: boolean }) => {
+      let query = options
+        ? supabase.from('questions').select(columns, options)
+        : supabase.from('questions').select(columns);
 
-    if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
-    // The topic embed must be `!inner` for the filter to narrow the parent rows —
-    // a plain embed only filters the nested array (same approach as flashcard.service).
-    if (hasTopicFilter)
-      query = query.filter('question_topic_assignments.topic_id', 'in', `(${topicIds.join(',')})`);
-    if (filters?.type) query = query.eq('type', filters.type);
-    if (filters?.search) query = query.ilike('content', `%${escapeLike(filters.search)}%`);
+      if (filter.or) query = query.or(filter.or);
+      if (filter.created_by) query = query.eq('created_by', filter.created_by);
+      if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+
+      if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
+      // The topic embed must be `!inner` for the filter to narrow the parent rows —
+      // a plain embed only filters the nested array (same approach as flashcard.service).
+      if (hasTopicFilter)
+        query = query.filter(
+          'question_topic_assignments.topic_id',
+          'in',
+          `(${topicIds.join(',')})`,
+        );
+      if (filters?.type) query = query.eq('type', filters.type);
+      if (filters?.search) query = query.ilike('content', `%${escapeLike(filters.search)}%`);
+      return query;
+    };
+
+    let query = buildFiltered(paged ? { count: 'exact' } : undefined);
 
     if (filters?.sortBy || paged) {
       // `id` as the tie-breaker keeps pages stable when many rows share the sort value.
@@ -153,8 +167,17 @@ export class QuestionService {
 
     const { data, error, count } = await query;
     // PostgREST answers a range past the last row with PGRST103 (416). A page that no longer
-    // exists (rows deleted, stale link) is an empty page, not a server error.
-    if (paged && error?.code === 'PGRST103') return success({ items: [], total: 0, page, limit });
+    // exists (rows deleted, stale link) is an empty page, not a server error — but the set it
+    // paged through still has rows, so the answer carries the real total (the pager clamps to
+    // the last page from it).
+    if (paged && error?.code === 'PGRST103') {
+      const { count: total, error: countError } = await buildFiltered({
+        count: 'exact',
+        head: true,
+      });
+      if (countError) return toDbFailure(countError);
+      return success({ items: [], total: total ?? 0, page, limit });
+    }
     if (error) return toDbFailure(error);
     // `select()` receives a dynamic projection string, so PostgREST cannot infer
     // the row shape here; the cast matches the embed declared above.

@@ -104,6 +104,15 @@ describe('QuestionService.list pagination', () => {
     expect(c.ilike).toHaveBeenCalledWith('content', '%50\\%\\_off\\\\%');
   });
 
+  it('escapes the PostgREST * wildcard as well', async () => {
+    const c = chain([], 0);
+    mock.from.mockReturnValue(c);
+
+    await service.list(ctx, { page: 1, limit: 10, search: 'a*b' });
+
+    expect(c.ilike).toHaveBeenCalledWith('content', '%a\\*b%');
+  });
+
   it('applies the type filter and the bank filter next to the access filter', async () => {
     const c = chain([], 0);
     mock.from.mockReturnValue(c);
@@ -114,19 +123,28 @@ describe('QuestionService.list pagination', () => {
     expect(c.eq).toHaveBeenCalledWith('type', 'open');
   });
 
-  it('answers an empty page, not an error, for a page past the last row', async () => {
-    const c = chain([]);
-    c.then = (onfulfilled: any) =>
+  it('answers an empty page with the REAL total for a page past the last row', async () => {
+    const past = chain([]);
+    past.then = (onfulfilled: any) =>
       Promise.resolve({
         data: null,
         count: null,
         error: { code: 'PGRST103', message: 'Requested range not satisfiable' },
       }).then(onfulfilled);
-    mock.from.mockReturnValue(c);
+    const countOnly = chain([], 60);
+    mock.from.mockReturnValueOnce(past).mockReturnValueOnce(countOnly);
 
-    const result = await service.list(ctx, { page: 9, limit: 25 });
+    const result = await service.list(ctx, { page: 9, limit: 25, bankId: 'b1', type: 'open' });
 
-    expect(result.success && result.data).toEqual({ items: [], total: 0, page: 9, limit: 25 });
+    // The pager derives the last page from this total, so it must not be zeroed.
+    expect(result.success && result.data).toEqual({ items: [], total: 60, page: 9, limit: 25 });
+    // The count runs through the same filters as the rows.
+    expect(countOnly.select).toHaveBeenCalledWith(expect.any(String), {
+      count: 'exact',
+      head: true,
+    });
+    expect(countOnly.eq).toHaveBeenCalledWith('bank_id', 'b1');
+    expect(countOnly.eq).toHaveBeenCalledWith('type', 'open');
   });
 
   it('answers an empty page when the caller can read nothing', async () => {
@@ -163,5 +181,29 @@ describe('QuestionListQuerySchema', () => {
     ['search that is too long', { search: 'x'.repeat(101) }],
   ])('rejects %s', (_name, input) => {
     expect(QuestionListQuerySchema.safeParse(input).success).toBe(false);
+  });
+});
+
+describe('QuestionListQuerySchema topicIds', () => {
+  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const parse = (topicIds?: string) => QuestionListQuerySchema.safeParse({ topicIds });
+
+  it('is an empty list when absent', () => {
+    const parsed = parse();
+    expect(parsed.success && parsed.data.topicIds).toEqual([]);
+  });
+
+  it('trims and dedupes a comma list of uuids', () => {
+    const parsed = parse(` ${id(1)}, ${id(2)},${id(1)} `);
+    expect(parsed.success && parsed.data.topicIds).toEqual([id(1), id(2)]);
+  });
+
+  it.each(['abc', `${id(1)},x`])('rejects %s with a validation error, not a database one', (v) => {
+    expect(parse(v).success).toBe(false);
+  });
+
+  it('rejects more than 50 ids', () => {
+    const many = Array.from({ length: 51 }, (_, i) => id(i + 1)).join(',');
+    expect(parse(many).success).toBe(false);
   });
 });

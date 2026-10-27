@@ -1,3 +1,4 @@
+import { groupsParamSchema } from '@studiq/server/lib/query-list';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
@@ -12,7 +13,9 @@ export const QuestionListQuerySchema = registry.register(
   'QuestionListQuery',
   z.object({
     bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
-    topicIds: z.string().optional(),
+    // `topicIds=a,b`: comma-joined uuids, trimmed, deduped, max 50. Anything else is a 422, not a
+    // 22P02 from the database.
+    topicIds: groupsParamSchema,
     type: QuestionTypeEnum.optional(),
     search: z.string().trim().max(100, { error: ValidationErrorCode.TOO_LONG }).optional(),
     page: z.coerce.number().int().min(1).optional(),

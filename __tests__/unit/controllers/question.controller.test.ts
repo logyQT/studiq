@@ -157,6 +157,7 @@ describe('QuestionController', () => {
         type: 'mcq',
         limit: 25,
         sortOrder: 'desc',
+        topicIds: [],
       });
     });
 
@@ -177,6 +178,7 @@ describe('QuestionController', () => {
         search: 'algebra',
         sortBy: 'content',
         sortOrder: 'asc',
+        topicIds: [],
       });
     });
 

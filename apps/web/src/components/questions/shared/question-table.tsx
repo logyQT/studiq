@@ -126,6 +126,7 @@ export function QuestionTable({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t('search_placeholder')}
+            maxLength={100}
             className="pl-9 pr-9"
           />
           {search && (

@@ -2438,6 +2438,8 @@
     "groups_empty": "No groups found"
   },
   "QuestionBankDetail": {
+    "load_error": "Could not load the questions.",
+    "retry": "Try again",
     "title": "Questions",
     "create_question": "Create Question",
     "search_placeholder": "Search questions...",

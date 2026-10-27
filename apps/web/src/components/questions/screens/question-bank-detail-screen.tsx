@@ -87,6 +87,8 @@ export function QuestionBankDetailScreen({
     data: questionsPage,
     isLoading: questionsLoading,
     isFetching: questionsFetching,
+    isError: questionsError,
+    refetch: refetchQuestions,
   } = useQuery({
     queryKey: questionKeys.list(listParams),
     queryFn: () => {
@@ -196,6 +198,18 @@ export function QuestionBankDetailScreen({
           <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
           {t('read_only_notice')}
         </p>
+      )}
+
+      {questionsError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm"
+        >
+          <span>{t('load_error')}</span>
+          <Button variant="outline" size="sm" onClick={() => refetchQuestions()}>
+            {t('retry')}
+          </Button>
+        </div>
       )}
 
       <QuestionTable
