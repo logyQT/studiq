@@ -253,18 +253,16 @@ async function seedTenant(t: Tenant): Promise<void> {
       ],
       { onConflict: 'id' },
     ),
-    db
-      .from('groups')
-      .upsert(
-        {
-          id: t.ids.group,
-          organization_id: t.org.id,
-          name: 'G1',
-          created_by: teacher.id,
-          is_default: false,
-        },
-        { onConflict: 'id' },
-      ),
+    db.from('groups').upsert(
+      {
+        id: t.ids.group,
+        organization_id: t.org.id,
+        name: 'G1',
+        created_by: teacher.id,
+        is_default: false,
+      },
+      { onConflict: 'id' },
+    ),
   ]);
   await run([
     db.from('group_members').upsert(
