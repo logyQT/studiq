@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import { assignmentKeys, flashcardKeys, questionKeys, topicKeys } from '@/lib/query-keys';
@@ -122,5 +123,83 @@ describe('assignment results grading invalidation (#168)', () => {
 
     expect(queryClient.getQueryState(studentKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
+  });
+});
+
+/**
+ * Suspending or restoring a deck changes which cards the statistics include, so the study
+ * statistics must be invalidated together with the deck lists (#365).
+ */
+describe('flashcardKeys.afterDeckSuspend (#365)', () => {
+  const statsKeys = [
+    [...flashcardKeys.all, 'practice', 'cards-stats', { state: 'all', sortBy: 'last_reviewed' }],
+    [...flashcardKeys.practice.states],
+    [...flashcardKeys.practice.dueBreakdown],
+  ];
+  const deckKeys = [
+    [...flashcardKeys.decks.paginated({ owner: 'all' }, 'org-a')],
+    [...flashcardKeys.decks.options('org-a')],
+  ];
+
+  function invalidatedAfterSuspend(keys: readonly (readonly unknown[])[]) {
+    const client = new QueryClient();
+    for (const key of keys) client.setQueryData([...key], 'cached');
+    for (const queryKey of flashcardKeys.afterDeckSuspend) {
+      client.invalidateQueries({ queryKey: [...queryKey] });
+    }
+    return keys.map((key) => client.getQueryState([...key])?.isInvalidated);
+  }
+
+  it('invalidates the statistics queries built from the deck cards', () => {
+    expect(invalidatedAfterSuspend(statsKeys)).toEqual([true, true, true]);
+  });
+
+  it('still invalidates the deck lists', () => {
+    expect(invalidatedAfterSuspend(deckKeys)).toEqual([true, true]);
+  });
+
+  it('leaves unrelated queries alone', () => {
+    expect(invalidatedAfterSuspend([['topics', 'paginated', null, {}]])).toEqual([false]);
+  });
+});
+
+describe('a finished study session refreshes the statistics (#365)', () => {
+  const cardsStats = [
+    'flashcards',
+    'practice',
+    'cards-stats',
+    { state: 'all', sortBy: 'next_review_at' },
+  ];
+  const cached = [
+    cardsStats,
+    ['flashcards', 'practice', 'states'],
+    ['flashcards', 'stats', 'teacher'],
+    ['flashcards', 'decks', 'list'],
+  ];
+
+  it('invalidates cards-stats, states, due counts and deck progress', () => {
+    const client = new QueryClient();
+    for (const key of cached) client.setQueryData(key, 'cached');
+    for (const queryKey of flashcardKeys.afterStudySession) {
+      client.invalidateQueries({ queryKey: [...queryKey] });
+    }
+    expect(cached.map((key) => client.getQueryState(key)?.isInvalidated)).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  it('is what the session client runs after it posts the session', () => {
+    const source = readFileSync(
+      'apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx',
+      'utf8',
+    );
+    const afterComplete = source.slice(
+      source.indexOf('/api/v1/flashcards/practice/sessions/complete'),
+    );
+    expect(afterComplete).toContain('flashcardKeys.afterStudySession');
+    expect(afterComplete).toContain('invalidateQueries');
   });
 });

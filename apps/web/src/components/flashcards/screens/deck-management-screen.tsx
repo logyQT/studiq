@@ -32,7 +32,9 @@ import { usePermission } from '@/hooks/use-permission';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiPost, apiPut, isNetworkError } from '@/lib/api';
+import { resolveListEmptyView } from '@/lib/list-empty-view';
 import { flashcardKeys } from '@/lib/query-keys';
+import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 const ImportDialog = dynamic(
   () =>
@@ -104,6 +106,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isError,
+    refetch,
   } = useCursorPagination<Deck>({
     queryKey: flashcardKeys.decks.paginated(
       {
@@ -184,7 +188,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const batchToggleSuspend = useApiMutation({
     mutationFn: (data: { deckIds: string[]; suspended: boolean }) =>
       apiPost('/api/v1/flashcards/decks/batch/suspend', data),
-    invalidateKeys: [flashcardKeys.decks.all],
+    invalidateKeys: [...flashcardKeys.afterDeckSuspend],
   });
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -294,7 +298,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   async function handleToggleSuspend(deck: Deck) {
     try {
       await apiPut(`/api/v1/flashcards/decks/${deck.id}`, { suspended: !deck.suspended });
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      for (const queryKey of flashcardKeys.afterDeckSuspend) {
+        queryClient.invalidateQueries({ queryKey });
+      }
       toast.success(deck.suspended ? t('deck_unsuspended') : t('deck_suspended'));
     } catch (error) {
       toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
@@ -342,6 +348,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         <p className="text-sm text-muted-foreground">{t('decks_count', { count: total })}</p>
       )}
 
+      <FirstVisitHint id="decks" />
+
       <PageGrid
         cols={4}
         isLoading={isLoading || orgsPending}
@@ -376,6 +384,18 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         isFetchingNextPage={isFetchingNextPage}
         loadMoreRef={loadMoreRef}
         isEmpty={decks.length === 0}
+        isError={isError}
+        onRetry={() => refetch()}
+        emptyView={resolveListEmptyView({
+          visibleCount: decks.length,
+          query: debouncedSearch,
+          activeFilters: (owner !== 'all' ? 1 : 0) + effectiveGroupIds.length,
+        })}
+        onClearFilters={() => {
+          setSearchInput('');
+          setOwner('all');
+          setGroupIds([]);
+        }}
         emptyIcon={<FolderOpen className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_decks')}
         emptyAction={

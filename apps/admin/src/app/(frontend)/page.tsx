@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@stud
 import { Building2, CreditCard, Flag, Shield, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { PlatformStats } from '@/app/(frontend)/components/platform-stats';
 
 const SECTIONS = [
   { key: 'feature_flags', href: '/feature-flags', icon: Flag },
@@ -38,6 +39,8 @@ export default function AdminDashboard() {
           </Link>
         ))}
       </div>
+
+      <PlatformStats />
     </div>
   );
 }

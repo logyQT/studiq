@@ -1,6 +1,10 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { normalizeInviteToken } from '@studiq/server/lib/invite-token';
+import { error as logError, log, warn } from '@studiq/server/lib/log';
+import { getMailer } from '@studiq/server/lib/mailer';
+import type { Mailer, MailLocale } from '@studiq/server/lib/mailer/mailer';
 import { wrapService } from '@studiq/server/lib/observability';
+import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
@@ -14,6 +18,32 @@ import type { ZodIssue } from 'zod';
 /** The one place the copyable registration link is built, so link and code cannot drift. */
 function buildInviteLink(baseUrl: string, token: string): string {
   return `${baseUrl}/join?token=${token}`;
+}
+
+/**
+ * Invitation e-mails per organization per hour (#604). Past the limit the
+ * invitation is still created and its link returned; only the message is skipped.
+ * In-memory, like every limiter here, so it is per server process.
+ */
+export const INVITE_MAIL_LIMIT_PER_HOUR = 200;
+const inviteMailLimiter = createRateLimiter(60 * 60 * 1000, INVITE_MAIL_LIMIT_PER_HOUR);
+
+interface InviteMailJob {
+  invitationId: string;
+  email: string;
+  token: string;
+  locale?: MailLocale;
+}
+
+/** Only a code or a class name is logged: provider messages can quote the address. */
+function mailErrorCode(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+    const name = (err as { name?: unknown }).name;
+    if (typeof name === 'string') return name;
+  }
+  return 'UNKNOWN';
 }
 
 /** Internal invitation shape used by preview + accept. Never sent to a caller. */
@@ -35,7 +65,82 @@ export class InvitationService {
   constructor(
     private createClient: () => Promise<SupabaseClient>,
     private createAdminClient: () => SupabaseClient = createServiceClient,
+    /** Null when no mail adapter is configured: the copyable link is then the only delivery path. */
+    private getMailer: () => Mailer | null = () => null,
   ) {}
+
+  /**
+   * Best-effort e-mail delivery of freshly created invitations (#604). It never
+   * throws and never touches the rows or the links the caller already holds, so a
+   * missing mailer, a bad config, the rate limit or a provider outage all degrade
+   * to the #313 copy-link fallback. One audit log line per message, no address.
+   *
+   * Idempotency: this runs once, right after the INSERT, and nothing retries it,
+   * so a row is mailed at most once.
+   */
+  private async sendInvitationMails(
+    ctx: RequestContext,
+    organizationId: string,
+    baseUrl: string,
+    expiresAt: Date,
+    jobs: InviteMailJob[],
+  ): Promise<void> {
+    try {
+      const mailer = this.getMailer();
+      if (!mailer || jobs.length === 0) return;
+
+      const allowed = jobs.filter(() => inviteMailLimiter.check(organizationId).allowed);
+      if (allowed.length < jobs.length) {
+        warn('invitation.mail_rate_limited', {
+          traceId: ctx.traceId,
+          organizationId,
+          skipped: jobs.length - allowed.length,
+        });
+      }
+      if (allowed.length === 0) return;
+
+      const admin = this.createAdminClient();
+      const [org, inviter] = await Promise.all([
+        admin.from('organizations').select('name').eq('id', organizationId).maybeSingle(),
+        admin.from('profiles').select('full_name').eq('id', ctx.userId).maybeSingle(),
+      ]);
+      const orgName = (org.data?.name as string | undefined) ?? 'StudiQ';
+      const inviterName = (inviter.data?.full_name as string | null | undefined) ?? null;
+
+      const outcomes = await Promise.allSettled(
+        allowed.map((job) =>
+          mailer.sendInvitation({
+            to: job.email,
+            orgName,
+            inviterName,
+            joinUrl: buildInviteLink(baseUrl, job.token),
+            expiresAt,
+            locale: job.locale ?? 'pl',
+          }),
+        ),
+      );
+
+      outcomes.forEach((outcome, index) => {
+        const attributes = {
+          traceId: ctx.traceId,
+          organizationId,
+          invitationId: allowed[index].invitationId,
+        };
+        if (outcome.status === 'fulfilled') log('invitation.mail_sent', attributes);
+        else
+          logError('invitation.mail_failed', {
+            ...attributes,
+            errorCode: mailErrorCode(outcome.reason),
+          });
+      });
+    } catch (err) {
+      logError('invitation.mail_failed', {
+        traceId: ctx.traceId,
+        organizationId,
+        errorCode: mailErrorCode(err),
+      });
+    }
+  }
 
   /**
    * Read an invitation on the service-role client. Public preview and accept both
@@ -246,11 +351,17 @@ export class InvitationService {
 
     if (insertError) return toDbFailure(insertError);
 
-    // TODO(#604): deliver this link by e-mail instead of relying on the copy
-    // button. Decided future shape: Mailer port + SMTP/log adapters, copy-link
-    // fallback, per-org rate limit, PL/EN templates. The mailer must reuse this
-    // exact `inviteLink` (one source of truth) and a send failure must never
-    // roll back the row or the returned link (#313 fallback).
+    // E-mail is best effort on top of the link (#604): the message carries this
+    // same link, and a failed send never affects the row or the response (#313).
+    await this.sendInvitationMails(ctx, targetOrg.data, baseUrl, expiresAt, [
+      {
+        invitationId: invitation.id,
+        email: data.email,
+        token: invitation.token,
+        locale: data.locale,
+      },
+    ]);
+
     return success({
       success: true,
       invitationId: invitation.id,
@@ -384,9 +495,17 @@ export class InvitationService {
       data: { success: true; invitationId: string; inviteLink: string; inviteCode: string };
     }> = [];
 
+    const mailJobs: InviteMailJob[] = [];
     for (const invite of invitations) {
       const row = createdByEmail.get(invite.email)?.shift();
       if (!row) return failure('INTERNAL_SERVER');
+
+      mailJobs.push({
+        invitationId: row.id,
+        email: invite.email,
+        token: row.token,
+        locale: invite.locale,
+      });
 
       results.push({
         email: invite.email,
@@ -394,12 +513,8 @@ export class InvitationService {
         data: {
           success: true,
           invitationId: row.id,
-          // Always returned, in every environment: the copied link is the only
-          // delivery path until #604 adds e-mail (#313).
-          // TODO(#604): send one message per created row using the same
-          // decided shape: Mailer port + SMTP/log adapters, copy-link fallback,
-          // per-org rate limit, PL/EN templates. A send failure must not fail
-          // the batch — every row keeps its link above.
+          // Always returned, in every environment: the copy button stays the
+          // fallback when no e-mail is sent or delivery fails (#313, #604).
           inviteLink: buildInviteLink(baseUrl, row.token),
           // Same value as the token inside `inviteLink`, exposed so the manager
           // can also copy the bare code the join field accepts.
@@ -407,6 +522,10 @@ export class InvitationService {
         },
       });
     }
+
+    // One message per created row, after every row has its link; a send failure
+    // cannot fail the batch (#604).
+    await this.sendInvitationMails(ctx, organizationId, baseUrl, expiresAt, mailJobs);
 
     return success(results);
   }
@@ -709,6 +828,6 @@ export class InvitationService {
   }
 }
 export const invitationService = wrapService(
-  new InvitationService(createClient),
+  new InvitationService(createClient, createServiceClient, getMailer),
   'invitation.service',
 );
