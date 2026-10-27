@@ -21,9 +21,9 @@ updates:
     groups:
       production-minor-patch:
         dependency-type: "production"
-        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+        update-types: ["minor", "patch"]
       development-minor-patch:
         dependency-type: "development"
-        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "build(deps)"
