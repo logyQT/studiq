@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-27",
-  "scope": "Current local suite state after removing the 3x integration duplication and moving integration fixtures onto the shared tenant seeder (__tests__/helpers/tenant-seed.ts).",
+  "scope": "Current state after the e2e tenant migration: chromium + firefox + admin-api green, WebKit deferred, integration green serially.",
   "commands": {
     "integration": "bun run test:integration",
     "unit": "bun run test:unit",
@@ -15,13 +15,13 @@
   "summary": {
     "integration": {
       "files": 53,
-      "filesPassed": 52,
-      "filesFailed": 1,
+      "filesPassed": 53,
+      "filesFailed": 0,
       "tests": 525,
-      "passed": 524,
-      "failed": 1,
+      "passed": 525,
+      "failed": 0,
       "skipped": 0,
-      "durationSeconds": 21
+      "note": "serial (--no-file-parallelism), as CI runs it"
     },
     "unit": {
       "files": 178,
@@ -61,31 +61,6 @@
     }
   },
   "failures": [
-    {
-      "id": "integration-active-org-membership-logout",
-      "suite": "integration",
-      "file": "__tests__/integration/active-org-membership.test.ts",
-      "describe": "active_org_id membership gate (#186)",
-      "test": "clears active_org_id on logout",
-      "location": "__tests__/integration/active-org-membership.test.ts:237",
-      "preExisting": true,
-      "reproducesInIsolation": true,
-      "relatedToRecentChanges": false,
-      "error": {
-        "type": "TypeError",
-        "message": "Cannot read properties of undefined (reading 'method')",
-        "stack": [
-          "withRequestInstrumentation (packages/server/src/lib/request-instrumentation.ts:85:40)",
-          "withPublicTracing (packages/server/src/lib/with-public-tracing.ts:22:10)",
-          "POST (apps/web/src/app/(backend)/api/v1/auth/logout/route.ts:8:10)",
-          "__tests__/integration/active-org-membership.test.ts:237:23"
-        ]
-      },
-      "cause": "The test calls `logoutPost()` with no argument. The logout route is wrapped in `withPublicTracing` -> `withRequestInstrumentation`, which reads `req.method`; `req` is undefined.",
-      "expectedBehaviour": "Logout responds 200 and clears the active_org_id cookie (empty value, Expires 1970, no Max-Age).",
-      "suggestedFix": "Pass a request, matching the other auth tests: `logoutPost(createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' }))`. No production-code change is needed.",
-      "ownershipNote": "Untouched by the 3x removal and by the tenant-seeder migration; the test file has no forEachCopy usage and did not change."
-    },
     {
       "id": "integration-members-foreign-manager-delete",
       "suite": "integration",

@@ -1,4 +1,4 @@
-name: e2e
+name: verify
 
 # Manual + nightly + PRs that touch the suite or the app. `workflow_dispatch`
 # only works once this file is on the default branch; PRs run it directly.
@@ -9,21 +9,27 @@ on:
   pull_request:
     paths:
       - '__tests__/**'
-      - 'scripts/e2e-seed.ts'
+      - 'scripts/**'
       - 'playwright.config.ts'
       - 'apps/**'
       - 'packages/**'
       - 'supabase/**'
       - 'bun.lock'
-      - '.github/workflows/e2e.yml'
+      - '.github/workflows/verify.yml'
 
 concurrency:
-  group: e2e-${{ github.ref }}
+  group: verify-${{ github.ref }}
   cancel-in-progress: true
 
+# Pinned: `bun lint` is canary-only, and canaries are published to npm but not
+# as GitHub releases (setup-bun resolves releases and 404s on them). Keep in
+# step with scripts/check-bun-version.ts (>= 1.4.4).
+env:
+  BUN_VERSION: 1.4.4-canary.20261027.1
+
 jobs:
-  # Cheapest first, in the order a failure is cheapest to explain: formatting,
-  # lint, types. Everything else waits on this.
+  # Cheapest first, in the order a failure is cheapest to explain: lint, types.
+  # Everything else waits on this.
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -32,10 +38,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      # `bun lint` is canary-only, and canaries are published to npm but not as
-      # GitHub releases (setup-bun resolves releases and 404s on them).
       - name: Install Bun (pinned canary)
-        run: npm install -g bun@1.4.4-canary.20261027.1
+        run: npm install -g bun@${{ env.BUN_VERSION }}
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
@@ -57,10 +61,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      # `bun lint` is canary-only, and canaries are published to npm but not as
-      # GitHub releases (setup-bun resolves releases and 404s on them).
-      - name: Install Bun (pinned canary)
-        run: npm install -g bun@1.4.4-canary.20261027.1
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
@@ -77,10 +78,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      # `bun lint` is canary-only, and canaries are published to npm but not as
-      # GitHub releases (setup-bun resolves releases and 404s on them).
-      - name: Install Bun (pinned canary)
-        run: npm install -g bun@1.4.4-canary.20261027.1
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
@@ -100,48 +98,41 @@ jobs:
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
             echo "OTEL_SDK_DISABLED=true"
           } > .env
-      - run: bun run test:integration
+      - name: Integration tests
+        # Serial: several suites write the same seeded orgs, and `fileParallelism`
+        # made seats/members flake. 525 tests in ~55 s is fine.
+        run: bunx vitest run __tests__/integration --no-file-parallelism
       - name: Stop Supabase
         if: always()
         run: bunx supabase stop --no-backup || true
 
+  # One leg per browser so a red platform re-runs alone. Each leg owns its
+  # tenant set (keys include the project) and its own Supabase instance.
   e2e:
-    # ubuntu-latest = 4 vCPU / 16 GB / ~14 GB free disk. The suite needs
-    # Supabase (~5 GB of images with studio/logflare/edge excluded), node_modules
-    # (1.5 GB), the Next build (~1 GB after dropping .next/cache) and two
-    # browsers (~0.5 GB) — it fits, but only just.
     needs: [checks, unit]
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox]
     env:
       CI: '1'
       NEXT_TELEMETRY_DISABLED: '1'
-      # The config falls back to the CPU count on CI (4 here). Override only if
-      # the runner is bigger.
+      # ubuntu-latest is 4 vCPU; one project saturates at ~4 workers.
       E2E_WORKERS: '4'
-      # admin-api is a nightly/manual leg: three assertions don't justify
-      # building the admin app on every PR (its gate logic is unit-tested).
-      E2E_INCLUDE_ADMIN: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '' }}
-
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      # `bun lint` is canary-only, and canaries are published to npm but not as
-      # GitHub releases (setup-bun resolves releases and 404s on them).
-      - name: Install Bun (pinned canary)
-        run: npm install -g bun@1.4.4-canary.20261027.1
-
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
       - name: Cache bun install
         uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
 
       - name: Start Supabase
         # studio/logflare/vector/edge-runtime are not used by the app; skipping
@@ -159,10 +150,6 @@ jobs:
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
             echo "OTEL_SDK_DISABLED=true"
           } > apps/web/.env
-          {
-            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
-            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
-          } > apps/admin/.env
 
       - name: Cache Playwright browsers
         uses: actions/cache@v6
@@ -171,24 +158,76 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Install browsers
-        run: bunx playwright install --with-deps chromium firefox
+        run: bunx playwright install --with-deps ${{ matrix.project }}
+        if: matrix.project != 'admin-api'
 
-      # Playwright's webServer builds and starts the app (bun run build &&
-      # bun run start), so there is no separate build step to keep in sync.
-      - name: Run Playwright
-        run: bunx playwright test --shuffle --reporter=line
+      # Playwright's webServer builds and starts the app, so there is no
+      # separate build step to keep in sync.
+      - name: Run Playwright (${{ matrix.project }})
+        run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line
 
       - name: Upload report
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.project }}
           path: |
             playwright-report/
             test-results/
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop --no-backup || true
+
+  # admin-api only needs the admin app; the web server is skipped so this leg
+  # costs seconds rather than a second Next build.
+  e2e-admin:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      E2E_INCLUDE_ADMIN: '1'
+      E2E_SKIP_WEB_WS: '1'
+      E2E_WORKERS: '2'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - name: Start Supabase
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+      - name: Write admin env
+        run: |
+          eval "$(bunx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } > apps/admin/.env
+      - name: Install browsers
+        run: bunx playwright install --with-deps chromium
+      - name: Run Playwright (admin-api)
+        run: bunx playwright test --project=admin-api --shuffle --reporter=line
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-admin
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Stop Supabase
         if: always()
         run: bunx supabase stop --no-backup || true
