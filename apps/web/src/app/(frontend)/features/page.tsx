@@ -122,7 +122,7 @@ export default function FeaturesPage() {
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-8">
           {t('comparison_title')}
         </h2>
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full text-sm">
             <caption className="sr-only">{t('comparison_title')}</caption>
             <thead>
