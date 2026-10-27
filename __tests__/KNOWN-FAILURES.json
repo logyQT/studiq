@@ -147,7 +147,8 @@
       "evidence": "Filling the same field on a settled page survives in all three engines (chromium/firefox/webkit: immediate === after 1 s === second fill). The value is only lost when the fill happens during the first render, so this is a hydration race that WebKit loses consistently because it hydrates slower — not a WebKit form/cookie incompatibility. The same symptom appeared once on chromium during a loaded run.",
       "suggestedFix": "Prefer moving the remaining dev-seed specs to an API login helper (POST /api/v1/auth/login through page.request, then navigate) — the tenant fixture already proves that path is stable on all three engines. If the form must stay under test, wait for a hydration marker before filling and assert `toHaveValue` before submitting.",
       "baseline": "Chromium and Firefox are green (116/119, 3 skipped). WebKit is out of the merged baseline until this pass; do not treat its failures as regressions.",
-      "latestRun": "Full matrix at 16 workers with --shuffle: 324 passed / 8 skipped / 28 failed, and every one of the 28 is webkit. Chromium, Firefox and admin-api had zero failures on the same shuffled order, so the deferral does not hide any cross-test coupling outside WebKit."
+      "latestRun": "Full matrix at 16 workers with --shuffle: 324 passed / 8 skipped / 28 failed, and every one of the 28 is webkit. Chromium, Firefox and admin-api had zero failures on the same shuffled order, so the deferral does not hide any cross-test coupling outside WebKit.",
+      "howToRun": "The webkit project is opt-in: `E2E_INCLUDE_WEBKIT=1 bunx playwright test`. Default runs are chromium + firefox + admin-api (241 tests, 8 workers, ~2.6 min)."
     }
   ]
 }
