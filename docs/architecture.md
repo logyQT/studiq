@@ -35,6 +35,7 @@ graph TB
 **Location:** `src/app/(frontend)/`, `src/components/`, `src/hooks/`
 
 **Responsibilities:**
+
 - Rendering UI components
 - Client-side navigation
 - User interactions
@@ -42,6 +43,7 @@ graph TB
 - Theme handling via `next-themes`
 
 **Key components:**
+
 - `src/components/providers/AuthProvider.tsx` — client-side auth state
 - `src/components/providers/ThemeProvider.tsx` — dark/light mode
 - `src/components/providers/QueryProvider.tsx` — TanStack React Query
@@ -55,6 +57,7 @@ graph TB
 **Location:** `src/app/(backend)/api/`, `src/server/`
 
 **Responsibilities:**
+
 - HTTP request handling
 - Input validation (Zod schemas)
 - Business logic execution
@@ -72,14 +75,14 @@ graph LR
     Service --> Provider[LLM Provider]
 ```
 
-| Layer | Location | Purpose |
-|-------|----------|---------|
-| Routes | `src/app/(backend)/api/v1/*/route.ts` | Next.js route handlers, parse request, call controller |
-| Controllers | `src/server/controllers/` | Validate input via Zod models, coordinate services, return `ControllerResponse` |
-| Services | `src/server/services/` | Business logic, database queries via Supabase client |
-| Guards | `src/server/guards/` | Authentication and role checks |
-| Models | `src/server/models/` | Zod schemas for request validation |
-| Providers | `src/server/providers/` | LLM abstraction layer (OpenAI, Ollama) |
+| Layer       | Location                              | Purpose                                                                         |
+| ----------- | ------------------------------------- | ------------------------------------------------------------------------------- |
+| Routes      | `src/app/(backend)/api/v1/*/route.ts` | Next.js route handlers, parse request, call controller                          |
+| Controllers | `src/server/controllers/`             | Validate input via Zod models, coordinate services, return `ControllerResponse` |
+| Services    | `src/server/services/`                | Business logic, database queries via Supabase client                            |
+| Guards      | `src/server/guards/`                  | Authentication and role checks                                                  |
+| Models      | `src/server/models/`                  | Zod schemas for request validation                                              |
+| Providers   | `src/server/providers/`               | LLM abstraction layer (OpenAI, Ollama)                                          |
 
 ### Middleware Layer
 
@@ -112,9 +115,18 @@ Route rules are defined in `src/server/config/routes.config.ts`:
 
 ```typescript
 export const routeRules: RouteRule[] = [
-  { matcher: /^\/api\/v1\/teacher(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.TEACHER], isApi: true },
+  {
+    matcher: /^\/api\/v1\/teacher(\/.*)?$/,
+    requireAuth: true,
+    allowedRoles: [UserRole.TEACHER],
+    isApi: true,
+  },
   { matcher: /^\/edu(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.TEACHER] },
-  { matcher: /^\/app(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.STUDENT, UserRole.FREE, UserRole.PREMIUM] },
+  {
+    matcher: /^\/app(\/.*)?$/,
+    requireAuth: true,
+    allowedRoles: [UserRole.STUDENT, UserRole.FREE, UserRole.PREMIUM],
+  },
   // ...
 ];
 ```
@@ -124,6 +136,7 @@ export const routeRules: RouteRule[] = [
 **Location:** `supabase/`
 
 Supabase provides:
+
 - PostgreSQL database
 - Authentication (email/password, sessions)
 - Real-time subscriptions (used for live flashcard updates)

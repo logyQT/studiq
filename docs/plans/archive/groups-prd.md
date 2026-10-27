@@ -26,11 +26,11 @@ Sub-orgs would require 300 duplicated `org_members` rows and students would see 
 
 ## Actors
 
-| Actor | Description |
-|---|---|
+| Actor           | Description                                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | **Org Manager** | `manager` account type, `admin` org role. Creates, edits, deletes groups. Assigns any member to any group. Views all members. |
-| **Teacher** | `educator` account type, `teacher` org role. Manages members of their assigned groups. Views only their group members. |
-| **Student** | `student` account type, `member` org role. Groups are invisible. Sees all org content. |
+| **Teacher**     | `educator` account type, `teacher` org role. Manages members of their assigned groups. Views only their group members.        |
+| **Student**     | `student` account type, `member` org role. Groups are invisible. Sees all org content.                                        |
 
 ---
 
@@ -65,6 +65,7 @@ A user doesn't strictly need to be an `org_members` row to be in a group. Howeve
 ## Schema changes ✅
 
 **Migration `20260703000012`:**
+
 1. Create `groups` table
 2. Create `group_members` table
 3. Indexes on `group_members.group_id` and `group_members.user_id`
@@ -79,20 +80,20 @@ A user doesn't strictly need to be an `org_members` row to be in a group. Howeve
 
 ### New endpoints
 
-| Method | Route | Purpose | Status |
-|--------|-------|---------|--------|
-| `GET` | `/api/v1/organization/groups` | List all groups in the active org | ✅ |
-| `POST` | `/api/v1/organization/groups` | Create a group | ✅ |
-| `PUT` | `/api/v1/organization/groups/:id` | Update group name/description | ✅ |
-| `DELETE` | `/api/v1/organization/groups/:id` | Delete group (cascades members) | ✅ |
-| `PUT` | `/api/v1/organization/groups/:id/members` | Batch set members (`{ members: [{ userId, role }] }`) | ✅ |
-| `GET` | `/api/v1/organization/groups/:id/members` | Get current members of a group | ✅ **➕ ADDED** — not in original spec; needed by frontend to fetch before modify |
-| `GET` | `/api/v1/me/groups` | List groups the current user is in (for UI filtering) | ✅ |
+| Method   | Route                                     | Purpose                                               | Status                                                                            |
+| -------- | ----------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/organization/groups`             | List all groups in the active org                     | ✅                                                                                |
+| `POST`   | `/api/v1/organization/groups`             | Create a group                                        | ✅                                                                                |
+| `PUT`    | `/api/v1/organization/groups/:id`         | Update group name/description                         | ✅                                                                                |
+| `DELETE` | `/api/v1/organization/groups/:id`         | Delete group (cascades members)                       | ✅                                                                                |
+| `PUT`    | `/api/v1/organization/groups/:id/members` | Batch set members (`{ members: [{ userId, role }] }`) | ✅                                                                                |
+| `GET`    | `/api/v1/organization/groups/:id/members` | Get current members of a group                        | ✅ **➕ ADDED** — not in original spec; needed by frontend to fetch before modify |
+| `GET`    | `/api/v1/me/groups`                       | List groups the current user is in (for UI filtering) | ✅                                                                                |
 
 ### Modified endpoints
 
-| Endpoint | Change |
-|---|---|
+| Endpoint                           | Change                                                     |
+| ---------------------------------- | ---------------------------------------------------------- |
 | `GET /api/v1/organization/members` | Add `groups: [{ id, name, role }]` array to each member ✅ |
 
 ### Member response shape (updated) ✅
@@ -106,7 +107,12 @@ A user doesn't strictly need to be an `org_members` row to be in a group. Howeve
   orgRoleId: string;
   organization_id: string;
   created_at: string;
-  groups: { id: string; name: string; role: string }[];  // NEW
+  groups: {
+    id: string;
+    name: string;
+    role: string;
+  }
+  []; // NEW
 }
 ```
 
@@ -180,15 +186,15 @@ Add a `/manage/groups` link in the manager sidebar, between Invitations and Sett
 
 ### New: `src/server/services/group.service.ts` ✅
 
-| Method | Purpose | Status |
-|--------|---------|--------|
-| `listGroups(ctx)` | List all groups in `ctx.activeOrgId` | ✅ |
-| `createGroup(ctx, data)` | Create a group | ✅ |
-| `updateGroup(ctx, id, data)` | Update name/description | ✅ |
-| `deleteGroup(ctx, id)` | Delete group | ✅ |
-| `setGroupMembers(ctx, groupId, members)` | Replace all members of a group | ✅ |
-| `getGroupMembers(ctx, groupId)` | Get current members of a group | ✅ **➕ ADDED** — not in original spec; needed by GET endpoint |
-| `listMyGroups(ctx)` | List groups the current user belongs to | ✅ |
+| Method                                   | Purpose                                 | Status                                                         |
+| ---------------------------------------- | --------------------------------------- | -------------------------------------------------------------- |
+| `listGroups(ctx)`                        | List all groups in `ctx.activeOrgId`    | ✅                                                             |
+| `createGroup(ctx, data)`                 | Create a group                          | ✅                                                             |
+| `updateGroup(ctx, id, data)`             | Update name/description                 | ✅                                                             |
+| `deleteGroup(ctx, id)`                   | Delete group                            | ✅                                                             |
+| `setGroupMembers(ctx, groupId, members)` | Replace all members of a group          | ✅                                                             |
+| `getGroupMembers(ctx, groupId)`          | Get current members of a group          | ✅ **➕ ADDED** — not in original spec; needed by GET endpoint |
+| `listMyGroups(ctx)`                      | List groups the current user belongs to | ✅                                                             |
 
 ### Modified: `organization-member.service.ts` ✅
 
@@ -229,18 +235,18 @@ Plus dedicated migration `20260703000013_grant_groups_permissions.sql`.
 
 ## Execution order ✅ ALL COMPLETE
 
-| Step | What | Files | Status |
-|------|------|-------|--------|
-| 1 | DB tables + migration + schema | `60_groups.sql`, migration `20260703000012` | ✅ |
-| 2 | `group.service.ts` | CRUD + member assignment service | ✅ |
-| 3 | Group API endpoints | `api/v1/organization/groups/route.ts`, `[...id]/members/route.ts`, `api/v1/me/groups` | ✅ |
-| 4 | Update member listing | `organization-member.service.ts` — add groups subquery | 🔄 Two-query merge used instead |
-| 5 | Groups management page | `manage/groups/page.tsx` | ✅ |
-| 6 | Update members page | `manage/members/page.tsx` — groups column + dialog | ✅ |
-| 7 | Route rules + sidebar | `routes.config.ts`, sidebar links | ✅ |
-| 8 | i18n | `en.json`, `pl.json` | ✅ |
-| 9 | Seed grants | `99_dev_grants.sql` + migration | ✅ |
-| 10 | Lint + build | Validation | ✅ |
+| Step | What                           | Files                                                                                 | Status                          |
+| ---- | ------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------- |
+| 1    | DB tables + migration + schema | `60_groups.sql`, migration `20260703000012`                                           | ✅                              |
+| 2    | `group.service.ts`             | CRUD + member assignment service                                                      | ✅                              |
+| 3    | Group API endpoints            | `api/v1/organization/groups/route.ts`, `[...id]/members/route.ts`, `api/v1/me/groups` | ✅                              |
+| 4    | Update member listing          | `organization-member.service.ts` — add groups subquery                                | 🔄 Two-query merge used instead |
+| 5    | Groups management page         | `manage/groups/page.tsx`                                                              | ✅                              |
+| 6    | Update members page            | `manage/members/page.tsx` — groups column + dialog                                    | ✅                              |
+| 7    | Route rules + sidebar          | `routes.config.ts`, sidebar links                                                     | ✅                              |
+| 8    | i18n                           | `en.json`, `pl.json`                                                                  | ✅                              |
+| 9    | Seed grants                    | `99_dev_grants.sql` + migration                                                       | ✅                              |
+| 10   | Lint + build                   | Validation                                                                            | ✅                              |
 
 ---
 

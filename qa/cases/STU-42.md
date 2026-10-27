@@ -14,13 +14,16 @@ Konto z historią nauki (po STU-05).
 ## Prerequisite context
 
 ### STU-05 — Sesja nauki – ocena fiszek (ścieżka pełna)
+
 _Warunek wstępny: Przygotuj talię z kilkoma fiszkami (import CSV – plik fiszki_poprawne.csv z folderu Studiq_dane_testowe, 8 fiszek). Zalogowany student._
+
 1. Na „Ucz się” kliknij „Rozpocznij naukę” / „Rozpocznij Przegląd”.
 2. Dla pierwszej fiszki kliknij kartę, aby odsłonić odpowiedź.
 3. Oceń kolejno fiszki przyciskami „Nie pamiętam”, „Trudne”, „Dobrze”, „Łatwe” (po jednej każdą).
 4. Doprowadź sesję do końca.
 
 Expected:
+
 - Widoczne: licznik postępu, plakietka stanu fiszki (Nowa / Nauka / Przegląd / Poprawka), „Kliknij, aby odkryć odpowiedź”.
 - Po odkryciu pojawiają się 4 przyciski ocen; każda ocena przechodzi do kolejnej fiszki.
 - W trybie nauki (learning) etykiety przycisków: „Nie pamiętam (reset)”, „Trudne (zostań)”, „Dobrze (dalej)”, „Łatwe (zakończ)”.

@@ -53,13 +53,13 @@ graph TD
     F[free] --> App
 ```
 
-| Role | Access |
-|------|--------|
-| `university_admin` | University management, invitations, members |
-| `teacher` | Teaching dashboard, question/subject management |
-| `student` | Student dashboard, quizzes, flashcards |
-| `premium` | Student features + premium content |
-| `free` | Limited student features |
+| Role               | Access                                          |
+| ------------------ | ----------------------------------------------- |
+| `university_admin` | University management, invitations, members     |
+| `teacher`          | Teaching dashboard, question/subject management |
+| `student`          | Student dashboard, quizzes, flashcards          |
+| `premium`          | Student features + premium content              |
+| `free`             | Limited student features                        |
 
 ## Route Protection
 
@@ -81,6 +81,7 @@ Routes are protected through a combination of:
 ```
 
 When a rule matches:
+
 - If `requireAuth` is true and no session → 401 (API) or redirect to `/login` (UI)
 - If `allowedRoles` is set and user role not in list → 403 (API) or redirect to role dashboard (UI)
 - If `redirectIfAuthenticated` is set and user is logged in → redirect to specified URL
@@ -88,13 +89,13 @@ When a rule matches:
 
 ### Current Route Rules
 
-| Matcher | Auth Required | Allowed Roles | Behavior |
-|---------|:------------:|:-------------:|----------|
-| `/api/v1/teacher/**` | ✅ | `teacher` | API, 401/403 JSON |
-| `/login`, `/register` | ❌ | — | Redirects authenticated users by role |
-| `/manage/**` | ✅ | `university_admin` | UI, redirects to login |
-| `/edu/**` | ✅ | `teacher` | UI, redirects to login |
-| `/app/**` | ✅ | `student, free, premium` | UI, redirects to login |
+| Matcher               | Auth Required |      Allowed Roles       | Behavior                              |
+| --------------------- | :-----------: | :----------------------: | ------------------------------------- |
+| `/api/v1/teacher/**`  |      ✅       |        `teacher`         | API, 401/403 JSON                     |
+| `/login`, `/register` |      ❌       |            —             | Redirects authenticated users by role |
+| `/manage/**`          |      ✅       |    `university_admin`    | UI, redirects to login                |
+| `/edu/**`             |      ✅       |        `teacher`         | UI, redirects to login                |
+| `/app/**`             |      ✅       | `student, free, premium` | UI, redirects to login                |
 
 ### Route Handler Guards
 
@@ -131,13 +132,13 @@ This prevents SSR hydration mismatches and centralizes auth state for UI compone
 
 ## Relevant Files
 
-| File | Purpose |
-|------|---------|
-| `src/proxy.ts` | Middleware — session refresh, route rules, RBAC |
-| `src/server/config/routes.config.ts` | Route rule definitions |
-| `src/server/guards/auth.guard.ts` | Auth guard utility |
-| `src/server/guards/role.guard.ts` | Role guard utility |
-| `src/server/services/auth.service.ts` | Auth business logic |
-| `src/server/controllers/auth.controller.ts` | Auth request handling |
-| `src/components/providers/AuthProvider.tsx` | Client auth state provider |
-| `src/app/(backend)/api/v1/auth/*/route.ts` | Auth API endpoints |
+| File                                        | Purpose                                         |
+| ------------------------------------------- | ----------------------------------------------- |
+| `src/proxy.ts`                              | Middleware — session refresh, route rules, RBAC |
+| `src/server/config/routes.config.ts`        | Route rule definitions                          |
+| `src/server/guards/auth.guard.ts`           | Auth guard utility                              |
+| `src/server/guards/role.guard.ts`           | Role guard utility                              |
+| `src/server/services/auth.service.ts`       | Auth business logic                             |
+| `src/server/controllers/auth.controller.ts` | Auth request handling                           |
+| `src/components/providers/AuthProvider.tsx` | Client auth state provider                      |
+| `src/app/(backend)/api/v1/auth/*/route.ts`  | Auth API endpoints                              |

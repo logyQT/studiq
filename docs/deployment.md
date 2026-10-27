@@ -4,9 +4,9 @@
 
 ### Recommended Setup
 
-| Component | Platform |
-|-----------|----------|
-| Frontend + API | Vercel |
+| Component       | Platform         |
+| --------------- | ---------------- |
+| Frontend + API  | Vercel           |
 | Database + Auth | Supabase (cloud) |
 
 ## Environment Variables

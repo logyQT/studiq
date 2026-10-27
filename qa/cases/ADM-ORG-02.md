@@ -14,10 +14,13 @@ ADM-ORG-01.
 ## Prerequisite context
 
 ### ADM-ORG-01 — Lista organizacji
+
 _Warunek wstępny: Baza po resecie._
+
 1. Otwórz /orgs.
 
 Expected:
+
 - Cztery organizacje: WSB Merito, UE Wrocław, Akademia Górnicza, Classroom z liczbą członków, grup, ról i datą utworzenia.
 
 ## Steps

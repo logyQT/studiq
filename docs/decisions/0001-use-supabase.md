@@ -15,6 +15,7 @@ Supabase was selected as the combined database, authentication, and backend prov
 ## Consequences
 
 ### Positive
+
 - Integrated PostgreSQL with managed backups and scaling
 - Built-in auth with SSR cookie support via `@supabase/ssr`
 - Local development via `supabase CLI` + Docker
@@ -23,6 +24,7 @@ Supabase was selected as the combined database, authentication, and backend prov
 - Free tier sufficient for development and early production
 
 ### Negative
+
 - Vendor lock-in to Supabase ecosystem
 - External dependency for core infrastructure
 - Limited control over PostgreSQL configuration compared to self-hosted

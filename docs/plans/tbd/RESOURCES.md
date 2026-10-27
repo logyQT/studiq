@@ -1,6 +1,7 @@
 # My Resources Feature — Implementation Plan
 
 ## Overview
+
 A global per-user resource management system at `/app/resources` with database-backed folders, plus a side panel in the flashcard editor for quick resource insertion.
 
 ---
@@ -66,6 +67,7 @@ ResourceService:
 ### `src/server/services/storage.service.ts` (update)
 
 Add methods:
+
 - `listFiles(userId, prefix?)` — list files in user's storage folder
 - `deleteFile(userId, storagePath)` — delete a file from storage
 - `getSignedUrl(userId, storagePath)` — get temporary signed URL
@@ -74,18 +76,19 @@ Add methods:
 
 ## 3. API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/resources` | List resources (optional `?folderId=`) |
-| `POST` | `/api/v1/resources/upload` | Upload a resource (FormData) |
-| `PATCH` | `/api/v1/resources/[id]` | Rename/move resource |
-| `DELETE` | `/api/v1/resources/[id]` | Delete resource + storage file |
-| `GET` | `/api/v1/resources/folders` | List folders |
-| `POST` | `/api/v1/resources/folders` | Create folder |
-| `PATCH` | `/api/v1/resources/folders/[id]` | Rename folder |
-| `DELETE` | `/api/v1/resources/folders/[id]` | Delete folder (cascading) |
+| Method   | Endpoint                         | Description                            |
+| -------- | -------------------------------- | -------------------------------------- |
+| `GET`    | `/api/v1/resources`              | List resources (optional `?folderId=`) |
+| `POST`   | `/api/v1/resources/upload`       | Upload a resource (FormData)           |
+| `PATCH`  | `/api/v1/resources/[id]`         | Rename/move resource                   |
+| `DELETE` | `/api/v1/resources/[id]`         | Delete resource + storage file         |
+| `GET`    | `/api/v1/resources/folders`      | List folders                           |
+| `POST`   | `/api/v1/resources/folders`      | Create folder                          |
+| `PATCH`  | `/api/v1/resources/folders/[id]` | Rename folder                          |
+| `DELETE` | `/api/v1/resources/folders/[id]` | Delete folder (cascading)              |
 
 **Route config** (`src/server/config/routes.config.ts`):
+
 ```typescript
 {
   matcher: /^\/api\/v1\/resources(\/.*)?$/,
@@ -101,6 +104,7 @@ Add methods:
 **`src/server/models/resource.model.ts`** (new)
 
 Zod schemas:
+
 - `CreateFolderSchema` — `{ name: string, parentId?: string }`
 - `UpdateResourceSchema` — `{ displayName?: string, folderId?: string | null }`
 - `RenameFolderSchema` — `{ name: string }`
@@ -120,10 +124,12 @@ Standard controller pattern with `withErrorHandling`, returning `ControllerRespo
 **Route:** `/app/resources`
 
 **Files:**
+
 - `src/app/(frontend)/app/resources/page.tsx` — thin wrapper
 - `src/components/resources/resource-management-screen.tsx` — main component
 
 **UI Layout:**
+
 ```
 ┌─────────────────────────────────────────────────┐
 │ My Resources                          [+ Upload]│
@@ -141,6 +147,7 @@ Standard controller pattern with `withErrorHandling`, returning `ControllerRespo
 ```
 
 **Features:**
+
 - Breadcrumb navigation (Root > Folder > Subfolder)
 - Grid view with thumbnails (images) or icons (audio)
 - Upload button (drag-and-drop zone or file picker)
@@ -158,6 +165,7 @@ Standard controller pattern with `withErrorHandling`, returning `ControllerRespo
 **Integration:** Added to `FlashcardEditor` component as a toggleable side panel.
 
 **UI Layout:**
+
 ```
 ┌──────────────────┬──────────────────────────────┐
 │ Flashcard Editor │ Resource Panel               │
@@ -173,6 +181,7 @@ Standard controller pattern with `withErrorHandling`, returning `ControllerRespo
 ```
 
 **Features:**
+
 - Toggle button in editor toolbar (📁 icon)
 - Compact grid of resources with thumbnails
 - Drag-and-drop onto the textarea inserts the resource
@@ -181,6 +190,7 @@ Standard controller pattern with `withErrorHandling`, returning `ControllerRespo
 - Quick upload from the panel
 
 **Drag-and-drop flow:**
+
 1. User drags a resource from the side panel
 2. `onDrop` handler on the textarea detects the resource data
 3. Inserts `![name](url)` for images or `<audio controls src="url"></audio>` for audio at cursor position
@@ -192,6 +202,7 @@ Standard controller pattern with `withErrorHandling`, returning `ControllerRespo
 **Update `src/components/layout/DashboardLayout.tsx`:**
 
 Add to `NAV_ITEMS['/app']`:
+
 ```typescript
 { titleKey: 'app_resources', href: '/app/resources', icon: FolderOpen },
 ```
@@ -211,6 +222,7 @@ Position: after `app_my_questions`, before `app_statistics`.
 ## 10. Query Keys
 
 **Update `src/lib/query-keys.ts`:**
+
 ```typescript
 export const resourceKeys = {
   all: ['resources'] as const,
@@ -224,6 +236,7 @@ export const resourceKeys = {
 ## 11. i18n Keys
 
 **New namespace `ResourcePage` in both `en.json` and `pl.json`:**
+
 - `title`, `upload`, `new_folder`, `folder_name_placeholder`, `empty_folder`, `empty_root`
 - `rename`, `move`, `delete`, `delete_confirm_title`, `delete_confirm_desc`
 - `display_name_label`, `display_name_placeholder`
@@ -234,29 +247,29 @@ export const resourceKeys = {
 
 ## Files to Create/Modify
 
-| File | Action |
-|------|--------|
-| `supabase/migrations/20260620000000_resources.sql` | Create |
-| `supabase/schemas/resources.sql` | Create |
-| `src/server/services/resource.service.ts` | Create |
-| `src/server/services/storage.service.ts` | Add listFiles, deleteFile |
-| `src/server/controllers/resource.controller.ts` | Create |
-| `src/server/models/resource.model.ts` | Create |
-| `src/app/(backend)/api/v1/resources/route.ts` | Create |
-| `src/app/(backend)/api/v1/resources/[id]/route.ts` | Create |
-| `src/app/(backend)/api/v1/resources/folders/route.ts` | Create |
-| `src/app/(backend)/api/v1/resources/folders/[id]/route.ts` | Create |
-| `src/app/(frontend)/app/resources/page.tsx` | Create |
-| `src/components/resources/resource-management-screen.tsx` | Create |
-| `src/components/resources/resource-side-panel.tsx` | Create |
-| `src/components/flashcards/flashcard-editor.tsx` | Add side panel toggle |
-| `src/components/layout/DashboardLayout.tsx` | Add nav item |
-| `src/server/config/routes.config.ts` | Add route rule |
-| `src/lib/query-keys.ts` | Add resourceKeys |
-| `src/server/services/index.ts` | Add barrel export |
-| `src/server/controllers/index.ts` | Add barrel export |
-| `src/i18n/messages/en.json` | Add keys |
-| `src/i18n/messages/pl.json` | Add keys |
+| File                                                       | Action                    |
+| ---------------------------------------------------------- | ------------------------- |
+| `supabase/migrations/20260620000000_resources.sql`         | Create                    |
+| `supabase/schemas/resources.sql`                           | Create                    |
+| `src/server/services/resource.service.ts`                  | Create                    |
+| `src/server/services/storage.service.ts`                   | Add listFiles, deleteFile |
+| `src/server/controllers/resource.controller.ts`            | Create                    |
+| `src/server/models/resource.model.ts`                      | Create                    |
+| `src/app/(backend)/api/v1/resources/route.ts`              | Create                    |
+| `src/app/(backend)/api/v1/resources/[id]/route.ts`         | Create                    |
+| `src/app/(backend)/api/v1/resources/folders/route.ts`      | Create                    |
+| `src/app/(backend)/api/v1/resources/folders/[id]/route.ts` | Create                    |
+| `src/app/(frontend)/app/resources/page.tsx`                | Create                    |
+| `src/components/resources/resource-management-screen.tsx`  | Create                    |
+| `src/components/resources/resource-side-panel.tsx`         | Create                    |
+| `src/components/flashcards/flashcard-editor.tsx`           | Add side panel toggle     |
+| `src/components/layout/DashboardLayout.tsx`                | Add nav item              |
+| `src/server/config/routes.config.ts`                       | Add route rule            |
+| `src/lib/query-keys.ts`                                    | Add resourceKeys          |
+| `src/server/services/index.ts`                             | Add barrel export         |
+| `src/server/controllers/index.ts`                          | Add barrel export         |
+| `src/i18n/messages/en.json`                                | Add keys                  |
+| `src/i18n/messages/pl.json`                                | Add keys                  |
 
 ---
 

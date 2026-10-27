@@ -70,32 +70,32 @@ and applies the correct mock before each test body runs.
 
 ### Files that needed per-copy data
 
-| Suite | Change | Why |
-|-------|--------|-----|
-| `organization-create.test.ts` | Each copy creates own users in `beforeAll`; per-copy org names | Shared users would conflict under parallel file execution |
-| `questions.test.ts` | `beforeEach` cleanup scoped to `copyId` content prefix | Broad `cleanupQuestions()` without prefix would delete other copies' data |
-| `rpc-questions.test.ts` | Global cleanup (no prefix) in `beforeEach`; per-copy org prefix | `p_org_id=null` returns questions across ALL orgs; must clean globally |
-| `seats.test.ts` | Each copy creates own org/pool/assignees via `before()` | Shared pool state (total=1→5→0) is order-dependent |
-| `invitations.test.ts` | Each copy creates own fixture/student; `mockUser()` for GET token tests | Anon role lacks SELECT on `invitations` table |
-| `stats.test.ts` | Each copy creates own teacher (3 questions) + student | Tests assert exact counts (totalQuestions === 3) |
-| `university.test.ts` | Per-copy `TEST_PREFIX`; per-copy afterAll cleanup | Shared prefix caused cross-copy org deletion |
-| `auth.test.ts` | Unique emails per copy (`reset-test-${copyId}@dev.local`) | Supabase Auth per-email rate limit on password reset |
+| Suite                         | Change                                                                  | Why                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `organization-create.test.ts` | Each copy creates own users in `beforeAll`; per-copy org names          | Shared users would conflict under parallel file execution                 |
+| `questions.test.ts`           | `beforeEach` cleanup scoped to `copyId` content prefix                  | Broad `cleanupQuestions()` without prefix would delete other copies' data |
+| `rpc-questions.test.ts`       | Global cleanup (no prefix) in `beforeEach`; per-copy org prefix         | `p_org_id=null` returns questions across ALL orgs; must clean globally    |
+| `seats.test.ts`               | Each copy creates own org/pool/assignees via `before()`                 | Shared pool state (total=1→5→0) is order-dependent                        |
+| `invitations.test.ts`         | Each copy creates own fixture/student; `mockUser()` for GET token tests | Anon role lacks SELECT on `invitations` table                             |
+| `stats.test.ts`               | Each copy creates own teacher (3 questions) + student                   | Tests assert exact counts (totalQuestions === 3)                          |
+| `university.test.ts`          | Per-copy `TEST_PREFIX`; per-copy afterAll cleanup                       | Shared prefix caused cross-copy org deletion                              |
+| `auth.test.ts`                | Unique emails per copy (`reset-test-${copyId}@dev.local`)               | Supabase Auth per-email rate limit on password reset                      |
 
 ### Files that needed no data changes
 
-| Suite | Why safe |
-|-------|----------|
-| `health.test.ts` | Pure read-only, no DB writes |
-| `org-features.test.ts` | Per-test org creation/cleanup (already isolated) |
-| `members.test.ts` | Shared fixture is read-only; copies only read |
-| `flashcard-topics.test.ts` | Shared fixture; test-created data has unique names |
-| `flashcard-decks.test.ts` | Same pattern as flashcard-topics |
-| `flashcards.test.ts` | Shared fixture; test-created flashcards use unique `fc-` prefix |
-| `flashcard-practice.test.ts` | Each copy creates own teacher/student |
-| `quizzes.test.ts` | Each copy creates own student with questions |
-| `quiz-attempts.test.ts` | Each copy creates own student; `beforeEach` creates fresh quiz |
-| `plan-limits.test.ts` | Each copy creates own fixture; `plan_limits` is shared seed data |
-| `invite-accept.test.ts` | Each test creates own fixture (self-contained) |
+| Suite                        | Why safe                                                         |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `health.test.ts`             | Pure read-only, no DB writes                                     |
+| `org-features.test.ts`       | Per-test org creation/cleanup (already isolated)                 |
+| `members.test.ts`            | Shared fixture is read-only; copies only read                    |
+| `flashcard-topics.test.ts`   | Shared fixture; test-created data has unique names               |
+| `flashcard-decks.test.ts`    | Same pattern as flashcard-topics                                 |
+| `flashcards.test.ts`         | Shared fixture; test-created flashcards use unique `fc-` prefix  |
+| `flashcard-practice.test.ts` | Each copy creates own teacher/student                            |
+| `quizzes.test.ts`            | Each copy creates own student with questions                     |
+| `quiz-attempts.test.ts`      | Each copy creates own student; `beforeEach` creates fresh quiz   |
+| `plan-limits.test.ts`        | Each copy creates own fixture; `plan_limits` is shared seed data |
+| `invite-accept.test.ts`      | Each test creates own fixture (self-contained)                   |
 
 ## Flakes Hit & Root Causes
 
@@ -116,11 +116,11 @@ and applies the correct mock before each test body runs.
 
 ## Test Count
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Integration test files | 19 | 19 |
-| Original `it()` count | 186 | 186 |
-| Effective test count | 186 | **558** (186 × 3) |
-| Unit tests | 580 | 580 (unchanged) |
-| `bun run lint` | ✅ | ✅ |
-| Consecutive green runs | — | **5/5** |
+| Metric                 | Before | After             |
+| ---------------------- | ------ | ----------------- |
+| Integration test files | 19     | 19                |
+| Original `it()` count  | 186    | 186               |
+| Effective test count   | 186    | **558** (186 × 3) |
+| Unit tests             | 580    | 580 (unchanged)   |
+| `bun run lint`         | ✅     | ✅                |
+| Consecutive green runs | —      | **5/5**           |

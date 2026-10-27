@@ -10,7 +10,7 @@ Accepted
 (`launch`, `team`, `hub`, `campus`), but the mock checkout wrote every purchased
 plan into the buyer's `profiles.personal_plan_key` — including org plans
 (`MockStripeService.handleWebhook`). A manager who bought Hub for one
-organization therefore carried `hub` as their *personal* plan everywhere:
+organization therefore carried `hub` as their _personal_ plan everywhere:
 
 - `LimitsResolver` resolved `max(personal, org)` for an unseated member, so
   Campus bought for organization A leaked unlimited capacity into organization B
@@ -85,7 +85,7 @@ preserves the purchase context if a reset is ever wanted.
 
 - A manager outside every organization keeps only the free `launch` tier; there
   is no paid individual manager plan until B/C lands.
-- `launch` stays dual-purpose (free manager personal plan *and* default
+- `launch` stays dual-purpose (free manager personal plan _and_ default
   organization plan) because the catalog has no `scope`.
 - A manager who was removed from an organization can still hold a legacy paid
   value in `personal_plan_key`; outside any organization that value is still

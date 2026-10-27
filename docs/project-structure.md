@@ -130,21 +130,21 @@ plus `scripts/check-import-paths.ts`.
 
 ### Naming Conventions
 
-| Type | Pattern | Example |
-|------|---------|---------|
-| Service files | `*.service.ts` | `question.service.ts` |
-| Controller files | `*.controller.ts` | `question.controller.ts` |
-| Model files | `*.model.ts` | `question.model.ts` |
-| Test files | `*.test.ts` | `question.controller.test.ts` |
-| Route handlers | `route.ts` | `api/v1/questions/route.ts` |
+| Type             | Pattern           | Example                       |
+| ---------------- | ----------------- | ----------------------------- |
+| Service files    | `*.service.ts`    | `question.service.ts`         |
+| Controller files | `*.controller.ts` | `question.controller.ts`      |
+| Model files      | `*.model.ts`      | `question.model.ts`           |
+| Test files       | `*.test.ts`       | `question.controller.test.ts` |
+| Route handlers   | `route.ts`        | `api/v1/questions/route.ts`   |
 
 ### Import Aliases
 
-| Alias | Resolves to |
-|-------|-------------|
-| `@/` | The current app's `src/` — `apps/web/src/` in the web app, `apps/admin/src/` in the admin app (the root `tsconfig.json` maps it to `apps/web/src/`) |
-| `@admin/*` | `apps/admin/src/*` — usable from anywhere (root `tsconfig.json`, Vitest) |
-| `@studiq/server/*` | `packages/server/src/*` |
-| `@studiq/authz/*` | `packages/authz/src/*` (bare `@studiq/authz` → `packages/authz/src/index.ts`) |
-| `@studiq/ui`, `@studiq/ui/*` | `packages/ui/src/index.ts`, `packages/ui/src/*` |
-| `#test/*` | `__tests__/*` — works in both Vitest and Playwright |
+| Alias                        | Resolves to                                                                                                                                         |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@/`                         | The current app's `src/` — `apps/web/src/` in the web app, `apps/admin/src/` in the admin app (the root `tsconfig.json` maps it to `apps/web/src/`) |
+| `@admin/*`                   | `apps/admin/src/*` — usable from anywhere (root `tsconfig.json`, Vitest)                                                                            |
+| `@studiq/server/*`           | `packages/server/src/*`                                                                                                                             |
+| `@studiq/authz/*`            | `packages/authz/src/*` (bare `@studiq/authz` → `packages/authz/src/index.ts`)                                                                       |
+| `@studiq/ui`, `@studiq/ui/*` | `packages/ui/src/index.ts`, `packages/ui/src/*`                                                                                                     |
+| `#test/*`                    | `__tests__/*` — works in both Vitest and Playwright                                                                                                 |

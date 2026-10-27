@@ -91,11 +91,12 @@ Uses simple RBAC filter parameters (not JSONB) — the service resolves `buildQu
 **Service change:** `getDueCards` in `flashcard-practice.service.ts` now calls `supabase.rpc('get_due_flashcards', ...)` — reduced from 70 to ~30 lines.
 
 **Parameter change:**
-| Draft (doc) | Actual |
-|-------------|--------|
-| `p_rbac_filter JSONB` | `p_filter_type TEXT` + `p_user_id UUID` + `p_university_id UUID` |
-| Service resolves filter in RPC | Service resolves via `buildQueryFilter` in JS, passes resolved params |
-| Fallback as IF block after main query | Same approach — `COALESCE(due, fallback, '[]'::json)` |
+
+| Draft (doc)                           | Actual                                                                |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| `p_rbac_filter JSONB`                 | `p_filter_type TEXT` + `p_user_id UUID` + `p_university_id UUID`      |
+| Service resolves filter in RPC        | Service resolves via `buildQueryFilter` in JS, passes resolved params |
+| Fallback as IF block after main query | Same approach — `COALESCE(due, fallback, '[]'::json)`                 |
 
 **Files modified:**
 
@@ -171,15 +172,15 @@ All 6 batch mutations roll back on error via `onError` restoring the pre-mutatio
 
 No backend changes. Pure frontend.
 
-| Page                                   | Shortcut | Action        |
+| Page | Shortcut | Action |
 | -------------------------------------- | -------- | ------------- | --- |
-| Study session (`session-client.tsx`)   | `Space`  | Flip card     |
-|                                        | `1`      | Rate "Again"  |
-|                                        | `2`      | Rate "Hard"   |
-|                                        | `3`      | Rate "Good"   |
-|                                        | `4`      | Rate "Easy"   |
-| Deck detail (`deck-detail-screen.tsx`) | `n`      | New flashcard |
-|                                        | `/`      | Focus search  | ⏳  |
+| Study session (`session-client.tsx`) | `Space` | Flip card |
+| | `1` | Rate "Again" |
+| | `2` | Rate "Hard" |
+| | `3` | Rate "Good" |
+| | `4` | Rate "Easy" |
+| Deck detail (`deck-detail-screen.tsx`) | `n` | New flashcard |
+| | `/` | Focus search | ⏳ |
 
 **Implementation:** `useEffect` with `keydown` listener. `aria-keyshortcuts` attributes on card/buttons for a11y. Uses refs to avoid stale closures without re-attaching the listener. Input/textarea target guard to avoid triggering shortcuts while typing.
 

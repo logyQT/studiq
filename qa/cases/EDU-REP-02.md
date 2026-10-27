@@ -14,10 +14,13 @@ EDU-REP-01.
 ## Prerequisite context
 
 ### EDU-REP-01 — Lista zgłoszeń nauczyciela
+
 _Warunek wstępny: Student zgłosił błąd w pytaniu/fiszce T1 (STU-39)._
+
 1. Zaloguj się jako teacher1 i otwórz /edu/reports.
 
 Expected:
+
 - Opis „Zgłoszenia nieprawidłowości od studentów dotyczące Twoich pytań.” i lista zgłoszeń z treścią, autorem, datą.
 - Plakietka nieprzeczytanych przy „Zgłoszenia” w menu.
 

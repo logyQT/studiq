@@ -7,7 +7,7 @@
 ## Summary
 
 A plan is a **template**: `plan_features` and `plan_limits` rows keyed by
-`plan_key`. Users and orgs *point at* a plan (`profiles.personal_plan_key`,
+`plan_key`. Users and orgs _point at_ a plan (`profiles.personal_plan_key`,
 `organizations.plan`); they never get a private copy of its limits.
 
 - **Features** are snapshotted per org role into `org_role_features` at org
@@ -23,17 +23,17 @@ A plan is a **template**: `plan_features` and `plan_limits` rows keyed by
 
 ## Data model
 
-| Table / column | Meaning |
-| --- | --- |
-| `subscription_plans` | Plan catalog (`key`, name, price, `for_account_type`). |
-| `plan_features (plan_key, feature_key)` | Feature template for a plan. |
-| `plan_limits (plan_key, limit_key, limit_value)` | Limit template for a plan. `-1` = unlimited. |
-| `profiles.personal_plan_key` | Personal plan (seed default `base`; managers default to the free `launch` tier). An organization purchase never writes it (#228). |
-| `organizations.plan` | Organization plan (seed default `launch`). |
-| `org_role_features (org_role_id, feature_key, is_enabled)` | Per-org-role feature snapshot. |
-| `org_seat_pools` / `org_seat_assignments` | Opt-in per-user seat; the pool's `plan_key` is the seat plan. |
-| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored. |
-| `feature_flags (key, is_enabled, rollout_percentage)` | Global kill switch + rollout gate. |
+| Table / column                                                          | Meaning                                                                                                                           |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `for_account_type`).                                                                            |
+| `plan_features (plan_key, feature_key)`                                 | Feature template for a plan.                                                                                                      |
+| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                      |
+| `profiles.personal_plan_key`                                            | Personal plan (seed default `base`; managers default to the free `launch` tier). An organization purchase never writes it (#228). |
+| `organizations.plan`                                                    | Organization plan (seed default `launch`).                                                                                        |
+| `org_role_features (org_role_id, feature_key, is_enabled)`              | Per-org-role feature snapshot.                                                                                                    |
+| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` is the seat plan.                                                                     |
+| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                |
+| `feature_flags (key, is_enabled, rollout_percentage)`                   | Global kill switch + rollout gate.                                                                                                |
 
 The `base` / `launch` defaults come from the seed
 (`supabase/seeds/00_plans.sql` → `ALTER TABLE … SET DEFAULT`), not from the
@@ -48,10 +48,10 @@ Limit keys: `LIMITS` in
 `packages/server/src/services/limit.catalog.ts` — the single source of truth
 for both the resolver and the DB rows:
 
-| Scope | Keys |
-| --- | --- |
-| `user` (per-member) | `max_flashcards`, `max_decks`, `max_questions`, `max_question_banks`, `max_quiz_attempts_per_day`, `max_ai_tokens_per_day` |
-| `org` (organization-wide) | `max_students`, `max_groups` |
+| Scope                     | Keys                                                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `user` (per-member)       | `max_flashcards`, `max_decks`, `max_questions`, `max_question_banks`, `max_quiz_attempts_per_day`, `max_ai_tokens_per_day` |
+| `org` (organization-wide) | `max_students`, `max_groups`                                                                                               |
 
 ## Plan-template propagation
 
@@ -117,13 +117,13 @@ every limit; a seat may raise only per-member (`scope: 'user'`) keys, never
 org-scope capacity; the personal plan applies only outside a verified org
 context; a missing `plan_limits` row is `0` (blocked) in every path.
 
-| Context | `scope: 'user'` keys | `scope: 'org'` keys |
-| --- | --- | --- |
-| No active org | personal plan | `0` (no org capacity to grant) |
-| Active org, seated | seat plan | org plan |
-| Active org, unseated verified member | org plan | org plan |
-| Active org id without membership (forged cookie) | personal plan | `0` |
-| Plan lacks the key | `0` + `warn()` | `0` + `warn()` |
+| Context                                          | `scope: 'user'` keys | `scope: 'org'` keys            |
+| ------------------------------------------------ | -------------------- | ------------------------------ |
+| No active org                                    | personal plan        | `0` (no org capacity to grant) |
+| Active org, seated                               | seat plan            | org plan                       |
+| Active org, unseated verified member             | org plan             | org plan                       |
+| Active org id without membership (forged cookie) | personal plan        | `0`                            |
+| Plan lacks the key                               | `0` + `warn()`       | `0` + `warn()`                 |
 
 `ctx.activeOrgId` comes from a client cookie, so the resolver verifies the
 `org_members` row before treating it as a tenant scope: a spoofed org id has no
@@ -183,24 +183,24 @@ students/educators keep reading `/api/v1/me/personal-plan`.
 
 Value semantics:
 
-| Value | Meaning |
-| --- | --- |
-| `-1` | Unlimited. |
-| `0` | No limit row defined for that plan — blocked in **both** paths (`getEffectiveLimit` and `checkOrgLimit`). |
-| `> 0` | Hard cap; `current + increment > value` throws `USAGE_LIMIT_EXCEEDED` (HTTP 429). |
+| Value | Meaning                                                                                                   |
+| ----- | --------------------------------------------------------------------------------------------------------- |
+| `-1`  | Unlimited.                                                                                                |
+| `0`   | No limit row defined for that plan — blocked in **both** paths (`getEffectiveLimit` and `checkOrgLimit`). |
+| `> 0` | Hard cap; `current + increment > value` throws `USAGE_LIMIT_EXCEEDED` (HTTP 429).                         |
 
 Enforcement points:
 
-| Limit key | Checked in |
-| --- | --- |
-| `max_flashcards` | `flashcard.service` (create + bulk) |
-| `max_decks` | `flashcard-deck.service` |
-| `max_questions` | `question.service` |
-| `max_question_banks` | `question-bank.service` (create + bulk) |
-| `max_quiz_attempts_per_day` | `quiz.service` |
-| `max_groups` | `group.service` (`checkOrgLimit`) |
-| `max_students` | `invitation.service` accept (`checkOrgLimit`) |
-| `max_ai_tokens_per_day` | `/api/v1/ai/chat` via `getUsage` |
+| Limit key                   | Checked in                                    |
+| --------------------------- | --------------------------------------------- |
+| `max_flashcards`            | `flashcard.service` (create + bulk)           |
+| `max_decks`                 | `flashcard-deck.service`                      |
+| `max_questions`             | `question.service`                            |
+| `max_question_banks`        | `question-bank.service` (create + bulk)       |
+| `max_quiz_attempts_per_day` | `quiz.service`                                |
+| `max_groups`                | `group.service` (`checkOrgLimit`)             |
+| `max_students`              | `invitation.service` accept (`checkOrgLimit`) |
+| `max_ai_tokens_per_day`     | `/api/v1/ai/chat` via `getUsage`              |
 
 `getUsage(ctx, key)` returns `{ current, limit, plan, resetsAt }`; `current` is
 today's `user_daily_activity.ai_input_tokens + ai_output_tokens`, `plan` is the
