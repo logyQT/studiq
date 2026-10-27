@@ -1,11 +1,21 @@
 name: e2e
 
-# Start manual + nightly. Flip on `pull_request` once the suite has stayed green
-# for a week; the job is ~15 min cold on a stock GitHub runner.
+# Manual + nightly + PRs that touch the suite or the app. `workflow_dispatch`
+# only works once this file is on the default branch; PRs run it directly.
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 3 * * *'
+  pull_request:
+    paths:
+      - '__tests__/e2e/**'
+      - 'scripts/e2e-seed.ts'
+      - 'playwright.config.ts'
+      - 'apps/**'
+      - 'packages/**'
+      - 'supabase/**'
+      - 'bun.lock'
+      - '.github/workflows/e2e.yml'
 
 concurrency:
   group: e2e-${{ github.ref }}
