@@ -22,6 +22,7 @@ export interface Tenant {
   ids: {
     group: string;
     topic: string;
+    card: string;
     deck: string;
     deck2: string;
     bank: string;

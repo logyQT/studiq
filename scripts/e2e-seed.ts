@@ -44,6 +44,7 @@ interface Tenant {
   ids: {
     group: string;
     topic: string;
+    card: string;
     deck: string;
     deck2: string;
     bank: string;
@@ -153,6 +154,7 @@ function buildTenant(file: string, title: string, project: string): Tenant {
     ids: {
       group: uuidv5(`${key}:group`),
       topic: uuidv5(`${key}:topic`),
+      card: uuidv5(`${key}:card:0:0`),
       deck: uuidv5(`${key}:deck`),
       deck2: uuidv5(`${key}:deck2`),
       bank: uuidv5(`${key}:bank`),
