@@ -5,6 +5,7 @@ import type React from 'react';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppSearch } from '@/components/layout/app-search';
 import { DashboardBreadcrumbs } from '@/components/layout/DashboardBreadcrumbs';
+import { GlobalShortcuts, ShortcutsButton } from '@/components/layout/global-shortcuts';
 import { BreadcrumbProvider } from '@/components/providers/BreadcrumbProvider';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +27,9 @@ export function DashboardLayout({
               <Separator orientation="vertical" className="mr-2 h-4" />
               <DashboardBreadcrumbs />
             </div>
+            <div className="ml-auto flex items-center px-4">
+              <ShortcutsButton />
+            </div>
           </header>
           <div className="flex flex-1 flex-col min-h-0">
             <main
@@ -39,6 +43,7 @@ export function DashboardLayout({
           </div>
         </SidebarInset>
         <AppSearch />
+        <GlobalShortcuts />
       </SidebarProvider>
     </BreadcrumbProvider>
   );

@@ -62,6 +62,37 @@
     "remove_answer": "Usuń odpowiedź {number}",
     "clear_selection": "Wyczyść zaznaczenie"
   },
+  "Shortcuts": {
+    "title": "Skróty klawiszowe",
+    "description": "Skróty nie działają, gdy piszesz w polu tekstowym.",
+    "button_title": "Skróty klawiszowe (?)",
+    "then": "potem",
+    "group_general": "Ogólne",
+    "help": "Pokaż tę listę",
+    "search": "Szukaj",
+    "search_slash": "Szukaj (poza polami tekstowymi)",
+    "close": "Zamknij okno",
+    "group_nav": "Przejdź do",
+    "group_study": "Sesja nauki",
+    "study_flip": "Odwróć fiszkę",
+    "study_rate": "Oceń odpowiedź: nie pamiętam / trudne / dobrze / łatwe",
+    "study_audio": "Odtwórz lub zatrzymaj dźwięk",
+    "study_panel": "Pokaż skróty w sesji",
+    "nav": {
+      "home": "Przegląd",
+      "decks": "Talie",
+      "study": "Nauka",
+      "questions": "Pytania",
+      "quizzes": "Testy",
+      "assignments": "Kartkówki",
+      "groups": "Grupy",
+      "stats": "Statystyki",
+      "members": "Członkowie",
+      "invites": "Zaproszenia",
+      "roles": "Role",
+      "settings": "Ustawienia"
+    }
+  },
   "Errors": {
     "ERROR_INTERNAL_SERVER": "Wystąpił nieoczekiwany błąd serwera. Spróbuj ponownie później.",
     "ERROR_INVALID_INPUT": "Przekazane dane są niepoprawne.",
