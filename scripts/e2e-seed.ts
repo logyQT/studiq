@@ -224,29 +224,38 @@ async function seedTenant(t: Tenant): Promise<void> {
   const roleId = (name: string) => roles.find((r) => r.name === name)?.id ?? orgRole(name);
 
   type Res = { error: { message: string; details?: string | null } | null };
-  const batches: Array<Array<PromiseLike<Res>>> = [
-    // level 1: things that only need the org / users
-    [
-      db.from('org_members').upsert(
-        [
-          {
-            id: uuidv5(`${t.key}:member:teacher`),
-            organization_id: t.org.id,
-            user_id: teacher.id,
-            org_role_id: roleId('teacher'),
-            joined_at: now,
-          },
-          {
-            id: uuidv5(`${t.key}:member:student`),
-            organization_id: t.org.id,
-            user_id: student.id,
-            org_role_id: roleId('member'),
-            joined_at: now,
-          },
-        ],
-        { onConflict: 'id' },
-      ),
-      db.from('groups').upsert(
+  const run = async (batch: Array<PromiseLike<Res>>) => {
+    const results = await Promise.all(batch);
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+      throw new Error(`seed ${t.key}: ${failed.error.message} (${failed.error.details ?? ''})`);
+    }
+  };
+
+  // Always: the org graph (org_members, one group, its members).
+  await run([
+    db.from('org_members').upsert(
+      [
+        {
+          id: uuidv5(`${t.key}:member:teacher`),
+          organization_id: t.org.id,
+          user_id: teacher.id,
+          org_role_id: roleId('teacher'),
+          joined_at: now,
+        },
+        {
+          id: uuidv5(`${t.key}:member:student`),
+          organization_id: t.org.id,
+          user_id: student.id,
+          org_role_id: roleId('member'),
+          joined_at: now,
+        },
+      ],
+      { onConflict: 'id' },
+    ),
+    db
+      .from('groups')
+      .upsert(
         {
           id: t.ids.group,
           organization_id: t.org.id,
@@ -256,154 +265,151 @@ async function seedTenant(t: Tenant): Promise<void> {
         },
         { onConflict: 'id' },
       ),
-      db.from('flashcard_decks').upsert(
-        [
-          {
-            id: t.ids.deck,
-            organization_id: t.org.id,
-            created_by: teacher.id,
-            name: 'Deck A',
-            visibility: 'group',
-          },
-          {
-            id: t.ids.deck2,
-            organization_id: t.org.id,
-            created_by: teacher.id,
-            name: 'Deck B',
-            visibility: 'group',
-          },
-        ],
-        { onConflict: 'id' },
-      ),
-      db.from('question_banks').upsert(
-        [
-          {
-            id: t.ids.bank,
-            organization_id: t.org.id,
-            created_by: teacher.id,
-            name: 'Bank A',
-            visibility: 'group',
-          },
-          {
-            id: t.ids.bank2,
-            organization_id: t.org.id,
-            created_by: teacher.id,
-            name: 'Bank B',
-            visibility: 'group',
-          },
-        ],
-        { onConflict: 'id' },
-      ),
-      db
-        .from('quizzes')
-        .upsert(
-          { id: t.ids.quiz, organization_id: t.org.id, created_by: teacher.id, name: 'Quiz A' },
-          { onConflict: 'id' },
-        ),
-    ],
-    // level 2: things that need a group / deck / bank / quiz
-    [
-      db.from('group_members').upsert(
-        [
-          {
-            id: uuidv5(`${t.key}:gm:teacher`),
-            group_id: t.ids.group,
-            user_id: teacher.id,
-            role: 'teacher',
-          },
-          {
-            id: uuidv5(`${t.key}:gm:student`),
-            group_id: t.ids.group,
-            user_id: student.id,
-            role: 'member',
-          },
-        ],
-        { onConflict: 'id' },
-      ),
-      db.from('flashcards').upsert(
-        [0, 1].flatMap((d) =>
-          Array.from({ length: 10 }, (_, i) => ({
-            id: uuidv5(`${t.key}:card:${d}:${i}`),
-            deck_id: d === 0 ? t.ids.deck : t.ids.deck2,
-            front: `Card ${d + 1}-${i + 1} front`,
-            back: `Card ${d + 1}-${i + 1} back`,
-          })),
-        ),
-        { onConflict: 'id' },
-      ),
-      db.from('questions').upsert(
-        [t.ids.bank, t.ids.bank2].flatMap((bankId, b) =>
-          Array.from({ length: 5 }, (_, i) => ({
-            id: uuidv5(`${t.key}:q:${b}:${i}`),
-            bank_id: bankId,
-            organization_id: t.org.id,
-            created_by: teacher.id,
-            content: `Question ${b + 1}-${i + 1}?`,
-            type: (i < 3
-              ? 'mcq'
-              : i === 3
-                ? 'true_false'
-                : 'open') as Database['public']['Enums']['question_type'],
-            visibility: 'group' as const,
-          })),
-        ),
-        { onConflict: 'id' },
-      ),
-      db.from('teacher_assignments').upsert(
+  ]);
+  await run([
+    db.from('group_members').upsert(
+      [
         {
-          id: t.ids.assignment,
+          id: uuidv5(`${t.key}:gm:teacher`),
+          group_id: t.ids.group,
+          user_id: teacher.id,
+          role: 'teacher',
+        },
+        {
+          id: uuidv5(`${t.key}:gm:student`),
+          group_id: t.ids.group,
+          user_id: student.id,
+          role: 'member',
+        },
+      ],
+      { onConflict: 'id' },
+    ),
+  ]);
+
+  if (t.profile !== 'content') return;
+
+  // Content profile: decks, banks, a quiz and a published assignment.
+  await run([
+    db.from('flashcard_decks').upsert(
+      [
+        {
+          id: t.ids.deck,
           organization_id: t.org.id,
           created_by: teacher.id,
-          title: 'Assignment A',
-          status: 'published',
-          quiz_id: t.ids.quiz,
-          question_count: 5,
-          total_points: 5,
+          name: 'Deck A',
+          visibility: 'group',
         },
+        {
+          id: t.ids.deck2,
+          organization_id: t.org.id,
+          created_by: teacher.id,
+          name: 'Deck B',
+          visibility: 'group',
+        },
+      ],
+      { onConflict: 'id' },
+    ),
+    db.from('question_banks').upsert(
+      [
+        {
+          id: t.ids.bank,
+          organization_id: t.org.id,
+          created_by: teacher.id,
+          name: 'Bank A',
+          visibility: 'group',
+        },
+        {
+          id: t.ids.bank2,
+          organization_id: t.org.id,
+          created_by: teacher.id,
+          name: 'Bank B',
+          visibility: 'group',
+        },
+      ],
+      { onConflict: 'id' },
+    ),
+    db
+      .from('quizzes')
+      .upsert(
+        { id: t.ids.quiz, organization_id: t.org.id, created_by: teacher.id, name: 'Quiz A' },
         { onConflict: 'id' },
       ),
-    ],
-    // level 3: things that need a question / assignment
-    [
-      db.from('quiz_questions').upsert(
-        Array.from({ length: 5 }, (_, i) => ({
-          quiz_id: t.ids.quiz,
-          question_id: uuidv5(`${t.key}:q:0:${i}`),
-          order_index: i,
-          points: 1,
+  ]);
+  await run([
+    db.from('flashcards').upsert(
+      [0, 1].flatMap((d) =>
+        Array.from({ length: 10 }, (_, i) => ({
+          id: uuidv5(`${t.key}:card:${d}:${i}`),
+          deck_id: d === 0 ? t.ids.deck : t.ids.deck2,
+          front: `Card ${d + 1}-${i + 1} front`,
+          back: `Card ${d + 1}-${i + 1} back`,
         })),
-        { onConflict: 'quiz_id,question_id' },
       ),
-      db.from('question_options').upsert(
-        [0, 1].flatMap((b) =>
-          [0, 1, 2].flatMap((i) =>
-            Array.from({ length: 4 }, (_, o) => ({
-              id: uuidv5(`${t.key}:opt:${b}:${i}:${o}`),
-              question_id: uuidv5(`${t.key}:q:${b}:${i}`),
-              content: `Option ${o + 1}`,
-              is_correct: o === 0,
-              order_index: o,
-            })),
-          ),
+      { onConflict: 'id' },
+    ),
+    db.from('questions').upsert(
+      [t.ids.bank, t.ids.bank2].flatMap((bankId, b) =>
+        Array.from({ length: 5 }, (_, i) => ({
+          id: uuidv5(`${t.key}:q:${b}:${i}`),
+          bank_id: bankId,
+          organization_id: t.org.id,
+          created_by: teacher.id,
+          content: `Question ${b + 1}-${i + 1}?`,
+          type: (i < 3
+            ? 'mcq'
+            : i === 3
+              ? 'true_false'
+              : 'open') as Database['public']['Enums']['question_type'],
+          visibility: 'group' as const,
+        })),
+      ),
+      { onConflict: 'id' },
+    ),
+    db.from('teacher_assignments').upsert(
+      {
+        id: t.ids.assignment,
+        organization_id: t.org.id,
+        created_by: teacher.id,
+        title: 'Assignment A',
+        status: 'published',
+        quiz_id: t.ids.quiz,
+        question_count: 5,
+        total_points: 5,
+      },
+      { onConflict: 'id' },
+    ),
+  ]);
+  await run([
+    db.from('question_options').upsert(
+      [0, 1].flatMap((b) =>
+        [0, 1, 2].flatMap((i) =>
+          Array.from({ length: 4 }, (_, o) => ({
+            id: uuidv5(`${t.key}:opt:${b}:${i}:${o}`),
+            question_id: uuidv5(`${t.key}:q:${b}:${i}`),
+            content: `Option ${o + 1}`,
+            is_correct: o === 0,
+            order_index: o,
+          })),
         ),
+      ),
+      { onConflict: 'id' },
+    ),
+    db.from('quiz_questions').upsert(
+      Array.from({ length: 5 }, (_, i) => ({
+        quiz_id: t.ids.quiz,
+        question_id: uuidv5(`${t.key}:q:0:${i}`),
+        order_index: i,
+        points: 1,
+      })),
+      { onConflict: 'quiz_id,question_id' },
+    ),
+    db
+      .from('assignment_targets')
+      .upsert(
+        { id: uuidv5(`${t.key}:target`), assignment_id: t.ids.assignment, group_id: t.ids.group },
         { onConflict: 'id' },
       ),
-      db
-        .from('assignment_targets')
-        .upsert(
-          { id: uuidv5(`${t.key}:target`), assignment_id: t.ids.assignment, group_id: t.ids.group },
-          { onConflict: 'id' },
-        ),
-    ],
-  ];
-
-  for (const batch of batches) {
-    const results = await Promise.all(batch);
-    const failed = results.find((r) => r.error);
-    if (failed?.error) {
-      throw new Error(`seed ${t.key}: ${failed.error.message} (${failed.error.details ?? ''})`);
-    }
-  }
+  ]);
 }
 
 /* --------------------------------------------------------------------- reset */
