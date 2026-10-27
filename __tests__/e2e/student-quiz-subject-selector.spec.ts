@@ -141,7 +141,7 @@ test.describe('Standalone quiz subject selector (#323)', () => {
     const answerBox = page.locator('textarea');
     await expect(answerBox).toHaveCount(1);
     await answerBox.fill('QA-323 odpowiedź otwarta.');
-    await page.getByRole('button', { name: 'Submit Quiz' }).click();
+    await page.getByRole('button', { name: t('AppQuizPage.submit') }).click();
     await expect(page).toHaveURL(/\/review$/, { timeout: 30_000 });
   });
 });
