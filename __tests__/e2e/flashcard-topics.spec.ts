@@ -6,6 +6,10 @@ const topicNamePlaceholder = t('EduFlashcardTopicsPage.topic_name_placeholder');
 
 async function openTopics(page: Page) {
   await page.goto('/edu/topics');
+  // Gate on the seeded topic instead of a network idle: creating before the
+  // initial list query settles lets the stale response overwrite the refetch,
+  // so the new topic never renders.
+  await expect(topicCard(page, 'Topic A')).toBeVisible();
 }
 
 function topicCard(page: Page, name: string) {
