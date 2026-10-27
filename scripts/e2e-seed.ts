@@ -16,11 +16,18 @@
  *   bun scripts/e2e-seed.ts --only <key>
  */
 import { SQL } from 'bun';
-import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@studiq/server/types/database';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { shortHash, tenantKey, uuidv5 } from '#test/e2e/fixtures/ids';
+import { profileFor } from '#test/e2e/fixtures/profiles';
+import {
+  buildAccount,
+  createSeedDb,
+  seedTenantGraph,
+  tenantId,
+  type SeedAccount,
+} from '#test/helpers/tenant-seed';
 
 type Role = 'teacher' | 'student';
 
@@ -54,8 +61,6 @@ interface Tenant {
 const ROOT = join(import.meta.dir, '..');
 const SEED_DIR = join(ROOT, '__tests__/e2e/.seed');
 const INDEX = join(SEED_DIR, 'index.json');
-const PASSWORD = 'pass';
-
 function env(name: string, fallback?: string): string {
   if (process.env[name]) return process.env[name]!;
   if (fallback) return fallback;
@@ -77,9 +82,7 @@ const SUPABASE_URL = env('NEXT_PUBLIC_SUPABASE_URL', 'http://127.0.0.1:54321');
 const SERVICE_KEY = env('SUPABASE_SERVICE_ROLE_KEY');
 
 const sql = new SQL(DB_URL);
-const db = createClient<Database>(SUPABASE_URL, SERVICE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+const db = createSeedDb({ url: SUPABASE_URL, serviceKey: SERVICE_KEY });
 
 /* ------------------------------------------------------------------ manifest */
 
@@ -122,106 +125,62 @@ async function listTests(): Promise<Array<{ file: string; title: string; project
 function buildTenant(file: string, title: string, project: string): Tenant {
   const key = tenantKey(file, title, project);
   const tag = shortHash(key);
-  const orgId = uuidv5(`${key}:org`);
-  const teacherId = uuidv5(`${key}:teacher`);
-  const studentId = uuidv5(`${key}:student`);
+  const teacher = buildAccount(key, 'teacher', 'educator', {
+    email: `e2e+${tag}+teacher@test.local`,
+    name: 'teacher',
+  });
+  const student = buildAccount(key, 'student', 'student', {
+    email: `e2e+${tag}+student@test.local`,
+    name: 'student',
+  });
   return {
     key,
     file,
     title,
     project,
-    profile: 'content',
-    org: { id: orgId, name: `e2e ${tag}` },
+    profile: profileFor(file),
+    org: { id: tenantId(key, 'org'), name: `e2e ${tag}` },
     users: {
       teacher: {
-        id: teacherId,
-        email: `e2e+${tag}+teacher@test.local`,
-        password: PASSWORD,
+        id: teacher.id,
+        email: teacher.email,
+        password: teacher.password,
         role: 'teacher',
         accountType: 'educator',
       },
       student: {
-        id: studentId,
-        email: `e2e+${tag}+student@test.local`,
-        password: PASSWORD,
+        id: student.id,
+        email: student.email,
+        password: student.password,
         role: 'student',
         accountType: 'student',
       },
     },
     ids: {
-      group: uuidv5(`${key}:group`),
-      deck: uuidv5(`${key}:deck`),
-      deck2: uuidv5(`${key}:deck2`),
-      bank: uuidv5(`${key}:bank`),
-      bank2: uuidv5(`${key}:bank2`),
-      quiz: uuidv5(`${key}:quiz`),
-      assignment: uuidv5(`${key}:assignment`),
+      group: tenantId(key, 'group'),
+      deck: tenantId(key, 'deck'),
+      deck2: tenantId(key, 'deck2'),
+      bank: tenantId(key, 'bank'),
+      bank2: tenantId(key, 'bank2'),
+      quiz: tenantId(key, 'quiz'),
+      assignment: tenantId(key, 'assignment'),
     },
   };
 }
 
-function authUserValues(user: TenantUser): string {
-  const meta = JSON.stringify({
-    account_type: user.accountType,
-    provider: 'email',
-    providers: ['email'],
-  });
-  const raw = JSON.stringify({ name: user.role, email_verified: true });
-  return `('00000000-0000-0000-0000-000000000000','${user.id}','authenticated','authenticated','${user.email}',crypt('${PASSWORD}',gen_salt('bf')),now(),NULL,'',NULL,'',NULL,'','',NULL,NULL,'${meta}','${raw}',NULL,now(),now(),NULL,NULL,'','',NULL,'',0,NULL,'',NULL,false,NULL,false)`;
-}
-
-const AUTH_COLUMNS =
-  'instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,invited_at,confirmation_token,confirmation_sent_at,recovery_token,recovery_sent_at,email_change_token_new,email_change,email_change_sent_at,last_sign_in_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,created_at,updated_at,phone,phone_confirmed_at,phone_change,phone_change_token,phone_change_sent_at,email_change_token_current,email_change_confirm_status,banned_until,reauthentication_token,reauthentication_sent_at,is_sso_user,deleted_at,is_anonymous';
-
 async function seedTenant(t: Tenant): Promise<void> {
-  const teacher = t.users.teacher;
-  const student = t.users.student;
-  const orgRole = (name: string) => uuidv5(`${t.key}:role:${name}`);
+  const teacher: SeedAccount = { ...t.users.teacher, role: 'educator' };
+  const student: SeedAccount = { ...t.users.student, role: 'student' };
 
-  await sql.unsafe(
-    `INSERT INTO auth.users (${AUTH_COLUMNS}) VALUES ${authUserValues(teacher)},${authUserValues(student)} ON CONFLICT (id) DO NOTHING`,
-  );
-
-  const now = new Date().toISOString();
-
-  // Creating an organization seeds its three system roles (DB trigger), so read
-  // them back instead of inserting our own ids.
-  const orgRes = await db
-    .from('organizations')
-    .upsert({ id: t.org.id, name: t.org.name }, { onConflict: 'id' });
-  if (orgRes.error) throw new Error(`seed ${t.key}: org ${orgRes.error.message}`);
-
-  let roles =
-    (await db.from('org_roles').select('id,name').eq('organization_id', t.org.id)).data ?? [];
-  if (roles.length === 0) {
-    const ins = await db.from('org_roles').insert([
-      {
-        id: orgRole('admin'),
-        organization_id: t.org.id,
-        name: 'admin',
-        display_name: 'Admin',
-        is_system: true,
-      },
-      {
-        id: orgRole('teacher'),
-        organization_id: t.org.id,
-        name: 'teacher',
-        display_name: 'Teacher',
-        is_system: true,
-      },
-      {
-        id: orgRole('member'),
-        organization_id: t.org.id,
-        name: 'member',
-        display_name: 'Student',
-        is_system: true,
-      },
-    ]);
-    if (ins.error) throw new Error(`seed ${t.key}: roles ${ins.error.message}`);
-    roles =
-      (await db.from('org_roles').select('id,name').eq('organization_id', t.org.id)).data ?? [];
-  }
-  const roleId = (name: string) => roles.find((r) => r.name === name)?.id ?? orgRole(name);
+  await seedTenantGraph(db, {
+    key: t.key,
+    org: t.org,
+    defaultGroup: { id: t.ids.group, name: 'G1', isDefault: false },
+    extraGroups: [],
+    owner: teacher,
+    members: [student],
+    ownerOrgRole: 'teacher',
+  });
 
   type Res = { error: { message: string; details?: string | null } | null };
   const run = async (batch: Array<PromiseLike<Res>>) => {
@@ -231,58 +190,6 @@ async function seedTenant(t: Tenant): Promise<void> {
       throw new Error(`seed ${t.key}: ${failed.error.message} (${failed.error.details ?? ''})`);
     }
   };
-
-  // Always: the org graph (org_members, one group, its members).
-  await run([
-    db.from('org_members').upsert(
-      [
-        {
-          id: uuidv5(`${t.key}:member:teacher`),
-          organization_id: t.org.id,
-          user_id: teacher.id,
-          org_role_id: roleId('teacher'),
-          joined_at: now,
-        },
-        {
-          id: uuidv5(`${t.key}:member:student`),
-          organization_id: t.org.id,
-          user_id: student.id,
-          org_role_id: roleId('member'),
-          joined_at: now,
-        },
-      ],
-      { onConflict: 'id' },
-    ),
-    db.from('groups').upsert(
-      {
-        id: t.ids.group,
-        organization_id: t.org.id,
-        name: 'G1',
-        created_by: teacher.id,
-        is_default: false,
-      },
-      { onConflict: 'id' },
-    ),
-  ]);
-  await run([
-    db.from('group_members').upsert(
-      [
-        {
-          id: uuidv5(`${t.key}:gm:teacher`),
-          group_id: t.ids.group,
-          user_id: teacher.id,
-          role: 'teacher',
-        },
-        {
-          id: uuidv5(`${t.key}:gm:student`),
-          group_id: t.ids.group,
-          user_id: student.id,
-          role: 'member',
-        },
-      ],
-      { onConflict: 'id' },
-    ),
-  ]);
 
   if (t.profile !== 'content') return;
 
@@ -339,6 +246,9 @@ async function seedTenant(t: Tenant): Promise<void> {
         Array.from({ length: 10 }, (_, i) => ({
           id: uuidv5(`${t.key}:card:${d}:${i}`),
           deck_id: d === 0 ? t.ids.deck : t.ids.deck2,
+          organization_id: t.org.id,
+          created_by: teacher.id,
+          visibility: 'group' as const,
           front: `Card ${d + 1}-${i + 1} front`,
           back: `Card ${d + 1}-${i + 1} back`,
         })),
