@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
 import { SrLabel } from '@/components/shared/sr-label';
+import { EmptyState } from '@/components/shared/empty-state';
 
 const PERMISSION_GROUPS = [
   {
@@ -335,11 +336,8 @@ export default function RolesPage() {
               ))}
               {(!data || data.length === 0) && (
                 <TableRow>
-                  <TableCell
-                    colSpan={canBuild ? 5 : 4}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    {t('no_roles')}
+                  <TableCell colSpan={canBuild ? 5 : 4} className="p-0">
+                    <EmptyState compact icon={ShieldCheck} title={t('no_roles')} />
                   </TableCell>
                 </TableRow>
               )}

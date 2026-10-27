@@ -33,6 +33,7 @@ import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiPost, apiPut, isNetworkError } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
+import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 const ImportDialog = dynamic(
   () =>
@@ -341,6 +342,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       {!isLoading && !orgsPending && total !== undefined && (
         <p className="text-sm text-muted-foreground">{t('decks_count', { count: total })}</p>
       )}
+
+      <FirstVisitHint id="decks" />
 
       <PageGrid
         cols={4}

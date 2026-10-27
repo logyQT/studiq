@@ -22,6 +22,7 @@ import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { resolveQuestionBankEmptyView } from '@/lib/question-bank-empty-state';
 import { questionKeys } from '@/lib/query-keys';
+import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 interface QuestionBankManagementScreenProps {
   apiBase: string;
@@ -358,6 +359,8 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
         onCreateNew={openCreate}
         t={t}
       />
+
+      <FirstVisitHint id="question_banks" />
 
       <PageGrid
         cols={4}

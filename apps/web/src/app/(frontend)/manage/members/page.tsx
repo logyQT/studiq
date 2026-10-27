@@ -33,13 +33,14 @@ import {
   TableRow,
   UserAvatar,
 } from '@studiq/ui';
-import { Search, Shield, UserMinus } from 'lucide-react';
+import { Search, Shield, UserMinus, Users } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { formatDate } from '@/lib/datetime';
 import { SrLabel } from '@/components/shared/sr-label';
+import { EmptyState } from '@/components/shared/empty-state';
 
 interface GroupInfo {
   id: string;
@@ -356,8 +357,8 @@ export default function MembersPage() {
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {t('no_members')}
+                <TableCell colSpan={5} className="p-0">
+                  <EmptyState compact icon={Users} title={t('no_members')} />
                 </TableCell>
               </TableRow>
             )}

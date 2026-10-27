@@ -31,12 +31,13 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { Copy, Plus, X } from 'lucide-react';
+import { Copy, Mail, Plus, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/datetime';
 import { SrLabel } from '@/components/shared/sr-label';
+import { EmptyState } from '@/components/shared/empty-state';
 
 interface OrgRole {
   id: string;
@@ -440,7 +441,7 @@ export default function InvitationsPage() {
               <div className="animate-spin size-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2" />
             </div>
           ) : filteredInvitations.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">{t('no_invitations')}</div>
+            <EmptyState compact icon={Mail} title={t('no_invitations')} />
           ) : (
             <Table>
               <TableHeader>

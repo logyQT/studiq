@@ -10,6 +10,8 @@ import {
   type StudentAssignmentAttemptState,
 } from '@/lib/assignment-attempts';
 import { studentAssignmentKeys } from '@/lib/query-keys';
+import { EmptyState } from '@/components/shared/empty-state';
+import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 interface StudentAssignment extends StudentAssignmentAttemptState {
   id: string;
@@ -86,6 +88,8 @@ export default function StudentAssignmentsPage() {
         <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
+      <FirstVisitHint id="app_assignments" />
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -93,11 +97,7 @@ export default function StudentAssignmentsPage() {
           ))}
         </div>
       ) : isEmpty ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <ClipboardCheck className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">{t('empty')}</h3>
-          <p className="text-sm text-muted-foreground mt-1">{t('empty_desc')}</p>
-        </div>
+        <EmptyState icon={ClipboardCheck} title={t('empty')} description={t('empty_desc')} />
       ) : (
         <>
           {scheduled.length > 0 && (

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
 import { assignmentKeys } from '@/lib/query-keys';
+import { EmptyState } from '@/components/shared/empty-state';
+import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 interface Assignment {
   id: string;
@@ -47,6 +49,8 @@ export default function EduAssignmentsClient() {
         </Link>
       </div>
 
+      <FirstVisitHint id="edu_assignments" />
+
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -62,17 +66,19 @@ export default function EduAssignmentsClient() {
           ))}
         </div>
       ) : assignments?.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">{t('empty')}</h3>
-          <p className="text-sm text-muted-foreground mt-1 mb-6">{t('empty_desc')}</p>
-          <Link href="/edu/assignments/new">
-            <Button>
-              <Plus className="w-4 h-4 mr-1.5" />
-              {t('new_assignment')}
-            </Button>
-          </Link>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title={t('empty')}
+          description={t('empty_desc')}
+          action={
+            <Link href="/edu/assignments/new">
+              <Button>
+                <Plus className="w-4 h-4 mr-1.5" />
+                {t('new_assignment')}
+              </Button>
+            </Link>
+          }
+        />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {assignments?.map((assignment: Assignment) => (

@@ -43,6 +43,7 @@ import {
   toGroupMemberOptions,
 } from '@/lib/group-role';
 import { SrLabel } from '@/components/shared/sr-label';
+import { EmptyState } from '@/components/shared/empty-state';
 
 interface Group {
   id: string;
@@ -269,8 +270,8 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
               ))}
               {(!data || data.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                    {t('no_groups')}
+                  <TableCell colSpan={4} className="p-0">
+                    <EmptyState compact icon={Users} title={t('no_groups')} />
                   </TableCell>
                 </TableRow>
               )}

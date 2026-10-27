@@ -12,6 +12,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { formatDate } from '@/lib/datetime';
 import { questionReportKeys } from '@/lib/query-keys';
+import { EmptyState } from '@/components/shared/empty-state';
 
 interface ReportRow {
   id: string;
@@ -119,23 +120,23 @@ export function ReportsListScreen({ basePath }: { basePath: string }) {
           ))}
         </div>
       ) : reports.length === 0 ? (
-        <Card className="p-12 flex flex-col items-center gap-3 text-center">
-          {hasActiveFilters ? (
-            <>
-              <SearchX className="h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">{t('no_reports_match_filters')}</p>
+        hasActiveFilters ? (
+          <EmptyState
+            icon={SearchX}
+            title={t('no_reports_match_filters')}
+            action={
               <Button variant="outline" size="sm" onClick={clearFilters}>
                 {t('clear_filters')}
               </Button>
-            </>
-          ) : (
-            <>
-              <MessageSquareWarning className="h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">{t('empty_title')}</p>
-              <p className="text-sm text-muted-foreground">{t('empty_description')}</p>
-            </>
-          )}
-        </Card>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={MessageSquareWarning}
+            title={t('empty_title')}
+            description={t('empty_description')}
+          />
+        )
       ) : (
         <div className="space-y-2">
           {reports.map((report) => {
