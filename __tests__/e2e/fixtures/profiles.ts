@@ -14,6 +14,7 @@ export type SeedProfile = 'bare' | 'content';
 export const PROFILE_BY_FILE: Record<string, SeedProfile> = {
   'flashcard-detail.spec.ts': 'content',
   'question-bank-crud.spec.ts': 'content',
+  'teacher-flashcard.spec.ts': 'content',
 };
 
 export function profileFor(file: string): SeedProfile {
