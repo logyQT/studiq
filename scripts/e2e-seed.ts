@@ -410,6 +410,15 @@ async function seedTenant(t: Tenant): Promise<void> {
     ),
   ]);
   await run([
+    db.from('question_topic_assignments').upsert(
+      [0, 1].flatMap((b) =>
+        [0, 1, 2, 3, 4].map((i) => ({
+          question_id: uuidv5(`${t.key}:q:${b}:${i}`),
+          topic_id: t.ids.topic,
+        })),
+      ),
+      { onConflict: 'question_id,topic_id' },
+    ),
     db.from('flashcard_topic_assignments').upsert(
       Array.from({ length: 10 }, (_, i) => ({
         flashcard_id: uuidv5(`${t.key}:card:0:${i}`),

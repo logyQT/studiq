@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
 /**
  * Regression for #323 (STU-09 step 2): the „Nowy quiz” form had no subject
@@ -8,58 +8,17 @@ import { t } from '#test/e2e/utils';
  * Needs the seeded QA database (Classroom org with the „Średniowiecze” and
  * „Odkrycia geograficzne” group topics + `quiz` feature on the base plan).
  */
-const email = 'student-classroom@dev.local';
-const password = 'pass';
-
 const QUIZ_TAKE_URL =
   /\/app\/study\/session\/quiz\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 type TopicOption = { id: string; name: string };
 
 test.describe('Standalone quiz subject selector (#323)', () => {
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ page }) => {
     // The 60s waits below are longer than Playwright's 30s default.
     test.setTimeout(120_000);
 
-    // Arm before login: the dashboard's `useOrgs` auto-select can start as soon
-    // as the authenticated layout mounts, and it must be observed, not aborted.
-    const orgSwitch = page.waitForResponse(
-      (res) =>
-        res.request().method() === 'POST' &&
-        new URL(res.url()).pathname === '/api/v1/me/orgs/switch',
-      { timeout: 60_000 },
-    );
-
-    await page.goto('/login');
-    const emailInput = page.getByLabel(t('LoginPage.email_label'));
-    await emailInput.click();
-    await emailInput.fill(email);
-    await expect(emailInput).toHaveValue(email);
-    await page.getByLabel(t('LoginPage.password_label')).fill(password);
-
-    const loginResponse = page.waitForResponse(
-      (res) =>
-        res.request().method() === 'POST' && new URL(res.url()).pathname === '/api/v1/auth/login',
-      { timeout: 30_000 },
-    );
-    await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-    expect((await loginResponse).status()).toBe(200);
-
-    await page.waitForURL((url) => url.pathname.startsWith('/app'), { timeout: 30_000 });
-
-    // `POST /api/v1/auth/login` does NOT set `active_org_id`; the dashboard's
-    // `useOrgs` auto-select does. Wait for it before navigating so the topic
-    // query is keyed by the org and cannot be aborted mid-flight.
-    expect((await orgSwitch).status()).toBe(200);
-    await expect
-      .poll(async () => (await context.cookies()).some((c) => c.name === 'active_org_id'), {
-        timeout: 5_000,
-      })
-      .toBe(true);
-
-    // Full document load (not a client transition): the login page's providers
-    // already 401'd on `/api/v1/features/me`, which would otherwise leave the
-    // quiz feature disabled ("Upgrade") for the rest of the client session.
+    await signIn(page, 'student');
     await page.goto('/app/study/quiz');
     await expect(page).toHaveURL(/\/app\/study\/quiz$/);
     await expect(page.locator('#quiz-type-open')).toBeVisible();
