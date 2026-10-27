@@ -1526,6 +1526,28 @@
     "n_selected": "{count} wybranych",
     "select_cards": "Wybierz"
   },
+  "StudyGoal": {
+    "title": "Dzienny cel nauki",
+    "description": "Ile fiszek chcesz przećwiczyć każdego dnia (liczy się każda ocena, wkuwanie nie)",
+    "set_goal": "Ustaw cel",
+    "change": "Zmień",
+    "not_set": "Nie ustawiono celu. Wybierz liczbę fiszek na dzień, a zobaczysz tu swój postęp.",
+    "progress": "{done} z {goal}",
+    "reached": "Cel na dziś osiągnięty. Świetna robota!",
+    "remaining": "{count, plural, one {Została # fiszka} few {Zostały # fiszki} other {Zostało # fiszek}} do celu",
+    "field_label": "Fiszek dziennie",
+    "field_hint": "Liczba od 0 do {max}; 0 wyłącza cel.",
+    "field_error": "Wpisz liczbę całkowitą od 0 do {max}.",
+    "preset_label": "{count, plural, one {# fiszka dziennie} few {# fiszki dziennie} other {# fiszek dziennie}}",
+    "off": "Wyłącz",
+    "save": "Zapisz cel",
+    "cancel": "Anuluj",
+    "goal_saved": "{count, plural, one {Cel: # fiszka dziennie} few {Cel: # fiszki dziennie} other {Cel: # fiszek dziennie}}",
+    "goal_off": "Dzienny cel wyłączony",
+    "save_failed": "Nie udało się zapisać celu. Spróbuj ponownie.",
+    "load_error": "Nie udało się wczytać celu.",
+    "retry": "Spróbuj ponownie"
+  },
   "AppFlashcardStudyPage": {
     "tab_study": "Nauka",
     "tab_cram_deck": "Wkuwanie",

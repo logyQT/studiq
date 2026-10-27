@@ -10,6 +10,7 @@ import {
   CompleteSessionSchema,
   LogPracticeSchema,
 } from '@studiq/server/models/flashcard-practice.model';
+import { UpdateStudySettingsSchema } from '@studiq/server/models/study-settings.model';
 import {
   type FlashcardPracticeService,
   flashcardPracticeService,
@@ -152,6 +153,22 @@ export class FlashcardPracticeController {
 
   async getSettings(ctx: RequestContext): Promise<ControllerResponse> {
     const result = await this.flashcardPracticeService.getSettings(ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
+  }
+
+  async updateSettings(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = UpdateStudySettingsSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.flashcardPracticeService.updateSettings(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
