@@ -25,8 +25,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useMemo } from 'react';
+import { ContinueCard } from '@/components/app/dashboard/continue-card';
+import { DueProgressCard } from '@/components/app/dashboard/due-progress-card';
+import { RecentActivityCard } from '@/components/app/dashboard/recent-activity-card';
+import { UpcomingAssignmentsCard } from '@/components/app/dashboard/upcoming-assignments-card';
 import { OnboardingChecklist } from '@/components/app/onboarding-checklist';
 import { useAuth } from '@/components/providers/AuthProvider';
+import type { StudentOverview } from '@studiq/server/models/student-overview.model';
 import { useApiQuery } from '@/hooks/use-api';
 import { studentStatsKeys } from '@/lib/query-keys';
 import { formatScorePercent } from '@/lib/stats';
@@ -55,6 +60,14 @@ export default function AppOverviewPage() {
   const { data: stats, isLoading } = useApiQuery<StudentStats>({
     queryKey: studentStatsKeys.all,
     url: '/api/v1/stats/student',
+    staleTime: 0,
+  });
+
+  // What to continue, today's progress and the latest activity (#655). Like the stats above it
+  // is derived from data many screens change, so it is refetched on every dashboard visit.
+  const { data: overview, isLoading: overviewLoading } = useApiQuery<StudentOverview>({
+    queryKey: studentStatsKeys.overview,
+    url: '/api/v1/stats/student/overview',
     staleTime: 0,
   });
 
@@ -131,6 +144,22 @@ export default function AppOverviewPage() {
           progress={stats?.flashcardAccuracy}
         />
       </div>
+
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <ContinueCard
+          quiz={overview?.resume.quiz}
+          deck={overview?.resume.deck}
+          isLoading={overviewLoading}
+        />
+        <DueProgressCard
+          due={stats?.dueToday}
+          reviewed={overview?.reviewedToday}
+          isLoading={isLoading || overviewLoading}
+        />
+        <UpcomingAssignmentsCard />
+      </div>
+
+      <RecentActivityCard items={overview?.activity} isLoading={overviewLoading} />
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="overflow-hidden">

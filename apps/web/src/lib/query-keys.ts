@@ -120,6 +120,7 @@ export const quizAttemptKeys = {
 
 export const studentStatsKeys = {
   all: ['stats', 'student'] as const,
+  overview: ['stats', 'student', 'overview'] as const,
 };
 
 export const searchKeys = {
