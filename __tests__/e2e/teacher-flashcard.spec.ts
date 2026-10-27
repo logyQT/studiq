@@ -7,7 +7,6 @@ const manageDeck = t('EduFlashcardDecksPage.manage_deck');
 
 async function openDeck(page: Page, name = 'Deck A') {
   await page.goto('/edu/flashcards');
-  await page.waitForLoadState('networkidle');
 
   const card = page.locator('.group:visible').filter({ hasText: name }).first();
   await card.getByRole('button', { name: manageDeck }).click();
@@ -110,7 +109,6 @@ test.describe('Teacher Flashcards', () => {
   test('deck context menu has select, edit, export, delete items', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/edu/flashcards');
-    await page.waitForLoadState('networkidle');
 
     await deckMenu(page, 'Deck A').click();
 
@@ -124,7 +122,6 @@ test.describe('Teacher Flashcards', () => {
 
   test('creates, edits, and deletes a deck', async ({ page }) => {
     await page.goto('/edu/flashcards');
-    await page.waitForLoadState('networkidle');
 
     await page
       .getByRole('button', { name: t('EduFlashcardDecksPage.new_deck') })
@@ -170,7 +167,6 @@ test.describe('Teacher Flashcards', () => {
   test('FAB has new deck, import, and select cards items', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/edu/flashcards');
-    await page.waitForLoadState('networkidle');
 
     const dial = page.locator('[data-speed-dial]');
     await dial.locator('button').last().click();

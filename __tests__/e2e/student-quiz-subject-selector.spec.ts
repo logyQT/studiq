@@ -49,8 +49,11 @@ test.describe('Standalone quiz subject selector (#323)', () => {
 
     // A single open question keeps the attempt completable below (#320 pattern).
     const openOnly = page.locator('#quiz-type-open');
-    await openOnly.click();
-    await expect(openOnly).toHaveAttribute('aria-checked', 'true');
+    // A click issued while the page is still hydrating is swallowed; retry.
+    await expect(async () => {
+      await openOnly.click();
+      await expect(openOnly).toHaveAttribute('aria-checked', 'true', { timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
     await page.locator('input[type="number"]').fill('1');
 
     // Baseline questions for the chosen subject, so the generated quiz can be

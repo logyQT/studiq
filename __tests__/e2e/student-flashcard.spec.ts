@@ -21,7 +21,6 @@ test.describe('Student Flashcard Flow', () => {
 
   test('manages decks: create, edit, and delete', async ({ page }) => {
     await page.goto('/app/flashcards');
-    await page.waitForLoadState('networkidle');
 
     // The toolbar button and the empty-state CTA share the label.
     await page
@@ -54,7 +53,6 @@ test.describe('Student Flashcard Flow', () => {
 
   test('starts a learn session from the study page', async ({ page }) => {
     await page.goto('/app/study/learn');
-    await page.waitForLoadState('networkidle');
 
     // The content profile gives the student 20 unseen cards, so the page offers
     // a learn session instead of "All Caught Up".
@@ -65,7 +63,6 @@ test.describe('Student Flashcard Flow', () => {
 
   test('crams a deck shared with the group', async ({ page }) => {
     await page.goto('/app/study/cram');
-    await page.waitForLoadState('networkidle');
 
     await deckCard(page, 'Deck A').click();
     await expect(page).toHaveURL(/\/app\/study\/session\/cram\?deckId=/);
@@ -73,7 +70,6 @@ test.describe('Student Flashcard Flow', () => {
 
   test('sees the decks shared with the group', async ({ page }) => {
     await page.goto('/app/flashcards');
-    await page.waitForLoadState('networkidle');
 
     await expect(page.getByText('Deck A').filter({ visible: true }).first()).toBeVisible();
     await expect(page.getByText('Deck B').filter({ visible: true }).first()).toBeVisible();

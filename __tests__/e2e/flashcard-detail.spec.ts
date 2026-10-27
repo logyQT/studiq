@@ -8,7 +8,6 @@ const deckUrl = /\/flashcards\/[0-9a-f-]{36}$/;
 /** Open a deck's detail page from the deck list by clicking its card menu. */
 async function openDeck(page: Page, base: '/edu/flashcards' | '/app/flashcards', name: string) {
   await page.goto(base);
-  await page.waitForLoadState('networkidle');
 
   const card = page.locator('.group:visible').filter({ hasText: name }).first();
   await card.getByRole('button', { name: manageDeck }).click();
@@ -75,7 +74,6 @@ test.describe('Flashcard Deck Detail', () => {
   test('new flashcard button opens the create dialog', async ({ page }) => {
     await signIn(page, 'student');
     await page.goto('/app/flashcards');
-    await page.waitForLoadState('networkidle');
 
     await newDeckButton(page).click();
     await page
@@ -97,7 +95,6 @@ test.describe('Flashcard Deck Detail', () => {
   test('keyboard shortcut n opens the create dialog', async ({ page }) => {
     await signIn(page, 'student');
     await page.goto('/app/flashcards');
-    await page.waitForLoadState('networkidle');
 
     await newDeckButton(page).click();
     await page.getByPlaceholder(t('AppFlashcardDecksPage.name_placeholder')).fill('Shortcut Deck');
@@ -143,7 +140,6 @@ test.describe('Flashcard Deck Detail', () => {
   test('flashcard delete removes it from grid', async ({ page }) => {
     await signIn(page, 'student');
     await page.goto('/app/flashcards');
-    await page.waitForLoadState('networkidle');
 
     await newDeckButton(page).click();
     await page

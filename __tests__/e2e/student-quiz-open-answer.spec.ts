@@ -43,8 +43,11 @@ test.describe('Standalone quiz with an open answer (#320)', () => {
     // Ask for exactly one open question: at least one must be picked, and the
     // picked question is random, so never assert on its wording.
     const openOnly = page.locator('#quiz-type-open');
-    await openOnly.click();
-    await expect(openOnly).toHaveAttribute('aria-checked', 'true');
+    // A click issued while the page is still hydrating is swallowed; retry.
+    await expect(async () => {
+      await openOnly.click();
+      await expect(openOnly).toHaveAttribute('aria-checked', 'true', { timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
     await page.locator('input[type="number"]').fill('1');
 
     // Re-assert right before generate: a late `/app` bounce would otherwise

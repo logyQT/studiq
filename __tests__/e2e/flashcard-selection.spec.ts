@@ -8,7 +8,6 @@ const firstCard = 'Card 1-1 front';
 
 async function openDeck(page: Page, base: '/edu/flashcards' | '/app/flashcards') {
   await page.goto(base);
-  await page.waitForLoadState('networkidle');
 
   const card = page.locator('.group:visible').filter({ hasText: 'Deck A' }).first();
   await card.getByRole('button', { name: manageDeck }).click();
@@ -117,7 +116,6 @@ test.describe('Flashcard Selection Mode', () => {
   test('topic enters selection mode and clears on escape', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/edu/topics');
-    await page.waitForLoadState('networkidle');
 
     const dial = page.locator('[data-speed-dial]');
     await dial.locator('button').last().click();
@@ -136,7 +134,6 @@ test.describe('Flashcard Selection Mode', () => {
   test('deck enters selection mode from context menu (mobile)', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/edu/flashcards');
-    await page.waitForLoadState('networkidle');
 
     const menuButton = page
       .locator('.group:visible')

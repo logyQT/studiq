@@ -6,7 +6,6 @@ const topicNamePlaceholder = t('EduFlashcardTopicsPage.topic_name_placeholder');
 
 async function openTopics(page: Page) {
   await page.goto('/edu/topics');
-  await page.waitForLoadState('networkidle');
 }
 
 function topicCard(page: Page, name: string) {
@@ -27,8 +26,14 @@ async function createTopic(page: Page, name: string) {
     .click();
   const dialog = page.getByRole('dialog');
   await dialog.getByPlaceholder(topicNamePlaceholder).fill(name);
-  await dialog.getByRole('button', { name: t('Common.common_create') }).click();
-  await expect(page.getByText(name).filter({ visible: true }).first()).toBeVisible();
+  // The controlled input can still be empty when the click lands; retry until
+  // the topic actually shows up in the list.
+  await expect(async () => {
+    await dialog.getByRole('button', { name: t('Common.common_create') }).click();
+    await expect(page.getByText(name).filter({ visible: true }).first()).toBeVisible({
+      timeout: 1_000,
+    });
+  }).toPass({ timeout: 10_000 });
 }
 
 test.describe('Flashcard Topic Management', () => {

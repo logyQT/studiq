@@ -58,7 +58,6 @@ test('renders the roster card, tracks a student practice and ignores the teacher
 
   // 1. /edu/stats/data: value is the roster, description is the practiser count.
   await page.goto('/edu/stats/data');
-  await page.waitForLoadState('networkidle');
   const rosterCard = statCard(page, t('StatsDataPage.students'));
   await expect(rosterCard).toBeVisible();
   await expect(rosterCard.locator('p.text-3xl')).toHaveText(String(baselineRoster));
@@ -72,7 +71,6 @@ test('renders the roster card, tracks a student practice and ignores the teacher
   await studentCtx.close();
 
   await page.reload();
-  await page.waitForLoadState('networkidle');
   const afterStudent = await fetchStats(page);
   expect(afterStudent.summary.practicingStudents).toBe(baseline.summary.practicingStudents + 1);
   expect(afterStudent.summary.rosterStudents).toBe(baselineRoster);
@@ -91,7 +89,6 @@ test('renders the roster card, tracks a student practice and ignores the teacher
   await practice(page, tenant.ids.card);
 
   await page.reload();
-  await page.waitForLoadState('networkidle');
   const afterTeacher = await fetchStats(page);
   expect(afterTeacher.summary.practicingStudents).toBe(afterStudent.summary.practicingStudents);
   expect(afterTeacher.summary.rosterStudents).toBe(baselineRoster);

@@ -7,7 +7,6 @@ const saveButton = t('QuestionForm.create');
 /** Open one of the tenant's seeded question banks by name. */
 async function openBank(page: import('@playwright/test').Page, name = 'Bank A') {
   await page.goto('/edu/questions');
-  await page.waitForLoadState('networkidle');
 
   await page.locator('.group:visible').filter({ hasText: name }).first().click();
   await page.waitForURL(/\/edu\/questions\/[0-9a-f-]{36}$/);

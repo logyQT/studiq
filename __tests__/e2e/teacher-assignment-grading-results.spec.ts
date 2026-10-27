@@ -40,7 +40,6 @@ async function login(page: Page, email: string, redirectPattern: RegExp) {
     )
     .toBe(true);
   await page.waitForURL(redirectPattern);
-  await page.waitForLoadState('networkidle');
 }
 
 test.describe('teacher assignment grading refreshes the results table (#168)', () => {
