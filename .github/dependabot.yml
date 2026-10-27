@@ -15,10 +15,15 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    # Only minor/patch bumps are grouped. Major versions arrive as separate
+    # PRs so a single bump (e.g. recharts 3, react-resizable-panels 4) can be
+    # migrated and reviewed on its own instead of landing in one mega-PR.
     groups:
-      production:
+      production-minor-patch:
         dependency-type: "production"
-      development:
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+      development-minor-patch:
         dependency-type: "development"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
     commit-message:
       prefix: "build(deps)"
