@@ -1,0 +1,24 @@
+version: 2
+
+updates:
+  # Bun is the repo's package manager (bun.lock at the root). A single root
+  # entry is enough: Dependabot expands the `workspaces` globs from the root
+  # package.json, fetches every workspace manifest and updates the root
+  # bun.lock in one pass.
+  #
+  # Note: the `bun` ecosystem only supports version updates. Vulnerability
+  # alerts still come from the dependency graph (package.json manifests) and
+  # Bun security updates are not supported by Dependabot yet.
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      production:
+        dependency-type: "production"
+      development:
+        dependency-type: "development"
+    commit-message:
+      prefix: "build(deps)"
