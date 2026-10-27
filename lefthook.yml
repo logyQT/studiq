@@ -2,7 +2,7 @@ pre-commit:
   parallel: false
   commands:
     format:
-      glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,css}'
+      glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,css,md,mdx,yml,yaml,toml,html}'
       run: bun fmt --staged
       stage_fixed: true
     fix:
