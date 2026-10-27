@@ -6,9 +6,10 @@ const topicNamePlaceholder = t('EduFlashcardTopicsPage.topic_name_placeholder');
 
 async function openTopics(page: Page) {
   await page.goto('/edu/topics');
-  // Gate on the seeded topic instead of a network idle: creating before the
-  // initial list query settles lets the stale response overwrite the refetch,
-  // so the new topic never renders.
+  // Deliberate idle wait: creating a topic before the initial list query settles
+  // lets its stale response overwrite the refetch, so the new card never renders
+  // (#699). Drop this once that race is fixed on the page, not in the test.
+  await page.waitForLoadState('networkidle');
   await expect(topicCard(page, 'Topic A')).toBeVisible();
 }
 
@@ -30,14 +31,8 @@ async function createTopic(page: Page, name: string) {
     .click();
   const dialog = page.getByRole('dialog');
   await dialog.getByPlaceholder(topicNamePlaceholder).fill(name);
-  // The controlled input can still be empty when the click lands; retry until
-  // the topic actually shows up in the list.
-  await expect(async () => {
-    await dialog.getByRole('button', { name: t('Common.common_create') }).click();
-    await expect(page.getByText(name).filter({ visible: true }).first()).toBeVisible({
-      timeout: 1_000,
-    });
-  }).toPass({ timeout: 10_000 });
+  await dialog.getByRole('button', { name: t('Common.common_create') }).click();
+  await expect(page.getByText(name).filter({ visible: true }).first()).toBeVisible();
 }
 
 test.describe('Flashcard Topic Management', () => {
