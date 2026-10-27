@@ -86,11 +86,15 @@ export default defineConfig({
   ],
 
   webServer: [
+    // Production build, never `bun dev`: the dev server compiles on demand, so
+    // a cold route change can blow past a spec's action timeout, and under
+    // parallel workers it is the difference between a real failure and a
+    // timeout. The build is a no-op (~1 s) when nothing changed.
     {
-      command: 'bun dev',
+      command: 'bun run build && bun run start',
       url: 'http://localhost:3000',
       reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
+      timeout: 300 * 1000,
     },
     // The admin API project needs its own server (the keyring is module-cached
     // at boot, so a reused keyless server would make the signed-request spec
@@ -99,10 +103,10 @@ export default defineConfig({
       ? []
       : [
           {
-            command: 'bun dev:admin',
+            command: 'bun run build:admin && bun run start:admin',
             url: 'http://localhost:4000',
             reuseExistingServer: false,
-            timeout: 180 * 1000,
+            timeout: 300 * 1000,
             env: { ADMIN_PEM_KEYS: adminRing },
           },
         ]),

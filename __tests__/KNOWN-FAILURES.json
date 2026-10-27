@@ -33,23 +33,29 @@
     "lint": "clean",
     "typecheck": "clean (724 files)",
     "e2e": {
+      "run": "all projects, 16 workers, --shuffle (seed 62859373), seeded with --reset, both servers from production builds",
+      "totals": {
+        "tests": 360,
+        "passed": 324,
+        "failed": 28,
+        "skipped": 8,
+        "durationSeconds": 318
+      },
       "chromium": {
         "tests": 119,
-        "passed": 116,
-        "skipped": 3,
         "failed": 0
       },
       "firefox": {
         "tests": 119,
-        "passed": 116,
-        "skipped": 3,
+        "failed": 0
+      },
+      "adminApi": {
+        "tests": 3,
         "failed": 0
       },
       "webkit": {
         "tests": 119,
-        "passed": 81,
-        "failed": 38,
-        "skipped": 0,
+        "failed": 28,
         "status": "deferred"
       }
     }
@@ -140,7 +146,8 @@
       "symptom": "The submit click does not navigate; the test dies on `page.waitForURL(landing)` (30 s). The failure snapshot shows the login form with the **email field empty** and the inline error 'Adres e-mail jest wymagany.', while the password field still contains 'pass'.",
       "evidence": "Filling the same field on a settled page survives in all three engines (chromium/firefox/webkit: immediate === after 1 s === second fill). The value is only lost when the fill happens during the first render, so this is a hydration race that WebKit loses consistently because it hydrates slower — not a WebKit form/cookie incompatibility. The same symptom appeared once on chromium during a loaded run.",
       "suggestedFix": "Prefer moving the remaining dev-seed specs to an API login helper (POST /api/v1/auth/login through page.request, then navigate) — the tenant fixture already proves that path is stable on all three engines. If the form must stay under test, wait for a hydration marker before filling and assert `toHaveValue` before submitting.",
-      "baseline": "Chromium and Firefox are green (116/119, 3 skipped). WebKit is out of the merged baseline until this pass; do not treat its failures as regressions."
+      "baseline": "Chromium and Firefox are green (116/119, 3 skipped). WebKit is out of the merged baseline until this pass; do not treat its failures as regressions.",
+      "latestRun": "Full matrix at 16 workers with --shuffle: 324 passed / 8 skipped / 28 failed, and every one of the 28 is webkit. Chromium, Firefox and admin-api had zero failures on the same shuffled order, so the deferral does not hide any cross-test coupling outside WebKit."
     }
   ]
 }
