@@ -57,7 +57,12 @@ export default function AppOverviewPage() {
   // Stats are derived from decks, cards, reviews and quiz attempts that many
   // screens mutate, so refetch on every dashboard mount instead of serving the
   // cached copy (#347). The checklist reads the same key and options.
-  const { data: stats, isLoading } = useApiQuery<StudentStats>({
+  const {
+    data: stats,
+    isLoading,
+    isError: statsError,
+    refetch: refetchStats,
+  } = useApiQuery<StudentStats>({
     queryKey: studentStatsKeys.all,
     url: '/api/v1/stats/student',
     staleTime: 0,
@@ -65,7 +70,12 @@ export default function AppOverviewPage() {
 
   // What to continue, today's progress and the latest activity (#655). Like the stats above it
   // is derived from data many screens change, so it is refetched on every dashboard visit.
-  const { data: overview, isLoading: overviewLoading } = useApiQuery<StudentOverview>({
+  const {
+    data: overview,
+    isLoading: overviewLoading,
+    isError: overviewError,
+    refetch: refetchOverview,
+  } = useApiQuery<StudentOverview>({
     queryKey: studentStatsKeys.overview,
     url: '/api/v1/stats/student/overview',
     staleTime: 0,
@@ -150,16 +160,28 @@ export default function AppOverviewPage() {
           quiz={overview?.resume.quiz}
           deck={overview?.resume.deck}
           isLoading={overviewLoading}
+          isError={overviewError}
+          onRetry={() => refetchOverview()}
         />
         <DueProgressCard
           due={stats?.dueToday}
           reviewed={overview?.reviewedToday}
           isLoading={isLoading || overviewLoading}
+          isError={statsError || overviewError}
+          onRetry={() => {
+            if (statsError) refetchStats();
+            if (overviewError) refetchOverview();
+          }}
         />
         <UpcomingAssignmentsCard />
       </div>
 
-      <RecentActivityCard items={overview?.activity} isLoading={overviewLoading} />
+      <RecentActivityCard
+        items={overview?.activity}
+        isLoading={overviewLoading}
+        isError={overviewError}
+        onRetry={() => refetchOverview()}
+      />
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="overflow-hidden">

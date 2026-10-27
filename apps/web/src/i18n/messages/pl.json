@@ -1200,6 +1200,8 @@
     "review_cards": "Powtórz zaległe fiszki"
   },
   "AppDashboard": {
+    "load_error": "Nie udało się wczytać danych.",
+    "retry": "Spróbuj ponownie",
     "continue_title": "Kontynuuj",
     "continue_desc": "Wróć do tego, co zacząłeś",
     "continue_empty": "Nic nie czeka na dokończenie. Zacznij od talii albo testu.",

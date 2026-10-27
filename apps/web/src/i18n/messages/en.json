@@ -1219,6 +1219,8 @@
     "review_cards": "Review due cards"
   },
   "AppDashboard": {
+    "load_error": "Could not load this.",
+    "retry": "Try again",
     "continue_title": "Continue",
     "continue_desc": "Pick up where you left off",
     "continue_empty": "Nothing is waiting to be finished. Start with a deck or a quiz.",

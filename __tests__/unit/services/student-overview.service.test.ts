@@ -1,7 +1,10 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { StudentOverviewController } from '@studiq/server/controllers/student-overview.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
-import { StudentOverviewService } from '@studiq/server/services/student-overview.service';
+import {
+  countDraftAnswers,
+  StudentOverviewService,
+} from '@studiq/server/services/student-overview.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // #655: the data behind "continue where you left off", today's progress and the recent activity
@@ -24,7 +27,8 @@ const NOW = new Date('2026-10-27T12:00:00Z');
 /** A thenable query builder that resolves to `result` whatever is chained on it. */
 function builder(result: { data: unknown; error?: unknown }) {
   const b: any = {};
-  for (const m of ['select', 'eq', 'is', 'not', 'gte', 'order', 'limit']) b[m] = vi.fn(() => b);
+  for (const m of ['select', 'eq', 'is', 'not', 'gte', 'order', 'limit', 'in', 'range'])
+    b[m] = vi.fn(() => b);
   b.maybeSingle = vi.fn().mockResolvedValue({ error: null, ...result });
   b.then = (onfulfilled: any) => Promise.resolve({ error: null, ...result }).then(onfulfilled);
   return b;
@@ -36,6 +40,8 @@ interface Tables {
   completed?: unknown[];
   daily?: unknown;
   deck?: unknown;
+  /** attempt id -> number of closed (gradable) questions in its snapshot. */
+  gradable?: Record<string, number>;
   errorOn?: string;
 }
 
@@ -54,6 +60,12 @@ function service(tables: Tables) {
       flashcard_study_sessions: () => builder({ data: tables.sessions ?? [] }),
       user_daily_activity: () => builder({ data: tables.daily ?? null }),
       flashcard_decks: () => builder({ data: tables.deck ?? null }),
+      quiz_attempt_questions: () =>
+        builder({
+          data: Object.entries(tables.gradable ?? {}).flatMap(([attempt_id, n]) =>
+            Array.from({ length: n }, () => ({ attempt_id, questions: { type: 'mcq' } })),
+          ),
+        }),
     }[table]?.();
     builders[table] = b;
     return b;
@@ -89,7 +101,15 @@ describe('StudentOverviewService.getOverview', () => {
           total_questions: 10,
           started_at: '2026-10-27T10:00:00Z',
           config: { title: 'Fizyka' },
-          student_answers: [{ count: 4 }],
+          // 4 of the 10 are answered; an empty selection and blank text do not count.
+          draft_answers: {
+            q1: { selected_answer_id: 'a', text_answer: null },
+            q2: { selected_answer_id: 'b', text_answer: null },
+            q3: { selected_answer_id: null, text_answer: 'free text' },
+            q4: { selected_answer_id: 'c', text_answer: null },
+            q5: { selected_answer_id: null, text_answer: '  ' },
+            q6: { selected_answer_id: null, text_answer: null },
+          },
         },
       ],
     });
@@ -151,6 +171,8 @@ describe('StudentOverviewService.getOverview', () => {
 
   it('merges sessions and attempts into one timeline, newest first, with scores on their own scale', async () => {
     const { service: s } = service({
+      // All five questions of the quiz are closed ones.
+      gradable: { 'quiz-1': 5 },
       sessions: [{ completed_at: '2026-10-27T11:00:00Z', cards_studied: 9, deck_ids: [] }],
       completed: [
         {
@@ -187,6 +209,50 @@ describe('StudentOverviewService.getOverview', () => {
     expect(activity[0]).toMatchObject({ cardsStudied: 9, scorePct: null, attemptId: null });
     expect(activity[1]).toMatchObject({ title: 'Kartkówka', scorePct: 70, attemptId: 'asg-1' });
     expect(activity[2]).toMatchObject({ title: 'Quiz A', scorePct: 80 });
+  });
+
+  it('uses the closed questions as the denominator of a practice quiz, like the review page', async () => {
+    const { service: s } = service({
+      gradable: { 'quiz-1': 4 },
+      completed: [
+        {
+          id: 'quiz-1',
+          score: 2,
+          total_questions: 10, // six open questions can never be graded
+          total_points: null,
+          completed_at: '2026-10-27T08:00:00Z',
+          assignment_id: null,
+          config: { title: 'Mixed' },
+          teacher_assignments: null,
+        },
+      ],
+    });
+
+    const result = await s.getOverview(ctx, NOW);
+
+    expect(result.success && result.data.activity[0].scorePct).toBe(50);
+  });
+
+  it('leaves the percentage out when a practice quiz has no closed question', async () => {
+    const { service: s } = service({
+      gradable: {},
+      completed: [
+        {
+          id: 'quiz-1',
+          score: 0,
+          total_questions: 3,
+          total_points: null,
+          completed_at: '2026-10-27T08:00:00Z',
+          assignment_id: null,
+          config: null,
+          teacher_assignments: null,
+        },
+      ],
+    });
+
+    const result = await s.getOverview(ctx, NOW);
+
+    expect(result.success && result.data.activity[0].scorePct).toBeNull();
   });
 
   it('does not leak the result of an assignment the teacher withholds', async () => {
@@ -261,5 +327,26 @@ describe('StudentOverviewController', () => {
     overview.getOverview.mockResolvedValue(failure('INTERNAL_SERVER'));
 
     expect(await controller.getOverview(ctx)).toMatchObject({ success: false, statusCode: 500 });
+  });
+});
+
+describe('countDraftAnswers', () => {
+  it('counts a selection or non-blank text, nothing else', () => {
+    expect(
+      countDraftAnswers({
+        a: { selected_answer_id: 'x', text_answer: null },
+        b: { selected_answer_id: null, text_answer: 'hello' },
+        c: { selected_answer_id: null, text_answer: '   ' },
+        d: { selected_answer_id: '', text_answer: null },
+        e: null,
+        f: 'oops',
+      }),
+    ).toBe(2);
+  });
+
+  it('is 0 for a missing or malformed column', () => {
+    expect(countDraftAnswers(null)).toBe(0);
+    expect(countDraftAnswers([])).toBe(0);
+    expect(countDraftAnswers('x')).toBe(0);
   });
 });

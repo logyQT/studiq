@@ -5,16 +5,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, Progress } f
 import { ArrowRight, BookOpen, Layers, PlayCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
+import { CardError } from '@/components/app/dashboard/card-error';
 import { formatRelativeTime } from '@/lib/relative-time';
 
 interface ContinueCardProps {
   quiz: ResumeQuiz | null | undefined;
   deck: ResumeDeck | null | undefined;
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 /** "Continue where you left off": the unfinished practice quiz and the last studied deck. */
-export function ContinueCard({ quiz, deck, isLoading }: ContinueCardProps) {
+export function ContinueCard({ quiz, deck, isLoading, isError, onRetry }: ContinueCardProps) {
   const t = useTranslations('AppDashboard');
   const locale = useLocale();
 
@@ -32,6 +35,8 @@ export function ContinueCard({ quiz, deck, isLoading }: ContinueCardProps) {
       <CardContent className="space-y-2 pb-6">
         {isLoading ? (
           <div className="h-20 animate-pulse rounded-xl bg-muted" />
+        ) : isError && onRetry ? (
+          <CardError onRetry={onRetry} />
         ) : !quiz && !deck ? (
           <p className="py-4 text-center text-sm text-muted-foreground">{t('continue_empty')}</p>
         ) : (

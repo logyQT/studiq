@@ -12,16 +12,25 @@ import {
 import { CalendarCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { CardError } from '@/components/app/dashboard/card-error';
 import { dueProgress } from '@/lib/due-progress';
 
 interface DueProgressCardProps {
   due: number | undefined;
   reviewed: number | undefined;
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 /** Today's reviews: how many are done and how many are still due, as a progress bar. */
-export function DueProgressCard({ due, reviewed, isLoading }: DueProgressCardProps) {
+export function DueProgressCard({
+  due,
+  reviewed,
+  isLoading,
+  isError,
+  onRetry,
+}: DueProgressCardProps) {
   const t = useTranslations('AppDashboard');
   const progress = dueProgress(reviewed ?? 0, due ?? 0);
 
@@ -42,6 +51,8 @@ export function DueProgressCard({ due, reviewed, isLoading }: DueProgressCardPro
       <CardContent className="space-y-3 pb-6">
         {isLoading ? (
           <div className="h-16 animate-pulse rounded-xl bg-muted" />
+        ) : isError && onRetry ? (
+          <CardError onRetry={onRetry} />
         ) : progress.total === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">{t('due_none')}</p>
         ) : (

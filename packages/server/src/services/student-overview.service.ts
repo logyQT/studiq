@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
+import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
-import { type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -21,7 +22,7 @@ interface OpenAttemptRow {
   total_questions: number;
   started_at: string;
   config: { title?: unknown } | null;
-  student_answers: Array<{ count: number }> | null;
+  draft_answers: unknown;
 }
 
 interface SessionRow {
@@ -45,9 +46,30 @@ function configTitle(config: { title?: unknown } | null): string | null {
   return typeof config?.title === 'string' && config.title !== '' ? config.title : null;
 }
 
-/** Score as a percentage of the attempt's own scale (points or question count), 0-100. */
-function scorePercent(row: CompletedAttemptRow): number {
-  const max = Math.max(row.total_points ?? row.total_questions ?? 0, 1);
+/**
+ * Questions answered so far in an unfinished attempt. An open attempt keeps its answers in the
+ * `draft_answers` column (autosave); `student_answers` only gets rows when it is submitted.
+ */
+export function countDraftAnswers(draft: unknown): number {
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return 0;
+  return Object.values(draft as Record<string, unknown>).filter((entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    const { selected_answer_id: selected, text_answer: text } = entry as Record<string, unknown>;
+    return (
+      (typeof selected === 'string' && selected !== '') ||
+      (typeof text === 'string' && text.trim() !== '')
+    );
+  }).length;
+}
+
+/**
+ * Score as a percentage, 0-100, on the same denominator the review page and /app/stats use:
+ * an assignment is in points, a practice quiz is correct answers over the closed (gradable)
+ * questions (#329, #619). `null` when there is no denominator, instead of a made-up 0 %.
+ */
+function scorePercent(row: CompletedAttemptRow, gradable: number | undefined): number | null {
+  const max = row.assignment_id ? (row.total_points ?? row.total_questions ?? 0) : (gradable ?? 0);
+  if (max <= 0) return null;
   return Math.round(Math.min(100, Math.max(0, ((row.score ?? 0) / max) * 100)));
 }
 
@@ -70,7 +92,7 @@ export class StudentOverviewService {
     const [open, sessions, completed, daily] = await Promise.all([
       supabase
         .from('quiz_attempts')
-        .select('id, total_questions, started_at, config, student_answers(count)')
+        .select('id, total_questions, started_at, config, draft_answers')
         .eq('user_id', ctx.userId)
         .is('completed_at', null)
         .is('assignment_id', null)
@@ -109,7 +131,7 @@ export class StudentOverviewService {
       ? {
           attemptId: openRow.id,
           title: configTitle(openRow.config),
-          answered: openRow.student_answers?.[0]?.count ?? 0,
+          answered: countDraftAnswers(openRow.draft_answers),
           total: openRow.total_questions,
           startedAt: openRow.started_at,
         }
@@ -131,6 +153,13 @@ export class StudentOverviewService {
       }
     }
 
+    const completedRows = (completed.data ?? []) as unknown as CompletedAttemptRow[];
+    const gradable = await gradableQuestionCounts(
+      supabase,
+      completedRows.filter((a) => a.assignment_id === null).map((a) => a.id),
+    );
+    if (isFailure(gradable)) return gradable;
+
     const activity: StudentActivityItem[] = [
       ...sessionRows.map((s): StudentActivityItem => ({
         kind: 'flashcards_studied',
@@ -140,21 +169,19 @@ export class StudentOverviewService {
         scorePct: null,
         attemptId: null,
       })),
-      ...((completed.data ?? []) as unknown as CompletedAttemptRow[]).map(
-        (a): StudentActivityItem => {
-          const isAssignment = a.assignment_id !== null;
-          // A teacher may withhold the result of an assignment; the dashboard must not leak it.
-          const hidden = isAssignment && a.teacher_assignments?.show_results !== true;
-          return {
-            kind: isAssignment ? 'assignment_submitted' : 'quiz_completed',
-            at: a.completed_at,
-            title: a.teacher_assignments?.title ?? configTitle(a.config),
-            cardsStudied: null,
-            scorePct: hidden ? null : scorePercent(a),
-            attemptId: a.id,
-          };
-        },
-      ),
+      ...completedRows.map((a): StudentActivityItem => {
+        const isAssignment = a.assignment_id !== null;
+        // A teacher may withhold the result of an assignment; the dashboard must not leak it.
+        const hidden = isAssignment && a.teacher_assignments?.show_results !== true;
+        return {
+          kind: isAssignment ? 'assignment_submitted' : 'quiz_completed',
+          at: a.completed_at,
+          title: a.teacher_assignments?.title ?? configTitle(a.config),
+          cardsStudied: null,
+          scorePct: hidden ? null : scorePercent(a, gradable.data.get(a.id)),
+          attemptId: a.id,
+        };
+      }),
     ]
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
       .slice(0, ACTIVITY_LIMIT);

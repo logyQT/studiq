@@ -5,11 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@stud
 import { ClipboardCheck, FileCheck2, History, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
+import { CardError } from '@/components/app/dashboard/card-error';
 import { formatRelativeTime } from '@/lib/relative-time';
 
 interface RecentActivityCardProps {
   items: StudentActivityItem[] | undefined;
   isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 const ICONS = {
@@ -26,7 +29,12 @@ function hrefFor(item: StudentActivityItem): string | null {
   return null;
 }
 
-export function RecentActivityCard({ items, isLoading }: RecentActivityCardProps) {
+export function RecentActivityCard({
+  items,
+  isLoading,
+  isError,
+  onRetry,
+}: RecentActivityCardProps) {
   const t = useTranslations('AppDashboard');
   const locale = useLocale();
 
@@ -44,6 +52,8 @@ export function RecentActivityCard({ items, isLoading }: RecentActivityCardProps
       <CardContent className="pb-6">
         {isLoading ? (
           <div className="h-32 animate-pulse rounded-xl bg-muted" />
+        ) : isError && onRetry ? (
+          <CardError onRetry={onRetry} />
         ) : !items || items.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">{t('activity_empty')}</p>
         ) : (
