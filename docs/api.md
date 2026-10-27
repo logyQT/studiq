@@ -51,9 +51,9 @@ src/app/(backend)/api/v1/
 
 Public endpoint for generating deterministic avatars. Uses [DiceBear](https://www.dicebear.com/) with the `lorelei` style. Same seed always produces the same avatar.
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/v1/avatar/[seed]` | ❌ | Generate SVG avatar (immutable cache, 1 year) |
+| Method | Endpoint                | Auth | Description                                   |
+| ------ | ----------------------- | ---- | --------------------------------------------- |
+| `GET`  | `/api/v1/avatar/[seed]` | ❌   | Generate SVG avatar (immutable cache, 1 year) |
 
 **Response:** `image/svg+xml` with `Cache-Control: public, max-age=31536000, immutable`
 
@@ -76,6 +76,7 @@ graph LR
 **Location:** `src/server/controllers/`
 
 Controllers handle:
+
 - Parsing request bodies
 - Validating input with Zod schemas
 - Calling appropriate service methods
@@ -86,7 +87,12 @@ class QuestionController {
   async create(body: unknown, userId: string): Promise<ControllerResponse> {
     const parsed = CreateQuestionSchema.safeParse(body);
     if (!parsed.success) {
-      return { success: false, statusCode: 422, error: 'UNPROCESSABLE_ENTITY', details: parsed.error.issues };
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
     }
     const question = await questionService.create(parsed.data, userId);
     return { success: true, statusCode: 201, data: question };
@@ -99,6 +105,7 @@ class QuestionController {
 **Location:** `src/server/services/`
 
 Services handle:
+
 - Database queries via Supabase client
 - Business logic
 - Error throwing via `AppError`
@@ -129,11 +136,15 @@ export const CreateQuestionSchema = z.object({
   type: z.enum(['mcq', 'true_false', 'open']),
   content: z.string().min(1),
   difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
-  answers: z.array(z.object({
-    content: z.string().min(1),
-    isCorrect: z.boolean(),
-    orderIndex: z.number().int().default(0),
-  })).min(1),
+  answers: z
+    .array(
+      z.object({
+        content: z.string().min(1),
+        isCorrect: z.boolean(),
+        orderIndex: z.number().int().default(0),
+      }),
+    )
+    .min(1),
 });
 ```
 

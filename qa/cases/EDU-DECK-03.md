@@ -14,13 +14,16 @@ Talia z EDU-DECK-02.
 ## Prerequisite context
 
 ### EDU-DECK-02 — Utworzenie talii dla grupy
+
 _Warunek wstępny: T1, aktywna organizacja WSB Merito._
+
 1. Kliknij „Nowa talia”. Nazwa „Matematyka – klasa 1”, opis opcjonalny.
 2. Zmień „Widoczność” na „Grupy” i wybierz grupę O1G1 w „Wybierz grupy…”.
 3. Kliknij „Utwórz”.
 4. Zaloguj się jako student1 (O1G1) i sprawdź /app/flashcards.
 
 Expected:
+
 - Toast „Talia utworzona”; talia z plakietką grupy „O1G1”.
 - student1 widzi nową talię z etykietą „Podgląd” (bez możliwości edycji).
 - student2 (inna organizacja) i student3 (bez organizacji) NIE widzą tej talii.

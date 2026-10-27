@@ -15,6 +15,7 @@ Next.js 16 with the App Router was selected over Pages Router and other React fr
 ## Consequences
 
 ### Positive
+
 - Server Components reduce client-side JavaScript
 - Route groups `(frontend)` and `(backend)` organize concerns cleanly
 - Middleware enables request-level auth/RBAC before route handlers execute
@@ -23,6 +24,7 @@ Next.js 16 with the App Router was selected over Pages Router and other React fr
 - Vercel deployment is zero-config
 
 ### Negative
+
 - App Router has a learning curve for teams familiar with Pages Router
 - Some patterns (data fetching, caching) differ significantly from traditional React
 - Server/Client component boundaries require careful planning

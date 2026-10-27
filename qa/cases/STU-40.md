@@ -14,11 +14,14 @@ Istniejące zgłoszenie; nauczyciel odpowiedział (EDU-REP-02).
 ## Prerequisite context
 
 ### EDU-REP-02 — Odpowiedź na zgłoszenie
+
 _Warunek wstępny: EDU-REP-01._
+
 1. Otwórz wątek, napisz odpowiedź w „Napisz odpowiedź…” i wyślij.
 2. Zaloguj się jako zgłaszający student i sprawdź wątek.
 
 Expected:
+
 - Odpowiedź widoczna w wątku u obu stron; student widzi plakietkę nieprzeczytanych (STU-41).
 - Pusta odpowiedź nie jest wysyłana.
 

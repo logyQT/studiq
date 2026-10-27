@@ -82,14 +82,14 @@ unobservable browser. The dashboard and its Chromiums are operator-managed
 A handful of cases depend on something only a person can provide. Treat them as
 `N/D` unless the input exists; don't fake it.
 
-| Input | Scenarios | Without it |
-|---|---|---|
-| An LLM API key (`LLM_API_KEY` in `apps/web/.env`) | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features unavailable → `N/D` (the cases say so explicitly) |
-| `admin_podpisz_zadanie.mjs` (Ed25519 signer from the „Studiq dane testowe" pack) | `ADM-SEC-01`, `ADM-SEC-02` | PEM gate can't be exercised; not improvised under "never change code" → `N/D` |
-| `fiszki_poprawne.csv` / `fiszki_bledne.csv` | `STU-05`, `STU-19`, `STU-20`, `STU-42` | Import steps can't run → `N/D` |
-| `logo.png` (< 1 MB) | `MGR-SET-02` | Branding upload can't run → `N/D` |
-| A text PDF | `STU-49` | PDF extraction can't run → `N/D` |
-| A PNG/JPG image and an MP3 file | `STU-22` | Media upload can't run → `N/D` |
+| Input                                                                            | Scenarios                                   | Without it                                                                    |
+| -------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
+| An LLM API key (`LLM_API_KEY` in `apps/web/.env`)                                | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features unavailable → `N/D` (the cases say so explicitly)                 |
+| `admin_podpisz_zadanie.mjs` (Ed25519 signer from the „Studiq dane testowe" pack) | `ADM-SEC-01`, `ADM-SEC-02`                  | PEM gate can't be exercised; not improvised under "never change code" → `N/D` |
+| `fiszki_poprawne.csv` / `fiszki_bledne.csv`                                      | `STU-05`, `STU-19`, `STU-20`, `STU-42`      | Import steps can't run → `N/D`                                                |
+| `logo.png` (< 1 MB)                                                              | `MGR-SET-02`                                | Branding upload can't run → `N/D`                                             |
+| A text PDF                                                                       | `STU-49`                                    | PDF extraction can't run → `N/D`                                              |
+| A PNG/JPG image and an MP3 file                                                  | `STU-22`                                    | Media upload can't run → `N/D`                                                |
 
 Everything else — plan/feature overrides, org switching, group setup, seeded
 content — is done by the agent through the app, the admin app, or the local DB.
@@ -99,15 +99,15 @@ Because a scenario often depends on state created by an earlier one (the
 
 ## How the QA agent should use it
 
-> **Test-plan context.** Before testing any scenario, read:
-> 0. Drive the slot's live browser through the `qa_browser_*` MCP tools or the
->    `browser-cli.ts` fallback described above — not the built-in browser.
+> **Test-plan context.** Before testing any scenario, read: 0. Drive the slot's live browser through the `qa_browser_*` MCP tools or the
+> `browser-cli.ts` fallback described above — not the built-in browser.
+>
 > 1. `qa/context.md` (accounts, seed data, plan limits, priorities, defect-template rules) — once per session.
 > 2. `qa/index.md` → find the scenario ID you were given.
 > 3. `qa/cases/<ID>.md` → read it **and** the "Prerequisite context" section it embeds.
 >    If the case references another ID that is not embedded, read `qa/cases/<that-ID>.md` too.
-> File issues only for defects covered by the scenario in scope; use the account, active org and
-> seed state from the prerequisite chain.
+>    File issues only for defects covered by the scenario in scope; use the account, active org and
+>    seed state from the prerequisite chain.
 
 ## Worked example — the EDU-DECK-03 case
 

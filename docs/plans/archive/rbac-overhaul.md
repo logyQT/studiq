@@ -39,22 +39,22 @@ DROP TYPE IF EXISTS user_role;  -- in migration only
 
 **File:** new `supabase/schemas/56_org_roles.sql`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `uuid PK` | `gen_random_uuid()` |
-| `organization_id` | `uuid NOT NULL FK → organizations(id) ON DELETE CASCADE` | |
-| `name` | `text NOT NULL` | e.g. `'member'`, `'teacher'`, `'admin'`, `'lab assistant'` |
-| `description` | `text` | optional |
-| `is_system` | `boolean DEFAULT false` | system roles can't be deleted/renamed |
-| `UNIQUE` | `(organization_id, name)` | |
+| Column            | Type                                                     | Notes                                                      |
+| ----------------- | -------------------------------------------------------- | ---------------------------------------------------------- |
+| `id`              | `uuid PK`                                                | `gen_random_uuid()`                                        |
+| `organization_id` | `uuid NOT NULL FK → organizations(id) ON DELETE CASCADE` |                                                            |
+| `name`            | `text NOT NULL`                                          | e.g. `'member'`, `'teacher'`, `'admin'`, `'lab assistant'` |
+| `description`     | `text`                                                   | optional                                                   |
+| `is_system`       | `boolean DEFAULT false`                                  | system roles can't be deleted/renamed                      |
+| `UNIQUE`          | `(organization_id, name)`                                |                                                            |
 
 **Default roles seeded per org on creation:**
 
-| Role | `is_system` | Description |
-|------|-------------|-------------|
-| `member` | `true` | Base learner — read org content, create own |
-| `teacher` | `true` | Educator — full CRUD over org content |
-| `admin` | `true` | Org manager — settings, members, roles, billing |
+| Role      | `is_system` | Description                                     |
+| --------- | ----------- | ----------------------------------------------- |
+| `member`  | `true`      | Base learner — read org content, create own     |
+| `teacher` | `true`      | Educator — full CRUD over org content           |
+| `admin`   | `true`      | Org manager — settings, members, roles, billing |
 
 ### 1c. New table — `org_role_permissions`
 
@@ -62,37 +62,37 @@ Replaces `role_permissions`. Maps each org role to atomic permissions with scope
 
 **File:** `supabase/schemas/56_org_roles.sql` (same file)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `uuid PK` | |
-| `org_role_id` | `uuid NOT NULL FK → org_roles(id) ON DELETE CASCADE` | |
-| `permission_name` | `text NOT NULL` | Refers to `permissions.name` (existing table) |
-| `scope` | `text NOT NULL` | One of: `'own'`, `'organization'`, `'any'`, `'granted'` |
-| `UNIQUE` | `(org_role_id, permission_name)` | |
+| Column            | Type                                                 | Notes                                                   |
+| ----------------- | ---------------------------------------------------- | ------------------------------------------------------- |
+| `id`              | `uuid PK`                                            |                                                         |
+| `org_role_id`     | `uuid NOT NULL FK → org_roles(id) ON DELETE CASCADE` |                                                         |
+| `permission_name` | `text NOT NULL`                                      | Refers to `permissions.name` (existing table)           |
+| `scope`           | `text NOT NULL`                                      | One of: `'own'`, `'organization'`, `'any'`, `'granted'` |
+| `UNIQUE`          | `(org_role_id, permission_name)`                     |                                                         |
 
 **Scope meanings:**
 
-| Scope | Query filter |
-|-------|-------------|
-| `own` | `created_by = userId` (+ `organization_id = activeOrgId` if in org) |
-| `organization` | `organization_id = activeOrgId AND visibility = 'org'` |
-| `any` | No filter (all resources) |
-| `granted` | Boolean gate — no resource filter |
+| Scope          | Query filter                                                        |
+| -------------- | ------------------------------------------------------------------- |
+| `own`          | `created_by = userId` (+ `organization_id = activeOrgId` if in org) |
+| `organization` | `organization_id = activeOrgId AND visibility = 'org'`              |
+| `any`          | No filter (all resources)                                           |
+| `granted`      | Boolean gate — no resource filter                                   |
 
 **Default permission matrix per org:**
 
-| Permission | member | teacher | admin |
-|---|---|---|---|
-| `flashcard.read` | organization | organization | organization |
-| `flashcard.create` | own | organization | organization |
-| `flashcard.update` | own | organization | organization |
-| `flashcard.delete` | own | own | organization |
-| `topic.*` | same | same | organization |
-| `deck.*` | same | same | organization |
-| `question.*` | same | same | organization |
-| `question_bank.*` | same | same | organization |
-| `ai.chat` | — | granted | granted |
-| `org.manage` | — | granted | granted |
+| Permission         | member       | teacher      | admin        |
+| ------------------ | ------------ | ------------ | ------------ |
+| `flashcard.read`   | organization | organization | organization |
+| `flashcard.create` | own          | organization | organization |
+| `flashcard.update` | own          | organization | organization |
+| `flashcard.delete` | own          | own          | organization |
+| `topic.*`          | same         | same         | organization |
+| `deck.*`           | same         | same         | organization |
+| `question.*`       | same         | same         | organization |
+| `question_bank.*`  | same         | same         | organization |
+| `ai.chat`          | —            | granted      | granted      |
+| `org.manage`       | —            | granted      | granted      |
 
 ### 1d. Modify — `org_members`
 
@@ -136,17 +136,18 @@ DROP TABLE IF EXISTS org_role_display_names;  -- no code references
 ### 2a. Registration (`auth.service.ts`)
 
 On signup:
+
 - `supabase.auth.signUp()` with `options.data: { account_type }`
 - After signup, `admin.updateUserById(user.id, { app_metadata: { account_type } })`
 - The JWT now carries `app_metadata.account_type` instead of `app_metadata.role`
 
 ### 2b. Account type → post-signup flow
 
-| Account type | After successful auth |
-|---|---|
-| `student` | Redirect to `/app`. No org. |
-| `educator` | Redirect to `/onboarding/classroom-setup` (if no org) |
-| `manager` | Redirect to `/onboarding/org-setup` (if no org) |
+| Account type | After successful auth                                 |
+| ------------ | ----------------------------------------------------- |
+| `student`    | Redirect to `/app`. No org.                           |
+| `educator`   | Redirect to `/onboarding/classroom-setup` (if no org) |
+| `manager`    | Redirect to `/onboarding/org-setup` (if no org)       |
 
 Detection: callback route checks whether user has any row in `org_members`. If not, redirects to onboarding.
 
@@ -164,6 +165,7 @@ Screen 2 — "Name your classroom"
 ```
 
 On submit:
+
 1. `POST /api/v1/organizations` → creates org with `parent_id: null`
 2. Seed default roles (member, teacher, admin) into `org_roles`
 3. Seed default permissions from matrix into `org_role_permissions`
@@ -191,6 +193,7 @@ Same flow as educator for org creation.
 No longer set or read anywhere. The org role is loaded on each request from `org_members.org_role_id`.
 
 **Files to modify:**
+
 - `proxy.ts` — remove `active_org_role` read
 - `with-auth.ts` — remove `active_org_role` read
 - `orgs/switch/route.ts` — stop setting the cookie
@@ -200,6 +203,7 @@ No longer set or read anywhere. The org role is loaded on each request from `org
 ### 2f. `handle_new_user` trigger
 
 No longer creates personal orgs (already done in earlier migration). Only:
+
 1. Creates profile (existing)
 2. Accepts invitation if token present and creates `org_members` with `target_org_role_id`
 3. Returns
@@ -240,9 +244,9 @@ export type OrgRole = {
 export interface RequestContext {
   traceId: string;
   userId: string;
-  accountType: AccountType;       // from JWT app_metadata.account_type
-  orgRoleId: string | null;       // from org_members (loaded in with-auth)
-  activeOrgId: string | null;     // from active_org_id cookie
+  accountType: AccountType; // from JWT app_metadata.account_type
+  orgRoleId: string | null; // from org_members (loaded in with-auth)
+  activeOrgId: string | null; // from active_org_id cookie
   url: string;
   method: string;
 }
@@ -276,8 +280,10 @@ async function getScope(
   // 2. No org context → account_type defaults (minimal)
   if (accountType === AccountType.STUDENT || accountType === AccountType.EDUCATOR) {
     if (
-      permission.endsWith('.read') || permission.endsWith('.create') ||
-      permission.endsWith('.update') || permission.endsWith('.delete')
+      permission.endsWith('.read') ||
+      permission.endsWith('.create') ||
+      permission.endsWith('.update') ||
+      permission.endsWith('.delete')
     ) {
       return 'own';
     }
@@ -292,7 +298,11 @@ async function getScope(
 
 ```typescript
 // Before
-export async function checkPermission(ctx: RequestContext, permission: string, resource: Resource | null)
+export async function checkPermission(
+  ctx: RequestContext,
+  permission: string,
+  resource: Resource | null,
+);
 // After — uses ctx.accountType + ctx.orgRoleId
 // Implementation unchanged aside from getScope call
 ```
@@ -336,15 +346,15 @@ const ACCOUNT_TYPE_REDIRECTS: Record<string, string> = {
 - `allowedRoles` → `allowedAccountTypes` (in `RouteRule`)
 - Update all matchers to use `AccountType` enum values
 
-| Route | Guard |
-|-------|-------|
-| `/admin` | Not in P1 (future system-admin role) |
-| `/manage` | `[AccountType.MANAGER]` |
-| `/edu` | `[AccountType.EDUCATOR]` |
-| `/app` | `[AccountType.STUDENT]` |
-| `/api/v1/ai` | `[AccountType.STUDENT, AccountType.EDUCATOR]` |
-| `/api/v1/teacher/*` | `[AccountType.EDUCATOR]` |
-| `/api/v1/admin/*` | `[AccountType.MANAGER]` |
+| Route               | Guard                                         |
+| ------------------- | --------------------------------------------- |
+| `/admin`            | Not in P1 (future system-admin role)          |
+| `/manage`           | `[AccountType.MANAGER]`                       |
+| `/edu`              | `[AccountType.EDUCATOR]`                      |
+| `/app`              | `[AccountType.STUDENT]`                       |
+| `/api/v1/ai`        | `[AccountType.STUDENT, AccountType.EDUCATOR]` |
+| `/api/v1/teacher/*` | `[AccountType.EDUCATOR]`                      |
+| `/api/v1/admin/*`   | `[AccountType.MANAGER]`                       |
 
 ### 5c. `role.guard.ts`
 
@@ -390,14 +400,20 @@ if (options?.allowedAccountTypes && !options.allowedAccountTypes.includes(accoun
 Rename `allowedRoles` → `allowedAccountTypes` in `WithAuthOptions` across ~15 API route files.
 
 Example:
+
 ```typescript
 // Before
-{ allowedRoles: [UserRole.SYS_ADMIN] }
+{
+  allowedRoles: [UserRole.SYS_ADMIN];
+}
 // After
-{ allowedAccountTypes: [AccountType.MANAGER] }
+{
+  allowedAccountTypes: [AccountType.MANAGER];
+}
 ```
 
 **Affected files:**
+
 - `admin/subscription-plans/route.ts` + `[id]/route.ts`
 - `admin/plan-features/route.ts`
 - `admin/organizations/route.ts` + `[id]/route.ts`
@@ -412,11 +428,11 @@ Example:
 
 Replace `UserRole` enum references:
 
-| Line | Old | New |
-|------|-----|-----|
-| `ctx.role === UserRole.SYS_ADMIN` | Role check | `ctx.accountType === AccountType.MANAGER` |
-| Invitation inserts | `target_role: data.role` | `target_org_role_id: data.orgRoleId` |
-| Validation | `data.role !== UserRole.STUDENT` | Remove — orgs decide who they invite |
+| Line                              | Old                              | New                                       |
+| --------------------------------- | -------------------------------- | ----------------------------------------- |
+| `ctx.role === UserRole.SYS_ADMIN` | Role check                       | `ctx.accountType === AccountType.MANAGER` |
+| Invitation inserts                | `target_role: data.role`         | `target_org_role_id: data.orgRoleId`      |
+| Validation                        | `data.role !== UserRole.STUDENT` | Remove — orgs decide who they invite      |
 
 The invitation flow changes significantly — invites now target an `org_role_id`, not a role string. Org managers pick from the org's available roles in the invite form.
 
@@ -432,6 +448,7 @@ const basePath = ctx.accountType === AccountType.EDUCATOR ? '/edu' : '/app';
 ### 6e. `topic.service.ts`
 
 Replace hardcoded string comparisons:
+
 ```typescript
 // Before
 const topicVisibility = ctx.role === 'teacher' ? 'org' : 'personal';
@@ -483,9 +500,12 @@ const accountType = user?.app_metadata?.account_type as AccountType | undefined;
 
 const navLinks: NavLink[] = (() => {
   switch (accountType) {
-    case AccountType.EDUCATOR: return [...educatorDashboardLinks, ...adminLinks];
-    case AccountType.MANAGER: return managerLinks;
-    default: return studentLinks;
+    case AccountType.EDUCATOR:
+      return [...educatorDashboardLinks, ...adminLinks];
+    case AccountType.MANAGER:
+      return managerLinks;
+    default:
+      return studentLinks;
   }
 })();
 ```
@@ -497,15 +517,19 @@ Same pattern — dashboard prefix resolved from `AccountType`.
 ### 7d. `deck-management-screen.tsx` + `question-bank-management-screen.tsx`
 
 Replace:
+
 ```typescript
 const role = (activeOrg?.role ?? user?.app_metadata?.role) as UserRole | undefined;
 const canSeeOrg = role === UserRole.TEACHER || role === UserRole.SYS_ADMIN;
 ```
+
 With:
+
 ```typescript
 const accountType = user?.app_metadata?.account_type as AccountType | undefined;
 const orgRoleName = activeOrg?.orgRoleName; // from use-orgs hook
-const canSeeOrg = orgRoleName === 'teacher' || orgRoleName === 'admin' || accountType === AccountType.MANAGER;
+const canSeeOrg =
+  orgRoleName === 'teacher' || orgRoleName === 'admin' || accountType === AccountType.MANAGER;
 ```
 
 ### 7e. `org-switcher.tsx`
@@ -529,7 +553,7 @@ type OrgMembership = {
   name: string;
   slug: string;
   orgRoleId: string;
-  orgRoleName: string;   // from join with org_roles
+  orgRoleName: string; // from join with org_roles
   isActive: boolean;
 };
 // REMOVE: role: string
@@ -558,6 +582,7 @@ Update API response type — the permissions endpoint now returns `org_role_perm
 ### 9a. Register page (`register/page.tsx`)
 
 RadioGroup options:
+
 - `student` (unchanged)
 - `educator` (was `teacher` — rename value)
 - `manager` (new)
@@ -640,10 +665,12 @@ New directory: `src/app/(frontend)/(onboarding)/`
 ### `/onboarding/classroom-setup`
 
 Two screens (client component with step state):
+
 1. Option picker: solo vs big org
 2. Classroom details form
 
 Uses:
+
 - `POST /api/v1/organizations` (create org)
 - Trigger: seed `org_roles` + `org_role_permissions` in the same request
 - `POST /api/v1/organizations/[id]/members` (add self as admin)
@@ -653,6 +680,7 @@ Uses:
 ### `/onboarding/org-setup`
 
 Three screens (client component):
+
 1. Org details
 2. Optional sub-orgs
 3. Invite members
@@ -691,12 +719,14 @@ In order:
 ## 14. Seed Updates (deferred — for later)
 
 ### `01_seed.sql`
+
 - 7 users: 1 manager (platform), 1 manager (org), 1 educator, 4 students
 - Dev University org with 3 default roles
 - No personal/premium/free users
 - `app_metadata.account_type` instead of `app_metadata.role`
 
 ### `09_perms.sql`
+
 - Replace `role_permissions` inserts with `org_role_permissions` inserts for the default roles
 - Permission matrix as specified in section 1c
 
@@ -704,32 +734,32 @@ In order:
 
 ## 15. What's NOT in P1
 
-| Feature | Reason |
-|---------|--------|
-| System-wide admin panel (`/admin`) | Future — separate from multi-tenant RBAC |
-| Permission editing UI in org settings | Org managers use API for now |
-| Sub-org onboarding templates | P2 |
-| Billing integration for manager accounts | P2 |
-| `ai.chat` plan gating | Frontend-only for now; RBAC seeds it as `granted` or `—` |
-| Role → feature mapping UI | Org managers use API for now |
+| Feature                                  | Reason                                                   |
+| ---------------------------------------- | -------------------------------------------------------- |
+| System-wide admin panel (`/admin`)       | Future — separate from multi-tenant RBAC                 |
+| Permission editing UI in org settings    | Org managers use API for now                             |
+| Sub-org onboarding templates             | P2                                                       |
+| Billing integration for manager accounts | P2                                                       |
+| `ai.chat` plan gating                    | Frontend-only for now; RBAC seeds it as `granted` or `—` |
+| Role → feature mapping UI                | Org managers use API for now                             |
 
 ---
 
 ## 16. Execution Order (Status: 2026-07-03 session)
 
-| Step # | What | Status |
-|--------|------|--------|
-| 1 | Types: `AccountType` enum, `RequestContext` update | ✅ Done |
-| 2 | Schema files: enums, `org_roles`, `org_members`, `organizations`, `invitations` | ✅ Done |
-| 3 | Migration `20260703000010` | ✅ Done |
-| 4 | `with-auth.ts` — new role resolution (load `orgRoleId`, no cookie) | ✅ Done |
-| 5 | `rbac.ts` — permission engine rewrite | ✅ Done |
-| 6 | `proxy.ts` + `routes.config.ts` — update routing + guards | ✅ Done |
-| 7 | All service files — bulk rename + logic update | ✅ Done |
-| 8 | All API route files — rename `allowedRoles` | ✅ Done |
-| 9 | All UI components + hooks — type updates + removal of old role refs | ✅ Done |
-| 10 | Onboarding pages — new (classroom-setup, org-setup) | ✅ Done |
-| 11 | Cleanup: remove `active_org_role` cookie from switch/invite/classroom routes | ✅ Done |
-| 12 | Seeds — update `01_seed.sql` + `09_perms.sql` | ✅ Done |
-| 13 | Tests — update `__tests__/` | ✅ Done |
-| 14 | Final lint + build validation | ✅ Done |
+| Step # | What                                                                            | Status  |
+| ------ | ------------------------------------------------------------------------------- | ------- |
+| 1      | Types: `AccountType` enum, `RequestContext` update                              | ✅ Done |
+| 2      | Schema files: enums, `org_roles`, `org_members`, `organizations`, `invitations` | ✅ Done |
+| 3      | Migration `20260703000010`                                                      | ✅ Done |
+| 4      | `with-auth.ts` — new role resolution (load `orgRoleId`, no cookie)              | ✅ Done |
+| 5      | `rbac.ts` — permission engine rewrite                                           | ✅ Done |
+| 6      | `proxy.ts` + `routes.config.ts` — update routing + guards                       | ✅ Done |
+| 7      | All service files — bulk rename + logic update                                  | ✅ Done |
+| 8      | All API route files — rename `allowedRoles`                                     | ✅ Done |
+| 9      | All UI components + hooks — type updates + removal of old role refs             | ✅ Done |
+| 10     | Onboarding pages — new (classroom-setup, org-setup)                             | ✅ Done |
+| 11     | Cleanup: remove `active_org_role` cookie from switch/invite/classroom routes    | ✅ Done |
+| 12     | Seeds — update `01_seed.sql` + `09_perms.sql`                                   | ✅ Done |
+| 13     | Tests — update `__tests__/`                                                     | ✅ Done |
+| 14     | Final lint + build validation                                                   | ✅ Done |

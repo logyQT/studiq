@@ -16,15 +16,15 @@ Study groups are sub-units within a university that enable scoped resource shari
 
 ### `study_groups`
 
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | uuid | PK, default `gen_random_uuid()` |
-| university_id | uuid | FK → `universities(id)` ON DELETE CASCADE, NOT NULL |
-| name | text | NOT NULL |
-| description | text | nullable |
-| created_by | uuid | FK → `profiles(id)` ON DELETE SET NULL |
-| created_at | timestamptz | default `now()` |
-| updated_at | timestamptz | default `now()` |
+| Column        | Type        | Constraints                                         |
+| ------------- | ----------- | --------------------------------------------------- |
+| id            | uuid        | PK, default `gen_random_uuid()`                     |
+| university_id | uuid        | FK → `universities(id)` ON DELETE CASCADE, NOT NULL |
+| name          | text        | NOT NULL                                            |
+| description   | text        | nullable                                            |
+| created_by    | uuid        | FK → `profiles(id)` ON DELETE SET NULL              |
+| created_at    | timestamptz | default `now()`                                     |
+| updated_at    | timestamptz | default `now()`                                     |
 
 ```sql
 CREATE TABLE public.study_groups (
@@ -40,13 +40,13 @@ CREATE TABLE public.study_groups (
 
 ### `group_members`
 
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | uuid | PK, default `gen_random_uuid()` |
-| group_id | uuid | FK → `study_groups(id)` ON DELETE CASCADE, NOT NULL |
-| user_id | uuid | FK → `profiles(id)` ON DELETE CASCADE, NOT NULL |
-| role | text | CHECK `IN ('member', 'manager')` |
-| joined_at | timestamptz | default `now()` |
+| Column    | Type        | Constraints                                         |
+| --------- | ----------- | --------------------------------------------------- |
+| id        | uuid        | PK, default `gen_random_uuid()`                     |
+| group_id  | uuid        | FK → `study_groups(id)` ON DELETE CASCADE, NOT NULL |
+| user_id   | uuid        | FK → `profiles(id)` ON DELETE CASCADE, NOT NULL     |
+| role      | text        | CHECK `IN ('member', 'manager')`                    |
+| joined_at | timestamptz | default `now()`                                     |
 
 ```sql
 CREATE TABLE public.group_members (
@@ -146,7 +146,10 @@ export function can(
   if (!scope) return false;
   if (scope === 'any') return true;
   if (scope === 'university') return true;
-  if (scope === 'group') return createdBy === userId || (resourceGroupId != null && userGroupIds?.includes(resourceGroupId));
+  if (scope === 'group')
+    return (
+      createdBy === userId || (resourceGroupId != null && userGroupIds?.includes(resourceGroupId))
+    );
   return createdBy === userId;
 }
 ```
@@ -171,25 +174,25 @@ deck.read:       'own' → 'group'
 
 ## API Endpoints
 
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `GET` | `/api/v1/groups` | any auth | List groups (teacher → own/managed, admin → all) |
-| `POST` | `/api/v1/groups` | TEACHER, UNIV_ADMIN | Create group |
-| `GET` | `/api/v1/groups/[id]` | any auth | Get group detail |
-| `PUT` | `/api/v1/groups/[id]` | creator or admin | Update group |
-| `DELETE` | `/api/v1/groups/[id]` | creator or admin | Delete group |
-| `GET` | `/api/v1/groups/[id]/members` | any auth | List members |
-| `POST` | `/api/v1/groups/[id]/members` | manager or admin | Add member |
-| `DELETE` | `/api/v1/groups/[id]/members/[userId]` | manager or admin | Remove member |
+| Method   | Route                                  | Auth                | Description                                      |
+| -------- | -------------------------------------- | ------------------- | ------------------------------------------------ |
+| `GET`    | `/api/v1/groups`                       | any auth            | List groups (teacher → own/managed, admin → all) |
+| `POST`   | `/api/v1/groups`                       | TEACHER, UNIV_ADMIN | Create group                                     |
+| `GET`    | `/api/v1/groups/[id]`                  | any auth            | Get group detail                                 |
+| `PUT`    | `/api/v1/groups/[id]`                  | creator or admin    | Update group                                     |
+| `DELETE` | `/api/v1/groups/[id]`                  | creator or admin    | Delete group                                     |
+| `GET`    | `/api/v1/groups/[id]/members`          | any auth            | List members                                     |
+| `POST`   | `/api/v1/groups/[id]/members`          | manager or admin    | Add member                                       |
+| `DELETE` | `/api/v1/groups/[id]/members/[userId]` | manager or admin    | Remove member                                    |
 
 ## Frontend Routes
 
-| Route | Component | Description |
-|-------|-----------|-------------|
-| `/edu/groups` | Teacher group list | Creates, edits, deletes own/managed groups |
-| `/edu/groups/[id]` | Teacher group detail | Member management, group info |
-| `/manage/groups` | Admin group list | All university groups |
-| `/manage/groups/[id]` | Admin group detail | Full member management |
+| Route                 | Component            | Description                                |
+| --------------------- | -------------------- | ------------------------------------------ |
+| `/edu/groups`         | Teacher group list   | Creates, edits, deletes own/managed groups |
+| `/edu/groups/[id]`    | Teacher group detail | Member management, group info              |
+| `/manage/groups`      | Admin group list     | All university groups                      |
+| `/manage/groups/[id]` | Admin group detail   | Full member management                     |
 
 Sidebar nav items added to both `/edu` and `/manage` layouts.
 
@@ -200,15 +203,15 @@ Sidebar nav items added to both `/edu` and `/manage` layouts.
 
 ## Service Authorization Rules
 
-| Operation | Allowed roles |
-|-----------|---------------|
-| Create group | TEACHER, UNIVERSITY_ADMIN |
-| List groups | TEACHER → own/managed; ADMIN → all; others → empty |
-| View group | Member of the group, or admin |
-| Update group | Creator, manager, or admin |
-| Delete group | Creator, manager, or admin |
-| Add/remove members | Manager of the group, or admin |
-| View members | Member of the group, or admin |
+| Operation               | Allowed roles                                          |
+| ----------------------- | ------------------------------------------------------ |
+| Create group            | TEACHER, UNIVERSITY_ADMIN                              |
+| List groups             | TEACHER → own/managed; ADMIN → all; others → empty     |
+| View group              | Member of the group, or admin                          |
+| Update group            | Creator, manager, or admin                             |
+| Delete group            | Creator, manager, or admin                             |
+| Add/remove members      | Manager of the group, or admin                         |
+| View members            | Member of the group, or admin                          |
 | Share resource to group | Creator of resource, manager of target group, or admin |
 
 ## Existing Services — Auto Benefit

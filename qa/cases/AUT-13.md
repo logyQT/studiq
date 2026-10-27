@@ -14,12 +14,15 @@ Link z AUT-12.
 ## Prerequisite context
 
 ### AUT-12 — Zapomniane hasło – wysłanie linku
+
 _Warunek wstępny: Brak sesji._
+
 1. Otwórz /password/reset.
 2. Wpisz student1@dev.local i kliknij „Wyślij link”.
 3. Otwórz Inbucket.
 
 Expected:
+
 - Komunikat „Instrukcje zostały wysłane. Sprawdź swoją skrzynkę e-mail.”
 - W Inbucket jest wiadomość z linkiem resetującym.
 

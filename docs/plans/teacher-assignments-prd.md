@@ -13,17 +13,17 @@ blank tests and archival book-keeping.
 
 ### New tables
 
-| Table | Purpose |
-|-------|---------|
-| `teacher_assignments` | The assignment itself (title, deadline, time limit, status, settings) |
-| `assignment_questions` | M:N linking assignment → questions with points + order |
-| `assignment_targets` | M:N linking assignment → groups OR individual students |
-| `assignment_answer_images` | Student photo uploads for open questions |
+| Table                      | Purpose                                                               |
+| -------------------------- | --------------------------------------------------------------------- |
+| `teacher_assignments`      | The assignment itself (title, deadline, time limit, status, settings) |
+| `assignment_questions`     | M:N linking assignment → questions with points + order                |
+| `assignment_targets`       | M:N linking assignment → groups OR individual students                |
+| `assignment_answer_images` | Student photo uploads for open questions                              |
 
 ### Extended tables
 
-| Table | Change |
-|-------|--------|
+| Table           | Change                                                        |
+| --------------- | ------------------------------------------------------------- |
 | `quiz_attempts` | + `assignment_id` FK (links student submission to assignment) |
 
 ### New enum
@@ -39,14 +39,14 @@ CREATE TYPE assessment_status AS ENUM ('draft', 'published');
 
 ### Key column defaults on `teacher_assignments`
 
-| Column | Default | Notes |
-|--------|---------|-------|
-| `status` | `'draft'` | Not public by default |
-| `max_attempts` | `1` | Teacher can increase |
-| `passing_score` | `null` | Optional percentage threshold |
-| `show_results` | `false` | Teacher decides |
-| `shuffle_questions` | `true` | |
-| `shuffle_answers` | `true` | |
+| Column              | Default   | Notes                         |
+| ------------------- | --------- | ----------------------------- |
+| `status`            | `'draft'` | Not public by default         |
+| `max_attempts`      | `1`       | Teacher can increase          |
+| `passing_score`     | `null`    | Optional percentage threshold |
+| `show_results`      | `false`   | Teacher decides               |
+| `shuffle_questions` | `true`    |                               |
+| `shuffle_answers`   | `true`    |                               |
 
 ---
 
@@ -110,53 +110,53 @@ CREATE TYPE assessment_status AS ENUM ('draft', 'published');
 
 ### Teacher (`/edu`)
 
-| Route | Page |
-|-------|------|
-| `/edu/assessments` | List |
-| `/edu/assessments/new` | Create |
-| `/edu/assessments/[id]` | Detail (manage + assign + publish) |
-| `/edu/assessments/[id]/edit` | Edit (draft only) |
-| `/edu/assessments/[id]/results` | Results table |
-| `/edu/assessments/[id]/results/[studentId]` | Per-student grading |
+| Route                                          | Page                                  |
+| ---------------------------------------------- | ------------------------------------- |
+| `/edu/assessments`                             | List                                  |
+| `/edu/assessments/new`                         | Create                                |
+| `/edu/assessments/[id]`                        | Detail (manage + assign + publish)    |
+| `/edu/assessments/[id]/edit`                   | Edit (draft only)                     |
+| `/edu/assessments/[id]/results`                | Results table                         |
+| `/edu/assessments/[id]/results/[studentId]`    | Per-student grading                   |
 | `/edu/assessments/[id]/results/question/[qId]` | Per-question grading (vertical split) |
-| `/edu/assessments/[id]/print` | Print blank test |
-| `/edu/assessments/settings` | Teacher's PDF defaults |
+| `/edu/assessments/[id]/print`                  | Print blank test                      |
+| `/edu/assessments/settings`                    | Teacher's PDF defaults                |
 
 ### Student (`/app`)
 
-| Route | Page |
-|-------|------|
-| `/app/assessments` | Pending + completed list |
-| `/app/assessments/[id]` | Detail + start |
-| `/app/assessments/[id]/take` | Take (quiz session UI + image upload) |
-| `/app/assessments/[id]/review` | Results (if teacher allows) |
+| Route                          | Page                                  |
+| ------------------------------ | ------------------------------------- |
+| `/app/assessments`             | Pending + completed list              |
+| `/app/assessments/[id]`        | Detail + start                        |
+| `/app/assessments/[id]/take`   | Take (quiz session UI + image upload) |
+| `/app/assessments/[id]/review` | Results (if teacher allows)           |
 
 ### API
 
 Prefix: `/api/v1/teacher/assessments` (teacher), `/api/v1/assessments` (student).
 Follow existing patterns (POST/GET/PUT/DELETE, controller → service → supabase).
 
-| Method | Route | Purpose |
-|--------|-------|---------|
-| GET | `/api/v1/teacher/assessments` | List |
-| POST | `/api/v1/teacher/assessments` | Create |
-| GET | `/api/v1/teacher/assessments/[id]` | Get detail |
-| PUT | `/api/v1/teacher/assessments/[id]` | Update |
-| DELETE | `/api/v1/teacher/assessments/[id]` | Delete |
-| POST | `/api/v1/teacher/assessments/[id]/publish` | Publish |
-| POST | `/api/v1/teacher/assessments/[id]/questions` | Add questions (batch) |
-| DELETE | `/api/v1/teacher/assessments/[id]/questions/[qId]` | Remove question |
-| POST | `/api/v1/teacher/assessments/[id]/randomize` | Randomize + add |
-| PUT | `/api/v1/teacher/assessments/[id]/targets` | Set targets |
-| GET | `/api/v1/teacher/assessments/[id]/results` | Results overview |
-| GET | `/api/v1/teacher/assessments/[id]/results/[studentId]` | Student answers |
-| PUT | `/api/v1/teacher/assessments/[id]/results/[studentId]/grade` | Grade open questions |
-| GET | `/api/v1/teacher/assessments/[id]/export-answers` | Download archival PDF |
-| GET | `/api/v1/assessments` | Student list |
-| GET | `/api/v1/assessments/[id]` | Student detail |
-| POST | `/api/v1/assessments/[id]/start` | Start attempt |
-| POST | `/api/v1/quiz/[attemptId]` | Submit (existing) |
-| POST | `/api/v1/assessments/[id]/upload-image` | Upload answer photo |
+| Method | Route                                                        | Purpose               |
+| ------ | ------------------------------------------------------------ | --------------------- |
+| GET    | `/api/v1/teacher/assessments`                                | List                  |
+| POST   | `/api/v1/teacher/assessments`                                | Create                |
+| GET    | `/api/v1/teacher/assessments/[id]`                           | Get detail            |
+| PUT    | `/api/v1/teacher/assessments/[id]`                           | Update                |
+| DELETE | `/api/v1/teacher/assessments/[id]`                           | Delete                |
+| POST   | `/api/v1/teacher/assessments/[id]/publish`                   | Publish               |
+| POST   | `/api/v1/teacher/assessments/[id]/questions`                 | Add questions (batch) |
+| DELETE | `/api/v1/teacher/assessments/[id]/questions/[qId]`           | Remove question       |
+| POST   | `/api/v1/teacher/assessments/[id]/randomize`                 | Randomize + add       |
+| PUT    | `/api/v1/teacher/assessments/[id]/targets`                   | Set targets           |
+| GET    | `/api/v1/teacher/assessments/[id]/results`                   | Results overview      |
+| GET    | `/api/v1/teacher/assessments/[id]/results/[studentId]`       | Student answers       |
+| PUT    | `/api/v1/teacher/assessments/[id]/results/[studentId]/grade` | Grade open questions  |
+| GET    | `/api/v1/teacher/assessments/[id]/export-answers`            | Download archival PDF |
+| GET    | `/api/v1/assessments`                                        | Student list          |
+| GET    | `/api/v1/assessments/[id]`                                   | Student detail        |
+| POST   | `/api/v1/assessments/[id]/start`                             | Start attempt         |
+| POST   | `/api/v1/quiz/[attemptId]`                                   | Submit (existing)     |
+| POST   | `/api/v1/assessments/[id]/upload-image`                      | Upload answer photo   |
 
 ---
 
@@ -171,10 +171,10 @@ ASSIGNMENT_PUBLISH: 'assignment.publish',
 ASSIGNMENT_GRADE: 'assignment.grade',
 ```
 
-| Role | Scope |
-|------|-------|
-| teacher | `own` |
-| admin | `organization` |
+| Role    | Scope          |
+| ------- | -------------- |
+| teacher | `own`          |
+| admin   | `organization` |
 
 Student access is determined by `assignment_targets` matching their user or group,
 not by permissions.

@@ -151,13 +151,13 @@ in `withSupervision`'s `finally` (labels: `service.name`, `code.function`).
 
 `docker-compose.yml` runs the full local stack:
 
-| Service | Image | Ports |
-|---------|-------|-------|
+| Service          | Image                                  | Ports                                                      |
+| ---------------- | -------------------------------------- | ---------------------------------------------------------- |
 | `otel-collector` | `otel/opentelemetry-collector-contrib` | `4317` (gRPC), `4318` (HTTP), `8889` (Prometheus exporter) |
-| `tempo` | `grafana/tempo` | `3200` (HTTP API) |
-| `loki` | `grafana/loki` | `3100` |
-| `prometheus` | `prom/prometheus` | `9090` |
-| `grafana` | `grafana/grafana` | `3001` |
+| `tempo`          | `grafana/tempo`                        | `3200` (HTTP API)                                          |
+| `loki`           | `grafana/loki`                         | `3100`                                                     |
+| `prometheus`     | `prom/prometheus`                      | `9090`                                                     |
+| `grafana`        | `grafana/grafana`                      | `3001`                                                     |
 
 Config files: `otel-collector-config.yml`, `tempo.yml`, `loki-config.yml`,
 `prometheus.yml`, `grafana/provisioning/{datasources,dashboards}/`.
@@ -192,9 +192,9 @@ exporters:
 
 service:
   pipelines:
-    traces:  { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp/tempo] }
+    traces: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp/tempo] }
     metrics: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [prometheus] }
-    logs:    { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/loki] }
+    logs: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/loki] }
 ```
 
 ### 9. Prometheus scrape config (`prometheus.yml`)
@@ -214,7 +214,7 @@ application metrics and the Collector's own telemetry (`:8888`).
 
 > **Note on community dashboard #15757.** The original plan referenced Grafana
 > community dashboard `15757` as the "OpenTelemetry" dashboard. That id now
-> resolves to *Kubernetes / Views / Global*, which queries `kube_*` metrics and
+> resolves to _Kubernetes / Views / Global_, which queries `kube_*` metrics and
 > is not useful for StudiQ's OTLP metrics. We ship a purpose-built StudiQ OTel
 > dashboard instead.
 
@@ -227,15 +227,15 @@ appear automatically once the `MetricReader` is configured.
 
 ## Dev vs. Prod
 
-| | Dev | Prod |
-|--|-----|------|
-| **Collector** | Docker Compose (local) | Deploy separately (Docker/K8s) or use Grafana Cloud OTLP endpoint |
-| **Prometheus** | Docker Compose (local) | Managed (Grafana Cloud, AWS Managed Prometheus) or self-hosted |
-| **Grafana** | Docker Compose at :3001 | Managed or self-hosted |
-| **Tempo** | Docker Compose at :3200 | Same pattern, or Tempo on Grafana Cloud |
-| **Loki** | Docker Compose at :3100 | Same pattern, or Loki on Grafana Cloud |
-| **OTEL_SDK_DISABLED** | Can disable to skip overhead | Always enabled |
-| **Alerting** | Not needed | Prometheus Alertmanager or Grafana alerts |
+|                       | Dev                          | Prod                                                              |
+| --------------------- | ---------------------------- | ----------------------------------------------------------------- |
+| **Collector**         | Docker Compose (local)       | Deploy separately (Docker/K8s) or use Grafana Cloud OTLP endpoint |
+| **Prometheus**        | Docker Compose (local)       | Managed (Grafana Cloud, AWS Managed Prometheus) or self-hosted    |
+| **Grafana**           | Docker Compose at :3001      | Managed or self-hosted                                            |
+| **Tempo**             | Docker Compose at :3200      | Same pattern, or Tempo on Grafana Cloud                           |
+| **Loki**              | Docker Compose at :3100      | Same pattern, or Loki on Grafana Cloud                            |
+| **OTEL_SDK_DISABLED** | Can disable to skip overhead | Always enabled                                                    |
+| **Alerting**          | Not needed                   | Prometheus Alertmanager or Grafana alerts                         |
 
 ### Production path: Grafana Cloud (simplest)
 

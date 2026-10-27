@@ -15,6 +15,7 @@ The application targets a multilingual user base and requires server-side and cl
 ## Consequences
 
 ### Positive
+
 - Native App Router support with server component integration
 - Request-based locale detection via middleware
 - Type-safe message keys
@@ -22,5 +23,6 @@ The application targets a multilingual user base and requires server-side and cl
 - Works with both Server and Client Components
 
 ### Negative
+
 - Adds complexity to routing (locale prefixes if enabled)
 - Translation files must be maintained manually or via external tooling
