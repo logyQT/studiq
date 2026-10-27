@@ -71,7 +71,7 @@ Implemented with a `visibility` column (`personal | group`) plus junction tables
 | Visibility on decks, topics, question banks | ✅ | `deck_groups`, `topic_groups`, `bank_groups` |
 | Share to groups in create / edit forms | ✅ | Group multi-select |
 | Copy a resource | ✅ | `POST /api/v1/flashcards/[id]/copy` |
-| Read-only view of shared banks for non-authors | ✅ | #152 |
+| Read-only view of shared banks for non-authors | 📋 | [#152](https://github.com/logyQT/studiq/issues/152), fix in review: [#648](https://github.com/logyQT/studiq/pull/648) |
 | `resource_permissions` per-user grants | 💤 | Table exists, unused; group sharing covers the use case |
 
 ---
@@ -163,7 +163,8 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 |------|--------|-------|
 | Leech detection | ✅ | |
 | Fuzz factor | ✅ | |
-| Load balancing + daily study goal | 📋 | [#656](https://github.com/logyQT/studiq/issues/656) |
+| Load balancing | ✅ | Reviews are moved to the least-loaded day (`pickLoadBalancedDate`, `flashcard-practice.service.ts`) |
+| Daily study goal | 📋 | [#656](https://github.com/logyQT/studiq/issues/656), in review: [#672](https://github.com/logyQT/studiq/pull/672) |
 
 ### Subphase 5C: Stats 🏗️
 
