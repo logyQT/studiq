@@ -92,14 +92,19 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
     },
-    {
-      // The keyring is module-cached at boot, so a reused keyless server would
-      // make the signed-request spec lie.
-      command: 'bun dev:admin',
-      url: 'http://localhost:4000',
-      reuseExistingServer: false,
-      timeout: 180 * 1000,
-      env: { ADMIN_PEM_KEYS: adminRing },
-    },
+    // The admin API project needs its own server (the keyring is module-cached
+    // at boot, so a reused keyless server would make the signed-request spec
+    // lie). Skip it locally with E2E_SKIP_ADMIN_WS=1 when :4000 is not free.
+    ...(process.env.E2E_SKIP_ADMIN_WS === '1'
+      ? []
+      : [
+          {
+            command: 'bun dev:admin',
+            url: 'http://localhost:4000',
+            reuseExistingServer: false,
+            timeout: 180 * 1000,
+            env: { ADMIN_PEM_KEYS: adminRing },
+          },
+        ]),
   ],
 });
