@@ -184,7 +184,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const batchToggleSuspend = useApiMutation({
     mutationFn: (data: { deckIds: string[]; suspended: boolean }) =>
       apiPost('/api/v1/flashcards/decks/batch/suspend', data),
-    invalidateKeys: [flashcardKeys.decks.all],
+    invalidateKeys: [...flashcardKeys.afterDeckSuspend],
   });
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -294,7 +294,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   async function handleToggleSuspend(deck: Deck) {
     try {
       await apiPut(`/api/v1/flashcards/decks/${deck.id}`, { suspended: !deck.suspended });
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      for (const queryKey of flashcardKeys.afterDeckSuspend) {
+        queryClient.invalidateQueries({ queryKey });
+      }
       toast.success(deck.suspended ? t('deck_unsuspended') : t('deck_suspended'));
     } catch (error) {
       toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));

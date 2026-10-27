@@ -19,9 +19,25 @@ export const flashcardKeys = {
   },
   list: (filters?: Record<string, string[]>) => ['flashcards', 'list', filters] as const,
   practice: {
+    all: ['flashcards', 'practice'] as const,
     dueBreakdown: ['flashcards', 'practice', 'dueBreakdown'] as const,
     states: ['flashcards', 'practice', 'states'] as const,
   },
+  /**
+   * Everything a deck suspend / restore changes: the deck lists and the study statistics built
+   * from the deck's cards (cards-stats, states, due counts). Invalidating only the deck lists
+   * left the statistics showing a suspended deck's cards until a full reload (#365).
+   */
+  afterDeckSuspend: [
+    ['flashcards', 'decks'] as const,
+    ['flashcards', 'practice'] as const,
+  ] as const,
+  /** A finished study session moves the statistics, the due counts and the deck progress. */
+  afterStudySession: [
+    ['flashcards', 'practice'] as const,
+    ['flashcards', 'stats'] as const,
+    ['flashcards', 'decks'] as const,
+  ] as const,
   stats: {
     teacher: ['flashcards', 'stats', 'teacher'] as const,
     difficultyBucket: (bucket: string) => ['flashcards', 'stats', 'difficulty', bucket] as const,
