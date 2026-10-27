@@ -7,9 +7,13 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatRelativeTime } from '@/lib/relative-time';
 
+import { CardError } from '@/components/edu/dashboard/card-error';
+
 interface ActivityFeedCardProps {
   items: TeacherFeedItem[] | undefined;
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }
 
 const ICONS = {
@@ -27,14 +31,14 @@ function hrefFor(item: TeacherFeedItem): string | null {
   return null;
 }
 
-export function ActivityFeedCard({ items, isLoading }: ActivityFeedCardProps) {
+export function ActivityFeedCard({ items, isLoading, isError, onRetry }: ActivityFeedCardProps) {
   const t = useTranslations('EduOverviewPage');
   const locale = useLocale();
 
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle role="heading" aria-level={2} className="flex items-center gap-2 text-base">
           <div className="rounded-lg bg-primary/10 p-1.5">
             <History className="h-4 w-4 text-primary" aria-hidden="true" />
           </div>
@@ -45,6 +49,8 @@ export function ActivityFeedCard({ items, isLoading }: ActivityFeedCardProps) {
       <CardContent className="pb-6">
         {isLoading ? (
           <div className="h-40 animate-pulse rounded-xl bg-muted" />
+        ) : isError ? (
+          <CardError onRetry={onRetry} />
         ) : !items || items.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">{t('feed_empty')}</p>
         ) : (

@@ -411,6 +411,11 @@
     "edu_groups": "Groups"
   },
   "EduOverviewPage": {
+    "col_flashcard_accuracy": "Flashcard accuracy",
+    "no_data": "no data",
+    "awaiting_grade": "{count} awaiting a grade",
+    "load_error": "Could not load this.",
+    "retry": "Try again",
     "title": "Teacher Dashboard",
     "total_questions": "Total Questions",
     "flashcards": "Flashcards",

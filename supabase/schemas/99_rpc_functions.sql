@@ -998,12 +998,12 @@ BEGIN
 
     IF p_organization_id IS NULL
        OR p_organization_id NOT IN (SELECT c.organization_id FROM public.rls_caller_org_ids() c) THEN
-      RETURN '[]'::jsonb;
+      RETURN '{"groups": [], "totals": {"students": 0, "completedAttempts": 0, "awaitingGrade": 0}}'::jsonb;
     END IF;
   END IF;
 
   IF p_organization_id IS NULL THEN
-    RETURN '[]'::jsonb;
+    RETURN '{"groups": [], "totals": {"students": 0, "completedAttempts": 0, "awaitingGrade": 0}}'::jsonb;
   END IF;
 
   WITH my_groups AS (
@@ -1022,61 +1022,90 @@ BEGIN
     WHERE gm.role = 'member'
       AND gm.user_id <> p_user_id
   ),
+  learner_set AS (
+    SELECT DISTINCT user_id FROM learners
+  ),
   learner_counts AS (
     SELECT group_id, COUNT(*)::int AS students
     FROM learners
     GROUP BY group_id
   ),
-  attempts AS (
+  -- One row per completed attempt of this organization, however many groups its learner is in.
+  attempt_rows AS (
     SELECT
-      l.group_id,
+      qa.id,
+      qa.user_id,
       -- Assignment attempts score in awarded points, practice quizzes in correct answers:
       -- every attempt is normalised to its own scale before averaging (see stats.service).
       LEAST(100, GREATEST(0,
         COALESCE(qa.score, 0) * 100.0
           / GREATEST(COALESCE(qa.total_points, qa.total_questions, 0), 1)
-      )) AS pct
-    FROM learners l
-    JOIN public.quiz_attempts qa ON qa.user_id = l.user_id
-    WHERE qa.completed_at IS NOT NULL
+      )) AS pct,
+      (qa.assignment_id IS NOT NULL AND qa.graded_at IS NULL) AS awaiting
+    FROM learner_set ls
+    JOIN public.quiz_attempts qa ON qa.user_id = ls.user_id
+    WHERE qa.organization_id = p_organization_id
+      AND qa.completed_at IS NOT NULL
       AND qa.completed_at >= v_since
   ),
   attempt_stats AS (
-    SELECT group_id, COUNT(*)::int AS completed, ROUND(AVG(pct))::int AS avg_pct
-    FROM attempts
-    GROUP BY group_id
+    SELECT
+      l.group_id,
+      COUNT(*)::int AS completed,
+      COUNT(*) FILTER (WHERE ar.awaiting)::int AS awaiting,
+      ROUND(AVG(ar.pct) FILTER (WHERE NOT ar.awaiting))::int AS avg_pct
+    FROM learners l
+    JOIN attempt_rows ar ON ar.user_id = l.user_id
+    GROUP BY l.group_id
+  ),
+  review_rows AS (
+    SELECT fp.user_id, fp.was_correct
+    FROM learner_set ls
+    JOIN public.flashcard_practice fp ON fp.user_id = ls.user_id
+    WHERE fp.organization_id = p_organization_id
+      AND fp.practiced_at >= v_since
   ),
   review_stats AS (
     SELECT
       l.group_id,
       COUNT(*)::int AS reviews,
-      ROUND(COUNT(*) FILTER (WHERE fp.was_correct) * 100.0 / COUNT(*))::int AS accuracy
+      ROUND(COUNT(*) FILTER (WHERE rr.was_correct) * 100.0 / COUNT(*))::int AS accuracy
     FROM learners l
-    JOIN public.flashcard_practice fp ON fp.user_id = l.user_id
-    WHERE fp.practiced_at >= v_since
+    JOIN review_rows rr ON rr.user_id = l.user_id
     GROUP BY l.group_id
+  ),
+  group_rows AS (
+    SELECT COALESCE(
+      jsonb_agg(
+        jsonb_build_object(
+          'groupId', mg.id,
+          'groupName', mg.name,
+          'students', COALESCE(lc.students, 0),
+          'completedAttempts', COALESCE(ast.completed, 0),
+          'awaitingGrade', COALESCE(ast.awaiting, 0),
+          -- NULL (not 0) when nothing was graded: "no data" is not "0 %".
+          'avgScore', ast.avg_pct,
+          'flashcardReviews', COALESCE(rs.reviews, 0),
+          'flashcardAccuracy', rs.accuracy
+        )
+        ORDER BY mg.name
+      ),
+      '[]'::jsonb
+    ) AS data
+    FROM my_groups mg
+    LEFT JOIN learner_counts lc ON lc.group_id = mg.id
+    LEFT JOIN attempt_stats ast ON ast.group_id = mg.id
+    LEFT JOIN review_stats rs ON rs.group_id = mg.id
   )
-  SELECT COALESCE(
-    jsonb_agg(
-      jsonb_build_object(
-        'groupId', mg.id,
-        'groupName', mg.name,
-        'students', COALESCE(lc.students, 0),
-        'completedAttempts', COALESCE(ast.completed, 0),
-        -- NULL (not 0) when nothing was completed: "no data" is not "0 %".
-        'avgScore', ast.avg_pct,
-        'flashcardReviews', COALESCE(rs.reviews, 0),
-        'flashcardAccuracy', rs.accuracy
-      )
-      ORDER BY mg.name
-    ),
-    '[]'::jsonb
+  SELECT jsonb_build_object(
+    'groups', (SELECT data FROM group_rows),
+    'totals', jsonb_build_object(
+      'students', (SELECT COUNT(*) FROM learner_set),
+      'completedAttempts', (SELECT COUNT(*) FROM attempt_rows),
+      'awaitingGrade', (SELECT COUNT(*) FROM attempt_rows WHERE awaiting)
+    )
   )
-  INTO result
-  FROM my_groups mg
-  LEFT JOIN learner_counts lc ON lc.group_id = mg.id
-  LEFT JOIN attempt_stats ast ON ast.group_id = mg.id
-  LEFT JOIN review_stats rs ON rs.group_id = mg.id;
+  INTO result;
 
   RETURN result;
 END;
@@ -1142,7 +1171,8 @@ BEGIN
       FROM learners l
       JOIN public.quiz_attempts qa ON qa.user_id = l.user_id
       LEFT JOIN public.teacher_assignments ta ON ta.id = qa.assignment_id
-      WHERE qa.completed_at IS NOT NULL
+      WHERE qa.organization_id = p_organization_id
+        AND qa.completed_at IS NOT NULL
       ORDER BY qa.completed_at DESC
       LIMIT v_limit
     )

@@ -11,9 +11,13 @@ CREATE TABLE public.flashcard_practice (
   practiced_at      timestamptz DEFAULT now(),
   response_time_ms  integer,
   confidence_level  integer CHECK (confidence_level IS NULL OR (confidence_level >= 1 AND confidence_level <= 5)),
-  session_id        uuid
+  session_id        uuid,
+  -- Organization of the flashcard when it is shared into a group (see 68_activity_organization.sql).
+  organization_id   uuid REFERENCES public.organizations(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_flashcard_practice_user ON public.flashcard_practice(user_id);
 CREATE INDEX idx_flashcard_practice_flashcard ON public.flashcard_practice(flashcard_id);
 CREATE INDEX idx_flashcard_practice_session ON public.flashcard_practice(session_id);
+CREATE INDEX idx_flashcard_practice_organization
+  ON public.flashcard_practice(organization_id, practiced_at) WHERE organization_id IS NOT NULL;

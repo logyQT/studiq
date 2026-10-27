@@ -9,7 +9,7 @@ import type {
   ProblematicQuestionStats,
   StudentStatsResponse,
   TeacherFeedItem,
-  TeacherGroupPerformanceItem,
+  TeacherGroupPerformance,
   TeacherQuizStatsItem,
   TeacherStatsQuery,
   TeacherStatsResponse,
@@ -41,6 +41,11 @@ function attemptScorePercent(a: {
   const pct = ((a.score ?? 0) / attemptTotal(a)) * 100;
   return Math.min(100, Math.max(0, pct));
 }
+
+const EMPTY_GROUP_PERFORMANCE: TeacherGroupPerformance = {
+  groups: [],
+  totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 },
+};
 
 export class StatsService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -578,8 +583,8 @@ export class StatsService {
   async getTeacherGroupPerformance(
     ctx: RequestContext,
     days = 30,
-  ): Promise<ServiceResult<TeacherGroupPerformanceItem[]>> {
-    if (!ctx.activeOrgId) return success([]);
+  ): Promise<ServiceResult<TeacherGroupPerformance>> {
+    if (!ctx.activeOrgId) return success(EMPTY_GROUP_PERFORMANCE);
 
     const supabase = await this.createClient();
     const { data, error } = await supabase.rpc('get_teacher_group_performance', {
@@ -589,7 +594,7 @@ export class StatsService {
     });
 
     if (error) return toDbFailure(error);
-    return success((data as TeacherGroupPerformanceItem[] | null) ?? []);
+    return success((data as TeacherGroupPerformance | null) ?? EMPTY_GROUP_PERFORMANCE);
   }
 
   /** Latest completed attempts of the caller's learners and the open reports addressed to the caller. */

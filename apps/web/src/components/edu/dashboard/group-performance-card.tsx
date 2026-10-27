@@ -1,6 +1,6 @@
 'use client';
 
-import type { TeacherGroupPerformanceItem } from '@studiq/server/models/stats.model';
+import type { TeacherGroupPerformance } from '@studiq/server/models/stats.model';
 import {
   Card,
   CardContent,
@@ -19,27 +19,35 @@ import {
 import { Users } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
+import { CardError } from '@/components/edu/dashboard/card-error';
 
 interface GroupPerformanceCardProps {
-  groups: TeacherGroupPerformanceItem[] | undefined;
+  data: TeacherGroupPerformance | undefined;
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   days: number;
 }
 
-/** "—" for "no data": a group without attempts is not at 0 %. */
-function percent(value: number | null): string {
-  return value === null ? '—' : `${value}%`;
-}
-
-export function GroupPerformanceCard({ groups, isLoading, days }: GroupPerformanceCardProps) {
+export function GroupPerformanceCard({
+  data,
+  isLoading,
+  isError,
+  onRetry,
+  days,
+}: GroupPerformanceCardProps) {
   const t = useTranslations('EduOverviewPage');
+  const groups = data?.groups;
+
+  /** "No data" in words: a group without graded attempts is not at 0 %. */
+  const percent = (value: number | null) => (value === null ? t('no_data') : `${value}%`);
 
   const withScores = (groups ?? []).filter((g) => g.avgScore !== null);
 
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle role="heading" aria-level={2} className="flex items-center gap-2 text-base">
           <div className="rounded-lg bg-primary/10 p-1.5">
             <Users className="h-4 w-4 text-primary" aria-hidden="true" />
           </div>
@@ -50,6 +58,8 @@ export function GroupPerformanceCard({ groups, isLoading, days }: GroupPerforman
       <CardContent className="space-y-6 pb-6">
         {isLoading ? (
           <div className="h-[220px] animate-pulse rounded-xl bg-muted" />
+        ) : isError ? (
+          <CardError onRetry={onRetry} />
         ) : !groups || groups.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">{t('no_groups')}</p>
         ) : (
@@ -81,7 +91,7 @@ export function GroupPerformanceCard({ groups, isLoading, days }: GroupPerforman
                   <TableHead className="text-right">{t('col_students')}</TableHead>
                   <TableHead className="text-right">{t('col_attempts')}</TableHead>
                   <TableHead className="text-right">{t('col_avg')}</TableHead>
-                  <TableHead className="text-right">{t('col_flashcards')}</TableHead>
+                  <TableHead className="text-right">{t('col_flashcard_accuracy')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -94,6 +104,11 @@ export function GroupPerformanceCard({ groups, isLoading, days }: GroupPerforman
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {percent(group.avgScore)}
+                      {group.awaitingGrade > 0 && (
+                        <span className="block text-xs text-muted-foreground">
+                          {t('awaiting_grade', { count: group.awaitingGrade })}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {percent(group.flashcardAccuracy)}

@@ -1,0 +1,126 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+// #654 review, operator decision A2: the teacher dashboard shows only the active organization's
+// activity. The rules live in SQL and in a few components; these guards keep them from drifting.
+
+const read = (path: string) => readFileSync(path, 'utf8');
+const stamp = read('supabase/migrations/20261027095000_activity_organization.sql');
+const rpcs = read('supabase/migrations/20261027100000_teacher_dashboard_rpcs.sql');
+const schema = read('supabase/schemas/99_rpc_functions.sql');
+
+describe('organization stamp of learner activity', () => {
+  it('adds a nullable, indexed organization to attempts and reviews', () => {
+    for (const table of ['quiz_attempts', 'flashcard_practice']) {
+      expect(stamp).toContain(`ALTER TABLE public.${table}`);
+    }
+    const columns =
+      stamp.split('ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES').length - 1;
+    expect(columns).toBe(2);
+    expect(stamp).toContain('ON DELETE SET NULL');
+    expect(stamp).toContain('idx_quiz_attempts_organization');
+    expect(stamp).toContain('idx_flashcard_practice_organization');
+  });
+
+  it('backfills assignment attempts from the assignment and leaves the rest NULL', () => {
+    expect(stamp).toContain('SET organization_id = ta.organization_id');
+    expect(stamp).toContain('WHERE qa.assignment_id = ta.id');
+  });
+
+  it('stamps from the owning resource, not the caller, and never from personal resources', () => {
+    expect(stamp).toContain("f.visibility = 'group'");
+    expect(stamp).toContain("q.visibility <> 'group'");
+    expect(stamp).not.toContain('active_org');
+    expect(stamp).not.toContain('auth.uid()');
+  });
+
+  it('stamps on every write path with triggers', () => {
+    for (const trigger of [
+      'quiz_attempts_stamp_organization',
+      'quiz_attempt_questions_stamp_organization',
+      'flashcard_practice_stamp_organization',
+    ]) {
+      expect(stamp).toContain(`CREATE TRIGGER ${trigger}`);
+    }
+  });
+
+  it('the declarative schema has the columns and the stamping functions', () => {
+    expect(read('supabase/schemas/39_quiz_attempts.sql')).toContain('organization_id');
+    expect(read('supabase/schemas/45_flashcard_practice.sql')).toContain('organization_id');
+    const functions = read('supabase/schemas/68_activity_organization.sql');
+    expect(functions).toContain('stamp_quiz_attempt_organization');
+    expect(functions).toContain('stamp_practice_attempt_organization');
+    expect(functions).toContain('stamp_flashcard_practice_organization');
+  });
+});
+
+describe('dashboard aggregates', () => {
+  it('filter both attempts and reviews on the organization', () => {
+    expect(rpcs.match(/qa\.organization_id = p_organization_id/g)?.length).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(rpcs).toContain('fp.organization_id = p_organization_id');
+  });
+
+  it('count each learner and each attempt once for the totals', () => {
+    expect(rpcs).toContain("'students', (SELECT COUNT(*) FROM learner_set)");
+    expect(rpcs).toContain("'completedAttempts', (SELECT COUNT(*) FROM attempt_rows)");
+  });
+
+  it('keep submitted-but-ungraded assignment attempts out of the average', () => {
+    expect(rpcs).toContain('AVG(ar.pct) FILTER (WHERE NOT ar.awaiting)');
+    expect(rpcs).toContain("'awaitingGrade'");
+  });
+
+  it('the declarative copy is the same function text', () => {
+    expect(schema).toContain('AVG(ar.pct) FILTER (WHERE NOT ar.awaiting)');
+    expect(schema).toContain('qa.organization_id = p_organization_id');
+    expect(schema).not.toMatch(/^\$;$/m);
+    expect(schema).not.toMatch(/^AS \$$/m);
+  });
+});
+
+describe('dashboard screen', () => {
+  const page = read('apps/web/src/app/(frontend)/edu/page.tsx');
+
+  it('takes the totals from the aggregate, never the sum of the rows', () => {
+    expect(page).toContain('groups?.totals.students');
+    expect(page).not.toMatch(/reduce\(\(sum, g\) => sum \+ g\.students/);
+  });
+
+  it('shows an error with a retry for every query instead of an empty dashboard', () => {
+    for (const handler of ['refetchStats', 'refetchGroups', 'refetchFeed']) {
+      expect(page).toContain(`${handler}()`);
+    }
+  });
+
+  it.each(['group-performance-card', 'activity-feed-card', 'problem-questions-card'])(
+    '%s has an error branch and a heading',
+    (name) => {
+      const card = read(`apps/web/src/components/edu/dashboard/${name}.tsx`);
+      expect(card).toContain('<CardError onRetry={onRetry} />');
+      expect(card).toContain('role="heading" aria-level={2}');
+    },
+  );
+
+  it('labels the flashcard column as accuracy and says "no data" in words', () => {
+    const card = read('apps/web/src/components/edu/dashboard/group-performance-card.tsx');
+    expect(card).toContain("t('col_flashcard_accuracy')");
+    expect(card).not.toContain("t('col_flashcards')");
+    expect(card).toContain("t('no_data')");
+    expect(card).not.toContain("'—'");
+  });
+
+  it.each(['pl', 'en'])('%s has the new strings', (locale) => {
+    const messages = JSON.parse(read(`apps/web/src/i18n/messages/${locale}.json`));
+    for (const key of [
+      'col_flashcard_accuracy',
+      'no_data',
+      'awaiting_grade',
+      'load_error',
+      'retry',
+    ]) {
+      expect(messages.EduOverviewPage[key], key).toBeTruthy();
+    }
+  });
+});

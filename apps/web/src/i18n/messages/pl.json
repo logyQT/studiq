@@ -392,6 +392,11 @@
     "edu_groups": "Grupy"
   },
   "EduOverviewPage": {
+    "col_flashcard_accuracy": "Trafność fiszek",
+    "no_data": "brak danych",
+    "awaiting_grade": "{count} do oceny",
+    "load_error": "Nie udało się wczytać danych.",
+    "retry": "Spróbuj ponownie",
     "title": "Panel Nauczyciela",
     "total_questions": "Łączna liczba pytań",
     "flashcards": "Fiszki",

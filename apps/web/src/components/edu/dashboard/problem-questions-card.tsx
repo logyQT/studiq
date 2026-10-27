@@ -8,20 +8,29 @@ import { useTranslations } from 'next-intl';
 
 const SHOWN = 5;
 
+import { CardError } from '@/components/edu/dashboard/card-error';
+
 interface ProblemQuestionsCardProps {
   questions: ProblematicQuestionStats[] | undefined;
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }
 
 /** Questions most students get wrong; the full list lives on the results page. */
-export function ProblemQuestionsCard({ questions, isLoading }: ProblemQuestionsCardProps) {
+export function ProblemQuestionsCard({
+  questions,
+  isLoading,
+  isError,
+  onRetry,
+}: ProblemQuestionsCardProps) {
   const t = useTranslations('EduOverviewPage');
   const shown = (questions ?? []).slice(0, SHOWN);
 
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle role="heading" aria-level={2} className="flex items-center gap-2 text-base">
           <div className="rounded-lg bg-amber-500/10 p-1.5">
             <AlertTriangle
               className="h-4 w-4 text-amber-600 dark:text-amber-400"
@@ -35,6 +44,8 @@ export function ProblemQuestionsCard({ questions, isLoading }: ProblemQuestionsC
       <CardContent className="space-y-3 pb-6">
         {isLoading ? (
           <div className="h-24 animate-pulse rounded-xl bg-muted" />
+        ) : isError ? (
+          <CardError onRetry={onRetry} />
         ) : shown.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">{t('problem_empty')}</p>
         ) : (

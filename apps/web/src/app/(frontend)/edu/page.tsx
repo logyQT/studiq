@@ -3,7 +3,7 @@
 import type {
   ProblematicQuestionStats,
   TeacherFeedItem,
-  TeacherGroupPerformanceItem,
+  TeacherGroupPerformance,
 } from '@studiq/server/models/stats.model';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, StatCard } from '@studiq/ui';
 import { ArrowRight, ClipboardCheck, FileText, Layers, Plus, Users, Zap } from 'lucide-react';
@@ -35,19 +35,34 @@ export default function EduOverviewPage() {
   // organization's numbers while the new ones load.
   const orgId = activeOrg?.id ?? null;
 
-  const { data: stats, isLoading: statsLoading } = useApiQuery<TeacherStats>({
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    isError: statsError,
+    refetch: refetchStats,
+  } = useApiQuery<TeacherStats>({
     queryKey: ['stats', 'teacher', 'overview', orgId],
     url: '/api/v1/stats/teacher',
     staleTime: STALE_MS,
     enabled: !orgsPending,
   });
-  const { data: groups, isLoading: groupsLoading } = useApiQuery<TeacherGroupPerformanceItem[]>({
+  const {
+    data: groups,
+    isLoading: groupsLoading,
+    isError: groupsError,
+    refetch: refetchGroups,
+  } = useApiQuery<TeacherGroupPerformance>({
     queryKey: ['stats', 'teacher', 'groups', orgId, RESULT_DAYS],
     url: `/api/v1/stats/teacher/groups?days=${RESULT_DAYS}`,
     staleTime: STALE_MS,
     enabled: !orgsPending,
   });
-  const { data: feed, isLoading: feedLoading } = useApiQuery<TeacherFeedItem[]>({
+  const {
+    data: feed,
+    isLoading: feedLoading,
+    isError: feedError,
+    refetch: refetchFeed,
+  } = useApiQuery<TeacherFeedItem[]>({
     queryKey: ['stats', 'teacher', 'feed', orgId],
     url: '/api/v1/stats/teacher/feed?limit=10',
     staleTime: STALE_MS,
@@ -55,8 +70,10 @@ export default function EduOverviewPage() {
   });
 
   const loading = statsLoading || orgsPending;
-  const students = (groups ?? []).reduce((sum, g) => sum + g.students, 0);
-  const completed = (groups ?? []).reduce((sum, g) => sum + g.completedAttempts, 0);
+  // Distinct learners and attempts from the aggregate itself: a learner in two groups is one
+  // learner, so the totals are never the sum of the group rows. A failed read shows a dash.
+  const students = groups?.totals.students;
+  const completed = groups?.totals.completedAttempts;
 
   return (
     <div className="space-y-8">
@@ -78,13 +95,13 @@ export default function EduOverviewPage() {
         />
         <StatCard
           title={t('students_stat')}
-          value={groupsLoading ? '...' : students}
+          value={groupsLoading ? '...' : groupsError ? '—' : (students ?? 0)}
           icon={Users}
           variant="emerald"
         />
         <StatCard
           title={t('completed_stat', { days: RESULT_DAYS })}
-          value={groupsLoading ? '...' : completed}
+          value={groupsLoading ? '...' : groupsError ? '—' : (completed ?? 0)}
           icon={ClipboardCheck}
           variant="amber"
         />
@@ -92,15 +109,28 @@ export default function EduOverviewPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <GroupPerformanceCard groups={groups} isLoading={groupsLoading} days={RESULT_DAYS} />
+          <GroupPerformanceCard
+            data={groups}
+            isLoading={groupsLoading}
+            isError={groupsError}
+            onRetry={() => refetchGroups()}
+            days={RESULT_DAYS}
+          />
         </div>
-        <ActivityFeedCard items={feed} isLoading={feedLoading} />
+        <ActivityFeedCard
+          items={feed}
+          isLoading={feedLoading}
+          isError={feedError}
+          onRetry={() => refetchFeed()}
+        />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         <ProblemQuestionsCard
           questions={stats?.subject?.problematicQuestions}
           isLoading={statsLoading}
+          isError={statsError}
+          onRetry={() => refetchStats()}
         />
 
         {/* Quick Actions */}

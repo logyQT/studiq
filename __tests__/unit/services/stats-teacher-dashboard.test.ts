@@ -27,17 +27,21 @@ describe('StatsService teacher dashboard', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('asks for the group results of the caller in the active organization', async () => {
-    const rows = [
-      {
-        groupId: 'g1',
-        groupName: 'Grupa A',
-        students: 4,
-        completedAttempts: 9,
-        avgScore: 72,
-        flashcardReviews: 30,
-        flashcardAccuracy: 80,
-      },
-    ];
+    const rows = {
+      groups: [
+        {
+          groupId: 'g1',
+          groupName: 'Grupa A',
+          students: 4,
+          completedAttempts: 9,
+          awaitingGrade: 1,
+          avgScore: 72,
+          flashcardReviews: 30,
+          flashcardAccuracy: 80,
+        },
+      ],
+      totals: { students: 4, completedAttempts: 9, awaitingGrade: 1 },
+    };
     rpc.mockResolvedValue({ data: rows, error: null });
 
     const result = await service.getTeacherGroupPerformance(ctx, 14);
@@ -74,7 +78,10 @@ describe('StatsService teacher dashboard', () => {
     const groups = await service.getTeacherGroupPerformance(noOrg);
     const feed = await service.getTeacherActivityFeed(noOrg);
 
-    expect(groups.success && groups.data).toEqual([]);
+    expect(groups.success && groups.data).toEqual({
+      groups: [],
+      totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 },
+    });
     expect(feed.success && feed.data).toEqual([]);
     expect(rpc).not.toHaveBeenCalled();
   });
@@ -122,7 +129,9 @@ describe('StatsController teacher dashboard', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('passes the parsed window and limit to the service', async () => {
-    statsService.getTeacherGroupPerformance.mockResolvedValue(success([]));
+    statsService.getTeacherGroupPerformance.mockResolvedValue(
+      success({ groups: [], totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 } }),
+    );
     statsService.getTeacherActivityFeed.mockResolvedValue(success([]));
 
     await controller.getTeacherGroupPerformance({ days: '7' }, ctx);

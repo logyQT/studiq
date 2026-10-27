@@ -105,11 +105,22 @@ export interface TeacherGroupPerformanceItem {
   students: number;
   /** Completed quiz / assignment attempts of those learners inside the window. */
   completedAttempts: number;
-  /** Mean attempt score, 0–100; `null` when nothing was completed ("no data" is not 0 %). */
+  /** Submitted assignment attempts still waiting for the teacher's grade; not in `avgScore`. */
+  awaitingGrade: number;
+  /** Mean score of the GRADED attempts, 0–100; `null` without any ("no data" is not 0 %). */
   avgScore: number | null;
   flashcardReviews: number;
   /** Share of correct flashcard reviews, 0–100; `null` without reviews. */
   flashcardAccuracy: number | null;
+}
+
+/**
+ * Per-group rows plus totals that count each learner and each attempt once. A learner in two
+ * groups is one learner, so the totals are never the sum of the rows.
+ */
+export interface TeacherGroupPerformance {
+  groups: TeacherGroupPerformanceItem[];
+  totals: { students: number; completedAttempts: number; awaitingGrade: number };
 }
 
 export type TeacherFeedKind = 'quiz_completed' | 'assignment_submitted' | 'report_opened';
