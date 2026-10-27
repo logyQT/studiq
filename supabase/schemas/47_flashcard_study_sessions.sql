@@ -21,3 +21,5 @@ CREATE TABLE public.flashcard_study_sessions (
 COMMENT ON COLUMN public.flashcard_study_sessions.mode IS 'review=due cards, cram=all deck cards, quick=review with limit=5';
 
 CREATE INDEX idx_flashcard_study_sessions_user ON public.flashcard_study_sessions(user_id);
+CREATE INDEX idx_flashcard_study_sessions_completed_at
+  ON public.flashcard_study_sessions(completed_at);

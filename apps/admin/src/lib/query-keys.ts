@@ -18,6 +18,10 @@ export const queryKeys = {
     all: ['subscription-plans'] as const,
     detail: (id: string) => ['subscription-plans', id] as const,
   },
+  stats: {
+    platform: ['stats', 'platform'] as const,
+    daily: (days: number) => ['stats', 'daily', days] as const,
+  },
   organizations: {
     all: ['organizations'] as const,
     detail: (id: string) => ['organizations', id] as const,
