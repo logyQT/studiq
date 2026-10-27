@@ -10,6 +10,8 @@ import {
   type StudentAssignmentAttemptState,
 } from '@/lib/assignment-attempts';
 import { studentAssignmentKeys } from '@/lib/query-keys';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
+import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 interface StudentAssignment extends StudentAssignmentAttemptState {
   id: string;
@@ -68,7 +70,12 @@ export default function StudentAssignmentsPage() {
   const t = useTranslations('AppAssignmentsPage');
   const locale = useLocale();
 
-  const { data: assignments, isLoading } = useApiQuery<StudentAssignment[]>({
+  const {
+    data: assignments,
+    isLoading,
+    isError,
+    refetch,
+  } = useApiQuery<StudentAssignment[]>({
     queryKey: studentAssignmentKeys.all,
     url: '/api/v1/assignments',
   });
@@ -86,18 +93,18 @@ export default function StudentAssignmentsPage() {
         <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
+      <FirstVisitHint id="app_assignments" />
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-24 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : isEmpty ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <ClipboardCheck className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">{t('empty')}</h3>
-          <p className="text-sm text-muted-foreground mt-1">{t('empty_desc')}</p>
-        </div>
+        <EmptyState icon={ClipboardCheck} title={t('empty')} description={t('empty_desc')} />
       ) : (
         <>
           {scheduled.length > 0 && (

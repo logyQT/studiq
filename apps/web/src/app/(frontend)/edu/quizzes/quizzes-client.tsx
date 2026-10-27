@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
 import { formatDateTime } from '@/lib/datetime';
 import { quizKeys } from '@/lib/query-keys';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 
 interface Quiz {
   id: string;
@@ -20,7 +21,12 @@ export function QuizzesClient() {
   const t = useTranslations('EduQuizzesPage');
   const locale = useLocale();
 
-  const { data: quizzes, isLoading } = useApiQuery<Quiz[]>({
+  const {
+    data: quizzes,
+    isLoading,
+    isError,
+    refetch,
+  } = useApiQuery<Quiz[]>({
     queryKey: quizKeys.all,
     url: '/api/v1/teacher/quizzes',
   });
@@ -52,12 +58,10 @@ export function QuizzesClient() {
         </Link>
       </div>
 
-      {!quizzes || quizzes.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <ScrollText className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">{t('empty')}</h3>
-          <p className="text-sm text-muted-foreground mt-1">{t('empty_desc')}</p>
-        </div>
+      {isError ? (
+        <ErrorState onRetry={() => refetch()} />
+      ) : !quizzes || quizzes.length === 0 ? (
+        <EmptyState icon={ScrollText} title={t('empty')} description={t('empty_desc')} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {quizzes.map((quiz) => (

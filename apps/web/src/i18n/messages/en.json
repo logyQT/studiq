@@ -29,6 +29,19 @@
     "groups_placeholder": "Select groups...",
     "groups_empty": "No groups found"
   },
+  "EmptyStates": {
+    "load_error": "The list could not be loaded",
+    "load_error_desc": "Check your connection and try again.",
+    "retry": "Try again",
+    "no_results_query": "No results for \"{query}\"",
+    "no_results_filters": "Nothing matches the current filters",
+    "clear_filters": "Clear filters",
+    "hint_dismiss": "Dismiss the tip",
+    "hint_decks": "A deck is a set of flashcards on one subject. Create a deck, add flashcards to it, then come back to them under Study on the review schedule.",
+    "hint_question_banks": "A question bank groups the questions for quizzes and tests. Create a bank, add questions, then use them in a quiz.",
+    "hint_edu_assignments": "An assignment is a test for chosen groups with a deadline and a time limit. Build it from bank questions, publish it, and the results show up here.",
+    "hint_app_assignments": "Quizzes and tests from your teachers show up here. Start them before the deadline: after it they can no longer be submitted."
+  },
   "A11y": {
     "remove_row": "Remove row {number}",
     "copy_invite_link": "Copy invitation link",

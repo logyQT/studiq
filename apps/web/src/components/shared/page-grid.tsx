@@ -1,5 +1,6 @@
-import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@studiq/ui';
 import type { ReactNode, RefObject } from 'react';
+import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
+import type { ListEmptyView } from '@/lib/list-empty-view';
 
 interface PageGridProps {
   cols?: 3 | 4;
@@ -13,6 +14,12 @@ interface PageGridProps {
   emptyIcon?: ReactNode;
   emptyTitle?: string;
   emptyAction?: ReactNode;
+  /** The list failed to load: shown instead of the rows and of any empty state. */
+  isError?: boolean;
+  onRetry?: () => void;
+  /** When a search or filter hid every row, the grid names it instead of the collection copy. */
+  emptyView?: ListEmptyView;
+  onClearFilters?: () => void;
   children?: ReactNode;
 }
 
@@ -28,6 +35,10 @@ export function PageGrid({
   emptyIcon,
   emptyTitle,
   emptyAction,
+  isError,
+  onRetry,
+  emptyView,
+  onClearFilters,
   children,
 }: PageGridProps) {
   const gridCols =
@@ -45,6 +56,15 @@ export function PageGrid({
     );
   }
 
+  // A failed first load has no rows to keep on screen: say so instead of drawing an empty list.
+  if (isError && onRetry && isEmpty) {
+    return (
+      <div className={gridCols}>
+        <ErrorState onRetry={onRetry} className="col-span-full" />
+      </div>
+    );
+  }
+
   return (
     <div className={gridCols}>
       {children}
@@ -55,13 +75,22 @@ export function PageGrid({
           <div key={`skel-${i}`}>{skeleton}</div>
         ))}
       {loadMoreRef && <div ref={loadMoreRef} className="min-h-px" />}
-      {isEmpty && !isFetchingNextPage && (
-        <Empty className="col-span-full">
-          {emptyIcon && <EmptyMedia>{emptyIcon}</EmptyMedia>}
-          {emptyTitle && <EmptyTitle>{emptyTitle}</EmptyTitle>}
-          {emptyAction && <EmptyDescription>{emptyAction}</EmptyDescription>}
-        </Empty>
-      )}
+      {isEmpty &&
+        !isFetchingNextPage &&
+        (emptyView?.kind === 'no-results' && onClearFilters ? (
+          <NoResultsState
+            query={emptyView.query}
+            onClear={onClearFilters}
+            className="col-span-full"
+          />
+        ) : (
+          <EmptyState
+            media={emptyIcon}
+            title={emptyTitle ?? ''}
+            action={emptyAction}
+            className="col-span-full"
+          />
+        ))}
     </div>
   );
 }
