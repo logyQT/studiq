@@ -14,11 +14,14 @@ ONB-01.
 ## Prerequisite context
 
 ### ONB-01 — Nauczyciel bez organizacji → /setup
+
 _Warunek wstępny: Zalogowany test.teacher01@example.com (bez organizacji)._
+
 1. Po zalogowaniu obserwuj adres.
 2. Sprawdź ekran „Witaj w StudiQ”.
 
 Expected:
+
 - Automatyczne przekierowanie na /setup.
 - Widoczne dwie opcje: „Dołącz do istniejącej organizacji” i „Utwórz własną klasę”.
 - Próba wejścia na /edu przekierowuje z powrotem na /setup.

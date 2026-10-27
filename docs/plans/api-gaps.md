@@ -12,8 +12,8 @@ ticket for the fix.
 
 ### D1 — Invite accept blocked for `base`-plan users (429 USAGE_LIMIT_EXCEEDED) — FIXED
 
-- Cause: `getEffectiveLimit(ctx, 'max_students')` resolved limits from the *accepting
-  student's* personal plan (`base` has no `max_students` row) → `[]` → `0` → blocked.
+- Cause: `getEffectiveLimit(ctx, 'max_students')` resolved limits from the _accepting
+  student's_ personal plan (`base` has no `max_students` row) → `[]` → `0` → blocked.
 - Fix: new `LimitsResolver.checkOrgLimit(orgId, key, count)` — capacity resolved against the
   invitation's **organization** (org `plan` → `plan_limits`, derived live; the per-org
   override table was removed in #229, default `-1`). `acceptInvitation` now uses it.
@@ -42,10 +42,10 @@ ticket for the fix.
 
 ## Gaps (no route exists) → DB fallback in helper
 
-| Item | API gap | Helper workaround |
-|------|---------|-------------------|
-| Question banks | ~~No `POST /api/v1/question-banks`~~ — route now exists at `api/v1/questions/banks`; helper creates banks via the real API | — |
-| Subjects | No subject create route | Service-role insert (not yet used by helper — add when a subject is needed) |
+| Item           | API gap                                                                                                                    | Helper workaround                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Question banks | ~~No `POST /api/v1/question-banks`~~ — route now exists at `api/v1/questions/banks`; helper creates banks via the real API | —                                                                           |
+| Subjects       | No subject create route                                                                                                    | Service-role insert (not yet used by helper — add when a subject is needed) |
 
 ## Not defects (seeding notes)
 

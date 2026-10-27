@@ -11,39 +11,42 @@
 ### 1.1 Database Schema
 
 **`questions` table:**
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | uuid | PK |
-| `university_id` | uuid | FK → universities (nullable) |
-| `subject_id` | uuid | FK → subjects (nullable) |
-| `created_by` | uuid | FK → profiles (teacher) |
-| `type` | question_type | ENUM: `'mcq'`, `'true_false'`, `'open'` |
-| `content` | text | Question text |
-| `explanation` | text | Post-answer explanation (nullable) |
-| `difficulty` | question_difficulty | ENUM: `'easy'`, `'medium'`, `'hard'` |
-| `created_at` | timestamptz | |
-| `updated_at` | timestamptz | |
+
+| Column          | Type                | Description                             |
+| --------------- | ------------------- | --------------------------------------- |
+| `id`            | uuid                | PK                                      |
+| `university_id` | uuid                | FK → universities (nullable)            |
+| `subject_id`    | uuid                | FK → subjects (nullable)                |
+| `created_by`    | uuid                | FK → profiles (teacher)                 |
+| `type`          | question_type       | ENUM: `'mcq'`, `'true_false'`, `'open'` |
+| `content`       | text                | Question text                           |
+| `explanation`   | text                | Post-answer explanation (nullable)      |
+| `difficulty`    | question_difficulty | ENUM: `'easy'`, `'medium'`, `'hard'`    |
+| `created_at`    | timestamptz         |                                         |
+| `updated_at`    | timestamptz         |                                         |
 
 **`question_answers` table:**
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | uuid | PK |
-| `question_id` | uuid | FK → questions (CASCADE) |
-| `content` | text | Answer text |
-| `is_correct` | boolean | Whether this is the correct answer |
-| `order_index` | int | Display ordering |
+
+| Column        | Type    | Description                        |
+| ------------- | ------- | ---------------------------------- |
+| `id`          | uuid    | PK                                 |
+| `question_id` | uuid    | FK → questions (CASCADE)           |
+| `content`     | text    | Answer text                        |
+| `is_correct`  | boolean | Whether this is the correct answer |
+| `order_index` | int     | Display ordering                   |
 
 ### 1.2 Current Question Types
 
-| Type | Answers | Correct Answer | Grading |
-|------|---------|----------------|---------|
-| `mcq` | 2+ options, one radio-select | Single `is_correct` flag | Exact match on `selected_answer_id` |
-| `true_false` | Exactly 2 (True, False) | Single `is_correct` flag | Exact match on `selected_answer_id` |
-| `open` | No predefined answers | N/A (no answers stored) | Not auto-graded |
+| Type         | Answers                      | Correct Answer           | Grading                             |
+| ------------ | ---------------------------- | ------------------------ | ----------------------------------- |
+| `mcq`        | 2+ options, one radio-select | Single `is_correct` flag | Exact match on `selected_answer_id` |
+| `true_false` | Exactly 2 (True, False)      | Single `is_correct` flag | Exact match on `selected_answer_id` |
+| `open`       | No predefined answers        | N/A (no answers stored)  | Not auto-graded                     |
 
 ### 1.3 Current Grading Logic
 
 In `quiz-attempt.service.ts:submit()`:
+
 ```typescript
 // Only checks if selected_answer_id matches an is_correct answer
 if (ans.selectedAnswerId) {
@@ -57,6 +60,7 @@ if (ans.selectedAnswerId) {
 ```
 
 **Limitation:** Only supports single-answer selection via `selected_answer_id`. No support for:
+
 - Multiple correct answers (checkbox)
 - Text input answers (cloze, short answer)
 - Matched pairs (matching)
@@ -67,15 +71,15 @@ if (ans.selectedAnswerId) {
 
 ### 2.1 Type Summary
 
-| Type | Label | Answers | Correct Answer | Grading | Status |
-|------|-------|---------|----------------|---------|--------|
-| `mcq` | Multiple Choice | 2+ options, single select | Single `is_correct` | Existing | Keep |
-| `true_false` | True/False | 2 options | Single `is_correct` | Existing | Keep |
-| `short_answer` | Short Answer | Text input | 1+ accepted answers | Exact match or LLM | **Rename from `open`** |
-| `cloze` | Cloze (Fill-in-the-Blank) | Text input per gap | 1+ accepted answers per gap | Exact match | **New** |
-| `checkbox` | Checkbox (Multi-Select) | 2+ options, multi select | Multiple `is_correct` flags | All correct selected, no incorrect | **New** |
-| `matching` | Matching | Pairs of items | Correct pair mapping | All pairs correct | **New** |
-| `image_choice` | Image Choice | 2+ image options, single select | Single `is_correct` | Exact match on `selected_answer_id` | **New** |
+| Type           | Label                     | Answers                         | Correct Answer              | Grading                             | Status                 |
+| -------------- | ------------------------- | ------------------------------- | --------------------------- | ----------------------------------- | ---------------------- |
+| `mcq`          | Multiple Choice           | 2+ options, single select       | Single `is_correct`         | Existing                            | Keep                   |
+| `true_false`   | True/False                | 2 options                       | Single `is_correct`         | Existing                            | Keep                   |
+| `short_answer` | Short Answer              | Text input                      | 1+ accepted answers         | Exact match or LLM                  | **Rename from `open`** |
+| `cloze`        | Cloze (Fill-in-the-Blank) | Text input per gap              | 1+ accepted answers per gap | Exact match                         | **New**                |
+| `checkbox`     | Checkbox (Multi-Select)   | 2+ options, multi select        | Multiple `is_correct` flags | All correct selected, no incorrect  | **New**                |
+| `matching`     | Matching                  | Pairs of items                  | Correct pair mapping        | All pairs correct                   | **New**                |
+| `image_choice` | Image Choice              | 2+ image options, single select | Single `is_correct`         | Exact match on `selected_answer_id` | **New**                |
 
 ### 2.2 Type Definitions
 
@@ -86,10 +90,12 @@ if (ans.selectedAnswerId) {
 **Content format:** Plain text question.  
 **Answer storage:** 1+ `question_answers` rows with `is_correct: true` for each accepted variant.  
 **Grading:**
+
 - **Phase 1:** Exact string match (case-insensitive, trimmed). Multiple accepted answers allow synonyms.
 - **Phase 2 (future):** LLM-assisted grading — if the typed answer doesn't match any accepted answer, send to LLM with the question + correct answer for semantic similarity check. This is a soft grading pass that returns a confidence score; below threshold = incorrect.
 
 **Example:**
+
 ```
 Question: "What is the chemical symbol for gold?"
 Accepted answers: ["Au", "au", "AU"]
@@ -99,20 +105,23 @@ Accepted answers: ["Au", "au", "AU"]
 
 **Purpose:** Fill-in-the-blank questions. The question contains gaps that the student must fill.
 
-**Content format:** Text with `{{c1::answer}}` syntax for gaps.  
-- `{{c1::gold}}` → Gap 1, correct answer is "gold"  
-- `{{c2::silver}}` → Gap 2, correct answer is "silver"  
+**Content format:** Text with `{{c1::answer}}` syntax for gaps.
+
+- `{{c1::gold}}` → Gap 1, correct answer is "gold"
+- `{{c2::silver}}` → Gap 2, correct answer is "silver"
 - Multiple correct answers per gap: `{{c1::Au|gold|Gold}}`
 
 **Answer storage:** Each gap becomes a `question_answers` row:
-- `content` = the gap text (e.g., "gold")  
-- `is_correct` = `true`  
-- `order_index` = gap number (0, 1, 2, ...)  
+
+- `content` = the gap text (e.g., "gold")
+- `is_correct` = `true`
+- `order_index` = gap number (0, 1, 2, ...)
 - Additional accepted variants stored in `accepted_values` JSONB column
 
 **Grading:** Exact match per gap (case-insensitive, trimmed). All gaps must be correct.
 
 **Example:**
+
 ```
 Content: "The chemical symbol for {{c1::gold}} is {{c2::Au}}."
 Gap 1 accepted: ["gold", "Gold", "GOLD"]
@@ -126,10 +135,12 @@ Gap 2 accepted: ["Au", "au"]
 **Content format:** Plain text question.  
 **Answer storage:** 2+ `question_answers` rows. Multiple rows have `is_correct: true`.  
 **Grading:** Student submits array of `selected_answer_ids`. Correct if:
+
 - All `is_correct: true` answers are selected
 - No `is_correct: false` answers are selected
 
 **Example:**
+
 ```
 Question: "Which of the following are noble gases? (Select all that apply)"
 Answers: [
@@ -147,13 +158,15 @@ Correct submission: [Helium, Neon]
 
 **Content format:** Plain text question (e.g., "Match the elements with their symbols").  
 **Answer storage:** Pairs stored as `question_answers` rows:
-- `content` = left item text  
-- `is_correct` = `true`  
-- `match_value` = the right item this left item matches  
+
+- `content` = left item text
+- `is_correct` = `true`
+- `match_value` = the right item this left item matches
 
 **Grading:** Student submits `{ leftId, rightId }` pairs. Correct if all pairs match the stored `match_value`.
 
 **Example:**
+
 ```
 Question: "Match the elements with their chemical symbols"
 Pairs: [
@@ -170,15 +183,17 @@ Right items (shuffled in UI): ["Fe", "Au", "Ag"]
 
 **Content format:** Plain text question.  
 **Answer storage:** 2+ `question_answers` rows:
-- `content` = image URL or storage path  
-- `is_correct` = `true` for the correct image  
-- `order_index` = display order  
+
+- `content` = image URL or storage path
+- `is_correct` = `true` for the correct image
+- `order_index` = display order
 
 **Grading:** Same as `mcq` — single `selected_answer_id` match.
 
 **Media storage:** Images uploaded to Supabase Storage bucket `question-media`, URLs stored in `question_answers.content`.
 
 **Example:**
+
 ```
 Question: "Which of these is a beaker?"
 Answers: [
@@ -219,6 +234,7 @@ ALTER TABLE public.question_answers
 ```
 
 **Column purpose:**
+
 - `match_value`: Stores the right-side item for matching questions. NULL for other types.
 - `media_url`: Explicit image URL for image_choice.
 - `accepted_values`: JSON array of additional accepted answers. E.g., `["Au", "au", "AU"]`. The primary `content` is always the canonical answer.
@@ -265,32 +281,45 @@ ALTER TABLE public.question_answers
 ### 4.1 Model Layer (`question.model.ts`)
 
 **Updated `QuestionTypeEnum`:**
+
 ```typescript
 export const QuestionTypeEnum = z.enum([
-  'mcq', 'true_false', 'short_answer', 'cloze', 'checkbox', 'matching', 'image_choice'
+  'mcq',
+  'true_false',
+  'short_answer',
+  'cloze',
+  'checkbox',
+  'matching',
+  'image_choice',
 ]);
 ```
 
 **Updated `CreateQuestionSchema`:**
+
 ```typescript
 export const CreateQuestionSchema = z.object({
   subjectId: z.uuid().optional(),
   type: QuestionTypeEnum,
-  content: z.string().min(1).max(500),  // Increased for cloze syntax
+  content: z.string().min(1).max(500), // Increased for cloze syntax
   explanation: z.string().max(500).optional(),
   difficulty: DifficultyEnum.default('medium'),
-  answers: z.array(z.object({
-    content: z.string().min(1).max(255),
-    isCorrect: z.boolean(),
-    orderIndex: z.number().int().default(0),
-    matchValue: z.string().optional(),
-    mediaUrl: z.string().url().optional(),
-    acceptedValues: z.array(z.string()).optional(),
-  })).min(1),
+  answers: z
+    .array(
+      z.object({
+        content: z.string().min(1).max(255),
+        isCorrect: z.boolean(),
+        orderIndex: z.number().int().default(0),
+        matchValue: z.string().optional(),
+        mediaUrl: z.string().url().optional(),
+        acceptedValues: z.array(z.string()).optional(),
+      }),
+    )
+    .min(1),
 });
 ```
 
 **New validation per type:**
+
 ```typescript
 const typeSchemas = {
   mcq: z.object({ answers: z.array(...).min(2) }),
@@ -308,26 +337,37 @@ const typeSchemas = {
 **Current submission:** `{ questionId, selectedAnswerId }` — only supports single selection.
 
 **Updated submission:**
+
 ```typescript
 export const SubmitQuizAttemptSchema = z.object({
   attemptId: z.uuid(),
-  answers: z.array(z.object({
-    questionId: z.uuid(),
-    // For mcq, true_false, image_choice:
-    selectedAnswerId: z.uuid().optional(),
-    // For checkbox:
-    selectedAnswerIds: z.array(z.uuid()).optional(),
-    // For cloze, short_answer:
-    textAnswers: z.array(z.object({
-      gapIndex: z.number().int(),
-      value: z.string(),
-    })).optional(),
-    // For matching:
-    matchedPairs: z.array(z.object({
-      leftId: z.uuid(),
-      rightId: z.uuid(),
-    })).optional(),
-  })),
+  answers: z.array(
+    z.object({
+      questionId: z.uuid(),
+      // For mcq, true_false, image_choice:
+      selectedAnswerId: z.uuid().optional(),
+      // For checkbox:
+      selectedAnswerIds: z.array(z.uuid()).optional(),
+      // For cloze, short_answer:
+      textAnswers: z
+        .array(
+          z.object({
+            gapIndex: z.number().int(),
+            value: z.string(),
+          }),
+        )
+        .optional(),
+      // For matching:
+      matchedPairs: z
+        .array(
+          z.object({
+            leftId: z.uuid(),
+            rightId: z.uuid(),
+          }),
+        )
+        .optional(),
+    }),
+  ),
 });
 ```
 
@@ -338,7 +378,7 @@ export const SubmitQuizAttemptSchema = z.object({
 ```typescript
 for (const ans of data.answers) {
   const question = questionMap.get(ans.questionId);
-  
+
   switch (question.type) {
     case 'mcq':
     case 'true_false':
@@ -362,18 +402,18 @@ for (const ans of data.answers) {
 ```
 
 **Grading functions:**
+
 ```typescript
 async function gradeCheckbox(selectedIds: string[], questionId: string): Promise<boolean> {
   const { data: answers } = await supabase
     .from('question_answers')
     .select('id, is_correct')
     .eq('question_id', questionId);
-  
-  const correctIds = new Set(answers.filter(a => a.is_correct).map(a => a.id));
+
+  const correctIds = new Set(answers.filter((a) => a.is_correct).map((a) => a.id));
   const selectedSet = new Set(selectedIds);
-  
-  return correctIds.size === selectedSet.size &&
-         [...correctIds].every(id => selectedSet.has(id));
+
+  return correctIds.size === selectedSet.size && [...correctIds].every((id) => selectedSet.has(id));
 }
 
 async function gradeShortAnswer(textAnswers: TextAnswer[], questionId: string): Promise<boolean> {
@@ -382,14 +422,14 @@ async function gradeShortAnswer(textAnswers: TextAnswer[], questionId: string): 
     .select('content, accepted_values')
     .eq('question_id', questionId)
     .eq('is_correct', true);
-  
+
   const typed = textAnswers[0]?.value?.trim().toLowerCase() ?? '';
-  
-  if (answers.some(a => a.content.trim().toLowerCase() === typed)) return true;
-  
-  return answers.some(a => {
+
+  if (answers.some((a) => a.content.trim().toLowerCase() === typed)) return true;
+
+  return answers.some((a) => {
     const accepted = (a.accepted_values as string[]) ?? [];
-    return accepted.some(v => v.trim().toLowerCase() === typed);
+    return accepted.some((v) => v.trim().toLowerCase() === typed);
   });
 }
 
@@ -400,15 +440,17 @@ async function gradeCloze(textAnswers: TextAnswer[], questionId: string): Promis
     .eq('question_id', questionId)
     .eq('is_correct', true)
     .order('order_index');
-  
-  return textAnswers.every(ta => {
-    const answer = answers.find(a => a.order_index === ta.gapIndex);
+
+  return textAnswers.every((ta) => {
+    const answer = answers.find((a) => a.order_index === ta.gapIndex);
     if (!answer) return false;
-    
+
     const typed = ta.value.trim().toLowerCase();
     const primary = answer.content.trim().toLowerCase();
-    const accepted = ((answer.accepted_values as string[]) ?? []).map(v => v.trim().toLowerCase());
-    
+    const accepted = ((answer.accepted_values as string[]) ?? []).map((v) =>
+      v.trim().toLowerCase(),
+    );
+
     return typed === primary || accepted.includes(typed);
   });
 }
@@ -418,10 +460,10 @@ async function gradeMatching(matchedPairs: MatchedPair[], questionId: string): P
     .from('question_answers')
     .select('id, match_value')
     .eq('question_id', questionId);
-  
-  const correctMap = new Map(answers.map(a => [a.id, a.match_value]));
-  
-  return matchedPairs.every(pair => {
+
+  const correctMap = new Map(answers.map((a) => [a.id, a.match_value]));
+
+  return matchedPairs.every((pair) => {
     const expectedRight = correctMap.get(pair.leftId);
     return expectedRight && expectedRight === correctMap.get(pair.rightId);
   });
@@ -435,7 +477,7 @@ function parseClozeContent(content: string): { text: string; gaps: ClozeGap[] } 
   const gapRegex = /\{\{c(\d+)::([^}]+)\}\}/g;
   const gaps: ClozeGap[] = [];
   let match;
-  
+
   while ((match = gapRegex.exec(content)) !== null) {
     const index = parseInt(match[1]) - 1;
     const parts = match[2].split('|');
@@ -445,7 +487,7 @@ function parseClozeContent(content: string): { text: string; gaps: ClozeGap[] } 
       acceptedValues: parts.slice(1),
     });
   }
-  
+
   const text = content.replace(/\{\{c\d+::[^}]+\}\}/g, '______');
   return { text, gaps };
 }
@@ -457,27 +499,27 @@ function parseClozeContent(content: string): { text: string; gaps: ClozeGap[] } 
 
 ### 5.1 Question Creation Form
 
-| Type | Form UI |
-|------|---------|
-| `mcq` | Text input + dynamic answer list (radio buttons, add/remove) |
-| `true_false` | Auto-generated True/False answers |
+| Type           | Form UI                                                             |
+| -------------- | ------------------------------------------------------------------- |
+| `mcq`          | Text input + dynamic answer list (radio buttons, add/remove)        |
+| `true_false`   | Auto-generated True/False answers                                   |
 | `short_answer` | Text input + accepted answers list (comma-separated or multi-input) |
-| `cloze` | Text input with `{{c1::answer}}` syntax helper + preview |
-| `checkbox` | Text input + dynamic answer list (checkboxes, add/remove) |
-| `matching` | Left/right item pairs (two-column layout) |
-| `image_choice` | Text input + image upload for each answer option |
+| `cloze`        | Text input with `{{c1::answer}}` syntax helper + preview            |
+| `checkbox`     | Text input + dynamic answer list (checkboxes, add/remove)           |
+| `matching`     | Left/right item pairs (two-column layout)                           |
+| `image_choice` | Text input + image upload for each answer option                    |
 
 ### 5.2 Quiz Taking Interface
 
-| Type | Widget |
-|------|--------|
-| `mcq` | Radio button group |
-| `true_false` | Two radio buttons (True/False) |
-| `short_answer` | Single text input |
-| `cloze` | Multiple text inputs (one per gap) embedded in question text |
-| `checkbox` | Checkbox group |
-| `matching` | Drag-and-drop or dropdown pairing |
-| `image_choice` | Image grid with click-to-select |
+| Type           | Widget                                                       |
+| -------------- | ------------------------------------------------------------ |
+| `mcq`          | Radio button group                                           |
+| `true_false`   | Two radio buttons (True/False)                               |
+| `short_answer` | Single text input                                            |
+| `cloze`        | Multiple text inputs (one per gap) embedded in question text |
+| `checkbox`     | Checkbox group                                               |
+| `matching`     | Drag-and-drop or dropdown pairing                            |
+| `image_choice` | Image grid with click-to-select                              |
 
 ### 5.3 Quiz Results Display
 
@@ -489,6 +531,7 @@ function parseClozeContent(content: string): { text: string; gaps: ClozeGap[] } 
 ### 5.4 i18n Keys
 
 New keys for `en.json` and `pl.json`:
+
 ```json
 {
   "short_answer": "Short Answer",
@@ -570,6 +613,7 @@ This can be modeled as a new tool/service: **Question Collection Generator**. It
 
 **Input:** A deck/topic of flashcards  
 **Process:**
+
 1. Select a flashcard as the "target" (front → question, back → correct answer)
 2. Randomly select 3 other flashcards' `back` values as distractors
 3. Create an `mcq` question with 4 options (1 correct + 3 distractors)
@@ -577,6 +621,7 @@ This can be modeled as a new tool/service: **Question Collection Generator**. It
 **Constraint:** Requires at least 4 flashcards in the source. Works best for text-only cards.
 
 **Example:**
+
 ```
 Flashcard 1: front="Capital of France?" back="Paris"
 Flashcard 2: front="Capital of Germany?" back="Berlin"
@@ -593,6 +638,7 @@ Generated MCQ:
 
 **Input:** A flashcard  
 **Process:**
+
 1. Use `front` as question content
 2. Use `back` as the single accepted answer
 3. Optionally use other flashcards' `back` values as additional accepted answers (synonyms)
@@ -601,10 +647,12 @@ Generated MCQ:
 
 **Input:** A flashcard where `front` contains a statement with a key term  
 **Process:**
+
 1. Teacher manually marks the gap position using cloze syntax
 2. Or (future): LLM identifies the key term and creates a cloze automatically
 
 **Example:**
+
 ```
 Flashcard: front="Paris is the capital of France" back="Paris"
 Generated cloze: "______ is the capital of France" (gap: "Paris")
@@ -614,11 +662,13 @@ Generated cloze: "______ is the capital of France" (gap: "Paris")
 
 **Input:** A topic/deck of flashcards  
 **Process:**
+
 1. Select 4+ flashcards
 2. Left items = flashcard `front` values
 3. Right items = flashcard `back` values (shuffled)
 
 **Example:**
+
 ```
 Flashcards:
   "Capital of France" → "Paris"
@@ -668,6 +718,7 @@ Response: {
 ### Phase 1: Rename `open` → `short_answer` (Low effort, high value)
 
 **Files:**
+
 - Migration: Add `short_answer` to enum, migrate data
 - Model: Update `QuestionTypeEnum`
 - Service: No logic change (same as `open`)
@@ -678,6 +729,7 @@ Response: {
 ### Phase 2: Checkbox Questions (Medium effort)
 
 **Files:**
+
 - Model: Add validation for checkbox type
 - Service: Implement `gradeCheckbox()` in quiz-attempt service
 - Frontend: Checkbox answer widget, multi-select submission
@@ -687,6 +739,7 @@ Response: {
 ### Phase 3: Cloze Questions (Medium effort)
 
 **Files:**
+
 - Migration: Add `accepted_values` column
 - Model: Add cloze content validation
 - Service: Implement `gradeCloze()`, cloze parser
@@ -697,6 +750,7 @@ Response: {
 ### Phase 4: Matching Questions (Higher effort)
 
 **Files:**
+
 - Migration: Add `match_value` column
 - Model: Add matching pair validation
 - Service: Implement `gradeMatching()`
@@ -707,6 +761,7 @@ Response: {
 ### Phase 5: Image Choice Questions (Medium effort)
 
 **Files:**
+
 - Migration: Add `media_url` column (or use existing `content`)
 - Storage: Supabase Storage bucket for question media
 - Frontend: Image upload, image grid selection widget
@@ -716,6 +771,7 @@ Response: {
 ### Phase 6: Flashcard → Question Generator (Higher effort)
 
 **Files:**
+
 - New service: `question-generation.service.ts`
 - New route: `POST /api/v1/questions/generate-from-flashcards`
 - Frontend: Generation dialog in teacher question management
@@ -725,6 +781,7 @@ Response: {
 ### Phase 7: LLM Grading for Short Answer (Future)
 
 **Files:**
+
 - New service: `llm-grading.service.ts`
 - LLM API integration
 - Grading pipeline in quiz-attempt service

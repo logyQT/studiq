@@ -14,11 +14,14 @@ Włącz role.builder dla organizacji (override w adminie lub plan Hub: BIL-04).
 ## Prerequisite context
 
 ### BIL-04 — Zakup planu organizacji przez managera
+
 _Warunek wstępny: manager@dev.local, organizacja WSB Merito (Launch)._
+
 1. Wejdź na /pricing/org i wybierz „Hub” → zakup (checkout z kartą testową).
 2. Po zakupie sprawdź /manage/settings (branding) i /manage/roles.
 
 Expected:
+
 - Zakup przechodzi (komunikaty jak w BIL-03).
 - WERYFIKUJ I ZGŁOŚ: z kodu wynika, że symulowany webhook zmienia wyłącznie plan OSOBISTY użytkownika (profiles.personal_plan_key), a NIE plan organizacji. Oczekiwane (zgodnie ze specyfikacją): organizacja przechodzi na Hub i odblokowuje branding oraz kreator ról. Jeśli po zakupie organizacja nadal ma Launch (karta blokady brandingu widoczna), zgłoś jako defekt funkcjonalny.
 

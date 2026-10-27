@@ -5,6 +5,7 @@
 ## Current State
 
 The dashboard has a full-width topbar containing:
+
 - StudiQ logo (desktop only)
 - SidebarTrigger hamburger (mobile only)
 - AppSearch inline input (on /app and /edu routes)
@@ -76,12 +77,12 @@ The inline `AppSearch` input is replaced by a **dialog popup** triggered by **Ct
 
 The entire `<header>` element is deleted from `DashboardLayout.tsx`:
 
-| Element | Before | After |
-|---|---|---|
-| StudiQ logo | Topbar (desktop) | Sidebar header |
-| SidebarTrigger | Topbar (mobile) | Sidebar header (always visible) |
-| AppSearch | Topbar (inline) | Global Ctrl+K dialog |
-| UserMenu | Topbar (right) | Sidebar footer |
+| Element        | Before           | After                           |
+| -------------- | ---------------- | ------------------------------- |
+| StudiQ logo    | Topbar (desktop) | Sidebar header                  |
+| SidebarTrigger | Topbar (mobile)  | Sidebar header (always visible) |
+| AppSearch      | Topbar (inline)  | Global Ctrl+K dialog            |
+| UserMenu       | Topbar (right)   | Sidebar footer                  |
 
 ### Sidebar Height Update
 
@@ -92,11 +93,11 @@ The entire `<header>` element is deleted from `DashboardLayout.tsx`:
 
 ## Files Affected
 
-| File | Change |
-|---|---|
+| File                                        | Change                                                                              |
+| ------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `src/components/layout/DashboardLayout.tsx` | Remove topbar, restructure sidebar with SidebarHeader/Footer, update height classes |
-| `src/components/layout/app-search.tsx` | Rewrite from inline input to Ctrl+K dialog |
-| `src/components/layout/user-menu.tsx` | Add `compact` prop for avatar-only mode |
+| `src/components/layout/app-search.tsx`      | Rewrite from inline input to Ctrl+K dialog                                          |
+| `src/components/layout/user-menu.tsx`       | Add `compact` prop for avatar-only mode                                             |
 
 No changes to: breadcrumbs, main content, fullWidth logic, i18n keys (except optional tooltip key for search shortcut).
 
@@ -111,4 +112,4 @@ No changes to: breadcrumbs, main content, fullWidth logic, i18n keys (except opt
 
 ---
 
-*Created: 2026-06-17 | Status: Proposition — not approved*
+_Created: 2026-06-17 | Status: Proposition — not approved_

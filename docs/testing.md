@@ -4,10 +4,10 @@
 
 The project uses two testing frameworks:
 
-| Framework | Purpose | Location |
-|-----------|---------|----------|
-| Vitest | Unit and integration tests | `__tests__/unit/`, `__tests__/integration/` |
-| Playwright | End-to-end tests | `e2e/` |
+| Framework  | Purpose                    | Location                                    |
+| ---------- | -------------------------- | ------------------------------------------- |
+| Vitest     | Unit and integration tests | `__tests__/unit/`, `__tests__/integration/` |
+| Playwright | End-to-end tests           | `e2e/`                                      |
 
 ## Unit Tests
 
@@ -30,6 +30,7 @@ Integration tests hit a real local Supabase instance. They verify that API route
 **Location:** `__tests__/integration/`
 
 **Covered domains:**
+
 - Authentication (register, login, logout)
 - Subjects, questions, quizzes, quiz attempts
 - Flashcards, decks, topics, practice

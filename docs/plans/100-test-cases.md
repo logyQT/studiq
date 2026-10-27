@@ -134,4 +134,4 @@
 97. Completed messages don't flip to streaming
 98. `finish` with flashcards renders consolidated view
 99. Intermediate batches show `readOnly = true`
-100. Consolidated finish shows `readOnly = false`
+100.  Consolidated finish shows `readOnly = false`

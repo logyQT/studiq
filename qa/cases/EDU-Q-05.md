@@ -14,12 +14,15 @@ Pytania z EDU-Q-02…05.
 ## Prerequisite context
 
 ### EDU-Q-02 — Pytanie wielokrotnego wyboru
+
 _Warunek wstępny: Bank „Fizyka”._
+
 1. Kliknij „Utwórz pytanie”, typ „Wielokrotny wybór”.
 2. Wpisz treść, dodaj 4 odpowiedzi („Dodaj odpowiedź”), zaznacz poprawną radiem, dodaj wyjaśnienie i temat.
 3. Zapisz.
 
 Expected:
+
 - Pytanie pojawia się w tabeli z typem „Wielokrotnego wyboru”, liczbą odpowiedzi, tematem.
 - Dokładnie jedna odpowiedź oznaczona jako poprawna.
 

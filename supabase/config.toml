@@ -118,7 +118,15 @@ file_size_limit = "50MiB"
 # No storage.objects SELECT policy: listing must stay denied (see migration).
 public = true
 file_size_limit = "50MiB"
-allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp", "audio/mpeg", "audio/wav", "audio/ogg"]
+allowed_mime_types = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+]
 objects_path = "./flashcard-media"
 
 # Allow connections via S3 compatible clients

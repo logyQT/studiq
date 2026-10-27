@@ -51,50 +51,50 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 
 ## Documentation
 
-| Document                                       | Description                          |
-| ---------------------------------------------- | ------------------------------------ |
-| [Onboarding](docs/ONBOARDING.md)               | Local setup, Supabase, `gh` CLI, agents workflow |
-| [Architecture](docs/architecture.md)           | High-level design, layers, data flow |
-| [Authentication](docs/authentication.md)       | Auth flow, RBAC, route rules         |
-| [Database](docs/database.md)                   | Schema, migrations, seeds            |
-| [Plans, Features & Limits](docs/limits.md)     | Plan templates, feature/limit resolution, seats |
-| [API](docs/api.md)                             | API routes, controllers, services    |
-| [Project Structure](docs/project-structure.md) | Folder layout, conventions           |
-| [Testing](docs/testing.md)                     | Test strategy, running tests         |
+| Document                                                     | Description                                                   |
+| ------------------------------------------------------------ | ------------------------------------------------------------- |
+| [Onboarding](docs/ONBOARDING.md)                             | Local setup, Supabase, `gh` CLI, agents workflow              |
+| [Architecture](docs/architecture.md)                         | High-level design, layers, data flow                          |
+| [Authentication](docs/authentication.md)                     | Auth flow, RBAC, route rules                                  |
+| [Database](docs/database.md)                                 | Schema, migrations, seeds                                     |
+| [Plans, Features & Limits](docs/limits.md)                   | Plan templates, feature/limit resolution, seats               |
+| [API](docs/api.md)                                           | API routes, controllers, services                             |
+| [Project Structure](docs/project-structure.md)               | Folder layout, conventions                                    |
+| [Testing](docs/testing.md)                                   | Test strategy, running tests                                  |
 | [Observability & Debugging](docs/observability-debugging.md) | Local telemetry stack, Grafana MCP, trace→log→metric workflow |
-| [Deployment](docs/deployment.md)               | Hosting, environment, production     |
-| [Decisions](docs/decisions/)                   | Architecture Decision Records        |
+| [Deployment](docs/deployment.md)                             | Hosting, environment, production                              |
+| [Decisions](docs/decisions/)                                 | Architecture Decision Records                                 |
 
 ## Available Scripts
 
-| Command                              | Description                                                             |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| `bun dev`                            | Start the web app dev server (`@studiq/web`, port 3000) — same as `bun dev:web` |
-| `bun dev:admin`                      | Start the admin app dev server (`@studiq/admin`, port 4000)             |
-| `bun build`                          | Build the web app for production — same as `bun build:web`              |
-| `bun build:admin`                    | Build the admin app for production                                      |
-| `bun start`                          | Start the web app production server — same as `bun start:web`           |
-| `bun start:admin`                    | Start the admin app production server                                   |
-| `bun lint`                           | Lint only: Bun native linter + import-path guard + migration-timestamp guard (**no typecheck**) |
-| `bun typecheck`                      | Typecheck the web app with `bun check` (`typecheck:all` = every workspace) |
-| `bun lint:all`                       | `typecheck:all` + `lint` in one run                                      |
-| `bun lint:web` / `bun typecheck:web` | Lint / typecheck the web app only                                       |
-| `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                 |
-| `bun format`                         | Format with **`bun fmt`** (writes, whole repo)                           |
-| `bun format:check`                   | Check formatting with `bun fmt --check` (no writes, whole repo)          |
-| `bun test`                           | Run all Vitest tests (unit + integration)                               |
-| `bun test:unit`                      | Run unit tests                                                          |
-| `bun test:integration`               | Run integration tests (requires local Supabase)                         |
-| `bun test:watch`                     | Vitest watch mode                                                       |
-| `bun test:coverage`                  | Run tests with coverage                                                 |
-| `bun test:e2e`                       | Run Playwright E2E tests (`__tests__/e2e/`)                             |
-| `bun loadtest:seed`                  | Seed load-test accounts via the Supabase Admin API (`--count`, …)       |
-| `bun loadtest:bots`                  | Drive concurrent bot traffic (`--users`, `--shards`, `--duration`)      |
-| `bun loadtest:reset`                 | Delete the seeded load-test accounts                                    |
-| `bun clean`                          | Remove root `.next`, `node_modules/.cache`, and `coverage`              |
-| `scripts/spin <branch>`              | Create worktree + branch for isolated work                              |
-| `scripts/pr`                         | Create a PR from current branch via `gh`                                |
-| `scripts/switch-branch`              | Stash, switch branch, pull, pop stash                                   |
+| Command                                  | Description                                                                                     |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `bun dev`                                | Start the web app dev server (`@studiq/web`, port 3000) — same as `bun dev:web`                 |
+| `bun dev:admin`                          | Start the admin app dev server (`@studiq/admin`, port 4000)                                     |
+| `bun build`                              | Build the web app for production — same as `bun build:web`                                      |
+| `bun build:admin`                        | Build the admin app for production                                                              |
+| `bun start`                              | Start the web app production server — same as `bun start:web`                                   |
+| `bun start:admin`                        | Start the admin app production server                                                           |
+| `bun lint`                               | Lint only: Bun native linter + import-path guard + migration-timestamp guard (**no typecheck**) |
+| `bun typecheck`                          | Typecheck the web app with `bun check` (`typecheck:all` = every workspace)                      |
+| `bun lint:all`                           | `typecheck:all` + `lint` in one run                                                             |
+| `bun lint:web` / `bun typecheck:web`     | Lint / typecheck the web app only                                                               |
+| `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                                             |
+| `bun format`                             | Format with **`bun fmt`** (writes, whole repo)                                                  |
+| `bun format:check`                       | Check formatting with `bun fmt --check` (no writes, whole repo)                                 |
+| `bun test`                               | Run all Vitest tests (unit + integration)                                                       |
+| `bun test:unit`                          | Run unit tests                                                                                  |
+| `bun test:integration`                   | Run integration tests (requires local Supabase)                                                 |
+| `bun test:watch`                         | Vitest watch mode                                                                               |
+| `bun test:coverage`                      | Run tests with coverage                                                                         |
+| `bun test:e2e`                           | Run Playwright E2E tests (`__tests__/e2e/`)                                                     |
+| `bun loadtest:seed`                      | Seed load-test accounts via the Supabase Admin API (`--count`, …)                               |
+| `bun loadtest:bots`                      | Drive concurrent bot traffic (`--users`, `--shards`, `--duration`)                              |
+| `bun loadtest:reset`                     | Delete the seeded load-test accounts                                                            |
+| `bun clean`                              | Remove root `.next`, `node_modules/.cache`, and `coverage`                                      |
+| `scripts/spin <branch>`                  | Create worktree + branch for isolated work                                                      |
+| `scripts/pr`                             | Create a PR from current branch via `gh`                                                        |
+| `scripts/switch-branch`                  | Stash, switch branch, pull, pop stash                                                           |
 
 ## Environment Variables
 

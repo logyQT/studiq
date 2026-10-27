@@ -57,11 +57,11 @@ gh auth login
 
 When prompted:
 
-| Prompt | Recommended answer |
-|--------|--------------------|
-| **GitHub account** | Pick the account that has access to this repo |
+| Prompt                 | Recommended answer                                        |
+| ---------------------- | --------------------------------------------------------- |
+| **GitHub account**     | Pick the account that has access to this repo             |
 | **Preferred protocol** | `HTTPS` (simpler) or `SSH` (if you already have SSH keys) |
-| **Authenticate?** | `Yes` — opens a browser for OAuth, or paste a token |
+| **Authenticate?**      | `Yes` — opens a browser for OAuth, or paste a token       |
 
 For **headless / CI / agent environments** (no browser available), use a personal access token:
 
@@ -77,11 +77,11 @@ gh auth login --with-token <<< "ghp_your_token_here"
 
 When creating a PAT for agents or CI, enable these scopes:
 
-| Scope | Why |
-|-------|-----|
-| **`repo`** | Full control of private repos — push branches, create PRs, read code |
-| **`read:org`** | Needed if the repo belongs to a GitHub organization |
-| **`workflow`** | Optional — only if agents need to trigger or manage GitHub Actions |
+| Scope          | Why                                                                  |
+| -------------- | -------------------------------------------------------------------- |
+| **`repo`**     | Full control of private repos — push branches, create PRs, read code |
+| **`read:org`** | Needed if the repo belongs to a GitHub organization                  |
+| **`workflow`** | Optional — only if agents need to trigger or manage GitHub Actions   |
 
 For fine-grained tokens, grant repository access to **this specific repo** with
 **Contents** (read/write), **Pull requests** (read/write), and **Metadata** (read)
@@ -342,13 +342,13 @@ This runs the **OTel Collector + Tempo (traces) + Loki (logs) + Prometheus
 default (OTLP on `:4318`). No app env changes are needed — just don't set
 `OTEL_SDK_DISABLED=true`.
 
-| UI | URL |
-|----|-----|
+| UI                          | URL                   |
+| --------------------------- | --------------------- |
 | Grafana (`admin` / `admin`) | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
-| Loki | http://localhost:3100 |
-| Tempo | http://localhost:3200 |
-| OTLP intake | http://localhost:4318 |
+| Prometheus                  | http://localhost:9090 |
+| Loki                        | http://localhost:3100 |
+| Tempo                       | http://localhost:3200 |
+| OTLP intake                 | http://localhost:4318 |
 
 To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace →
 Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).
@@ -412,40 +412,40 @@ bunx supabase db reset     # (optional) reloads fresh seed data
 
 ## Useful Commands
 
-| Command | Description |
-|---------|-------------|
-| `bunx supabase start` | Start local Supabase |
-| `bunx supabase stop` | Stop local Supabase |
-| `bunx supabase status` | Check status and display API keys |
-| `bunx supabase db reset` | Reset database + load seeds |
-| `bunx supabase db diff -f <name>` | Generate migration from current changes |
-| `bunx supabase migration new <name>` | Create an empty migration manually |
-| `bunx supabase db push` | Push migrations to database |
-| `bun dev` | Start Next.js development server |
-| `bun test` | Reset DB + run all tests |
-| `bun test:unit` | Run unit tests only |
-| `bun test:integration` | Run integration tests only |
-| `bun lint` | Type check + lint |
-| `gh auth status` | Check GitHub CLI authentication |
-| `scripts/pr` | Create a PR from current branch via `gh` |
-| `scripts/spin <branch>` | Create worktree + branch for isolated work |
+| Command                              | Description                                |
+| ------------------------------------ | ------------------------------------------ |
+| `bunx supabase start`                | Start local Supabase                       |
+| `bunx supabase stop`                 | Stop local Supabase                        |
+| `bunx supabase status`               | Check status and display API keys          |
+| `bunx supabase db reset`             | Reset database + load seeds                |
+| `bunx supabase db diff -f <name>`    | Generate migration from current changes    |
+| `bunx supabase migration new <name>` | Create an empty migration manually         |
+| `bunx supabase db push`              | Push migrations to database                |
+| `bun dev`                            | Start Next.js development server           |
+| `bun test`                           | Reset DB + run all tests                   |
+| `bun test:unit`                      | Run unit tests only                        |
+| `bun test:integration`               | Run integration tests only                 |
+| `bun lint`                           | Type check + lint                          |
+| `gh auth status`                     | Check GitHub CLI authentication            |
+| `scripts/pr`                         | Create a PR from current branch via `gh`   |
+| `scripts/spin <branch>`              | Create worktree + branch for isolated work |
 
 ---
 
 ## Local URLs
 
-| Service | URL |
-|---------|-----|
-| Supabase Studio | http://127.0.0.1:54323 |
-| API (REST) | http://127.0.0.1:54321 |
-| Auth | http://127.0.0.1:54321/auth/v1 |
-| Inbucket (emails) | http://127.0.0.1:54324 |
-| App (dev) | http://localhost:3000 |
-| Grafana (observability) | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
-| Tempo (traces API) | http://localhost:3200 |
-| Loki (logs API) | http://localhost:3100 |
-| OTLP intake (collector) | http://localhost:4318 |
+| Service                 | URL                            |
+| ----------------------- | ------------------------------ |
+| Supabase Studio         | http://127.0.0.1:54323         |
+| API (REST)              | http://127.0.0.1:54321         |
+| Auth                    | http://127.0.0.1:54321/auth/v1 |
+| Inbucket (emails)       | http://127.0.0.1:54324         |
+| App (dev)               | http://localhost:3000          |
+| Grafana (observability) | http://localhost:3001          |
+| Prometheus              | http://localhost:9090          |
+| Tempo (traces API)      | http://localhost:3200          |
+| Loki (logs API)         | http://localhost:3100          |
+| OTLP intake (collector) | http://localhost:4318          |
 
 ---
 

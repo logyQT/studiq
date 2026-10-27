@@ -51,6 +51,7 @@ Last updated: 2026-10-24
 Status: COMPLETE (helper built + all API-flow suites migrated; DB drift repaired; 186/186 green)
 
 ### Verification baseline (2026-09-14, updated)
+
 - `bun run lint` — clean (tsc + biome 629 files + import-path guard)
 - `bun test:unit` — 580/580 green
 - `bun test:integration` — **186/186 green** (all 19 files). Schema drift repaired:
@@ -69,6 +70,7 @@ Status: COMPLETE (helper built + all API-flow suites migrated; DB drift repaired
     `question_options` in rpc-questions assertions
 
 ### Onboarding blockers fixed (2026-09-14)
+
 - 422 bulk invite (`targetOrgRoleId: 'member'` hardcoded name) — `createAndJoin` now returns
   `teacherRoleId`/`memberRoleId`/`defaultGroupId`; onboarding sends `memberRoleId`.
 - 429 invite accept for fresh `base`-plan students — new `PlanResolver.checkOrgLimit()`
@@ -78,12 +80,14 @@ Status: COMPLETE (helper built + all API-flow suites migrated; DB drift repaired
 - Details: `docs/plans/api-gaps.md`.
 
 ### Goals
+
 - `__tests__/helpers/test-user.ts`: `before(profile)` — idempotent account creation + API-driven seeding
 - Confirm-email bridge (service-role `auth.admin.updateUserById`)
 - Migrate suites off direct service-role seeding
 - Track API gaps (`api-gaps.md`) for routes that don't exist yet
 
 ### Tasks
+
 - [x] `createTestUser({ role, email? })` — lookup → register API → confirm → `mockUser()`
 - [x] `seedViaApi({ org, groups, members, questions, decks, flashcards, topics, quizzes, assignment })`
 - [x] `before(profile)` orchestrator returning `{ user, orgId, groups, createdByIds }`
@@ -100,12 +104,12 @@ These suites exercise DB-level subjects (triggers/RPCs), role types outside the
 `before()`/`createTestUser` role set (student|educator|manager), or the auth flows
 themselves — they are not API-flow suites and intentionally stay on service-role seeding:
 
-| Suite | Reason retained |
-|-------|-----------------|
-| `org-features` | DB trigger test (`handle_new_organization` default roles) — org inserted directly to assert trigger output |
+| Suite           | Reason retained                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `org-features`  | DB trigger test (`handle_new_organization` default roles) — org inserted directly to assert trigger output       |
 | `rpc-questions` | RPC subject (`list_questions` pgSQL with `p_*` params + explicit created_by/user_id) — DB-level, not route-level |
-| `auth` | Tests register/login/session flows themselves — the `before()` helper depends on these routes |
-| `health` | Public ping endpoint, no auth/org — no migration needed |
+| `auth`          | Tests register/login/session flows themselves — the `before()` helper depends on these routes                    |
+| `health`        | Public ping endpoint, no auth/org — no migration needed                                                          |
 
 `TEST_USERS`/`seedOrganization`/`seedQuestion` remain referenced ONLY by the suites
 above (plus their definitions in `helpers.ts`); the API-first suites run without them.
@@ -123,6 +127,7 @@ runs as 3 concurrent copies) to prove isolation and catch flakes in one pass.
 Status: NOT STARTED
 
 ### Tasks
+
 - [x] B1 Flat canonical keys everywhere; delete `FEATURE_FLAG_TO_FEATURE_KEY`
 - [x] B2 `FeatureResolver`: user override → org_role override → plan entitlement → rollout% → global flag
 - [x] B3 Make `rollout_percentage` live (deterministic user_id bucketing + `X-Feature-Rollout` header)
@@ -150,6 +155,7 @@ letting a campus seat grant `org.manage`/`member.manage`/`role.builder` to a
 member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
 
 ### Tasks (scope of the seats PR)
+
 - [ ] S1 Drop default pool seeding — remove seat-pool creation from
       `handle_new_organization` (`20260708000002` + `20260714000003`) and the
       `plan_seat_allocations` seed in `seeds/00_plans.sql`; drop the
@@ -176,6 +182,7 @@ member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
       Phase C starts
 
 ### Open (deferred with billing)
+
 - Org-plan pricing shape (flat vs per-headcount) — interacts with seat
   add-ons; decide together with the checkout work later.
 
@@ -188,6 +195,7 @@ member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
 Status: C1-C14 COMPLETE, C8 DEFERRED (see decisions)
 
 ### Tasks — scaffold & detach (COMPLETE)
+
 - [x] C1 Bun workspace scaffold; create `packages/authz`, `packages/ui`
 - [x] C2 Move pure logic/constants/authz → `packages/authz` (FeatureResolver already post-B.5 — seat-as-upgrade, no default pools); UI primitives + shared layout → `packages/ui`
 - [x] C3 `apps/web`: remove the admin Next.js route segment (`src/app/(frontend)/admin/`) and any admin API routes in `(backend)` — zero `/admin*` routes remain in the main app
@@ -198,6 +206,7 @@ Status: C1-C14 COMPLETE, C8 DEFERRED (see decisions)
 - [ ] C8 ~~Hardening: introduce RLS on user content tables~~ — **DEFERRED** (see decisions). App-layer auth is sufficient for now; RLS complexity (orgs/groups/visibility/roles) is high-cost/low-value pre-launch.
 
 ### Tasks — server extraction & move (COMPLETE)
+
 - [x] C9 Create `packages/server/` with shared services, models, lib utilities — PR [#80](https://github.com/logyQT/studiq/pull/80)
 - [x] C10 Update main app imports: `@/server/*` → `@studiq/server/*`, `@/lib/*` (moved) → `@studiq/server/lib/*` — PR [#80](https://github.com/logyQT/studiq/pull/80)
 - [x] C11 Move admin-only services/controllers from packages/server to `apps/admin/src/server/` — PR [#80](https://github.com/logyQT/studiq/pull/80)
@@ -213,6 +222,7 @@ missing: API route handlers that wire controllers to HTTP, and frontend
 pages that consume them.
 
 **Architecture:**
+
 - Admin app queries Supabase **directly** via service-role client (no cross-origin calls)
 - Admin-specific controllers/services live in `apps/admin/src/server/`
 - Shared services live in `packages/server/`
@@ -221,6 +231,7 @@ pages that consume them.
 #### C15 — Admin API routes
 
 Create `apps/admin/src/app/(backend)/api/v1/` route handlers that:
+
 1. Accept requests (no auth — PEM gate handles it at proxy level)
 2. Parse input with Zod (reuse existing models)
 3. Call the corresponding controller
@@ -228,18 +239,18 @@ Create `apps/admin/src/app/(backend)/api/v1/` route handlers that:
 
 Route handlers needed:
 
-| Route | Controller | Methods |
-|-------|-----------|---------|
-| `/api/v1/feature-flags` | `featureFlagController` | GET (list), POST (create) |
-| `/api/v1/feature-flags/[key]` | `featureFlagController` | GET (one), PUT (update), DELETE |
-| `/api/v1/plan-features` | `planFeatureController` | GET, POST |
-| `/api/v1/plan-features/[id]` | `planFeatureController` | GET, DELETE |
-| `/api/v1/plan-limits` | `planLimitController` | GET, POST |
-| `/api/v1/plan-limits/[id]` | `planLimitController` | GET, PUT, DELETE |
-| `/api/v1/user-overrides` | `userOverrideController` | GET, POST |
-| `/api/v1/user-overrides/[id]` | `userOverrideController` | GET, PUT, DELETE |
-| `/api/v1/subscription-plans` | `subscriptionPlanAdminController` | GET, POST |
-| `/api/v1/subscription-plans/[id]` | `subscriptionPlanAdminController` | GET, PUT, DELETE |
+| Route                             | Controller                        | Methods                         |
+| --------------------------------- | --------------------------------- | ------------------------------- |
+| `/api/v1/feature-flags`           | `featureFlagController`           | GET (list), POST (create)       |
+| `/api/v1/feature-flags/[key]`     | `featureFlagController`           | GET (one), PUT (update), DELETE |
+| `/api/v1/plan-features`           | `planFeatureController`           | GET, POST                       |
+| `/api/v1/plan-features/[id]`      | `planFeatureController`           | GET, DELETE                     |
+| `/api/v1/plan-limits`             | `planLimitController`             | GET, POST                       |
+| `/api/v1/plan-limits/[id]`        | `planLimitController`             | GET, PUT, DELETE                |
+| `/api/v1/user-overrides`          | `userOverrideController`          | GET, POST                       |
+| `/api/v1/user-overrides/[id]`     | `userOverrideController`          | GET, PUT, DELETE                |
+| `/api/v1/subscription-plans`      | `subscriptionPlanAdminController` | GET, POST                       |
+| `/api/v1/subscription-plans/[id]` | `subscriptionPlanAdminController` | GET, PUT, DELETE                |
 
 **Auth for admin API routes**: No `withAuth` wrapper — the PEM proxy
 gates all `/api/*` requests. Controllers run with full service-role
@@ -251,13 +262,13 @@ below), add a lightweight scope check middleware.
 Create `apps/admin/src/app/(frontend)/` pages using `@studiq/ui`
 components + `next-intl` translations:
 
-| Page | Route | Source (old) | Notes |
-|------|-------|-------------|-------|
-| Orgs list | `/orgs` | `admin/orgs/page.tsx` (299 lines) | List all orgs: avatar, name, plan, members, groups, roles |
-| Org detail | `/orgs/[id]` | `admin/orgs/[id]/page.tsx` (283 lines) | Overview + members/groups/roles tables |
-| Feature flags | `/feature-flags` | `admin/feature-flags/page.tsx` (314 lines) | CRUD: key, name, description, enabled, rollout% |
-| Subscription plans | `/subscription-plans` | `admin/subscription-plans/page.tsx` (596 lines) | Plans + feature assignments + limits |
-| User overrides | `/user-overrides` | `admin/user-overrides/page.tsx` (308 lines) | Per-user feature overrides |
+| Page               | Route                 | Source (old)                                    | Notes                                                     |
+| ------------------ | --------------------- | ----------------------------------------------- | --------------------------------------------------------- |
+| Orgs list          | `/orgs`               | `admin/orgs/page.tsx` (299 lines)               | List all orgs: avatar, name, plan, members, groups, roles |
+| Org detail         | `/orgs/[id]`          | `admin/orgs/[id]/page.tsx` (283 lines)          | Overview + members/groups/roles tables                    |
+| Feature flags      | `/feature-flags`      | `admin/feature-flags/page.tsx` (314 lines)      | CRUD: key, name, description, enabled, rollout%           |
+| Subscription plans | `/subscription-plans` | `admin/subscription-plans/page.tsx` (596 lines) | Plans + feature assignments + limits                      |
+| User overrides     | `/user-overrides`     | `admin/user-overrides/page.tsx` (308 lines)     | Per-user feature overrides                                |
 
 Old page content viewable via: `git show 5fdae54^:src/app/\(frontend\)/admin/<path>`
 
@@ -305,6 +316,7 @@ The testing framework depends on a stable monorepo structure, so it runs after
 the structural refactors are done.
 
 ### Tasks
+
 - [ ] D1 Manifest `tests/features/manifest.yaml` (roles, routes, flags, plan, before(profile))
 - [ ] D2 Generator → deterministic matrix + smoke specs (LLM-free)
 - [ ] D3 Agent loop (existing `LLM_*` endpoint + AI SDK tools): fill interactive specs, run, triage
@@ -314,6 +326,7 @@ the structural refactors are done.
 ---
 
 ## Definitions of Done (global)
+
 - `bun run lint` clean in all packages
 - All unit + integration tests green
 - No orphan tables/dead code left (per AGENTS.md ethos)

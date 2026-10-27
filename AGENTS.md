@@ -78,13 +78,14 @@ gh issue view <n> --json number,state,assignees
 ```
 
 - **Any assignee other than your operator means stop.** Do not design it, code it, branch for it, or open a PR for it — even if it looks trivial, even if it is unblocked, even if you think you are helping. Say `skipped #<n>: owned by <login>` and move on.
-- **Claim what you pick up.** The first time you start an issue, assign your operator *before* the first commit:
+- **Claim what you pick up.** The first time you start an issue, assign your operator _before_ the first commit:
 
   ```bash
   gh issue edit <n> --add-assignee <operator-login>
   ```
 
   The operator login is the human you work for — `QA_OPERATOR_GH` in automated crews, `logyQT` on this repo. It is **not** the bot/agent account that authors the PR.
+
 - **Never unassign or reassign** someone else's issue. Only the operator can hand an issue over; if they do, reassign it first, then start.
 - **Bots do not count as owners** (`dependabot`, `github-actions`). An issue assigned only to a bot is fair game.
 
@@ -96,24 +97,24 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 
 `package.json` at the repo root is the **source of truth** — if anything below disagrees with it, trust `package.json`.
 
-| Command | What it does |
-|---------|-------------|
-| `bun run dev` | Web dev server (port 3000) |
-| `bun run dev:admin` | Admin dev server (port 4000) |
-| `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
-| `bun run lint` | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src apps/admin/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard. **Contains no typecheck step.** |
-| `bun run lint:all` | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command |
-| `bun run typecheck` | `bun check` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`) |
-| `bun run typecheck:all` | `typecheck` + `typecheck:admin` + `typecheck:packages` — everything the hooks run |
-| `bun run format` | `bun fmt .` (whole repo — writes formatting) |
-| `bun run format:check` | `bun fmt --check .` (whole repo, check only) |
-| `bun run clean` | Remove `.next`, `coverage`, cache |
-| `bun run test` | `vitest run` — runs all tests (unit + integration) |
-| `bun run test:unit` | `vitest run __tests__/unit/` |
-| `bun run test:integration` | `vitest run __tests__/integration` (needs a local Supabase instance) |
-| `bun run test:watch` | `vitest` (watch mode) |
-| `bun run test:coverage` | `vitest run --coverage` |
-| `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
+| Command                           | What it does                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`                     | Web dev server (port 3000)                                                                                                                                                                                                                                                                                                              |
+| `bun run dev:admin`               | Admin dev server (port 4000)                                                                                                                                                                                                                                                                                                            |
+| `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin)                                                                                                                                                                                                                                                               |
+| `bun run lint`                    | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src apps/admin/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard. **Contains no typecheck step.** |
+| `bun run lint:all`                | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command                                                                                                                                                                                                                                                          |
+| `bun run typecheck`               | `bun check` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`)                                                                                                                                                                                                             |
+| `bun run typecheck:all`           | `typecheck` + `typecheck:admin` + `typecheck:packages` — everything the hooks run                                                                                                                                                                                                                                                       |
+| `bun run format`                  | `bun fmt .` (whole repo — writes formatting)                                                                                                                                                                                                                                                                                            |
+| `bun run format:check`            | `bun fmt --check .` (whole repo, check only)                                                                                                                                                                                                                                                                                            |
+| `bun run clean`                   | Remove `.next`, `coverage`, cache                                                                                                                                                                                                                                                                                                       |
+| `bun run test`                    | `vitest run` — runs all tests (unit + integration)                                                                                                                                                                                                                                                                                      |
+| `bun run test:unit`               | `vitest run __tests__/unit/`                                                                                                                                                                                                                                                                                                            |
+| `bun run test:integration`        | `vitest run __tests__/integration` (needs a local Supabase instance)                                                                                                                                                                                                                                                                    |
+| `bun run test:watch`              | `vitest` (watch mode)                                                                                                                                                                                                                                                                                                                   |
+| `bun run test:coverage`           | `vitest run --coverage`                                                                                                                                                                                                                                                                                                                 |
+| `bun run test:e2e`                | `playwright test` — runs `__tests__/e2e/` specs                                                                                                                                                                                                                                                                                         |
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
@@ -121,24 +122,24 @@ Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs form
 
 ### Custom agent commands
 
-| If you say | What I do |
-|-----------|-----------|
+| If you say       | What I do                                                 |
+| ---------------- | --------------------------------------------------------- |
 | `commit propose` | `git diff --staged` → propose conventional commit message |
 
 ### Developer workflow scripts
 
 These scripts help devs (and agents) work with feature branches and isolated worktrees:
 
-| Script | What it does |
-|--------|-------------|
-| `scripts/switch-branch [branch]` | Stash WIP → switch branch → pull → pop stash. Only stashes if dirty |
-| `scripts/switch-branch -c <name>` | Create a new branch from main, then switch to it |
-| `scripts/spin <branch>` | Create a feature branch + git worktree under `.worktrees/` |
-| `scripts/spin --list` | List all active worktrees |
-| `scripts/spin <branch> --clean` | Remove worktree and delete branch |
-| `scripts/pr [title]` | Create a PR from current branch via `gh` CLI |
-| `scripts/pr --draft` | Create a draft PR |
-| `scripts/pr --list` | List open PRs for this repo |
+| Script                            | What it does                                                        |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `scripts/switch-branch [branch]`  | Stash WIP → switch branch → pull → pop stash. Only stashes if dirty |
+| `scripts/switch-branch -c <name>` | Create a new branch from main, then switch to it                    |
+| `scripts/spin <branch>`           | Create a feature branch + git worktree under `.worktrees/`          |
+| `scripts/spin --list`             | List all active worktrees                                           |
+| `scripts/spin <branch> --clean`   | Remove worktree and delete branch                                   |
+| `scripts/pr [title]`              | Create a PR from current branch via `gh` CLI                        |
+| `scripts/pr --draft`              | Create a draft PR                                                   |
+| `scripts/pr --list`               | List open PRs for this repo                                         |
 
 #### Multi-worktree workflow
 
@@ -178,10 +179,10 @@ import { flashcardController } from '@studiq/server/controllers/flashcard.contro
 import { before } from '#test/helpers/test-user'; // __tests__/helpers/test-user (test-internal imports)
 ```
 
-- `@/` → `src/` **of the app the file lives in**: `apps/web/src`, `apps/admin/src`. In root-level files (`scripts/`, root configs) and in Vitest, `@/` resolves to `apps/web/src`. It is **not** mapped inside `packages/*` — a package-local `@/` would resolve to the *consuming app's* `src/` (wrong module, sometimes silently), so package code never uses `@/` (see Import Paths below).
+- `@/` → `src/` **of the app the file lives in**: `apps/web/src`, `apps/admin/src`. In root-level files (`scripts/`, root configs) and in Vitest, `@/` resolves to `apps/web/src`. It is **not** mapped inside `packages/*` — a package-local `@/` would resolve to the _consuming app's_ `src/` (wrong module, sometimes silently), so package code never uses `@/` (see Import Paths below).
 - `@studiq/server/*`, `@studiq/authz`, `@studiq/ui` → `packages/*/src/*` — wired in every app `tsconfig.json` and `vitest.config.ts`.
 - `@admin/*` → `apps/admin/src/*` (admin app code; also usable from root-level tests).
-- `#test` → `__tests__/` — works in both Vitest **and** Playwright (declared in vite config + tsconfig `paths`). Use it for imports *between* test files.
+- `#test` → `__tests__/` — works in both Vitest **and** Playwright (declared in vite config + tsconfig `paths`). Use it for imports _between_ test files.
 
 ---
 
@@ -231,7 +232,13 @@ export async function GET(req: NextRequest) {
 ```typescript
 type ControllerResponse<T = unknown> =
   | { success: true; statusCode: number; data?: T }
-  | { success: false; statusCode: number; error: AppErrorCode; details?: ZodIssue[]; errorId?: string };
+  | {
+      success: false;
+      statusCode: number;
+      error: AppErrorCode;
+      details?: ZodIssue[];
+      errorId?: string;
+    };
 ```
 
 ### Model layer
@@ -327,12 +334,12 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
 
 Use the right client for the context — there is **no browser-side Supabase client**; the frontend talks to the REST API via `apps/web/src/lib/api.ts`:
 
-| File | When | How |
-|------|------|-----|
-| `packages/server/src/lib/supabase/server.ts` (`@studiq/server/lib/supabase/server`) | Server: API routes, services | `createServerClient` with cookie handling |
+| File                                                                                  | When                                 | How                                                                  |
+| ------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------- |
+| `packages/server/src/lib/supabase/server.ts` (`@studiq/server/lib/supabase/server`)   | Server: API routes, services         | `createServerClient` with cookie handling                            |
 | `packages/server/src/lib/supabase/service.ts` (`@studiq/server/lib/supabase/service`) | Service role (migrations, admin ops) | Service role key, `autoRefreshToken: false`, `persistSession: false` |
-| `packages/server/src/lib/supabase/session.ts` (`@studiq/server/lib/supabase/session`) | Web proxy session refresh | `updateSession(request)` |
-| `apps/admin/src/lib/supabase/{service,admin-client}.ts` (`@admin/lib/supabase/...`) | Admin app | Service-role client (no user JWT) |
+| `packages/server/src/lib/supabase/session.ts` (`@studiq/server/lib/supabase/session`) | Web proxy session refresh            | `updateSession(request)`                                             |
+| `apps/admin/src/lib/supabase/{service,admin-client}.ts` (`@admin/lib/supabase/...`)   | Admin app                            | Service-role client (no user JWT)                                    |
 
 ---
 
@@ -344,6 +351,7 @@ Next.js 16 uses `proxy.ts` — **do NOT rename it to `middleware.ts`**:
 - `apps/admin/src/proxy.ts` — admin app: Ed25519 PEM signature gate (`x-admin-signature` / `x-admin-timestamp` headers) for `/api/*`. `ADMIN_PEM_KEYS` is a JSON keyring (`[{ id, key, scopes, expiresAt? }]`) with per-key scopes and attribution; the signature covers method + path + canonical query + timestamp + `sha256(body)`. Empty `ADMIN_PEM_KEYS` = allow-all in dev, deny-all in production; a non-empty ring with no valid entries fails closed everywhere. The verified key id is forwarded as `x-admin-key-id`. See `docs/decisions/0007-admin-api-auth.md`.
 
 Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order:
+
 1. If the user is logged in and `redirectIfAuthenticatedByAccountType` / `redirectIfAuthenticated` matches → redirect by account type
 2. If `requireAuth` + no session → 401 (API) or redirect to `/login?next=…` (UI)
 3. If `allowedAccountTypes` + account type mismatch → 403 (API) or redirect to the account-type dashboard (UI)
@@ -393,24 +401,24 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## Naming Conventions
 
-| Type | Pattern | Example |
-|------|---------|---------|
-| Services | `*.service.ts` | `question.service.ts` |
-| Controllers | `*.controller.ts` | `question.controller.ts` |
-| Models | `*.model.ts` | `question.model.ts` |
-| Routes | `route.ts` | `apps/web/src/app/(backend)/api/v1/questions/route.ts` |
-| Tests | `*.test.ts` | `question.service.test.ts` |
-| Frontend hooks | `use-*.ts` | `use-api.ts` |
+| Type           | Pattern           | Example                                                |
+| -------------- | ----------------- | ------------------------------------------------------ |
+| Services       | `*.service.ts`    | `question.service.ts`                                  |
+| Controllers    | `*.controller.ts` | `question.controller.ts`                               |
+| Models         | `*.model.ts`      | `question.model.ts`                                    |
+| Routes         | `route.ts`        | `apps/web/src/app/(backend)/api/v1/questions/route.ts` |
+| Tests          | `*.test.ts`       | `question.service.test.ts`                             |
+| Frontend hooks | `use-*.ts`        | `use-api.ts`                                           |
 
 ---
 
 ## Testing
 
-| Type | Framework | Location | Notes |
-|------|-----------|----------|-------|
-| Unit | Vitest | `__tests__/unit/` | Mocked Supabase via `__tests__/setup.ts` |
-| Integration | Vitest | `__tests__/integration/` | Real local Supabase instance |
-| E2E | Playwright | `__tests__/e2e/` | Chromium, Firefox, WebKit |
+| Type        | Framework  | Location                 | Notes                                    |
+| ----------- | ---------- | ------------------------ | ---------------------------------------- |
+| Unit        | Vitest     | `__tests__/unit/`        | Mocked Supabase via `__tests__/setup.ts` |
+| Integration | Vitest     | `__tests__/integration/` | Real local Supabase instance             |
+| E2E         | Playwright | `__tests__/e2e/`         | Chromium, Firefox, WebKit                |
 
 - **Mock**: `vi.mock('@studiq/server/lib/supabase/server')` is registered in `__tests__/setup.ts` — unit tests override via the `mockSupabaseClient()` helper
 - **Mock helper**: `__tests__/helpers/supabase-mock.ts`
@@ -424,19 +432,19 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 **Rule:** Never use relative import paths (`./...`, `../...`, `../../...`). **Always use full aliases:**
 
-| Where | Alias | Example |
-|-------|-------|---------|
-| App code (web) | `@/` → `apps/web/src/` | `import { cn } from '@/lib/utils'` |
-| App code (admin) | `@/` / `@admin/` → `apps/admin/src/` | `import { featureFlagController } from '@admin/server/controllers/feature-flag.controller'` |
-| Shared backend | `@studiq/server/*` → `packages/server/src/*` | `import { withAuth } from '@studiq/server/lib/with-auth'` |
-| Inside a package (`packages/*`) | relative (`./`, `../`) — **within the same package only** | `import { PermissionScope } from './permissions'` |
-| Test-internal (files importing other files under `__tests__/`) | `#test/` → `__tests__/` | `import { before } from '#test/helpers/test-user'` |
+| Where                                                          | Alias                                                     | Example                                                                                     |
+| -------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| App code (web)                                                 | `@/` → `apps/web/src/`                                    | `import { cn } from '@/lib/utils'`                                                          |
+| App code (admin)                                               | `@/` / `@admin/` → `apps/admin/src/`                      | `import { featureFlagController } from '@admin/server/controllers/feature-flag.controller'` |
+| Shared backend                                                 | `@studiq/server/*` → `packages/server/src/*`              | `import { withAuth } from '@studiq/server/lib/with-auth'`                                   |
+| Inside a package (`packages/*`)                                | relative (`./`, `../`) — **within the same package only** | `import { PermissionScope } from './permissions'`                                           |
+| Test-internal (files importing other files under `__tests__/`) | `#test/` → `__tests__/`                                   | `import { before } from '#test/helpers/test-user'`                                          |
 
 - Mixed test files (importing both app + test code): `@/` (or `@studiq/*`) for app modules, `#test/` for test modules — never `./` or `../`.
 - Applies to static imports, side-effect imports (`import './x'`), dynamic imports (`import('./x')`) and `require()`.
 - Enforced by two guards, both wired into `bun run lint`:
   - **Bun lint** `no-restricted-imports` (patterns `./**`, `../**`) — enabled for `apps/web/src`, `apps/admin/src` and `__tests__`; **disabled for `packages/**`** (a package must use relative imports internally — see the table above).
-  - **`bun scripts/check-import-paths.ts`** — bans *all* relative imports in `apps/web/src`, `apps/admin/src` and `__tests__`, and bans *cross-package* relative imports in `packages/*` (intra-package relatives are allowed).
+  - **`bun scripts/check-import-paths.ts`** — bans _all_ relative imports in `apps/web/src`, `apps/admin/src` and `__tests__`, and bans _cross-package_ relative imports in `packages/*` (intra-package relatives are allowed).
 - `bun run lint` runs `bun lint` over the same scopes, so packages and tests are linted by the same command the hooks run.
 - **`bun run lint` is expected to be green on `main`** — treat any failure as a real regression, not known debt.
 - Asset imports (`.css`, `.svg`, images) follow the same rule: `@/app/globals.css` etc.
@@ -475,18 +483,18 @@ When reviewing PRs (especially stacked PRs), follow this process to avoid false 
 ### For each PR in the stack
 
 1. **Fetch the diff** — `gh pr diff <number> --repo logyQT/studiq`
-2. **Verify against the actual file on the PR's head branch** — `git show <head-sha>:<path>` or just `cat` the file. Diffs show *changes relative to the PR's base*, not relative to `main`. A line can appear as "added" in the diff while already existing on `main`.
+2. **Verify against the actual file on the PR's head branch** — `git show <head-sha>:<path>` or just `cat` the file. Diffs show _changes relative to the PR's base_, not relative to `main`. A line can appear as "added" in the diff while already existing on `main`.
 3. **Check what the PR claims to change** against what the diff actually changes. If a PR says "adds X" but the diff only shows X being modified (not added), the feature likely already existed.
 4. **Run the test suite** if touching business logic — `bun run test:unit`
 5. **Run the linter** — `bun run lint`
 
 ### Common false-positive patterns in stacked PR diffs
 
-| Diff shows | Looks like | Actually is |
-|------------|-----------|-------------|
-| `+` line that also appears in an earlier PR in the stack | "PR adds this" | Earlier PR added it; this PR just touched the same area |
-| No diff for a file the PR description mentions | "PR forgot the file" | Change is in a different file (e.g. model vs service) |
-| `+/-` on the same line | "PR broke something" | Formatting-only change (formatter) |
+| Diff shows                                               | Looks like           | Actually is                                             |
+| -------------------------------------------------------- | -------------------- | ------------------------------------------------------- |
+| `+` line that also appears in an earlier PR in the stack | "PR adds this"       | Earlier PR added it; this PR just touched the same area |
+| No diff for a file the PR description mentions           | "PR forgot the file" | Change is in a different file (e.g. model vs service)   |
+| `+/-` on the same line                                   | "PR broke something" | Formatting-only change (formatter)                      |
 
 ### Rule of thumb
 

@@ -11,6 +11,7 @@ The application needed a clean separation between request handling, business log
 ## Decision
 
 A service/controller architecture was adopted:
+
 - **Controllers** handle HTTP concerns: parsing, validation, response formatting
 - **Services** handle business logic: database queries, computations, orchestration
 - **Guards** handle authorization: role checks, ownership verification
@@ -19,6 +20,7 @@ A service/controller architecture was adopted:
 ## Consequences
 
 ### Positive
+
 - Controllers are thin and easily testable with mocked services
 - Services can be reused across multiple controllers
 - Clear responsibility boundaries reduce coupling
@@ -26,6 +28,7 @@ A service/controller architecture was adopted:
 - Integration tests verify the full stack without changing code
 
 ### Negative
+
 - More files and boilerplate compared to a single-file approach
 - Requires discipline to keep controllers thin and services focused
 - Additional indirection can make debugging slightly more complex

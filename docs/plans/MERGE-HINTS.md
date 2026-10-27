@@ -19,11 +19,11 @@
 
 These three docs all describe the same "groups" feature at different stages of design:
 
-| File | Lines | Age | Verdict |
-|------|-------|-----|---------|
-| `archive/GROUPS.md` | 238 | Oldest | **Archive already** — uses old table names (`study_groups`), superseded by both PRDs |
-| `archive/groups-prd.md` | 253 | Mid | **Archive already** — P1 implementation, all steps done |
-| `archive/p2-groups-prd.md` | 634 | Newest | **Keep as primary** — P2 PRD, has the most complete picture including DB, API, frontend, and diverged design notes |
+| File                       | Lines | Age    | Verdict                                                                                                            |
+| -------------------------- | ----- | ------ | ------------------------------------------------------------------------------------------------------------------ |
+| `archive/GROUPS.md`        | 238   | Oldest | **Archive already** — uses old table names (`study_groups`), superseded by both PRDs                               |
+| `archive/groups-prd.md`    | 253   | Mid    | **Archive already** — P1 implementation, all steps done                                                            |
+| `archive/p2-groups-prd.md` | 634   | Newest | **Keep as primary** — P2 PRD, has the most complete picture including DB, API, frontend, and diverged design notes |
 
 **Merge action:** Already archived. No further work needed — all three are in `archive/`.
 
@@ -31,10 +31,10 @@ These three docs all describe the same "groups" feature at different stages of d
 
 ## Overlap Group 2: Test Parallelism (2 files → 1)
 
-| File | Lines | Status | Verdict |
-|------|-------|--------|---------|
-| `test-parallelism.md` | 133 | Superseded | **Already archived** |
-| `integration-parallelism.md` | 126 | Final result | **Already archived** |
+| File                         | Lines | Status       | Verdict              |
+| ---------------------------- | ----- | ------------ | -------------------- |
+| `test-parallelism.md`        | 133   | Superseded   | **Already archived** |
+| `integration-parallelism.md` | 126   | Final result | **Already archived** |
 
 **Merge action:** Already archived. Both in `archive/`.
 
@@ -44,13 +44,14 @@ These three docs all describe the same "groups" feature at different stages of d
 
 These aren't duplicate — they describe **different layers** of the same system. But they should be cross-referenced:
 
-| File | Lines | Scope | Status |
-|------|-------|-------|--------|
-| `org-features-and-limits.md` | 264 | Per-org role features + capacity limits | ✅ Implemented, archived |
-| `seat-based-licensing.md` | 240 | Seat pools + per-user assignment (builds on above) | ❌ Not started |
-| `foundation-agentic-testing.md` | 235 | Phase B.5 cleanup of seat licensing defaults | ❌ Not started |
+| File                            | Lines | Scope                                              | Status                   |
+| ------------------------------- | ----- | -------------------------------------------------- | ------------------------ |
+| `org-features-and-limits.md`    | 264   | Per-org role features + capacity limits            | ✅ Implemented, archived |
+| `seat-based-licensing.md`       | 240   | Seat pools + per-user assignment (builds on above) | ❌ Not started           |
+| `foundation-agentic-testing.md` | 235   | Phase B.5 cleanup of seat licensing defaults       | ❌ Not started           |
 
 **Merge action (for future agent):**
+
 - When starting Phase B.5 or seat-based licensing, read all three.
 - `seat-based-licensing.md` is the PRD. Use it as the primary.
 - `foundation-agentic-testing.md` B.5 section has specific cleanup tasks — fold them into the seat licensing execution plan.
@@ -63,13 +64,14 @@ These aren't duplicate — they describe **different layers** of the same system
 
 These overlap on "how to test things better" but cover different scopes:
 
-| File | Lines | Scope | Status |
-|------|-------|-------|--------|
-| `coverage-improvement-handoff.md` | 156 | Backend unit test coverage (43% → 60%) | ❌ Not started |
-| `flashcard-testing-pipeline.md` | 630 | AI flashcard generation regression tests | ❌ Not started |
-| `100-test-cases.md` | 137 | High-level test case catalog for AI flashcards | ❌ Not started |
+| File                              | Lines | Scope                                          | Status         |
+| --------------------------------- | ----- | ---------------------------------------------- | -------------- |
+| `coverage-improvement-handoff.md` | 156   | Backend unit test coverage (43% → 60%)         | ❌ Not started |
+| `flashcard-testing-pipeline.md`   | 630   | AI flashcard generation regression tests       | ❌ Not started |
+| `100-test-cases.md`               | 137   | High-level test case catalog for AI flashcards | ❌ Not started |
 
 **Merge action (for future agent):**
+
 - `100-test-cases.md` is a subset of `flashcard-testing-pipeline.md` — the pipeline doc already incorporates these as fixtures.
 - **Delete `100-test-cases.md`** and fold any unique cases into `flashcard-testing-pipeline.md` Appendix A.
 - `coverage-improvement-handoff.md` is orthogonal (backend services vs. AI pipeline). Keep separate.
@@ -78,11 +80,11 @@ These overlap on "how to test things better" but cover different scopes:
 
 ## Overlap Group 5: AI Architecture (2 files)
 
-| File | Lines | Scope | Location |
-|------|-------|-------|----------|
-| `archive/AI-integration.md` | 924 | Full AI spec (Phases 1-3), now historical | `archive/` |
-| `archive/ReAct-approach.md` | 362 | ReAct multi-agent implementation record | `archive/` |
-| `agent-security.md` | 275 | AI security audit + hardening plan | Active |
+| File                        | Lines | Scope                                     | Location   |
+| --------------------------- | ----- | ----------------------------------------- | ---------- |
+| `archive/AI-integration.md` | 924   | Full AI spec (Phases 1-3), now historical | `archive/` |
+| `archive/ReAct-approach.md` | 362   | ReAct multi-agent implementation record   | `archive/` |
+| `agent-security.md`         | 275   | AI security audit + hardening plan        | Active     |
 
 **Merge action:** No merge needed — they serve different purposes. But if a new AI spec is written, it should reference `agent-security.md` for the hardening requirements.
 

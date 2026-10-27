@@ -4,13 +4,13 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.112.0
     restart: unless-stopped
-    command: ["--config", "/etc/otelcol/config.yml"]
+    command: ['--config', '/etc/otelcol/config.yml']
     volumes:
       - ./otel-collector-config.yml:/etc/otelcol/config.yml
     ports:
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP (app endpoint)
-      - "8889:8889" # Prometheus exporter scrape endpoint
+      - '4317:4317' # OTLP gRPC
+      - '4318:4318' # OTLP HTTP (app endpoint)
+      - '8889:8889' # Prometheus exporter scrape endpoint
     depends_on:
       - tempo
       - loki
@@ -19,28 +19,28 @@ services:
   tempo:
     image: grafana/tempo:2.6.1
     restart: unless-stopped
-    command: ["-config.file=/etc/tempo.yml"]
+    command: ['-config.file=/etc/tempo.yml']
     volumes:
       - ./tempo.yml:/etc/tempo.yml
       - tempo_data:/var/tempo
     ports:
-      - "3200:3200" # Tempo HTTP API (Grafana datasource)
+      - '3200:3200' # Tempo HTTP API (Grafana datasource)
 
   loki:
     image: grafana/loki:3.2.0
     restart: unless-stopped
-    command: ["-config.file=/etc/loki/loki-config.yml"]
+    command: ['-config.file=/etc/loki/loki-config.yml']
     volumes:
       - ./loki-config.yml:/etc/loki/loki-config.yml
       - loki_data:/loki
     ports:
-      - "3100:3100" # Loki HTTP API (Grafana datasource + OTLP ingestion)
+      - '3100:3100' # Loki HTTP API (Grafana datasource + OTLP ingestion)
 
   prometheus:
     image: prom/prometheus:v2.54.0
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - '9090:9090'
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -51,7 +51,7 @@ services:
     image: grafana/grafana:11.2.0
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - '3001:3000'
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning

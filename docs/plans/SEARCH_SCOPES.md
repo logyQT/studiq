@@ -2,11 +2,11 @@
 
 Per-role search vision for the StudiQ global search bar.
 
-| Role                     | Domain     | Route     | Current    | Phase 1                   | Phase 2                               | Phase 3                |
-| ------------------------ | ---------- | --------- | ---------- | ------------------------- | ------------------------------------- | ---------------------- |
-| STUDENT / FREE / PREMIUM | Student    | `/app`    | Flashcards | Topics                    | Notes, questions                      | AI-powered discovery   |
-| TEACHER                  | Education  | `/edu`    | Flashcards | Topics, class decks       | Shared resources, student submissions | Cross-course analytics |
-| UNIVERSITY_ADMIN         | Management | `/manage` | — (hidden) | Members, invitations      | University-wide content               | Audit logs             |
+| Role                     | Domain     | Route     | Current    | Phase 1              | Phase 2                               | Phase 3                |
+| ------------------------ | ---------- | --------- | ---------- | -------------------- | ------------------------------------- | ---------------------- |
+| STUDENT / FREE / PREMIUM | Student    | `/app`    | Flashcards | Topics               | Notes, questions                      | AI-powered discovery   |
+| TEACHER                  | Education  | `/edu`    | Flashcards | Topics, class decks  | Shared resources, student submissions | Cross-course analytics |
+| UNIVERSITY_ADMIN         | Management | `/manage` | — (hidden) | Members, invitations | University-wide content               | Audit logs             |
 
 ---
 

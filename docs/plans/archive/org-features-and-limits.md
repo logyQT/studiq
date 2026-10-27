@@ -12,7 +12,7 @@
 
 Currently, plan features are rigidly mapped via `plan_features` table — a Campus org grants all `campus`-tier features to every member. Org admins cannot tailor what each role can access, and limits are per-plan with no org-level pooling or admin override.
 
-Managers pay for an org plan to empower their users (students get Pro, educators get Master, etc.), but they also need the flexibility to decide *which* features each role can use and *how much* capacity each limit allows.
+Managers pay for an org plan to empower their users (students get Pro, educators get Master, etc.), but they also need the flexibility to decide _which_ features each role can use and _how much_ capacity each limit allows.
 
 ## Design
 
@@ -20,13 +20,13 @@ Managers pay for an org plan to empower their users (students get Pro, educators
 
 **`org_role_features`** — per-role feature toggles within an org
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `uuid PK` | |
-| `org_role_id` | `uuid FK → org_roles(id) ON DELETE CASCADE` | |
-| `feature_key` | `text` | Matches `feature_flags.key` |
-| `is_enabled` | `boolean` | Default `true` |
-| *Unique* | `(org_role_id, feature_key)` | |
+| Column        | Type                                        | Notes                       |
+| ------------- | ------------------------------------------- | --------------------------- |
+| `id`          | `uuid PK`                                   |                             |
+| `org_role_id` | `uuid FK → org_roles(id) ON DELETE CASCADE` |                             |
+| `feature_key` | `text`                                      | Matches `feature_flags.key` |
+| `is_enabled`  | `boolean`                                   | Default `true`              |
+| _Unique_      | `(org_role_id, feature_key)`                |                             |
 
 **`org_limits` — ABANDONED (#229).** There is no per-org limit table; capacity
 resolves live from `organizations.plan → plan_limits`. See
@@ -34,23 +34,23 @@ resolves live from `organizations.plan → plan_limits`. See
 
 ### What stays unchanged
 
-| Table/Code | Role |
-|------------|------|
-| `feature_flags` | Source of truth for available feature keys |
-| `plan_features` | **Template** — seeds `org_role_features` on org creation |
-| `plan_limits` | **Template** — limits resolve live per plan; nothing is copied per org (#229) |
-| `profiles.personal_plan_key` | Used for personal (non-org) context |
-| `user_feature_overrides` | Reserved for future per-user overrides |
-| `FeatureKey` union type | Same values — no new keys needed |
+| Table/Code                   | Role                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `feature_flags`              | Source of truth for available feature keys                                    |
+| `plan_features`              | **Template** — seeds `org_role_features` on org creation                      |
+| `plan_limits`                | **Template** — limits resolve live per plan; nothing is copied per org (#229) |
+| `profiles.personal_plan_key` | Used for personal (non-org) context                                           |
+| `user_feature_overrides`     | Reserved for future per-user overrides                                        |
+| `FeatureKey` union type      | Same values — no new keys needed                                              |
 
 ### What changes
 
-| Area | Before | After |
-|------|--------|-------|
-| Feature resolution | Union of personal + org plan features | Inside org: look up `org_role_features` by role. Outside org: personal plan only. |
-| Limit resolution | Per-plan limits (personal or org max) | `Math.max(personal plan, org plan)` from `plan_limits`, live (#229) |
-| Org creation | App layer: `seedDefaultOrgRoles()` creates roles + permissions | DB trigger: creates roles + permissions + **features** atomically (limits are derived) |
-| `seedDefaultOrgRoles` | Exists in `classroom.service.ts` | **Removed** entirely |
+| Area                  | Before                                                         | After                                                                                  |
+| --------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Feature resolution    | Union of personal + org plan features                          | Inside org: look up `org_role_features` by role. Outside org: personal plan only.      |
+| Limit resolution      | Per-plan limits (personal or org max)                          | `Math.max(personal plan, org plan)` from `plan_limits`, live (#229)                    |
+| Org creation          | App layer: `seedDefaultOrgRoles()` creates roles + permissions | DB trigger: creates roles + permissions + **features** atomically (limits are derived) |
+| `seedDefaultOrgRoles` | Exists in `classroom.service.ts`                               | **Removed** entirely                                                                   |
 
 ### `handle_new_organization` trigger
 
@@ -134,10 +134,13 @@ create trigger handle_new_organization
 `seedDefaultOrgRoles()` is deleted from `src/server/services/classroom.service.ts`.
 
 Both call sites change from:
+
 ```typescript
 const adminRoleId = await seedDefaultOrgRoles(supabase, org.id);
 ```
+
 to:
+
 ```typescript
 const { data: adminRole } = await supabase
   .from('org_roles')
@@ -155,6 +158,7 @@ await supabase.from('org_members').insert({
 ```
 
 Affected files:
+
 - `src/app/(backend)/api/v1/admin/organizations/route.ts`
 - `src/server/services/classroom.service.ts`
 
@@ -198,9 +202,9 @@ no per-org snapshot.
 
 ### Admin API endpoints
 
-| Method | Path | Status |
-|--------|------|---------|
-| `PUT` | `/api/v1/admin/organizations/[id]/roles/[roleId]/features` | **Planned** — not built; role permissions use `PUT /api/v1/organization/roles/[id]/permissions` today |
+| Method | Path                                                       | Status                                                                                                |
+| ------ | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `PUT`  | `/api/v1/admin/organizations/[id]/roles/[roleId]/features` | **Planned** — not built; role permissions use `PUT /api/v1/organization/roles/[id]/permissions` today |
 
 The per-org limits endpoint was **abandoned (#229)** and will
 not be built. Limit writes go through the admin app's plan-limit routes
@@ -213,6 +217,7 @@ features section (the per-org limits editor section was abandoned with
 `org_limits` — #229):
 
 **Features section** — checkbox list of all `feature_flags` entries:
+
 ```
 Features
   ☑  Flashcards

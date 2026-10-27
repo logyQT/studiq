@@ -9,11 +9,11 @@ updates:
   # Note: the `bun` ecosystem only supports version updates. Vulnerability
   # alerts still come from the dependency graph (package.json manifests) and
   # Bun security updates are not supported by Dependabot yet.
-  - package-ecosystem: "bun"
-    directory: "/"
+  - package-ecosystem: 'bun'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: 'weekly'
+      day: 'monday'
     open-pull-requests-limit: 5
     # Only minor/patch bumps are grouped. Major versions arrive as separate
     # PRs so a single bump (e.g. recharts 3, react-resizable-panels 4) can be
@@ -23,19 +23,19 @@ updates:
     # resources/sdk-metrics 3.x), so the whole family moves in one PR.
     groups:
       opentelemetry:
-        patterns: ["@opentelemetry/*"]
+        patterns: ['@opentelemetry/*']
       # The AI SDK packages are released in lockstep: @ai-sdk/react 4 pulls
       # ai 7 as a nested dependency, so bumping it alone leaves two SDK
       # generations talking different UI-message protocols.
       ai-sdk:
-        patterns: ["ai", "@ai-sdk/*"]
+        patterns: ['ai', '@ai-sdk/*']
       production-minor-patch:
-        dependency-type: "production"
-        exclude-patterns: ["@opentelemetry/*", "ai", "@ai-sdk/*"]
-        update-types: ["minor", "patch"]
+        dependency-type: 'production'
+        exclude-patterns: ['@opentelemetry/*', 'ai', '@ai-sdk/*']
+        update-types: ['minor', 'patch']
       development-minor-patch:
-        dependency-type: "development"
-        exclude-patterns: ["@opentelemetry/*", "ai", "@ai-sdk/*"]
-        update-types: ["minor", "patch"]
+        dependency-type: 'development'
+        exclude-patterns: ['@opentelemetry/*', 'ai', '@ai-sdk/*']
+        update-types: ['minor', 'patch']
     commit-message:
-      prefix: "build(deps)"
+      prefix: 'build(deps)'
