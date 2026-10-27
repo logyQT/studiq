@@ -84,6 +84,50 @@ export interface ActivityResponse {
   dailyReviewGoal: number;
 }
 
+/** Query of the teacher dashboard blocks (#654). */
+export const TeacherDashboardQuerySchema = registry.register(
+  'TeacherDashboardQuery',
+  z.object({
+    /** Window of the per-group results, in days. */
+    days: z.coerce.number().int().min(1).max(365).default(30),
+    /** Length of the activity feed. */
+    limit: z.coerce.number().int().min(1).max(50).default(10),
+  }),
+);
+
+export type TeacherDashboardQuery = z.infer<typeof TeacherDashboardQuerySchema>;
+
+/** One group of the teacher on the dashboard: learners, completed attempts, flashcard accuracy. */
+export interface TeacherGroupPerformanceItem {
+  groupId: string;
+  groupName: string;
+  /** Learners (`member` role) of the group, the teacher excluded. */
+  students: number;
+  /** Completed quiz / assignment attempts of those learners inside the window. */
+  completedAttempts: number;
+  /** Mean attempt score, 0–100; `null` when nothing was completed ("no data" is not 0 %). */
+  avgScore: number | null;
+  flashcardReviews: number;
+  /** Share of correct flashcard reviews, 0–100; `null` without reviews. */
+  flashcardAccuracy: number | null;
+}
+
+export type TeacherFeedKind = 'quiz_completed' | 'assignment_submitted' | 'report_opened';
+
+/** One line of the teacher dashboard's activity feed. */
+export interface TeacherFeedItem {
+  kind: TeacherFeedKind;
+  at: string;
+  personName: string | null;
+  /** Quiz / assignment title, or the beginning of the reported question. */
+  title: string | null;
+  scorePct: number | null;
+  /** A submitted assignment still waiting for a grade. */
+  needsGrading: boolean;
+  assignmentId: string | null;
+  questionId: string | null;
+}
+
 export interface TeacherQuizStatsItem {
   id: string;
   /**

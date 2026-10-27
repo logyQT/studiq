@@ -1,30 +1,62 @@
 'use client';
 
+import type {
+  ProblematicQuestionStats,
+  TeacherFeedItem,
+  TeacherGroupPerformanceItem,
+} from '@studiq/server/models/stats.model';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, StatCard } from '@studiq/ui';
-import { ArrowRight, FileText, Layers, Plus, Zap } from 'lucide-react';
+import { ArrowRight, ClipboardCheck, FileText, Layers, Plus, Users, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { ActivityFeedCard } from '@/components/edu/dashboard/activity-feed-card';
+import { GroupPerformanceCard } from '@/components/edu/dashboard/group-performance-card';
+import { ProblemQuestionsCard } from '@/components/edu/dashboard/problem-questions-card';
 import { OnboardingChecklist } from '@/components/edu/onboarding-checklist';
-import { apiGet } from '@/lib/api';
+import { useApiQuery } from '@/hooks/use-api';
+import { useOrgs } from '@/hooks/use-orgs';
 
 interface TeacherStats {
   totalQuestions: number;
   totalFlashcards: number;
+  subject?: { problematicQuestions?: ProblematicQuestionStats[] };
 }
+
+/** Window of the per-group results and of the attempts counted in the stat cards. */
+const RESULT_DAYS = 30;
+/** A dashboard is looked at again and again: refetch after a minute, not never. */
+const STALE_MS = 60_000;
 
 export default function EduOverviewPage() {
   const t = useTranslations('EduOverviewPage');
+  const { activeOrg, isPending: orgsPending } = useOrgs();
 
-  const [stats, setStats] = useState<TeacherStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The active organization is part of every key: switching it must not show the other
+  // organization's numbers while the new ones load.
+  const orgId = activeOrg?.id ?? null;
 
-  useEffect(() => {
-    apiGet<TeacherStats>('/api/v1/stats/teacher')
-      .then(setStats)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: stats, isLoading: statsLoading } = useApiQuery<TeacherStats>({
+    queryKey: ['stats', 'teacher', 'overview', orgId],
+    url: '/api/v1/stats/teacher',
+    staleTime: STALE_MS,
+    enabled: !orgsPending,
+  });
+  const { data: groups, isLoading: groupsLoading } = useApiQuery<TeacherGroupPerformanceItem[]>({
+    queryKey: ['stats', 'teacher', 'groups', orgId, RESULT_DAYS],
+    url: `/api/v1/stats/teacher/groups?days=${RESULT_DAYS}`,
+    staleTime: STALE_MS,
+    enabled: !orgsPending,
+  });
+  const { data: feed, isLoading: feedLoading } = useApiQuery<TeacherFeedItem[]>({
+    queryKey: ['stats', 'teacher', 'feed', orgId],
+    url: '/api/v1/stats/teacher/feed?limit=10',
+    staleTime: STALE_MS,
+    enabled: !orgsPending,
+  });
+
+  const loading = statsLoading || orgsPending;
+  const students = (groups ?? []).reduce((sum, g) => sum + g.students, 0);
+  const completed = (groups ?? []).reduce((sum, g) => sum + g.completedAttempts, 0);
 
   return (
     <div className="space-y-8">
@@ -44,9 +76,33 @@ export default function EduOverviewPage() {
           icon={Layers}
           variant="violet"
         />
+        <StatCard
+          title={t('students_stat')}
+          value={groupsLoading ? '...' : students}
+          icon={Users}
+          variant="emerald"
+        />
+        <StatCard
+          title={t('completed_stat', { days: RESULT_DAYS })}
+          value={groupsLoading ? '...' : completed}
+          icon={ClipboardCheck}
+          variant="amber"
+        />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <GroupPerformanceCard groups={groups} isLoading={groupsLoading} days={RESULT_DAYS} />
+        </div>
+        <ActivityFeedCard items={feed} isLoading={feedLoading} />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
+        <ProblemQuestionsCard
+          questions={stats?.subject?.problematicQuestions}
+          isLoading={statsLoading}
+        />
+
         {/* Quick Actions */}
         <Card className="overflow-hidden">
           <CardHeader className="pb-4">
@@ -59,24 +115,6 @@ export default function EduOverviewPage() {
             <CardDescription>{t('quick_actions_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 pb-6">
-            {/* UI_HIDDEN: classroom section — stale for org-managed flow */}
-            {/*
-            <Link href="/edu/classroom/invite" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/25 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-green-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
-                  <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('invite_students')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Send invitations to your classroom
-                  </p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-green-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
-            */}
-
             <Link href="/edu/questions" className="group block">
               <div className="flex items-center gap-4 p-4 rounded-xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/25 transition-all duration-200 cursor-pointer">
                 <div className="rounded-xl bg-blue-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
@@ -104,57 +142,6 @@ export default function EduOverviewPage() {
                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-violet-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
               </div>
             </Link>
-          </CardContent>
-        </Card>
-
-        {/* Content Overview */}
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">{t('content_overview_title')}</CardTitle>
-            <CardDescription>{t('content_overview_desc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="pb-6">
-            <div className="space-y-2">
-              {/* Questions row */}
-              <div className="flex items-center justify-between p-4 rounded-xl hover:bg-muted/60 border border-transparent hover:border-border/60 transition-all duration-150 group">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-blue-500/10 p-2.5 shrink-0">
-                    <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">{t('questions_card_title')}</p>
-                    <p className="text-xs text-muted-foreground">{t('questions_card_desc')}</p>
-                  </div>
-                </div>
-                {loading ? (
-                  <div className="h-9 w-12 rounded-lg bg-muted animate-pulse" />
-                ) : (
-                  <span className="text-3xl font-bold tabular-nums text-foreground">
-                    {stats?.totalQuestions ?? 0}
-                  </span>
-                )}
-              </div>
-
-              {/* Flashcards row */}
-              <div className="flex items-center justify-between p-4 rounded-xl hover:bg-muted/60 border border-transparent hover:border-border/60 transition-all duration-150 group">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-violet-500/10 p-2.5 shrink-0">
-                    <Layers className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">{t('flashcards_card_title')}</p>
-                    <p className="text-xs text-muted-foreground">{t('flashcards_card_desc')}</p>
-                  </div>
-                </div>
-                {loading ? (
-                  <div className="h-9 w-12 rounded-lg bg-muted animate-pulse" />
-                ) : (
-                  <span className="text-3xl font-bold tabular-nums text-foreground">
-                    {stats?.totalFlashcards ?? 0}
-                  </span>
-                )}
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>
