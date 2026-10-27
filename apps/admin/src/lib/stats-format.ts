@@ -1,7 +1,7 @@
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
-/** Storage size for people: 1024-based, one decimal from KB up, "0 B" for nothing. */
-export function formatBytes(bytes: number): string {
+/** Storage size for people: 1024-based, one decimal from KB up (locale decimal mark), "0 B" for nothing. */
+export function formatBytes(bytes: number, locale = 'en'): string {
   const value = Math.max(0, Number.isFinite(bytes) ? bytes : 0);
   if (value < 1024) return `${Math.round(value)} B`;
 
@@ -11,7 +11,11 @@ export function formatBytes(bytes: number): string {
     scaled /= 1024;
     unit += 1;
   }
-  return `${scaled.toFixed(1)} ${UNITS[unit]}`;
+  const number = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(scaled);
+  return `${number} ${UNITS[unit]}`;
 }
 
 /** Number with the locale's thousands separator, for the stat cards. */

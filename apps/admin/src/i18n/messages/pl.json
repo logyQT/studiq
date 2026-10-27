@@ -27,10 +27,13 @@
     "theme_toggle": "Przełącz motyw"
   },
   "AdminStats": {
+    "range_label": "Zakres czasu",
+    "col_date": "Data",
+    "daily_unavailable": "Dzienna aktywność jest chwilowo niedostępna",
     "title": "Statystyki platformy",
     "description": "Liczby ze wszystkich organizacji razem.",
     "users": "Użytkownicy",
-    "users_hint": "{week} nowych w 7 dni, {trash} w koszu",
+    "users_hint": "{week, plural, one {# nowe konto w 7 dni} few {# nowe konta w 7 dni} many {# nowych kont w 7 dni} other {# nowego konta w 7 dni}}, {trash} w koszu",
     "active_7": "Aktywni (7 dni)",
     "active_30": "Aktywni (30 dni)",
     "active_hint": "Z powtórką fiszek lub quizem w tym okresie",

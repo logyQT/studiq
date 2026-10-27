@@ -682,7 +682,7 @@ LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
-AS $
+AS $$
 DECLARE
   result jsonb;
 BEGIN
@@ -697,21 +697,29 @@ BEGIN
       'deleted', (SELECT COUNT(*) FROM public.profiles WHERE deleted_at IS NOT NULL),
       'newLast7Days', (
         SELECT COUNT(*) FROM public.profiles
-        WHERE deleted_at IS NULL AND created_at >= now() - interval '7 days'
+        WHERE deleted_at IS NULL
+          AND (created_at AT TIME ZONE 'UTC')::date >= (now() AT TIME ZONE 'UTC')::date - 6
       ),
       'newLast30Days', (
         SELECT COUNT(*) FROM public.profiles
-        WHERE deleted_at IS NULL AND created_at >= now() - interval '30 days'
+        WHERE deleted_at IS NULL
+          AND (created_at AT TIME ZONE 'UTC')::date >= (now() AT TIME ZONE 'UTC')::date - 29
       )
     ),
     'active', jsonb_build_object(
       'last7Days', (
-        SELECT COUNT(DISTINCT user_id) FROM public.user_daily_activity
-        WHERE date >= (now() AT TIME ZONE 'UTC')::date - 6
+        SELECT COUNT(DISTINCT a.user_id)
+        FROM public.user_daily_activity a
+        JOIN public.profiles p ON p.id = a.user_id AND p.deleted_at IS NULL
+        WHERE a.date >= (now() AT TIME ZONE 'UTC')::date - 6
+          AND (a.reviews_count > 0 OR a.quizzes_count > 0)
       ),
       'last30Days', (
-        SELECT COUNT(DISTINCT user_id) FROM public.user_daily_activity
-        WHERE date >= (now() AT TIME ZONE 'UTC')::date - 29
+        SELECT COUNT(DISTINCT a.user_id)
+        FROM public.user_daily_activity a
+        JOIN public.profiles p ON p.id = a.user_id AND p.deleted_at IS NULL
+        WHERE a.date >= (now() AT TIME ZONE 'UTC')::date - 29
+          AND (a.reviews_count > 0 OR a.quizzes_count > 0)
       )
     ),
     'organizations', (SELECT COUNT(*) FROM public.organizations),
@@ -726,14 +734,19 @@ BEGIN
     ),
     'storage', jsonb_build_object(
       'objects', (SELECT COUNT(*) FROM storage.objects),
-      'bytes', COALESCE((SELECT SUM((metadata->>'size')::bigint) FROM storage.objects), 0)
+      -- the size is a string in the object metadata: only digits are summed, anything else is 0
+      'bytes', COALESCE(
+        (SELECT SUM(CASE WHEN metadata->>'size' ~ '^[0-9]{1,15}$' THEN (metadata->>'size')::bigint ELSE 0 END)
+         FROM storage.objects),
+        0
+      )
     )
   )
   INTO result;
 
   RETURN result;
 END;
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION public.admin_daily_stats(p_days integer DEFAULT 30)
 RETURNS jsonb
@@ -741,7 +754,7 @@ LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
-AS $
+AS $$
 DECLARE
   v_days integer := GREATEST(1, LEAST(COALESCE(p_days, 30), 365));
   v_today date := (now() AT TIME ZONE 'UTC')::date;
@@ -759,7 +772,8 @@ BEGIN
   registrations AS (
     SELECT (created_at AT TIME ZONE 'UTC')::date AS day, COUNT(*)::int AS n
     FROM public.profiles
-    WHERE created_at >= v_today - (v_days - 1)
+    WHERE deleted_at IS NULL
+      AND (created_at AT TIME ZONE 'UTC')::date >= v_today - (v_days - 1)
     GROUP BY 1
   ),
   attempts AS (
@@ -775,9 +789,13 @@ BEGIN
     GROUP BY 1
   ),
   reviews AS (
-    SELECT date AS day, SUM(reviews_count)::int AS n, COUNT(DISTINCT user_id)::int AS users
-    FROM public.user_daily_activity
-    WHERE date >= v_today - (v_days - 1)
+    SELECT
+      a.date AS day,
+      SUM(a.reviews_count)::int AS n,
+      COUNT(DISTINCT a.user_id) FILTER (WHERE a.reviews_count > 0 OR a.quizzes_count > 0)::int AS users
+    FROM public.user_daily_activity a
+    JOIN public.profiles p ON p.id = a.user_id AND p.deleted_at IS NULL
+    WHERE a.date >= v_today - (v_days - 1)
     GROUP BY 1
   )
   SELECT jsonb_build_object(
@@ -806,7 +824,7 @@ BEGIN
 
   RETURN result;
 END;
-$;
+$$;
 
 -- ==========================================
 -- count_new_cards

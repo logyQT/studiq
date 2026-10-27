@@ -16,6 +16,8 @@ CREATE TABLE public.user_daily_activity (
   PRIMARY KEY (user_id, date)
 );
 
+CREATE INDEX idx_user_daily_activity_date ON public.user_daily_activity(date);
+
 -- ==========================================
 -- TRIGGER: increment_reviews
 -- Fires on flashcard_practice INSERT and bumps

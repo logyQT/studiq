@@ -4,5 +4,8 @@ import type { NextRequest } from 'next/server';
 
 export async function GET(req: NextRequest) {
   const query = Object.fromEntries(new URL(req.url).searchParams);
-  return toNextResponse(await platformStatsController.getDailyStats(query));
+  const response = toNextResponse(await platformStatsController.getDailyStats(query));
+  // Aggregates over every tenant: never cached by a browser or an intermediary.
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
 }

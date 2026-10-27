@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { PlatformStatsController } from '@admin/server/controllers/platform-stats.controller';
 import {
   DailyStatsQuerySchema,
@@ -127,7 +128,7 @@ describe('formatBytes', () => {
     [2674, '2.6 KB'],
     [5 * 1024 * 1024, '5.0 MB'],
     [3.5 * 1024 ** 3, '3.5 GB'],
-    [2 * 1024 ** 5, '2048.0 TB'],
+    [2 * 1024 ** 5, '2,048.0 TB'],
   ])('%d -> %s', (bytes, text) => {
     expect(formatBytes(bytes)).toBe(text);
   });
@@ -170,5 +171,77 @@ describe('total', () => {
   it('adds a series up', () => {
     expect(total([1, 2, 3])).toBe(6);
     expect(total([])).toBe(0);
+  });
+});
+
+describe('stats review round (#663)', () => {
+  const read = (path: string) => readFileSync(path, 'utf8');
+
+  it('formats sizes with the locale decimal mark', () => {
+    expect(formatBytes(2674, 'pl')).toBe('2,6 KB');
+    expect(formatBytes(2674, 'en')).toBe('2.6 KB');
+  });
+
+  it('declares the active and new-account definitions in the cards and the series', () => {
+    const sql = read('supabase/migrations/20261027120000_admin_platform_stats.sql');
+    // a live account with a review or a quiz; AI-token-only rows and trashed accounts do not count
+    expect(sql).toContain('JOIN public.profiles p ON p.id = a.user_id AND p.deleted_at IS NULL');
+    expect(sql).toContain('(a.reviews_count > 0 OR a.quizzes_count > 0)');
+    // new accounts: live, by UTC day, in both the cards and the registrations series
+    expect(
+      sql.match(/WHERE deleted_at IS NULL\s+AND \(created_at AT TIME ZONE 'UTC'\)::date/g),
+    ).toHaveLength(3);
+    expect(sql).toContain(
+      "AND (created_at AT TIME ZONE 'UTC')::date >= (now() AT TIME ZONE 'UTC')::date - 6",
+    );
+  });
+
+  it('indexes what every page load scans, in the migration and the declarative schema', () => {
+    const sql = read('supabase/migrations/20261027120000_admin_platform_stats.sql');
+    for (const index of [
+      'idx_user_daily_activity_date',
+      'idx_quiz_attempts_completed_at',
+      'idx_flashcard_study_sessions_completed_at',
+    ]) {
+      expect(sql).toContain(index);
+    }
+    expect(read('supabase/schemas/52_user_daily_activity.sql')).toContain(
+      'idx_user_daily_activity_date',
+    );
+    expect(read('supabase/schemas/39_quiz_attempts.sql')).toContain(
+      'idx_quiz_attempts_completed_at',
+    );
+    expect(read('supabase/schemas/47_flashcard_study_sessions.sql')).toContain(
+      'idx_flashcard_study_sessions_completed_at',
+    );
+  });
+
+  it('guards the storage size cast', () => {
+    expect(read('supabase/migrations/20261027120000_admin_platform_stats.sql')).toContain(
+      "metadata->>'size' ~ '^[0-9]{1,15}$'",
+    );
+  });
+
+  it('keeps the declarative schema function bodies delimited', () => {
+    const schema = read('supabase/schemas/99_rpc_functions.sql');
+    expect(schema).not.toMatch(/^\$;$/m);
+    expect(schema).not.toMatch(/^AS \$$/m);
+  });
+
+  it('answers both aggregate routes with no-store', () => {
+    for (const route of ['stats/route.ts', 'stats/daily/route.ts']) {
+      expect(read(`apps/admin/src/app/(backend)/api/v1/${route}`)).toContain(
+        "headers.set('Cache-Control', 'no-store')",
+      );
+    }
+  });
+
+  it('renders the cards and the chart independently, with a text alternative for the chart', () => {
+    const view = read('apps/admin/src/app/(frontend)/components/platform-stats.tsx');
+    expect(view).not.toMatch(/if \(stats\.isError\) return/);
+    expect(view).toContain('daily.isError');
+    expect(view).toContain('<table className="sr-only">');
+    expect(view).toContain('aria-pressed={days === range}');
+    expect(view).toContain('gap-0 overflow-hidden sm:gap-px');
   });
 });

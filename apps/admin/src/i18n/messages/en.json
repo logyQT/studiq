@@ -27,10 +27,13 @@
     "theme_toggle": "Toggle theme"
   },
   "AdminStats": {
+    "range_label": "Time range",
+    "col_date": "Date",
+    "daily_unavailable": "Daily activity is unavailable right now",
     "title": "Platform statistics",
     "description": "Numbers across every organization together.",
     "users": "Users",
-    "users_hint": "{week} new in 7 days, {trash} in the trash",
+    "users_hint": "{week, plural, one {# new account in 7 days} other {# new accounts in 7 days}}, {trash} in the trash",
     "active_7": "Active (7 days)",
     "active_30": "Active (30 days)",
     "active_hint": "With a flashcard review or a quiz in that period",
