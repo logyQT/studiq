@@ -11,7 +11,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  *
  *   bun scripts/qa-tenant.ts MGR-SET-04 --fresh
  *
- * `qa/tests/profiles.json` declares `{ profile: "content", plan: "hub" }`. The
+ * `qa/tests/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`. The
  * `content` profile supplies the org's manager, and `--plan hub` puts *this
  * tenant's own* organization on Hub through `apply_org_plan` (the same RPC the
  * billing webhook calls), which is the case's "Plan z brandingiem" prerequisite.

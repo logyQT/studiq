@@ -31,7 +31,7 @@ globalnego katalogu planów czy planu innej organizacji:
 bun scripts/qa-tenant.ts MGR-SET-04 --fresh
 ```
 
-- `qa/tests/profiles.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
+- `qa/tests/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
   tenanta na plan Hub. `apply_org_plan` odświeża snapshot `org_role_features`, dzięki
   czemu rola `admin` dostaje `branding`; `/api/v1/features/me` zwraca tę funkcję, a

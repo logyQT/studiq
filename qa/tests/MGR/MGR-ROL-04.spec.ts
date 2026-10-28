@@ -6,7 +6,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  *
  * Prerequisite (case text: „Rola niestandardowa z członkiem i rola bez członków”):
  * the `content` profile — one organization with a manager, a teacher and a
- * student — plus the role builder. `qa/tests/profiles.json` declares
+ * student — plus the role builder. `qa/tests/profiles/<CASE>.json` declares
  * `{ profile: "content", plan: "hub" }`: `--plan hub` puts *this tenant's own*
  * organization on Hub through `apply_org_plan`, the same path MGR-ROL-02 uses,
  * because the role write endpoints require `role.builder` (#259). Nothing global

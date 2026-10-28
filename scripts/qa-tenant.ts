@@ -75,16 +75,16 @@ const fresh = args.includes('--fresh');
 type ProfileEntry = string | { profile?: string; role?: string; plan?: string };
 
 /**
- * The CI seed contract: `qa/tests/profiles.json` declares the tenant shape a case
- * needs, so a runner can seed every spec without guessing. An explicit
- * `--profile` / `--role` / `--plan` on the command line always wins.
+ * The CI seed contract: `qa/tests/profiles/<CASE>.json` declares the tenant shape
+ * a case needs, so a runner can seed every spec without guessing. One file per
+ * case means two case PRs never edit the same file. An explicit `--profile` /
+ * `--role` on the command line always wins.
  */
 function manifestEntry(caseId: string): ProfileEntry | undefined {
   try {
-    const manifest = JSON.parse(
-      readFileSync(join(ROOT, 'qa', 'tests', 'profiles.json'), 'utf8'),
-    ) as Record<string, ProfileEntry>;
-    return manifest[caseId];
+    return JSON.parse(
+      readFileSync(join(ROOT, 'qa', 'tests', 'profiles', `${caseId}.json`), 'utf8'),
+    ) as ProfileEntry;
   } catch {
     return undefined;
   }
