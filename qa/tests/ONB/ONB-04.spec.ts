@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { loadTenant, loginAs } from '#qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
  * ONB-04 — Manager bez organizacji → /setup/org.
