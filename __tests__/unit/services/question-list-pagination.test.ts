@@ -104,13 +104,13 @@ describe('QuestionService.list pagination', () => {
     expect(c.ilike).toHaveBeenCalledWith('content', '%50\\%\\_off\\\\%');
   });
 
-  it('escapes the PostgREST * wildcard as well', async () => {
+  it('turns a * into the one-character wildcard, since PostgREST would read an escaped one as %', async () => {
     const c = chain([], 0);
     mock.from.mockReturnValue(c);
 
     await service.list(ctx, { page: 1, limit: 10, search: 'a*b' });
 
-    expect(c.ilike).toHaveBeenCalledWith('content', '%a\\*b%');
+    expect(c.ilike).toHaveBeenCalledWith('content', '%a_b%');
   });
 
   it('applies the type filter and the bank filter next to the access filter', async () => {

@@ -49,10 +49,14 @@ function questionSelect(topicFilter = false) {
 
 /**
  * `%`, `_` and `\` are wildcards / escapes in LIKE: a search for "50%" must mean the text. PostgREST
- * also maps `*` to a wildcard in its `ilike` values.
+ *
+ * PostgREST turns every `*` of an `ilike` value into `%` BEFORE the pattern reaches SQL, so an
+ * escaped `\*` would arrive as an escaped literal `%` and never match a `*`. A `*` in the search
+ * therefore becomes the single-character wildcard `_`: it still matches the literal `*` (and,
+ * harmlessly, any other character in that place).
  */
 function escapeLike(term: string): string {
-  return term.replace(/[\\%_*]/g, (c) => `\\${c}`);
+  return term.replace(/[\\%_]/g, (c) => `\\${c}`).replace(/\*/g, '_');
 }
 
 export class QuestionService {
