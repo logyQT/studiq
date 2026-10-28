@@ -21,6 +21,8 @@ export interface QaTenant {
   /** Account type of the single user in a `bare` tenant. */
   role?: 'teacher' | 'manager' | 'student';
   runSuffix?: string | null;
+  /** Organization plan the seeder applied (`--plan`), e.g. `hub` for `role.builder`. */
+  plan?: string | null;
   org: { id: string; name: string } | null;
   group: { id: string; name: string } | null;
   users: Partial<

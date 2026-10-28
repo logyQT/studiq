@@ -6,9 +6,15 @@
  *   bun scripts/qa-tenant.ts PUB-01 --reset
  *   bun scripts/qa-tenant.ts ONB-04 --profile bare --role manager --fresh
  *   bun scripts/qa-tenant.ts ONB-10 --profile org-limit --fresh
+ *   bun scripts/qa-tenant.ts MGR-ROL-02 --plan hub --fresh
  *
  * One command, one tenant, all deterministic from the case id. The spec builds its
  * own decks/banks/quizzes through the API, so nothing shared leaks between cases.
+ *
+ * `--plan <key>` puts the tenant's own organization on that plan through the same
+ * `apply_org_plan` RPC the billing webhook calls, so a case whose prerequisite is
+ * a paid entitlement (e.g. `role.builder` on Hub) gets it inside its own tenant
+ * instead of depending on the global plan catalogue or another org's purchase.
  *
  * Profiles:
  * - `content` (default) — org + manager/teacher/student + a default group.
@@ -60,17 +66,18 @@ function option(name: string): string | undefined {
 
 const caseId = args.find(
   (arg, index) =>
-    !arg.startsWith('--') && !['--profile', '--role', '--run'].includes(args[index - 1] ?? ''),
+    !arg.startsWith('--') &&
+    !['--profile', '--role', '--run', '--plan'].includes(args[index - 1] ?? ''),
 );
 const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
 const fresh = args.includes('--fresh');
-type ProfileEntry = string | { profile?: string; role?: string };
+type ProfileEntry = string | { profile?: string; role?: string; plan?: string };
 
 /**
  * The CI seed contract: `qa/tests/profiles.json` declares the tenant shape a case
  * needs, so a runner can seed every spec without guessing. An explicit
- * `--profile` / `--role` on the command line always wins.
+ * `--profile` / `--role` / `--plan` on the command line always wins.
  */
 function manifestEntry(caseId: string): ProfileEntry | undefined {
   try {
@@ -92,14 +99,19 @@ function declaredRole(entry: ProfileEntry | undefined): string | undefined {
   return typeof entry === 'string' ? undefined : entry?.role;
 }
 
+function declaredPlan(entry: ProfileEntry | undefined): string | undefined {
+  return typeof entry === 'string' ? undefined : entry?.plan;
+}
+
 const entry = manifestEntry(caseId ?? '');
 const profile = (option('profile') ?? declaredProfile(entry)) as Profile;
 const role = option('role') ?? declaredRole(entry) ?? 'teacher';
+const plan = option('plan') ?? declaredPlan(entry);
 const runArg = option('run');
 
 if (!caseId || !/^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(caseId)) {
   console.error(
-    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile content|bare|org-limit] [--role teacher|manager|student] [--fresh] [--run <suffix>] [--json] [--reset]',
+    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--json] [--reset]',
   );
   process.exit(2);
 }
@@ -109,6 +121,15 @@ if (!PROFILES.includes(profile)) {
 }
 if (role !== 'teacher' && role !== 'manager' && role !== 'student') {
   console.error(`unknown role "${role}": expected teacher, manager or student`);
+  process.exit(2);
+}
+if (plan && profile === 'bare') {
+  // A first-run tenant has no organization yet, so there is nothing to put on a plan.
+  console.error('cannot combine --plan with the bare profile (no organization exists yet)');
+  process.exit(2);
+}
+if (plan && !/^[a-z][a-z0-9_]*$/.test(plan)) {
+  console.error(`invalid plan "${plan}"`);
   process.exit(2);
 }
 if (!existsSync(join(CASES, `${caseId}.md`))) {
@@ -190,6 +211,7 @@ function writeTenant(tenant: Record<string, unknown>): void {
   } else {
     console.log(`  org      none (first-run ${role})`);
   }
+  if (tenant.plan) console.log(`  plan     ${String(tenant.plan)}`);
   for (const [name, user] of Object.entries(
     tenant.users as Record<string, { email: string; password: string }>,
   )) {
@@ -284,6 +306,14 @@ const seeded = await seedTenantGraph(db, {
   ownerOrgRole: 'admin',
 });
 
+// A paid entitlement is part of the case's prerequisite, not a global plan
+// change: the RPC only touches this tenant's own organization (plan, role-feature
+// snapshot, limits) and is the same one `MockStripeService` calls after purchase.
+if (plan) {
+  const { error } = await db.rpc('apply_org_plan', { p_org_id: orgId, p_plan: plan });
+  if (error) throw new Error(`seed ${caseId}: apply_org_plan(${plan}) ${error.message}`);
+}
+
 const users: Record<string, { id: string; email: string; password: string }> = {
   manager: { id: seeded.owner.id, email: seeded.owner.email, password: seeded.owner.password },
   teacher: {
@@ -315,6 +345,7 @@ writeTenant({
   runSuffix: runSuffix || null,
   key,
   org: { id: seeded.orgId, name: orgName },
+  plan: plan ?? null,
   users,
   group: { id: seeded.defaultGroupId, name: 'G1' },
 });
