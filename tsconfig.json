@@ -29,6 +29,7 @@
       "@studiq/server/*": ["./packages/server/src/*"],
       "@/utils": ["./packages/ui/src/utils.ts"],
       "#test/*": ["./__tests__/*"],
+      "#qa/*": ["./qa/*"],
       "@admin/*": ["./apps/admin/src/*"]
     }
   },
