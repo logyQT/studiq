@@ -24,18 +24,15 @@ async function loginAsManager(page: import('@playwright/test').Page) {
 }
 
 /**
- * The sidebar user menu keeps its dropdown open after an item is clicked (the
- * items are plain buttons, unlike the Radix `DropdownMenuItem`s), and an open
- * Radix menu marks the rest of the page `aria-hidden` — so it has to be closed
- * before role-based assertions on the target page.
+ * The sidebar user menu is a Radix dropdown: its entries are `menuitem`s (they
+ * used to be plain buttons), and selecting one closes the menu.
  */
 async function openUserMenuAndPick(
   page: import('@playwright/test').Page,
   item: RegExp,
 ): Promise<void> {
   await page.getByRole('button', { name: /manager@dev\.local/ }).click();
-  await page.getByRole('button', { name: item }).click();
-  await page.keyboard.press('Escape');
+  await page.getByRole('menuitem', { name: item }).click();
 }
 
 test.describe('Manager account and plan pages (#178)', () => {

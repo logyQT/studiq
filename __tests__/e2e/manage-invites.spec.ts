@@ -136,9 +136,12 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     await expect(page.getByText(/Wysłano 1 zaproszeń|Sent 1 invitation/i)).toBeVisible();
 
     expect(postedBodies).toHaveLength(1);
-    expect(postedBodies[0].invitations).toEqual([
-      { email: 'qa-role-reset@example.com', targetOrgRoleId: memberRoleId },
-    ]);
+    // The payload also carries the sender's locale; assert only this test's fields.
+    expect(postedBodies[0].invitations).toHaveLength(1);
+    expect(postedBodies[0].invitations[0]).toMatchObject({
+      email: 'qa-role-reset@example.com',
+      targetOrgRoleId: memberRoleId,
+    });
 
     // Regression: the reset row used to be re-seeded with the first role (admin).
     await expect(page.locator('#email-0')).toHaveValue('');

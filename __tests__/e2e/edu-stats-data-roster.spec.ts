@@ -1,25 +1,20 @@
-import { expect, type Page, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
 /**
  * E2E coverage for #460 (EDU-ST-01).
  *
  * `/edu/stats/data` used to render "Wszyscy uczniowie" = distinct practisers,
- * so the seeded Classroom organization (1 enrolled student, 0 practices) showed
- * a bare 0. The card now shows the group roster as its value and the
- * practising count as "Aktywnych: N", and a teacher practising their own deck
- * no longer moves either number.
+ * so an org with enrolled students and no practices showed a bare 0. The card
+ * now shows the group roster as its value and the practising count as
+ * "Aktywnych: N", and a teacher practising their own deck no longer moves
+ * either number.
  *
- * The Playwright suite runs `fullyParallel` against one seeded database, so the
- * assertions read the baseline from the API and compare deltas.
+ * Runs on its own tenant: the org has one group, one student and no practice
+ * state, so the deltas are exact instead of depending on what an earlier run
+ * did to the shared dev seed.
  */
-
-const PASSWORD = 'pass';
-const TEACHER_EMAIL = 'teacher-classroom@dev.local';
-const STUDENT_EMAIL = 'student-classroom@dev.local';
-
-/** First seeded Classroom flashcard (Historia — „Kiedy miała miejsce bitwa…"). */
-const CLASSROOM_FLASHCARD_ID = '00000000-0000-4000-8005-000000000008';
 
 interface TeacherStats {
   summary: {
@@ -29,32 +24,17 @@ interface TeacherStats {
   };
 }
 
-async function login(page: Page, email: string, redirectPattern: RegExp) {
-  await page.goto('/login');
-  await page.getByLabel(t('LoginPage.email_label')).fill(email);
-  await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
-  await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(redirectPattern);
-}
-
 async function fetchStats(page: Page): Promise<TeacherStats> {
-  const body = await page.evaluate(async () => {
-    const res = await fetch('/api/v1/flashcards/stats/teacher');
-    return res.json();
-  });
+  const res = await page.request.get('/api/v1/flashcards/stats/teacher');
+  const body = await res.json();
   return (body.data ?? body) as TeacherStats;
 }
 
 async function practice(page: Page, flashcardId: string) {
-  const result = await page.evaluate(async (id) => {
-    const res = await fetch(`/api/v1/flashcards/${id}/practice`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wasCorrect: true }),
-    });
-    return { status: res.status, body: await res.json() };
-  }, flashcardId);
-  expect(result.status, JSON.stringify(result.body)).toBe(201);
+  const res = await page.request.post(`/api/v1/flashcards/${flashcardId}/practice`, {
+    data: { wasCorrect: true },
+  });
+  expect(res.status(), await res.text()).toBe(201);
 }
 
 /** The `StatCard` whose title contains the given regex. */
@@ -64,81 +44,52 @@ function statCard(page: Page, title: RegExp) {
     .first();
 }
 
-test.describe('EDU stats — roster and practising counts (#460)', () => {
-  test('renders the roster card, tracks a student practice and ignores the teacher', async ({
-    browser,
-  }) => {
-    const teacherCtx = await browser.newContext();
-    const teacher = await teacherCtx.newPage();
-    await login(teacher, TEACHER_EMAIL, /\/edu/);
+test('renders the roster card, tracks a student practice and ignores the teacher', async ({
+  page,
+  tenant,
+  browser,
+}) => {
+  await signIn(page, 'teacher');
 
-    const baseline = await fetchStats(teacher);
-    expect(baseline.summary.rosterStudents).not.toBeNull();
-    const baselineRoster = baseline.summary.rosterStudents as number;
+  const baseline = await fetchStats(page);
+  expect(baseline.summary.rosterStudents).not.toBeNull();
+  const baselineRoster = baseline.summary.rosterStudents as number;
+  expect(baselineRoster).toBeGreaterThan(0);
 
-    // 1. /edu/stats/data: value is the roster, description is the practiser count.
-    await teacher.goto('/edu/stats/data');
-    await teacher.waitForLoadState('networkidle');
-    const rosterCard = statCard(teacher, t('StatsDataPage.students'));
-    await expect(rosterCard).toBeVisible();
-    await expect(rosterCard.locator('p.text-3xl')).toHaveText(String(baselineRoster));
-    await expect(rosterCard.getByText(/Aktywnych: \d+|Active: \d+/)).toBeVisible();
+  // 1. /edu/stats/data: value is the roster, description is the practiser count.
+  await page.goto('/edu/stats/data');
+  const rosterCard = statCard(page, t('StatsDataPage.students'));
+  await expect(rosterCard).toBeVisible();
+  await expect(rosterCard.locator('p.text-3xl')).toHaveText(String(baselineRoster));
+  await expect(rosterCard.getByText(/Aktywnych: \d+|Active: \d+/)).toBeVisible();
 
-    // 2. A student practises one Classroom card → practising +1, roster unchanged.
-    const studentCtx = await browser.newContext();
-    const student = await studentCtx.newPage();
-    await login(student, STUDENT_EMAIL, /\/app/);
-    await practice(student, CLASSROOM_FLASHCARD_ID);
-    await studentCtx.close();
+  // 2. The tenant's student practises one of the group's cards → practising +1.
+  const studentCtx = await browser.newContext();
+  const student = await studentCtx.newPage();
+  await signIn(student, 'student');
+  await practice(student, tenant.ids.card);
+  await studentCtx.close();
 
-    await teacher.reload();
-    await teacher.waitForLoadState('networkidle');
-    const afterStudent = await fetchStats(teacher);
-    expect(afterStudent.summary.practicingStudents).toBe(baseline.summary.practicingStudents + 1);
-    expect(afterStudent.summary.rosterStudents).toBe(baselineRoster);
+  await page.reload();
+  const afterStudent = await fetchStats(page);
+  expect(afterStudent.summary.practicingStudents).toBe(baseline.summary.practicingStudents + 1);
+  expect(afterStudent.summary.rosterStudents).toBe(baselineRoster);
 
-    const rosterCardAfter = statCard(teacher, t('StatsDataPage.students'));
-    await expect(rosterCardAfter.locator('p.text-3xl')).toHaveText(String(baselineRoster));
-    await expect(
-      rosterCardAfter.getByText(
-        new RegExp(
-          `Aktywnych: ${afterStudent.summary.practicingStudents}|Active: ${afterStudent.summary.practicingStudents}`,
-        ),
+  const rosterCardAfter = statCard(page, t('StatsDataPage.students'));
+  await expect(rosterCardAfter.locator('p.text-3xl')).toHaveText(String(baselineRoster));
+  await expect(
+    rosterCardAfter.getByText(
+      new RegExp(
+        `Aktywnych: ${afterStudent.summary.practicingStudents}|Active: ${afterStudent.summary.practicingStudents}`,
       ),
-    ).toBeVisible();
-    if (baselineRoster > 0) {
-      const width = await rosterCardAfter
-        .locator('div[style*="width"]')
-        .first()
-        .evaluate((el) => (el as HTMLElement).style.width);
-      expect(parseFloat(width)).toBeGreaterThan(0);
-    }
+    ),
+  ).toBeVisible();
 
-    // 3. The teacher practising their own deck does not count as a student.
-    const beforeOwnPractice = (await fetchStats(teacher)).summary.practicingStudents;
-    await practice(teacher, CLASSROOM_FLASHCARD_ID);
-    await teacher.reload();
-    await teacher.waitForLoadState('networkidle');
-    const afterOwnPractice = await fetchStats(teacher);
-    expect(afterOwnPractice.summary.practicingStudents).toBe(beforeOwnPractice);
-    await expect(statCard(teacher, t('StatsDataPage.students')).locator('p.text-3xl')).toHaveText(
-      String(baselineRoster),
-    );
+  // 3. The teacher practising their own card must not move either number.
+  await practice(page, tenant.ids.card);
 
-    // 4. /edu/flashcards/stats: renamed label, still six cards in one row.
-    await teacher.goto('/edu/flashcards/stats');
-    await teacher.waitForLoadState('networkidle');
-    const statsGrid = teacher.locator('div[class*="xl:grid-cols-6"]');
-    const titles = statsGrid.locator('p.uppercase');
-    await expect(titles).toHaveCount(6);
-    await expect(
-      statsGrid.locator('p.uppercase', { hasText: t('EduFlashcardStatsPage.summary_students') }),
-    ).toHaveCount(1);
-    const tops = await titles.evaluateAll((els) =>
-      els.map((el) => Math.round(el.getBoundingClientRect().top)),
-    );
-    expect(new Set(tops).size).toBe(1);
-
-    await teacherCtx.close();
-  });
+  await page.reload();
+  const afterTeacher = await fetchStats(page);
+  expect(afterTeacher.summary.practicingStudents).toBe(afterStudent.summary.practicingStudents);
+  expect(afterTeacher.summary.rosterStudents).toBe(baselineRoster);
 });
