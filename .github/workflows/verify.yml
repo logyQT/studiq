@@ -117,6 +117,9 @@ jobs:
       CI: '1'
       NEXT_TELEMETRY_DISABLED: '1'
       QA_APP_URL: http://localhost:3010
+      # Every test owns its tenant, so CI can run four at a time on a 4-vCPU
+      # runner. Locally the same variable stays unset (workers: 1).
+      QA_WORKERS: '4'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -161,9 +164,7 @@ jobs:
           done
 
       - name: Run the QA suite
-        # One worker, one spec at a time — the shared VM runs the app, the DB
-        # and the browser; a parallel run OOMs.
-        run: bunx playwright test -c qa/playwright.qa.config.ts --workers=1 --reporter=line
+        run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line
 
       - name: Upload report
         if: failure()
