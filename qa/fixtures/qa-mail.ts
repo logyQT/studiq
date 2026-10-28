@@ -138,6 +138,38 @@ async function messagesFor(base: string, email: string): Promise<MailMessage[]> 
   return detailed.filter((message): message is MailMessage => message !== null);
 }
 
+/** A matched link plus how many messages the address had when it was found. */
+export interface MailLinkMatch {
+  link: string;
+  /** Messages delivered to this address — a fresh sign-up must have exactly one. */
+  messageCount: number;
+}
+
+/**
+ * Wait for the first message to `email` whose body matches `pattern` and return
+ * the match together with the number of messages delivered to that address.
+ * Polls the catcher, because SMTP delivery is asynchronous.
+ */
+export async function waitForMailLinkMatch(
+  email: string,
+  pattern: RegExp,
+  timeoutMs = 30_000,
+): Promise<MailLinkMatch> {
+  const base = await mailBase();
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const messages = await messagesFor(base, email);
+    for (const message of messages) {
+      const match = pattern.exec(message.html.replace(/&amp;/g, '&'));
+      if (match) return { link: match[0], messageCount: messages.length };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(`no e-mail matching ${pattern} for ${email} within ${timeoutMs}ms`);
+}
+
 /**
  * Wait for the first message to `email` whose body matches `pattern` and return
  * the match. Polls the catcher, because SMTP delivery is asynchronous.
@@ -147,16 +179,5 @@ export async function waitForMailLink(
   pattern: RegExp,
   timeoutMs = 30_000,
 ): Promise<string> {
-  const base = await mailBase();
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const message of await messagesFor(base, email)) {
-      const match = pattern.exec(message.html.replace(/&amp;/g, '&'));
-      if (match) return match[0];
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-
-  throw new Error(`no e-mail matching ${pattern} for ${email} within ${timeoutMs}ms`);
+  return (await waitForMailLinkMatch(email, pattern, timeoutMs)).link;
 }

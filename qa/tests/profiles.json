@@ -1,4 +1,8 @@
 {
+  "AUT-01": {
+    "profile": "bare",
+    "role": "student"
+  },
   "ONB-01": "bare",
   "ONB-02": "bare",
   "ONB-04": {
