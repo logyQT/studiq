@@ -15,12 +15,17 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   workers: Number(process.env.QA_WORKERS ?? 1),
-  retries: 0,
   // The CI runner is 4 vCPU and hosts Supabase, the Next app and four Chromium
-  // workers at once. Playwright's 30s default is tight enough that a runtime
-  // seeding helper (MGR-03) or one slow API round-trip (MGR-SEAT-02) trips it
-  // while the product is fine; local runs finish in single-digit seconds.
+  // workers at once. Playwright's 30s/5s defaults are tight enough that a slow
+  // API round-trip or a filtered table render trips them while the product is
+  // fine; local runs finish in single-digit seconds.
   timeout: 90_000,
+  expect: { timeout: 10_000 },
+  // Same CI-only retry budget as the e2e runner (`playwright.config.ts`), for the
+  // transport-level noise a 4 vCPU runner produces (`read ECONNRESET`, a dropped
+  // seed connection, a table rendering a beat late). Local stays 0, so the
+  // admission gate — 3/3 independent runs, fresh tenant each — sees every flake.
+  retries: process.env.CI ? 2 : 0,
   forbidOnly: !!process.env.CI,
   reporter: [['list']],
   use: {
