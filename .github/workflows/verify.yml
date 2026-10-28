@@ -31,6 +31,34 @@ env:
 jobs:
   # Cheapest first, in the order a failure is cheapest to explain: lint, types.
   # Everything else waits on this.
+  # A QA-suite PR only touches qa/** (plus, occasionally, __tests__ helpers).
+  # The app, its unit/integration tests and the e2e matrix cannot change there,
+  # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
+  # the `qa-suite` job still run. Schedule/dispatch runs everything.
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A shallow clone has no merge base, and the three-dot diff needs one.
+          fetch-depth: 0
+      - id: diff
+        run: |
+          if [ -z "${{ github.base_ref }}" ]; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          echo "changed files:"; echo "$changed"
+          if echo "$changed" | grep -qvE '^(qa/|__tests__/)'; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          fi
+
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -54,7 +82,8 @@ jobs:
         run: bun run typecheck:all
 
   unit:
-    needs: checks
+    needs: [checks, scope]
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -71,7 +100,8 @@ jobs:
       - run: bun run test:unit
 
   integration:
-    needs: checks
+    needs: [checks, scope]
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -111,7 +141,9 @@ jobs:
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
   # job `qa/tests/**` would never run in CI.
   qa-suite:
-    needs: [checks, unit]
+    needs: [checks, scope]
+    # Still runs when `unit` was skipped for a tests-only diff.
+    if: needs.checks.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -195,7 +227,8 @@ jobs:
   # One leg per browser so a red platform re-runs alone. Each leg owns its
   # tenant set (keys include the project) and its own Supabase instance.
   e2e:
-    needs: [checks, unit]
+    needs: [checks, scope]
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
