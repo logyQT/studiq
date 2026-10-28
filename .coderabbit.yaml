@@ -1,0 +1,351 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit configuration for StudiQ.
+# Schema/docs: https://docs.coderabbit.ai/reference/configuration
+#
+# What this file is optimising for:
+#   1. English only. The product copy is bilingual (en/pl); the code, commits,
+#      PR titles, PR descriptions and docs are not.
+#   2. Architecture and semantics, not style. Formatting, `bun lint` (oxlint)
+#      and `bun run typecheck:all` already block every PR in verify.yml, so a
+#      comment about spacing or import order is noise.
+#   3. Teach the reviewer this repo's non-obvious rules (4-layer backend,
+#      alias-only imports, service-role admin app, tenant-per-test e2e) so it
+#      doesn't re-derive them — or get them wrong — on every PR.
+
+language: 'en-US'
+early_access: false
+
+# Hard limit: 250 characters, declared as `maxLength` in schema.v2.json.
+tone_instructions: >-
+  Pre-market product: never suggest keeping deprecated code or flags for
+  backwards compatibility - propose deleting it. All review comments, summaries
+  and PR text in English. Be terse; cite the file and the AGENTS.md rule broken.
+
+reviews:
+  # `chill` keeps the volume low: CI owns style, so the reviewer should spend
+  # its budget on architecture. Flip to `assertive` if convention drift starts
+  # slipping through.
+  profile: 'chill'
+
+  # Report, never block: CodeRabbit may flag findings but must not hold a merge —
+  # the gate is verify.yml. `request_changes_workflow` is a deprecated alias for
+  # this key, so set the non-deprecated one explicitly.
+  auto_approvals:
+    enabled: false
+
+  high_level_summary: true
+  high_level_summary_in_walkthrough: false
+  changed_files_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  poem: false
+  in_progress_fortune: false
+  estimate_code_review_effort: false
+  sequence_diagrams: false
+
+  # Issues are how work is tracked here; linking a PR to its issue is useful.
+  # Suggested labels/reviewers are not used in this repo, so keep them off.
+  assess_linked_issues: true
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  auto_apply_labels: false
+  suggested_reviewers: false
+
+  path_filters:
+    # Lockfile churn is Dependabot's job (see .github/dependabot.yml grouping).
+    - '!bun.lock'
+    # Non-reviewable assets.
+    - '!**/*.png'
+    - '!**/*.jpg'
+    - '!**/*.jpeg'
+    - '!**/*.svg'
+    - '!**/*.ico'
+    # Generated fixtures / seed dumps: reviewed by regenerating, not by reading.
+    - '!supabase/seeds/**'
+    - '!seed-data.js'
+    # Build + tool output.
+    - '!**/.next/**'
+    - '!**/coverage/**'
+
+  auto_review:
+    enabled: true
+    # Drafts are a work-in-progress signal in this repo (several open at once).
+    # Reviewing them burns tokens on code that is still moving.
+    drafts: false
+    # Only `main` is long-lived; feature branches target it directly.
+    base_branches:
+      - 'main'
+    auto_incremental_review: true
+    ignore_title_keywords:
+      - 'WIP'
+      - 'DO NOT MERGE'
+      - 'dnm'
+    # Dependency bumps are grouped and reviewed by a human against the grouping
+    # policy in .github/dependabot.yml. Remove this line to get AI review on
+    # Dependabot PRs too.
+    ignore_usernames:
+      - 'dependabot[bot]'
+
+  path_instructions:
+    - path: 'apps/web/src/**/*.{ts,tsx}'
+      instructions: |
+        Main app code. Enforce the conventions in AGENTS.md:
+        - Imports must use aliases only (`@/`, `@studiq/*`, `#test`). Flag any
+          added `import ... from './x'` or `'../x'`. The same applies to
+          `import('./x')` and `require('./x')`.
+        - No barrel files: imports must name the exact module
+          (`@studiq/server/services/flashcard.service`), not a folder index.
+        - Zod schemas come from `{ z, registry } = @studiq/server/lib/zod`, never
+          from `'zod'` directly.
+        - Data fetching goes through `useApiQuery` / `useApiMutation`
+          (`apps/web/src/hooks/use-api.ts`) and query keys from
+          `apps/web/src/lib/query-keys.ts`; flag ad-hoc `fetch` or inline
+          `useQuery` with hand-written keys.
+        - Permission gating must go through `usePermission()`
+          (`apps/web/src/hooks/use-permission.ts`); feature flags through
+          `useFeature()`. Flag client-only checks that hide a control but leave
+          the API call reachable.
+        - User-facing strings belong in `apps/web/src/i18n/messages/*.json`;
+          flag hard-coded literals in JSX.
+        - Comments and identifiers in English.
+
+    - path: 'apps/web/src/app/**/api/**'
+      instructions: |
+        API route handlers are thin and nearly all authenticated.
+        - Except for the public-by-design prefixes listed below, every exported
+          handler must be wrapped in `withAuth(req, async (ctx) => ...)` from
+          `@studiq/server/lib/with-auth`. The proxy skips `/api/*` entirely
+          (`apps/web/src/proxy.ts`), so a handler without `withAuth` is public.
+          Flag any other route that adds a handler without it as a security
+          issue, not a style issue.
+        - Public-by-design today (no `withAuth`): `auth/callback`, `auth/login`,
+          `auth/logout`, `auth/me`, `auth/password/reset`, `auth/register`
+          (session establishment/teardown, wrapped in `withPublicTracing`; never
+          suggest `withAuth` on the callback — it has no session yet by
+          definition), `health` (liveness), `avatar/**` (DiceBear images), and
+          `subscription-plans/**` (public pricing). The rest of `auth/**` —
+          `auth/profile`, `auth/password/update` — IS protected and must keep
+          `withAuth`; flag it if dropped. Require the route-specific guard for the
+          public ones, and never let a public handler widen what it reads or
+          returns.
+        - `stripe/webhook` is excluded from the proxy rule so a *real* Stripe
+          webhook can be unauthenticated later, but the handler today is a mock
+          that calls `withAuth` and only touches the caller's own plan. Do not
+          suggest removing `withAuth` there; once the real signature-verified
+          webhook lands, require the signature check.
+        - The catch-all exclusion in `packages/server/src/config/routes.config.ts`
+          names `auth`, `health`, `avatar` and `stripe/webhook`, but not
+          `subscription-plans` — flag that mismatch when the file is touched, and
+          do not "fix" it by bolting `withAuth` onto a public pricing endpoint.
+        - A NEW public endpoint must be added to that exclusion list; flag a route
+          that is public in practice without an entry.
+        - Handlers receive only `ctx`; the request is captured by closure. Flag
+          handlers that take a second parameter or read the request inside the
+          controller.
+        - Response must go through
+          `toNextResponse(await <controller>.<method>(data, ctx))`. No hand-rolled
+          `NextResponse.json`, no business logic in the route.
+        - Preserve the `x-trace-id` behaviour from `withAuth`; flag handlers that
+          swallow errors instead of letting `AppError` / `handleApiError` map them.
+
+    - path: 'packages/server/src/**'
+      instructions: |
+        Shared backend: Route -> Controller -> Model -> Service, in that order.
+        - Controller: singleton `export const xController = wrapService(new
+          XController(xService), 'x.controller')`. Permission checks via
+          `can(ctx, Permission.X)` returning
+          `controllerResponse.error('FORBIDDEN')`; input validation with
+          `Schema.safeParse` -> `controllerResponse.error('UNPROCESSABLE_ENTITY',
+          parsed.error.issues)`. Controllers never throw and never touch the DB.
+        - Model: Zod schemas registered with `registry.register('Name', ...)` and
+          inferred types exported alongside.
+        - Service: class + `wrapService(new XService(createClient), 'x.service')`
+          singleton. Create the Supabase client inside the method. Return
+          `ServiceResult` (`success`/`failure`) for business outcomes; throw
+          `AppError(code)` only for hard failures; map PG errors with
+          `toDbFailure` / `mapSupabaseError` rather than re-implementing code
+          mapping.
+        - Authorization inside services uses `check`, `accessibleFilter`, or
+          `buildQueryFilter` from `@studiq/server/lib/authz`. Flag list queries
+          that filter by owner/org/group in JS instead of the RLS-safe helper.
+        - Cross-package imports use `@studiq/server/*`; inside this package use
+          relative imports only (that is the one place they are allowed).
+        - Logging goes through `@studiq/server/lib/log` (it carries the active
+          `trace_id`); flag new `console.*` calls and any second logging
+          abstraction.
+        - One Zod instance: import `z`/`registry` from
+          `@studiq/server/lib/zod`.
+
+    - path: 'apps/admin/src/**'
+      instructions: |
+        Standalone admin app (port 4000), separate backend under
+        `apps/admin/src/server/*`, imported as `@admin/server/...`.
+        - Admin routes do NOT use `withAuth`; they are gated by the Ed25519 PEM
+          signature check in `apps/admin/src/proxy.ts` (`x-admin-signature` /
+          `x-admin-timestamp`). Flag any change that weakens that gate, adds a
+          route outside `/api/*` that assumes it, or logs signature material.
+        - Admin services use the service-role client
+          (`@admin/lib/supabase/admin-client`): no user JWT, no RLS. That makes
+          every query here privileged — flag missing explicit authorization
+          checks, and flag any place where user-supplied ids are interpolated
+          into a privileged query without validation.
+        - Mirror the 4-layer split (`controllers` / `models` / `services`) and the
+          `ControllerResponse` shape used in `packages/server`; do not import
+          `@studiq/server/services/*` into admin-only logic.
+
+    - path: '__tests__/**'
+      instructions: |
+        Vitest (unit + integration) and Playwright (e2e) live here.
+        - Runners: unit/integration are Vitest via `bun run test` / `bun run
+          test:unit`; `bun test` is Bun's own runner and must not appear in
+          scripts, docs or CI.
+        - Imports between test files use `#test/...` (never `./` / `../`); app
+          modules use `@/` or `@studiq/*`.
+        - `vi.mock('@studiq/server/lib/supabase/server')` is registered globally
+          in `__tests__/setup.ts`; per-test behaviour is overridden through
+          `mockSupabaseClient()` from `__tests__/helpers/supabase-mock.ts`.
+        - e2e tests get an isolated tenant from
+          `__tests__/e2e/fixtures/tenant.ts` (`tenant`, `loginAs`, `signIn`).
+          Flag specs that reach for shared dev-seed data or hard-code org/user
+          ids — the suite is order-independent by design.
+        - Integration and e2e tests must clean up (or tenant-scope) what they
+          create; flag tests that leave rows behind for the next run.
+        - Assertions should use i18n labels resolved at runtime rather than
+          English literals (the default locale is `pl`).
+
+    - path: 'supabase/migrations/**'
+      instructions: |
+        Migrations are append-only and timestamp-ordered.
+        - The filename timestamp prefix must be unique and monotonically newer
+          than every existing migration (`bun run lint` enforces it via
+          `scripts/check-migration-timestamps.ts`). Flag duplicate or
+          back-dated prefixes.
+        - Every table added here needs a matching definition in
+          `supabase/schemas/` and RLS policies in the same migration. A new table
+          without RLS is a security regression — call it out explicitly.
+        - Flag edits to already-applied migrations (they are immutable in
+          practice); the fix is a new migration.
+        - Prefer idempotent constructs (`if not exists`, `drop ... if exists`) for
+          functions/triggers so re-runs are safe.
+        - Seeds and fixtures belong in `supabase/seeds/`, not in migrations.
+
+    - path: '**/i18n/messages/*.json'
+      instructions: |
+        Bilingual message catalogues (en, pl) consumed by next-intl.
+        - Keys must stay symmetric: a key added to one locale must exist in the
+          other, and neither may keep keys the other dropped. Flag orphans in
+          either direction.
+        - Messages use ICU syntax for plurals/interpolation; flag a `pl` string
+          that reuses English plural rules verbatim (Polish needs
+          one/few/many/other).
+        - Keys themselves are English; only values are translated. Flag Polish
+          key names or English sentences left in the `pl` file.
+        - Message files must stay valid JSON with 2-space indent — `bun fmt`
+          handles formatting, so do not comment on whitespace.
+
+    - path: 'scripts/**'
+      instructions: |
+        Repo tooling (spin/switch-branch/pr, guards, load-test, e2e seeding).
+        - Scripts are executed by contributors and by agents: keep them
+          non-interactive, idempotent, and safe to re-run. Flag destructive
+          operations that are not explicitly opted into by a flag (e.g.
+          `--reset`) or that lack a dry-run path.
+        - Guard scripts (`check-import-paths.ts`, `check-migration-timestamps.ts`,
+          `check-bun-version.ts`) run inside `bun run lint`; a change that
+          loosens a guard needs a stated reason in the PR body.
+        - Bash scripts must stay `set -euo pipefail` and quote paths.
+        - No secrets or personal absolute paths; read configuration from env.
+
+    - path: '.github/workflows/**'
+      instructions: |
+        - `verify.yml` pins the Bun canary in `env.BUN_VERSION`, which must stay in
+          step with `scripts/check-bun-version.ts` (the linter is canary-only).
+          Flag a bump that touches one without the other.
+        - Jobs are ordered cheapest-first (`checks` gates the rest). Flag
+          reordering that makes an expensive job block a cheap one, or a new job
+          that does not `needs: checks`.
+        - Keep `pull_request.paths` in sync with what the suite actually
+          exercises — a new top-level directory that affects tests must be added,
+          and dropping a path silently disables CI for it.
+        - No third-party action may be used without a pinned version and a note
+          about why it is needed.
+
+    - path: '**/*.md'
+      instructions: |
+        Docs are English-only and are the source of truth for how the repo works
+        (`AGENTS.md` especially). Flag documentation that contradicts AGENTS.md
+        or `package.json` scripts — the code wins, and the doc should be fixed.
+        Do not comment on Markdown formatting; `bun fmt` owns it. Flag stale
+        cross-links and commands that no longer exist.
+
+  pre_merge_checks:
+    title:
+      mode: 'warning'
+      requirements: >-
+        Conventional Commits format: `<type>(<scope>): <summary>`, where type is
+        one of feat, fix, refactor, docs, test, chore, build, ci, perf, style.
+        Lowercase type and scope, imperative summary, no trailing period, ideally
+        <= 72 characters. The scope should name the area (e.g. quiz, admin, e2e,
+        auth). Titles are English.
+    description:
+      mode: 'warning'
+    # The repo does not gate on docstring coverage; JSDoc is added where it earns
+    # its keep, not to hit a percentage.
+    docstrings:
+      mode: 'off'
+    issue_assessment:
+      mode: 'warning'
+    custom_checks:
+      - name: 'PR text is English'
+        mode: 'warning'
+        instructions: >-
+          Pass if the PR title and description are written in English. Fail if
+          either contains prose in Polish or another language. Polish is allowed
+          only inside quoted UI strings or i18n message values, and in references
+          to file paths. Code blocks, commands and identifiers are exempt.
+
+  tools:
+    # The repo's linter is Bun's native one (oxlint/oxc) run via `bun lint`, and
+    # verify.yml already blocks on it. Enabling oxc here gives inline annotations
+    # on the diff instead of a red job after push.
+    oxc:
+      enabled: true
+    # No ESLint, Biome, Prettier or markdownlint config exists in this repo;
+    # running them would report violations the project does not enforce.
+    eslint:
+      enabled: false
+    biome:
+      enabled: false
+    markdownlint:
+      enabled: false
+    # English-only docs and messages make a grammar checker more noise than use.
+    languagetool:
+      enabled: false
+    # SQL here is Supabase migrations with RLS policies; sqlfluff's dialect and
+    # style rules fight the project's formatting.
+    sqlfluff:
+      enabled: false
+    # Secrets must never land in a migration, seed or fixture — keep this on.
+    gitleaks:
+      enabled: true
+    github-checks:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  # AGENTS.md is the canonical contract (architecture, aliases, commands,
+  # gotchas). CodeRabbit already picks it up by default, but the repo also ships
+  # a CLAUDE.md pointer, so be explicit about which file carries the rules.
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - 'AGENTS.md'
+  # Repo-scoped: learnings are about this codebase, not this org.
+  learnings:
+    scope: 'local'
+  issues:
+    scope: 'local'
