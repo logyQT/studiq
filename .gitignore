@@ -65,3 +65,7 @@ __tests__/e2e/.seed/
 
 # scratch space for local runs (baseline reports, helpers)
 .tmp/
+
+# python bytecode from the qa tooling
+__pycache__/
+*.pyc
