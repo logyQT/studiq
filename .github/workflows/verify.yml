@@ -193,6 +193,10 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       E2E_INCLUDE_ADMIN: '1'
       E2E_SKIP_WEB_WS: '1'
+      # The admin spec signs its own requests and never reads a tenant, so
+      # seeding 240 orgs here is waste — and the seeder needs apps/web/.env,
+      # which this leg deliberately does not write.
+      E2E_SKIP_SEED: '1'
       E2E_WORKERS: '2'
     steps:
       - uses: actions/checkout@v7
