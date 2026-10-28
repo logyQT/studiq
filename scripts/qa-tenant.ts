@@ -11,11 +11,11 @@
  *
  * Profiles:
  * - `content` (default) — org + manager/teacher/student + a default group.
- * - `bare` — one staff account with **no organization and no group**, for the
- *   first-run onboarding cases (`ONB-01`, `ONB-04`) whose whole subject is the
- *   setup gate. `--role manager|teacher` picks the account type (default
- *   `teacher`); nothing else is created, so the account cannot accidentally
- *   inherit an org from an earlier seed.
+ * - `bare` — one account with **no organization and no group**, for the
+ *   onboarding cases (`ONB-01`, `ONB-04`, `ONB-05`) whose whole subject is the
+ *   first-run state. `--role manager|teacher|student` picks the account type
+ *   (default `teacher`); nothing else is created, so the account cannot
+ *   accidentally inherit an org from an earlier seed.
  *
  * Every independent run of a first-run case needs a brand-new account: the run
  * itself creates the org. `--fresh` (or an explicit `--run <suffix>`) folds a run
@@ -62,7 +62,7 @@ const runArg = option('run');
 
 if (!caseId || !/^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(caseId)) {
   console.error(
-    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile content|bare] [--role teacher|manager] [--fresh] [--run <suffix>] [--json] [--reset]',
+    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile content|bare] [--role teacher|manager|student] [--fresh] [--run <suffix>] [--json] [--reset]',
   );
   process.exit(2);
 }
@@ -70,8 +70,8 @@ if (profile !== 'content' && profile !== 'bare') {
   console.error(`unknown profile "${profile}": expected content or bare`);
   process.exit(2);
 }
-if (role !== 'teacher' && role !== 'manager') {
-  console.error(`unknown role "${role}": expected teacher or manager`);
+if (role !== 'teacher' && role !== 'manager' && role !== 'student') {
+  console.error(`unknown role "${role}": expected teacher, manager or student`);
   process.exit(2);
 }
 if (!existsSync(join(CASES, `${caseId}.md`))) {
@@ -91,7 +91,12 @@ const accounts = {
   teacher: buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' }),
   student: buildAccount(key, 'student', 'student', { name: 'QA student' }),
 };
-const bareAccount = role === 'manager' ? accounts.manager : accounts.teacher;
+const accountByRole = {
+  manager: accounts.manager,
+  teacher: accounts.teacher,
+  student: accounts.student,
+} as const;
+const bareAccount = accountByRole[role];
 const all: SeedAccount[] =
   profile === 'bare' ? [bareAccount] : [accounts.manager, accounts.teacher, accounts.student];
 
