@@ -22,7 +22,8 @@ export interface CommandReply {
 const HELP = `**QA manager commands**
 \`!status\` — slots, state, scenario, pending
 \`!free\` — free slots
-\`!run <ID> [--env N]\` — dispatch a scenario
+\`!run <ID> [--env N]\` — dispatch a manual scenario
+\`!suite <CASEID> [--env N]\` — start a QA-suite worker for one case
 \`!queue <ID…>\` — fill free slots
 \`!report [env]\` — last agent report
 \`!decisions\` — pending decisions
@@ -48,7 +49,7 @@ function firstLine(result: RunResult): string {
 
 function envArg(raw: string | undefined): number | undefined {
   if (!raw) return undefined;
-  const match = raw.match(/^(?:env-)?([1-4])$/i);
+  const match = raw.match(/^(?:env-)?([1-8])$/i);
   return match ? Number(match[1]) : undefined;
 }
 
@@ -101,7 +102,7 @@ export async function handleCommand(
       }
 
       case 'run': {
-        const scenario = args.find((a) => !a.startsWith('-') && !/^[1-4]$/.test(a));
+        const scenario = args.find((a) => !a.startsWith('-') && !/^[1-8]$/.test(a));
         const envFlag = args.findIndex((a) => a === '--env' || a === '-e');
         const env = envArg(envFlag >= 0 ? args[envFlag + 1] : undefined);
         if (!scenario) {
@@ -109,6 +110,20 @@ export async function handleCommand(
           return true;
         }
         const res = await ctx.qa.dispatch(scenario, env);
+        await reply(block(res.stdout || res.stderr));
+        await ctx.status.refresh();
+        return true;
+      }
+
+      case 'suite': {
+        const caseId = args.find((a) => !a.startsWith('-') && !/^[1-8]$/.test(a));
+        const envFlag = args.findIndex((a) => a === '--env' || a === '-e');
+        const env = envArg(envFlag >= 0 ? args[envFlag + 1] : undefined);
+        if (!caseId) {
+          await reply('Usage: `!suite <CASEID> [--env N]`');
+          return true;
+        }
+        const res = await ctx.qa.suite(caseId, env);
         await reply(block(res.stdout || res.stderr));
         await ctx.status.refresh();
         return true;

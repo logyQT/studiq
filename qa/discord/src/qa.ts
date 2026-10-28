@@ -7,6 +7,7 @@ export interface RunResult {
 }
 
 const SCENARIO = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const CASE_ID = /^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/;
 const DECISION = /^dec_[A-Za-z0-9]+$/i;
 
 function run(cmd: string, args: string[], cwd: string, timeoutMs = 120_000): Promise<RunResult> {
@@ -52,8 +53,17 @@ export class QaManager {
   async dispatch(scenario: string, env?: number): Promise<RunResult> {
     QaManager.assert(SCENARIO.test(scenario), 'scenario id');
     if (env !== undefined)
-      QaManager.assert(Number.isInteger(env) && env >= 1 && env <= 4, 'env slot');
+      QaManager.assert(Number.isInteger(env) && env >= 1 && env <= 8, 'env slot');
     const args = ['dispatch', scenario];
+    if (env !== undefined) args.push('--env', String(env));
+    return this.runRaw(args, 180_000);
+  }
+
+  async suite(caseId: string, env?: number): Promise<RunResult> {
+    QaManager.assert(CASE_ID.test(caseId), 'case id');
+    if (env !== undefined)
+      QaManager.assert(Number.isInteger(env) && env >= 1 && env <= 8, 'env slot');
+    const args = ['suite', caseId];
     if (env !== undefined) args.push('--env', String(env));
     return this.runRaw(args, 180_000);
   }
@@ -65,7 +75,7 @@ export class QaManager {
 
   async report(env?: number): Promise<RunResult> {
     if (env !== undefined)
-      QaManager.assert(Number.isInteger(env) && env >= 1 && env <= 4, 'env slot');
+      QaManager.assert(Number.isInteger(env) && env >= 1 && env <= 8, 'env slot');
     const args = ['report'];
     if (env !== undefined) args.push('--env', String(env));
     return this.runRaw(args, 60_000);

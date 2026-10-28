@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ActivityType, type Client, type TextChannel } from 'discord.js';
@@ -67,6 +68,7 @@ export class StatusPublisher {
   private readonly envClients = new Map<number, Client>();
   private readonly lastPresence = new Map<string, { sig: string; at: number }>();
   private lastContent = '';
+  private qaManagerNote: string | null = null;
   private lastEditAt = 0;
   private lastSendAt = 0;
   private channel: TextChannel | null = null;
@@ -125,6 +127,7 @@ export class StatusPublisher {
     this.busy = true;
     try {
       await this.poll();
+      await this.refreshQaManagerNote();
       this.pruneShots();
       await this.announceTransitions();
       this.applyPresence();
@@ -336,6 +339,100 @@ export class StatusPublisher {
     return c;
   }
 
+  /** One line for the QA-suite loop: manager, workers, open PRs into qa-suite. */
+  private qaSuiteManagerId(): string | null {
+    const dir = process.env.QA_FIX_DIR ?? '/workspaces/studiq/.qa-fix';
+    try {
+      return JSON.parse(readFileSync(join(dir, 'qa-suite-manager.json'), 'utf8')).session ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** What the QA-suite manager last said — the dashboard should show it working. */
+  private async refreshQaManagerNote(): Promise<void> {
+    const sid = this.qaSuiteManagerId();
+    if (!sid) {
+      this.qaManagerNote = null;
+      return;
+    }
+    try {
+      const auth = `Basic ${Buffer.from(
+        `${this.config.opencode.user}:${this.config.opencode.password}`,
+      ).toString('base64')}`;
+      const res = await fetch(
+        `${this.config.opencode.url}/api/session/${sid}/message?limit=3&order=desc&type=assistant`,
+        { headers: { Authorization: auth }, signal: AbortSignal.timeout(8_000) },
+      );
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        data?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
+      };
+      const text = (body.data ?? [])
+        .map((m) =>
+          (m.content ?? [])
+            .filter((p) => p.type === 'text')
+            .map((p) => p.text ?? '')
+            .join(''),
+        )
+        .find((t) => t.trim());
+      const clean = text
+        ?.replace(/^[#>*\s]+/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      this.qaManagerNote = clean ? clean.slice(0, 160) : null;
+    } catch {
+      /* keep the previous note */
+    }
+  }
+
+  private qaSuiteLine(): string | null {
+    const manager = this.qaSuiteManagerId();
+
+    const workers = this.snapshot.envs
+      .filter((env) => env.scenario.startsWith('[QA-SUITE]') && env.state !== 'free')
+      .map((env) => env.scenario.replace('[QA-SUITE]', '').split('—')[0].trim())
+      .filter(Boolean);
+
+    let prs: Array<{ number: number; headRefName: string }> = [];
+    try {
+      const raw = execFileSync(
+        'gh',
+        [
+          'pr',
+          'list',
+          '--base',
+          'qa-suite',
+          '--state',
+          'open',
+          '--limit',
+          '30',
+          '--json',
+          'number,headRefName',
+        ],
+        { encoding: 'utf8', timeout: 15_000 },
+      );
+      prs = (JSON.parse(raw) as Array<{ number: number; headRefName: string }>).filter((pr) =>
+        /^qa\/[A-Z][A-Z0-9]*-[A-Z0-9]+$/.test(pr.headRefName),
+      );
+    } catch {
+      /* gh unavailable or rate-limited */
+    }
+
+    if (!manager && workers.length === 0) return null;
+
+    const prList = prs
+      .slice(0, 5)
+      .map((pr) => `#${pr.number} ${pr.headRefName.replace(/^qa\//, '')}`)
+      .join(', ');
+    const head = [
+      `**QA suite** — ${manager ? `manager ${manager.slice(0, 11)}…` : 'manager not started'}`,
+      workers.length ? `${workers.length} worker${workers.length === 1 ? '' : 's'}` : 'no workers',
+      prs.length ? `${prs.length} PR${prs.length === 1 ? '' : 's'}: ${prList}` : 'no PRs yet',
+    ].join(' · ');
+    return this.qaManagerNote ? `${head}\n> ${this.qaManagerNote}` : head;
+  }
+
   private buildContent(): string {
     const counts = this.counts();
     const pipeline = this.pipelineInfo();
@@ -355,6 +452,9 @@ export class StatusPublisher {
     // Discord trims leading whitespace, so the blank first line is anchored by a
     // zero-width space: the message opens with an empty line, as requested.
     const lines: string[] = ['\u200b', head, ...envLines];
+
+    const qa = this.qaSuiteLine();
+    if (qa) lines.push('', qa);
 
     const usage = this.usageBlock();
     if (usage) lines.push('', `**${usage.title}**`, '```', ...usage.lines, '```');

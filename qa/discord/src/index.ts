@@ -292,6 +292,16 @@ async function main(): Promise<void> {
   if (!managerSession)
     log.warn('manager', 'free text in #manager will not work until a session exists');
 
+  /** The QA-suite manager session, if one was started (operator-gated). */
+  const qaSuiteManager = (): string | null => {
+    try {
+      const raw = readFileSync('/workspaces/studiq/.qa-fix/qa-suite-manager.json', 'utf8');
+      return (JSON.parse(raw) as { session?: string }).session ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   const wire = (
     client: Client,
     label: string,
@@ -323,6 +333,20 @@ async function main(): Promise<void> {
             allowedMentions: { parse: [] },
           });
         };
+
+        // `!qa <text>` routes to the QA-suite manager: the #manager channel is
+        // bound to the fix manager, which owns a different loop.
+        if (/^!qa\b/i.test(text)) {
+          const sid = qaSuiteManager();
+          if (!sid) {
+            await reply('No QA-suite manager is running — start it with `qa-manager.py manager`.');
+            return;
+          }
+          const body = text.replace(/^!qa\s*/i, '');
+          if (body) await opencode.prompt(sid, body);
+          await reply(`→ QA-suite manager (${sid.slice(0, 11)}…)`);
+          return;
+        }
 
         if (text.startsWith('!')) {
           await handleCommand(text, { config, log, qa, status, defaultEnv }, reply);
