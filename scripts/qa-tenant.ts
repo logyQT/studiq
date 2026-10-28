@@ -56,7 +56,18 @@ const caseId = args.find(
 const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
 const fresh = args.includes('--fresh');
-const profile = option('profile') ?? 'content';
+function profileFor(caseId: string): 'bare' | 'content' {
+  try {
+    const manifest = JSON.parse(
+      readFileSync(join(ROOT, 'qa', 'tests', 'profiles.json'), 'utf8'),
+    ) as Record<string, string>;
+    return manifest[caseId] === 'bare' ? 'bare' : 'content';
+  } catch {
+    return 'content';
+  }
+}
+
+const profile = (option('profile') ?? profileFor(caseId ?? '')) as 'bare' | 'content';
 const role = option('role') ?? 'teacher';
 const runArg = option('run');
 

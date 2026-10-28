@@ -36,7 +36,8 @@
     "build:web": "bun run --filter @studiq/web build",
     "start:web": "bun run --filter @studiq/web start",
     "lint:web": "bun run --filter @studiq/web lint",
-    "typecheck:web": "bun run --filter @studiq/web typecheck"
+    "typecheck:web": "bun run --filter @studiq/web typecheck",
+    "test:qa": "playwright test -c qa/playwright.qa.config.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.112",

@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - '__tests__/**'
+      - 'qa/**'
       - 'scripts/**'
       - 'playwright.config.ts'
       - 'apps/**'
@@ -102,6 +103,80 @@ jobs:
         # Serial: several suites write the same seeded orgs, and `fileParallelism`
         # made seats/members flake. 525 tests in ~55 s is fine.
         run: bunx vitest run __tests__/integration --no-file-parallelism
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop --no-backup || true
+
+  # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
+  # :3010, one worker). The root config only sees __tests__/e2e, so without this
+  # job `qa/tests/**` would never run in CI.
+  qa-suite:
+    needs: [checks, unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      QA_APP_URL: http://localhost:3010
+      # Every test owns its tenant, so CI can run four at a time on a 4-vCPU
+      # runner. Locally the same variable stays unset (workers: 1).
+      QA_WORKERS: '4'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+
+      - name: Start Supabase
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+
+      - name: Write env files
+        run: |
+          eval "$(bunx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3010"
+            echo "OTEL_SDK_DISABLED=true"
+          } > apps/web/.env
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build and start the shared app
+        run: |
+          bun run build
+          (cd apps/web && bunx next start -p 3010 > /tmp/qa-app.log 2>&1 &)
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3010/login && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3010/login
+
+      - name: Seed one tenant per spec
+        run: |
+          for spec in qa/tests/*/*.spec.ts; do
+            [ -e "$spec" ] || continue
+            case_id=$(basename "$spec" .spec.ts)
+            bun scripts/qa-tenant.ts "$case_id"
+          done
+
+      - name: Run the QA suite
+        run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-suite-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
       - name: Stop Supabase
         if: always()
         run: bunx supabase stop --no-backup || true
