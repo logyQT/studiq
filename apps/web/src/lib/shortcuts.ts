@@ -62,7 +62,7 @@ export function isTypingTarget(element: Element | null | undefined): boolean {
 /** A modal or menu is open: the page behind it must not react to letters or digits. */
 export function overlayOpen(root: ParentNode = document): boolean {
   return !!root.querySelector(
-    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]',
+    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
   );
 }
 

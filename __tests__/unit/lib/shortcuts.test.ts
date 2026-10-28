@@ -224,7 +224,7 @@ describe('overlayOpen', () => {
     } as unknown as ParentNode;
 
     expect(overlayOpen(root)).toBe(false);
-    for (const role of ['dialog', 'alertdialog', 'menu']) {
+    for (const role of ['dialog', 'alertdialog', 'menu', 'listbox']) {
       expect(asked[0]).toContain(`[role="${role}"][data-state="open"]`);
     }
   });
