@@ -1,8 +1,9 @@
 import type { RequestContext } from '@studiq/authz';
 import { FeatureResolver } from '@studiq/server/services/feature.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createServiceClient, TEST_USERS } from '#test/integration/helpers';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createServiceClient } from '#test/integration/helpers';
+import { createTestUser } from '#test/helpers/test-user';
 
 // Issue #382: `user_feature_overrides.expires_at` must be honoured. This suite
 // exercises the real `timestamptz` round-trip — a unit mock can only prove the
@@ -12,16 +13,21 @@ import { createServiceClient, TEST_USERS } from '#test/integration/helpers';
 describe('User feature override expiry', () => {
   // The resolver runs on the service client here: RLS for own-reads is covered
   // by rls-tenant-isolation.test.ts / org-role-features-rls.test.ts, this suite
-  // is about expiry semantics. Using the seed user keeps the test independent of
-  // registration flows.
-  const userId = TEST_USERS.STUDENT2.id;
+  // is about expiry semantics. The tenant seeder provides the account, so the
+  // suite does not depend on the dev SQL seed.
+  let userId: string;
   const REASON = 'test-#382-expiry';
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   let service!: SupabaseClient;
   let resolver!: FeatureResolver;
 
-  // student1@dev.local: personal plan `base` (flashcards, quiz), no active org
+  beforeAll(async () => {
+    const student = await createTestUser({ role: 'student' });
+    userId = student.id;
+  });
+
+  // A fresh student: personal plan `base` (flashcards, quiz), no active org
   // in this ctx → the plan fallback is the only entitlement source.
   function ctx(): RequestContext {
     return {

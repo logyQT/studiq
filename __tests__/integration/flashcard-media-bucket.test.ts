@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createServiceClient, TEST_USERS } from '#test/integration/helpers';
+import { createServiceClient } from '#test/integration/helpers';
 
 // Regression tests for #185: `flashcard-media` must serve uploaded objects over
 // the public URL returned by StorageService (buckets.public = true) WITHOUT a
@@ -16,7 +16,7 @@ const PNG = Uint8Array.from([
 
 describe('flashcard-media bucket (#185)', () => {
   it('serves uploaded objects over the public URL', async () => {
-    const path = `${TEST_USERS.STUDENT.id}/${crypto.randomUUID()}.png`;
+    const path = `${crypto.randomUUID()}/${crypto.randomUUID()}.png`;
     const { error } = await service.storage
       .from(BUCKET)
       .upload(path, new Blob([PNG], { type: 'image/png' }), { contentType: 'image/png' });

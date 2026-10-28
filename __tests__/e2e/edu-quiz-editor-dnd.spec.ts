@@ -10,7 +10,6 @@ async function loginTeacher(page: Page) {
   await page.getByLabel(t('LoginPage.password_label')).fill(password);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
   await page.waitForURL(/\/edu/);
-  await page.waitForLoadState('networkidle');
 }
 
 /** Creates an empty quiz through the API so the test never depends on seed state. */

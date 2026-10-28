@@ -1,119 +1,80 @@
-import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
-const email = 'student1@dev.local';
-const password = 'pass';
+const deckNamePlaceholder = t('AppFlashcardDecksPage.name_placeholder');
+
+function deckCard(page: import('@playwright/test').Page, name: string) {
+  return page.locator('.group:visible').filter({ hasText: name }).first();
+}
+
+function deckMenu(page: import('@playwright/test').Page, name: string) {
+  return deckCard(page, name)
+    .locator('button:visible')
+    .filter({ has: page.locator('svg.lucide-ellipsis-vertical') })
+    .first();
+}
 
 test.describe('Student Flashcard Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    const emailInput = page.getByLabel(t('LoginPage.email_label'));
-    await emailInput.click();
-    await emailInput.fill(email);
-    await expect(emailInput).toHaveValue(email);
-    await page.getByLabel(t('LoginPage.password_label')).fill(password);
-    await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-    await page.waitForURL(/\/app/);
+    await signIn(page, 'student');
   });
 
   test('manages decks: create, edit, and delete', async ({ page }) => {
-    await page.getByRole('link', { name: /^(Flashcards|Fiszki)$/i }).click();
-    await page.waitForURL(/\/app\/flashcards/);
+    await page.goto('/app/flashcards');
 
-    await page.getByRole('button', { name: /Manage Decks/ }).click();
-    await page.waitForURL(/\/app\/flashcards\/decks/);
-
-    await page.getByRole('button', { name: /New Deck/ }).click();
-    await page.getByLabel('Name').fill('Test Deck');
-    await page.getByLabel('Description').fill('Test description');
-    await page.getByRole('checkbox').first().click();
-    await page.getByRole('button', { name: /Create/ }).click();
-
-    await expect(page.getByText('Test Deck').first()).toBeVisible();
-    await expect(page.getByText('1 flashcards').first()).toBeVisible();
-    await expect(page.getByText('Test description').first()).toBeVisible();
-
-    await page.getByText('Test Deck').hover();
-    await page.getByRole('button', { name: /Edit/ }).first().click();
-
-    await page.getByLabel('Name').fill('Updated Deck');
-    await page.getByRole('button', { name: /Update/ }).click();
-
-    await expect(page.getByText('Updated Deck')).toBeVisible();
-
-    await page.getByText('Updated Deck').hover();
+    // The toolbar button and the empty-state CTA share the label.
     await page
-      .getByRole('button', { name: /Delete/ })
+      .getByRole('button', { name: t('AppFlashcardDecksPage.new_deck') })
       .first()
       .click();
+    await page.getByPlaceholder(deckNamePlaceholder).fill('Test Deck');
     await page
-      .getByRole('button', { name: /Delete/ })
-      .last()
+      .getByRole('dialog')
+      .getByRole('button', { name: t('Common.common_create') })
       .click();
+    await expect(page.getByText('Test Deck').filter({ visible: true }).first()).toBeVisible();
 
-    await expect(page.getByText('Updated Deck')).not.toBeVisible();
+    await deckMenu(page, 'Test Deck').click();
+    await page.getByRole('menuitem', { name: t('Common.common_edit') }).click();
+    await page.getByPlaceholder(deckNamePlaceholder).fill('Updated Deck');
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: t('Common.common_update') })
+      .click();
+    await expect(page.getByText('Updated Deck').filter({ visible: true }).first()).toBeVisible();
+
+    await deckMenu(page, 'Updated Deck').click();
+    await page.getByRole('menuitem', { name: t('Common.common_delete') }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: t('Common.common_delete') }).click();
+    await expect(page.getByText('Updated Deck')).toHaveCount(0);
   });
 
-  test('practices in endless mode with topics and decks', async ({ page }) => {
-    await page.getByRole('link', { name: /^(Flashcards|Fiszki)$/i }).click();
-    await page.waitForURL(/\/app\/flashcards/);
+  test('starts a learn session from the study page', async ({ page }) => {
+    await page.goto('/app/study/learn');
 
-    await page.getByRole('checkbox').first().click();
-    await page.getByRole('checkbox').nth(3).click();
-
-    await expect(page.getByRole('button', { name: /Endless/ })).toHaveClass(/border-primary/);
-
-    await page.getByRole('button', { name: /Start Practice/ }).click();
-    await page.waitForURL(/\/app\/flashcards\/session/);
-
-    await page.locator('.cursor-pointer').click();
-    await page.getByRole('button', { name: t('AppFlashcardsPage.got_it') }).click();
-
-    await expect(page.getByRole('heading', { name: /Session Complete/ })).not.toBeVisible();
-    await expect(page.locator('.cursor-pointer')).toBeVisible();
-
-    await page.locator('.cursor-pointer').click();
-    await page.getByRole('button', { name: t('AppFlashcardsPage.got_it') }).click();
-
-    await expect(page.getByText(/correct$/)).toBeVisible();
+    // The content profile gives the student 20 unseen cards, so the page offers
+    // a learn session instead of "All Caught Up".
+    await expect(page.getByText(/new cards available/i)).toBeVisible();
+    await page.getByRole('button', { name: t('AppFlashcardStudyPage.start_learning') }).click();
+    await expect(page).toHaveURL(/\/app\/study\/session\//);
   });
 
-  test('completes limited session after target count', async ({ page }) => {
-    await page.getByRole('link', { name: /^(Flashcards|Fiszki)$/i }).click();
-    await page.waitForURL(/\/app\/flashcards/);
+  test('crams a deck shared with the group', async ({ page }) => {
+    await page.goto('/app/study/cram');
 
-    await page.getByRole('checkbox').first().click();
+    await deckCard(page, 'Deck A').click();
+    await expect(page).toHaveURL(/\/app\/study\/session\/cram\?deckId=/);
+  });
 
-    await page.getByRole('button', { name: /Limited/ }).click();
+  test('sees the decks shared with the group', async ({ page }) => {
+    await page.goto('/app/flashcards');
 
-    const targetInput = page.getByRole('spinbutton');
-    await targetInput.fill('3');
-
-    await page.getByRole('button', { name: /Start Practice/ }).click();
-    await page.waitForURL(/\/app\/flashcards\/session/);
-
-    for (let i = 0; i < 3; i++) {
-      await page.locator('.cursor-pointer').click();
-      await page.getByRole('button', { name: t('AppFlashcardsPage.got_it') }).click();
-    }
-
-    await expect(page.getByRole('heading', { name: /Session Complete/ })).toBeVisible();
-    await expect(page.getByText('100%')).toBeVisible();
+    await expect(page.getByText('Deck A').filter({ visible: true }).first()).toBeVisible();
+    await expect(page.getByText('Deck B').filter({ visible: true }).first()).toBeVisible();
     await expect(
-      page.getByRole('button', { name: t('AppFlashcardsPage.practice_again') }),
+      page.getByRole('button', { name: t('AppFlashcardDecksPage.new_deck') }).first(),
     ).toBeVisible();
-  });
-
-  test('sees flashcard setup page before starting practice', async ({ page }) => {
-    await page.getByRole('link', { name: /^(Flashcards|Fiszki)$/i }).click();
-    await page.waitForURL(/\/app\/flashcards/);
-
-    await expect(page.getByRole('heading', { name: 'Flashcards' })).toBeVisible();
-    await expect(page.getByText('Topics', { exact: true })).toBeVisible();
-    await expect(page.getByText('Your Decks', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Manage Decks' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Endless' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Limited' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start Practice' })).toBeVisible();
   });
 });

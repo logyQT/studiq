@@ -1,0 +1,233 @@
+name: verify
+
+# Manual + nightly + PRs that touch the suite or the app. `workflow_dispatch`
+# only works once this file is on the default branch; PRs run it directly.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'
+  pull_request:
+    paths:
+      - '__tests__/**'
+      - 'scripts/**'
+      - 'playwright.config.ts'
+      - 'apps/**'
+      - 'packages/**'
+      - 'supabase/**'
+      - 'bun.lock'
+      - '.github/workflows/verify.yml'
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+# Pinned: `bun lint` is canary-only, and canaries are published to npm but not
+# as GitHub releases (setup-bun resolves releases and 404s on them). Keep in
+# step with scripts/check-bun-version.ts (>= 1.4.4).
+env:
+  BUN_VERSION: 1.4.4-canary.20261027.1
+
+jobs:
+  # Cheapest first, in the order a failure is cheapest to explain: lint, types.
+  # Everything else waits on this.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install Bun (pinned canary)
+        run: npm install -g bun@${{ env.BUN_VERSION }}
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - name: Format
+        run: bun run format:check
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck:all
+
+  unit:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - run: bun run test:unit
+
+  integration:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - name: Start Supabase
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+      - name: Write root .env
+        # vitest's loadEnv() reads the repo root; integration imports the route
+        # handlers directly, so no app server is needed.
+        run: |
+          eval "$(bunx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "OTEL_SDK_DISABLED=true"
+          } > .env
+      - name: Integration tests
+        # Serial: several suites write the same seeded orgs, and `fileParallelism`
+        # made seats/members flake. 525 tests in ~55 s is fine.
+        run: bunx vitest run __tests__/integration --no-file-parallelism
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop --no-backup || true
+
+  # One leg per browser so a red platform re-runs alone. Each leg owns its
+  # tenant set (keys include the project) and its own Supabase instance.
+  e2e:
+    needs: [checks, unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox]
+    env:
+      CI: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      # ubuntu-latest is 4 vCPU; one project saturates at ~4 workers.
+      E2E_WORKERS: '4'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - name: Cache bun install
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+
+      - name: Start Supabase
+        # studio/logflare/vector/edge-runtime are not used by the app; skipping
+        # them saves ~4 GB of pulls and a couple of minutes.
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+
+      - name: Write env files
+        # Local Supabase keys are deterministic, so nothing here is a secret.
+        run: |
+          eval "$(bunx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "OTEL_SDK_DISABLED=true"
+          } > apps/web/.env
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install browsers
+        run: bunx playwright install --with-deps ${{ matrix.project }}
+        if: matrix.project != 'admin-api'
+
+      # Playwright's webServer builds and starts the app, so there is no
+      # separate build step to keep in sync.
+      - name: Run Playwright (${{ matrix.project }})
+        run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop --no-backup || true
+
+  # admin-api only needs the admin app; the web server is skipped so this leg
+  # costs seconds rather than a second Next build.
+  e2e-admin:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      E2E_INCLUDE_ADMIN: '1'
+      E2E_SKIP_WEB_WS: '1'
+      E2E_WORKERS: '2'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - name: Start Supabase
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+      - name: Write admin env
+        run: |
+          eval "$(bunx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } > apps/admin/.env
+      - name: Install browsers
+        run: bunx playwright install --with-deps chromium
+      - name: Run Playwright (admin-api)
+        run: bunx playwright test --project=admin-api --shuffle --reporter=line
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-admin
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop --no-backup || true

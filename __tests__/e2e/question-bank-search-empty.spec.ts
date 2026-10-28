@@ -1,27 +1,16 @@
-import { expect, type Page, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
 /**
  * #360 (STU-31) — a search that matches nothing must not render the
  * “nothing here yet, create your first bank” copy for an account that does own
  * banks. It renders a no-results state naming the query plus a reset action.
  */
-const email = 'student-classroom@dev.local';
-const password = 'pass';
-
 const searchPlaceholder = t('QuestionBankManagement.search_placeholder');
 const newBank = t('QuestionBankManagement.new_bank');
 const noBanks = t('QuestionBankManagement.no_banks');
 const clearFilters = t('QuestionBankManagement.clear_filters');
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel(t('LoginPage.email_label')).fill(email);
-  await page.getByLabel(t('LoginPage.password_label')).fill(password);
-  await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/app/);
-  await page.waitForLoadState('networkidle');
-}
 
 /** Creates a bank through the API so the collection is guaranteed non-empty. */
 async function createBank(page: Page, name: string): Promise<string> {
@@ -36,7 +25,7 @@ async function createBank(page: Page, name: string): Promise<string> {
 test('A search with no matches shows a no-results state, not the empty-collection copy', async ({
   page,
 }) => {
-  await login(page);
+  await signIn(page, 'student');
 
   const name = `QA360 Bank ${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
   const bankId = await createBank(page, name);

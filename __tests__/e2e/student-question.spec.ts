@@ -1,19 +1,9 @@
-import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
-
-const email = 'student1@dev.local';
-const password = 'pass';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
 test.describe('Student Question Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    const emailInput = page.getByLabel(t('LoginPage.email_label'));
-    await emailInput.click();
-    await emailInput.fill(email);
-    await expect(emailInput).toHaveValue(email);
-    await page.getByLabel(t('LoginPage.password_label')).fill(password);
-    await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-    await page.waitForURL(/\/app/);
+    await signIn(page, 'student');
   });
 
   test('Student edits and deletes an own question', async ({ page }) => {
@@ -57,11 +47,18 @@ test.describe('Student Question Flow', () => {
     await expect(page.getByTitle(t('Common.common_delete')).first()).toBeVisible();
     await expect(page.getByTitle(t('QuestionReports.report_button_title')).first()).toBeVisible();
 
-    // Edit
-    await page.getByTitle(t('Common.common_edit')).first().click();
-    await expect(
-      formDialog.getByRole('heading', { name: t('QuestionForm.edit_title') }),
-    ).toBeVisible();
+    // Edit. The row is re-rendered by the refetch that follows creation, and a
+    // click issued in that window can be swallowed; retry until the dialog opens.
+    await expect(async () => {
+      await page
+        .locator('tbody tr', { hasText: questionContent })
+        .first()
+        .getByTitle(t('Common.common_edit'))
+        .click();
+      await expect(
+        formDialog.getByRole('heading', { name: t('QuestionForm.edit_title') }),
+      ).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
     await formDialog.getByPlaceholder(t('QuestionForm.question_placeholder')).fill(updatedContent);
     await formDialog.getByRole('button', { name: t('QuestionForm.update') }).click();
     await expect(page.getByText(t('QuestionForm.updated'))).toBeVisible();

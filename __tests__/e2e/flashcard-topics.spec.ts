@@ -1,129 +1,113 @@
-import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
-const PASSWORD = 'pass';
+const topicNamePlaceholder = t('EduFlashcardTopicsPage.topic_name_placeholder');
 
-async function login(page: import('@playwright/test').Page, email: string, redirect: RegExp) {
-  await page.goto('/login');
-  await page.getByLabel(t('LoginPage.email_label')).fill(email);
-  await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
-  await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(redirect);
+async function openTopics(page: Page) {
+  await page.goto('/edu/topics');
+  // Deliberate idle wait: creating a topic before the initial list query settles
+  // lets its stale response overwrite the refetch, so the new card never renders
+  // (#699). Drop this once that race is fixed on the page, not in the test.
+  await page.waitForLoadState('networkidle');
+  await expect(topicCard(page, 'Topic A')).toBeVisible();
+}
+
+function topicCard(page: Page, name: string) {
+  return page.locator('.group:visible').filter({ hasText: name }).first();
+}
+
+function topicMenu(page: Page, name: string) {
+  return topicCard(page, name)
+    .locator('button:visible')
+    .filter({ has: page.locator('svg.lucide-ellipsis-vertical') })
+    .first();
+}
+
+async function createTopic(page: Page, name: string) {
+  await page
+    .getByRole('button', { name: t('EduFlashcardTopicsPage.new_topic') })
+    .first()
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByPlaceholder(topicNamePlaceholder).fill(name);
+  await dialog.getByRole('button', { name: t('Common.common_create') }).click();
+  await expect(page.getByText(name).filter({ visible: true }).first()).toBeVisible();
 }
 
 test.describe('Flashcard Topic Management', () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page, 'teacher');
+    await openTopics(page);
+  });
+
   test('creates a new topic', async ({ page }) => {
-    await login(page, 'teacher1@dev.local', /\/edu/);
-    await page.goto('/edu/flashcards/topics');
-    await page.waitForLoadState('networkidle');
-
-    await page.getByRole('button', { name: t('EduFlashcardTopicsPage.new_topic') }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-
-    await page.getByLabel(t('EduFlashcardTopicsPage.topic_name_label')).fill('E2E Test Topic');
-    await page.getByRole('button', { name: t('Common.common_create') }).click();
-
-    await expect(page.getByText('E2E Test Topic').first()).toBeVisible();
+    await createTopic(page, 'E2E Test Topic');
   });
 
   test('edits a topic name', async ({ page }) => {
-    await login(page, 'teacher1@dev.local', /\/edu/);
-    await page.goto('/edu/flashcards/topics');
-    await page.waitForLoadState('networkidle');
+    await createTopic(page, 'Topic To Edit');
 
-    await page.getByRole('button', { name: t('EduFlashcardTopicsPage.new_topic') }).click();
-    await page.getByLabel(t('EduFlashcardTopicsPage.topic_name_label')).fill('Topic To Edit');
-    await page.getByRole('button', { name: t('Common.common_create') }).click();
-    await expect(page.getByText('Topic To Edit').first()).toBeVisible();
-
-    const topicCard = page.locator('.group').filter({ hasText: 'Topic To Edit' }).first();
-    await topicCard.hover();
-    const menuButton = topicCard
-      .locator('button')
-      .filter({ has: page.locator('svg.lucide-more-vertical') });
-    await menuButton.click();
-
+    await topicMenu(page, 'Topic To Edit').click();
     await page.getByRole('menuitem', { name: t('Common.common_edit') }).click();
-    await page.getByLabel(t('EduFlashcardTopicsPage.topic_name_label')).fill('Edited Topic');
-    await page.getByRole('button', { name: t('Common.common_update') }).click();
-    await expect(page.getByText('Edited Topic').first()).toBeVisible();
+
+    const dialog = page.getByRole('dialog');
+    await dialog.getByPlaceholder(topicNamePlaceholder).fill('Edited Topic');
+    await dialog.getByRole('button', { name: t('Common.common_update') }).click();
+    await expect(page.getByText('Edited Topic').filter({ visible: true }).first()).toBeVisible();
   });
 
   test('deletes a topic', async ({ page }) => {
-    await login(page, 'teacher1@dev.local', /\/edu/);
-    await page.goto('/edu/flashcards/topics');
-    await page.waitForLoadState('networkidle');
+    await createTopic(page, 'Topic To Delete');
 
-    await page.getByRole('button', { name: t('EduFlashcardTopicsPage.new_topic') }).click();
-    await page.getByLabel(t('EduFlashcardTopicsPage.topic_name_label')).fill('Topic To Delete');
-    await page.getByRole('button', { name: t('Common.common_create') }).click();
-    await expect(page.getByText('Topic To Delete').first()).toBeVisible();
-
-    const topicCard = page.locator('.group').filter({ hasText: 'Topic To Delete' }).first();
-    await topicCard.hover();
-    const menuButton = topicCard
-      .locator('button')
-      .filter({ has: page.locator('svg.lucide-more-vertical') });
-    await menuButton.click();
-
+    await topicMenu(page, 'Topic To Delete').click();
     await page.getByRole('menuitem', { name: t('Common.common_delete') }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page
-      .getByRole('button', { name: t('Common.common_delete') })
-      .last()
-      .click();
-    await expect(page.getByText('Topic To Delete')).not.toBeVisible();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: t('Common.common_delete') }).click();
+    await expect(page.getByText('Topic To Delete')).toHaveCount(0);
   });
 
   test('clicking a topic card opens view dialog', async ({ page }) => {
-    await login(page, 'teacher1@dev.local', /\/edu/);
-    await page.goto('/edu/flashcards/topics');
-    await page.waitForLoadState('networkidle');
+    await topicCard(page, 'Topic A').click();
 
-    const firstTopicLink = page.getByText(t('EduFlashcardTopicsPage.view_flashcards')).first();
-    const topicCard = firstTopicLink.locator('..').locator('..');
-    await topicCard.click();
-
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByText(t('EduFlashcardTopicsPage.question_label'))).toBeVisible();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByText(t('EduFlashcardTopicsPage.question_label')).first(),
+    ).toBeVisible();
   });
 
   test('view dialog shows flashcards for topic with cards', async ({ page }) => {
-    await login(page, 'teacher1@dev.local', /\/edu/);
-    await page.goto('/edu/flashcards/topics');
-    await page.waitForLoadState('networkidle');
-
-    const firstTopicLink = page.getByText(t('EduFlashcardTopicsPage.view_flashcards')).first();
-    const topicCard = firstTopicLink.locator('..').locator('..');
-    await topicCard.click();
+    await topicCard(page, 'Topic A').click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
-    const noFlashcards = dialog.getByText(t('EduFlashcardTopicsPage.no_flashcards_for_topic'));
-    if (!(await noFlashcards.isVisible())) {
-      await expect(dialog.getByText(t('EduFlashcardTopicsPage.question_label'))).toBeVisible();
-      await expect(dialog.getByText(t('EduFlashcardTopicsPage.answer_label'))).toBeVisible();
-    }
+    // The content profile assigns deck A's cards to the topic, so this is not
+    // the empty variant.
+    await expect(dialog.getByText(t('EduFlashcardTopicsPage.no_flashcards_for_topic'))).toHaveCount(
+      0,
+    );
+    await expect(dialog.getByText('Card 1-1 front').first()).toBeVisible();
   });
 
   test('bulk select topics via FAB on mobile', async ({ page }) => {
-    await login(page, 'teacher1@dev.local', /\/edu/);
-    await page.goto('/edu/flashcards/topics');
-    await page.waitForLoadState('networkidle');
-
     await page.setViewportSize({ width: 375, height: 812 });
+    await openTopics(page);
 
-    const fabButton = page
-      .locator('button')
-      .filter({ has: page.locator('svg.lucide-plus') })
-      .first();
-    await fabButton.click();
+    const dial = page.locator('[data-speed-dial]');
+    await dial.locator('button').last().click();
+    // Items are icon-only and ordered: new topic, select topics.
+    const items = dial
+      .locator('button:visible')
+      .filter({ hasNot: page.locator('svg.lucide-plus') });
+    await items.nth(1).click();
 
-    await page.getByText(t('EduFlashcardTopicsPage.select_topics')).click();
-    await expect(page.getByText(t('EduFlashcardTopicsPage.select_all'))).toBeVisible();
+    await expect(page.getByText(t('EduFlashcardTopicsPage.select_all')).first()).toBeVisible();
 
-    await page.getByRole('checkbox').first().click();
-    await expect(page.getByText(t('EduFlashcardTopicsPage.n_selected'))).toBeVisible();
+    await page.getByRole('checkbox').filter({ visible: true }).first().click();
+    await expect(page.getByText(/\d+ selected/i).first()).toBeVisible();
   });
 });

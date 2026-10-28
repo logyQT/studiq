@@ -1,74 +1,48 @@
-import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
-const email = 'teacher1@dev.local';
-const password = 'pass';
+const createTitle = t('QuestionForm.create_title');
+const saveButton = t('QuestionForm.create');
 
-const heading = t('EduQuestionsPage.title');
-const createButton = t('EduQuestionsPage.create_question');
-const createTitle = t('EduQuestionsPage.create_title');
-const saveButton = t('EduQuestionsPage.create');
+/** Open one of the tenant's seeded question banks by name. */
+async function openBank(page: import('@playwright/test').Page, name = 'Bank A') {
+  await page.goto('/edu/questions');
+
+  await page.locator('.group:visible').filter({ hasText: name }).first().click();
+  await page.waitForURL(/\/edu\/questions\/[0-9a-f-]{36}$/);
+}
 
 test.describe('Teacher Question Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    const emailInput = page.getByLabel(t('LoginPage.email_label'));
-    await emailInput.click();
-    await emailInput.fill(email);
-    await expect(emailInput).toHaveValue(email);
-    await page.getByLabel(t('LoginPage.password_label')).fill(password);
-    await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-    await page.waitForURL(/\/edu/);
+    await signIn(page, 'teacher');
   });
 
   test('Teacher creates an MCQ question and sees it in the list', async ({ page }) => {
-    await page.getByRole('link', { name: t('DashboardLayout.edu_questions') }).click();
-    await page.waitForURL(/\/edu\/questions/);
+    await openBank(page);
 
-    await expect(page.getByText(heading).first()).toBeVisible();
+    await page.getByRole('button', { name: t('QuestionBankDetail.create_question') }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { name: createTitle })).toBeVisible();
 
-    await page.getByRole('button', { name: createButton }).click();
-    await expect(page.getByRole('heading', { name: createTitle })).toBeVisible();
+    // The dialog has two comboboxes (type Select + topics MultiSelect).
+    await dialog.locator('[data-slot="select-trigger"]').click();
+    await page.getByRole('option', { name: t('QuestionForm.multiple_choice') }).click();
 
-    await page
-      .locator(
-        'button:has-text("MCQ"), button:has-text("Multiple Choice"), button:has-text("Wielokrotny wybór")',
-      )
-      .first()
-      .click();
-    await page.waitForTimeout(500);
-    await page.getByRole('option', { name: t('EduQuestionsPage.multiple_choice') }).click();
+    await dialog.getByPlaceholder(t('QuestionForm.question_placeholder')).fill('What is 2 + 2?');
 
-    await page.getByPlaceholder(t('EduQuestionsPage.question_placeholder')).fill('What is 2 + 2?');
+    await dialog.getByPlaceholder(/Answer 1|Odpowiedź 1/).fill('3');
+    await dialog.getByRole('button', { name: t('QuestionForm.add_answer') }).click();
+    await dialog.getByPlaceholder(/Answer 2|Odpowiedź 2/).fill('4');
+    await dialog.locator('input[type="radio"]').nth(1).check();
 
-    await page
-      .getByPlaceholder(/Answer|Odpowiedź/)
-      .first()
-      .fill('3');
-    await page.getByRole('button', { name: t('EduQuestionsPage.add_answer') }).click();
-    await page
-      .getByPlaceholder(/Answer|Odpowiedź/)
-      .nth(1)
-      .fill('4');
-
-    await page.locator('input[type="radio"]').nth(1).check();
-
-    await page.getByRole('button', { name: saveButton }).click();
-    await page.waitForResponse(
-      (resp) => resp.url().includes('/api/v1/questions') && resp.request().method() === 'POST',
-    );
-    await page.waitForTimeout(1000);
-    await expect(page.locator('tbody').getByText('What is 2 + 2?').first()).toBeVisible({
-      timeout: 10000,
-    });
+    await dialog.getByRole('button', { name: saveButton }).click();
+    await expect(page.locator('tbody').getByText('What is 2 + 2?').first()).toBeVisible();
   });
 
   test('Teacher sees existing seeded questions', async ({ page }) => {
-    await page.getByRole('link', { name: t('DashboardLayout.edu_questions') }).click();
-    await page.waitForURL(/\/edu\/questions/);
+    await openBank(page);
 
-    await expect(page.getByText('typeof null')).toBeVisible();
-    await expect(page.getByText('GROUP BY')).toBeVisible();
+    await expect(page.locator('tbody').getByText('Question 1-1?').first()).toBeVisible();
   });
 
   test('Teacher deletes a question with the question-specific dialog and delete toast', async ({
