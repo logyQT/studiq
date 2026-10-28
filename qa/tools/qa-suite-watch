@@ -36,6 +36,7 @@ STATE = FIX / "qa-suite-watch.json"
 PID = FIX / "qa-suite-watch.pid"
 MANAGER = FIX / "qa-suite-manager.json"
 LOG = FIX / "qa-suite-watch.log"
+ROTATE = Path(__file__).with_name("qa-suite-rotate")
 
 BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
@@ -129,6 +130,18 @@ def notify(pr: dict) -> str:
     return f"notified {sid}: PR #{pr['number']}"
 
 
+def check_rotation() -> None:
+    """Rotate the manager before its context window fills (250k default)."""
+    try:
+        out = subprocess.run(
+            [sys.executable, str(ROTATE), "auto"], capture_output=True, text=True, timeout=120
+        )
+        if '"rotated"' in out.stdout:
+            print(f"[{now()}] manager rotated: {out.stdout.strip()[:200]}", flush=True)
+    except Exception as exc:  # noqa: BLE001 - the loop must survive
+        print(f"[{now()}] rotation check failed: {exc}", flush=True)
+
+
 def tick(verbose: bool) -> None:
     events = poll()
     if not events:
@@ -153,6 +166,7 @@ def loop(interval: int) -> None:
     while not stop["flag"]:
         try:
             tick(verbose=True)
+            check_rotation()
         except Exception as exc:  # noqa: BLE001 - the loop must survive a bad poll
             print(f"[{now()}] poll failed: {exc}", flush=True)
         for _ in range(interval):

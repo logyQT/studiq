@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""Rotate the QA-suite manager before its context window fills.
+
+    qa-suite-rotate status
+    qa-suite-rotate rotate [--limit 250000] [--dry-run]
+    qa-suite-rotate auto          # rotate only when idle and over the limit
+
+Context is measured from the last assistant message (input + cache.read). The new
+session is seeded with `qa/QA-SUITE-MANAGER.md` plus the durable memory file
+`.qa-memory/qa-suite.md`, so continuity never depends on compaction. The bridge's
+`managerSessionId` is updated so `#manager` follows the new session.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+ROOT = Path("/workspaces/studiq")
+SUITE = ROOT / ".worktrees" / "qa-suite"
+PROMPT = SUITE / "qa" / "QA-SUITE-MANAGER.md"
+MEMORY = ROOT / ".qa-memory" / "qa-suite.md"
+STATE = ROOT / ".qa-fix" / "qa-suite-manager.json"
+BRIDGE = ROOT / ".worktrees" / "qa-env" / "qa" / "discord" / "state.json"
+API_BASE = "http://127.0.0.1:4096"
+AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
+MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
+LIMIT = 250_000
+
+
+def api(method: str, path: str, body: dict | None = None, timeout: int = 60) -> dict:
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        API_BASE + path,
+        data=data,
+        method=method,
+        headers={"Authorization": AUTH, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+        return json.loads(raw) if raw else {}
+
+
+def current_sid() -> str | None:
+    try:
+        return json.loads(STATE.read_text()).get("session")
+    except Exception:
+        return None
+
+
+def context_tokens(sid: str) -> int:
+    msgs = api("GET", f"/api/session/{sid}/message?limit=1&order=desc&type=assistant").get("data", []) or []
+    if not msgs:
+        return 0
+    tokens = msgs[0].get("tokens") or {}
+    cache = tokens.get("cache") or {}
+    return int(tokens.get("input") or 0) + int(cache.get("read") or 0)
+
+
+def is_active(sid: str) -> bool:
+    return sid in (api("GET", "/api/session/active").get("data") or {})
+
+
+def memory_text() -> str:
+    try:
+        return MEMORY.read_text(encoding="utf-8")
+    except Exception:
+        return "(no memory file yet)"
+
+
+def rotate(limit: int, dry: bool) -> dict:
+    sid = current_sid()
+    if not sid:
+        return {"ok": False, "error": "no QA-suite manager registered"}
+    tokens = context_tokens(sid)
+    if tokens < limit:
+        return {"ok": True, "action": "skip", "reason": f"{tokens} < {limit}", "session": sid, "tokens": tokens}
+    if is_active(sid):
+        return {"ok": True, "action": "skip", "reason": "session is active", "session": sid, "tokens": tokens}
+    if dry:
+        return {"ok": True, "action": "would-rotate", "session": sid, "tokens": tokens, "limit": limit}
+
+    prompt = PROMPT.read_text(encoding="utf-8")
+    created = api(
+        "POST",
+        "/api/session",
+        {"title": "[QA-SUITE] manager", "location": {"directory": str(SUITE)}, "model": MODEL},
+    )
+    session = created.get("data", created) if isinstance(created, dict) else created
+    new_sid = session.get("id")
+    if not new_sid:
+        return {"ok": False, "error": f"session create failed: {json.dumps(created)[:300]}"}
+
+    seeded = f"{prompt}\n\n---\n\n# Durable memory (`{MEMORY}`)\n\n{memory_text()}\n"
+    api("POST", f"/api/session/{new_sid}/prompt", {"text": seeded})
+
+    STATE.write_text(
+        json.dumps(
+            {
+                "session": new_sid,
+                "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "previous": sid,
+                "rotated_at_tokens": tokens,
+            },
+            indent=1,
+        )
+    )
+    try:
+        bridge = json.loads(BRIDGE.read_text())
+        bridge["managerSessionId"] = new_sid
+        BRIDGE.write_text(json.dumps(bridge, indent=1))
+    except Exception as exc:  # noqa: BLE001 - the bridge can be down
+        print(f"warning: could not update the bridge state: {exc}", file=sys.stderr)
+
+    return {"ok": True, "action": "rotated", "from": sid, "new_session": new_sid, "tokens": tokens}
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Rotate the QA-suite manager session")
+    p.add_argument("action", nargs="?", default="status", choices=("status", "rotate", "auto"))
+    p.add_argument("--limit", type=int, default=LIMIT)
+    p.add_argument("--dry-run", action="store_true")
+    args = p.parse_args()
+
+    sid = current_sid()
+    if args.action == "status":
+        print(
+            json.dumps(
+                {
+                    "session": sid,
+                    "tokens": context_tokens(sid) if sid else 0,
+                    "limit": args.limit,
+                    "active": is_active(sid) if sid else False,
+                    "memory_bytes": len(memory_text()),
+                    "memory": str(MEMORY),
+                },
+                indent=1,
+            )
+        )
+        return
+
+    print(json.dumps(rotate(args.limit, args.dry_run), indent=1))
+
+
+if __name__ == "__main__":
+    main()
