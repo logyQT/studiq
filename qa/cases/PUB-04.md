@@ -11,6 +11,22 @@
 
 Brak sesji.
 
+## Suite fixture (tenant model)
+
+The public walk needs no session; the QA-suite spec still seeds this case's isolated
+tenant so the signed-in variant of the same page (current-plan badge, checkout CTA)
+is covered without touching another worker's data.
+
+- Tenant: `tenantKey("qa/cases/PUB-04.md", "PUB-04", "qa-shared")`
+  → `qa/.tenants/PUB-04.json`
+- Seed: `bun scripts/qa-tenant.ts PUB-04` (org `qa-pub-04-<hash>`, users `Seed4Test!`,
+  group `G1`). Re-run with `--reset` before a fresh run.
+- Page locale: `NEXT_LOCALE=pl` (the copy in the expected result is Polish).
+- Plan catalog: global and **read-only** for this case. The spec derives the expected
+  prices/features/limits from `GET /api/v1/subscription-plans?for=student` and never
+  edits plans, flags or settings.
+- Spec: `qa/tests/PUB/PUB-04.spec.ts` (run with `qa/playwright.qa.config.ts`).
+
 ## Steps
 
 1. Otwórz /pricing/student.
