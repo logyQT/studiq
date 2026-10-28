@@ -91,6 +91,22 @@ a suite test; it stays a repro/issue until the fix lands and the test is green.
 - **Never** merge a test that requires manual DB edits or a pre-existing legacy account.
 - If a case needs a missing fixture, send it back for a proper tenant fixture; do not
   hard-code around it.
+
+## Tenant profiles and shared fixtures
+
+- The tenant shape for a case lives in **`qa/tests/profiles/<CASE>.json`** — one file per
+  case, read by `scripts/qa-tenant.ts`. There is no shared manifest: a case PR adds one
+  file, so two case PRs cannot conflict on it.
+- `scripts/qa-tenant.ts` and `qa/fixtures/*` are **manager-owned**. A case PR that adds a
+  second alias (`#qa/*`), a second login helper, a parallel tenant loader, or a new seeder
+  profile is rejected even when its spec is green — fold the capability in yourself, once.
+- Every spec uses `loadTenant(caseId)` and `loginAs(page, tenant, role, { locale, waitFor })`
+  from `@qa/fixtures/qa-tenant`; no spec may read `qa/.tenants/<CASE>.json` directly.
+- e2e has no registry at all (it seeds in code via `__tests__/helpers/tenant-seed.ts` +
+  `scripts/e2e-seed.ts`); keep the QA equivalent as close to that as possible.
+- Gating a tenant-reading spec requires seeding first (`bun scripts/qa-tenant.ts <CASE>
+--fresh`); without it the run fails with `ENOENT` on the tenant file and looks like a
+  product failure. Self-seeding specs (ONB-03, ONB-06, MGR-03, ONB-07) need no seed step.
 - A test must be safe to run after `qa-suite` advances; do not depend on “today’s”
   mutable data.
 
