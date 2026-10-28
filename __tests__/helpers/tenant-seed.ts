@@ -65,6 +65,9 @@ export interface SeededTenantGraph {
 // `pass`, which only worked because it bypassed the Auth API).
 const PASSWORD = 'Seed4Test!';
 
+/** Transport-level failures a busy CI runner can produce while seeding. */
+const TRANSIENT_SEED_ERROR = /fetch failed|ECONNRESET|ETIMEDOUT|socket hang up|network/i;
+
 export function randomTag(length = 8): string {
   return randomBytes(Math.ceil(length / 2))
     .toString('hex')
@@ -113,27 +116,38 @@ export function buildAccount(
 
 /** Create the auth user (and, through the DB trigger, its profile). */
 export async function ensureAccount(db: SeedDb, account: SeedAccount): Promise<SeedAccount> {
-  const { data: existing } = await db
-    .from('profiles')
-    .select('id')
-    .eq('email', account.email)
-    .maybeSingle();
-  if (existing) return { ...account, id: existing.id };
+  // A 4-worker CI run seeds several tenants at once; a dropped connection is a
+  // transport hiccup, not a real seeding failure. Retry it with exponential
+  // backoff before giving up, and treat "already registered" as success.
+  const attempts = 5;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const { data: existing } = await db
+      .from('profiles')
+      .select('id')
+      .eq('email', account.email)
+      .maybeSingle();
+    if (existing) return { ...account, id: existing.id };
 
-  const { error } = await db.auth.admin.createUser({
-    id: account.id,
-    email: account.email,
-    password: account.password,
-    email_confirm: true,
-    app_metadata: { account_type: account.accountType },
-    user_metadata: {
-      name: account.name ?? account.role,
-      email_verified: true,
-      account_type: account.accountType,
-    },
-  });
-  if (error) throw new Error(`seed ${account.email}: ${error.message}`);
-  return account;
+    const { error } = await db.auth.admin.createUser({
+      id: account.id,
+      email: account.email,
+      password: account.password,
+      email_confirm: true,
+      app_metadata: { account_type: account.accountType },
+      user_metadata: {
+        name: account.name ?? account.role,
+        email_verified: true,
+        account_type: account.accountType,
+      },
+    });
+    if (!error) return account;
+
+    const retryable = TRANSIENT_SEED_ERROR.test(error.message);
+    if (!retryable || attempt === attempts)
+      throw new Error(`seed ${account.email}: ${error.message}`);
+    await new Promise((resolve) => setTimeout(resolve, Math.min(400 * 2 ** (attempt - 1), 4000)));
+  }
+  throw new Error(`seed ${account.email}: exhausted ${attempts} attempts`);
 }
 
 /**

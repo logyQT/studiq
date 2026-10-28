@@ -16,6 +16,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: Number(process.env.QA_WORKERS ?? 1),
   retries: 0,
+  // The CI runner is 4 vCPU and hosts Supabase, the Next app and four Chromium
+  // workers at once. Playwright's 30s default is tight enough that a runtime
+  // seeding helper (MGR-03) or one slow API round-trip (MGR-SEAT-02) trips it
+  // while the product is fine; local runs finish in single-digit seconds.
+  timeout: 90_000,
   forbidOnly: !!process.env.CI,
   reporter: [['list']],
   use: {
