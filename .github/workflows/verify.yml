@@ -200,11 +200,15 @@ jobs:
           curl -sf -o /dev/null http://localhost:3010/login
 
       - name: Seed one tenant per spec
+        # `--fresh` folds a run suffix into the tenant key. The auth specs assert
+        # that the address they register does not exist yet (`tenant.runSuffix`),
+        # so a suffix-free seed fails them with "seed with --fresh" even on an
+        # empty database.
         run: |
           for spec in qa/tests/*/*.spec.ts; do
             [ -e "$spec" ] || continue
             case_id=$(basename "$spec" .spec.ts)
-            bun scripts/qa-tenant.ts "$case_id"
+            bun scripts/qa-tenant.ts "$case_id" --fresh
           done
 
       - name: Run the QA suite
