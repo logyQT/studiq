@@ -7,11 +7,13 @@ import {
 } from '#test/helpers/test-user';
 import {
   useRealSupabase,
+  cleanupOrganizationDeep,
   cleanupQuestions,
   cleanupQuizAttempts,
   cleanupTeacherAssignments,
   createServiceClient,
   mockUser,
+  seedOrgMembership,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 import { GET as assignmentGet } from '@/app/(backend)/api/v1/assignments/[id]/route';
@@ -153,12 +155,28 @@ describe(`Assignment Attempts Integration`, () => {
   }
 
   beforeAll(async () => {
-    teacher = await before({ role: 'educator', questions: 2, assignment: true });
+    // The assignment belongs to the teacher's organisation, and only its members can be targeted
+    // (#235), so the student joins it; `other` stays outside.
+    teacher = await before({ role: 'educator', org: true, questions: 2, assignment: true });
     student = await before({ role: 'student' });
     other = await createTestUser({ role: 'student' });
 
     assignmentId = teacher.created.assignmentId as string;
     if (!assignmentId) throw new Error('Assignment was not seeded');
+    if (!teacher.orgId) throw new Error('Teacher organisation was not seeded');
+
+    const { data: memberRole } = await createServiceClient()
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', teacher.orgId)
+      .eq('name', 'member')
+      .single();
+    if (!memberRole) throw new Error('Member role not found for the teacher organisation');
+    await seedOrgMembership({
+      organizationId: teacher.orgId,
+      userId: student.user.id,
+      orgRoleId: memberRole.id,
+    });
 
     mockUser(teacher.user);
 
@@ -223,6 +241,28 @@ describe(`Assignment Attempts Integration`, () => {
     await cleanupQuizAttempts(other.id);
     await cleanupTeacherAssignments(teacher.user.id);
     await cleanupQuestions(teacher.user.id, 'seed-question-');
+    if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
+  });
+
+  it('refuses a target outside the assignment organisation and keeps the existing ones (#235)', async () => {
+    mockUser(teacher.user);
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${assignmentId}/targets`,
+      { id: assignmentId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: [student.user.id, other.id] }),
+      },
+    );
+    const response = await targetsPut(request, { params });
+
+    expect(response.status).toBe(400);
+    const { data: targets } = await createServiceClient()
+      .from('assignment_targets')
+      .select('student_id')
+      .eq('assignment_id', assignmentId);
+    expect((targets ?? []).map((t) => t.student_id)).toEqual([student.user.id]);
   });
 
   it('two rapid starts resume one unfinished attempt (#369)', async () => {
