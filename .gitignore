@@ -62,3 +62,6 @@ __tests__/e2e/.seed/
 
 # scratch space for local runs (baseline reports, helpers)
 .tmp/
+
+# QA case tenants (generated)
+qa/.tenants/
