@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - '__tests__/**'
+      - 'qa/**'
       - 'scripts/**'
       - 'playwright.config.ts'
       - 'apps/**'
