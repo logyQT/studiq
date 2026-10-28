@@ -62,9 +62,9 @@ reviews:
     - '!**/*.jpeg'
     - '!**/*.svg'
     - '!**/*.ico'
-    # Generated fixtures / seed dumps: reviewed by regenerating, not by reading.
-    - '!supabase/seeds/**'
-    - '!seed-data.js'
+    # Seeds and fixtures stay IN scope on purpose: `path_filters` also bound what
+    # the enabled secret scanner reads, and a seed is exactly where a leaked key
+    # would hurt. They are small (~85K total), so the review cost is negligible.
     # Build + tool output.
     - '!**/.next/**'
     - '!**/coverage/**'
@@ -78,8 +78,10 @@ reviews:
     base_branches:
       - 'main'
     auto_incremental_review: true
+    # Substring, case-insensitive: a bare 'WIP' would also skip 'swipe' and
+    # 'wipe' titles, so bracket it. Drafts are excluded already by `drafts`.
     ignore_title_keywords:
-      - 'WIP'
+      - '[WIP]'
       - 'DO NOT MERGE'
       - 'dnm'
     # Dependency bumps are grouped and reviewed by a human against the grouping
@@ -124,8 +126,9 @@ reviews:
           `auth/logout`, `auth/me`, `auth/password/reset`, `auth/register`
           (session establishment/teardown, wrapped in `withPublicTracing`; never
           suggest `withAuth` on the callback — it has no session yet by
-          definition), `health` (liveness), `avatar/**` (DiceBear images), and
-          `subscription-plans/**` (public pricing). The rest of `auth/**` —
+          definition), the bare `api` route and `health` (unauthenticated liveness
+          JSON), `avatar/**` (DiceBear images), and `subscription-plans/**`
+          (public pricing). The rest of `auth/**` —
           `auth/profile`, `auth/password/update` — IS protected and must keep
           `withAuth`; flag it if dropped. Require the route-specific guard for the
           public ones, and never let a public handler widen what it reads or
