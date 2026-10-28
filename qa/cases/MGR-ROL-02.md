@@ -46,7 +46,7 @@ innej organizacji:
 bun scripts/qa-tenant.ts MGR-ROL-02 --fresh
 ```
 
-- `qa/tests/profiles.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
+- `qa/tests/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
   tenanta na plan Hub. `apply_org_plan` odświeża snapshot `org_role_features`, dzięki
   czemu rola `admin` dostaje `role.builder`; `/api/v1/features/me` zwraca tę funkcję.

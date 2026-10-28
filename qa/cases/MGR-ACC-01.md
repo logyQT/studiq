@@ -42,7 +42,7 @@ bun scripts/qa-tenant.ts MGR-ACC-01 --fresh   # new org + users per independent 
   in the last bullet.
 - **Plan catalogue**: read-only. The spec compares the upgrade grid and the billing
   badge with `/api/v1/subscription-plans` in the same run, so no plan name is pinned.
-- **Profile**: `content` (the default, so no entry is needed in `qa/tests/profiles.json`).
+- **Profile**: `content` (the default, so no entry is needed in `qa/tests/profiles/<CASE>.json`).
 - Neither the account page nor the menu mutates anything: the case is pure navigation,
   which is what makes it safe on the shared app.
 

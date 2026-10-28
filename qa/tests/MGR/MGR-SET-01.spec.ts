@@ -16,7 +16,7 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  * gives `qa-mgr-set-01-<suffix>` (`tenantKey('qa/cases/MGR-SET-01.md',
  * 'MGR-SET-01#<suffix>', 'qa-shared')` + `tenantId` for every org/user/group id)
  * with a manager as org admin. `content` is the profile default, so
- * `qa/tests/profiles.json` needs no entry. Nothing global is written (no
+ * `qa/tests/profiles/<CASE>.json` needs no entry. Nothing global is written (no
  * settings, flags, plans or platform rows) — the plan catalogue is only read.
  *
  * Walk observation (shared app, pl): `/manage/settings` matches the case exactly.
