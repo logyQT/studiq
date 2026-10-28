@@ -250,6 +250,30 @@ async function main(): Promise<void> {
   console.log(`${online}/${clients.length} bots online`);
   if (online === 0) process.exit(1);
 
+  // `/status` is a guild command (instant) on every bot: it steers the session
+  // bound to that channel, so the reply arrives through the normal relay.
+  if (!config.dryRun) {
+    for (const [label, client] of clients) {
+      void (async () => {
+        try {
+          const guild = await client.guilds.fetch(config.guildId);
+          const existing = await guild.commands.fetch();
+          if (existing.some((c) => c.name === 'status')) return;
+          await guild.commands.create({
+            name: 'status',
+            description: 'Ask the agent for a short status (what now, what is blocked, next step)',
+          });
+          log.info(label, 'registered /status');
+        } catch (err) {
+          log.warn(
+            label,
+            `could not register /status: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })();
+    }
+  }
+
   const status = new StatusPublisher(config, log, state, managerClient, envClients);
   const bridges = new Map<string, Bridge>();
 
@@ -310,6 +334,22 @@ async function main(): Promise<void> {
     isDashboard: boolean,
     defaultEnv?: number,
   ): void => {
+    client.on(Events.InteractionCreate, (interaction) => {
+      void (async () => {
+        if (!interaction.isChatInputCommand() || interaction.commandName !== 'status') return;
+        if (interaction.channelId !== channelId) return;
+        await interaction.deferReply({ ephemeral: true });
+        await bridge.sendToAgent(
+          'Status check from the operator (/status). Reply in one short message: what you are doing ' +
+            'right now, what is blocked, and the next action. No preamble.',
+          'operator (/status)',
+        );
+        await interaction.editReply('Asked the agent for a status.');
+      })().catch((err) =>
+        log.error(label, `status command: ${err instanceof Error ? err.message : String(err)}`),
+      );
+    });
+
     client.on(Events.MessageCreate, (message: Message) => {
       void (async () => {
         if (!message.inGuild() || message.guildId !== config.guildId) return;
