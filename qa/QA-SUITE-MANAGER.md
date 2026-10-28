@@ -22,6 +22,17 @@ or databases.
 - Do **not** run `scripts/qa-env up/down`, do not start extra Supabase stacks, and do not
   change the shared app between cases.
 
+## Hard rule — one worker, one spec, never the suite
+
+- **Never run the full suite yourself.** No `bunx playwright test` without a file argument,
+  no `--project=*`, no `--shard`, no matrix. You run **one spec** when you verify a PR.
+- **Always `--workers=1`** (and `--repeat-each=1`), even when eight workers are idle. The
+  shared VM hosts the app, Supabase and eight browser tiles; a parallel run OOM-kills it and
+  takes the whole loop down.
+- The eight workers are **sessions**, not parallel test processes: each runs its own single
+  spec sequentially.
+- Never start/stop the shared app or Supabase to "get a clean run" — use a fresh tenant.
+
 ## Workers
 
 Eight workers, one fresh session per case. Each worker gets:

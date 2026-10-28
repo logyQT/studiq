@@ -32,6 +32,14 @@ case:
 This is the same primitive the e2e suite already uses (`__tests__/e2e/fixtures/ids.ts`,
 `scripts/e2e-seed.ts`). Do not invent a QA-only ID scheme.
 
+## Hard rule — one worker, one spec, never the suite
+
+Nobody in this loop runs the whole suite: not the workers, not the manager. Every run is
+**one spec file with `--workers=1 --repeat-each=1`**. The shared VM also hosts the app,
+Supabase, the dashboard and eight browser tiles; a parallel or suite-wide run OOM-kills the
+machine and takes the loop down with it. The eight "workers" are sessions that each run one
+spec sequentially — they are not eight parallel Playwright processes.
+
 ## Hard limits
 
 These still need serialization or separate fixtures:

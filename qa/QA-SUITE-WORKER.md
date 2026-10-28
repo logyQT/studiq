@@ -27,6 +27,13 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 
 ## Rules
 
+- **HARD RULE — never run the full suite, and always `--workers=1`.**
+  - Run **only your own spec file** (`qa/tests/<AREA>/<CASEID>.spec.ts`), never the
+    `qa/tests` directory, never `--project=*`, never `--shard`, never a matrix.
+  - `--workers=1` (and `--repeat-each=1`) is mandatory even on a big machine: the shared
+    VM also runs the app, Supabase and eight browser tiles, and a parallel run OOM-kills
+    the box. One spec, one worker, three sequential runs.
+  - The same applies to any exploratory run: one spec at a time.
 - Use the **shared app/DB only**. Do not start/stop `qa-env`, Supabase, or another app.
 - Use browser tile `{{WORKER}}` only. Do not use the legacy `@dev.local` accounts or
   `pass`; use only this case's seeded tenant users.
@@ -60,9 +67,10 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 5. Write `qa/tests/<AREA>/{{CASE_ID}}.spec.ts` against the behavior you confirmed, with the
    case's acceptance criteria and the minimal adjacent regression paths that matter for the
    tested surface.
-6. Run the spec **3 independent times**, each with a fresh tenant:
+6. Run the spec **3 independent times**, each with a fresh tenant — one worker, your file
+   only, never the suite:
    ```bash
-   bunx playwright test qa/tests/<AREA>/{{CASE_ID}}.spec.ts --workers=1
+   bunx playwright test qa/tests/<AREA>/{{CASE_ID}}.spec.ts --workers=1 --repeat-each=1
    ```
    Green 3/3 is required. Keep the run IDs/logs as evidence.
 7. If all 3 are green:
