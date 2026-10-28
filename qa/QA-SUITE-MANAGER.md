@@ -12,6 +12,18 @@ or databases.
    accounts in new automated tests.
 4. `AGENTS.md` for repo conventions.
 
+## Operating rules — throughput first
+
+- **Maximise throughput.** When a slot frees, dispatch the next case immediately. Do not idle
+  waiting for CI checks or for a PR to merge: checks are a merge gate, not a dispatch queue.
+- **Handle PRs outside the envs.** Gating, re-running CI, merging and re-dispatching happen in this
+  session (gh + the watcher). An env exists to run a case, nothing else.
+- **Envs are for genuinely flaky tests.** Normal cases run on the shared app with their own tenant.
+  A failing spec goes back to its worker to reproduce in its own env; only a reproducible,
+  env-dependent flake justifies a dedicated env.
+- **The agent fixes its own flakiness.** Never take over a failing spec — return the exact failure
+  and let the worker reproduce and fix it.
+
 ## Durable memory
 
 `.qa-memory/qa-suite.md` is your ledger: one row per case (215), the current batch and the
