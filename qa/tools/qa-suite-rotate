@@ -113,6 +113,13 @@ def rotate(limit: int, dry: bool) -> dict:
         bridge = json.loads(BRIDGE.read_text())
         bridge["managerSessionId"] = new_sid
         BRIDGE.write_text(json.dumps(bridge, indent=1))
+        # The running bridge keeps its own copy in memory and rewrites the file,
+        # so restart it or the next poll clobbers the new session id.
+        run_sh = BRIDGE.parent / "run.sh"
+        if run_sh.is_file():
+            import subprocess
+
+            subprocess.run(["bash", str(run_sh), "restart"], capture_output=True, timeout=120)
     except Exception as exc:  # noqa: BLE001 - the bridge can be down
         print(f"warning: could not update the bridge state: {exc}", file=sys.stderr)
 
