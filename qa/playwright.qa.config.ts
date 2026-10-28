@@ -9,7 +9,8 @@ import { defineConfig, devices } from '@playwright/test';
  * browser tiles, and a parallel run OOM-kills it.
  */
 export default defineConfig({
-  testDir: './qa/tests',
+  // Relative to this config file (`qa/`), so the specs live in `qa/tests/`.
+  testDir: './tests',
   fullyParallel: false,
   workers: 1,
   retries: 0,
