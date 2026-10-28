@@ -103,6 +103,26 @@ export class OpencodeClient {
     );
   }
 
+  /** Fork a session (the `/btw` primitive): a copy that can answer without touching the parent. */
+  async fork(sessionId: string): Promise<string> {
+    const body = await this.request<{ data?: { id?: string }; id?: string }>(
+      `/api/session/${encodeURIComponent(sessionId)}/fork`,
+      { method: 'POST', body: '{}' },
+      30_000,
+    );
+    const id = body.data?.id ?? body.id;
+    if (!id) throw new OpencodeError('fork returned no session id');
+    return String(id);
+  }
+
+  async remove(sessionId: string): Promise<void> {
+    await this.request(
+      `/api/session/${encodeURIComponent(sessionId)}`,
+      { method: 'DELETE' },
+      15_000,
+    );
+  }
+
   async createSession(input: {
     title: string;
     directory: string;

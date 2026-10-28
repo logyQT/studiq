@@ -187,6 +187,28 @@ async function ensureManagerSession(
   }
 }
 
+/** Poll a forked session until it produces an assistant message with text. */
+async function waitForAnswer(
+  opencode: OpencodeClient,
+  sessionId: string,
+  timeoutMs: number,
+): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const messages = await opencode.messages(sessionId, 5).catch(() => []);
+    for (const message of messages) {
+      const text = (message.content ?? [])
+        .filter((part) => part.type === 'text' && typeof part.text === 'string')
+        .map((part) => part.text as string)
+        .join('')
+        .trim();
+      if (text) return text;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 700));
+  }
+  return null;
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) {
@@ -334,17 +356,34 @@ async function main(): Promise<void> {
     isDashboard: boolean,
     defaultEnv?: number,
   ): void => {
+    // `/status` is a /btw-style side question: fork the session, ask in the fork,
+    // throw the fork away. The agent's own turn is never steered or queued.
     client.on(Events.InteractionCreate, (interaction) => {
       void (async () => {
         if (!interaction.isChatInputCommand() || interaction.commandName !== 'status') return;
         if (interaction.channelId !== channelId) return;
         await interaction.deferReply({ ephemeral: true });
-        await bridge.sendToAgent(
-          'Status check from the operator (/status). Reply in one short message: what you are doing ' +
-            'right now, what is blocked, and the next action. No preamble.',
-          'operator (/status)',
-        );
-        await interaction.editReply('Asked the agent for a status.');
+        const sessionId = bridge.session;
+        if (!sessionId) {
+          await interaction.editReply('No session is attached to this channel yet.');
+          return;
+        }
+        let forkId: string | null = null;
+        try {
+          forkId = await opencode.fork(sessionId);
+          await opencode.prompt(
+            forkId,
+            'Side question from the operator (/status). Answer only from the conversation above — ' +
+              'do not use tools, do not change anything. One short message: what you are doing right ' +
+              'now, what is blocked, and the next action. No preamble.',
+          );
+          const answer = await waitForAnswer(opencode, forkId, 60_000);
+          await interaction.editReply(
+            (answer ?? 'No answer within 60 s (the fork may still be starting).').slice(0, 1_900),
+          );
+        } finally {
+          if (forkId) await opencode.remove(forkId).catch(() => undefined);
+        }
       })().catch((err) =>
         log.error(label, `status command: ${err instanceof Error ? err.message : String(err)}`),
       );
