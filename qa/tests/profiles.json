@@ -4,5 +4,6 @@
   "ONB-04": { "profile": "bare", "role": "manager" },
   "ONB-05": { "profile": "bare", "role": "student" },
   "ONB-08": "content",
-  "ONB-10": "org-limit"
+  "ONB-10": "org-limit",
+  "MGR-GRP-02": "org-limit"
 }
