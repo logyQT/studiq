@@ -1,7 +1,7 @@
 # QA suite on one shared app + one Supabase
 
-Status: **infrastructure up, manager not started**. This document is the contract for the
-QA-suite generation loop. It replaces the old “one app + one Supabase per slot” model for
+Status: **infrastructure up; manager and PR→manager event wiring not built yet** (see
+§Manager flow). This document is the contract for the QA-suite generation loop. It replaces the old “one app + one Supabase per slot” model for
 QA-suite work; the old `qa-env-1..8` stacks are kept only as fallback and are not used as
 separate apps.
 
@@ -32,6 +32,14 @@ case:
 This is the same primitive the e2e suite already uses (`__tests__/e2e/fixtures/ids.ts`,
 `scripts/e2e-seed.ts`). Do not invent a QA-only ID scheme.
 
+## Hard rule — one worker, one spec, never the suite
+
+Nobody in this loop runs the whole suite: not the workers, not the manager. Every run is
+**one spec file with `--workers=1 --repeat-each=1`**. The shared VM also hosts the app,
+Supabase, the dashboard and eight browser tiles; a parallel or suite-wide run OOM-kills the
+machine and takes the loop down with it. The eight "workers" are sessions that each run one
+spec sequentially — they are not eight parallel Playwright processes.
+
 ## Hard limits
 
 These still need serialization or separate fixtures:
@@ -60,23 +68,47 @@ one-off env, or the old slot stack. Do not let 16 workers mutate the same single
 ## Worker flow (one case per fresh session)
 
 1. Read `qa/cases/<CASEID>.md` and its prereqs.
-2. Seed a tenant for the case (same deterministic key, fresh run suffix if needed).
-3. Start from the shared app URL; use the assigned browser profile/CDP port.
-4. Write the Playwright spec against intended behavior, using the tenant fixture.
-5. Run it **three independent times**, each with a fresh tenant/run suffix:
+2. **Reconcile the case with the seeder.** The cases were written against the legacy manual
+   seed (`student1@dev.local`, `O1G1`, …). Rewrite the case's `Prereqs`/`Seed` block to the
+   tenant model: the case's own tenant (`tenantKey("<CASEID>", …)`), its users, and the
+   `bare`/`content` profile it needs. Keep the human observations; commit this case edit
+   together with the spec.
+3. Seed a tenant for the case (same deterministic key, fresh run suffix if needed).
+4. **Walk the case yourself first.** In the assigned browser tile, against the shared app,
+   execute every step of the case as a tester would: note the real screens, states, copy and
+   selectors, and anything that contradicts the case text.
+5. **If the walk shows the product does not do what the case says** — a failure, an
+   ambiguous result, or any point where you cannot be sure what the correct behavior is:
+   **stop. Do not write a failing, skipped or "expected to fail" test.** You cannot encode
+   a behavior you have not confirmed. Instead:
+   - open an issue: case ID, expected vs observed, the tenant key, evidence (screenshot,
+     response, log);
+   - say what is ambiguous, if it is a judgement call rather than a plain defect;
+   - do **not** open the PR, do **not** try to fix the product, do **not** leave a placeholder
+     spec behind.
+     Issues are triaged in a separate batch, not by the worker.
+6. Write the Playwright spec against the behavior you confirmed in the walk, using the
+   tenant fixture.
+7. Run it **three independent times**, each with a fresh tenant/run suffix:
    - `bunx playwright test qa/tests/<AREA>/<CASEID>.spec.ts --workers=1 --repeat-each=1`
    - no `test.skip`, `test.fixme`, `test.soft`, or expected-failure wrappers
-6. Only if **3/3 runs are green**:
+8. Only if **3/3 runs are green**:
    - branch from `qa-suite` as `qa/<CASEID>`
-   - commit the spec + any fixture changes
+   - commit the spec + the reconciled case + any fixture changes
    - open a PR **into `qa-suite`**, not `main`
-7. If any run fails, is flaky, needs a manual step, or depends on shared mutable data:
-   report it and do **not** add the test to the suite.
+9. If any run fails, is flaky, needs a manual step, or depends on shared mutable data:
+   report it and do **not** add the test to the suite (step 5 applies).
 
 ## Manager flow (not started yet)
 
 The manager starts fresh sessions, one per case, on the eight workers. It does **not**
 start/stop the shared app or Supabase, and it does not provision per-worker stacks.
+
+**Intended event path — not built yet.** When a worker opens a PR into `qa-suite`, a watcher
+fires an event at the manager; the manager re-runs the spec three times from a clean tenant
+and merges only if that re-run is green. Today dispatch is manual (`!suite <CASEID>`), and the
+`qa/tools/qa-manager.py` referenced below does not exist on this branch — until both land,
+treat dispatch and merging as manual, operator-driven steps.
 
 It assigns:
 
@@ -95,7 +127,9 @@ It admits a PR only when all are true:
 7. re-run by the manager from a clean tenant is green.
 
 Only then merge into `qa-suite`. A test that is expected to fail until a bug is fixed is
-**not** a suite test; it stays a repro/issue until the fix lands and the test is green.
+**not** a suite test: the worker opens an issue and leaves no spec behind. The issue is
+triaged later, and the test is written only once the behavior is confirmed — never a
+failing test that encodes a guess.
 
 ## Suite layout / CI
 
