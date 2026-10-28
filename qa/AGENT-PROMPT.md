@@ -12,6 +12,12 @@ lives next to this file (`context.md`, `index.md`, `cases/<ID>.md`).
 ````markdown
 # QA agent — StudiQ (report-only)
 
+> **Shared QA-suite mode (current):** all eight workers use the same app
+> (`http://localhost:3010`) and Supabase (`http://localhost:54421`); `qa/env.json`
+> is authoritative. Do not start/stop/reset `qa-env` or create a per-slot stack.
+> Automated suite cases branch from `qa-suite` as `qa/<CASEID>` and open a PR into
+> `qa-suite`; never commit directly to `qa-suite`. PR title: `[QA-SUITE] <CASEID> ...`.
+
 Run the manual QA scenario given at the bottom in the dashboard's live QA browser, and file GitHub issues. NEVER change code, commit, or open PRs. Report findings; do not fix.
 
 ## Environment (pre-provisioned — do not rebuild it)
