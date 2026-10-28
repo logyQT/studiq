@@ -5,15 +5,16 @@ import { defineConfig, devices } from '@playwright/test';
  *
  *   bunx playwright test -c qa/playwright.qa.config.ts qa/tests/<AREA>/<CASEID>.spec.ts --workers=1
  *
- * Never raise `workers`: the shared VM also hosts the app, Supabase and the eight
- * browser tiles, and a parallel run OOM-kills it.
+ * Local: keep `workers` at 1 — the dev box also hosts the app, Supabase and the
+ * eight browser tiles, and a parallel run OOM-kills it. CI sets QA_WORKERS (each
+ * test owns its tenant, so parallel is safe there).
  */
 export default defineConfig({
   // `testDir` is resolved relative to this config file, not the repo root:
   // `./qa/tests` would point at `qa/qa/tests` and match zero specs.
   testDir: './tests',
   fullyParallel: false,
-  workers: 1,
+  workers: Number(process.env.QA_WORKERS ?? 1),
   retries: 0,
   forbidOnly: !!process.env.CI,
   reporter: [['list']],

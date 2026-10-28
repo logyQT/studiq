@@ -65,8 +65,36 @@ const caseId = args.find(
 const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
 const fresh = args.includes('--fresh');
-const profile = (option('profile') ?? 'content') as Profile;
-const role = option('role') ?? 'teacher';
+type ProfileEntry = string | { profile?: string; role?: string };
+
+/**
+ * The CI seed contract: `qa/tests/profiles.json` declares the tenant shape a case
+ * needs, so a runner can seed every spec without guessing. An explicit
+ * `--profile` / `--role` on the command line always wins.
+ */
+function manifestEntry(caseId: string): ProfileEntry | undefined {
+  try {
+    const manifest = JSON.parse(
+      readFileSync(join(ROOT, 'qa', 'tests', 'profiles.json'), 'utf8'),
+    ) as Record<string, ProfileEntry>;
+    return manifest[caseId];
+  } catch {
+    return undefined;
+  }
+}
+
+function declaredProfile(entry: ProfileEntry | undefined): Profile {
+  const value = typeof entry === 'string' ? entry : entry?.profile;
+  return value === 'bare' || value === 'org-limit' ? value : 'content';
+}
+
+function declaredRole(entry: ProfileEntry | undefined): string | undefined {
+  return typeof entry === 'string' ? undefined : entry?.role;
+}
+
+const entry = manifestEntry(caseId ?? '');
+const profile = (option('profile') ?? declaredProfile(entry)) as Profile;
+const role = option('role') ?? declaredRole(entry) ?? 'teacher';
 const runArg = option('run');
 
 if (!caseId || !/^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(caseId)) {
