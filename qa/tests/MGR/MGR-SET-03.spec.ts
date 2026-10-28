@@ -13,7 +13,7 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  *
  *   bun scripts/qa-tenant.ts MGR-SET-03 --fresh
  *
- * `qa/tests/profiles.json` declares `{ profile: "content", plan: "hub" }`: the
+ * `qa/tests/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`: the
  * `content` tenant supplies the org's manager and `--plan hub` puts *this
  * tenant's own* organization on Hub through `apply_org_plan`, which is the
  * case's prerequisite („Plan z brandingiem”). Nothing global is written — no

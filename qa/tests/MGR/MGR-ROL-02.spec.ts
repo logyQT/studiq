@@ -12,7 +12,7 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  *
  *   bun scripts/qa-tenant.ts MGR-ROL-02 --fresh
  *
- * `qa/tests/profiles.json` declares `{ profile: "content", plan: "hub" }`: the
+ * `qa/tests/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`: the
  * `content` tenant gives the org its admin, teacher and student, and `--plan hub`
  * puts *this tenant's own* organization on Hub through `apply_org_plan` — the
  * prerequisite the case states („Włącz role.builder dla organizacji (override w
