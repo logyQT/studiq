@@ -28,15 +28,15 @@ share **one app** (`http://localhost:3010`) and **one Supabase**
 (`http://localhost:54421`); only the browser tile/CDP port is per worker.
 `qa/env.json` in this checkout is authoritative:
 
-| key           | use                                                                 |
-| ------------- | ------------------------------------------------------------------- |
-| `envId`       | `qa-env-1` … `qa-env-8`                                             |
-| `appUrl`      | shared web app (`http://localhost:3010`)                            |
-| `adminUrl`    | shared admin app (`http://localhost:4010`)                          |
-| `supabaseUrl` | shared Supabase API (`http://localhost:54421`)                      |
-| `dbContainer` | shared DB (`supabase_db_qa-env-1`)                                  |
-| `sharedEnv`   | `qa-env-1` — the only running stack                                 |
-| `serviceName` | telemetry filter (`studiq-qa-env-N`)                                |
+| key           | use                                            |
+| ------------- | ---------------------------------------------- |
+| `envId`       | `qa-env-1` … `qa-env-8`                        |
+| `appUrl`      | shared web app (`http://localhost:3010`)       |
+| `adminUrl`    | shared admin app (`http://localhost:4010`)     |
+| `supabaseUrl` | shared Supabase API (`http://localhost:54421`) |
+| `dbContainer` | shared DB (`supabase_db_qa-env-1`)             |
+| `sharedEnv`   | `qa-env-1` — the only running stack            |
+| `serviceName` | telemetry filter (`studiq-qa-env-N`)           |
 
 - **Never reset the shared database, run `supabase start/stop`, `db reset`,
   restart the app, or start a per-slot stack.** A reset wipes every other
