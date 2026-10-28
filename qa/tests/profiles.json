@@ -1,11 +1,27 @@
 {
   "ONB-01": "bare",
   "ONB-02": "bare",
-  "ONB-04": { "profile": "bare", "role": "manager" },
-  "ONB-05": { "profile": "bare", "role": "student" },
+  "ONB-04": {
+    "profile": "bare",
+    "role": "manager"
+  },
+  "ONB-05": {
+    "profile": "bare",
+    "role": "student"
+  },
   "ONB-08": "content",
   "ONB-10": "org-limit",
   "MGR-GRP-02": "org-limit",
-  "MGR-ROL-02": { "profile": "content", "plan": "hub" },
-  "MGR-SET-03": { "profile": "content", "plan": "hub" }
+  "MGR-ROL-02": {
+    "profile": "content",
+    "plan": "hub"
+  },
+  "MGR-ROL-04": {
+    "profile": "content",
+    "plan": "hub"
+  },
+  "MGR-SET-03": {
+    "profile": "content",
+    "plan": "hub"
+  }
 }
