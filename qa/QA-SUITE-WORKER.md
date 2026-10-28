@@ -35,26 +35,42 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 - Do not rely on shared mutable data: global admin settings, feature flags, plans,
   platform stats, singleton rows, or another worker's tenant.
 - Assert the **intended** behavior. A test that reproduces an unfixed bug is not a suite
-  test; report it and stop.
+  test.
+- **If the case does not pass, or you cannot be sure what the correct behavior is, stop and
+  open an issue.** Never write a failing, skipped or expected-to-fail spec, and never guess
+  the intended behavior from the case text. Include the case ID, expected vs observed, the
+  tenant key and evidence (screenshot, response, log). Issues are triaged in a separate
+  batch; you do not fix them and you do not leave a placeholder spec behind.
 - Do not touch `main`; do not merge.
 
 ## Flow
 
-1. Seed the case's isolated tenant (reuse the e2e tenant helpers; do not add a new ID
+1. **Reconcile the case with the seeder.** The case was written against the legacy manual
+   seed (`student1@dev.local`, `O1G1`, …). Rewrite its `Prereqs`/`Seed` block to the tenant
+   model — this case's tenant, its users, and the `bare`/`content` profile it needs — and
+   keep the human observations.
+2. Seed the case's isolated tenant (reuse the e2e tenant helpers; do not add a new ID
    scheme). Use a fresh run suffix for each independent run.
-2. Write `qa/tests/<AREA>/{{CASE_ID}}.spec.ts` with the case's acceptance criteria and
-   the minimal adjacent regression paths that matter for the tested surface.
-3. Run the spec **3 independent times**, each with a fresh tenant:
+3. **Walk the case yourself first.** In the assigned browser tile, against the shared app,
+   execute every step as a tester would. Record the real screens, states, copy and selectors,
+   and anything that contradicts the case.
+4. **If the walk fails or the expected behavior is ambiguous: stop.** Do not write the spec.
+   Open an issue (case ID, expected vs observed, tenant key, evidence) and end the session.
+   A failing test that encodes a guess is worse than no test.
+5. Write `qa/tests/<AREA>/{{CASE_ID}}.spec.ts` against the behavior you confirmed, with the
+   case's acceptance criteria and the minimal adjacent regression paths that matter for the
+   tested surface.
+6. Run the spec **3 independent times**, each with a fresh tenant:
    ```bash
    bunx playwright test qa/tests/<AREA>/{{CASE_ID}}.spec.ts --workers=1
    ```
    Green 3/3 is required. Keep the run IDs/logs as evidence.
-4. If all 3 are green:
+7. If all 3 are green:
    - branch from `qa-suite` as `qa/{{CASE_ID}}`
-   - commit only the spec + necessary fixtures
+   - commit only the spec, the reconciled case and necessary fixtures
    - open a PR into `qa-suite` from `qa/{{CASE_ID}}`, never commit directly
-5. If anything is flaky, skipped, blocked, or requires shared mutable data: do not open
-   the PR; report the exact failure.
+8. If anything is flaky, skipped, blocked, or requires shared mutable data: do not open
+   the PR; report the exact failure (step 4 applies).
 
 ## Output
 
