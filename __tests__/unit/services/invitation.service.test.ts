@@ -896,6 +896,7 @@ describe('InvitationService', () => {
       service = new InvitationService(
         async () => mock as any,
         () => admin.client,
+        () => null,
         notifier as any,
       );
       admin.from
@@ -924,6 +925,7 @@ describe('InvitationService', () => {
       service = new InvitationService(
         async () => mock as any,
         () => admin.client,
+        () => null,
         notifier as any,
       );
       admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(5));

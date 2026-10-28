@@ -33,3 +33,18 @@ describe('notification bell', () => {
     expect(json.Notifications.retry).toBeTruthy();
   });
 });
+
+describe('the notifications entry only exists where the bell does', () => {
+  it('is off by default and on for the dashboard menu only', () => {
+    expect(menu).toContain('notifications = false');
+    expect(menu).toContain('{notifications && (');
+    expect(read('apps/web/src/components/layout/user-menu.tsx')).toContain(
+      '<UserMenuItems notifications',
+    );
+    for (const publicMenu of ['Navbar.tsx', 'navbar/mobile-nav.tsx']) {
+      expect(read(`apps/web/src/components/layout/${publicMenu}`)).not.toMatch(
+        /<UserMenuItems[^>]*notifications/,
+      );
+    }
+  });
+});

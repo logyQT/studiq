@@ -94,8 +94,14 @@ export type UserMenuVariant = 'menu' | 'plain';
 export function UserMenuItems({
   onItemClick,
   variant = 'menu',
+  notifications = false,
 }: {
   onItemClick?: () => void;
+  /**
+   * Offer the notifications entry. It opens the bell of the dashboard header, so it is only for
+   * menus inside a dashboard: the public pages have no bell and the entry would do nothing.
+   */
+  notifications?: boolean;
   /** 'menu' inside a Radix DropdownMenuContent; 'plain' for non-menu contexts such as a Sheet. */
   variant?: UserMenuVariant;
 }) {
@@ -162,17 +168,19 @@ export function UserMenuItems({
         <CreditCard className="size-4 text-muted-foreground" />
         <span>{t('billing')}</span>
       </MenuEntry>
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          // The notification centre is the bell in the header; this opens it.
-          window.dispatchEvent(new Event(OPEN_NOTIFICATIONS_EVENT));
-          onItemClick?.();
-        }}
-      >
-        <Bell className="size-4 text-muted-foreground" />
-        <span>{t('notifications')}</span>
-      </MenuEntry>
+      {notifications && (
+        <MenuEntry
+          variant={variant}
+          onSelect={() => {
+            // The notification centre is the bell in the header; this opens it.
+            window.dispatchEvent(new Event(OPEN_NOTIFICATIONS_EVENT));
+            onItemClick?.();
+          }}
+        >
+          <Bell className="size-4 text-muted-foreground" />
+          <span>{t('notifications')}</span>
+        </MenuEntry>
+      )}
 
       <MenuDivider variant={variant} />
 

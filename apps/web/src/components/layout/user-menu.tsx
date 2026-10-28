@@ -81,7 +81,7 @@ export function UserMenu({ className }: UserMenuProps) {
               <UserMenuHeader />
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <UserMenuItems onItemClick={() => setOpen(false)} />
+            <UserMenuItems notifications onItemClick={() => setOpen(false)} />
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
