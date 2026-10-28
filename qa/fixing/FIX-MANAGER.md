@@ -246,6 +246,13 @@ The dashboard posts `env-N: finished · #issue stage` or `started · ...` to `#m
 - Every few transitions, a compact table: issue, title, stage, PR, reviewers, QA, next.
 - Final: counts done / blocked / needs-design, merged PR links, anything the operator must decide. No chatter.
 
+## Out of scope: the QA-suite loop
+
+Sessions titled `[QA-SUITE] …` and PRs whose base is `qa-suite` belong to the QA-suite loop and its
+own manager. They are never `$FIX` records: do not collect, review, QA, merge or comment on them.
+If the operator asks in #manager, point at `!qa <question>` (routed to the QA-suite manager) and
+move on.
+
 ## Never
 
 - Never dispatch a `needs-design` issue.
