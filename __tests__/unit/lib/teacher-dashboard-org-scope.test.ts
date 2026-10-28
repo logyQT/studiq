@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 // activity. The rules live in SQL and in a few components; these guards keep them from drifting.
 
 const read = (path: string) => readFileSync(path, 'utf8');
-const stamp = read('supabase/migrations/20261027095000_activity_organization.sql');
-const rpcs = read('supabase/migrations/20261027100000_teacher_dashboard_rpcs.sql');
+const stamp = read('supabase/migrations/20261028100000_activity_organization.sql');
+const rpcs = read('supabase/migrations/20261028100100_teacher_dashboard_rpcs.sql');
 const schema = read('supabase/schemas/99_rpc_functions.sql');
 
 describe('organization stamp of learner activity', () => {
@@ -121,6 +121,73 @@ describe('dashboard screen', () => {
       'retry',
     ]) {
       expect(messages.EduOverviewPage[key], key).toBeTruthy();
+    }
+  });
+});
+
+describe('review round 2 (#654)', () => {
+  it('the stamp is authoritative: recomputed on insert, a client cannot move it', () => {
+    expect(stamp).toContain('BEFORE INSERT OR UPDATE OF organization_id ON public.quiz_attempts');
+    expect(stamp).toContain(
+      'BEFORE INSERT OR UPDATE OF organization_id ON public.flashcard_practice',
+    );
+    expect(stamp).toContain('public.activity_stamp_client_write()');
+    expect(stamp).toContain("COALESCE(auth.role(), '') IN ('authenticated', 'anon')");
+  });
+
+  it('the feed only shows assignments of the asked organization and never the raw assignment id', () => {
+    expect(rpcs).toContain(
+      'ON ta.id = qa.assignment_id AND ta.organization_id = p_organization_id',
+    );
+    expect(rpcs).toContain('ta.id AS assignment_id');
+    expect(rpcs).not.toContain('qa.assignment_id AS assignment_id');
+  });
+
+  it('names a practice quiz after its bank', () => {
+    expect(rpcs).toContain("COALESCE(ta.title, qa.config->>'title', qb.name) AS title");
+  });
+
+  it('the declarative copies follow', () => {
+    expect(schema).toContain(
+      'ON ta.id = qa.assignment_id AND ta.organization_id = p_organization_id',
+    );
+    const functions = read('supabase/schemas/68_activity_organization.sql');
+    expect(functions).toContain('activity_stamp_client_write');
+    expect(functions).toContain('BEFORE INSERT OR UPDATE OF organization_id');
+  });
+
+  it('a question answered fewer than three times is no question to review', () => {
+    const service = read('packages/server/src/services/stats.service.ts');
+    const card = read('apps/web/src/components/edu/dashboard/problem-questions-card.tsx');
+    expect(service).toContain('question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS');
+    expect(card).toContain('question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS');
+  });
+
+  it('a feed line without a title is worded without the quoted one', () => {
+    const card = read('apps/web/src/components/edu/dashboard/activity-feed-card.tsx');
+    expect(card).toContain('feed_${item.kind}_plain');
+    for (const locale of ['pl', 'en']) {
+      const messages = JSON.parse(
+        read(`apps/web/src/i18n/messages/${locale}.json`),
+      ).EduOverviewPage;
+      for (const kind of ['quiz_completed', 'assignment_submitted', 'report_opened']) {
+        expect(messages[`feed_${kind}_plain`], `${locale} ${kind}`).toBeTruthy();
+      }
+    }
+  });
+
+  it('the e2e spec only uses keys that still exist', () => {
+    const spec = read('__tests__/e2e/edu-dashboard-stats.spec.ts');
+    expect(spec).not.toContain('questions_card_title');
+    expect(spec).not.toContain('flashcards_card_title');
+    expect(spec).toContain('/api/v1/stats/teacher/groups');
+    for (const locale of ['pl', 'en']) {
+      const messages = JSON.parse(
+        read(`apps/web/src/i18n/messages/${locale}.json`),
+      ).EduOverviewPage;
+      for (const key of ['total_questions', 'flashcards', 'students_stat', 'completed_stat']) {
+        expect(messages[key], `${locale} ${key}`).toBeTruthy();
+      }
     }
   });
 });

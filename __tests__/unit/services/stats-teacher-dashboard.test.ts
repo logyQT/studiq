@@ -156,3 +156,30 @@ describe('StatsController teacher dashboard', () => {
     expect(response).toMatchObject({ success: false, statusCode: 500 });
   });
 });
+
+describe('problem questions floor (#654 review)', () => {
+  it('keeps out a question answered fewer than three times', async () => {
+    const supabase: any = {
+      from: vi.fn(() => {
+        const c: any = {};
+        for (const m of ['select', 'eq', 'in', 'or', 'order', 'limit', 'is']) c[m] = vi.fn(() => c);
+        c.then = (onfulfilled: any) => Promise.resolve({ data: [], error: null }).then(onfulfilled);
+        return c;
+      }),
+      rpc: vi.fn().mockResolvedValue({
+        data: [
+          { id: 'q1', content: 'one answer', type: 'mcq', correctRate: 0, totalAnswers: 1 },
+          { id: 'q2', content: 'three answers', type: 'mcq', correctRate: 0.2, totalAnswers: 3 },
+        ],
+        error: null,
+      }),
+    };
+    const service = new StatsService(async () => supabase);
+
+    const result = await service.getTeacherStats(ctx);
+
+    expect(result.success && result.data.subject.problematicQuestions.map((q) => q.id)).toEqual([
+      'q2',
+    ]);
+  });
+});

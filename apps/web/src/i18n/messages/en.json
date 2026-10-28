@@ -411,6 +411,9 @@
     "edu_groups": "Groups"
   },
   "EduOverviewPage": {
+    "feed_quiz_completed_plain": "Quiz completed: {name} ({score}%)",
+    "feed_assignment_submitted_plain": "Assignment submitted: {name} ({score}%)",
+    "feed_report_opened_plain": "Question reported by {name}",
     "col_flashcard_accuracy": "Flashcard accuracy",
     "no_data": "no data",
     "awaiting_grade": "{count} awaiting a grade",

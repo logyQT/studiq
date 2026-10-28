@@ -392,6 +392,9 @@
     "edu_groups": "Grupy"
   },
   "EduOverviewPage": {
+    "feed_quiz_completed_plain": "Test ukończony: {name} ({score}%)",
+    "feed_assignment_submitted_plain": "Praca oddana: {name} ({score}%)",
+    "feed_report_opened_plain": "Zgłoszenie pytania od {name}",
     "col_flashcard_accuracy": "Trafność fiszek",
     "no_data": "brak danych",
     "awaiting_grade": "{count} do oceny",

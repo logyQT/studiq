@@ -59,7 +59,8 @@ export function ActivityFeedCard({ items, isLoading, isError, onRetry }: Activit
               const Icon = ICONS[item.kind];
               const href = hrefFor(item);
               const name = item.personName ?? t('unknown_person');
-              const title = item.title ?? t('untitled');
+              // Without a title the line is worded without the quoted one, never `"Untitled"`.
+              const key = item.title ? `feed_${item.kind}` : `feed_${item.kind}_plain`;
               const line = (
                 <div className="flex items-start gap-3 rounded-lg p-2 hover:bg-muted/60">
                   <Icon
@@ -68,7 +69,7 @@ export function ActivityFeedCard({ items, isLoading, isError, onRetry }: Activit
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm">
-                      {t(`feed_${item.kind}`, { name, title, score: item.scorePct ?? 0 })}
+                      {t(key, { name, title: item.title ?? '', score: item.scorePct ?? 0 })}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {formatRelativeTime(item.at, locale)}

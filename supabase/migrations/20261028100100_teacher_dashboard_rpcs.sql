@@ -15,7 +15,7 @@
 -- never counted as a learner. The caller's own practice never inflates a number.
 --
 -- Organization isolation (operator decision A2): only attempts and reviews STAMPED with this
--- organization count (see 20261027095000_activity_organization.sql). A learner who also belongs
+-- organization count (see 20261028100000_activity_organization.sql). A learner who also belongs
 -- to another organization contributes nothing from there, and rows that belong to no
 -- organization (personal resources) are in no aggregate.
 --
@@ -214,8 +214,12 @@ BEGIN
         CASE WHEN qa.assignment_id IS NOT NULL THEN 'assignment_submitted' ELSE 'quiz_completed' END AS kind,
         qa.completed_at AS at,
         qa.user_id AS person_id,
-        qa.assignment_id AS assignment_id,
-        COALESCE(ta.title, qa.config->>'title') AS title,
+        -- The id and the title come from the assignment ONLY when it belongs to this organization:
+        -- the stamp of the attempt alone must never surface a foreign assignment.
+        ta.id AS assignment_id,
+        -- A practice quiz keeps no title of its own (its config is the generator request): name it
+        -- after its bank. NULL when there is nothing to show; the UI then drops the quoted title.
+        COALESCE(ta.title, qa.config->>'title', qb.name) AS title,
         LEAST(100, GREATEST(0,
           COALESCE(qa.score, 0) * 100.0
             / GREATEST(COALESCE(qa.total_points, qa.total_questions, 0), 1)
@@ -224,7 +228,14 @@ BEGIN
         NULL::uuid AS question_id
       FROM learners l
       JOIN public.quiz_attempts qa ON qa.user_id = l.user_id
-      LEFT JOIN public.teacher_assignments ta ON ta.id = qa.assignment_id
+      LEFT JOIN public.teacher_assignments ta
+        ON ta.id = qa.assignment_id AND ta.organization_id = p_organization_id
+      LEFT JOIN public.question_banks qb
+        ON qb.organization_id = p_organization_id
+       AND qb.id = CASE
+             WHEN qa.config->>'bankId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+             THEN (qa.config->>'bankId')::uuid
+           END
       WHERE qa.organization_id = p_organization_id
         AND qa.completed_at IS NOT NULL
       ORDER BY qa.completed_at DESC

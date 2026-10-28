@@ -9,6 +9,13 @@ export const TeacherStatsQuerySchema = registry.register(
 
 export type TeacherStatsQuery = z.infer<typeof TeacherStatsQuerySchema>;
 
+/**
+ * A question answered fewer times than this is not "a question to review": a single wrong answer
+ * would read as a red 0 %. Applied once, in the service, so the dashboard card and the results
+ * page agree.
+ */
+export const MIN_PROBLEM_QUESTION_ANSWERS = 3;
+
 /** Per-question accuracy behind the „Problematyczne pytania” card (#204). */
 export interface ProblematicQuestionStats {
   id: string;

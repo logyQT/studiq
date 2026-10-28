@@ -5,14 +5,15 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  ProblematicQuestionStats,
-  StudentStatsResponse,
-  TeacherFeedItem,
-  TeacherGroupPerformance,
-  TeacherQuizStatsItem,
-  TeacherStatsQuery,
-  TeacherStatsResponse,
+import {
+  MIN_PROBLEM_QUESTION_ANSWERS,
+  type ProblematicQuestionStats,
+  type StudentStatsResponse,
+  type TeacherFeedItem,
+  type TeacherGroupPerformance,
+  type TeacherQuizStatsItem,
+  type TeacherStatsQuery,
+  type TeacherStatsResponse,
 } from '@studiq/server/models/stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -136,7 +137,9 @@ export class StatsService {
       totalFlashcards: flashcards?.length ?? 0,
       subject: {
         byType,
-        problematicQuestions: (problematicQuestions as ProblematicQuestionStats[] | null) ?? [],
+        problematicQuestions: (
+          (problematicQuestions as ProblematicQuestionStats[] | null) ?? []
+        ).filter((question) => question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS),
       },
       bySubject,
     });

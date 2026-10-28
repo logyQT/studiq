@@ -1,6 +1,9 @@
 'use client';
 
-import type { ProblematicQuestionStats } from '@studiq/server/models/stats.model';
+import {
+  MIN_PROBLEM_QUESTION_ANSWERS,
+  type ProblematicQuestionStats,
+} from '@studiq/server/models/stats.model';
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@studiq/ui';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
@@ -25,7 +28,11 @@ export function ProblemQuestionsCard({
   onRetry,
 }: ProblemQuestionsCardProps) {
   const t = useTranslations('EduOverviewPage');
-  const shown = (questions ?? []).slice(0, SHOWN);
+  // The server already applies the floor; the card keeps it too, so a one-answer question can
+  // never be drawn as a red 0 % whatever feeds it.
+  const shown = (questions ?? [])
+    .filter((question) => question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS)
+    .slice(0, SHOWN);
 
   return (
     <Card className="overflow-hidden">
