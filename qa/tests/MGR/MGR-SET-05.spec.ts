@@ -19,7 +19,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  *
  *   bun scripts/qa-tenant.ts MGR-SET-05 --fresh
  *
- * `qa/tests/profiles.json` declares `{ profile: "content", plan: "hub" }`, so the
+ * `qa/tests/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`, so the
  * fresh tenant's *own* organization starts on Hub (`apply_org_plan` in the
  * seeder), which is the case's prerequisite. Nothing global is written: no
  * admin setting, feature flag, plan catalogue row or singleton.
