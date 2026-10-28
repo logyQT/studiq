@@ -141,3 +141,33 @@ Only add specs after 3/3 green runs. Then wire the QA Playwright project and the
 - PR title format: `[QA-SUITE] <CASEID> <short description>`.
 - `.coderabbit.yaml` ignores the `[QA-SUITE]` title keyword, so the QA-suite noise
   does not consume a review; normal product PRs continue to be reviewed.
+
+## Dispatching a worker
+
+From Discord (`#manager` or an env channel), or on the box:
+
+```text
+!suite PUB-01            # first free worker
+!suite PUB-01 --env 3    # a specific worker
+python3 qa/tools/qa-manager.py suite PUB-01 --dry-run
+```
+
+The dispatcher creates a fresh session in that workers
+
+## Dispatching a worker
+
+From Discord (`#manager` or an env channel), or on the box:
+
+```text
+!suite PUB-01            # first free worker
+!suite PUB-01 --env 3    # a specific worker
+python3 qa/tools/qa-manager.py suite PUB-01 --dry-run
+```
+
+The dispatcher creates a fresh session in that worker's worktree with the
+`QA-SUITE-WORKER.md` prompt filled in (`CASE_ID`, worker, CDP port, shared app,
+shared Supabase), and titles it `[QA-SUITE] <CASEID> — qa-env-N`. It does not
+create branches or start app/DB stacks; the worker does that.
+
+`!run <ID>` remains the manual, report-only QA dispatch. `!suite` is the
+suite-generation dispatch.

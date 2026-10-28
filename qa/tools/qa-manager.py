@@ -41,9 +41,24 @@ BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
 MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
 SLOTS = {n: f"/workspaces/studiq/.worktrees/qa-env-{n}" for n in range(1, 9)}
-APP_PORT = {n: 3009 + n for n in SLOTS}
-ADMIN_PORT = {n: 4009 + n for n in SLOTS}
 DASHBOARD = "http://localhost:5000/"
+
+
+def slot_env(n: int) -> dict:
+    """Read qa/env.json for a slot; every slot points at the shared app + DB."""
+    try:
+        return json.loads((Path(SLOTS[n]) / "qa" / "env.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def shared_urls() -> tuple[str, str]:
+    """Shared app/admin URLs. env-1 is the stack that actually runs."""
+    env = slot_env(1)
+    return (
+        env.get("appUrl", "http://localhost:3010"),
+        env.get("adminUrl", "http://localhost:4010"),
+    )
 SEVERITIES = ("critical", "high", "medium", "low")
 AREAS = ("frontend", "backend", "database", "i18n", "visual", "security",
          "accessibility", "performance", "payments")
@@ -191,11 +206,31 @@ def case_meta(sid: str) -> dict:
 
 def prompt_for(scenario: str) -> str:
     md = (QA / "AGENT-PROMPT.md").read_text(encoding="utf-8")
-    m = re.search(r"```markdown\n(.*?)\n```", md, re.S)
+    m = re.search(r"`{3,}markdown\n(.*?)\n`{3,}", md, re.S)
     if not m:
         raise SystemExit("QA prompt block not found in qa/AGENT-PROMPT.md")
     text = m.group(1).strip()
     return re.sub(r"## SCENARIO ▶.*$", f"## SCENARIO ▶ {scenario}", text, flags=re.S)
+
+
+def suite_prompt(case: str, worker: int) -> str:
+    """QA-suite worker prompt with this case/worker/shared-env filled in."""
+    md = (QA / "QA-SUITE-WORKER.md").read_text(encoding="utf-8")
+    m = re.search(r"`{3,}markdown\n(.*?)\n`{3,}", md, re.S)
+    if not m:
+        raise SystemExit("worker prompt block not found in qa/QA-SUITE-WORKER.md")
+    app_url, _ = shared_urls()
+    supabase = slot_env(1).get("supabaseUrl", "http://localhost:54421")
+    text = m.group(1).strip()
+    for key, value in {
+        "{{CASE_ID}}": case,
+        "{{WORKER}}": f"qa-env-{worker}",
+        "{{BROWSER_PORT}}": str(9220 + worker),
+        "{{APP_URL}}": app_url,
+        "{{SUPABASE_URL}}": supabase,
+    }.items():
+        text = text.replace(key, value)
+    return text
 
 
 # ------------------------------------------------------------ report parsing
@@ -489,6 +524,10 @@ def describe(it: dict) -> str:
 def cmd_status(_args) -> None:
     act = active_map()
     busy = busy_slots()
+    app_url, admin_url = shared_urls()
+    web = http_code(f"{app_url}/login")
+    pair = f"{web}/{http_code(f'{admin_url}/'):<4}"
+    print(f"shared app {app_url} -> {web}  (all eight workers, one DB)")
     print(f"{'slot':<7} {'state':<8} {'msgs':>4} {'age':>5}  {'web/admin':<9} scenario / session")
     for n in SLOTS:
         s = latest(n)
@@ -504,13 +543,12 @@ def cmd_status(_args) -> None:
             snippet = re.sub(r"\s+", " ", text)[-110:]
             title = (s.get("title") or "").split(" — ")[0]
             print(f"{'qa-env-'+str(n):<7} {state:<8} {len(msgs):>4} {age(ts):>5}  "
-                  f"{http_code(f'http://localhost:{APP_PORT[n]}/login')}/{http_code(f'http://localhost:{ADMIN_PORT[n]}/'):<4} "
-                  f"{title:<14} {s['id']}")
+                  f"{pair} {title:<14} {s['id']}")
             if snippet:
                 print(f"        last: {snippet}")
         else:
             print(f"{'qa-env-'+str(n):<7} {state:<8} {'-':>4} {'-':>5}  "
-                  f"{http_code(f'http://localhost:{APP_PORT[n]}/login')}/{http_code(f'http://localhost:{ADMIN_PORT[n]}/'):<4} (no session)")
+                  f"{pair} (no session)")
     pend = [i for i in load_ledger()["items"] if i.get("status") == "pending"]
     print(f"\nfree slots: {', '.join('qa-env-'+str(n) for n in sorted(set(SLOTS) - busy)) or 'none'}")
     print(f"pending decisions: {len(pend)}  (qa-manager.py decisions pending)")
@@ -528,7 +566,7 @@ def cmd_dispatch(args) -> None:
     busy = busy_slots()
     if args.env is not None:
         if args.env not in SLOTS:
-            raise SystemExit("--env must be 1..4")
+            raise SystemExit("--env must be 1..8")
         if args.env in busy:
             raise SystemExit(f"qa-env-{args.env} is busy; free: {sorted(set(SLOTS) - busy) or 'none'}")
         slot = args.env
@@ -545,6 +583,36 @@ def cmd_dispatch(args) -> None:
         return
     sid = create_session(slot, f"{scenario} — manual QA", prompt_for(scenario))
     print(f"qa-env-{slot}\t{scenario}\t{sid}\t{meta['title']}")
+    print(f"dashboard: {DASHBOARD}  (Refresh all)")
+
+
+def cmd_suite(args) -> None:
+    case = args.case.strip()
+    if not re.fullmatch(r"[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+", case):
+        raise SystemExit(f"invalid case id: {case}")
+    if not (QA / "cases" / f"{case}.md").exists():
+        raise SystemExit(f"unknown case {case}: qa/cases/{case}.md is missing")
+    busy = busy_slots()
+    if args.env is not None:
+        if args.env in busy:
+            raise SystemExit(
+                f"qa-env-{args.env} is busy; free: {sorted(set(SLOTS) - busy) or 'none'}"
+            )
+        slot = args.env
+    else:
+        free = sorted(set(SLOTS) - busy)
+        if not free:
+            raise SystemExit("no free slot; wait for a worker to finish")
+        slot = free[0]
+    if args.dry_run:
+        print(f"would dispatch {case} -> qa-env-{slot} (browser :{9220 + slot})")
+        return
+    sid = create_session(
+        slot,
+        f"[QA-SUITE] {case} — qa-env-{slot}",
+        suite_prompt(case, slot),
+    )
+    print(f"qa-env-{slot}\t{case}\t{sid}\tbrowser :{9220 + slot}")
     print(f"dashboard: {DASHBOARD}  (Refresh all)")
 
 
@@ -802,7 +870,7 @@ def file_decision(args) -> None:
     text = (
         f"**Scenario:** {it['scenario']}\n"
         f"**Severity:** {it.get('severity') or 'medium'}\n"
-        f"**Environment:** qa-env-{it['env']} (isolated slot)\n"
+        f"**Environment:** qa-env-{it['env']} (browser worker; shared app + DB)\n"
         f"**Finding:** {it['title']}\n\n"
         f"{body}\n\n"
         f"{evidence}\n"
@@ -898,7 +966,8 @@ Question: {it['question']}
 Evidence from the QA run:
 {it.get('body') or '(see the original session report)'}
 
-This checkout is an isolated QA slot; read qa/env.json for appUrl/adminUrl.
+This checkout is a worker on the shared app + DB; read qa/env.json for appUrl/adminUrl.
+Do not reset the shared database or start a per-slot stack.
 Reproduce the finding with the qa_browser_* tools (NOT browser.*).
 Determine whether it is a real product defect and its root cause (trace/log).
 Do NOT change code, commit, file issues, or reset the environment.
@@ -943,7 +1012,9 @@ def cmd_spawn(args) -> None:
 
 # ------------------------------------------------------------------------- main
 def main() -> None:
-    p = argparse.ArgumentParser(description="Dispatch/monitor QA scenarios on qa-env-1..4")
+    p = argparse.ArgumentParser(
+        description="Dispatch/monitor QA on qa-env-1..8 (shared app + DB)"
+    )
     sub = p.add_subparsers(dest="cmd")
 
     sub.add_parser("status", help="slot, state, messages, age, health").set_defaults(fn=cmd_status)
@@ -954,6 +1025,12 @@ def main() -> None:
     d.add_argument("--env", type=int, choices=list(SLOTS))
     d.add_argument("--dry-run", action="store_true")
     d.set_defaults(fn=cmd_dispatch)
+
+    su = sub.add_parser("suite", help="start a QA-suite worker for one case")
+    su.add_argument("case")
+    su.add_argument("--env", type=int, choices=list(SLOTS))
+    su.add_argument("--dry-run", action="store_true")
+    su.set_defaults(fn=cmd_suite)
 
     q = sub.add_parser("queue", help="fill free slots from a scenario list")
     q.add_argument("scenarios", nargs="+")

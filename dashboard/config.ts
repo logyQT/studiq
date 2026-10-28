@@ -3,7 +3,7 @@
  * agent browser tooling.  No dependencies beyond Bun/Node built-ins.
  */
 
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const PORT = 5000;
@@ -41,32 +41,63 @@ export type EnvConfig = {
   serverKey: string;
   webUrl: string;
   adminUrl: string;
+  supabaseUrl?: string;
+  dbContainer?: string;
+  sharedEnv?: string;
   cdpPort: number;
   cdpUrl: string;
   profileDir: string;
   startUrl: string;
 };
 
+type EnvJson = {
+  appUrl?: string;
+  adminUrl?: string;
+  supabaseUrl?: string;
+  dbContainer?: string;
+  sharedEnv?: string;
+};
+
+/**
+ * Slots share one app + one Supabase in the QA-suite model. `qa/env.json` is
+ * authoritative, so the dashboard must not assume `:3009+n` is that slot's app.
+ */
+function readEnvJson(directory: string): EnvJson {
+  const file = join(directory, 'qa/env.json');
+  if (!existsSync(file)) return {};
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as EnvJson;
+  } catch {
+    return {};
+  }
+}
+
 export const SLOT_COUNT = Number(process.env.QA_SLOTS ?? 8);
 
 export const ENVS: EnvConfig[] = Array.from({ length: SLOT_COUNT }, (_, i) => i + 1).map((n) => {
   const name = `qa-env-${n}`;
   const origin = `http://${name}.localhost:${PORT}`;
+  const directory = `${REPO_ROOT}/.worktrees/${name}`;
+  const envJson = readEnvJson(directory);
+  const webUrl = envJson.appUrl ?? `http://localhost:${3009 + n}`;
   return {
     n,
     name,
-    directory: `${REPO_ROOT}/.worktrees/${name}`,
+    directory,
     origin,
     // The SPA route is /server/:serverKey/session/:id and compares the
     // decoded key against the current origin. base64(origin) is exactly
     // what the bundled client uses for its "local server" key.
     serverKey: Buffer.from(origin, 'utf8').toString('base64'),
-    webUrl: `http://localhost:${3009 + n}`,
-    adminUrl: `http://localhost:${4009 + n}`,
+    webUrl,
+    adminUrl: envJson.adminUrl ?? `http://localhost:${4009 + n}`,
+    supabaseUrl: envJson.supabaseUrl,
+    dbContainer: envJson.dbContainer,
+    sharedEnv: envJson.sharedEnv,
     cdpPort: 9220 + n,
     cdpUrl: `http://127.0.0.1:${9220 + n}`,
     profileDir: join(PROFILES_DIR, name),
-    startUrl: `http://localhost:${3009 + n}`,
+    startUrl: webUrl,
   };
 });
 

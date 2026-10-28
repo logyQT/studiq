@@ -168,3 +168,9 @@ pass 3/3 independent runs are admitted to `qa-suite`; legacy `@dev.local` accoun
 are not used in the suite. Manager and worker prompts are in
 `QA-SUITE-MANAGER.md` and `QA-SUITE-WORKER.md`. The manager is not started
 automatically.
+
+### Dispatching a QA-suite worker
+
+`!suite <CASEID> [--env N]` in Discord starts one fresh QA-suite worker session
+using `QA-SUITE-WORKER.md`; `qa/tools/qa-manager.py suite <CASEID>` does the same
+from the shell. `!run <ID>` stays the manual report-only dispatch.
