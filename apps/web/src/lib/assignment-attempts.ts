@@ -23,7 +23,7 @@ export interface StudentAssignmentAttemptState {
 
 /** The running attempt, if any — a completed attempt is not resumable. */
 export function openAttempt(a: StudentAssignmentAttemptState): AttemptSummary | null {
-  return a.attempt && a.attempt.completed_at === null ? a.attempt : null;
+  return a.attempt?.completed_at === null ? a.attempt : null;
 }
 
 /** Remaining attempts, clamped: a teacher may lower max_attempts below the used count. */
