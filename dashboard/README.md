@@ -8,7 +8,7 @@ Each tile is a real headless Chromium page (1920×1080) streamed over the
 Chrome DevTools Protocol (JPEG screencast, ~12 fps) and scaled to fit. Mouse,
 wheel and keyboard input on the tile is forwarded to that page. The same
 Chromium is exposed to QA agents through an MCP server and a CLI, so the
-operator and the agent operate the *same* browser.
+operator and the agent operate the _same_ browser.
 
 Phase 1 remains intact: tile hosts `qa-env-N.localhost:5000` reverse-proxy the
 opencode web client with Basic auth injected server-side, deep-linked to the
@@ -16,16 +16,16 @@ newest session for that worktree.
 
 ## URLs
 
-| What | URL |
-| --- | --- |
-| Dashboard | <http://localhost:5000/> |
+| What                   | URL                                                             |
+| ---------------------- | --------------------------------------------------------------- |
+| Dashboard              | <http://localhost:5000/>                                        |
 | Health / browser state | <http://localhost:5000/healthz> (`?deep=1` evaluates each page) |
-| JSON browser state | <http://localhost:5000/api/browsers> |
-| Session mapping | <http://localhost:5000/api/dashboard/state> |
-| qa-env-1 chat client | <http://qa-env-1.localhost:5000/> |
-| qa-env-2 chat client | <http://qa-env-2.localhost:5000/> |
-| qa-env-3 chat client | <http://qa-env-3.localhost:5000/> |
-| qa-env-4 chat client | <http://qa-env-4.localhost:5000/> |
+| JSON browser state     | <http://localhost:5000/api/browsers>                            |
+| Session mapping        | <http://localhost:5000/api/dashboard/state>                     |
+| qa-env-1 chat client   | <http://qa-env-1.localhost:5000/>                               |
+| qa-env-2 chat client   | <http://qa-env-2.localhost:5000/>                               |
+| qa-env-3 chat client   | <http://qa-env-3.localhost:5000/>                               |
+| qa-env-4 chat client   | <http://qa-env-4.localhost:5000/>                               |
 
 App links in the top bar point at the published web apps:
 `http://localhost:3010` … `http://localhost:3013`.
@@ -79,8 +79,8 @@ unknown process.
 
 `browsers.ts` launches one Chromium per env and writes `browsers.json`:
 
-| env | CDP | profile | default page |
-| --- | --- | --- | --- |
+| env      | CDP                     | profile                        | default page            |
+| -------- | ----------------------- | ------------------------------ | ----------------------- |
 | qa-env-1 | <http://127.0.0.1:9221> | `dashboard/.profiles/qa-env-1` | <http://localhost:3010> |
 | qa-env-2 | <http://127.0.0.1:9222> | `dashboard/.profiles/qa-env-2` | <http://localhost:3011> |
 | qa-env-3 | <http://127.0.0.1:9223> | `dashboard/.profiles/qa-env-3` | <http://localhost:3012> |
@@ -99,18 +99,18 @@ unknown process.
 }
 ```
 
-* Fixed Chromium flags: `--headless=new --no-sandbox --disable-dev-shm-usage
-  --disable-gpu --window-size=1920,1080`, a normal Chrome UA, one persistent
+- Fixed Chromium flags: `--headless=new --no-sandbox --disable-dev-shm-usage
+--disable-gpu --window-size=1920,1080`, a normal Chrome UA, one persistent
   profile per env, CDP on 9221-9228 with `--remote-allow-origins=*`.
-* `Emulation.setDeviceMetricsOverride(1920×1080, dsf=1, mobile=false)` is
+- `Emulation.setDeviceMetricsOverride(1920×1080, dsf=1, mobile=false)` is
   applied to every page, so `innerWidth/innerHeight` is exactly 1920×1080.
-* The active page per env is recorded in `tabs.json`; the supervisor waits for
+- The active page per env is recorded in `tabs.json`; the supervisor waits for
   Chrome's first target instead of racing it, and prunes duplicate/blank tabs
   on `start`/`restart`.
-* Reuse is idempotent: a live CDP endpoint with a matching pid/profile is
+- Reuse is idempotent: a live CDP endpoint with a matching pid/profile is
   adopted. Stale pids/listeners are reaped before a restart. Unknown processes
   holding 9221-9228 are never killed.
-* Chromium stdout/stderr: `dashboard/logs/chrome-qa-env-N.log`.
+- Chromium stdout/stderr: `dashboard/logs/chrome-qa-env-N.log`.
 
 ## Live streaming and input
 
@@ -122,11 +122,11 @@ unknown process.
 4. forwards frames as binary WS messages, throttled to ~12 fps, and **acks every
    frame** (otherwise Chrome pauses the stream);
 5. forwards input:
-   * mouse move/down/up/wheel → `Input.dispatchMouseEvent` (normalized from the
+   - mouse move/down/up/wheel → `Input.dispatchMouseEvent` (normalized from the
      displayed image rect to 1920×1080),
-   * keyboard → `Input.dispatchKeyEvent` with key/code/keyCode/modifiers and
+   - keyboard → `Input.dispatchKeyEvent` with key/code/keyCode/modifiers and
      `text` for printable keys, plus `Input.insertText` for paste,
-   * navigation/back/forward/reload → `Page.navigate` /
+   - navigation/back/forward/reload → `Page.navigate` /
      `Page.getNavigationHistory` / `Page.reload`, waiting for the next main-frame
      load event;
 6. streams URL/title state back to the URL bar and records recent network
@@ -194,14 +194,14 @@ bun "$B" back | forward | reload
 bun "$B" state | status | browsers
 ```
 
-* Clicks accept `--selector`, `--text`, or `--x/--y` in page (1920×1080) space.
-* `wait` accepts `--selector`, `--text`, `--url`, `--expression`, `--timeout`,
+- Clicks accept `--selector`, `--text`, or `--x/--y` in page (1920×1080) space.
+- `wait` accepts `--selector`, `--text`, `--url`, `--expression`, `--timeout`,
   `--gone`.
-* `screenshot` writes `dashboard/shots/qa-env-N-<timestamp>[-name].png` and
+- `screenshot` writes `dashboard/shots/qa-env-N-<timestamp>[-name].png` and
   prints the absolute path and byte size.
-* `navigate` prints the final URL/title and the last HTTP responses, including
+- `navigate` prints the final URL/title and the last HTTP responses, including
   `traceId` (`x-trace-id`) and `location`.
-* Any failure prints `{"ok":false,"error":"..."}` and exits 1.
+- Any failure prints `{"ok":false,"error":"..."}` and exits 1.
 
 ## Architecture
 
@@ -215,14 +215,14 @@ Host browser ── localhost:5000 ───────────► Bun serv
 QA agent ── MCP qa_browser_* / browser-cli.ts ──────┘ (same page target)
 ```
 
-* Dashboard host: `GET /` renders the grid; JSON endpoints expose sessions,
+- Dashboard host: `GET /` renders the grid; JSON endpoints expose sessions,
   browsers and health.
-* Tile hosts: every request is proxied to opencode with
+- Tile hosts: every request is proxied to opencode with
   `Authorization: Basic base64("opencode:studiq-local-dev")`; SSE streams
   unbuffered.
-* Deep link: `http://qa-env-N.localhost:5000/server/<base64(tileOrigin)>/session/<id>`.
+- Deep link: `http://qa-env-N.localhost:5000/server/<base64(tileOrigin)>/session/<id>`.
   The encoded key is the tile origin so the SPA's `/api` calls stay same-origin.
-* Only `dashboard/` (plus the QA docs) is touched; application code and the four
+- Only `dashboard/` (plus the QA docs) is touched; application code and the four
   QA stacks are not.
 
 ## Session mapping
@@ -240,36 +240,36 @@ Manual override: create `dashboard/sessions.json` (git-ignored):
 
 ## Files
 
-| File | Purpose |
-| --- | --- |
-| `server.ts` | dashboard HTML, proxy, session mapping, `/ws/browser/N`, health |
-| `config.ts` | env table, ports, paths, shared constants |
-| `cdp.ts` | minimal CDP WebSocket client + `/json` helpers + navigation waits |
-| `browsers.ts` | Chromium supervisor (`start/stop/restart/status`) |
-| `browser-state.ts` | `browsers.json` / `tabs.json`, pid/port reaping |
-| `browser-core.ts` | navigate/click/type/press/scroll/wait/eval/screenshot/tabs/history |
-| `browser-cli.ts` | JSON CLI over `browser-core` |
-| `mcp-browser.ts` | MCP stdio server (`qa_browser_*` tools) |
-| `run.sh` | lifecycle wrapper for dashboard + browsers |
-| `shots/`, `logs/`, `.profiles/`, `browsers.json`, `tabs.json` | runtime, git-ignored |
+| File                                                          | Purpose                                                            |
+| ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `server.ts`                                                   | dashboard HTML, proxy, session mapping, `/ws/browser/N`, health    |
+| `config.ts`                                                   | env table, ports, paths, shared constants                          |
+| `cdp.ts`                                                      | minimal CDP WebSocket client + `/json` helpers + navigation waits  |
+| `browsers.ts`                                                 | Chromium supervisor (`start/stop/restart/status`)                  |
+| `browser-state.ts`                                            | `browsers.json` / `tabs.json`, pid/port reaping                    |
+| `browser-core.ts`                                             | navigate/click/type/press/scroll/wait/eval/screenshot/tabs/history |
+| `browser-cli.ts`                                              | JSON CLI over `browser-core`                                       |
+| `mcp-browser.ts`                                              | MCP stdio server (`qa_browser_*` tools)                            |
+| `run.sh`                                                      | lifecycle wrapper for dashboard + browsers                         |
+| `shots/`, `logs/`, `.profiles/`, `browsers.json`, `tabs.json` | runtime, git-ignored                                               |
 
 ## Known limitations
 
-* **WebSocket upgrades to the opencode server are still not proxied.** The chat,
+- **WebSocket upgrades to the opencode server are still not proxied.** The chat,
   session list and SSE events work; opencode's integrated terminal (WebSocket)
   does not work through a chat iframe. The dashboard's own `/ws/browser/N` is a
   separate WebSocket and is not affected.
-* Screencast bandwidth is ~2-6 MB/s for four busy tiles (JPEG q70, 12 fps). The
+- Screencast bandwidth is ~2-6 MB/s for four busy tiles (JPEG q70, 12 fps). The
   server drops frames rather than buffering; static pages send very few frames.
-* Chromium runs headless as root with `--no-sandbox` inside the dev container.
+- Chromium runs headless as root with `--no-sandbox` inside the dev container.
   Pages see `HeadlessChrome`-style capabilities but a normal Chrome UA; GPU
   acceleration is disabled, so WebGL/canvas performance is software-rendered.
-* Each env has one persistent profile, so cookies/logins survive dashboard and
+- Each env has one persistent profile, so cookies/logins survive dashboard and
   browser restarts. Delete `dashboard/.profiles/qa-env-N` to reset a slot's
   browser state (operator action).
-* The MCP server is registered globally; outside a QA worktree pass
+- The MCP server is registered globally; outside a QA worktree pass
   `env: "qa-env-N"` explicitly or the env lookup fails.
-* `browsers.json`, `tabs.json`, screenshots and logs are runtime state and are
+- `browsers.json`, `tabs.json`, screenshots and logs are runtime state and are
   intentionally git-ignored.
-* `/ws/browser/N` and the dashboard have no authentication; they are bound to
+- `/ws/browser/N` and the dashboard have no authentication; they are bound to
   the container's port 5000 and intended for the local operator only.

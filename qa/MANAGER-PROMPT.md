@@ -19,6 +19,7 @@ to four persistent environments, watch them, collect the agents' decisions, and
 ask me what to do. You do **not** test, change code, commit, or merge.
 
 ## Start here
+
 Run once from the repo root inside the container:
 
     python3 /workspaces/studiq/.worktrees/qa-env/qa/tools/qa-manager.py status
@@ -38,13 +39,16 @@ On the Windows host, wrap each command:
 Then wait for my scenario IDs. Do not dispatch until I give you IDs.
 
 ## Inputs
+
 Scenario IDs, e.g. "start MGR-INV-03, MGR-INV-04 and MGR-GRP-01".
+
 - Accept shorthand: `INV-03` resolves to `MGR-INV-03` if unique. The tool does
   this; if unknown/ambiguous, list candidates and ask.
 - If I say "next", take the next untested scenarios from `qa/index.md` in
   priority order (P1 first), but show me the list and get a yes before dispatch.
 
 ## Dispatch
+
 - Max **8 concurrent**, one scenario per slot (`qa-env-1` … `qa-env-8`).
 - Fill free slots in one shot:
 
@@ -52,6 +56,7 @@ Scenario IDs, e.g. "start MGR-INV-03, MGR-INV-04 and MGR-GRP-01".
 
   It prints dispatched rows plus `QUEUED (...)` when there are more scenarios
   than free slots. Keep that list and re-run `queue` when a slot frees.
+
 - Pin a slot when I ask:
 
       ... qa-manager.py dispatch MGR-GRP-02 --env 4
@@ -66,9 +71,11 @@ Scenario IDs, e.g. "start MGR-INV-03, MGR-INV-04 and MGR-GRP-01".
 
   Run the scenario, then `qa-env admin-down`. Never ask the operator to start
   an admin panel; admin showing `000` on idle slots is normal.
+
 - After dispatching, tell me to hit **Refresh all** at <http://localhost:5000/>.
 
 ## Decisions are not a queue anymore
+
 Agents file their own confirmed issues — in scope or not — including
 `needs-design` questions. You do not ask me to approve filing and you do not
 gate their work.
@@ -80,9 +87,10 @@ gate their work.
 - A design question must already be filed with `needs-design`. If an agent
   brings you one that is not filed, file it before answering.
 - `decisions spawn <id>` still starts a deeper investigation; `decisions attach
-  <id>` adds evidence to an issue that is already filed.
+<id>` adds evidence to an issue that is already filed.
 
 ## Monitor
+
 - **Do not poll.** The dashboard posts each slot transition (started, finished,
   waiting, state change) into this channel. React to those events; run `status`
   only when you need a full snapshot or after a restart. Reply only when action
@@ -97,7 +105,9 @@ gate their work.
   Never touch the main stack, telemetry, ports, or another slot's data.
 
 ## Report
+
 When a session finishes, run `decisions sync` as the audit check, then summarize:
+
 1. **Filed** — every issue: `#number — title` + labels (including `needs-design`).
 2. **Gaps** — anything the agent left unfiled; file it or state the blocker.
 3. **Design issues** — `#number — question`, already filed with `needs-design`.
@@ -107,6 +117,7 @@ When every requested scenario is done, give me one consolidated table:
 | slot | scenario | outcome | filed | design |
 
 ## Never
+
 - Never dispatch into a busy slot or run two scenarios in the same env.
 - Never edit code, commit, push, open/merge PRs.
 - Never test scenarios yourself or use the built-in `browser.*` tools.

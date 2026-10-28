@@ -33,16 +33,16 @@ Budgets are keyed on the **outer** tool name, because Code Mode inner calls
 (`tools.grafana.*`, browser, …) run inside a single `execute` part and are not
 visible individually. Use the `shell` tool for long-running work.
 
-| Tool | Default | Rationale |
-|---|---|---|
-| `execute` | 30s | catches the stuck-promise case fast |
-| `read`/`write`/`edit`/`glob`/`grep`/… | 15s | local filesystem |
-| `browser*` | 45s | cold Next compile, navigation |
-| `grafana*` / `mcp*` / namespaced tools | 45s | slow TraceQL/LogQL queries |
-| `shell` | not timed here | uses its own timeout, capped at 300s |
-| `task` | never | don't abort delegated work |
-| `question` / `ask` / elicitation tools | never | waiting on a human is not a hang |
-| anything else | 60s | |
+| Tool                                   | Default        | Rationale                            |
+| -------------------------------------- | -------------- | ------------------------------------ |
+| `execute`                              | 30s            | catches the stuck-promise case fast  |
+| `read`/`write`/`edit`/`glob`/`grep`/…  | 15s            | local filesystem                     |
+| `browser*`                             | 45s            | cold Next compile, navigation        |
+| `grafana*` / `mcp*` / namespaced tools | 45s            | slow TraceQL/LogQL queries           |
+| `shell`                                | not timed here | uses its own timeout, capped at 300s |
+| `task`                                 | never          | don't abort delegated work           |
+| `question` / `ask` / elicitation tools | never          | waiting on a human is not a hang     |
+| anything else                          | 60s            |                                      |
 
 ## Configuration
 
@@ -56,29 +56,29 @@ Loaded from `opencode.jsonc`:
       "options": {
         "executeMs": 30000,
         "shellCapMs": 300000,
-        "resume": true
-      }
-    }
-  ]
+        "resume": true,
+      },
+    },
+  ],
 }
 ```
 
 All options (defaults in brackets):
 
-| Option | Default | Meaning |
-|---|---|---|
-| `enabled` | `true` | master switch |
-| `executeMs` | `30000` | Code Mode `execute` budget |
-| `defaultMs` | `60000` | fallback budget |
-| `fsMs` | `15000` | file tools |
-| `mcpMs` | `45000` | MCP/namespaced tools |
-| `browserMs` | `45000` | browser tools |
-| `taskMs` | `0` | delegated tasks; `0` = never abort |
-| `shellCapMs` | `300000` | cap applied to shell timeouts; `0` disables |
-| `resume` | `false` | `false` interrupts then sends a continue prompt (observed to resume the run); `true` uses `continue: true`, which was observed to end the run as `interrupted` |
-| `cooldownMs` | `30000` | minimum gap between interrupts per session |
-| `maxPerHour` | `6` | interrupt ceiling per session |
-| `skipSessions` | `[]` | session ids to ignore |
+| Option         | Default  | Meaning                                                                                                                                                        |
+| -------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`      | `true`   | master switch                                                                                                                                                  |
+| `executeMs`    | `30000`  | Code Mode `execute` budget                                                                                                                                     |
+| `defaultMs`    | `60000`  | fallback budget                                                                                                                                                |
+| `fsMs`         | `15000`  | file tools                                                                                                                                                     |
+| `mcpMs`        | `45000`  | MCP/namespaced tools                                                                                                                                           |
+| `browserMs`    | `45000`  | browser tools                                                                                                                                                  |
+| `taskMs`       | `0`      | delegated tasks; `0` = never abort                                                                                                                             |
+| `shellCapMs`   | `300000` | cap applied to shell timeouts; `0` disables                                                                                                                    |
+| `resume`       | `false`  | `false` interrupts then sends a continue prompt (observed to resume the run); `true` uses `continue: true`, which was observed to end the run as `interrupted` |
+| `cooldownMs`   | `30000`  | minimum gap between interrupts per session                                                                                                                     |
+| `maxPerHour`   | `6`      | interrupt ceiling per session                                                                                                                                  |
+| `skipSessions` | `[]`     | session ids to ignore                                                                                                                                          |
 
 ## Behaviour notes
 
@@ -87,7 +87,7 @@ All options (defaults in brackets):
   `execute.before` and `execute.after`, leaving stale timers that fired ~15s later
   and interrupted unrelated calls (the "aborts firing so much" bug).
 - **Stale timers are re-checked before firing.** On expiry the plugin reads the
-  session (`ctx.session.context`) and only interrupts if that tool is *still*
+  session (`ctx.session.context`) and only interrupts if that tool is _still_
   `running`; otherwise it drops the timer. A completed call can never cause a
   later abort.
 - **Verified live**: an `execute` running `await new Promise(() => {})` was aborted at

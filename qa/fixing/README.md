@@ -4,13 +4,15 @@ Autonomous pipeline for confirmed issues that do **not** carry `needs-design`.
 The manager owns the state machine; agents only produce their own artifact.
 
 ## Crew / fixed slots
-| slot | role | output |
-|---|---|---|
+
+| slot           | role           | output                                                                 |
+| -------------- | -------------- | ---------------------------------------------------------------------- |
 | qa-env-1,2,7,8 | QA/review pool | two independent verdicts or one e2e QA run; shared demand-driven slots |
-| qa-env-3,4 | designers | root cause + implementation design (`design-rN.json`) |
-| qa-env-5,6 | writers | branch + implementation + tests + PR (`impl-rN.json`) |
+| qa-env-3,4     | designers      | root cause + implementation design (`design-rN.json`)                  |
+| qa-env-5,6     | writers        | branch + implementation + tests + PR (`impl-rN.json`)                  |
 
 ## State
+
 - Tool: `qa/tools/qa-fix.py`
 - Map: `/workspaces/studiq/.qa-fix/issue-map.json` (human: `issue-map.md`)
 - Queue: `/workspaces/studiq/.qa-fix/queue.txt`
@@ -24,6 +26,7 @@ reviewing → approved → qa_testing → qa_passed → done`, with
 `needs_design`/`blocked` stopping the issue.
 
 ## Why not one shared "core" file?
+
 A single mutable file watched by agents would race: every stage would overwrite
 the same content, and there is no reliable "notify all agents working on X"
 primitive in the opencode session model. Instead:
@@ -40,6 +43,7 @@ This gives shared context per issue without shared writes, and a retry always
 points at the previous attempt's artifacts.
 
 ## Restart/checkout tooling
+
 - `qa-env rebuild-app` — force a fresh production build and restart (needed
   after `gh pr checkout`; `restart-app` would keep the stale `.next`).
 - `qa-env restart-browser` — restart that slot's Chromium.
@@ -48,6 +52,7 @@ points at the previous attempt's artifacts.
   build with a restart.
 
 ## Commands
+
 ```bash
 python3 qa/tools/qa-fix.py sync
 python3 qa/tools/qa-fix.py map
@@ -66,6 +71,7 @@ python3 qa/tools/qa-fix.py merge 140
 python3 qa/tools/qa-fix.py status
 python3 qa/tools/qa-fix.py repair-state   # recover valid prefix; corrupt file is backed up
 ```
+
 `review` dispatches two reviewers from the shared pool (up to two pairs can run
 at once); `collect` is idempotent enough for the manager to call after each
 `finished` event. The merge gate requires two `approve` reviews, a QA `pass`, and

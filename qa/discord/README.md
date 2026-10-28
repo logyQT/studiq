@@ -19,10 +19,10 @@ Discord (5 bots)  ⇄  qa/discord (one Bun process)
 
 ## Channels and bots
 
-| Bot | Reads / writes | Purpose |
-|---|---|---|
-| `QA Manager` | `#manager`, `#dashboard` | `!` commands, free-text manager agent, live status board |
-| `QA Env 1` … `QA Env 4` | `#env-1` … `#env-4` | chat with that slot's opencode agent, screenshot relay |
+| Bot                     | Reads / writes           | Purpose                                                  |
+| ----------------------- | ------------------------ | -------------------------------------------------------- |
+| `QA Manager`            | `#manager`, `#dashboard` | `!` commands, free-text manager agent, live status board |
+| `QA Env 1` … `QA Env 4` | `#env-1` … `#env-4`      | chat with that slot's opencode agent, screenshot relay   |
 
 `#dashboard` is status-only: the manager keeps **one** message there and edits
 it in place. It is never pinned. Channel names are **fixed** — nothing is
@@ -55,20 +55,20 @@ sends are throttled and queued well inside Discord's limits.
 
 ## Commands (owner only)
 
-| Command | Action |
-|---|---|
-| `!status` | slot, state, scenario, pending, session |
-| `!free` | free slot numbers |
-| `!run <ID> [--env N]` | dispatch a scenario |
-| `!queue <ID…>` | fill free slots from a list |
-| `!report [env]` | last assistant report |
-| `!decisions` | pending decisions |
-| `!show <dec>` | decision detail |
-| `!file <dec>` | file it (`decisions file --yes`) |
-| `!skip <dec>` | answer skip |
-| `!spawn <dec>` | spawn an investigator |
-| `!screenshot [env]` | capture the slot browser and attach the PNG |
-| `!help` | command list |
+| Command               | Action                                      |
+| --------------------- | ------------------------------------------- |
+| `!status`             | slot, state, scenario, pending, session     |
+| `!free`               | free slot numbers                           |
+| `!run <ID> [--env N]` | dispatch a scenario                         |
+| `!queue <ID…>`        | fill free slots from a list                 |
+| `!report [env]`       | last assistant report                       |
+| `!decisions`          | pending decisions                           |
+| `!show <dec>`         | decision detail                             |
+| `!file <dec>`         | file it (`decisions file --yes`)            |
+| `!skip <dec>`         | answer skip                                 |
+| `!spawn <dec>`        | spawn an investigator                       |
+| `!screenshot [env]`   | capture the slot browser and attach the PNG |
+| `!help`               | command list                                |
 
 Anything that does not start with `!` goes to the agent: in `#manager` to a
 dedicated `Discord Manager` session running `qa/MANAGER-PROMPT.md`, in `#env-N`
@@ -141,15 +141,15 @@ is the tested runtime here.
 
 ## Troubleshooting
 
-| Symptom | Check |
-|---|---|
-| `1/5 bots online` | token for the failed app; `check` names it |
-| commands do nothing in `#manager` | Message Content Intent on the manager app |
-| `Missing Permissions` | invite used `117760` and channel overwrites allow the bot |
-| dashboard message never appears | bot can View Channel/Send Messages in `#dashboard` |
-| `No QA session in this slot yet` | dispatch a scenario with `!run` first |
-| screenshot fails | `BROWSER_CLI` path and the slot's Chromium on CDP 9221–9224 |
-| agent replies missing | `curl -u opencode:… http://127.0.0.1:4096/api/session/active` |
+| Symptom                           | Check                                                         |
+| --------------------------------- | ------------------------------------------------------------- |
+| `1/5 bots online`                 | token for the failed app; `check` names it                    |
+| commands do nothing in `#manager` | Message Content Intent on the manager app                     |
+| `Missing Permissions`             | invite used `117760` and channel overwrites allow the bot     |
+| dashboard message never appears   | bot can View Channel/Send Messages in `#dashboard`            |
+| `No QA session in this slot yet`  | dispatch a scenario with `!run` first                         |
+| screenshot fails                  | `BROWSER_CLI` path and the slot's Chromium on CDP 9221–9224   |
+| agent replies missing             | `curl -u opencode:… http://127.0.0.1:4096/api/session/active` |
 
 Logs redact nothing that is not already public: tokens are never logged, and
 errors include only HTTP status plus a short response body.

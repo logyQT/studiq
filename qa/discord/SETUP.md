@@ -6,10 +6,10 @@ five applications and the `.env` values below exist.
 
 What you are preparing:
 
-| Bot | Posts in | Purpose |
-|---|---|---|
-| `QA Manager` | `#manager`, `#dashboard` | orchestrator: commands + manager agent chat + live status board |
-| `QA Env 1` … `QA Env 4` | `#env-1` … `#env-4` | chat bridge to that slot's opencode agent + screenshot relay |
+| Bot                     | Posts in                 | Purpose                                                         |
+| ----------------------- | ------------------------ | --------------------------------------------------------------- |
+| `QA Manager`            | `#manager`, `#dashboard` | orchestrator: commands + manager agent chat + live status board |
+| `QA Env 1` … `QA Env 4` | `#env-1` … `#env-4`      | chat bridge to that slot's opencode agent + screenshot relay    |
 
 Files live in the `feat/discord-qa` worktree:
 `/workspaces/studiq/.worktrees/qa-discord/qa/discord/`.
@@ -62,13 +62,13 @@ Two things to know before you start:
 Go to <https://discord.com/developers/applications> → **New Application**, once
 per bot:
 
-| # | Application name | Becomes |
-|---|---|---|
-| 1 | `QA Manager` | manager bot |
-| 2 | `QA Env 1` | env-1 bot |
-| 3 | `QA Env 2` | env-2 bot |
-| 4 | `QA Env 3` | env-3 bot |
-| 5 | `QA Env 4` | env-4 bot |
+| #   | Application name | Becomes     |
+| --- | ---------------- | ----------- |
+| 1   | `QA Manager`     | manager bot |
+| 2   | `QA Env 1`       | env-1 bot   |
+| 3   | `QA Env 2`       | env-2 bot   |
+| 4   | `QA Env 3`       | env-3 bot   |
+| 5   | `QA Env 4`       | env-4 bot   |
 
 For **each** application:
 
@@ -81,7 +81,7 @@ For **each** application:
    Intent**. This is required: without it the bot receives empty message text.
 4. Leave **Presence Intent** and **Server Members Intent** **off** — they are
    not needed and only widen the permission surface.
-5. Copy the **Application ID** from the *General Information* page; you need it
+5. Copy the **Application ID** from the _General Information_ page; you need it
    for the invite URL in §4.
 
 > Tokens are passwords. Never paste them into this chat, a commit, a ticket or
@@ -102,21 +102,21 @@ Open it, pick your QA server, **Authorize**. Repeat for all five apps.
 
 ### Permission integers
 
-| Bot | `permissions` | What that grants |
-|---|---|---|
-| `QA Manager` | `117760` | View Channels, Send Messages, Embed Links, Attach Files, Read Message History |
-| `QA Env 1` … `QA Env 4` | `117760` | exactly the same set |
+| Bot                     | `permissions` | What that grants                                                              |
+| ----------------------- | ------------- | ----------------------------------------------------------------------------- |
+| `QA Manager`            | `117760`      | View Channels, Send Messages, Embed Links, Attach Files, Read Message History |
+| `QA Env 1` … `QA Env 4` | `117760`      | exactly the same set                                                          |
 
 All five bots use the **same** permission integer — `117760`.
 
 Bit breakdown, if you prefer to tick boxes by hand:
 
-| Permission | Bit |
-|---|---|
-| View Channels | 1024 |
-| Send Messages | 2048 |
-| Embed Links | 16384 |
-| Attach Files | 32768 |
+| Permission           | Bit   |
+| -------------------- | ----- |
+| View Channels        | 1024  |
+| Send Messages        | 2048  |
+| Embed Links          | 16384 |
+| Attach Files         | 32768 |
 | Read Message History | 65536 |
 
 `Manage Channels` is **not** needed: channels are never renamed. `Manage
@@ -136,14 +136,14 @@ cannot see the channels.
    → `DISCORD_GUILD_ID`.
 3. **Channel IDs** — right-click each channel → **Copy Channel ID**:
 
-   | Channel | Variable |
-   |---|---|
+   | Channel      | Variable                       |
+   | ------------ | ------------------------------ |
    | `#dashboard` | `DISCORD_DASHBOARD_CHANNEL_ID` |
-   | `#manager` | `DISCORD_MANAGER_CHANNEL_ID` |
-   | `#env-1` | `DISCORD_ENV1_CHANNEL_ID` |
-   | `#env-2` | `DISCORD_ENV2_CHANNEL_ID` |
-   | `#env-3` | `DISCORD_ENV3_CHANNEL_ID` |
-   | `#env-4` | `DISCORD_ENV4_CHANNEL_ID` |
+   | `#manager`   | `DISCORD_MANAGER_CHANNEL_ID`   |
+   | `#env-1`     | `DISCORD_ENV1_CHANNEL_ID`      |
+   | `#env-2`     | `DISCORD_ENV2_CHANNEL_ID`      |
+   | `#env-3`     | `DISCORD_ENV3_CHANNEL_ID`      |
+   | `#env-4`     | `DISCORD_ENV4_CHANNEL_ID`      |
 
 4. **Your user ID** — right-click your own avatar → **Copy User ID**
    → `DISCORD_OWNER_ID`. This is the allowlist: only this account may run
@@ -164,20 +164,20 @@ cp .env.example .env
 Then edit `.env`. Only the blank values need you; the rest already point at
 the live QA stack:
 
-| Variable | Where it comes from |
-|---|---|
-| `DISCORD_GUILD_ID` | §5, server ID |
-| `DISCORD_OWNER_ID` | §5, your user ID |
-| `DISCORD_MANAGER_TOKEN` | `QA Manager` app → Bot → Reset Token |
-| `DISCORD_MANAGER_CHANNEL_ID` | `#manager` channel ID |
-| `DISCORD_DASHBOARD_CHANNEL_ID` | `#dashboard` channel ID |
-| `DISCORD_ENV1_TOKEN` … `DISCORD_ENV4_TOKEN` | `QA Env 1` … `QA Env 4` app tokens |
-| `DISCORD_ENV1_CHANNEL_ID` … `DISCORD_ENV4_CHANNEL_ID` | `#env-1` … `#env-4` channel IDs |
-| `OPENCODE_URL`, `OPENCODE_PASSWORD` | already correct — leave as-is |
-| `DASHBOARD_URL`, `QA_LIVE_ROOT`, `QA_MANAGER_TOOL`, `QA_MANAGER_PROMPT`, `BROWSER_CLI`, `SHOTS_DIR` | already correct — leave as-is |
-| `DISCORD_DRY_RUN` | leave at `1` for now; it becomes `0` only after the first successful dry run |
-| `DISCORD_STATUS_MS` | `15000` — status poll interval |
-| `DISCORD_LOG_LEVEL` | `info` (`debug` for troubleshooting) |
+| Variable                                                                                            | Where it comes from                                                          |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `DISCORD_GUILD_ID`                                                                                  | §5, server ID                                                                |
+| `DISCORD_OWNER_ID`                                                                                  | §5, your user ID                                                             |
+| `DISCORD_MANAGER_TOKEN`                                                                             | `QA Manager` app → Bot → Reset Token                                         |
+| `DISCORD_MANAGER_CHANNEL_ID`                                                                        | `#manager` channel ID                                                        |
+| `DISCORD_DASHBOARD_CHANNEL_ID`                                                                      | `#dashboard` channel ID                                                      |
+| `DISCORD_ENV1_TOKEN` … `DISCORD_ENV4_TOKEN`                                                         | `QA Env 1` … `QA Env 4` app tokens                                           |
+| `DISCORD_ENV1_CHANNEL_ID` … `DISCORD_ENV4_CHANNEL_ID`                                               | `#env-1` … `#env-4` channel IDs                                              |
+| `OPENCODE_URL`, `OPENCODE_PASSWORD`                                                                 | already correct — leave as-is                                                |
+| `DASHBOARD_URL`, `QA_LIVE_ROOT`, `QA_MANAGER_TOOL`, `QA_MANAGER_PROMPT`, `BROWSER_CLI`, `SHOTS_DIR` | already correct — leave as-is                                                |
+| `DISCORD_DRY_RUN`                                                                                   | leave at `1` for now; it becomes `0` only after the first successful dry run |
+| `DISCORD_STATUS_MS`                                                                                 | `15000` — status poll interval                                               |
+| `DISCORD_LOG_LEVEL`                                                                                 | `info` (`debug` for troubleshooting)                                         |
 
 `.env` is git-ignored and must stay on this machine.
 

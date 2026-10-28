@@ -342,7 +342,8 @@ export class StatusPublisher {
     const envLines = this.snapshot.envs.map((env) => {
       // a finished session keeps its title in the dashboard payload; showing it on a
       // free slot reads as stale work, so free means idle
-      const scenario = env.state === 'free' ? 'idle' : env.scenario ? env.scenario.slice(0, 42) : 'no session';
+      const scenario =
+        env.state === 'free' ? 'idle' : env.scenario ? env.scenario.slice(0, 42) : 'no session';
       return `${env.state.padEnd(7)} | ${env.label} · ${scenario} · ${env.pending} pending · ${relative(env.lastActivity)}`;
     });
     const head =
@@ -457,12 +458,21 @@ export class StatusPublisher {
         .map(([stage, n]) => `${n} ${STAGE_LABEL[stage] ?? stage}`)
         .join(' · ');
       const parkedCounts = new Map<string, number>();
-      for (const issue of parked) parkedCounts.set(issue.stage, (parkedCounts.get(issue.stage) ?? 0) + 1);
+      for (const issue of parked)
+        parkedCounts.set(issue.stage, (parkedCounts.get(issue.stage) ?? 0) + 1);
       const parkedLine = [...parkedCounts.entries()]
         .sort((a, b) => rank(a[0]) - rank(b[0]))
         .map(([stage, n]) => `${n} ${STAGE_LABEL[stage] ?? stage}`)
         .join(' · ');
-      return { open: open.length, merged, active: active.length, parked: parked.length, rows, summary, parkedLine };
+      return {
+        open: open.length,
+        merged,
+        active: active.length,
+        parked: parked.length,
+        rows,
+        summary,
+        parkedLine,
+      };
     } catch {
       return null;
     }
