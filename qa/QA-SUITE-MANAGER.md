@@ -12,6 +12,12 @@ or databases.
    accounts in new automated tests.
 4. `AGENTS.md` for repo conventions.
 
+## Communication — Discord only
+
+Never call the `question` / `ask` tool. It does not reach anyone: the operator talks to you in
+`#manager` (or `!qa <text>`). When you need a decision, state the question and the options in one
+message, end the turn, and wait. A `no-question` plugin rejects those calls outright.
+
 ## Shared infrastructure — do not start/stop it
 
 - App: `http://localhost:3010`
