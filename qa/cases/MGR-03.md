@@ -11,56 +11,45 @@
 
 M1 ma dwie organizacje.
 
-## Prerequisite context (tenant model)
+## Seed (tenant model)
 
-The verbatim prerequisite names the legacy manual seed („M1” with WSB Merito and
-UE Wrocław, members S1/S2, groups O1G*/O2G*). The automated case owns a seeded
-tenant with the same shape instead:
+Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`, WSB Merito /
+UE Wrocław). Przypadek dostaje własny tenant z managerem, który jest adminem **dwóch**
+organizacji, i osobnym zestawem danych w każdej z nich:
 
-- **Tenant key**: `tenantKey('qa/cases/MGR-03.md', 'MGR-03#<run>', 'qa-shared')`
-  plus a per-run suffix (`QA_RUN_SUFFIX`, otherwise fresh). Every org/user/group
-  id is `tenantId(key, entity)`; the two organizations use the same key with an
-  `:a` / `:b` suffix for their membership rows.
-- **Organizations**: `qa-mgr03-<run>-a` (the „WSB Merito” substitute) and
-  `qa-mgr03-<run>-b` (the „UE Wrocław” substitute). The seeded `manager` is
-  `admin` in **both**.
-- **Users** (password `Seed4Test!`): `manager` (manager, admin in both orgs),
-  `teacher-a` (educator, org role `teacher` in A), `student-a` (student, org role
-  `member` in A), `student-b` (student, org role `member` in B). Org A therefore
-  has 3 members (1 teacher, 1 student), org B has 2 (0 teachers, 1 student).
-- **Groups**: A → `O1G1` (default, manager + T1 + S1) and `O1G2` (empty);
-  B → `O2G1` (default, manager + S2) — the document's `O1G*` / `O2G*`.
-- **Invitations**: one pending `member` invitation per org, minted by the
-  `manager` through `POST /api/v1/organization/invites` with an explicit
-  `organizationId` (the same request MGR-INV-01 makes), so list scoping is real.
-- The spec seeds the graph at run time with the shared helpers
-  (`__tests__/helpers/tenant-seed.ts`) because the two-org shape is not in
-  `qa/tests/profiles.json`; an out-of-band `qa/.tenants/MGR-03.json` would also
-  not give each independent run a fresh tenant.
+```bash
+bunx playwright test -c qa/playwright.qa.config.ts \
+  qa/tests/MGR/MGR-03.spec.ts --workers=1
+```
 
-## Walk observations (shared app :3010, Polish UI)
+Spec seeduje wszystko sam przez `seedTenantGraph()` (`__tests__/helpers/tenant-seed.ts`),
+więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
 
-- The org switcher sits in the sidebar header: trigger shows the active org name
-  and role „Admin”; the menu lists both organizations (each with its role) and a
-  check mark on the active one, plus „Dołącz do klasy”. Selecting the other org
-  keeps/returns the manager to `/manage` and the header immediately shows the new
-  org; no manual refresh is needed.
-- Dashboard after the switch: A shows 3 total / 1 teacher / 1 student; B shows
-  2 / 0 / 1. „Ostatni członkowie” follows the active org (A: QA S1, QA T1, QA M1;
-  B: QA S2, QA M1).
-- `/manage/members`: A lists QA M1, QA T1, QA S1 (3 łącznie) with group `O1G1`;
-  B lists QA M1, QA S2 (2 łącznie) with group `O2G1`. The other org's rows never
-  appear.
-- `/manage/groups`: A shows `O1G1` (3 members, 1 teacher — the manager counts as
-  the group teacher) and empty `O1G2`; B shows only `O2G1` (2 members,
-  1 teacher). Switching back restores A's groups.
-- `/manage/invites`: A lists only `qa-mgr03-a-<run>@test.local` and B only
-  `qa-mgr03-b-<run>@test.local`, both status „Oczekujące”. The „Wysłane
-  zaproszenia” table is the only list (no other org's invitation leaks in).
-- Switching from a sub-page (e.g. `/manage/invites`) also lands on `/manage`.
-- A hard reload keeps the active organization in both directions (no fallback to
-  the first membership); `GET /api/v1/me/orgs` reports `isActive: true` for it.
-- No deviation from the expected result was observed.
+- Klucz tenanta: `MGR-03.md::MGR-03 organization data isolation::qa-shared::<run>` —
+  `tenantKey('qa/cases/MGR-03.md', <tytuł>, 'qa-shared')` + `tenantId`, ten sam schemat co
+  fixture'y e2e, z sufiksem `::org-a` / `::org-b` na organizację (wspólny `org_members.id`
+  by się inaczej nadpisał). Domyślnie każdy przebieg dostaje świeży sufiks, więc ma własną
+  parę organizacji; `QA_RUN_SUFFIX` utrwala przebieg.
+- Manager `seed-manager-<hash>@dev.local` / `Seed4Test!` — jedno konto, dwa członkostwa:
+  rola `admin` w obu organizacjach.
+- Organizacja A `QA MGR-03 A <run>`: student S1 `seed-student-<hash>@dev.local`, nauczyciel
+  T1 `seed-educator-<hash>@dev.local` (rola organizacyjna `teacher`), grupy `O1G1-<run>`
+  (domyślna, S1 i T1 w środku) i `O1G2-<run>`, jedno oczekujące zaproszenie
+  `mgr03-invite-a-<run>@test.local`. Liczniki pulpitu: 3 członków / 1 wykładowca /
+  1 student.
+- Organizacja B `QA MGR-03 B <run>`: student S2 `seed-student-<hash>@dev.local`, grupy
+  `O2G1-<run>` i `O2G2-<run>`, jedno oczekujące zaproszenie
+  `mgr03-invite-b-<run>@test.local`. Liczniki pulpitu: 2 członków / 0 wykładowców /
+  1 student — celowo inne niż w A, żeby licznik przeciekający z drugiej organizacji nie
+  mógł przypadkiem zgodzić się z oczekiwanym.
+- Druga grupa w każdej organizacji ma managera jako nauczyciela. Lista grup
+  (`/api/v1/organization/groups`) pokazuje grupę tylko wtedy, gdy ma członka z rolą
+  `teacher`.
+- Spec: `qa/tests/MGR/MGR-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+  `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
+- Izolacja: test przełącza wyłącznie organizacje własnego tenanta i czyta listy własnych
+  organizacji. Nie dotyka innego tenanta, ustawień admina, flag funkcji, planów,
+  statystyk platformy ani wierszy singletonowych.
 
 ## Steps
 
@@ -71,3 +60,27 @@ tenant with the same shape instead:
 
 - Po przełączeniu następuje powrót na /manage; dane (członkowie: S1 vs S2, grupy O1G* vs O2G*) odpowiadają aktywnej organizacji.
 - Brak mieszania danych między organizacjami.
+
+## Observations (walk 2026-10-28, shared app :3010, worker qa-env-2)
+
+- Przełącznik organizacji to przycisk na górze sidebara (nazwa organizacji + rola pod
+  nią). Menu ma nagłówek „Organizacje”, listę organizacji z rolą i znacznikiem ✓ przy
+  aktywnej; wybór organizacji od razu przełącza dane.
+- Przełączenie z `/manage` nie zmienia trasy (zostaje `/manage`), a karty pulpitu i
+  „Ostatni członkowie” od razu pokazują drugą organizację: „Łączna liczba członków” =
+  3 / „Wykładowcy” = 1 / „Studenci” = 1 dla organizacji A oraz 2 / 0 / 1 dla organizacji
+  B, a na liście tylko student tej organizacji (S1 albo S2).
+- Przełączenie z podstrony (np. `/manage/invites`) przenosi na `/manage` — zgodnie z
+  oczekiwanym rezultatem.
+- `/manage/members` w aktywnej organizacji: „3 łącznie” (A) lub „2 łącznie” (B),
+  manager (Admin, obie grupy tej organizacji), student tej organizacji z badge swojej
+  grupy domyślnej, a w A dodatkowo nauczyciel T1 z rolą „Teacher” (nazwy ról
+  systemowych pochodzą z `org_roles.display_name` i są angielskie); e-mail i nazwa
+  studenta drugiej organizacji nie występują.
+- `/manage/groups`: dokładnie dwie grupy aktywnej organizacji (`O1G1`/`O1G2` albo
+  `O2G1`/`O2G2`), z licznikiem członków i nauczycieli; grup drugiej organizacji nie ma.
+- `/manage/invites` → „Wysłane zaproszenia”: tylko oczekujące zaproszenie aktywnej
+  organizacji (status „Oczekujące”); zaproszenie drugiej organizacji nie występuje.
+- Wybór organizacji jest stanem serwera (`active_org_id` w cookie): odświeżenie
+  `/manage/members` pokazuje nadal tę samą organizację, a powrót przełącznikiem przywraca
+  dane pierwszej organizacji w obu kierunkach.
