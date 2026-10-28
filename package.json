@@ -47,9 +47,9 @@
     "test:qa": "playwright test -c qa/playwright.qa.config.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.112",
-    "@ai-sdk/openai-compatible": "^2.0.75",
-    "@ai-sdk/react": "^3.0.286",
+    "@ai-sdk/openai": "^4.0.102",
+    "@ai-sdk/openai-compatible": "^3.0.78",
+    "@ai-sdk/react": "^4.0.157",
     "@studiq/server": "workspace:*",
     "@dicebear/core": "^10.7.0",
     "@dicebear/styles": "^10.6.0",
@@ -101,7 +101,7 @@
     "@tiptap/pm": "^3.32.0",
     "@tiptap/react": "^3.32.0",
     "@tiptap/starter-kit": "^3.32.0",
-    "ai": "^6.0.283",
+    "ai": "^7.0.153",
     "autoprefixer": "^10.6.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

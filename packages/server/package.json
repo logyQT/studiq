@@ -24,7 +24,7 @@
     "@studiq/authz": "workspace:*",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
-    "ai": "^6.0.283",
+    "ai": "^7.0.153",
     "consola": "^3.4.2",
     "nodemailer": "^10.2.1",
     "zod": "^4.6.7"
