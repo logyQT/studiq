@@ -12,6 +12,13 @@ or databases.
    accounts in new automated tests.
 4. `AGENTS.md` for repo conventions.
 
+## Durable memory
+
+`.qa-memory/qa-suite.md` is your ledger: one row per case (215), the current batch and the
+environment. **Read it before dispatching**, and update a row the moment a case changes state
+(`pending → running → pr → green → merged`, or `issue`). It is what survives a rotation — a new
+session is seeded with this prompt plus that file, so never rely on remembering a case in chat.
+
 ## Communication — Discord only
 
 Never call the `question` / `ask` tool. It does not reach anyone: the operator talks to you in
