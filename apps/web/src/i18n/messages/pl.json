@@ -1657,6 +1657,8 @@
     "content_required": "Treść pytania jest wymagana"
   },
   "StudentInsights": {
+    "study_range_label": "Zakres czasu nauki",
+    "study_range_days": "Ostatnie {days} dni",
     "load_error": "Nie udało się wczytać statystyk.",
     "retry": "Spróbuj ponownie",
     "duration_lt_min": "< 1 min",

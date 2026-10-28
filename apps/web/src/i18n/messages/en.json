@@ -1677,6 +1677,8 @@
     "content_required": "Question content is required"
   },
   "StudentInsights": {
+    "study_range_label": "Study time range",
+    "study_range_days": "Last {days} days",
     "load_error": "Could not load the statistics.",
     "retry": "Try again",
     "duration_lt_min": "< 1 min",

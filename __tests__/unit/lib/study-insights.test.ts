@@ -293,3 +293,25 @@ describe('the three insight cards report failures (#657 review)', () => {
     expect(schema).not.toMatch(/^AS \$$/m);
   });
 });
+
+describe('insight cards, second review round (#657)', () => {
+  it('draws no bar for a retention bucket without reviews', () => {
+    const card = readFileSync('apps/web/src/components/stats/retention-curve-card.tsx', 'utf8');
+    expect(card).toContain('if (!props.reviews) return null;');
+    expect(card).not.toContain('minPointSize');
+  });
+
+  it('shows the abandoned-session note also when there is no study time', () => {
+    const card = readFileSync('apps/web/src/components/stats/study-time-card.tsx', 'utf8');
+    const empty = card.slice(card.indexOf("t('study_time_empty')"));
+    expect(empty.indexOf("t('study_time_note')")).toBeGreaterThan(-1);
+    expect(empty.indexOf("t('study_time_note')")).toBeLessThan(empty.indexOf('<>'));
+  });
+
+  it('the range selector reads differently from the activity chart one on the same page', () => {
+    const card = readFileSync('apps/web/src/components/stats/study-time-card.tsx', 'utf8');
+    expect(card).toContain("t('study_range_days'");
+    expect(card).not.toContain("t('range_days'");
+    expect(card).toContain("aria-label={t('study_range_label')}");
+  });
+});

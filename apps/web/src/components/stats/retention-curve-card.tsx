@@ -11,12 +11,36 @@ import {
   Skeleton,
 } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
-import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Rectangle,
+  type RectangleProps,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { InsightsError } from '@/components/stats/insights-error';
 import { useStudentInsights } from '@/hooks/use-student-insights';
 import { MIN_BUCKET_REVIEWS, retentionSample } from '@/lib/study-insights';
 
 const DAYS = 30;
+
+/** Smallest bar drawn for a real 0 %, in pixels. */
+const MIN_BAR_PX = 4;
+
+interface BarShapeProps extends RectangleProps {
+  reviews?: number;
+}
+
+function RetentionBar(props: BarShapeProps) {
+  if (!props.reviews) return null;
+  const height = Math.max(props.height ?? 0, MIN_BAR_PX);
+  return (
+    <Rectangle {...props} height={height} y={(props.y ?? 0) - (height - (props.height ?? 0))} />
+  );
+}
 
 /**
  * Retention curve: how often a card is answered correctly as a function of the time since it
@@ -61,11 +85,13 @@ export function RetentionCurveCard() {
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
                 <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} unit="%" />
                 <Tooltip content={<ChartTooltipContent />} />
+                {/* A bucket without reviews is drawn as no bar at all; a real 0 % keeps a sliver. */}
                 <Bar
                   dataKey="accuracy"
                   fill="var(--color-accuracy)"
                   radius={[6, 6, 0, 0]}
-                  minPointSize={4}
+                  // recharts types a shape as always returning an element; this one may draw nothing.
+                  shape={RetentionBar as never}
                 />
               </BarChart>
             </ChartContainer>

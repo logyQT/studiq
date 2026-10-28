@@ -46,15 +46,17 @@ export function StudyTimeCard() {
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="text-base">{t('study_time_title')}</CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" role="group" aria-label={t('study_range_label')}>
           {RANGES.map((range) => (
             <Button
               key={range}
               size="sm"
               variant={days === range ? 'default' : 'outline'}
+              aria-pressed={days === range}
               onClick={() => setDays(range)}
             >
-              {t('range_days', { days: range })}
+              {/* Not the plain "7 days" of the activity chart on the same page: a different selector. */}
+              {t('study_range_days', { days: range })}
             </Button>
           ))}
         </div>
@@ -65,7 +67,11 @@ export function StudyTimeCard() {
         ) : isError || !time ? (
           <InsightsError onRetry={() => refetch()} />
         ) : time.totalMs === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{t('study_time_empty')}</p>
+          <div className="space-y-2 py-8 text-center text-sm text-muted-foreground">
+            <p>{t('study_time_empty')}</p>
+            {/* A session closed before it finished leaves no time behind, so this is when it matters. */}
+            <p className="text-xs">{t('study_time_note')}</p>
+          </div>
         ) : (
           <>
             <dl className="grid gap-4 sm:grid-cols-3">
