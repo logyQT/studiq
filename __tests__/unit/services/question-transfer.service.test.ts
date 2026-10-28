@@ -110,8 +110,10 @@ describe('QuestionTransferService.exportBank', () => {
     });
   });
 
-  const listed = (rows: unknown[]) => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }) as any);
+  const listed = (rows: unknown[], questionCount = rows.length) => {
+    vi.mocked(questionBankService.getById).mockResolvedValue(
+      success({ name: 'B', question_count: questionCount }) as any,
+    );
     vi.mocked(questionService.list).mockResolvedValue(success(rows) as any);
   };
   const row = (over: Record<string, unknown> = {}) => ({
@@ -126,12 +128,28 @@ describe('QuestionTransferService.exportBank', () => {
     ...over,
   });
 
-  it('refuses a bank above the cap instead of cutting it off', async () => {
-    listed(Array.from({ length: 1001 }, () => row()));
+  it('refuses a bank above the cap before reading it, the way PostgREST would clamp it', async () => {
+    // The real query returns at most 1000 rows (max_rows), so the bank's own count decides.
+    listed(
+      Array.from({ length: 1000 }, () => row()),
+      1500,
+    );
 
     const result = await service.exportBank(ctx, 'bank-1');
 
     expect(result).toMatchObject({ success: false, error: 'UNPROCESSABLE_ENTITY' });
+    expect(questionService.list).not.toHaveBeenCalled();
+  });
+
+  it('never answers with fewer questions than the bank holds', async () => {
+    listed(
+      Array.from({ length: 10 }, () => row()),
+      12,
+    );
+
+    const result = await service.exportBank(ctx, 'bank-1');
+
+    expect(result.success).toBe(false);
   });
 
   it('exports a bank of exactly the cap', async () => {

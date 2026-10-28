@@ -46,11 +46,18 @@ export class QuestionTransferService {
     const bank = await questionBankService.getById(bankId, ctx);
     if (!bank.success) return failure(bank.error);
 
+    // The size is checked BEFORE reading: `questionService.list` has no range, so PostgREST clamps
+    // it at its `max_rows` (1000) and a longer bank would come back silently truncated. The bank's
+    // own question count (what the caller can see) is what tells a large bank from a cut one.
+    const declared = Number((bank.data as { question_count?: number }).question_count ?? 0);
+    if (declared > EXPORT_MAX_QUESTIONS) return failure('UNPROCESSABLE_ENTITY');
+
     const listed = await questionService.list(ctx, { bankId });
     if (!listed.success) return failure(listed.error);
 
     const rows = listed.data as ListedQuestion[];
-    if (rows.length > EXPORT_MAX_QUESTIONS) return failure('UNPROCESSABLE_ENTITY');
+    // Rows are never fewer than the bank claims: a shortfall would be a silent truncation.
+    if (rows.length < declared) return failure('INTERNAL_SERVER');
     const questions = rows.map((row): TransferQuestion => {
       const answers = [...(row.question_answers ?? [])].sort(
         (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
