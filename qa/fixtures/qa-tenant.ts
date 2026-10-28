@@ -19,7 +19,7 @@ export interface QaTenant {
   key: string;
   profile?: 'content' | 'bare' | 'org-limit';
   /** Account type of the single user in a `bare` tenant. */
-  role?: 'teacher' | 'manager';
+  role?: 'teacher' | 'manager' | 'student';
   runSuffix?: string | null;
   org: { id: string; name: string } | null;
   group: { id: string; name: string } | null;

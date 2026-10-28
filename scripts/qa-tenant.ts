@@ -71,7 +71,7 @@ const runArg = option('run');
 
 if (!caseId || !/^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(caseId)) {
   console.error(
-    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile content|bare|org-limit] [--role teacher|manager] [--fresh] [--run <suffix>] [--json] [--reset]',
+    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile content|bare|org-limit] [--role teacher|manager|student] [--fresh] [--run <suffix>] [--json] [--reset]',
   );
   process.exit(2);
 }
@@ -79,8 +79,8 @@ if (!PROFILES.includes(profile)) {
   console.error(`unknown profile "${profile}": expected ${PROFILES.join(', ')}`);
   process.exit(2);
 }
-if (role !== 'teacher' && role !== 'manager') {
-  console.error(`unknown role "${role}": expected teacher or manager`);
+if (role !== 'teacher' && role !== 'manager' && role !== 'student') {
+  console.error(`unknown role "${role}": expected teacher, manager or student`);
   process.exit(2);
 }
 if (!existsSync(join(CASES, `${caseId}.md`))) {
@@ -103,7 +103,8 @@ const accounts = {
   invitee1: buildAccount(key, 'invitee1', 'student', { name: 'QA invitee 1' }),
   invitee2: buildAccount(key, 'invitee2', 'student', { name: 'QA invitee 2' }),
 };
-const bareAccount = role === 'manager' ? accounts.manager : accounts.teacher;
+const bareAccount =
+  role === 'manager' ? accounts.manager : role === 'student' ? accounts.student : accounts.teacher;
 const all: SeedAccount[] =
   profile === 'bare'
     ? [bareAccount]
