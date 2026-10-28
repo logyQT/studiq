@@ -62,10 +62,28 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 
 1. **Reconcile the case with the seeder.** The case was written against the legacy manual
    seed (`student1@dev.local`, `O1G1`, …). Rewrite its `Prereqs`/`Seed` block to the tenant
-   model — this case's tenant, its users, and the `bare`/`content` profile it needs — and
-   keep the human observations.
-2. Seed the case's isolated tenant (reuse the e2e tenant helpers; do not add a new ID
-   scheme). Use a fresh run suffix for each independent run.
+   model — this case's tenant, its users, and the tenant shape it needs — and keep the human
+   observations.
+2. **Declare the tenant shape in the case's own profile file.** One JSON file per case:
+   `qa/tests/profiles/{{CASE_ID}}.json`, containing that case's entry only, e.g.
+   `"bare"`, `{ "profile": "bare", "role": "manager" }`, `"org-limit"`,
+   `{ "profile": "content", "plan": "hub" }`.
+   There is **no shared manifest** — do not create or edit a `profiles.json`, and do not
+   touch another case's profile file. A case PR adds exactly one new file, which is why two
+   case PRs can no longer conflict.
+   Seed with `bun scripts/qa-tenant.ts {{CASE_ID}} --fresh` (the profile is read from your
+   file; `--profile`/`--role` override it). Use a fresh run suffix for each independent run.
+
+   **Do not fork the seeder or the fixture.** `scripts/qa-tenant.ts` and
+   `qa/fixtures/*` are manager-owned:
+   - never add a second path alias (`#qa/*`), a second login helper (`signIn`), or a
+     parallel tenant loader — the API is `loadTenant(caseId)` and
+     `loginAs(page, tenant, role, { locale, waitFor })` from `@qa/fixtures/qa-tenant`;
+   - never read `qa/.tenants/<CASE>.json` directly — go through `loadTenant`;
+   - if your case needs a tenant shape the seeder cannot express, **say so in the PR/issue
+     and stop**; the manager adds the profile. A case PR that rewrites the seeder is
+     rejected even when its spec is green.
+
 3. **Walk the case yourself first.** In the assigned browser tile, against the shared app,
    execute every step as a tester would. Record the real screens, states, copy and selectors,
    and anything that contradicts the case.
@@ -83,7 +101,8 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
    Green 3/3 is required. Keep the run IDs/logs as evidence.
 7. If all 3 are green:
    - branch from `qa-suite` as `qa/{{CASE_ID}}`
-   - commit only the spec, the reconciled case and necessary fixtures
+   - commit only the spec, the reconciled case, and your own
+     `qa/tests/profiles/{{CASE_ID}}.json` (no seeder/fixture rewrites)
    - open a PR into `qa-suite` from `qa/{{CASE_ID}}`, never commit directly
 8. If anything is flaky, skipped, blocked, or requires shared mutable data: do not open
    the PR; report the exact failure (step 4 applies).
