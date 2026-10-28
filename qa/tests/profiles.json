@@ -6,5 +6,6 @@
   "ONB-08": "content",
   "ONB-10": "org-limit",
   "MGR-GRP-02": "org-limit",
-  "MGR-ROL-02": { "profile": "content", "plan": "hub" }
+  "MGR-ROL-02": { "profile": "content", "plan": "hub" },
+  "MGR-ROL-04": { "profile": "content", "plan": "hub" }
 }
