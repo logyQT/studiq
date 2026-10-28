@@ -6,14 +6,16 @@ import { test as base, expect, type Page } from '@playwright/test';
  * The tenant a case runs against. `bun scripts/qa-tenant.ts <CASEID>` writes
  * `qa/.tenants/<CASEID>.json`; the spec never creates accounts itself.
  *
- * A `bare` tenant is the first-run state: one educator, no organization and no
- * group. It is seeded with `--profile bare --fresh`, so the account has never
- * onboarded.
+ * A `bare` tenant is the first-run state: one staff account, no organization and
+ * no group. It is seeded with `--profile bare --role <manager|teacher> --fresh`,
+ * so the account has never onboarded.
  */
 export interface QaTenant {
   case: string;
   key: string;
   profile?: 'content' | 'bare';
+  /** Account type of the single user in a `bare` tenant. */
+  role?: 'teacher' | 'manager';
   runSuffix?: string | null;
   org: { id: string; name: string } | null;
   group: { id: string; name: string } | null;
