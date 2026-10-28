@@ -199,17 +199,12 @@ jobs:
           done
           curl -sf -o /dev/null http://localhost:3010/login
 
-      - name: Seed one tenant per spec
-        # `--fresh` folds a run suffix into the tenant key. The auth specs assert
-        # that the address they register does not exist yet (`tenant.runSuffix`),
-        # so a suffix-free seed fails them with "seed with --fresh" even on an
-        # empty database.
-        run: |
-          for spec in qa/tests/*/*.spec.ts; do
-            [ -e "$spec" ] || continue
-            case_id=$(basename "$spec" .spec.ts)
-            bun scripts/qa-tenant.ts "$case_id" --fresh
-          done
+      - name: Seed every tenant once
+        # Same shape as `scripts/e2e-seed.ts`: one process, one run suffix, before
+        # Playwright starts. Seeding inside the run would stall the app and the
+        # 4-worker suite against it; every spec still gets its own tenant because
+        # the suffix is folded into each case's key.
+        run: bun scripts/qa-tenant.ts --all --run "ci${{ github.run_id }}"
 
       - name: Run the QA suite
         run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line
