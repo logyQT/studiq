@@ -1,5 +1,8 @@
 {
-  "AUT-02": "bare",
+  "AUT-01": {
+    "profile": "bare",
+    "role": "student"
+  },
   "ONB-01": "bare",
   "ONB-02": "bare",
   "ONB-04": {
@@ -40,5 +43,6 @@
   "MGR-SET-05": {
     "profile": "content",
     "plan": "hub"
-  }
+  },
+  "AUT-02": "content"
 }
