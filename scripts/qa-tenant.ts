@@ -4,10 +4,17 @@
  *   bun scripts/qa-tenant.ts PUB-01
  *   bun scripts/qa-tenant.ts PUB-01 --json
  *   bun scripts/qa-tenant.ts PUB-01 --reset
+ *   bun scripts/qa-tenant.ts ONB-01 --profile bare
  *
- * One command, one tenant: org + manager/teacher/student + a default group, all
- * deterministic from the case id. The spec builds its own decks/banks/quizzes
- * through the API, so nothing shared leaks between cases.
+ * One command, one tenant, all deterministic from the case id. The spec builds its
+ * own decks/banks/quizzes through the API, so nothing shared leaks between cases.
+ *
+ * Profiles:
+ * - `content` (default) — org + manager/teacher/student + a default group.
+ * - `bare` — a single educator with **no organization and no group**, for the
+ *   first-run onboarding cases (`ONB-01`) whose whole subject is the `/setup`
+ *   gate. Nothing else is created, so the account cannot accidentally inherit an
+ *   org from an earlier seed.
  *
  * Writes `qa/.tenants/<CASEID>.json` for the spec/fixture to read.
  */
@@ -27,12 +34,27 @@ const CASES = join(ROOT, 'qa', 'cases');
 const OUT = join(ROOT, 'qa', '.tenants');
 
 const args = process.argv.slice(2);
-const caseId = args.find((a) => !a.startsWith('--'));
+const caseId = args.find((a) => !a.startsWith('--') && a !== profileArg());
 const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
 
+function profileArg(): string | undefined {
+  const inline = args.find((a) => a.startsWith('--profile='));
+  if (inline) return inline.slice('--profile='.length);
+  const index = args.indexOf('--profile');
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
+const profile = (profileArg() ?? 'content') as 'bare' | 'content';
+
 if (!caseId || !/^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(caseId)) {
-  console.error('usage: bun scripts/qa-tenant.ts <CASEID> [--json] [--reset]');
+  console.error(
+    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile bare|content] [--json] [--reset]',
+  );
+  process.exit(2);
+}
+if (profile !== 'bare' && profile !== 'content') {
+  console.error(`unknown profile ${profile}: use bare or content`);
   process.exit(2);
 }
 if (!existsSync(join(CASES, `${caseId}.md`))) {
@@ -48,7 +70,8 @@ const accounts = {
   teacher: buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' }),
   student: buildAccount(key, 'student', 'student', { name: 'QA student' }),
 };
-const all: SeedAccount[] = [accounts.manager, accounts.teacher, accounts.student];
+const all: SeedAccount[] =
+  profile === 'bare' ? [accounts.teacher] : [accounts.manager, accounts.teacher, accounts.student];
 
 // Local convenience: reuse the app's env file when the vars are not exported.
 function loadEnv(): void {
@@ -71,11 +94,58 @@ const db = createSeedDb();
 const orgName = `qa-${caseId.toLowerCase()}-${key.slice(-6)}`;
 
 if (reset) {
-  await db.from('organizations').delete().eq('id', orgId);
+  if (profile === 'content') await db.from('organizations').delete().eq('id', orgId);
+  // A bare tenant is defined by *not* being in an org: clear a membership left
+  // behind by an earlier `content` seed with the same case key.
+  if (profile === 'bare') await db.from('org_members').delete().eq('user_id', accounts.teacher.id);
   for (const account of all) {
     if (account.id) await db.auth.admin.deleteUser(account.id).catch(() => undefined);
   }
-  if (!jsonOnly) console.log(`qa tenant ${caseId}: reset (org ${orgId})`);
+  if (!jsonOnly) console.log(`qa tenant ${caseId}: reset (${profile})`);
+  process.exit(0);
+}
+
+if (profile === 'bare') {
+  // The account must exist before the membership sweep (FK), so create first and
+  // then guarantee it belongs to no organization.
+  await seedTenantGraph(db, {
+    key,
+    org: null,
+    defaultGroup: null,
+    extraGroups: [],
+    owner: accounts.teacher,
+    members: [],
+    ownerOrgRole: 'admin',
+  });
+  await db.from('org_members').delete().eq('user_id', accounts.teacher.id);
+
+  const bareTenant = {
+    case: caseId,
+    key,
+    profile,
+    org: null,
+    group: null,
+    users: {
+      teacher: {
+        id: accounts.teacher.id,
+        email: accounts.teacher.email,
+        password: accounts.teacher.password,
+      },
+    },
+  };
+
+  mkdirSync(OUT, { recursive: true });
+  writeFileSync(join(OUT, `${caseId}.json`), JSON.stringify(bareTenant, null, 2));
+
+  if (jsonOnly) {
+    console.log(JSON.stringify(bareTenant, null, 2));
+  } else {
+    console.log(`qa tenant ${caseId} (bare — no organization)`);
+    console.log(
+      `  teacher  ${bareTenant.users.teacher.email} / ${bareTenant.users.teacher.password}`,
+    );
+    console.log(`  file     qa/.tenants/${caseId}.json`);
+  }
   process.exit(0);
 }
 
@@ -92,6 +162,7 @@ const seeded = await seedTenantGraph(db, {
 const tenant = {
   case: caseId,
   key,
+  profile,
   org: { id: seeded.orgId, name: orgName },
   users: {
     manager: { id: seeded.owner.id, email: seeded.owner.email, password: seeded.owner.password },
