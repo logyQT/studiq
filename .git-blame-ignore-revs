@@ -16,3 +16,5 @@
 
 # style: apply bun fmt across markdown, yaml and toml
 0e27b849330c6c1b45fdfa32d6c7580315e7465e
+# style(qa): format qa/AGENT-PROMPT.md
+a7163a3da37ad9d1e820eaccd5317460b32c2c61
