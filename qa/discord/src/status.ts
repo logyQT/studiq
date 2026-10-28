@@ -340,12 +340,16 @@ export class StatusPublisher {
     const counts = this.counts();
     const pipeline = this.pipelineInfo();
     const envLines = this.snapshot.envs.map((env) => {
-      const scenario = env.scenario ? env.scenario.slice(0, 42) : 'no session';
+      // a finished session keeps its title in the dashboard payload; showing it on a
+      // free slot reads as stale work, so free means idle
+      const scenario = env.state === 'free' ? 'idle' : env.scenario ? env.scenario.slice(0, 42) : 'no session';
       return `${env.state.padEnd(7)} | ${env.label} · ${scenario} · ${env.pending} pending · ${relative(env.lastActivity)}`;
     });
     const head =
       `**Caretaker** — ${counts.busy} busy · ${counts.free} free` +
-      (pipeline ? ` · ${pipeline.open} open · ${pipeline.merged} merged` : '');
+      (pipeline
+        ? ` · ${pipeline.active} active · ${pipeline.parked} parked · ${pipeline.merged} merged`
+        : '');
 
     // Discord trims leading whitespace, so the blank first line is anchored by a
     // zero-width space: the message opens with an empty line, as requested.
@@ -357,6 +361,11 @@ export class StatusPublisher {
     if (pipeline && pipeline.rows.length) {
       const summary = pipeline.summary ? ` — ${pipeline.summary}` : '';
       lines.push('', `**Pipeline**${summary}`, '```', ...pipeline.rows, '```');
+    } else if (pipeline) {
+      lines.push('', '**Pipeline** — no active work');
+    }
+    if (pipeline && pipeline.parkedLine) {
+      lines.push('', `**Parked** — ${pipeline.parkedLine} (decided, not started)`);
     }
 
     lines.push('', `dashboard: ${this.config.dashboardUrl}/`);
@@ -403,7 +412,15 @@ export class StatusPublisher {
   }
 
   /** Open issues by stage, from the same state file the manager tooling writes. */
-  private pipelineInfo(): { open: number; merged: number; rows: string[]; summary: string } | null {
+  private pipelineInfo(): {
+    open: number;
+    merged: number;
+    active: number;
+    parked: number;
+    rows: string[];
+    summary: string;
+    parkedLine: string;
+  } | null {
     const path = resolve(this.config.liveRoot, '../../.qa-fix/state.json');
     try {
       if (!existsSync(path)) return null;
@@ -417,12 +434,15 @@ export class StatusPublisher {
         attempt: Number(rec.attempt ?? 1),
       }));
       const merged = issues.filter((issue) => issue.stage === 'done').length;
+      const PARKED = new Set(['design_ready', 'needs_design', 'blocked']);
       const open = issues.filter((issue) => issue.stage !== 'done');
+      const active = open.filter((issue) => !PARKED.has(issue.stage));
+      const parked = open.filter((issue) => PARKED.has(issue.stage));
       const rank = (stage: string): number => {
         const at = STAGE_ORDER.indexOf(stage);
         return at === -1 ? STAGE_ORDER.length : at;
       };
-      const rows = open
+      const rows = active
         .sort((a, b) => rank(a.stage) - rank(b.stage) || a.number - b.number)
         .slice(0, 10)
         .map((issue) => {
@@ -431,12 +451,18 @@ export class StatusPublisher {
           return `#${String(issue.number).padEnd(5)}${stage}${pr}r${issue.attempt}`;
         });
       const counts = new Map<string, number>();
-      for (const issue of open) counts.set(issue.stage, (counts.get(issue.stage) ?? 0) + 1);
+      for (const issue of active) counts.set(issue.stage, (counts.get(issue.stage) ?? 0) + 1);
       const summary = [...counts.entries()]
         .sort((a, b) => rank(a[0]) - rank(b[0]))
         .map(([stage, n]) => `${n} ${STAGE_LABEL[stage] ?? stage}`)
         .join(' · ');
-      return { open: open.length, merged, rows, summary };
+      const parkedCounts = new Map<string, number>();
+      for (const issue of parked) parkedCounts.set(issue.stage, (parkedCounts.get(issue.stage) ?? 0) + 1);
+      const parkedLine = [...parkedCounts.entries()]
+        .sort((a, b) => rank(a[0]) - rank(b[0]))
+        .map(([stage, n]) => `${n} ${STAGE_LABEL[stage] ?? stage}`)
+        .join(' · ');
+      return { open: open.length, merged, active: active.length, parked: parked.length, rows, summary, parkedLine };
     } catch {
       return null;
     }
