@@ -9,7 +9,8 @@ import { defineConfig, devices } from '@playwright/test';
  * browser tiles, and a parallel run OOM-kills it.
  */
 export default defineConfig({
-  // Relative to this config file (`qa/`), so the specs live in `qa/tests/`.
+  // `testDir` is resolved relative to this config file, not the repo root:
+  // `./qa/tests` would point at `qa/qa/tests` and match zero specs.
   testDir: './tests',
   fullyParallel: false,
   workers: 1,
