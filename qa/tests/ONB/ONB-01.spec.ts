@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, loadBareTenant, signIn, test } from '@qa/fixtures/qa-tenant';
+import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
 /**
  * ONB-01 — Nauczyciel bez organizacji → /setup.
@@ -19,7 +19,7 @@ import { expect, loadBareTenant, signIn, test } from '@qa/fixtures/qa-tenant';
  * cookie from an earlier case cannot change the strings under test.
  */
 
-const TENANT = loadBareTenant('ONB-01');
+const TENANT = loadTenant('ONB-01');
 
 const CHOOSER = {
   title: 'Witaj w StudiQ',
@@ -49,7 +49,7 @@ function chooserHeading(page: Page) {
 test('an educator without an organization lands on the /setup chooser right after login', async ({
   page,
 }) => {
-  await signIn(page, TENANT.users.teacher, 'pl');
+  await loginAs(page, TENANT, 'teacher', { locale: 'pl', waitFor: /\/setup$/ });
   await expectNoOrganizations(page);
 
   // `/login` is where an authenticated user is sent next; the proxy forwards the
@@ -64,7 +64,7 @@ test('an educator without an organization lands on the /setup chooser right afte
 });
 
 test('/edu redirects an educator without an organization back to /setup', async ({ page }) => {
-  await signIn(page, TENANT.users.teacher, 'pl');
+  await loginAs(page, TENANT, 'teacher', { locale: 'pl', waitFor: /\/setup$/ });
   await expectNoOrganizations(page);
 
   await page.goto('/edu');
@@ -78,7 +78,7 @@ test('/edu redirects an educator without an organization back to /setup', async 
 test('both chooser options open their setup page and the header returns to the chooser', async ({
   page,
 }) => {
-  await signIn(page, TENANT.users.teacher, 'pl');
+  await loginAs(page, TENANT, 'teacher', { locale: 'pl', waitFor: /\/setup$/ });
   await expectNoOrganizations(page);
   await page.goto('/setup');
   await expect(chooserHeading(page)).toBeVisible();
