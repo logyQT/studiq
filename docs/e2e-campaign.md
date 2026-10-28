@@ -41,14 +41,14 @@ only fixed values are product constants (plan keys, permission scope names).
 
 ## Fixtures (target API)
 
-| helper | purpose |
-|---|---|
-| `tenant` (via `test.extend`) | org + accounts + login state for the test |
-| `loginAs('manager' \| 'teacher' \| 'student')` | storage state for this test's account |
-| `makeDeck()`, `makeBank()`, `makeQuestion()`, `makeQuiz()`, `makeAssignment()` | API-seeded graph |
-| `mailbox()` | Inbucket token/link extraction (signup + invite cases) |
-| `stripeMock()`, `aiMock()`, `clock()` | the other three flakiness sources |
-| `assertTenantIsolation(a, b)` | asserts 403/404 across tenants |
+| helper                                                                         | purpose                                                |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| `tenant` (via `test.extend`)                                                   | org + accounts + login state for the test              |
+| `loginAs('manager' \| 'teacher' \| 'student')`                                 | storage state for this test's account                  |
+| `makeDeck()`, `makeBank()`, `makeQuestion()`, `makeQuiz()`, `makeAssignment()` | API-seeded graph                                       |
+| `mailbox()`                                                                    | Inbucket token/link extraction (signup + invite cases) |
+| `stripeMock()`, `aiMock()`, `clock()`                                          | the other three flakiness sources                      |
+| `assertTenantIsolation(a, b)`                                                  | asserts 403/404 across tenants                         |
 
 ## Spec contract
 
@@ -59,11 +59,11 @@ only fixed values are product constants (plan keys, permission scope names).
 
 ## Corpus adaptations (before the affected specs are written)
 
-| case(s) | change |
-|---|---|
-| `LIM-02`, `LIM-06`, `ADM-FLG-01..04` | create their own plan / flag row through the admin API instead of mutating seeded config |
-| `LIM-03` → `BIL-03`, `LIM-04` → `EDU-GRP-04` + `ONB-10` | the prerequisite chain becomes fixture setup, not a manual step |
-| `EDU-ASG-10`, `EDU-QZ-04`, `LIM-02`, `NFR-03`, `NFR-05`, `NFR-06`, `NFR-07`, `NFR-08` | stay **semantic** — see below |
+| case(s)                                                                               | change                                                                                   |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `LIM-02`, `LIM-06`, `ADM-FLG-01..04`                                                  | create their own plan / flag row through the admin API instead of mutating seeded config |
+| `LIM-03` → `BIL-03`, `LIM-04` → `EDU-GRP-04` + `ONB-10`                               | the prerequisite chain becomes fixture setup, not a manual step                          |
+| `EDU-ASG-10`, `EDU-QZ-04`, `LIM-02`, `NFR-03`, `NFR-05`, `NFR-06`, `NFR-07`, `NFR-08` | stay **semantic** — see below                                                            |
 
 ## Semantic cases (the agentic remainder)
 
@@ -85,7 +85,7 @@ Triage today: **195 e2e · 12 API-level · 8 semantic** (of 215 cases).
 ## CI
 
 - ephemeral local Supabase per run, service-role key in the test env (test-only);
-- `workers` in `playwright.config.ts` is `1` on CI *because* today's specs share seed
+- `workers` in `playwright.config.ts` is `1` on CI _because_ today's specs share seed
   accounts — once isolation lands it should be raised (start at 2–4 and measure); shard by
   area if one machine stops being enough;
 - traces and videos on failure; the run prints `green / red / semantic`.

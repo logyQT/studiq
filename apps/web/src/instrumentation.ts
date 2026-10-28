@@ -1,4 +1,11 @@
 export async function register() {
+  // A bad MAIL_DRIVER / SMTP setting must stop the server at boot (#604), not surface later as
+  // invitations that silently never arrive. Runs before the telemetry opt-out below.
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { getMailer } = await import('@studiq/server/lib/mailer');
+    getMailer();
+  }
+
   if (process.env.OTEL_SDK_DISABLED === 'true') return;
 
   const { NodeSDK } = await import('@opentelemetry/sdk-node');
@@ -26,10 +33,12 @@ export async function register() {
       [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment,
     }),
     traceExporter: new OTLPTraceExporter(),
-    metricReader: new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter(),
-      exportIntervalMillis: 15_000,
-    }),
+    metricReaders: [
+      new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter(),
+        exportIntervalMillis: 15_000,
+      }),
+    ],
     logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })],
     instrumentations: [getNodeAutoInstrumentations()],
   });

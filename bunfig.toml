@@ -4,9 +4,17 @@
 [fmt]
 printWidth = 100
 singleQuote = true
-# The old Biome formatter only touched JS/TS/JSON/CSS. Keep Markdown, YAML, TOML and
-# HTML out of scope so the switch does not reformat documentation or config prose.
-ignorePatterns = ["**/*.md", "**/*.yml", "**/*.yaml", "**/*.toml", "**/*.html", "**/*.jsonc"]
+# Formatting covers Markdown, YAML, TOML and HTML too (the one-time first pass over
+# those types is listed in .git-blame-ignore-revs).
+#
+# `*.jsonc` stays out of scope: `bun fmt` rewrites JSONC with trailing commas, which is
+# valid JSONC but risks breaking readers that strip comments and then call `JSON.parse`
+# (e.g. the OpenCode config loader).
+#
+# `.agents/skills/` stays out of scope: it is vendored third-party skill content whose
+# `SKILL.md` files are checksummed in skills-lock.json. See .git-blame-ignore-revs for
+# the one-time pass over the rest of the repo.
+ignorePatterns = ["**/*.jsonc", ".agents/skills/**"]
 
 [lint]
 # Scope is passed by the scripts (`bun run lint` covers apps/*/src, packages and

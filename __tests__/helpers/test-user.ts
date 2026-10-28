@@ -1,26 +1,29 @@
 import type { NextRequest } from 'next/server';
-import { createServiceClient, mockUser, useRealSupabase } from '#test/integration/helpers';
+import { mockUser } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
-import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
+import {
+  buildAccount,
+  createSeedDb,
+  ensureAccount,
+  randomTag,
+  seedTenantGraph,
+  tenantId,
+} from '#test/helpers/tenant-seed';
 import { POST as createDeckPost } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { POST as createFlashcardPost } from '@/app/(backend)/api/v1/flashcards/route';
 import { POST as createTopicPost } from '@/app/(backend)/api/v1/flashcards/topics/route';
-import { PUT as setGroupMembersPut } from '@/app/(backend)/api/v1/organization/groups/[id]/members/route';
-import { POST as createGroupPost } from '@/app/(backend)/api/v1/organization/groups/route';
-import { POST as acceptInvitePost } from '@/app/(backend)/api/v1/organization/invites/accept/route';
-import { POST as createInvitePost } from '@/app/(backend)/api/v1/organization/invites/route';
-import { POST as createOrgPost } from '@/app/(backend)/api/v1/organization/route';
-import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { POST as createQuestionPost } from '@/app/(backend)/api/v1/questions/route';
+import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 import { POST as createQuizPost } from '@/app/(backend)/api/v1/teacher/quizzes/route';
 
 // ============================================================
-// API-first test seeding
-// Creates users, organizations, members and content through the
-// real API routes (register → org → invites → groups → content).
-// DB (service-role) access is limited to idempotency checks,
-// email confirmation and fallbacks for endpoints with no route yet.
+// Test fixtures built on the shared tenant seeder
+// (__tests__/helpers/tenant-seed.ts, also used by scripts/e2e-seed.ts).
+//
+// The seeder owns accounts, organizations, roles, the default group and
+// memberships. Content (topics/decks/flashcards/questions/quizzes/assignments)
+// is still created through the real API routes so those flows stay covered.
 // ============================================================
 
 export type CreateTestUserRole = 'student' | 'educator' | 'manager';
@@ -36,6 +39,8 @@ export interface TestUserFixture {
   id: string;
   email: string;
   role: CreateTestUserRole;
+  /** Present for accounts created through `createTestUser` (API login fixtures). */
+  password?: string;
 }
 
 export interface SeedProfile {
@@ -70,13 +75,6 @@ export interface BeforeResult {
 }
 
 const BASE_URL = 'http://localhost';
-
-function randomTag(length = 8): string {
-  const hex = '0123456789abcdef';
-  let out = '';
-  for (let i = 0; i < length; i++) out += hex[Math.floor(Math.random() * 16)];
-  return out;
-}
 
 function randomLetters(length = 6): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz';
@@ -122,170 +120,98 @@ async function api<T>(
 }
 
 // ============================================================
-// createTestUser — idempotent, real register API + email confirm
+// createTestUser — idempotent; account rows come from the shared seeder
 // ============================================================
 export async function createTestUser(opts: CreateTestUserOptions): Promise<TestUserFixture> {
   const email = opts.email ?? `seed-${opts.role}-${randomTag()}@dev.local`;
   const password = opts.password ?? 'Seed4Test!';
   const name = opts.name ?? `Seed ${opts.role} ${randomLetters()}`;
 
-  const service = createServiceClient();
-
-  const { data: existing } = await service
-    .from('profiles')
-    .select('id')
-    .eq('email', email)
-    .maybeSingle();
-  if (existing) {
-    return { id: existing.id, email, role: opts.role };
-  }
-
-  useRealSupabase();
-  await api('register', registerPost, '/api/v1/auth/register', 'POST', {
-    body: { name, email, password, accountType: opts.role },
+  const account = buildAccount(`user:${crypto.randomUUID()}`, 'user', opts.role, {
+    email,
+    password,
+    name,
   });
-
-  const { data: profile, error } = await service
-    .from('profiles')
-    .select('id')
-    .eq('email', email)
-    .single();
-  if (error || !profile) {
-    throw new Error(`[seed] profile not created for ${email}: ${error?.message}`);
-  }
-
-  const { error: confirmError } = await service.auth.admin.updateUserById(profile.id, {
-    email_confirm: true,
-  });
-  if (confirmError) {
-    throw new Error(`[seed] failed to confirm email for ${email}: ${confirmError.message}`);
-  }
-
-  return { id: profile.id, email, role: opts.role };
+  const seeded = await ensureAccount(createSeedDb(), account);
+  return {
+    id: seeded.id,
+    email: seeded.email,
+    role: seeded.role,
+    password: seeded.password,
+  };
 }
 
 // ============================================================
-// seedViaApi — org, members (invite+accept), groups, content
+// seedViaApi — tenant graph from the seeder, content via the API
 // ============================================================
 export async function seedViaApi(
   user: TestUserFixture,
   profile: Omit<SeedProfile, 'role'>,
 ): Promise<BeforeResult> {
-  const service = createServiceClient();
   const tags = `${user.email.split('@')[0]}-${randomTag(4)}`;
+  const key = `fixture:${crypto.randomUUID()}`;
   const cookie = profile.org ? { active_org_id: '' } : undefined;
 
-  let orgId: string | null = null;
-  let defaultGroupId: string | null = null;
-  const groups: string[] = [];
-  const memberUsers: TestUserFixture[] = [];
-  const created = {
-    topics: [],
-    decks: [],
-    flashcards: [],
-    questions: [],
-    quizzes: [],
-    assignmentId: null as string | null,
-  };
-
-  mockUser(user);
-
   const wantsOrg = !!profile.org && user.role !== 'student';
-  if (wantsOrg) {
-    const orgName = typeof profile.org === 'string' ? profile.org : `seed-org-${tags}`;
-    const org = await api<{ id: string }>(
-      'create-organization',
-      createOrgPost,
-      '/api/v1/organization',
-      'POST',
-      { body: { name: orgName } },
-    );
-    orgId = org.id;
-  }
+  const orgName =
+    wantsOrg && profile.org
+      ? typeof profile.org === 'string'
+        ? profile.org
+        : `seed-org-${tags}`
+      : null;
+
+  const memberCount = wantsOrg ? (profile.members?.count ?? 0) : 0;
+  const extraGroupCount = wantsOrg ? (profile.groups ?? 0) : 0;
+  const members = Array.from({ length: memberCount }, (_, index) =>
+    buildAccount(key, `member:${index}`, 'student'),
+  );
+  const extraGroups = Array.from({ length: extraGroupCount }, (_, index) => ({
+    id: tenantId(key, `group:${index}`),
+    name: `seed-group-${tags}-${index}`,
+    isDefault: false,
+  }));
+
+  const graph = await seedTenantGraph(createSeedDb(), {
+    key,
+    org: orgName ? { id: tenantId(key, 'org'), name: orgName } : null,
+    defaultGroup: orgName
+      ? { id: tenantId(key, 'group:default'), name: 'Członkowie', isDefault: true }
+      : null,
+    extraGroups,
+    owner: {
+      id: user.id,
+      email: user.email,
+      password: 'Seed4Test!',
+      role: user.role,
+      accountType: user.role,
+      name: user.email,
+    },
+    members,
+    ownerOrgRole: 'admin',
+  });
+
+  const orgId = graph.orgId;
+  const defaultGroupId = graph.defaultGroupId;
+  const groups = graph.groups.map((group) => group.id);
+  const memberUsers: TestUserFixture[] = graph.members.map((member) => ({
+    id: member.id,
+    email: member.email,
+    role: member.role,
+    password: member.password,
+  }));
 
   if (orgId) {
     cookie!.active_org_id = orgId;
-
-    const { data: defaultGroup } = await service
-      .from('groups')
-      .select('id')
-      .eq('organization_id', orgId)
-      .eq('is_default', true)
-      .maybeSingle();
-    defaultGroupId = defaultGroup?.id ?? null;
   }
 
-  // Extra groups via API.
-  const extraGroups = profile.groups ?? 0;
-  if (orgId) {
-    for (let i = 0; i < extraGroups; i++) {
-      const group = await api<{ id: string }>(
-        'create-group',
-        createGroupPost,
-        '/api/v1/organization/groups',
-        'POST',
-        { body: { name: `seed-group-${tags}-${i}` } },
-        cookie,
-      );
-      groups.push(group.id);
-    }
-    if (defaultGroupId) groups.unshift(defaultGroupId);
-  }
-
-  // Members via invite → accept → (optionally) group membership.
-  const memberCount = profile.members?.count ?? 0;
-  if (orgId && memberCount > 0) {
-    const { data: memberRole } = await service
-      .from('org_roles')
-      .select('id')
-      .eq('organization_id', orgId)
-      .eq('name', 'member')
-      .single();
-    if (!memberRole) throw new Error('[seed] member org role not found');
-
-    for (let i = 0; i < memberCount; i++) {
-      const member = await createTestUser({ role: 'student' });
-
-      mockUser(user);
-      await api(
-        'create-invite',
-        createInvitePost,
-        '/api/v1/organization/invites',
-        'POST',
-        { body: { email: member.email, targetOrgRoleId: memberRole.id } },
-        cookie,
-      );
-
-      const { data: invite } = await service
-        .from('invitations')
-        .select('token')
-        .eq('email', member.email)
-        .eq('organization_id', orgId)
-        .order('expires_at', { ascending: false })
-        .limit(1)
-        .single();
-      if (!invite) throw new Error(`[seed] invite token not found for ${member.email}`);
-
-      mockUser(member);
-      await api('accept-invite', acceptInvitePost, '/api/v1/organization/invites/accept', 'POST', {
-        body: { token: invite.token },
-      });
-
-      if (defaultGroupId) {
-        mockUser(user);
-        await api(
-          'add-to-group',
-          (req) => setGroupMembersPut(req, { params: Promise.resolve({ id: defaultGroupId }) }),
-          `/api/v1/organization/groups/${defaultGroupId}/members`,
-          'PUT',
-          { body: { members: [{ userId: member.id, role: 'member' }] } },
-          cookie,
-        );
-      }
-
-      memberUsers.push(member);
-    }
-  }
+  const created = {
+    topics: [] as string[],
+    decks: [] as string[],
+    flashcards: [] as string[],
+    questions: [] as string[],
+    quizzes: [] as string[],
+    assignmentId: null as string | null,
+  };
 
   mockUser(user);
 
@@ -429,7 +355,7 @@ export async function seedViaApi(
 }
 
 // ============================================================
-// before — one-call orchestrator for API-driven test setup
+// before — one-call orchestrator for test setup
 // ============================================================
 export async function before(profile: SeedProfile): Promise<BeforeResult> {
   const user = await createTestUser({ role: profile.role, email: profile.email });

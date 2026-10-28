@@ -31,12 +31,14 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { Copy, Plus, X } from 'lucide-react';
+import { Copy, Mail, Plus, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/datetime';
 import { SrLabel } from '@/components/shared/sr-label';
+import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
+import { resolveListEmptyView } from '@/lib/list-empty-view';
 
 interface OrgRole {
   id: string;
@@ -95,6 +97,7 @@ export default function InvitationsPage() {
   const [sending, setSending] = useState(false);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showAccepted, setShowAccepted] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,13 +114,17 @@ export default function InvitationsPage() {
 
   const fetchInvitations = useCallback(() => {
     setLoading(true);
+    setLoadError(false);
     fetch(`/api/v1/organization/invites?isAccepted=${showAccepted}`)
       .then((r) => r.json())
       .then((res) => {
         if (res.success && Array.isArray(res.data)) {
           setInvitations(res.data);
+        } else {
+          setLoadError(true);
         }
       })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, [showAccepted]);
 
@@ -158,7 +165,12 @@ export default function InvitationsPage() {
 
     const payload = invites
       .filter((i) => i.email.trim() && i.orgRoleId)
-      .map((i) => ({ email: i.email.trim(), targetOrgRoleId: i.orgRoleId }));
+      .map((i) => ({
+        email: i.email.trim(),
+        targetOrgRoleId: i.orgRoleId,
+        // Language of the invitation e-mail, once one is delivered (#604).
+        locale: locale === 'en' ? 'en' : 'pl',
+      }));
     if (payload.length === 0) {
       toast.error(t('no_invites'));
       return;
@@ -248,6 +260,10 @@ export default function InvitationsPage() {
   const filteredInvitations = invitations.filter((inv) =>
     inv.email.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+  const emptyView = resolveListEmptyView({
+    visibleCount: filteredInvitations.length,
+    query: searchQuery,
+  });
 
   return (
     <div className="space-y-6">
@@ -439,8 +455,14 @@ export default function InvitationsPage() {
             <div className="text-center text-muted-foreground py-8">
               <div className="animate-spin size-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2" />
             </div>
+          ) : loadError ? (
+            <ErrorState compact onRetry={fetchInvitations} />
           ) : filteredInvitations.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">{t('no_invitations')}</div>
+            emptyView.kind === 'no-results' ? (
+              <NoResultsState compact query={emptyView.query} onClear={() => setSearchQuery('')} />
+            ) : (
+              <EmptyState compact icon={Mail} title={t('no_invitations')} />
+            )
           ) : (
             <Table>
               <TableHeader>

@@ -22,6 +22,7 @@ import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { resolveQuestionBankEmptyView } from '@/lib/question-bank-empty-state';
 import { questionKeys } from '@/lib/query-keys';
+import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 interface QuestionBankManagementScreenProps {
   apiBase: string;
@@ -359,6 +360,8 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
         t={t}
       />
 
+      <FirstVisitHint id="question_banks" />
+
       <PageGrid
         cols={4}
         isLoading={isLoading || orgsPending}
@@ -428,7 +431,10 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             onToggleSelect={() => handleToggleSelect(bank.id)}
             basePath={basePath}
             t={t}
-            canUpdate={permission('question_bank.update', { createdBy: bank.created_by })}
+            canUpdate={permission('question_bank.update', {
+              createdBy: bank.created_by,
+              orgId: bank.organization_id ?? undefined,
+            })}
             canDelete={permission('question_bank.delete', { createdBy: bank.created_by })}
             onEdit={() => openEdit(bank)}
             onDelete={() => setDeleteId(bank.id)}

@@ -12,6 +12,9 @@ export const CreateInviteSchema = registry.register(
     // It may only select an org the caller is a member of (enforced in
     // InvitationService); it can never override the caller's tenant.
     organizationId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    // Language of the invitation e-mail (#604). The invitee has no account yet, so the
+    // inviter's UI language is the best signal; omitted means Polish.
+    locale: z.enum(['pl', 'en'], { error: ValidationErrorCode.INVALID_INPUT }).optional(),
   }),
 );
 

@@ -40,16 +40,16 @@ Media is inserted by the `FlashcardEditor` toolbar (upload button or drag-and-dr
 
 ## Key Decisions
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| **Upload path** | Server-side | Consistent with existing auth, no storage RLS, file validation server-side |
-| **Media storage** | Inline Markdown (not JSONB) | Simpler architecture — no schema changes, media travels with the text, works with CSV import/export |
-| **External images** | Allowed | `rehype-raw` + `rehype-sanitize` with custom schema permits `![alt](url)` and `<audio>` tags |
-| **Audio rendering** | Custom `AudioPlayer` component | Polished UI with play/pause, seekable progress bar, time display |
-| **LaTeX rendering** | `rehype-sanitize` before `rehype-katex` | Prevents sanitize from stripping KaTeX-generated HTML (documented approach) |
-| **Markdown in editor** | Rich editor with toolbar | `FlashcardEditor` component with formatting toolbar, live preview, inline media upload |
-| **Newline handling** | Pre-save transform | `formatMarkdown()` converts single newlines to Markdown line breaks (`  \n`) on save, with `$$` delimiter awareness |
-| **rehype-raw** | Included | Needed to parse inline `<audio>` HTML tags in flashcard content |
+| Decision               | Choice                                  | Rationale                                                                                                           |
+| ---------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Upload path**        | Server-side                             | Consistent with existing auth, no storage RLS, file validation server-side                                          |
+| **Media storage**      | Inline Markdown (not JSONB)             | Simpler architecture — no schema changes, media travels with the text, works with CSV import/export                 |
+| **External images**    | Allowed                                 | `rehype-raw` + `rehype-sanitize` with custom schema permits `![alt](url)` and `<audio>` tags                        |
+| **Audio rendering**    | Custom `AudioPlayer` component          | Polished UI with play/pause, seekable progress bar, time display                                                    |
+| **LaTeX rendering**    | `rehype-sanitize` before `rehype-katex` | Prevents sanitize from stripping KaTeX-generated HTML (documented approach)                                         |
+| **Markdown in editor** | Rich editor with toolbar                | `FlashcardEditor` component with formatting toolbar, live preview, inline media upload                              |
+| **Newline handling**   | Pre-save transform                      | `formatMarkdown()` converts single newlines to Markdown line breaks (`  \n`) on save, with `$$` delimiter awareness |
+| **rehype-raw**         | Included                                | Needed to parse inline `<audio>` HTML tags in flashcard content                                                     |
 
 ---
 
@@ -75,8 +75,8 @@ export function formatMarkdown(text: string): string {
     const lines = p.split('\n');
     return lines
       .map((line, i, arr) => {
-        if (line.trim() === '$$') return line;       // preserve display-math delimiters
-        if (i < arr.length - 1) return line + '  ';  // Markdown hard line break
+        if (line.trim() === '$$') return line; // preserve display-math delimiters
+        if (i < arr.length - 1) return line + '  '; // Markdown hard line break
         return line;
       })
       .join('\n');
@@ -98,6 +98,7 @@ Called in `deck-detail-screen.tsx` before create/update mutations.
 Props: `{ content: string, className?: string }`
 
 Pipeline:
+
 ```
 content string
   → react-markdown
@@ -110,6 +111,7 @@ content string
 ```
 
 **Deviations from plan:**
+
 - `rehype-raw` added (not in original plan) — needed for `<audio>` HTML tags
 - Plugin order: `rehype-raw → rehype-sanitize → rehype-katex` (plan had `rehype-katex → rehype-sanitize`)
 - `rehype-sanitize` runs **before** `rehype-katex` so KaTeX output is preserved
@@ -122,11 +124,13 @@ content string
 ## Step 3 — Database Migration ✅ (added then reverted)
 
 **Original migration:** `supabase/migrations/20260617000000_flashcard_media.sql`
+
 ```sql
 ALTER TABLE public.flashcards ADD COLUMN media jsonb NOT NULL DEFAULT '[]'::jsonb;
 ```
 
 **Reverted:** `supabase/migrations/20260619000000_drop_flashcard_media.sql`
+
 ```sql
 ALTER TABLE public.flashcards DROP COLUMN media;
 ```
@@ -134,6 +138,7 @@ ALTER TABLE public.flashcards DROP COLUMN media;
 The `media` column was added then dropped within 2 days. Media is now inline Markdown — no schema column needed.
 
 **Storage bucket config** (`supabase/config.toml`) remains:
+
 ```toml
 [storage.buckets.flashcard-media]
 public = false
@@ -149,11 +154,12 @@ allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp", "aud
 
 ```typescript
 class StorageService {
-  async uploadFile(userId: string, file: File): Promise<{ url: string }>
+  async uploadFile(userId: string, file: File): Promise<{ url: string }>;
 }
 ```
 
 **Deviations from plan:**
+
 - Returns `{ url }` only — no `type` field (type is inferred from MIME at upload time)
 - `deleteFile` method **not implemented** — file cleanup is not handled
 - Uses `createServiceClient()` from `@/lib/supabase/service`
@@ -167,15 +173,16 @@ class StorageService {
 
 **Route:** `src/app/(backend)/api/v1/flashcards/media/upload/route.ts`
 
-| Detail | Value |
-|--------|-------|
-| Method | `POST` |
-| Auth | `withAuth` |
-| Body | `multipart/form-data` with `file` field |
+| Detail     | Value                                             |
+| ---------- | ------------------------------------------------- |
+| Method     | `POST`                                            |
+| Auth       | `withAuth`                                        |
+| Body       | `multipart/form-data` with `file` field           |
 | Validation | In `StorageService.uploadFile` (MIME type + size) |
-| Response | `{ success: true, data: { url: string } }` |
+| Response   | `{ success: true, data: { url: string } }`        |
 
 **Deviations from plan:**
+
 - Returns `{ url }` not `{ type, url }`
 - No `MediaUploadSchema` — validation is in the service layer
 - Route calls `storageService` directly, no controller method
@@ -191,6 +198,7 @@ class StorageService {
 - `media` field on schemas — **not implemented** (not needed)
 
 **File:** `src/server/models/flashcard-import.model.ts`
+
 - `front`/`back` max relaxed to 5000 ✅
 
 ---
@@ -208,6 +216,7 @@ Media threading through CRUD was **skipped** — not needed with inline Markdown
 **File:** `src/components/flashcards/flashcard-editor.tsx` — **new, not in original plan**
 
 Rich Markdown editor with:
+
 - Formatting toolbar (bold, italic, headings, lists, links)
 - Live preview mode via `MarkdownRenderer`
 - Inline media upload via toolbar button (uploads → inserts `![name](url)` or `<audio>` into textarea)
@@ -258,10 +267,10 @@ Dialog wrapper around `FlashcardEditor` with topic selection (`MultiSelect`) and
 
 ## Step 12 — Other Render Sites ✅
 
-| File | Status |
-|------|--------|
-| `topic-management-screen.tsx` | ✅ Uses `<MarkdownRenderer>` |
-| `difficulty-client.tsx` | ✅ Uses `<MarkdownRenderer>` |
+| File                          | Status                                                     |
+| ----------------------------- | ---------------------------------------------------------- |
+| `topic-management-screen.tsx` | ✅ Uses `<MarkdownRenderer>`                               |
+| `difficulty-client.tsx`       | ✅ Uses `<MarkdownRenderer>`                               |
 | `flashcard-search-result.tsx` | ⏭️ N/A — renders deck-level results, not flashcard content |
 
 ---
@@ -278,28 +287,28 @@ Dialog wrapper around `FlashcardEditor` with topic selection (`MultiSelect`) and
 
 Added keys (different from planned):
 
-| Key | Value (en) | Namespace |
-|-----|-----------|-----------|
-| `media_label` | "Media (Optional)" | `AppFlashcardDeckViewPage` |
-| `toolbar_bold` | "Bold" | `FlashcardEditorComponent` |
-| `toolbar_italic` | "Italic" | `FlashcardEditorComponent` |
-| `toolbar_heading1` | "Heading 1" | `FlashcardEditorComponent` |
-| `toolbar_heading2` | "Heading 2" | `FlashcardEditorComponent` |
-| `toolbar_bullet_list` | "Bullet List" | `FlashcardEditorComponent` |
-| `toolbar_ordered_list` | "Ordered List" | `FlashcardEditorComponent` |
-| `toolbar_link` | "Link" | `FlashcardEditorComponent` |
-| `toolbar_upload_media` | "Upload Media" | `FlashcardEditorComponent` |
-| `toolbar_edit` | "Edit" | `FlashcardEditorComponent` |
-| `toolbar_preview` | "Preview" | `FlashcardEditorComponent` |
-| `link_url_prompt` | "Link URL" | `FlashcardEditorComponent` |
-| `link_default_text` | "link text" | `FlashcardEditorComponent` |
-| `front_label` | "Front Side (Question)" | `FlashcardEditorComponent` |
-| `back_label` | "Back Side (Answer)" | `FlashcardEditorComponent` |
-| `front_placeholder` | "Enter the question or prompt..." | `FlashcardEditorComponent` |
-| `back_placeholder` | "Enter the answer or explanation..." | `FlashcardEditorComponent` |
-| `placeholder` | "Select..." | `MultiSelectComponent` |
-| `no_results` | "No results found." | `MultiSelectComponent` |
-| `search` | "Search..." | `MultiSelectComponent` |
+| Key                    | Value (en)                           | Namespace                  |
+| ---------------------- | ------------------------------------ | -------------------------- |
+| `media_label`          | "Media (Optional)"                   | `AppFlashcardDeckViewPage` |
+| `toolbar_bold`         | "Bold"                               | `FlashcardEditorComponent` |
+| `toolbar_italic`       | "Italic"                             | `FlashcardEditorComponent` |
+| `toolbar_heading1`     | "Heading 1"                          | `FlashcardEditorComponent` |
+| `toolbar_heading2`     | "Heading 2"                          | `FlashcardEditorComponent` |
+| `toolbar_bullet_list`  | "Bullet List"                        | `FlashcardEditorComponent` |
+| `toolbar_ordered_list` | "Ordered List"                       | `FlashcardEditorComponent` |
+| `toolbar_link`         | "Link"                               | `FlashcardEditorComponent` |
+| `toolbar_upload_media` | "Upload Media"                       | `FlashcardEditorComponent` |
+| `toolbar_edit`         | "Edit"                               | `FlashcardEditorComponent` |
+| `toolbar_preview`      | "Preview"                            | `FlashcardEditorComponent` |
+| `link_url_prompt`      | "Link URL"                           | `FlashcardEditorComponent` |
+| `link_default_text`    | "link text"                          | `FlashcardEditorComponent` |
+| `front_label`          | "Front Side (Question)"              | `FlashcardEditorComponent` |
+| `back_label`           | "Back Side (Answer)"                 | `FlashcardEditorComponent` |
+| `front_placeholder`    | "Enter the question or prompt..."    | `FlashcardEditorComponent` |
+| `back_placeholder`     | "Enter the answer or explanation..." | `FlashcardEditorComponent` |
+| `placeholder`          | "Select..."                          | `MultiSelectComponent`     |
+| `no_results`           | "No results found."                  | `MultiSelectComponent`     |
+| `search`               | "Search..."                          | `MultiSelectComponent`     |
 
 Planned keys (`media_upload_label`, `media_upload_hint`, `media_remove`, `media_upload_error`, `media_image_alt`) — **not added**.
 
@@ -312,6 +321,7 @@ Planned keys (`media_upload_label`, `media_upload_hint`, `media_remove`, `media_
 **File:** `src/components/shared/audio-player.tsx`
 
 Custom audio player with:
+
 - Play/pause button
 - Seekable progress bar
 - Time display (current / total)
@@ -331,42 +341,42 @@ Utility for HTML ↔ Markdown conversion using `marked` and `turndown`. Currentl
 
 ### Created (8)
 
-| Path | Purpose | In Plan? |
-|------|---------|----------|
-| `src/lib/markdown-utils.ts` | Newline-to-Markdown format helper (math-aware) | ✅ |
-| `src/components/shared/markdown-renderer.tsx` | Shared Markdown + LaTeX renderer | ✅ |
-| `src/components/shared/audio-player.tsx` | Custom audio player component | ❌ Added |
-| `src/server/services/storage.service.ts` | Supabase Storage upload wrapper | ✅ |
-| `src/app/(backend)/api/v1/flashcards/media/upload/route.ts` | File upload endpoint | ✅ |
-| `src/components/flashcards/flashcard-editor.tsx` | Rich Markdown editor with toolbar + preview | ❌ Added |
-| `src/components/flashcards/flashcard-editor-dialog.tsx` | Dialog wrapper for editor | ❌ Added |
-| `src/lib/markdown-converter.ts` | HTML ↔ Markdown conversion utility | ❌ Added |
+| Path                                                        | Purpose                                        | In Plan? |
+| ----------------------------------------------------------- | ---------------------------------------------- | -------- |
+| `src/lib/markdown-utils.ts`                                 | Newline-to-Markdown format helper (math-aware) | ✅       |
+| `src/components/shared/markdown-renderer.tsx`               | Shared Markdown + LaTeX renderer               | ✅       |
+| `src/components/shared/audio-player.tsx`                    | Custom audio player component                  | ❌ Added |
+| `src/server/services/storage.service.ts`                    | Supabase Storage upload wrapper                | ✅       |
+| `src/app/(backend)/api/v1/flashcards/media/upload/route.ts` | File upload endpoint                           | ✅       |
+| `src/components/flashcards/flashcard-editor.tsx`            | Rich Markdown editor with toolbar + preview    | ❌ Added |
+| `src/components/flashcards/flashcard-editor-dialog.tsx`     | Dialog wrapper for editor                      | ❌ Added |
+| `src/lib/markdown-converter.ts`                             | HTML ↔ Markdown conversion utility             | ❌ Added |
 
 ### Modified (10)
 
-| Path | Changes | In Plan? |
-|------|---------|----------|
-| `supabase/config.toml` | Add `flashcard-media` bucket config | ✅ |
-| `src/server/models/flashcard.model.ts` | Relax front/back max → 5000 | ✅ |
-| `src/server/models/flashcard-import.model.ts` | Relax front/back max → 5000 | ✅ |
-| `src/server/services/index.ts` | Barrel export for `storage.service.ts` | ✅ |
-| `src/components/flashcards/flashcard-card.tsx` | MarkdownRenderer + flip fix + topic dots | ✅ (partially) |
-| `src/components/flashcards/deck-detail-dialogs.tsx` | FlashcardEditorDialog, formatMarkdown | ✅ (different approach) |
-| `src/app/(frontend)/app/flashcards/session/session-client.tsx` | MarkdownRenderer | ✅ |
-| `src/components/flashcards/topic-management-screen.tsx` | MarkdownRenderer | ✅ |
-| `src/components/flashcards/deck-detail-screen.tsx` | formatMarkdown on save, Editor button removed | ✅ (partially) |
-| `src/i18n/messages/en.json` + `pl.json` | Editor component + MultiSelect keys | ✅ (different keys) |
+| Path                                                           | Changes                                       | In Plan?                |
+| -------------------------------------------------------------- | --------------------------------------------- | ----------------------- |
+| `supabase/config.toml`                                         | Add `flashcard-media` bucket config           | ✅                      |
+| `src/server/models/flashcard.model.ts`                         | Relax front/back max → 5000                   | ✅                      |
+| `src/server/models/flashcard-import.model.ts`                  | Relax front/back max → 5000                   | ✅                      |
+| `src/server/services/index.ts`                                 | Barrel export for `storage.service.ts`        | ✅                      |
+| `src/components/flashcards/flashcard-card.tsx`                 | MarkdownRenderer + flip fix + topic dots      | ✅ (partially)          |
+| `src/components/flashcards/deck-detail-dialogs.tsx`            | FlashcardEditorDialog, formatMarkdown         | ✅ (different approach) |
+| `src/app/(frontend)/app/flashcards/session/session-client.tsx` | MarkdownRenderer                              | ✅                      |
+| `src/components/flashcards/topic-management-screen.tsx`        | MarkdownRenderer                              | ✅                      |
+| `src/components/flashcards/deck-detail-screen.tsx`             | formatMarkdown on save, Editor button removed | ✅ (partially)          |
+| `src/i18n/messages/en.json` + `pl.json`                        | Editor component + MultiSelect keys           | ✅ (different keys)     |
 
 ### Skipped from plan
 
-| Item | Reason |
-|------|--------|
-| `media-upload.tsx` component | Replaced by FlashcardEditor toolbar upload |
-| `MediaItemSchema` (flashcard.model.ts) | Not needed — media is inline Markdown |
-| `media` field on Flashcard type | Not needed — media is inline Markdown |
-| `media` field on CRUD schemas | Not needed — media is inline Markdown |
+| Item                                      | Reason                                     |
+| ----------------------------------------- | ------------------------------------------ |
+| `media-upload.tsx` component              | Replaced by FlashcardEditor toolbar upload |
+| `MediaItemSchema` (flashcard.model.ts)    | Not needed — media is inline Markdown      |
+| `media` field on Flashcard type           | Not needed — media is inline Markdown      |
+| `media` field on CRUD schemas             | Not needed — media is inline Markdown      |
 | `media` threading in flashcard.service.ts | Not needed — media is inline in front/back |
-| `deleteFile` on StorageService | Not implemented |
-| `uploadMedia` controller method | Route calls service directly |
-| `MediaUploadSchema` | Not implemented |
-| 5 planned i18n keys | Replaced by editor component keys |
+| `deleteFile` on StorageService            | Not implemented                            |
+| `uploadMedia` controller method           | Route calls service directly               |
+| `MediaUploadSchema`                       | Not implemented                            |
+| 5 planned i18n keys                       | Replaced by editor component keys          |

@@ -14,16 +14,16 @@
 
 ### What the agent can do (8 tools)
 
-| Tool | Side Effects | DB Access |
-|------|-------------|-----------|
-| `create_plan` | Logs to trace DB | None |
-| `ask_user` | Logs to trace DB, triggers SSE stop | None |
-| `fetch_material` | Nested LLM call (`generateText`) | None |
-| `webfetch` | External HTTP `fetch()` to arbitrary URLs | None |
-| `extract_concepts` | Logs to trace DB | None |
-| `evaluate_quality` | No-op (always returns `passed: true`) | None |
-| `generate_flashcards` | Validates/parses flashcard data | None |
-| `finish` | Logs to trace DB | None |
+| Tool                  | Side Effects                              | DB Access |
+| --------------------- | ----------------------------------------- | --------- |
+| `create_plan`         | Logs to trace DB                          | None      |
+| `ask_user`            | Logs to trace DB, triggers SSE stop       | None      |
+| `fetch_material`      | Nested LLM call (`generateText`)          | None      |
+| `webfetch`            | External HTTP `fetch()` to arbitrary URLs | None      |
+| `extract_concepts`    | Logs to trace DB                          | None      |
+| `evaluate_quality`    | No-op (always returns `passed: true`)     | None      |
+| `generate_flashcards` | Validates/parses flashcard data           | None      |
+| `finish`              | Logs to trace DB                          | None      |
 
 **No tool accesses the database.** Flashcard saving happens client-side through normal authenticated API routes (`POST /api/v1/flashcards/decks`, `POST /api/v1/flashcards/batch/create`), which go through full RBAC.
 
@@ -34,7 +34,9 @@ The AI chat route does **not** use the standard `withAuth()` wrapper:
 ```typescript
 // src/app/(backend)/api/v1/ai/chat/route.ts
 const supabase = await createClient();
-const { data: { user } } = await supabase.auth.getUser();
+const {
+  data: { user },
+} = await supabase.auth.getUser();
 if (!user) {
   return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
 }
@@ -120,36 +122,36 @@ All 8 tools are stateless processors. They receive input from the LLM, process i
 
 ### Priority 0 — Immediate (before next release)
 
-| # | Action | Effort | Files |
-|---|--------|--------|-------|
-| H1 | **Add account type check to agent route** — enforce `allowedAccountTypes` in the handler, not just route config | Small | `src/app/(backend)/api/v1/ai/chat/route.ts` |
-| H2 | **URL allowlist for `webfetch`** — block private IPs, localhost, metadata endpoints, internal Supabase URLs | Small | `src/server/agents/tools/generic/webfetch.tool.ts` |
-| H3 | **Add token budget enforcement** — mirror `ChatController`'s `planResolver.getUsage()` check in the agent route | Small | `src/app/(backend)/api/v1/ai/chat/route.ts` |
+| #   | Action                                                                                                          | Effort | Files                                              |
+| --- | --------------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------- |
+| H1  | **Add account type check to agent route** — enforce `allowedAccountTypes` in the handler, not just route config | Small  | `src/app/(backend)/api/v1/ai/chat/route.ts`        |
+| H2  | **URL allowlist for `webfetch`** — block private IPs, localhost, metadata endpoints, internal Supabase URLs     | Small  | `src/server/agents/tools/generic/webfetch.tool.ts` |
+| H3  | **Add token budget enforcement** — mirror `ChatController`'s `planResolver.getUsage()` check in the agent route | Small  | `src/app/(backend)/api/v1/ai/chat/route.ts`        |
 
 ### Priority 1 — Next iteration
 
-| # | Action | Effort | Files |
-|---|--------|--------|-------|
-| H4 | **Build `RequestContext` in agent route** — same pattern as `withAuth()`, pass via `AsyncLocalStorage` | Medium | `src/app/(backend)/api/v1/ai/chat/route.ts`, new `src/lib/agent-context.ts` |
-| H5 | **Re-enable RLS on sensitive tables** — defense-in-depth on `flashcards`, `flashcard_decks`, `questions`, `org_members` | Medium | `supabase/migrations/` |
-| H6 | **Add rate limiting** — per-user, per-org on `/api/v1/ai/chat` | Medium | `src/app/(backend)/api/v1/ai/chat/route.ts` |
+| #   | Action                                                                                                                  | Effort | Files                                                                       |
+| --- | ----------------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------- |
+| H4  | **Build `RequestContext` in agent route** — same pattern as `withAuth()`, pass via `AsyncLocalStorage`                  | Medium | `src/app/(backend)/api/v1/ai/chat/route.ts`, new `src/lib/agent-context.ts` |
+| H5  | **Re-enable RLS on sensitive tables** — defense-in-depth on `flashcards`, `flashcard_decks`, `questions`, `org_members` | Medium | `supabase/migrations/`                                                      |
+| H6  | **Add rate limiting** — per-user, per-org on `/api/v1/ai/chat`                                                          | Medium | `src/app/(backend)/api/v1/ai/chat/route.ts`                                 |
 
 ### Priority 2 — Near-term
 
-| # | Action | Effort | Files |
-|---|--------|--------|-------|
-| H7 | **Define `AgentScope` type** — formal contract for what each tool can access | Medium | `src/server/agents/tools/types.ts` |
-| H8 | **Tool-level permission checks** — each tool's `execute` function accepts `ctx` and validates scope | Medium | `src/server/agents/tools/generic/*.tool.ts` |
-| H9 | **Audit trail** — link agent trace events to user ID (partially exists via `agent-trace.service.ts`) | Small | `src/server/agents/tools/generic/*.tool.ts` |
-| H10 | **Architectural constraint doc** — formalize "tools never touch DB" as a documented rule | Small | `docs/plans/agent-security.md` |
+| #   | Action                                                                                               | Effort | Files                                       |
+| --- | ---------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------- |
+| H7  | **Define `AgentScope` type** — formal contract for what each tool can access                         | Medium | `src/server/agents/tools/types.ts`          |
+| H8  | **Tool-level permission checks** — each tool's `execute` function accepts `ctx` and validates scope  | Medium | `src/server/agents/tools/generic/*.tool.ts` |
+| H9  | **Audit trail** — link agent trace events to user ID (partially exists via `agent-trace.service.ts`) | Small  | `src/server/agents/tools/generic/*.tool.ts` |
+| H10 | **Architectural constraint doc** — formalize "tools never touch DB" as a documented rule             | Small  | `docs/plans/agent-security.md`              |
 
 ### Priority 3 — Planned
 
-| # | Action | Effort |
-|---|--------|--------|
-| H11 | Playwright E2E tests verifying 401/403 from agent endpoint for unauthorized users | Small |
-| H12 | Tool dependency audit — verify no tool imports Supabase clients | Small |
-| H13 | Penetration test of `webfetch` SSRF after allowlist is in place | Small |
+| #   | Action                                                                            | Effort |
+| --- | --------------------------------------------------------------------------------- | ------ |
+| H11 | Playwright E2E tests verifying 401/403 from agent endpoint for unauthorized users | Small  |
+| H12 | Tool dependency audit — verify no tool imports Supabase clients                   | Small  |
+| H13 | Penetration test of `webfetch` SSRF after allowlist is in place                   | Small  |
 
 ---
 
@@ -174,22 +176,22 @@ interface AgentScope {
     flashcards: 'none' | 'own';
     decks: 'none' | 'own';
     questions: 'none' | 'own';
-    orgData: 'none' | 'read';  // org-level data (members, settings)
+    orgData: 'none' | 'read'; // org-level data (members, settings)
   };
 
   // External access — network boundaries
   network: {
-    allowedDomains: string[];          // webfetch allowlist
-    maxExternalRequests: number;       // per conversation
-    blockedIPRanges: string[];         // private IPs, metadata endpoints
+    allowedDomains: string[]; // webfetch allowlist
+    maxExternalRequests: number; // per conversation
+    blockedIPRanges: string[]; // private IPs, metadata endpoints
   };
 
   // Resource limits
   limits: {
-    maxTokens: number;                 // per conversation
-    maxSteps: number;                  // tool call loop limit (currently 30)
-    maxToolCalls: number;              // total tool invocations
-    timeLimitMs: number;               // hard timeout
+    maxTokens: number; // per conversation
+    maxSteps: number; // tool call loop limit (currently 30)
+    maxToolCalls: number; // total tool invocations
+    timeLimitMs: number; // hard timeout
   };
 
   // Audit
@@ -261,15 +263,15 @@ These rules should be enforced as project conventions:
 
 ## Relevant Files
 
-| File | Role |
-|------|------|
-| `src/app/(backend)/api/v1/ai/chat/route.ts` | Agent entry point — auth, tool registration |
-| `src/server/agents/tools/generic/*.tool.ts` | 8 tool definitions |
-| `src/server/agents/system.ts` | Agent Q system prompt |
-| `src/server/agents/core/base.agent.ts` | ReAct loop |
-| `src/server/services/agent-trace.service.ts` | Trace event logging |
-| `src/lib/with-auth.ts` | Standard auth wrapper (reference for RequestContext) |
-| `src/lib/request-context.ts` | RequestContext type definition |
-| `src/server/config/routes.config.ts` | Route protection rules |
-| `src/lib/rbac.ts` | RBAC utilities (`hasPermission`, `checkPermission`, `buildQueryFilter`) |
-| `src/lib/access.ts` | Newer access control (`can`, `check`, `accessibleFilter`) |
+| File                                         | Role                                                                    |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `src/app/(backend)/api/v1/ai/chat/route.ts`  | Agent entry point — auth, tool registration                             |
+| `src/server/agents/tools/generic/*.tool.ts`  | 8 tool definitions                                                      |
+| `src/server/agents/system.ts`                | Agent Q system prompt                                                   |
+| `src/server/agents/core/base.agent.ts`       | ReAct loop                                                              |
+| `src/server/services/agent-trace.service.ts` | Trace event logging                                                     |
+| `src/lib/with-auth.ts`                       | Standard auth wrapper (reference for RequestContext)                    |
+| `src/lib/request-context.ts`                 | RequestContext type definition                                          |
+| `src/server/config/routes.config.ts`         | Route protection rules                                                  |
+| `src/lib/rbac.ts`                            | RBAC utilities (`hasPermission`, `checkPermission`, `buildQueryFilter`) |
+| `src/lib/access.ts`                          | Newer access control (`can`, `check`, `accessibleFilter`)               |

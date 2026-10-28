@@ -11,10 +11,10 @@ Two covering composite indexes to handle the RBAC + ORDER BY pattern:
 
 `sql
 CREATE INDEX IF NOT EXISTS idx_flashcards_owner_time
-  ON public.flashcards (created_by, created_at DESC, id);
+ON public.flashcards (created_by, created_at DESC, id);
 
 CREATE INDEX IF NOT EXISTS idx_flashcards_uni_time
-  ON public.flashcards (university_id, created_at DESC, id);
+ON public.flashcards (university_id, created_at DESC, id);
 `
 
 These let PostgreSQL skip heap lookups and avoid a separate sort step for
@@ -61,14 +61,14 @@ CREATE INDEX CONCURRENTLY idx_flashcards_front_back_trgm
 Rewrite the q filter in src/server/services/flashcard.service.ts to use the
 existing search_vector column + plainto_tsquery:
 
-`	ypescript
+` ypescript
 // Instead of ILIKE with leading wildcard:
 query = query.textSearch('search_vector', filters!.q!);
 
 // Or with tsquery for more control:
 query = query.or(
-  search_vector @@ plainto_tsquery('english', ''),
-  search_vector @@ plainto_tsquery('polish', ''),
+search_vector @@ plainto_tsquery('english', ''),
+search_vector @@ plainto_tsquery('polish', ''),
 );
 `
 

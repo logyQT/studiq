@@ -13,6 +13,7 @@ import {
   Button,
   Progress,
 } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Brain, Check, Loader2, Minus, X, Zap } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
@@ -24,6 +25,7 @@ import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-p
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { applyCramAction, cramActionForRating } from '@/lib/cram-queue';
 import { formatDateTime } from '@/lib/datetime';
+import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
 interface Flashcard {
@@ -144,6 +146,7 @@ export default function SessionClient(props: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
   const locale = useLocale();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const config =
     SESSION_TYPE_CONFIG[props.type as keyof typeof SESSION_TYPE_CONFIG] ??
@@ -370,6 +373,12 @@ export default function SessionClient(props: SessionClientProps) {
           mode: modeStr,
         }),
       }).catch(() => {});
+
+      // The statistics and due counts were cached before this session; without this the student
+      // lands back on /app/stats/content with the pre-session numbers (#365).
+      for (const queryKey of flashcardKeys.afterStudySession) {
+        queryClient.invalidateQueries({ queryKey });
+      }
     };
 
     finalise();
@@ -382,6 +391,7 @@ export default function SessionClient(props: SessionClientProps) {
     isCram,
     deckIds,
     sendBatchUpdate,
+    queryClient,
   ]);
 
   const refillQueue = useCallback(async () => {

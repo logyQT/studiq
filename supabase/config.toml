@@ -98,6 +98,9 @@ enabled = true
 # Port to use for the email testing server web interface.
 port = 54324
 # Uncomment to expose additional ports for testing user applications that send emails.
+# To try invitation e-mails (#604) locally: uncomment, set MAIL_DRIVER=smtp, MAIL_SMTP_HOST=127.0.0.1 and
+# MAIL_SMTP_PORT to this value, and read the mail at the port above. Left commented on purpose: parallel
+# slots offset every host port, so a fixed SMTP port would collide (slot N: 54325 + 100N).
 # smtp_port = 54325
 # pop3_port = 54326
 # admin_email = "admin@email.com"
@@ -115,7 +118,15 @@ file_size_limit = "50MiB"
 # No storage.objects SELECT policy: listing must stay denied (see migration).
 public = true
 file_size_limit = "50MiB"
-allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp", "audio/mpeg", "audio/wav", "audio/ogg"]
+allowed_mime_types = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+]
 objects_path = "./flashcard-media"
 
 # Allow connections via S3 compatible clients

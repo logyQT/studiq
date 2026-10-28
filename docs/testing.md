@@ -4,10 +4,10 @@
 
 The project uses two testing frameworks:
 
-| Framework | Purpose | Location |
-|-----------|---------|----------|
-| Vitest | Unit and integration tests | `__tests__/unit/`, `__tests__/integration/` |
-| Playwright | End-to-end tests | `e2e/` |
+| Framework  | Purpose                    | Location                                    |
+| ---------- | -------------------------- | ------------------------------------------- |
+| Vitest     | Unit and integration tests | `__tests__/unit/`, `__tests__/integration/` |
+| Playwright | End-to-end tests           | `e2e/`                                      |
 
 ## Unit Tests
 
@@ -27,9 +27,14 @@ __tests__/unit/
 
 Integration tests hit a real local Supabase instance. They verify that API routes, controllers, services, and the database work together end-to-end.
 
+Accounts, organizations, roles, the default group and memberships come from the shared
+tenant seeder (`__tests__/helpers/tenant-seed.ts`, also used by `scripts/e2e-seed.ts`);
+content is still created through the real API routes. There are no shared per-run accounts.
+
 **Location:** `__tests__/integration/`
 
 **Covered domains:**
+
 - Authentication (register, login, logout)
 - Subjects, questions, quizzes, quiz attempts
 - Flashcards, decks, topics, practice

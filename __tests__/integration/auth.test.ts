@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { applyRegisteredMock, mockUser, TEST_USERS } from '#test/integration/helpers';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { useRealSupabase, mockUser } from '#test/integration/helpers';
+import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import { createNextRequest } from '#test/integration/test-utils';
 import { POST as loginPost } from '@/app/(backend)/api/v1/auth/login/route';
 import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
@@ -8,186 +8,227 @@ import { POST as resetPost } from '@/app/(backend)/api/v1/auth/password/reset/ro
 import { POST as updatePasswordPost } from '@/app/(backend)/api/v1/auth/password/update/route';
 import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
 
+const suiteId = crypto.randomUUID().slice(0, 8);
+
 // Auth tests: register creates users with Date.now() emails (already unique).
-// Login/logout/reset use seed users (read-only).
+// Login/logout/reset use a seeded account (read-only).
 // Password/update uses mockUser (shared user, no DB mutation of shared state).
 
-forEachCopy((copyId) => {
-  describe(`Auth Integration [${copyId}]`, () => {
-    // Start with useRealSupabase (register/login need real Supabase).
-    // Individual tests override with mockUser() as needed.
-    registerMock(copyId, null);
+describe(`Auth Integration`, () => {
+  // Login/logout/reset run against an account seeded by the tenant seeder.
+  let teacher: TestUserFixture;
 
-    beforeEach(() => {
-      vi.clearAllMocks();
-      applyRegisteredMock(copyId);
-    });
+  beforeAll(async () => {
+    teacher = await createTestUser({ role: 'educator' });
+  });
 
-    describe('POST /api/v1/auth/register', () => {
-      it('registers a new user and returns 202', async () => {
-        const uniqueEmail = `test-${copyId}-${Date.now()}@example.com`;
-        const req = createNextRequest('http://localhost/api/v1/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: uniqueEmail,
-            password: 'TestPass123',
-            name: 'Test User',
-            accountType: 'educator',
-          }),
-        });
+  // Start with useRealSupabase (register/login need real Supabase).
+  // Individual tests override with mockUser() as needed.
 
-        const response = await registerPost(req);
-        const body = await response.json();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useRealSupabase();
+  });
 
-        expect(response.status).toBe(202);
-        expect(body.success).toBe(true);
-      });
-
-      it('returns 422 when email is invalid', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: 'not-an-email',
-            password: 'TestPass123',
-            name: 'Test User',
-            accountType: 'educator',
-          }),
-        });
-
-        const response = await registerPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(422);
-        expect(body.success).toBe(false);
-        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
-      });
-
-      it('returns 422 when password is too short', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: 'test@example.com',
-            password: 'short',
-            name: 'Test User',
-            accountType: 'educator',
-          }),
-        });
-
-        const response = await registerPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(422);
-        expect(body.success).toBe(false);
-      });
-
-      it('assigns correct brand plan key via handle_new_user trigger', async () => {
-        const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
-        const serviceClient = createServiceClient();
-        const uniqueEmail = `plan-test-${copyId}-${Date.now()}@example.com`;
-
-        const req = createNextRequest('http://localhost/api/v1/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: uniqueEmail,
-            password: 'TestPass123',
-            name: 'Plan Test',
-            accountType: 'educator',
-          }),
-        });
-
-        const response = await registerPost(req);
-        expect(response.status).toBe(202);
-
-        const { data: profile } = await serviceClient
-          .from('profiles')
-          .select('personal_plan_key')
-          .eq('email', uniqueEmail)
-          .single();
-
-        expect(profile?.personal_plan_key).toBe('lite');
-      });
-
-      // #300 / AUT-05: a duplicate must not surface as 500 INTERNAL_SERVER.
-      // The public route answers the same neutral 202 as a fresh registration so
-      // it cannot be used to probe for existing accounts.
-      it('returns 202 and creates no duplicate when the e-mail already exists', async () => {
-        const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
-        const serviceClient = createServiceClient();
-        const uniqueEmail = `dup-${copyId}-${Date.now()}@example.com`;
-
-        // A *confirmed* account is the case GoTrue rejects with 422
-        // `user_already_exists`; an unconfirmed one would just resend the
-        // confirmation mail instead.
-        const { error: createError } = await serviceClient.auth.admin.createUser({
+  describe('POST /api/v1/auth/register', () => {
+    it('registers a new user and returns 202', async () => {
+      const uniqueEmail = `test-${suiteId}-${Date.now()}@example.com`;
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           email: uniqueEmail,
           password: 'TestPass123',
-          email_confirm: true,
-          user_metadata: { name: 'Existing Account', account_type: 'student' },
-        });
-        expect(createError).toBeNull();
-
-        const response = await registerPost(
-          createNextRequest('http://localhost/api/v1/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: uniqueEmail,
-              password: 'OtherPass456',
-              name: 'Duplicate Two',
-              accountType: 'student',
-            }),
-          }),
-        );
-        const body = await response.json();
-
-        expect(response.status).toBe(202);
-        expect(body).toEqual({ success: true, data: { message: 'SUCCESS_ACTIVATION_LINK_SENT' } });
-        expect(body).not.toHaveProperty('error');
-        expect(response.headers.get('x-error-code')).toBeNull();
-
-        const { count } = await serviceClient
-          .from('profiles')
-          .select('id', { count: 'exact', head: true })
-          .eq('email', uniqueEmail);
-
-        expect(count).toBe(1);
+          name: 'Test User',
+          accountType: 'educator',
+        }),
       });
+
+      const response = await registerPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(body.success).toBe(true);
     });
 
-    // #303 / AUT-04: name is validated by the shared `NameSchema` for the form
-    // and the API alike. Kept in its own describe so the #299 e-mail cases stay
-    // untouched. A rejected name never reaches GoTrue, so no user is created.
-    describe('name validation (#303)', () => {
-      it('returns 422 when the register name is whitespace-only', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/register', {
+    it('returns 422 when email is invalid', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'not-an-email',
+          password: 'TestPass123',
+          name: 'Test User',
+          accountType: 'educator',
+        }),
+      });
+
+      const response = await registerPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+    });
+
+    it('returns 422 when password is too short', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'test@example.com',
+          password: 'short',
+          name: 'Test User',
+          accountType: 'educator',
+        }),
+      });
+
+      const response = await registerPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+    });
+
+    it('assigns correct brand plan key via handle_new_user trigger', async () => {
+      const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
+      const serviceClient = createServiceClient();
+      const uniqueEmail = `plan-test-${suiteId}-${Date.now()}@example.com`;
+
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: uniqueEmail,
+          password: 'TestPass123',
+          name: 'Plan Test',
+          accountType: 'educator',
+        }),
+      });
+
+      const response = await registerPost(req);
+      expect(response.status).toBe(202);
+
+      const { data: profile } = await serviceClient
+        .from('profiles')
+        .select('personal_plan_key')
+        .eq('email', uniqueEmail)
+        .single();
+
+      expect(profile?.personal_plan_key).toBe('lite');
+    });
+
+    // #300 / AUT-05: a duplicate must not surface as 500 INTERNAL_SERVER.
+    // The public route answers the same neutral 202 as a fresh registration so
+    // it cannot be used to probe for existing accounts.
+    it('returns 202 and creates no duplicate when the e-mail already exists', async () => {
+      const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
+      const serviceClient = createServiceClient();
+      const uniqueEmail = `dup-${suiteId}-${Date.now()}@example.com`;
+
+      // A *confirmed* account is the case GoTrue rejects with 422
+      // `user_already_exists`; an unconfirmed one would just resend the
+      // confirmation mail instead.
+      const { error: createError } = await serviceClient.auth.admin.createUser({
+        email: uniqueEmail,
+        password: 'TestPass123',
+        email_confirm: true,
+        user_metadata: { name: 'Existing Account', account_type: 'student' },
+      });
+      expect(createError).toBeNull();
+
+      const response = await registerPost(
+        createNextRequest('http://localhost/api/v1/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            email: `ws-${copyId}-${Date.now()}@example.com`,
-            password: 'TestPass123',
-            name: '  ',
-            accountType: 'educator',
+            email: uniqueEmail,
+            password: 'OtherPass456',
+            name: 'Duplicate Two',
+            accountType: 'student',
           }),
-        });
+        }),
+      );
+      const body = await response.json();
 
-        const response = await registerPost(req);
-        const body = await response.json();
+      expect(response.status).toBe(202);
+      expect(body).toEqual({ success: true, data: { message: 'SUCCESS_ACTIVATION_LINK_SENT' } });
+      expect(body).not.toHaveProperty('error');
+      expect(response.headers.get('x-error-code')).toBeNull();
 
-        expect(response.status).toBe(422);
-        expect(body.success).toBe(false);
-        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
-        // `toNextResponse` treeifies the issues (see seats.test.ts).
-        expect(body.issues.properties.name.errors).toContain('VALIDATION_NAME_REQUIRED');
+      const { count } = await serviceClient
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('email', uniqueEmail);
+
+      expect(count).toBe(1);
+    });
+  });
+
+  // #303 / AUT-04: name is validated by the shared `NameSchema` for the form
+  // and the API alike. Kept in its own describe so the #299 e-mail cases stay
+  // untouched. A rejected name never reaches GoTrue, so no user is created.
+  describe('name validation (#303)', () => {
+    it('returns 422 when the register name is whitespace-only', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: `ws-${suiteId}-${Date.now()}@example.com`,
+          password: 'TestPass123',
+          name: '  ',
+          accountType: 'educator',
+        }),
       });
 
-      it('stores the trimmed name in the created profile', async () => {
-        const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
-        const serviceClient = createServiceClient();
-        const uniqueEmail = `trim-${copyId}-${Date.now()}@example.com`;
+      const response = await registerPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      // `toNextResponse` treeifies the issues (see seats.test.ts).
+      expect(body.issues.properties.name.errors).toContain('VALIDATION_NAME_REQUIRED');
+    });
+
+    it('stores the trimmed name in the created profile', async () => {
+      const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
+      const serviceClient = createServiceClient();
+      const uniqueEmail = `trim-${suiteId}-${Date.now()}@example.com`;
+
+      const response = await registerPost(
+        createNextRequest('http://localhost/api/v1/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: uniqueEmail,
+            password: 'TestPass123',
+            name: '  Jan Kowalski  ',
+            accountType: 'educator',
+          }),
+        }),
+      );
+      expect(response.status).toBe(202);
+
+      const { data: profile } = await serviceClient
+        .from('profiles')
+        .select('full_name')
+        .eq('email', uniqueEmail)
+        .single();
+
+      expect(profile?.full_name).toBe('Jan Kowalski');
+    });
+
+    // #302 / AUT-04: the shared rule must accept a hyphen and an apostrophe
+    // end-to-end (API → GoTrue → handle_new_user → profiles.full_name), not
+    // only in the register form's client-side resolver.
+    it('accepts and stores hyphenated/apostrophised names (#302)', async () => {
+      const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
+      const serviceClient = createServiceClient();
+      const names = ['Anna-Maria Nowak', "Jan O'Brien"];
+
+      for (const [index, name] of names.entries()) {
+        const uniqueEmail = `name-${suiteId}-${index}-${Date.now()}@example.com`;
 
         const response = await registerPost(
           createNextRequest('http://localhost/api/v1/auth/register', {
@@ -196,12 +237,12 @@ forEachCopy((copyId) => {
             body: JSON.stringify({
               email: uniqueEmail,
               password: 'TestPass123',
-              name: '  Jan Kowalski  ',
+              name,
               accountType: 'educator',
             }),
           }),
         );
-        expect(response.status).toBe(202);
+        expect(response.status, name).toBe(202);
 
         const { data: profile } = await serviceClient
           .from('profiles')
@@ -209,298 +250,263 @@ forEachCopy((copyId) => {
           .eq('email', uniqueEmail)
           .single();
 
-        expect(profile?.full_name).toBe('Jan Kowalski');
+        expect(profile?.full_name, name).toBe(name);
+      }
+    });
+  });
+
+  describe('POST /api/v1/auth/login', () => {
+    it('logs in with valid credentials and returns 200', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: teacher.email,
+          password: teacher.password,
+        }),
       });
 
-      // #302 / AUT-04: the shared rule must accept a hyphen and an apostrophe
-      // end-to-end (API → GoTrue → handle_new_user → profiles.full_name), not
-      // only in the register form's client-side resolver.
-      it('accepts and stores hyphenated/apostrophised names (#302)', async () => {
-        const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
-        const serviceClient = createServiceClient();
-        const names = ['Anna-Maria Nowak', "Jan O'Brien"];
+      const response = await loginPost(req);
+      const body = await response.json();
 
-        for (const [index, name] of names.entries()) {
-          const uniqueEmail = `name-${copyId}-${index}-${Date.now()}@example.com`;
-
-          const response = await registerPost(
-            createNextRequest('http://localhost/api/v1/auth/register', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: uniqueEmail,
-                password: 'TestPass123',
-                name,
-                accountType: 'educator',
-              }),
-            }),
-          );
-          expect(response.status, name).toBe(202);
-
-          const { data: profile } = await serviceClient
-            .from('profiles')
-            .select('full_name')
-            .eq('email', uniqueEmail)
-            .single();
-
-          expect(profile?.full_name, name).toBe(name);
-        }
-      });
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
     });
 
-    describe('POST /api/v1/auth/login', () => {
-      it('logs in with valid credentials and returns 200', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: TEST_USERS.TEACHER.email,
-            password: TEST_USERS.TEACHER.password,
-          }),
-        });
-
-        const response = await loginPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(body.success).toBe(true);
+    it('returns 401 with wrong password', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: teacher.email,
+          password: 'wrongpassword',
+        }),
       });
 
-      it('returns 401 with wrong password', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/login', {
+      const response = await loginPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(body.success).toBe(false);
+    });
+
+    it('returns 422 when email is missing', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: 'TestPass123' }),
+      });
+
+      const response = await loginPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+    });
+
+    it('reports an empty email as required, not invalid (#299)', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: '', password: 'pass' }),
+      });
+
+      const response = await loginPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.issues.properties.email.errors).toEqual(['VALIDATION_EMAIL_REQUIRED']);
+    });
+  });
+
+  describe('POST /api/v1/auth/logout', () => {
+    it('returns 200 on logout', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' });
+      const response = await logoutPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
+    });
+  });
+
+  describe('POST /api/v1/auth/password/reset', () => {
+    it('accepts password reset request and returns 200', async () => {
+      // Use a unique email per suite run to avoid Supabase Auth's per-email
+      // rate limit on password recovery (over_email_send_rate_limit).
+      mockUser(null);
+
+      const req = createNextRequest('http://localhost/api/v1/auth/password/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: `reset-test-${suiteId}@dev.local` }),
+      });
+
+      const response = await resetPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
+    });
+
+    it('returns 422 when email is invalid', async () => {
+      const req = createNextRequest('http://localhost/api/v1/auth/password/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'not-an-email' }),
+      });
+
+      const response = await resetPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/v1/auth/password/update', () => {
+    it('returns 422 when passwords do not match', async () => {
+      mockUser(teacher);
+
+      const req = createNextRequest('http://localhost/api/v1/auth/password/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: 'NewPass123',
+          confirmPassword: 'DifferentPass123',
+        }),
+      });
+
+      const response = await updatePasswordPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+    });
+
+    it('lists every violated password rule in the issues tree', async () => {
+      mockUser(teacher);
+
+      const req = createNextRequest('http://localhost/api/v1/auth/password/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: 'abcdefgh',
+          confirmPassword: 'abcdefgh',
+        }),
+      });
+
+      const response = await updatePasswordPost(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(body.issues.properties.password.errors).toEqual([
+        'VALIDATION_PASSWORD_MISSING_UPPERCASE',
+        'VALIDATION_PASSWORD_MISSING_NUMBER',
+      ]);
+    });
+  });
+
+  // #301: the whole auth surface must satisfy the request observability
+  // contract — every response carries `x-trace-id`, so a failed login or a
+  // register 500 can be correlated with Tempo/Loki. Kept in its own describe
+  // block so the assertions are independent of the per-endpoint cases above.
+  describe('x-trace-id correlation (#301)', () => {
+    const TRACE_ID = /^[0-9a-f]{32}$/;
+
+    it('register 202 and 422 both carry x-trace-id', async () => {
+      const ok = await registerPost(
+        createNextRequest('http://localhost/api/v1/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            email: TEST_USERS.TEACHER.email,
+            email: `trace-${suiteId}-${Date.now()}@example.com`,
+            password: 'TestPass123',
+            name: 'Trace User',
+            accountType: 'student',
+          }),
+        }),
+      );
+      expect(ok.status).toBe(202);
+      expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
+
+      const invalid = await registerPost(
+        createNextRequest('http://localhost/api/v1/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'not-an-email',
+            password: 'TestPass123',
+            name: 'Trace User',
+            accountType: 'student',
+          }),
+        }),
+      );
+      expect(invalid.status).toBe(422);
+      expect(invalid.headers.get('x-trace-id')).toMatch(TRACE_ID);
+    });
+
+    it('login 200 and 401 both carry x-trace-id', async () => {
+      const ok = await loginPost(
+        createNextRequest('http://localhost/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: teacher.email,
+            password: teacher.password,
+          }),
+        }),
+      );
+      expect(ok.status).toBe(200);
+      expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
+
+      const denied = await loginPost(
+        createNextRequest('http://localhost/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: teacher.email,
             password: 'wrongpassword',
           }),
-        });
-
-        const response = await loginPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(401);
-        expect(body.success).toBe(false);
-      });
-
-      it('returns 422 when email is missing', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: 'TestPass123' }),
-        });
-
-        const response = await loginPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(422);
-        expect(body.success).toBe(false);
-      });
-
-      it('reports an empty email as required, not invalid (#299)', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: '', password: 'pass' }),
-        });
-
-        const response = await loginPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(422);
-        expect(body.issues.properties.email.errors).toEqual(['VALIDATION_EMAIL_REQUIRED']);
-      });
+        }),
+      );
+      expect(denied.status).toBe(401);
+      expect(denied.headers.get('x-trace-id')).toMatch(TRACE_ID);
+      expect(denied.headers.get('x-error-code')).toBe('UNAUTHORIZED');
     });
 
-    describe('POST /api/v1/auth/logout', () => {
-      it('returns 200 on logout', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' });
-        const response = await logoutPost(req);
-        const body = await response.json();
+    it('logout 200 carries x-trace-id', async () => {
+      const response = await logoutPost(
+        createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' }),
+      );
 
-        expect(response.status).toBe(200);
-        expect(body.success).toBe(true);
-      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-trace-id')).toMatch(TRACE_ID);
     });
 
-    describe('POST /api/v1/auth/password/reset', () => {
-      it('accepts password reset request and returns 200', async () => {
-        // Use a unique email per copy to avoid Supabase Auth's per-email
-        // rate limit on password recovery (over_email_send_rate_limit).
-        mockUser(null);
+    it('password reset 200 and 422 both carry x-trace-id', async () => {
+      mockUser(null);
 
-        const req = createNextRequest('http://localhost/api/v1/auth/password/reset', {
+      const ok = await resetPost(
+        createNextRequest('http://localhost/api/v1/auth/password/reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: `reset-test-${copyId}@dev.local` }),
-        });
+          body: JSON.stringify({ email: `trace-reset-${suiteId}-${Date.now()}@example.com` }),
+        }),
+      );
+      expect(ok.status).toBe(200);
+      expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
 
-        const response = await resetPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(body.success).toBe(true);
-      });
-
-      it('returns 422 when email is invalid', async () => {
-        const req = createNextRequest('http://localhost/api/v1/auth/password/reset', {
+      const invalid = await resetPost(
+        createNextRequest('http://localhost/api/v1/auth/password/reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: 'not-an-email' }),
-        });
-
-        const response = await resetPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(422);
-        expect(body.success).toBe(false);
-      });
-    });
-
-    describe('POST /api/v1/auth/password/update', () => {
-      it('returns 422 when passwords do not match', async () => {
-        mockUser(TEST_USERS.TEACHER);
-
-        const req = createNextRequest('http://localhost/api/v1/auth/password/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            password: 'NewPass123',
-            confirmPassword: 'DifferentPass123',
-          }),
-        });
-
-        const response = await updatePasswordPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(422);
-        expect(body.success).toBe(false);
-      });
-
-      it('lists every violated password rule in the issues tree', async () => {
-        mockUser(TEST_USERS.TEACHER);
-
-        const req = createNextRequest('http://localhost/api/v1/auth/password/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            password: 'abcdefgh',
-            confirmPassword: 'abcdefgh',
-          }),
-        });
-
-        const response = await updatePasswordPost(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(422);
-        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
-        expect(body.issues.properties.password.errors).toEqual([
-          'VALIDATION_PASSWORD_MISSING_UPPERCASE',
-          'VALIDATION_PASSWORD_MISSING_NUMBER',
-        ]);
-      });
-    });
-
-    // #301: the whole auth surface must satisfy the request observability
-    // contract — every response carries `x-trace-id`, so a failed login or a
-    // register 500 can be correlated with Tempo/Loki. Kept in its own describe
-    // block so the assertions are independent of the per-endpoint cases above.
-    describe('x-trace-id correlation (#301)', () => {
-      const TRACE_ID = /^[0-9a-f]{32}$/;
-
-      it('register 202 and 422 both carry x-trace-id', async () => {
-        const ok = await registerPost(
-          createNextRequest('http://localhost/api/v1/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: `trace-${copyId}-${Date.now()}@example.com`,
-              password: 'TestPass123',
-              name: 'Trace User',
-              accountType: 'student',
-            }),
-          }),
-        );
-        expect(ok.status).toBe(202);
-        expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
-
-        const invalid = await registerPost(
-          createNextRequest('http://localhost/api/v1/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: 'not-an-email',
-              password: 'TestPass123',
-              name: 'Trace User',
-              accountType: 'student',
-            }),
-          }),
-        );
-        expect(invalid.status).toBe(422);
-        expect(invalid.headers.get('x-trace-id')).toMatch(TRACE_ID);
-      });
-
-      it('login 200 and 401 both carry x-trace-id', async () => {
-        const ok = await loginPost(
-          createNextRequest('http://localhost/api/v1/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: TEST_USERS.TEACHER.email,
-              password: TEST_USERS.TEACHER.password,
-            }),
-          }),
-        );
-        expect(ok.status).toBe(200);
-        expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
-
-        const denied = await loginPost(
-          createNextRequest('http://localhost/api/v1/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: TEST_USERS.TEACHER.email,
-              password: 'wrongpassword',
-            }),
-          }),
-        );
-        expect(denied.status).toBe(401);
-        expect(denied.headers.get('x-trace-id')).toMatch(TRACE_ID);
-        expect(denied.headers.get('x-error-code')).toBe('UNAUTHORIZED');
-      });
-
-      it('logout 200 carries x-trace-id', async () => {
-        const response = await logoutPost(
-          createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' }),
-        );
-
-        expect(response.status).toBe(200);
-        expect(response.headers.get('x-trace-id')).toMatch(TRACE_ID);
-      });
-
-      it('password reset 200 and 422 both carry x-trace-id', async () => {
-        mockUser(null);
-
-        const ok = await resetPost(
-          createNextRequest('http://localhost/api/v1/auth/password/reset', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: `trace-reset-${copyId}-${Date.now()}@example.com` }),
-          }),
-        );
-        expect(ok.status).toBe(200);
-        expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
-
-        const invalid = await resetPost(
-          createNextRequest('http://localhost/api/v1/auth/password/reset', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: 'not-an-email' }),
-          }),
-        );
-        expect(invalid.status).toBe(422);
-        expect(invalid.headers.get('x-trace-id')).toMatch(TRACE_ID);
-      });
+        }),
+      );
+      expect(invalid.status).toBe(422);
+      expect(invalid.headers.get('x-trace-id')).toMatch(TRACE_ID);
     });
   });
 });

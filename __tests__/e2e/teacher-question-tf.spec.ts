@@ -1,8 +1,6 @@
-import { expect, type Page, test } from '@playwright/test';
-import { t } from '#test/e2e/utils';
-
-const email = 'teacher1@dev.local';
-const password = 'pass';
+import type { Page } from '@playwright/test';
+import { sidebarLink, t } from '#test/e2e/utils';
+import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 
 const newBankButton = t('QuestionBankManagement.new_bank');
 const createQuestionButton = t('QuestionBankDetail.create_question');
@@ -15,24 +13,13 @@ const trueFalseOption = t('QuestionForm.true_false');
  * immediately render two *editable* option rows seeded from the i18n defaults,
  * with no "Generuj opcje Prawda/Fałsz" button needed.
  */
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel(t('LoginPage.email_label')).fill(email);
-  await page.getByLabel(t('LoginPage.password_label')).fill(password);
-  await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/edu/);
-  // Login ends with router.refresh(); wait for that transition to finish so the
-  // dashboard is interactive and cannot remount the screen under our clicks.
-  await page.waitForLoadState('networkidle');
-}
-
 function uniqueBankName(prefix: string) {
   return `QA154 ${prefix} ${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
 }
 
 /** Create a throwaway bank and open its detail page (the question form lives there). */
 async function openEmptyBank(page: Page, name: string) {
-  await page.getByRole('link', { name: t('DashboardLayout.edu_questions') }).click();
+  await sidebarLink(page, 'DashboardLayout.edu_questions').click();
   await page.waitForURL(/\/edu\/questions/);
 
   await page.getByRole('button', { name: newBankButton }).first().click();
@@ -78,7 +65,7 @@ test.describe('Teacher True/False question form (#154)', () => {
     page,
   }) => {
     const bankName = uniqueBankName('Seed');
-    await login(page);
+    await signIn(page, 'teacher');
     await openEmptyBank(page, bankName);
     const formDialog = await openFormAndPickTrueFalse(page);
 
@@ -125,7 +112,7 @@ test.describe('Teacher True/False question form (#154)', () => {
 
   test('Clearing one True/False option blocks submit with the inline alert', async ({ page }) => {
     const bankName = uniqueBankName('Validation');
-    await login(page);
+    await signIn(page, 'teacher');
     await openEmptyBank(page, bankName);
     const formDialog = await openFormAndPickTrueFalse(page);
 

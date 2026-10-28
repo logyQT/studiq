@@ -14,12 +14,15 @@ Student zgłosił błąd w pytaniu/fiszce T1 (STU-39).
 ## Prerequisite context
 
 ### STU-39 — Zgłoszenie błędnej fiszki
+
 _Warunek wstępny: S1, talia O1G1T1 (autor T1)._
+
 1. W menu fiszki wybierz „Zgłoś nieprawidłowość”.
 2. Wpisz „Odpowiedź jest błędna” i kliknij „Wyślij”.
 3. Otwórz /app/reports.
 
 Expected:
+
 - Okno „Zgłoś nieprawidłowość pytania”, po wysłaniu toast „Zgłoszenie wysłane”.
 - Zgłoszenie widoczne na liście /app/reports z treścią i statusem przeczytania.
 

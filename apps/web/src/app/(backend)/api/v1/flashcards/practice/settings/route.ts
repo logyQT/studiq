@@ -8,3 +8,10 @@ export async function GET(req: NextRequest) {
     return toNextResponse(await flashcardPracticeController.getSettings(ctx));
   });
 }
+
+export async function PUT(req: NextRequest) {
+  return withAuth(req, async (ctx) => {
+    const body = await req.json().catch(() => null);
+    return toNextResponse(await flashcardPracticeController.updateSettings(body, ctx));
+  });
+}

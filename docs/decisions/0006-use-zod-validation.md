@@ -15,6 +15,7 @@ Zod was selected as the validation library, with schemas defined in `src/server/
 ## Consequences
 
 ### Positive
+
 - Schemas double as TypeScript type inference (`z.infer`)
 - Clear, composable validation rules with custom error messages
 - Schemas can be registered for OpenAPI/Swagger documentation
@@ -22,5 +23,6 @@ Zod was selected as the validation library, with schemas defined in `src/server/
 - Catches invalid input early with 422 responses
 
 ### Negative
+
 - Requires maintaining schemas alongside route handlers
 - Validation errors must be mapped to user-friendly messages on the frontend

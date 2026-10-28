@@ -14,12 +14,15 @@ Własna talia z STU-15.
 ## Prerequisite context
 
 ### STU-15 — Utworzenie talii
+
 _Warunek wstępny: Zalogowany student1._
+
 1. Kliknij „Nowa talia”.
 2. Wpisz nazwę „Biologia – rozdział 1” i opis „Komórka”.
 3. Zostaw widoczność „Tylko ja” i kliknij „Utwórz”.
 
 Expected:
+
 - Toast „Talia utworzona”; talia widoczna na liście z 0 fiszek.
 - Talia ma etykietę „Zarządzaj” (właściciel).
 

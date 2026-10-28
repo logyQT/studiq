@@ -7,9 +7,9 @@ Loki logs and the `x-trace-id` correlation loop described in
 
 Two independent scripts:
 
-| Script | Purpose |
-|--------|---------|
-| `seed.ts` | Create a large pool of confirmed accounts via the Supabase Admin API |
+| Script    | Purpose                                                                 |
+| --------- | ----------------------------------------------------------------------- |
+| `seed.ts` | Create a large pool of confirmed accounts via the Supabase Admin API    |
 | `bots.ts` | Log in as those accounts and drive concurrent, randomized user journeys |
 
 Both run directly with Bun (no build step) and are dependency-free.
@@ -26,15 +26,15 @@ Both run directly with Bun (no build step) and are dependency-free.
 - Connection settings are read from the environment (Bun auto-loads `.env` /
   `.env.local`) with local defaults:
 
-  | Variable | Default |
-  |----------|---------|
-  | `SUPABASE_URL` | `http://127.0.0.1:54321` |
-  | `SUPABASE_ANON_KEY` | local anon JWT |
-  | `SUPABASE_SERVICE_ROLE_KEY` | local service-role JWT |
-  | `APP_URL` | `http://localhost:3000` |
-  | `LOADTEST_DIR` | `.dev/load-test` |
-  | `LOADTEST_PASSWORD` | `Password123!` |
-  | `LOADTEST_EMAIL_DOMAIN` | `loadtest.studiq.local` |
+  | Variable                    | Default                  |
+  | --------------------------- | ------------------------ |
+  | `SUPABASE_URL`              | `http://127.0.0.1:54321` |
+  | `SUPABASE_ANON_KEY`         | local anon JWT           |
+  | `SUPABASE_SERVICE_ROLE_KEY` | local service-role JWT   |
+  | `APP_URL`                   | `http://localhost:3000`  |
+  | `LOADTEST_DIR`              | `.dev/load-test`         |
+  | `LOADTEST_PASSWORD`         | `Password123!`           |
+  | `LOADTEST_EMAIL_DOMAIN`     | `loadtest.studiq.local`  |
 
 > `.dev/` is git-ignored, so generated pools and reports never get committed.
 
@@ -70,18 +70,18 @@ per run and then keep their session alive without re-authenticating.
 bun scripts/load-test/seed.ts --count 1000
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--count <n>` | `1000` | number of accounts |
-| `--concurrency <n>` | `20` | parallel Admin API requests |
-| `--students <0-1>` | `0.85` | student ratio |
-| `--educators <0-1>` | `0.10` | educator ratio |
-| `--managers <0-1>` | `0.05` | manager ratio |
-| `--password <pw>` | `Password123!` | shared password |
-| `--domain <domain>` | `loadtest.studiq.local` | email domain |
-| `--supabase-url <url>` | env | Supabase API URL |
-| `--dry-run` | – | print the plan, create nothing |
-| `--reset` | – | delete every account in the pool |
+| Flag                   | Default                 | Description                      |
+| ---------------------- | ----------------------- | -------------------------------- |
+| `--count <n>`          | `1000`                  | number of accounts               |
+| `--concurrency <n>`    | `20`                    | parallel Admin API requests      |
+| `--students <0-1>`     | `0.85`                  | student ratio                    |
+| `--educators <0-1>`    | `0.10`                  | educator ratio                   |
+| `--managers <0-1>`     | `0.05`                  | manager ratio                    |
+| `--password <pw>`      | `Password123!`          | shared password                  |
+| `--domain <domain>`    | `loadtest.studiq.local` | email domain                     |
+| `--supabase-url <url>` | env                     | Supabase API URL                 |
+| `--dry-run`            | –                       | print the plan, create nothing   |
+| `--reset`              | –                       | delete every account in the pool |
 
 - **Idempotent** — re-running skips accounts that already exist.
 - Accounts are created with `email_confirm: true`, so they can log in
@@ -119,17 +119,17 @@ bun scripts/load-test/bots.ts --users 5 --duration 30
 bun scripts/load-test/bots.ts --users 50 --student-bots 1 --think-min 50 --think-max 200
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--users <n>` | `50` | concurrent bots |
-| `--duration <s>` | `300` | run length in seconds |
-| `--student-bots <0-1>` | `0.85` | share of bots that are students |
-| `--think-min <ms>` | `200` | min think time between actions |
-| `--think-max <ms>` | `1500` | max think time between actions |
-| `--login-concurrency <n>` | `5` | parallel logins during onboarding |
-| `--seed <n>` | `42` | RNG seed (reproducible runs) |
-| `--accounts <file>` | `.dev/load-test/accounts.json` | account pool |
-| `--app-url <url>` | env | app base URL |
+| Flag                      | Default                        | Description                       |
+| ------------------------- | ------------------------------ | --------------------------------- |
+| `--users <n>`             | `50`                           | concurrent bots                   |
+| `--duration <s>`          | `300`                          | run length in seconds             |
+| `--student-bots <0-1>`    | `0.85`                         | share of bots that are students   |
+| `--think-min <ms>`        | `200`                          | min think time between actions    |
+| `--think-max <ms>`        | `1500`                         | max think time between actions    |
+| `--login-concurrency <n>` | `5`                            | parallel logins during onboarding |
+| `--seed <n>`              | `42`                           | RNG seed (reproducible runs)      |
+| `--accounts <file>`       | `.dev/load-test/accounts.json` | account pool                      |
+| `--app-url <url>`         | env                            | app base URL                      |
 
 ### What the bots do
 
@@ -183,12 +183,12 @@ collector:
 
 ## 5. Suggested ramp
 
-| Stage | Command |
-|-------|---------|
-| smoke | `bots.ts --users 5 --duration 30` |
-| warm | `bots.ts --users 25 --duration 120` |
-| load | `bots.ts --users 50 --duration 300` |
-| soak | `bots.ts --users 50 --duration 1800` |
+| Stage | Command                                                                                              |
+| ----- | ---------------------------------------------------------------------------------------------------- |
+| smoke | `bots.ts --users 5 --duration 30`                                                                    |
+| warm  | `bots.ts --users 25 --duration 120`                                                                  |
+| load  | `bots.ts --users 50 --duration 300`                                                                  |
+| soak  | `bots.ts --users 50 --duration 1800`                                                                 |
 | spike | raise `--users` and lower `--think-min/--think-max`, e.g. `--users 150 --think-min 0 --think-max 50` |
 
 > Tip: keep `--seed` fixed to compare runs, and vary `--think-*` to change the

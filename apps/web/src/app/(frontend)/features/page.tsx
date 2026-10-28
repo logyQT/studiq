@@ -7,7 +7,6 @@ import {
   BookOpen,
   Brain,
   Building2,
-  Check,
   FileText,
   GraduationCap,
   Mail,
@@ -19,6 +18,7 @@ import {
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { ComparisonCell } from '@/components/marketing/comparison-cell';
 
 const FREE = 'free';
 const PREMIUM = 'premium';
@@ -122,41 +122,49 @@ export default function FeaturesPage() {
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-8">
           {t('comparison_title')}
         </h2>
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full text-sm">
+            <caption className="sr-only">{t('comparison_title')}</caption>
             <thead>
               <tr className="border-b">
-                <th className="text-left py-3 px-4 font-medium">{t('comparison_feature')}</th>
-                <th className="text-center py-3 px-4 font-medium">{t('comparison_free')}</th>
-                <th className="text-center py-3 px-4 font-medium">{t('comparison_premium')}</th>
-                <th className="text-center py-3 px-4 font-medium">{t('comparison_university')}</th>
+                <th scope="col" className="text-left py-3 px-4 font-medium">
+                  {t('comparison_feature')}
+                </th>
+                <th scope="col" className="text-center py-3 px-4 font-medium">
+                  {t('comparison_free')}
+                </th>
+                <th scope="col" className="text-center py-3 px-4 font-medium">
+                  {t('comparison_premium')}
+                </th>
+                <th scope="col" className="text-center py-3 px-4 font-medium">
+                  {t('comparison_university')}
+                </th>
               </tr>
             </thead>
             <tbody>
               {comparisonRows.map(({ feature, free, premium, university }) => (
                 <tr key={feature} className="border-b border-border/50">
-                  <td className="py-3 px-4 text-muted-foreground">{feature}</td>
-                  <td className="text-center py-3 px-4">
-                    {free ? (
-                      <Check className="h-4 w-4 mx-auto text-primary" />
-                    ) : (
-                      <span className="text-muted-foreground/50">—</span>
-                    )}
-                  </td>
-                  <td className="text-center py-3 px-4">
-                    {premium ? (
-                      <Check className="h-4 w-4 mx-auto text-violet-500" />
-                    ) : (
-                      <span className="text-muted-foreground/50">—</span>
-                    )}
-                  </td>
-                  <td className="text-center py-3 px-4">
-                    {university ? (
-                      <Check className="h-4 w-4 mx-auto text-emerald-500" />
-                    ) : (
-                      <span className="text-muted-foreground/50">—</span>
-                    )}
-                  </td>
+                  <th scope="row" className="py-3 px-4 text-left font-normal text-muted-foreground">
+                    {feature}
+                  </th>
+                  <ComparisonCell
+                    included={free}
+                    yesLabel={t('comparison_yes')}
+                    noLabel={t('comparison_no')}
+                    checkClassName="text-primary"
+                  />
+                  <ComparisonCell
+                    included={premium}
+                    yesLabel={t('comparison_yes')}
+                    noLabel={t('comparison_no')}
+                    checkClassName="text-violet-500"
+                  />
+                  <ComparisonCell
+                    included={university}
+                    yesLabel={t('comparison_yes')}
+                    noLabel={t('comparison_no')}
+                    checkClassName="text-emerald-500"
+                  />
                 </tr>
               ))}
             </tbody>

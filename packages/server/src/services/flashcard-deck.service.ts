@@ -98,7 +98,7 @@ export class FlashcardDeckService {
       .in('id', ids);
 
     if (error) return toDbFailure(error);
-    if (!cards || cards.length !== new Set(ids).size) return failure('NOT_FOUND');
+    if (cards?.length !== new Set(ids).size) return failure('NOT_FOUND');
 
     for (const card of cards) {
       await check(ctx, Permission.FLASHCARD_UPDATE, card);
@@ -121,7 +121,7 @@ export class FlashcardDeckService {
       .in('id', ids);
 
     if (error) return toDbFailure(error);
-    if (!decks || decks.length !== new Set(ids).size) return failure('NOT_FOUND');
+    if (decks?.length !== new Set(ids).size) return failure('NOT_FOUND');
 
     for (const deck of decks) {
       await check(ctx, Permission.DECK_READ, deck);

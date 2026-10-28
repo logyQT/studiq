@@ -72,7 +72,7 @@ import fs from 'fs';
 import path from 'path';
 
 const fixturesDir = path.join(__dirname, 'fixtures');
-const fixtureFiles = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.json'));
+const fixtureFiles = fs.readdirSync(fixturesDir).filter((f) => f.endsWith('.json'));
 
 describe.each(fixtureFiles)('fixture: %s', (fixtureFile) => {
   it('produces expected message transformations', async () => {
@@ -121,18 +121,18 @@ describe.each(fixtureFiles)('fixture: %s', (fixtureFile) => {
 
 See Appendix A below for the full 100 test cases.
 
-| # | Fixture file | What it guards |
-|---|-------------|----------------|
-| 1 | `basic-direct-flashcards.json` | Simple `generate_flashcards` → `finish` without plan |
-| 2 | `finish-with-flashcards-consolidated.json` | Multi-batch → `finish(type='flashcards')` produces `readOnly=false`, correct deckName |
-| 3 | `intermediate-batch-readonly.json` | `generate_flashcards` before `finish` has `readOnly=true` |
-| 4 | `markdown-streaming-stability.json` | Only last assistant message's last text part is `status:'streaming'`; previously complete messages stay `'complete'` |
-| 5 | `plan-step-tracking.json` | Tool calls map to plan steps correctly, `finish` marks all complete, `completedSteps: [0,1,2]` |
-| 6 | `finish-type-chat.json` | `finish(type='chat')` produces text assistant message, no flashcard result |
-| 7 | `plan-with-webfetch.json` | Plan created, `webfetch` → `extract_concepts` → `generate_flashcards` → `finish` |
-| 8 | `interrupted-generation.json` | User message between two batches → agent handles correctly, chain is not broken |
-| 9 | `empty-stream.json` | Pure text response, no tool calls at all |
-| 10 | `streaming-vs-complete-edge.json` | Messages with mixed complete/streaming parts — only last part of last assistant message is streaming |
+| #   | Fixture file                               | What it guards                                                                                                       |
+| --- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| 1   | `basic-direct-flashcards.json`             | Simple `generate_flashcards` → `finish` without plan                                                                 |
+| 2   | `finish-with-flashcards-consolidated.json` | Multi-batch → `finish(type='flashcards')` produces `readOnly=false`, correct deckName                                |
+| 3   | `intermediate-batch-readonly.json`         | `generate_flashcards` before `finish` has `readOnly=true`                                                            |
+| 4   | `markdown-streaming-stability.json`        | Only last assistant message's last text part is `status:'streaming'`; previously complete messages stay `'complete'` |
+| 5   | `plan-step-tracking.json`                  | Tool calls map to plan steps correctly, `finish` marks all complete, `completedSteps: [0,1,2]`                       |
+| 6   | `finish-type-chat.json`                    | `finish(type='chat')` produces text assistant message, no flashcard result                                           |
+| 7   | `plan-with-webfetch.json`                  | Plan created, `webfetch` → `extract_concepts` → `generate_flashcards` → `finish`                                     |
+| 8   | `interrupted-generation.json`              | User message between two batches → agent handles correctly, chain is not broken                                      |
+| 9   | `empty-stream.json`                        | Pure text response, no tool calls at all                                                                             |
+| 10  | `streaming-vs-complete-edge.json`          | Messages with mixed complete/streaming parts — only last part of last assistant message is streaming                 |
 
 ### Dependencies to add
 
@@ -141,6 +141,7 @@ bun add -d @testing-library/react @testing-library/jest-dom jsdom
 ```
 
 Add to `vitest.config.ts`:
+
 ```typescript
 environment: {
   '^__tests__/unit/hooks/': 'jsdom',  // override for hooks dir
@@ -157,12 +158,12 @@ Or use `@vitest-environment jsdom` docblock per file (simpler).
 
 `__tests__/unit/components/`:
 
-| File | What it tests |
-|------|---------------|
-| `flashcard-block.test.tsx` | Skeleton when `loading`, preview when `readOnly=true`, save button when `readOnly=false`, grid layout, deck name display |
-| `plan-block.test.tsx` | Correct step status rendering (pending gray, in-progress spinner, completed sparkle), "2/5 completed" vs "All steps complete" |
-| `chat-message.test.tsx` | Markdown renderer vs plain text based on `status`, correct component switching for result types |
-| `chat-history.test.tsx` | React.memo prevents re-render on unrelated message changes, correct React.memo shallow comparison |
+| File                       | What it tests                                                                                                                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `flashcard-block.test.tsx` | Skeleton when `loading`, preview when `readOnly=true`, save button when `readOnly=false`, grid layout, deck name display      |
+| `plan-block.test.tsx`      | Correct step status rendering (pending gray, in-progress spinner, completed sparkle), "2/5 completed" vs "All steps complete" |
+| `chat-message.test.tsx`    | Markdown renderer vs plain text based on `status`, correct component switching for result types                               |
+| `chat-history.test.tsx`    | React.memo prevents re-render on unrelated message changes, correct React.memo shallow comparison                             |
 
 ### Testing approach
 
@@ -212,6 +213,7 @@ describe('FlashcardBlock', () => {
 `__tests__/unit/services/ai-chat.service.test.ts`
 
 Follow existing patterns:
+
 - Mock services at module level (`vi.mock`)
 - Mock `createClient` from `@/lib/supabase/server`
 - Use `mockSupabaseClient()` helper
@@ -253,6 +255,7 @@ useEffect(() => {
 ```
 
 Then export:
+
 ```typescript
 // In the browser console:
 copy(JSON.stringify(window.__AI_CHAT_RECORDINGS__, null, 2));
@@ -272,12 +275,12 @@ bunx vitest run __tests__/unit/hooks/ --reporter=verbose
 
 ## Execution Order & Effort
 
-| Phase | What | Est. time | Depends on |
-|-------|------|-----------|------------|
-| 1 | Hook transformation tests + 10 fixtures | 30-45 min | None |
-| 2 | Component render tests (4 files) | 1-2 h | Phase 1 fixture patterns |
-| 3 | Backend controller/service tests (2 files) | 30 min | Existing test patterns |
-| 4 | Replay pipeline | 2-3 h | Phase 1 runner, manual captures |
+| Phase | What                                       | Est. time | Depends on                      |
+| ----- | ------------------------------------------ | --------- | ------------------------------- |
+| 1     | Hook transformation tests + 10 fixtures    | 30-45 min | None                            |
+| 2     | Component render tests (4 files)           | 1-2 h     | Phase 1 fixture patterns        |
+| 3     | Backend controller/service tests (2 files) | 30 min    | Existing test patterns          |
+| 4     | Replay pipeline                            | 2-3 h     | Phase 1 runner, manual captures |
 
 Do **Phase 1 first** — it catches the regression class we've actually hit.
 Add `bun test:hooks` to package.json scripts.
@@ -420,7 +423,7 @@ Add `bun test:hooks` to package.json scripts.
 97. Regression: Previously completed messages don't flip to streaming
 98. Regression: `finish` with flashcards renders consolidated view
 99. Regression: Intermediate batches show readOnly = true (no save button)
-100. Regression: Consolidated finish shows readOnly = false (save button)
+100.  Regression: Consolidated finish shows readOnly = false (save button)
 
 ---
 
@@ -459,9 +462,17 @@ Add `bun test:hooks` to package.json scripts.
               "flashcards": [
                 { "id": "fc-1", "front": "What is the largest planet?", "back": "Jupiter" },
                 { "id": "fc-2", "front": "How many planets in the solar system?", "back": "8" },
-                { "id": "fc-3", "front": "What planet is known as the Red Planet?", "back": "Mars" },
+                {
+                  "id": "fc-3",
+                  "front": "What planet is known as the Red Planet?",
+                  "back": "Mars"
+                },
                 { "id": "fc-4", "front": "Which planet is closest to the Sun?", "back": "Mercury" },
-                { "id": "fc-5", "front": "What planet has the most moons?", "back": "Saturn (146 known)" }
+                {
+                  "id": "fc-5",
+                  "front": "What planet has the most moons?",
+                  "back": "Saturn (146 known)"
+                }
               ],
               "count": 5
             }
@@ -476,9 +487,17 @@ Add `bun test:hooks` to package.json scripts.
               "flashcards": [
                 { "id": "fc-1", "front": "What is the largest planet?", "back": "Jupiter" },
                 { "id": "fc-2", "front": "How many planets in the solar system?", "back": "8" },
-                { "id": "fc-3", "front": "What planet is known as the Red Planet?", "back": "Mars" },
+                {
+                  "id": "fc-3",
+                  "front": "What planet is known as the Red Planet?",
+                  "back": "Mars"
+                },
                 { "id": "fc-4", "front": "Which planet is closest to the Sun?", "back": "Mercury" },
-                { "id": "fc-5", "front": "What planet has the most moons?", "back": "Saturn (146 known)" }
+                {
+                  "id": "fc-5",
+                  "front": "What planet has the most moons?",
+                  "back": "Saturn (146 known)"
+                }
               ],
               "deckName": "Planets"
             }
@@ -493,9 +512,17 @@ Add `bun test:hooks` to package.json scripts.
               "data": [
                 { "id": "fc-1", "front": "What is the largest planet?", "back": "Jupiter" },
                 { "id": "fc-2", "front": "How many planets in the solar system?", "back": "8" },
-                { "id": "fc-3", "front": "What planet is known as the Red Planet?", "back": "Mars" },
+                {
+                  "id": "fc-3",
+                  "front": "What planet is known as the Red Planet?",
+                  "back": "Mars"
+                },
                 { "id": "fc-4", "front": "Which planet is closest to the Sun?", "back": "Mercury" },
-                { "id": "fc-5", "front": "What planet has the most moons?", "back": "Saturn (146 known)" }
+                {
+                  "id": "fc-5",
+                  "front": "What planet has the most moons?",
+                  "back": "Saturn (146 known)"
+                }
               ],
               "deckName": "Planets",
               "count": 5
@@ -509,11 +536,15 @@ Add `bun test:hooks` to package.json scripts.
     "messages": [
       { "role": "user", "status": "complete" },
       { "role": "tool_call", "toolName": "generate_flashcards", "status": "complete" },
-      { "role": "assistant", "status": "complete", "result": {
-        "type": "flashcards",
-        "readOnly": false,
-        "count": 5
-      }},
+      {
+        "role": "assistant",
+        "status": "complete",
+        "result": {
+          "type": "flashcards",
+          "readOnly": false,
+          "count": 5
+        }
+      },
       { "role": "tool_call", "toolName": "finish", "status": "complete" }
     ]
   }
@@ -539,11 +570,36 @@ should have `status: 'streaming'`. All previous messages stay `'complete'`.
         "id": "assistant-text-1",
         "role": "assistant",
         "parts": [
-          { "type": "text", "text": "Here is some explanation about the solar system. The sun is a star." },
-          { "type": "tool-call", "toolCallId": "tc-f-1", "state": "call", "toolName": "generate_flashcards" },
-          { "type": "tool-result", "toolCallId": "tc-f-1", "state": "result", "toolName": "generate_flashcards", "result": { "flashcards": [{ "id": "1", "front": "Q", "back": "A" }], "count": 1 } },
+          {
+            "type": "text",
+            "text": "Here is some explanation about the solar system. The sun is a star."
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "tc-f-1",
+            "state": "call",
+            "toolName": "generate_flashcards"
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "tc-f-1",
+            "state": "result",
+            "toolName": "generate_flashcards",
+            "result": { "flashcards": [{ "id": "1", "front": "Q", "back": "A" }], "count": 1 }
+          },
           { "type": "tool-call", "toolCallId": "tc-fi-1", "state": "call", "toolName": "finish" },
-          { "type": "tool-result", "toolCallId": "tc-fi-1", "state": "result", "toolName": "finish", "result": { "type": "flashcards", "data": [{ "id": "1", "front": "Q", "back": "A" }], "deckName": "Test", "count": 1 } }
+          {
+            "type": "tool-result",
+            "toolCallId": "tc-fi-1",
+            "state": "result",
+            "toolName": "finish",
+            "result": {
+              "type": "flashcards",
+              "data": [{ "id": "1", "front": "Q", "back": "A" }],
+              "deckName": "Test",
+              "count": 1
+            }
+          }
         ]
       },
       {
@@ -554,9 +610,7 @@ should have `status: 'streaming'`. All previous messages stay `'complete'`.
       {
         "id": "assistant-text-2",
         "role": "assistant",
-        "parts": [
-          { "type": "text", "text": "Currently streaming content..." }
-        ]
+        "parts": [{ "type": "text", "text": "Currently streaming content..." }]
       }
     ]
   },
@@ -608,6 +662,7 @@ bun test:components
 ### Test coverage expansion
 
 If you want coverage on hooks/components, add to `vitest.config.ts`:
+
 ```typescript
 coverage: {
   include: ['src/server/**/*.ts', 'src/hooks/**/*.ts', 'src/components/ai/**/*.tsx'],
@@ -620,11 +675,11 @@ coverage: {
 
 These are past bugs we MUST catch with the above tests:
 
-| Bug | Fixture | Assertion |
-|-----|---------|-----------|
-| Markdown re-rendering | `markdown-streaming-stability` | completed assistant messages have `status: 'complete'`, only active streaming has `'streaming'` |
-| Flashcard skeleton dead code | `intermediate-batch-readonly` | assistant message with `generate_flashcards` result has `result` field present with valid `readOnly` |
-| `finish` with flashcards silently dropped | `finish-with-flashcards-consolidated` | final assistant message has `result.type === 'flashcards'` with `readOnly: false` and `deckName` |
-| Plan instantly completed | `plan-step-tracking` | `completedSteps` array grows incrementally, not all at once before finish; `planCompleted` is false until `finish` tool call |
-| Globally-applied `isStreaming` flag | `markdown-streaming-stability` | Previous assistant message's parts all `'complete'`, only new active stream parts `'streaming'` |
-| Skill router DeepSeek json_object error | N/A (not a frontend issue) | N/A |
+| Bug                                       | Fixture                               | Assertion                                                                                                                    |
+| ----------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Markdown re-rendering                     | `markdown-streaming-stability`        | completed assistant messages have `status: 'complete'`, only active streaming has `'streaming'`                              |
+| Flashcard skeleton dead code              | `intermediate-batch-readonly`         | assistant message with `generate_flashcards` result has `result` field present with valid `readOnly`                         |
+| `finish` with flashcards silently dropped | `finish-with-flashcards-consolidated` | final assistant message has `result.type === 'flashcards'` with `readOnly: false` and `deckName`                             |
+| Plan instantly completed                  | `plan-step-tracking`                  | `completedSteps` array grows incrementally, not all at once before finish; `planCompleted` is false until `finish` tool call |
+| Globally-applied `isStreaming` flag       | `markdown-streaming-stability`        | Previous assistant message's parts all `'complete'`, only new active stream parts `'streaming'`                              |
+| Skill router DeepSeek json_object error   | N/A (not a frontend issue)            | N/A                                                                                                                          |

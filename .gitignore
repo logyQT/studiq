@@ -59,3 +59,9 @@ apps/admin/.env.local
 
 # QA manager runtime state
 qa/decisions.json
+
+# e2e seeder output
+__tests__/e2e/.seed/
+
+# scratch space for local runs (baseline reports, helpers)
+.tmp/

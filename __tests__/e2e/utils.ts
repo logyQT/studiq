@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 
@@ -18,3 +19,14 @@ export const t = (path: string) => {
 
   return new RegExp(`${escape(enVal as string)}|${escape(plVal as string)}`, 'i');
 };
+
+/**
+ * A sidebar nav link by its DashboardLayout label.
+ *
+ * `getByRole('link', { name })` is ambiguous on dashboard pages: quick-action
+ * cards link to the same route, so the same name resolves to two elements.
+ * The sidebar anchors carry `data-sidebar="menu-button"`, which scopes it.
+ */
+export function sidebarLink(page: Page, key: string) {
+  return page.locator('a[data-sidebar="menu-button"]', { hasText: t(key) });
+}

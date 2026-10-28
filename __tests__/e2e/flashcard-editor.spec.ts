@@ -17,7 +17,6 @@ async function openFlashcardDialog(page: Page) {
   await login(page);
 
   await page.goto('/app/flashcards');
-  await page.waitForLoadState('networkidle');
 
   // Seeded personal deck of student1 (supabase/seeds/01_seed.sql).
   await page

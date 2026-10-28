@@ -234,7 +234,9 @@ describe('active_org_id membership gate (#186)', () => {
 
   it('clears active_org_id on logout', async () => {
     actAs(member);
-    const res = await logoutPost();
+    const res = await logoutPost(
+      createNextRequest(`${BASE_URL}/api/v1/auth/logout`, { method: 'POST' }),
+    );
     const header = res.headers.get('set-cookie');
 
     expect(res.status).toBe(200);

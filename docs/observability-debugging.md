@@ -14,12 +14,12 @@ Tempo / TraceQL.
 docker compose up -d
 ```
 
-| UI | URL |
-|----|-----|
-| Grafana | http://localhost:3001 (`admin` / `admin`) |
-| Prometheus | http://localhost:9090 |
-| Tempo API | http://localhost:3200 |
-| Loki | http://localhost:3100 |
+| UI         | URL                                       |
+| ---------- | ----------------------------------------- |
+| Grafana    | http://localhost:3001 (`admin` / `admin`) |
+| Prometheus | http://localhost:9090                     |
+| Tempo API  | http://localhost:3200                     |
+| Loki       | http://localhost:3100                     |
 
 The Next.js app sends OTLP (traces + metrics + logs) to the OTel Collector on
 `http://localhost:4318` (SDK default). Make sure `OTEL_SDK_DISABLED` is **not**
@@ -38,11 +38,11 @@ The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc):
         "command": ["mcp-grafana", "-t", "stdio"],
         "environment": {
           "GRAFANA_URL": "http://localhost:3001",
-          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}"
-        }
-      }
-    }
-  }
+          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}",
+        },
+      },
+    },
+  },
 }
 ```
 
@@ -146,12 +146,12 @@ scripts/qa-env --clean MGR-MEM-03
 
 A slot gives you:
 
-| | slot 1 | slot 2 | slot 3 |
-|---|---|---|---|
-| App | `:3010` | `:3011` | `:3012` |
+|                   | slot 1              | slot 2              | slot 3              |
+| ----------------- | ------------------- | ------------------- | ------------------- |
+| App               | `:3010`             | `:3011`             | `:3012`             |
 | Supabase API / DB | `:54421` / `:54422` | `:54521` / `:54522` | `:54621` / `:54622` |
-| Studio / Mail | `:54423` / `:54424` | `:54523` / `:54524` | `:54623` / `:54624` |
-| OTel service | `studiq-MGR-MEM-03` | `studiq-MGR-ACC-01` | … |
+| Studio / Mail     | `:54423` / `:54424` | `:54523` / `:54524` | `:54623` / `:54624` |
+| OTel service      | `studiq-MGR-MEM-03` | `studiq-MGR-ACC-01` | …                   |
 
 ### How Supabase is isolated
 
@@ -188,4 +188,3 @@ Agents read their identity from `qa/env.json` in their worktree (`appUrl`,
 
 **Sizing:** a trimmed stack is ~1.5–2 GB and a Next dev ~0.5–1 GB. On the 15 GB
 dev host, 3 parallel slots plus the shared stack is comfortable; 4 is tight.
-
