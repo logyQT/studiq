@@ -362,11 +362,13 @@ export class Bridge {
 
     try {
       const active = await this.opencode.activeSessions().catch(() => new Set<string>());
-      const delivery = active.has(this.sessionId) ? 'queue' : undefined;
+      // `steer` injects into the running turn so the agent sees it now; `queue`
+      // waits for the turn to end, which reads as "the message went nowhere".
+      const delivery = active.has(this.sessionId) ? 'steer' : undefined;
       await this.opencode.prompt(this.sessionId, message, delivery);
       this.log.info(
         this.opts.label,
-        `${delivery === 'queue' ? 'queued' : 'sent'} message from ${author} (${message.length} chars, ${saved.length} attachment(s))`,
+        `${delivery === 'steer' ? 'steered' : 'sent'} message from ${author} (${message.length} chars, ${saved.length} attachment(s))`,
       );
     } catch (err) {
       this.log.error(
