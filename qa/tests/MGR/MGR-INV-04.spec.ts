@@ -9,6 +9,7 @@ import {
   ensureAccount,
   randomTag,
   seedTenantGraph,
+  type SeedAccount,
   tenantId,
 } from '#test/helpers/tenant-seed';
 
@@ -78,12 +79,6 @@ const COPY = {
   invalidToken: 'Nieprawidłowy lub wygasły kod zaproszenia',
 } as const;
 
-interface SeedUser {
-  id: string;
-  email: string;
-  password: string;
-}
-
 interface OrgMembership {
   id: string;
   name: string;
@@ -118,7 +113,7 @@ interface CreatedInvitation {
 }
 
 let tenant!: QaTenant;
-let invitee!: SeedUser;
+let invitee!: SeedAccount;
 
 /** Resolve the shared Supabase admin credentials (env → worker config → local defaults). */
 function resolveSupabase(): { url: string; serviceKey: string } {
@@ -177,8 +172,7 @@ async function seedCaseTenant(): Promise<void> {
     ownerOrgRole: 'admin',
   });
 
-  const existing = await ensureAccount(db, invitee);
-  invitee = { id: existing.id, email: existing.email, password: existing.password };
+  invitee = await ensureAccount(db, invitee);
 
   const cleanup = [
     db.from('invitations').delete().eq('organization_id', ORG_ID).eq('email', invitee.email),
