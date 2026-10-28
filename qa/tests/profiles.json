@@ -35,5 +35,9 @@
   "MGR-ROL-03": {
     "profile": "content",
     "plan": "hub"
+  },
+  "MGR-SET-05": {
+    "profile": "content",
+    "plan": "hub"
   }
 }
