@@ -159,3 +159,12 @@ rate-limited (90 s per component) and protected by a lock.
   test fixtures, not real credentials.
 - The corpus is generated from a customer-facing test document; regenerate it
   from `source/` rather than hand-editing `cases/`.
+
+## QA suite generation (shared app)
+
+`QA-SUITE-APPROACH.md` defines the new QA-suite loop: one shared app + one shared
+Supabase, eight browser workers, and one isolated tenant per case. Only tests that
+pass 3/3 independent runs are admitted to `qa-suite`; legacy `@dev.local` accounts
+are not used in the suite. Manager and worker prompts are in
+`QA-SUITE-MANAGER.md` and `QA-SUITE-WORKER.md`. The manager is not started
+automatically.

@@ -77,6 +77,9 @@ reviews:
     # Only `main` is long-lived; feature branches target it directly.
     base_branches:
       - 'main'
+      # QA-suite integration branch. PRs are normally tagged [QA-SUITE] below
+      # and skipped; keeping the branch listed makes the intent explicit.
+      - 'qa-suite'
     auto_incremental_review: true
     # Substring, case-insensitive: a bare 'WIP' would also skip 'swipe' and
     # 'wipe' titles, so bracket it. Drafts are excluded already by `drafts`.
@@ -84,6 +87,7 @@ reviews:
       - '[WIP]'
       - 'DO NOT MERGE'
       - 'dnm'
+      - '[QA-SUITE]'
     # Dependency bumps are grouped and reviewed by a human against the grouping
     # policy in .github/dependabot.yml. Remove this line to get AI review on
     # Dependabot PRs too.
