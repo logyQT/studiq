@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Watch GitHub for PRs into `qa-suite` and push an event to the QA-suite manager.
+
+The workers open their PRs against `qa-suite`; nobody polls GitHub by hand. This
+watcher turns "a PR is ready" (or "the worker pushed a fix") into one message in the
+manager's session, which then re-runs the spec from a clean tenant and merges.
+
+Unlike `qa-pr-watch`, it watches the `qa-suite` base only, includes PRs opened by the
+system account (the workers use it), and ignores drafts.
+
+  qa-suite-watch                  one poll, print what it found
+  qa-suite-watch baseline         mark every open PR as seen (no notifications)
+  qa-suite-watch loop             poll every --interval seconds (default 60), pidfile
+  qa-suite-watch status           last snapshot + the manager session it targets
+  qa-suite-watch stop             stop a running loop
+
+The manager session is read from `.qa-fix/qa-suite-manager.json` (`{"session": "ses_…"}`)
+or `QA_SUITE_MANAGER`; with no session it logs what it would send.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+ROOT = Path("/workspaces/studiq")
+FIX = ROOT / ".qa-fix"
+STATE = FIX / "qa-suite-watch.json"
+PID = FIX / "qa-suite-watch.pid"
+MANAGER = FIX / "qa-suite-manager.json"
+LOG = FIX / "qa-suite-watch.log"
+
+BASE = "http://127.0.0.1:4096"
+AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
+FIELDS = "number,title,headRefName,headRefOid,isDraft,updatedAt,author,baseRefName"
+
+
+def now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def gh(*args: str) -> str:
+    p = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=90)
+    if p.returncode != 0:
+        raise RuntimeError(f"gh {' '.join(args)} -> {p.returncode}: {p.stderr[-400:]}")
+    return p.stdout
+
+
+def api(method: str, path: str, body: dict | None = None) -> dict:
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        BASE + path,
+        data=data,
+        method=method,
+        headers={"Authorization": AUTH, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        raw = resp.read()
+        return json.loads(raw) if raw else {}
+
+
+def manager_session() -> str | None:
+    sid = os.environ.get("QA_SUITE_MANAGER")
+    if sid:
+        return sid
+    try:
+        return json.load(open(MANAGER)).get("session")
+    except Exception:
+        return None
+
+
+def load() -> dict:
+    try:
+        return json.load(open(STATE))
+    except Exception:
+        return {"seen": {}, "checked_at": None}
+
+
+def save(state: dict) -> None:
+    FIX.mkdir(parents=True, exist_ok=True)
+    json.dump(state, open(STATE, "w"), indent=1)
+
+
+def poll() -> list[dict]:
+    raw = gh("pr", "list", "--state", "open", "--limit", "100", "--base", "qa-suite", "--json", FIELDS)
+    prs = json.loads(raw)
+    state = load()
+    seen = state.setdefault("seen", {})
+    events = []
+    for pr in prs:
+        if pr.get("isDraft"):
+            continue
+        number = str(pr["number"])
+        head = pr.get("headRefOid") or ""
+        if seen.get(number) == head:
+            continue
+        seen[number] = head
+        events.append(pr)
+    state["checked_at"] = now()
+    save(state)
+    return events
+
+
+def message(pr: dict) -> str:
+    sha = (pr.get("headRefOid") or "")[:8]
+    author = (pr.get("author") or {}).get("login", "?")
+    return (
+        f"[qa-suite-watch] PR #{pr['number']} is ready: {pr['title']}\n"
+        f"branch {pr.get('headRefName')} · head {sha} · by {author}\n\n"
+        "Gate it: check the spec is the case's own file, run it **3 independent times from a "
+        "clean tenant** with `--workers=1 --repeat-each=1`, and merge into `qa-suite` only if "
+        "all three are green. Never run the full suite and never raise the worker count."
+    )
+
+
+def notify(pr: dict) -> str:
+    text = message(pr)
+    sid = manager_session()
+    if not sid:
+        return f"no manager session registered — would send: {text.splitlines()[0]}"
+    api("POST", f"/api/session/{sid}/prompt", {"text": text})
+    return f"notified {sid}: PR #{pr['number']}"
+
+
+def tick(verbose: bool) -> None:
+    events = poll()
+    if not events:
+        if verbose:
+            print(f"[{now()}] no new qa-suite PRs")
+        return
+    for pr in events:
+        line = notify(pr)
+        print(f"[{now()}] {line}", flush=True)
+
+
+def loop(interval: int) -> None:
+    FIX.mkdir(parents=True, exist_ok=True)
+    PID.write_text(str(os.getpid()))
+    stop = {"flag": False}
+
+    def handler(*_):
+        stop["flag"] = True
+
+    signal.signal(signal.SIGTERM, handler)
+    signal.signal(signal.SIGINT, handler)
+    while not stop["flag"]:
+        try:
+            tick(verbose=True)
+        except Exception as exc:  # noqa: BLE001 - the loop must survive a bad poll
+            print(f"[{now()}] poll failed: {exc}", flush=True)
+        for _ in range(interval):
+            if stop["flag"]:
+                break
+            time.sleep(1)
+    PID.unlink(missing_ok=True)
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Watch PRs into qa-suite and wake the manager")
+    p.add_argument("action", nargs="?", default="once",
+                   choices=("once", "baseline", "loop", "status", "stop"))
+    p.add_argument("--interval", type=int, default=60)
+    args = p.parse_args()
+
+    if args.action == "once":
+        events = poll()
+        if not events:
+            print("no new qa-suite PRs")
+        for pr in events:
+            print(notify(pr))
+        return
+
+    if args.action == "baseline":
+        events = poll()
+        print(f"marked {len(events)} open qa-suite PR(s) as seen")
+        return
+
+    if args.action == "loop":
+        loop(args.interval)
+        return
+
+    if args.action == "status":
+        state = load()
+        print(json.dumps({
+            "running": PID.exists(),
+            "pid": PID.read_text().strip() if PID.exists() else None,
+            "manager": manager_session(),
+            "checked_at": state.get("checked_at"),
+            "seen": len(state.get("seen") or {}),
+        }, indent=1))
+        return
+
+    if args.action == "stop":
+        if not PID.exists():
+            print("no qa-suite-watch loop running")
+            return
+        pid = int(PID.read_text().strip())
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        for _ in range(20):
+            if not PID.exists():
+                break
+            time.sleep(0.5)
+        print("stopped")
+        return
+
+
+if __name__ == "__main__":
+    main()

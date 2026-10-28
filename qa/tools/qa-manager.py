@@ -42,6 +42,8 @@ AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
 MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
 SLOTS = {n: f"/workspaces/studiq/.worktrees/qa-env-{n}" for n in range(1, 9)}
 DASHBOARD = "http://localhost:5000/"
+SUITE_DIR = "/workspaces/studiq/.worktrees/qa-suite"
+SUITE_MANAGER = ROOT / ".qa-fix" / "qa-suite-manager.json"
 
 
 def slot_env(n: int) -> dict:
@@ -616,6 +618,31 @@ def cmd_suite(args) -> None:
     print(f"dashboard: {DASHBOARD}  (Refresh all)")
 
 
+def cmd_manager(args) -> None:
+    """Start the QA-suite manager in the qa-suite checkout (operator-gated)."""
+    prompt_path = Path(SUITE_DIR) / "qa" / "QA-SUITE-MANAGER.md"
+    if not prompt_path.exists():
+        raise SystemExit(f"missing {prompt_path} — update .worktrees/qa-suite to origin/qa-suite")
+    text = prompt_path.read_text(encoding="utf-8")
+    if args.dry_run:
+        print(f"would start the QA-suite manager in {SUITE_DIR} ({len(text)} chars of prompt)")
+        return
+    created = api("POST", "/api/session", {
+        "title": "[QA-SUITE] manager",
+        "location": {"directory": SUITE_DIR},
+        "model": MODEL,
+    })
+    session = created.get("data", created) if isinstance(created, dict) else created
+    sid = session.get("id")
+    if not sid:
+        raise SystemExit(f"session create failed: {json.dumps(created)[:400]}")
+    api("POST", f"/api/session/{sid}/prompt", {"text": text})
+    SUITE_MANAGER.parent.mkdir(parents=True, exist_ok=True)
+    SUITE_MANAGER.write_text(json.dumps({"session": sid, "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, indent=1))
+    print(f"qa-suite manager\t{sid}\t{SUITE_DIR}")
+    print(f"state: {SUITE_MANAGER}  (qa-suite-watch reads it)")
+
+
 def cmd_queue(args) -> None:
     scenarios = [resolve(s) for s in args.scenarios]
     busy = set(busy_slots())
@@ -1025,6 +1052,10 @@ def main() -> None:
     d.add_argument("--env", type=int, choices=list(SLOTS))
     d.add_argument("--dry-run", action="store_true")
     d.set_defaults(fn=cmd_dispatch)
+
+    mg = sub.add_parser("manager", help="start the QA-suite manager in the qa-suite checkout")
+    mg.add_argument("--dry-run", action="store_true")
+    mg.set_defaults(fn=cmd_manager)
 
     su = sub.add_parser("suite", help="start a QA-suite worker for one case")
     su.add_argument("case")
