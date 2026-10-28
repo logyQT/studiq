@@ -44,10 +44,18 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 - Assert the **intended** behavior. A test that reproduces an unfixed bug is not a suite
   test.
 - **If the case does not pass, or you cannot be sure what the correct behavior is, stop and
-  open an issue.** Never write a failing, skipped or expected-to-fail spec, and never guess
+  file a defect.** Never write a failing, skipped or expected-to-fail spec, and never guess
   the intended behavior from the case text. Include the case ID, expected vs observed, the
   tenant key and evidence (screenshot, response, log). Issues are triaged in a separate
   batch; you do not fix them and you do not leave a placeholder spec behind.
+- **Never call `gh issue create` directly — defects go through the dedup helper:**
+  ```bash
+  bun scripts/qa-issue.ts <CASEID> --title "<short symptom>" --body-file /tmp/<CASEID>-issue.md
+  ```
+  It searches every issue (open **and** closed) for the case id and an optional
+  `--search "<symptom text>"`, comments your evidence on an existing match, and only creates
+  a new `[QA-SUITE] <CASEID> <symptom>` issue when nothing matches. One defect = one issue:
+  if a previous case already filed it, comment there instead of opening a second one.
 - Do not touch `main`; do not merge.
 
 ## Flow
