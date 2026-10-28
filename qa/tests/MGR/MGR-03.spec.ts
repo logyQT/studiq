@@ -1,15 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-} from '#test/helpers/tenant-seed';
+import { loadTenant } from '@qa/fixtures/qa-tenant';
+import type { SeedAccount } from '#test/helpers/tenant-seed';
 
 /**
  * MGR-03 — organization data must not mix when the manager switches the active
@@ -28,11 +19,11 @@ import {
  * a counter that leaked from the other organization cannot coincide with the expected
  * one.
  *
- * Tenant: `tenantKey('qa/cases/MGR-03.md', <title>, 'qa-shared')::<run>` with one
- * `::org-a` / `::org-b` suffix per organization so the two graphs cannot collide on
- * `org_members.id`. Every account/org/group/invitation id is `tenantId(key, entity)`,
- * so a run is reproducible by pinning `QA_RUN_SUFFIX`; by default the suffix is
- * fresh, which gives each independent run its own pair of organizations.
+ * Tenant: `scripts/qa-tenant.ts MGR-03` seeds both organizations up front (the
+ * `two-org` profile) with one manager who is admin in each; the spec only reads
+ * `qa/.tenants/MGR-03.json`. Every account/org/group/invitation id is
+ * `tenantId(key, entity)` with a run suffix, so each independent run gets its own
+ * pair of organizations. The spec seeds nothing itself.
  *
  * Acceptance points:
  * 1. Switching at the top of the sidebar lands back on `/manage` and the overview
@@ -43,195 +34,21 @@ import {
  *    data on the same three pages.
  */
 
-const CASE_FILE = 'qa/cases/MGR-03.md';
-const TITLE = 'MGR-03 organization data isolation';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
-
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-
-interface QaOrg {
-  id: string;
-  name: string;
-  /** Two groups each, matching the case's `O1G*` / `O2G*` plural. */
-  groups: [string, string];
-  student: SeedAccount;
-  inviteEmail: string;
-  /** Dashboard counters this org must show — different per org on purpose. */
-  counts: { total: number; teachers: number; students: number };
-}
-
-interface TwoOrgTenant {
-  key: string;
-  manager: SeedAccount;
-  orgA: QaOrg;
-  orgB: QaOrg;
-}
+const CASE = 'MGR-03';
 
 /**
- * Resolve the shared Supabase admin credentials. The worker's `qa/env.json` wins over
- * `process.env`: the repository `.env` names the per-slot stack, which is not running
- * in the shared QA setup, and `bun` auto-loads it.
+ * The case's two-organization tenant, seeded once by `scripts/qa-tenant.ts`
+ * (`two-org` profile) before the suite starts:
+ *
+ *   bun scripts/qa-tenant.ts MGR-03 --fresh
  */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: { supabaseUrl?: string } | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = JSON.parse(raw) as { supabaseUrl?: string };
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url: process.env.QA_SUPABASE_URL ?? fromEnvJson?.supabaseUrl ?? LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-async function seedOrg(params: {
-  db: ReturnType<typeof createSeedDb>;
-  key: string;
-  name: string;
-  groups: [string, string];
-  owner: SeedAccount;
-  student: SeedAccount;
-  /** Enrolled with the org's `teacher` role (org A only), so the counters differ. */
-  teacher?: SeedAccount;
-  invite: { id: string; email: string };
-}): Promise<QaOrg> {
-  const { db, key, name, groups, owner, student, teacher, invite } = params;
-  const members = teacher ? [student, teacher] : [student];
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org: { id: tenantId(key, 'org'), name },
-    defaultGroup: { id: tenantId(key, 'group:default'), name: groups[0], isDefault: true },
-    extraGroups: [{ id: tenantId(key, 'group:second'), name: groups[1], isDefault: false }],
-    owner,
-    members,
-    ownerOrgRole: 'admin',
-  });
-
-  // `seedTenantGraph` enrols every `members` entry with the org's `member` role; the
-  // case needs one org with a teacher, so promote that tenant-local membership.
-  if (teacher) {
-    const promoted = await db
-      .from('org_members')
-      .update({ org_role_id: seeded.roleIds.teacher! })
-      .eq('organization_id', seeded.orgId!)
-      .eq('user_id', teacher.id);
-    if (promoted.error) {
-      throw new Error(`seed ${key}: org_members(teacher) ${promoted.error.message}`);
-    }
-    const groupRole = await db
-      .from('group_members')
-      .update({ role: 'teacher' })
-      .eq('group_id', tenantId(key, 'group:default'))
-      .eq('user_id', teacher.id);
-    if (groupRole.error) {
-      throw new Error(`seed ${key}: group_members(teacher) ${groupRole.error.message}`);
-    }
-  }
-
-  // `/api/v1/organization/groups` lists a group only when it has a teacher member, so
-  // the second group needs the manager enrolled as its teacher.
-  const secondGroupTeacher = await db.from('group_members').upsert(
-    {
-      id: tenantId(key, 'gm:second:owner'),
-      group_id: tenantId(key, 'group:second'),
-      user_id: owner.id,
-      role: 'teacher',
-    },
-    { onConflict: 'id' },
-  );
-  if (secondGroupTeacher.error) {
-    throw new Error(`seed ${key}: group_members(second group) ${secondGroupTeacher.error.message}`);
-  }
-
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const invitation = await db.from('invitations').upsert(
-    {
-      id: invite.id,
-      email: invite.email,
-      token: `qa-mgr03-${invite.id.replace(/-/g, '').slice(0, 24)}`,
-      organization_id: seeded.orgId!,
-      target_org_role_id: seeded.roleIds.member!,
-      inviter_id: owner.id,
-      expires_at: expiresAt,
-      is_accepted: false,
-    },
-    { onConflict: 'id' },
-  );
-  if (invitation.error) {
-    throw new Error(`seed ${key}: invitations ${invitation.error.message}`);
-  }
-
-  return {
-    id: seeded.orgId!,
-    name,
-    groups,
-    student: seeded.members[0],
-    inviteEmail: invite.email,
-    counts: { total: 1 + members.length, teachers: teacher ? 1 : 0, students: 1 },
-  };
-}
-
-/** Both organizations of the case, with one manager who is admin in each. Idempotent. */
-async function seedCaseTenant(): Promise<TwoOrgTenant> {
-  const base = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const keyA = `${base}::org-a`;
-  const keyB = `${base}::org-b`;
-
-  // One account, two memberships: the manager is built from org A's key and passed to
-  // both graphs, so both organizations resolve to the same user.
-  const manager = buildAccount(keyA, 'manager', 'manager', { name: 'QA MGR-03 manager' });
-  const studentA = buildAccount(keyA, 'student-a', 'student', {
-    name: `QA MGR-03 S1 ${RUN_SUFFIX}`,
-  });
-  const teacherA = buildAccount(keyA, 'teacher-a', 'educator', {
-    name: `QA MGR-03 T1 ${RUN_SUFFIX}`,
-  });
-  const studentB = buildAccount(keyB, 'student-b', 'student', {
-    name: `QA MGR-03 S2 ${RUN_SUFFIX}`,
-  });
-
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const orgA = await seedOrg({
-    db,
-    key: keyA,
-    name: `QA MGR-03 A ${RUN_SUFFIX}`,
-    groups: [`O1G1-${RUN_SUFFIX}`, `O1G2-${RUN_SUFFIX}`],
-    owner: manager,
-    student: studentA,
-    teacher: teacherA,
-    invite: {
-      id: tenantId(keyA, 'invite:a'),
-      email: `mgr03-invite-a-${RUN_SUFFIX}@test.local`,
-    },
-  });
-
-  const orgB = await seedOrg({
-    db,
-    key: keyB,
-    name: `QA MGR-03 B ${RUN_SUFFIX}`,
-    groups: [`O2G1-${RUN_SUFFIX}`, `O2G2-${RUN_SUFFIX}`],
-    owner: manager,
-    student: studentB,
-    invite: {
-      id: tenantId(keyB, 'invite:b'),
-      email: `mgr03-invite-b-${RUN_SUFFIX}@test.local`,
-    },
-  });
-
-  return { key: base, manager, orgA, orgB };
+function twoOrgTenant(): TwoOrgTenant {
+  const tenant = loadTenant(CASE) as unknown as TwoOrgTenant & { runSuffix: string | null };
+  expect(
+    tenant.runSuffix,
+    'seed with --fresh: every independent run owns a new tenant',
+  ).toBeTruthy();
+  return tenant;
 }
 
 /**
@@ -347,7 +164,7 @@ test.describe('@case:MGR-03 @area:MGR @prio:P2 organization data isolation', () 
   let tenant: TwoOrgTenant;
 
   test.beforeAll(async () => {
-    tenant = await seedCaseTenant();
+    tenant = twoOrgTenant();
     console.log(
       `MGR-03 tenant key: ${tenant.key} (manager ${tenant.manager.email}, ` +
         `org A ${tenant.orgA.id} / ${tenant.orgA.name}, org B ${tenant.orgB.id} / ` +

@@ -34,6 +34,10 @@
  *   teachers and one member (the member limit counts every role), plus two
  *   invitee accounts that are **not** org members, so they accept the pending
  *   invitations through `/app/join`.
+ * - `two-org` — one manager who administers two organizations (`MGR-03`), with
+ *   different member counts (3 vs 2, one teacher vs none), two groups each and one
+ *   pending invitation each. Seeded up front like every other profile so the spec
+ *   never seeds while the suite is running.
  *
  * Every independent run of a first-run case needs a brand-new account: the run
  * itself creates the org. `--fresh` (or an explicit `--run <suffix>`) folds a run
@@ -62,7 +66,7 @@ const CASES = join(ROOT, 'qa', 'cases');
 const TESTS = join(ROOT, 'qa', 'tests');
 const OUT = join(ROOT, 'qa', '.tenants');
 
-const PROFILES = ['content', 'bare', 'org-limit'] as const;
+const PROFILES = ['content', 'bare', 'org-limit', 'two-org'] as const;
 type Profile = (typeof PROFILES)[number];
 
 const args = process.argv.slice(2);
@@ -106,7 +110,7 @@ function manifestEntry(id: string): ProfileEntry | undefined {
 
 function declaredProfile(entry: ProfileEntry | undefined): Profile {
   const value = typeof entry === 'string' ? entry : entry?.profile;
-  return value === 'bare' || value === 'org-limit' ? value : 'content';
+  return value === 'bare' || value === 'org-limit' || value === 'two-org' ? value : 'content';
 }
 
 function declaredRole(entry: ProfileEntry | undefined): string | undefined {
@@ -153,6 +157,152 @@ function loadEnv(): void {
     } catch {
       // A malformed qa/env.json should not hide the real seeding error.
     }
+  }
+}
+
+/**
+ * `two-org` — one manager who is admin in two organizations (MGR-03). Both graphs
+ * are built here so the spec never seeds at runtime: only the suite seeder does.
+ */
+async function seedTwoOrg(db: ReturnType<typeof createSeedDb>, caseId: string, runSuffix: string) {
+  const base = `${tenantKey(`qa/cases/${caseId}.md`, `${caseId}#${runSuffix}`, 'qa-shared')}::${runSuffix}`;
+  const keyA = `${base}::org-a`;
+  const keyB = `${base}::org-b`;
+  const manager = buildAccount(keyA, 'manager', 'manager', { name: 'QA manager' });
+
+  async function seedOrg(params: {
+    key: string;
+    name: string;
+    groups: [string, string];
+    members: SeedAccount[];
+    /** The member promoted to the org's `teacher` role, so the counters differ. */
+    teacher?: SeedAccount;
+    invite: { id: string; email: string };
+  }) {
+    const { key, name, groups, members, teacher, invite } = params;
+    const seeded = await seedTenantGraph(db, {
+      key,
+      org: { id: tenantId(key, 'org'), name },
+      defaultGroup: { id: tenantId(key, 'group:default'), name: groups[0], isDefault: true },
+      extraGroups: [{ id: tenantId(key, 'group:second'), name: groups[1], isDefault: false }],
+      owner: manager,
+      members,
+      ownerOrgRole: 'admin',
+    });
+
+    // `seedTenantGraph` enrols every member with the org's `member` role; the case
+    // needs one org with a teacher, so promote that tenant-local membership.
+    if (teacher) {
+      const promoted = await db
+        .from('org_members')
+        .update({ org_role_id: seeded.roleIds.teacher! })
+        .eq('organization_id', seeded.orgId!)
+        .eq('user_id', teacher.id);
+      if (promoted.error)
+        throw new Error(`seed ${key}: org_members(teacher) ${promoted.error.message}`);
+      const groupRole = await db
+        .from('group_members')
+        .update({ role: 'teacher' })
+        .eq('group_id', tenantId(key, 'group:default'))
+        .eq('user_id', teacher.id);
+      if (groupRole.error)
+        throw new Error(`seed ${key}: group_members(teacher) ${groupRole.error.message}`);
+    }
+
+    // `/api/v1/organization/groups` lists a group only when it has a teacher member,
+    // so the second group needs the manager enrolled as its teacher.
+    const secondGroupTeacher = await db.from('group_members').upsert(
+      {
+        id: tenantId(key, 'gm:second:owner'),
+        group_id: tenantId(key, 'group:second'),
+        user_id: manager.id,
+        role: 'teacher',
+      },
+      { onConflict: 'id' },
+    );
+    if (secondGroupTeacher.error) {
+      throw new Error(
+        `seed ${key}: group_members(second group) ${secondGroupTeacher.error.message}`,
+      );
+    }
+
+    const invitation = await db.from('invitations').upsert(
+      {
+        id: invite.id,
+        email: invite.email,
+        token: `qa-mgr03-${invite.id.replace(/-/g, '').slice(0, 24)}`,
+        organization_id: seeded.orgId!,
+        target_org_role_id: seeded.roleIds.member!,
+        inviter_id: manager.id,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        is_accepted: false,
+      },
+      { onConflict: 'id' },
+    );
+    if (invitation.error) throw new Error(`seed ${key}: invitations ${invitation.error.message}`);
+
+    return {
+      id: seeded.orgId!,
+      name,
+      groups,
+      student: seeded.members[0],
+      inviteEmail: invite.email,
+      counts: { total: 1 + members.length, teachers: teacher ? 1 : 0, students: 1 },
+    };
+  }
+
+  const studentA = buildAccount(keyA, 'student-a', 'student', {
+    name: `QA MGR-03 S1 ${runSuffix}`,
+  });
+  const teacherA = buildAccount(keyA, 'teacher-a', 'educator', {
+    name: `QA MGR-03 T1 ${runSuffix}`,
+  });
+  const studentB = buildAccount(keyB, 'student-b', 'student', {
+    name: `QA MGR-03 S2 ${runSuffix}`,
+  });
+
+  const orgA = await seedOrg({
+    key: keyA,
+    name: `QA MGR-03 A ${runSuffix}`,
+    groups: [`O1G1-${runSuffix}`, `O1G2-${runSuffix}`],
+    members: [studentA, teacherA],
+    teacher: teacherA,
+    invite: { id: tenantId(keyA, 'invite:a'), email: `mgr03-invite-a-${runSuffix}@test.local` },
+  });
+  const orgB = await seedOrg({
+    key: keyB,
+    name: `QA MGR-03 B ${runSuffix}`,
+    groups: [`O2G1-${runSuffix}`, `O2G2-${runSuffix}`],
+    members: [studentB],
+    invite: { id: tenantId(keyB, 'invite:b'), email: `mgr03-invite-b-${runSuffix}@test.local` },
+  });
+
+  const tenant = {
+    case: caseId,
+    profile: 'two-org',
+    runSuffix: runSuffix || null,
+    key: base,
+    manager,
+    orgA,
+    orgB,
+    users: {
+      manager: { id: manager.id, email: manager.email, password: manager.password },
+      studentA: { id: studentA.id, email: studentA.email, password: studentA.password },
+      teacherA: { id: teacherA.id, email: teacherA.email, password: teacherA.password },
+      studentB: { id: studentB.id, email: studentB.email, password: studentB.password },
+    },
+    // `org` mirrors org A so generic tooling (and `loadTenant`) still sees a tenant.
+    org: { id: orgA.id, name: orgA.name },
+    group: { id: tenantId(keyA, 'group:default'), name: `O1G1-${runSuffix}` },
+  };
+  mkdirSync(OUT, { recursive: true });
+  writeFileSync(join(OUT, `${caseId}.json`), JSON.stringify(tenant, null, 2));
+  if (!jsonOnly) {
+    console.log(`qa tenant ${caseId} (two-org, run ${runSuffix})`);
+    console.log(`  org A    ${orgA.id}  ${orgA.name}`);
+    console.log(`  org B    ${orgB.id}  ${orgB.name}`);
+    console.log(`  manager  ${manager.email} / ${manager.password}`);
+    console.log(`  file     qa/.tenants/${caseId}.json`);
   }
 }
 
@@ -269,6 +419,11 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       }
     }
     if (!jsonOnly) console.log(`qa tenant ${caseId}: reset (${profile})`);
+    return;
+  }
+
+  if (profile === 'two-org') {
+    await seedTwoOrg(db, caseId, runSuffix);
     return;
   }
 
