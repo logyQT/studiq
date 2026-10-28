@@ -26,6 +26,11 @@ export interface SeedAccount {
   role: SeedAccountRole;
   accountType: SeedAccountRole;
   name?: string;
+  /**
+   * Org role the account gets when the graph attaches it to the org
+   * (default: `member`). Only relevant for `members`, never for `owner`.
+   */
+  orgRole?: 'admin' | 'teacher' | 'member';
 }
 
 export interface SeedGroup {
@@ -87,7 +92,12 @@ export function buildAccount(
   key: string,
   suffix: string,
   role: SeedAccountRole,
-  opts: { email?: string; password?: string; name?: string } = {},
+  opts: {
+    email?: string;
+    password?: string;
+    name?: string;
+    orgRole?: 'admin' | 'teacher' | 'member';
+  } = {},
 ): SeedAccount {
   const tag = shortHash(`${key}:${suffix}`);
   return {
@@ -97,6 +107,7 @@ export function buildAccount(
     role,
     accountType: role,
     name: opts.name ?? `Seed ${role} ${tag}`,
+    orgRole: opts.orgRole,
   };
 }
 
@@ -180,7 +191,7 @@ export async function seedTenantGraph(
         id: tenantId(spec.key, `member:${index}`),
         organization_id: spec.org!.id,
         user_id: member.id,
-        org_role_id: roleIds.member!,
+        org_role_id: roleIds[member.orgRole ?? 'member']!,
         joined_at: now,
       })),
     ],

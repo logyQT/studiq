@@ -1,1 +1,7 @@
-{}
+{
+  "ONB-01": "bare",
+  "ONB-02": "bare",
+  "ONB-04": { "profile": "bare", "role": "manager" },
+  "ONB-05": { "profile": "bare", "role": "student" },
+  "ONB-10": "org-limit"
+}

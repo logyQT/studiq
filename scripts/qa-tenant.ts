@@ -5,17 +5,22 @@
  *   bun scripts/qa-tenant.ts PUB-01 --json
  *   bun scripts/qa-tenant.ts PUB-01 --reset
  *   bun scripts/qa-tenant.ts ONB-04 --profile bare --role manager --fresh
+ *   bun scripts/qa-tenant.ts ONB-10 --profile org-limit --fresh
  *
  * One command, one tenant, all deterministic from the case id. The spec builds its
  * own decks/banks/quizzes through the API, so nothing shared leaks between cases.
  *
  * Profiles:
  * - `content` (default) — org + manager/teacher/student + a default group.
- * - `bare` — one account with **no organization and no group**, for the
- *   onboarding cases (`ONB-01`, `ONB-04`, `ONB-05`) whose whole subject is the
- *   first-run state. `--role manager|teacher|student` picks the account type
- *   (default `teacher`); nothing else is created, so the account cannot
- *   accidentally inherit an org from an earlier seed.
+ * - `bare` — one staff account with **no organization and no group**, for the
+ *   first-run onboarding cases (`ONB-01`, `ONB-04`) whose whole subject is the
+ *   setup gate. `--role manager|teacher` picks the account type (default
+ *   `teacher`); nothing else is created, so the account cannot accidentally
+ *   inherit an org from an earlier seed.
+ * - `org-limit` — an organization at capacity minus one (`ONB-10`): an admin, two
+ *   teachers and one member (the member limit counts every role), plus two
+ *   invitee accounts that are **not** org members, so they accept the pending
+ *   invitations through `/app/join`.
  *
  * Every independent run of a first-run case needs a brand-new account: the run
  * itself creates the org. `--fresh` (or an explicit `--run <suffix>`) folds a run
@@ -30,6 +35,7 @@ import { tenantKey } from '#test/e2e/fixtures/ids';
 import {
   buildAccount,
   createSeedDb,
+  ensureAccount,
   randomTag,
   seedTenantGraph,
   tenantId,
@@ -39,6 +45,9 @@ import {
 const ROOT = join(import.meta.dir, '..');
 const CASES = join(ROOT, 'qa', 'cases');
 const OUT = join(ROOT, 'qa', '.tenants');
+
+const PROFILES = ['content', 'bare', 'org-limit'] as const;
+type Profile = (typeof PROFILES)[number];
 
 const args = process.argv.slice(2);
 
@@ -56,29 +65,46 @@ const caseId = args.find(
 const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
 const fresh = args.includes('--fresh');
-function profileFor(caseId: string): 'bare' | 'content' {
+type ProfileEntry = string | { profile?: string; role?: string };
+
+/**
+ * The CI seed contract: `qa/tests/profiles.json` declares the tenant shape a case
+ * needs, so a runner can seed every spec without guessing. An explicit
+ * `--profile` / `--role` on the command line always wins.
+ */
+function manifestEntry(caseId: string): ProfileEntry | undefined {
   try {
     const manifest = JSON.parse(
       readFileSync(join(ROOT, 'qa', 'tests', 'profiles.json'), 'utf8'),
-    ) as Record<string, string>;
-    return manifest[caseId] === 'bare' ? 'bare' : 'content';
+    ) as Record<string, ProfileEntry>;
+    return manifest[caseId];
   } catch {
-    return 'content';
+    return undefined;
   }
 }
 
-const profile = (option('profile') ?? profileFor(caseId ?? '')) as 'bare' | 'content';
-const role = option('role') ?? 'teacher';
+function declaredProfile(entry: ProfileEntry | undefined): Profile {
+  const value = typeof entry === 'string' ? entry : entry?.profile;
+  return value === 'bare' || value === 'org-limit' ? value : 'content';
+}
+
+function declaredRole(entry: ProfileEntry | undefined): string | undefined {
+  return typeof entry === 'string' ? undefined : entry?.role;
+}
+
+const entry = manifestEntry(caseId ?? '');
+const profile = (option('profile') ?? declaredProfile(entry)) as Profile;
+const role = option('role') ?? declaredRole(entry) ?? 'teacher';
 const runArg = option('run');
 
 if (!caseId || !/^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(caseId)) {
   console.error(
-    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile content|bare] [--role teacher|manager|student] [--fresh] [--run <suffix>] [--json] [--reset]',
+    'usage: bun scripts/qa-tenant.ts <CASEID> [--profile content|bare|org-limit] [--role teacher|manager|student] [--fresh] [--run <suffix>] [--json] [--reset]',
   );
   process.exit(2);
 }
-if (profile !== 'content' && profile !== 'bare') {
-  console.error(`unknown profile "${profile}": expected content or bare`);
+if (!PROFILES.includes(profile)) {
+  console.error(`unknown profile "${profile}": expected ${PROFILES.join(', ')}`);
   process.exit(2);
 }
 if (role !== 'teacher' && role !== 'manager' && role !== 'student') {
@@ -100,16 +126,19 @@ const groupId = tenantId(key, 'group:default');
 const accounts = {
   manager: buildAccount(key, 'manager', 'manager', { name: 'QA manager' }),
   teacher: buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' }),
+  teacher2: buildAccount(key, 'teacher2', 'educator', { name: 'QA teacher 2', orgRole: 'teacher' }),
   student: buildAccount(key, 'student', 'student', { name: 'QA student' }),
+  invitee1: buildAccount(key, 'invitee1', 'student', { name: 'QA invitee 1' }),
+  invitee2: buildAccount(key, 'invitee2', 'student', { name: 'QA invitee 2' }),
 };
-const accountByRole = {
-  manager: accounts.manager,
-  teacher: accounts.teacher,
-  student: accounts.student,
-} as const;
-const bareAccount = accountByRole[role];
+const bareAccount =
+  role === 'manager' ? accounts.manager : role === 'student' ? accounts.student : accounts.teacher;
 const all: SeedAccount[] =
-  profile === 'bare' ? [bareAccount] : [accounts.manager, accounts.teacher, accounts.student];
+  profile === 'bare'
+    ? [bareAccount]
+    : profile === 'org-limit'
+      ? Object.values(accounts)
+      : [accounts.manager, accounts.teacher, accounts.student];
 
 // Local convenience: reuse the app's env file when the vars are not exported.
 function loadEnv(): void {
@@ -139,7 +168,9 @@ function loadEnv(): void {
 
 loadEnv();
 const db = createSeedDb();
-const orgName = `qa-${caseId.toLowerCase()}-${key.slice(-6)}`;
+// The run suffix makes a fresh org name recognisable in the UI; without one the
+// name keeps the historical `<case>-<key tail>` shape.
+const orgName = `qa-${caseId.toLowerCase()}-${runSuffix || key.slice(-6)}`;
 
 function writeTenant(tenant: Record<string, unknown>): void {
   mkdirSync(OUT, { recursive: true });
@@ -227,15 +258,56 @@ if (profile === 'bare') {
   process.exit(0);
 }
 
+// Accounts that exist outside the org graph still go through the same seeder.
+const ensured: Partial<Record<'invitee1' | 'invitee2', SeedAccount>> = {};
+if (profile === 'org-limit') {
+  ensured.invitee1 = await ensureAccount(db, accounts.invitee1);
+  ensured.invitee2 = await ensureAccount(db, accounts.invitee2);
+}
+
 const seeded = await seedTenantGraph(db, {
   key,
   org: { id: orgId, name: orgName },
   defaultGroup: { id: groupId, name: 'G1', isDefault: true },
   extraGroups: [],
   owner: accounts.manager,
-  members: [accounts.teacher, accounts.student],
+  members:
+    profile === 'org-limit'
+      ? [
+          // Real org roles: the member-limit counter includes the admin and the
+          // teachers, so the fixture must have one of each.
+          { ...accounts.teacher, orgRole: 'teacher' as const },
+          accounts.teacher2,
+          accounts.student,
+        ]
+      : [accounts.teacher, accounts.student],
   ownerOrgRole: 'admin',
 });
+
+const users: Record<string, { id: string; email: string; password: string }> = {
+  manager: { id: seeded.owner.id, email: seeded.owner.email, password: seeded.owner.password },
+  teacher: {
+    id: seeded.members[0].id,
+    email: seeded.members[0].email,
+    password: seeded.members[0].password,
+  },
+  student: {
+    id: seeded.members[profile === 'org-limit' ? 2 : 1].id,
+    email: seeded.members[profile === 'org-limit' ? 2 : 1].email,
+    password: seeded.members[profile === 'org-limit' ? 2 : 1].password,
+  },
+};
+if (profile === 'org-limit') {
+  users.teacher2 = {
+    id: seeded.members[1].id,
+    email: seeded.members[1].email,
+    password: seeded.members[1].password,
+  };
+  for (const inviteeRole of ['invitee1', 'invitee2'] as const) {
+    const account = ensured[inviteeRole]!;
+    users[inviteeRole] = { id: account.id, email: account.email, password: account.password };
+  }
+}
 
 writeTenant({
   case: caseId,
@@ -243,18 +315,6 @@ writeTenant({
   runSuffix: runSuffix || null,
   key,
   org: { id: seeded.orgId, name: orgName },
-  users: {
-    manager: { id: seeded.owner.id, email: seeded.owner.email, password: seeded.owner.password },
-    teacher: {
-      id: seeded.members[0].id,
-      email: seeded.members[0].email,
-      password: seeded.members[0].password,
-    },
-    student: {
-      id: seeded.members[1].id,
-      email: seeded.members[1].email,
-      password: seeded.members[1].password,
-    },
-  },
+  users,
   group: { id: seeded.defaultGroupId, name: 'G1' },
 });

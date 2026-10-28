@@ -6,21 +6,28 @@ import { test as base, expect, type Page } from '@playwright/test';
  * The tenant a case runs against. `bun scripts/qa-tenant.ts <CASEID>` writes
  * `qa/.tenants/<CASEID>.json`; the spec never creates accounts itself.
  *
- * A `bare` tenant is the first-run state: one account, no organization and no
- * group. It is seeded with `--profile bare --role <manager|teacher|student>
- * --fresh`, so the account has never onboarded.
+ * A `bare` tenant is the first-run state: one staff account, no organization and
+ * no group. It is seeded with `--profile bare --role <manager|teacher> --fresh`,
+ * so the account has never onboarded.
+ *
+ * An `org-limit` tenant sits one seat below its plan capacity (`ONB-10`): an org
+ * with an admin, two teachers and one member, plus two invitee accounts that are
+ * **not** org members, so they can accept an invitation through `/app/join`.
  */
 export interface QaTenant {
   case: string;
   key: string;
-  profile?: 'content' | 'bare';
+  profile?: 'content' | 'bare' | 'org-limit';
   /** Account type of the single user in a `bare` tenant. */
   role?: 'teacher' | 'manager' | 'student';
   runSuffix?: string | null;
   org: { id: string; name: string } | null;
   group: { id: string; name: string } | null;
   users: Partial<
-    Record<'manager' | 'teacher' | 'student', { id: string; email: string; password: string }>
+    Record<
+      'manager' | 'teacher' | 'teacher2' | 'student' | 'invitee1' | 'invitee2',
+      { id: string; email: string; password: string }
+    >
   >;
 }
 
@@ -38,6 +45,11 @@ export interface LoginOptions {
   locale?: 'en' | 'pl';
   /** URL the app must reach after login (default: any account dashboard). */
   waitFor?: RegExp;
+  /**
+   * Active-org cookie to seed. Defaults to the tenant's org; pass `null` for a
+   * tenant user who is not a member of it (e.g. an invitee before accepting).
+   */
+  activeOrgId?: string | null;
 }
 
 /** Real login through the API, then boot the app; the context keeps the cookie. */
@@ -59,9 +71,27 @@ export async function loginAs(
     throw new Error(`login ${role} (${user.email}) failed: ${res.status()} ${body}`);
   }
   // The suite asserts English copy in places; pin the locale a returning user would have.
-  await page
-    .context()
-    .addCookies([{ name: 'NEXT_LOCALE', value: options.locale ?? 'en', domain: HOST, path: '/' }]);
+  const cookies: {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    httpOnly?: boolean;
+  }[] = [{ name: 'NEXT_LOCALE', value: options.locale ?? 'en', domain: HOST, path: '/' }];
+  // The app only writes `active_org_id` when an org is created or switched, so a
+  // seeded membership starts with no org context: `withAuth` would scope the
+  // first requests to no org at all.
+  const activeOrgId = options.activeOrgId === undefined ? tenant.org?.id : options.activeOrgId;
+  if (activeOrgId) {
+    cookies.push({
+      name: 'active_org_id',
+      value: activeOrgId,
+      domain: HOST,
+      path: '/',
+      httpOnly: true,
+    });
+  }
+  await page.context().addCookies(cookies);
   await page.goto('/login');
   await page.waitForURL(options.waitFor ?? /\/(edu|app|manage)/, { timeout: 15_000 });
 }
