@@ -282,7 +282,7 @@ describe('the three insight cards report failures (#657 review)', () => {
 
   it('the SQL clamps both time sources to 0..2 h and the declarative copy matches', () => {
     const migration = readFileSync(
-      'supabase/migrations/20261027110000_student_insights.sql',
+      'supabase/migrations/20261028100200_student_insights.sql',
       'utf8',
     );
     const schema = readFileSync('supabase/schemas/99_rpc_functions.sql', 'utf8');
