@@ -3,6 +3,8 @@
     "profile": "bare",
     "role": "student"
   },
+  "AUT-02": "bare",
+  "AUT-05": "content",
   "AUT-06": {
     "profile": "bare",
     "role": "student"
@@ -24,7 +26,15 @@
     "profile": "content",
     "plan": "hub"
   },
+  "MGR-ROL-03": {
+    "profile": "content",
+    "plan": "hub"
+  },
   "MGR-ROL-04": {
+    "profile": "content",
+    "plan": "hub"
+  },
+  "MGR-SEAT-02": {
     "profile": "content",
     "plan": "hub"
   },
@@ -33,14 +43,6 @@
     "plan": "hub"
   },
   "MGR-SET-04": {
-    "profile": "content",
-    "plan": "hub"
-  },
-  "MGR-SEAT-02": {
-    "profile": "content",
-    "plan": "hub"
-  },
-  "MGR-ROL-03": {
     "profile": "content",
     "plan": "hub"
   },
