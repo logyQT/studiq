@@ -43,5 +43,6 @@
   "MGR-SET-05": {
     "profile": "content",
     "plan": "hub"
-  }
+  },
+  "AUT-02": "content"
 }
