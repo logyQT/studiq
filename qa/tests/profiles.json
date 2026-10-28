@@ -44,5 +44,6 @@
     "profile": "content",
     "plan": "hub"
   },
-  "AUT-02": "bare"
+  "AUT-02": "bare",
+  "AUT-10": "content"
 }
