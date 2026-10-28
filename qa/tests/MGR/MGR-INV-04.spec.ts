@@ -1,0 +1,467 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { expect, test, type Page, type Response } from '@playwright/test';
+import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { shortHash, tenantKey } from '#test/e2e/fixtures/ids';
+import {
+  buildAccount,
+  createSeedDb,
+  ensureAccount,
+  randomTag,
+  seedTenantGraph,
+  tenantId,
+} from '#test/helpers/tenant-seed';
+
+/**
+ * MGR-INV-04 — accepting an invitation as an **existing** user.
+ *
+ * Prerequisite (reconciled with the tenant seeder): the invitee is a registered
+ * account that does **not** belong to the manager's organization yet — the legacy
+ * `student3@dev.local` (standalone B2C student, no organization). The legacy
+ * manual accounts (`@dev.local`, password `pass`) are never used.
+ *
+ * Tenant: `tenantKey('qa/cases/MGR-INV-04.md', <title>, 'qa-shared')::<suffix>`.
+ * The spec seeds its own graph through the shared helpers
+ * (`__tests__/helpers/tenant-seed.ts`) on every run, so the three independent
+ * runs never read a previous run's invitation/membership rows:
+ *
+ * - one organization + default group (id `tenantId(KEY, 'org' | 'group:default')`)
+ * - the manager as its `admin`
+ * - the invitee as an **existing** `student` account, enrolled in no org
+ *
+ * Nothing global is written (no settings, feature flags, plans, platform stats),
+ * and no other case's tenant is touched.
+ */
+
+declare global {
+  interface Window {
+    __qaToasts?: string[];
+  }
+}
+
+const CASE = 'MGR-INV-04';
+const CASE_FILE = 'qa/cases/MGR-INV-04.md';
+const TITLE = 'MGR-INV-04 accepting an invite as an existing user';
+const PROJECT = 'qa-shared';
+const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}${randomTag(4)}`;
+const KEY = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
+
+const ORG_ID = tenantId(KEY, 'org');
+const ORG_NAME = `qa-mgr-inv-04-${RUN_SUFFIX}`;
+const GROUP_ID = tenantId(KEY, 'group:default');
+const GROUP_NAME = 'INV-04 G1';
+/** The role under test: it must come from the invitation, not from a default. */
+const INVITE_ROLE_NAME = 'teacher';
+const INVITE_ROLE_LABEL = 'Teacher';
+
+/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
+const LOCAL_SUPABASE_URL = 'http://localhost:54421';
+const LOCAL_SERVICE_ROLE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+
+/** Polish copy the case quotes; the fixture pins `NEXT_LOCALE=pl`. */
+const COPY = {
+  invitesTitle: 'Zaproszenia',
+  sendInvitations: 'Wyślij zaproszenia',
+  sentToast: 'Wysłano 1 zaproszeń.',
+  resultsTitle: 'Wyniki',
+  success: 'Sukces',
+  pending: 'Oczekujące',
+  accepted: 'Zaakceptowane',
+  revoke: 'Anuluj',
+  showAccepted: 'Pokaż zaakceptowane',
+  noInvitations: 'Brak wysłanych zaproszeń',
+  joinTitle: 'Dołącz do klasy',
+  joinDescription: 'Wpisz kod zaproszenia lub wklej link zaproszenia, aby dołączyć do klasy',
+  joinSubmit: 'Dołącz',
+  joinedToast: 'Dołączyłeś do klasy!',
+  invalidToken: 'Nieprawidłowy lub wygasły kod zaproszenia',
+} as const;
+
+interface SeedUser {
+  id: string;
+  email: string;
+  password: string;
+}
+
+interface OrgMembership {
+  id: string;
+  name: string;
+  orgRoleName: string;
+  orgRoleDisplayName?: string;
+  isActive: boolean;
+}
+
+interface InvitationRow {
+  id: string;
+  email: string;
+  targetOrgRoleId: string;
+  orgRoleName: string;
+  isAccepted: boolean;
+  expiresAt: string;
+  createdAt: string;
+}
+
+interface MemberRow {
+  id: string;
+  email: string;
+  full_name: string | null;
+  orgRoleName: string;
+  orgRoleId: string;
+  groups: Array<{ id: string; name: string; role: string }>;
+}
+
+interface CreatedInvitation {
+  email: string;
+  success: boolean;
+  data: { invitationId: string; inviteLink: string; inviteCode: string };
+}
+
+let tenant!: QaTenant;
+let invitee!: SeedUser;
+
+/** Resolve the shared Supabase admin credentials (env → worker config → local defaults). */
+function resolveSupabase(): { url: string; serviceKey: string } {
+  let fromEnvJson: string | undefined;
+  try {
+    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
+    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
+  } catch {
+    // qa/env.json is worker-local and gitignored; absence is fine.
+  }
+
+  return {
+    url:
+      process.env.QA_SUPABASE_URL ??
+      process.env.NEXT_PUBLIC_SUPABASE_URL ??
+      fromEnvJson ??
+      LOCAL_SUPABASE_URL,
+    serviceKey:
+      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
+      process.env.SUPABASE_SERVICE_ROLE_KEY ??
+      LOCAL_SERVICE_ROLE_KEY,
+  };
+}
+
+function accountEmail(role: string): string {
+  return `qa+${shortHash(`${KEY}:${role}`)}+${role}@test.local`;
+}
+
+/**
+ * Seed the case tenant and normalise the invitee to "registered, outside the
+ * organization": the deletes only ever touch this tenant's rows and make a
+ * pinned `QA_RUN_SUFFIX` re-run start from the same state.
+ */
+async function seedCaseTenant(): Promise<void> {
+  const { url, serviceKey } = resolveSupabase();
+  const db = createSeedDb({ url, serviceKey });
+
+  const manager = buildAccount(KEY, 'manager', 'manager', {
+    email: accountEmail('manager'),
+    name: 'QA manager',
+  });
+  invitee = buildAccount(KEY, 'invitee', 'student', {
+    email: accountEmail('invitee'),
+    name: 'QA invitee',
+  });
+
+  const seeded = await seedTenantGraph(db, {
+    key: KEY,
+    org: { id: ORG_ID, name: ORG_NAME },
+    defaultGroup: { id: GROUP_ID, name: GROUP_NAME, isDefault: true },
+    extraGroups: [],
+    owner: manager,
+    // No seeded members: the invitee must join through the invitation, and the
+    // helper would otherwise enroll every member straight into the org.
+    members: [],
+    ownerOrgRole: 'admin',
+  });
+
+  const existing = await ensureAccount(db, invitee);
+  invitee = { id: existing.id, email: existing.email, password: existing.password };
+
+  const cleanup = [
+    db.from('invitations').delete().eq('organization_id', ORG_ID).eq('email', invitee.email),
+    db.from('group_members').delete().eq('group_id', GROUP_ID).eq('user_id', invitee.id),
+    db.from('org_members').delete().eq('organization_id', ORG_ID).eq('user_id', invitee.id),
+  ];
+  for (const result of await Promise.all(cleanup)) {
+    if (result.error) throw new Error(`seed ${KEY}: ${result.error.message}`);
+  }
+
+  tenant = {
+    case: CASE,
+    key: KEY,
+    runSuffix: RUN_SUFFIX,
+    org: { id: seeded.orgId as string, name: ORG_NAME },
+    group: { id: GROUP_ID, name: GROUP_NAME },
+    users: {
+      manager: {
+        id: seeded.owner.id,
+        email: seeded.owner.email,
+        password: seeded.owner.password,
+      },
+      student: invitee,
+    },
+  };
+}
+
+/** Record every toast that appears, so a transient toast is still an assertion. */
+async function watchToasts(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    if (window.__qaToasts) return;
+    const recorded: string[] = [];
+    window.__qaToasts = recorded;
+    new MutationObserver(() => {
+      for (const node of document.querySelectorAll('[data-sonner-toast]')) {
+        const text = (node as HTMLElement).innerText.trim();
+        if (text && !recorded.includes(text)) recorded.push(text);
+      }
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  });
+}
+
+function expectToast(page: Page, text: string) {
+  return expect
+    .poll(() => page.evaluate(() => window.__qaToasts ?? []), { timeout: 10_000 })
+    .toContain(text);
+}
+
+async function logout(page: Page): Promise<void> {
+  const response = await page.request.post('/api/v1/auth/logout');
+  expect(response.status(), 'POST /api/v1/auth/logout').toBe(200);
+}
+
+async function getData<T>(page: Page, path: string): Promise<T> {
+  const response = await page.request.get(path);
+  expect(response.status(), `GET ${path}`).toBe(200);
+  const body = (await response.json()) as { success: boolean; data: T };
+  expect(body.success, `GET ${path} success`).toBe(true);
+  return body.data;
+}
+
+function memberships(page: Page) {
+  return getData<OrgMembership[]>(page, '/api/v1/me/orgs');
+}
+
+/** Wait for `useOrgs` to settle the server-side `active_org_id` cookie on this org. */
+async function expectActiveOrg(page: Page): Promise<void> {
+  await expect
+    .poll(async () => (await memberships(page)).find((org) => org.isActive)?.id, {
+      timeout: 20_000,
+    })
+    .toBe(ORG_ID);
+}
+
+function isInvitesRequest(response: Response, accepted: boolean): boolean {
+  const url = new URL(response.url());
+  return (
+    url.pathname === '/api/v1/organization/invites' &&
+    url.searchParams.get('isAccepted') === String(accepted) &&
+    response.request().method() === 'GET'
+  );
+}
+
+function isAcceptRequest(response: Response): boolean {
+  return (
+    new URL(response.url()).pathname === '/api/v1/organization/invites/accept' &&
+    response.request().method() === 'POST'
+  );
+}
+
+function rowFor(page: Page, email: string) {
+  return page.locator('table tbody tr').filter({ hasText: email });
+}
+
+test.beforeAll(async () => {
+  await seedCaseTenant();
+  // Evidence for a failing run: the deterministic tenant this run owns.
+  console.log(`MGR-INV-04 tenant: ${tenant.key}`);
+});
+
+test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
+  test('the invitee joins /app/join with the invited role, and the token is single-use', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    // --- Step 1a: the manager invites the existing account -------------------
+    // `/login` sends a manager to `/manage`, where `useOrgs` writes the
+    // `active_org_id` cookie the invitations endpoints scope themselves by.
+    await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+    await expectActiveOrg(page);
+
+    await page.goto('/manage/invites');
+    await expect(page.getByRole('heading', { name: COPY.invitesTitle, exact: true })).toBeVisible();
+    await expect(page.getByText(COPY.noInvitations, { exact: true })).toBeVisible();
+    await expect(rowFor(page, invitee.email)).toHaveCount(0);
+
+    await page.locator('#email-0').fill(invitee.email);
+    await page.locator('#role-0').click();
+    await expect(page.getByRole('option', { name: INVITE_ROLE_LABEL, exact: true })).toBeVisible();
+    await page.getByRole('option', { name: INVITE_ROLE_LABEL, exact: true }).click();
+
+    await watchToasts(page);
+    const bulkResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/v1/organization/invites/bulk' &&
+        response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: COPY.sendInvitations, exact: true }).click();
+
+    const bulk = await bulkResponse;
+    expect(bulk.status(), 'POST /api/v1/organization/invites/bulk').toBe(200);
+    const bulkBody = (await bulk.json()) as {
+      success: boolean;
+      data: { results: CreatedInvitation[] };
+    };
+    expect(bulkBody.success).toBe(true);
+    expect(bulkBody.data.results).toHaveLength(1);
+
+    const created = bulkBody.data.results[0];
+    expect(created.email).toBe(invitee.email);
+    expect(created.data.inviteCode).toMatch(/^[0-9a-f]{32}$/);
+    const inviteLink = new URL(created.data.inviteLink);
+    expect(inviteLink.pathname).toBe('/join');
+    expect(inviteLink.searchParams.get('token')).toBe(created.data.inviteCode);
+
+    // The manager sees the batch result and the pending row with the invited role.
+    await expectToast(page, COPY.sentToast);
+    const resultRow = page.getByTestId('invite-result-row').filter({ hasText: invitee.email });
+    await expect(resultRow).toHaveCount(1);
+    await expect(resultRow).toContainText(COPY.success);
+    await expect(resultRow).toContainText(`Kod zaproszenia: ${created.data.inviteCode}`);
+
+    const pendingRow = rowFor(page, invitee.email);
+    await expect(pendingRow).toHaveCount(1);
+    await expect(pendingRow).toContainText(INVITE_ROLE_LABEL);
+    await expect(pendingRow).toContainText(COPY.pending);
+
+    // --- Step 1b: the existing user accepts from /app/join -------------------
+    await logout(page);
+    await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
+
+    // Prerequisite made explicit: a registered account that is in no organization
+    // yet — exactly the legacy `student3` (B2C) situation the case describes.
+    expect(await memberships(page), 'the invitee starts outside every organization').toEqual([]);
+
+    await page.goto('/app/join');
+    await expect(page.locator('[data-slot="card-title"]', { hasText: COPY.joinTitle })).toHaveCount(
+      1,
+    );
+    await expect(page.getByText(COPY.joinDescription, { exact: true })).toBeVisible();
+
+    const tokenInput = page.locator('#token');
+    const submit = page.locator('form button[type="submit"]');
+
+    await tokenInput.fill(created.data.inviteLink);
+    await watchToasts(page);
+    const acceptResponse = page.waitForResponse(isAcceptRequest);
+    await submit.click();
+
+    const accepted = await acceptResponse;
+    expect(accepted.status(), 'POST /api/v1/organization/invites/accept').toBe(200);
+    expect(((await accepted.json()) as { success: boolean }).success).toBe(true);
+
+    await expectToast(page, COPY.joinedToast);
+    await expect(tokenInput).toHaveValue('');
+
+    // Server state: the organization is now active for the invitee, with the
+    // role **from the invitation** (not the default `member`).
+    const joined = await memberships(page);
+    expect(joined).toHaveLength(1);
+    expect(joined[0]).toMatchObject({
+      id: ORG_ID,
+      name: ORG_NAME,
+      orgRoleName: INVITE_ROLE_NAME,
+      isActive: true,
+    });
+
+    // --- Step 1c: the same token is single-use ------------------------------
+    await tokenInput.fill(created.data.inviteLink);
+    await watchToasts(page);
+    const reuseResponse = page.waitForResponse(isAcceptRequest);
+    await submit.click();
+
+    const reused = await reuseResponse;
+    expect(reused.status(), 'the used token must be rejected').toBe(410);
+    expect(await reused.json()).toMatchObject({ success: false, error: 'GONE' });
+
+    await expectToast(page, COPY.invalidToken);
+    // The failure stays visible next to the field, not only in the transient toast.
+    await expect(page.locator('#token-error')).toHaveText(COPY.invalidToken);
+    await expect(tokenInput).toHaveAttribute('aria-invalid', 'true');
+    await expect(tokenInput).toHaveValue(created.data.inviteLink);
+
+    // The rejected replay changes nothing: still one organization, same role.
+    const afterReplay = await memberships(page);
+    expect(afterReplay).toHaveLength(1);
+    expect(afterReplay[0]).toMatchObject({ id: ORG_ID, orgRoleName: INVITE_ROLE_NAME });
+
+    // --- Step 2: the manager sees the accepted invitation and the member ----
+    await logout(page);
+    await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+    await expectActiveOrg(page);
+
+    await page.goto('/manage/invites');
+    // Pending is the default view: an accepted invitation is no longer pending.
+    await expect(rowFor(page, invitee.email)).toHaveCount(0);
+    await expect(page.getByText(COPY.noInvitations, { exact: true })).toBeVisible();
+
+    const acceptedList = page.waitForResponse((response) => isInvitesRequest(response, true));
+    await page.getByRole('checkbox', { name: COPY.showAccepted }).check();
+    expect((await acceptedList).status(), 'GET invites?isAccepted=true').toBe(200);
+
+    const acceptedRow = rowFor(page, invitee.email);
+    await expect(acceptedRow).toHaveCount(1);
+    await expect(acceptedRow).toContainText(INVITE_ROLE_LABEL);
+    await expect(acceptedRow).toContainText(COPY.accepted);
+    // An accepted invitation is final: no revoke action is offered.
+    await expect(acceptedRow.getByRole('button', { name: COPY.revoke, exact: true })).toHaveCount(
+      0,
+    );
+
+    const acceptedInvitations = await getData<InvitationRow[]>(
+      page,
+      '/api/v1/organization/invites?isAccepted=true',
+    );
+    const acceptedInvitation = acceptedInvitations.filter(
+      (invitation) => invitation.email === invitee.email,
+    );
+    expect(acceptedInvitation).toHaveLength(1);
+    expect(acceptedInvitation[0]).toMatchObject({
+      id: created.data.invitationId,
+      orgRoleName: INVITE_ROLE_NAME,
+      isAccepted: true,
+    });
+
+    const pendingInvitations = await getData<InvitationRow[]>(
+      page,
+      '/api/v1/organization/invites?isAccepted=false',
+    );
+    expect(
+      pendingInvitations.filter((invitation) => invitation.email === invitee.email),
+      'the accepted invitation must not be listed as pending',
+    ).toEqual([]);
+
+    // --- Step 2b: the organization members list -----------------------------
+    await page.goto('/manage/members');
+    const memberRow = rowFor(page, invitee.email);
+    await expect(memberRow).toHaveCount(1);
+    await expect(memberRow.getByTestId('member-role')).toHaveText(INVITE_ROLE_LABEL);
+    // Accepting enrolls the invitee in the organization's default group.
+    await expect(memberRow.getByText(GROUP_NAME, { exact: true })).toBeVisible();
+
+    const members = await getData<MemberRow[]>(page, '/api/v1/organization/members');
+    const inviteeRows = members.filter((member) => member.id === invitee.id);
+    expect(inviteeRows, 'exactly one membership row after the rejected replay').toHaveLength(1);
+    expect(inviteeRows[0].email).toBe(invitee.email);
+    expect(inviteeRows[0].orgRoleName).toBe(INVITE_ROLE_NAME);
+    expect(inviteeRows[0].groups.map((group) => group.id)).toEqual([GROUP_ID]);
+
+    expect(pageErrors, 'uncaught page errors').toEqual([]);
+  });
+});
