@@ -23,7 +23,6 @@ import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { bankAccess } from '@/lib/bank-access';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
 import { type LoadedQuestionTotal, questionPagerTotal } from '@/lib/question-list-state';
-import { shouldRetryQuery } from '@/lib/query-retry';
 import { SrLabel } from '@/components/shared/sr-label';
 
 const QUESTIONS_PAGE_SIZE = 25;
@@ -101,9 +100,6 @@ export function QuestionBankDetailScreen({
     },
     placeholderData: keepPreviousData,
     staleTime: Infinity,
-    // A 422 for a bad filter (or a 404 for a bank that does not exist) is terminal: retrying
-    // it only delays the banner.
-    retry: shouldRetryQuery,
   });
   const questions: Question[] = questionsPage?.items ?? [];
   // React Query drops `keepPreviousData` once a query errors, so `total` would fall to 0 and take
@@ -131,9 +127,9 @@ export function QuestionBankDetailScreen({
   const topics = topicsData?.items ?? [];
 
   function invalidate() {
-    queryClient.invalidateQueries({ queryKey: questionKeys.list({ bankId }) });
-    queryClient.invalidateQueries({ queryKey: questionKeys.banks.detail(bankId) });
-    queryClient.invalidateQueries({ queryKey: questionKeys.banks.all });
+    // One prefix covers the paged list, the bank cards and the quiz picker, which caches the
+    // list per bank and per search term.
+    queryClient.invalidateQueries({ queryKey: questionKeys.all });
   }
 
   async function handleSubmit(data: {

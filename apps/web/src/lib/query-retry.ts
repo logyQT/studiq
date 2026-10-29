@@ -1,6 +1,6 @@
 import { ApiError } from '@/lib/api';
 
-/** Matches the global `retry: 2` of the web `QueryProvider`. */
+/** Retries after the initial attempt; the web `QueryProvider` uses the same policy globally. */
 export const QUERY_MAX_RETRIES = 2;
 
 /**
