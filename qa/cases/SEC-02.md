@@ -13,37 +13,43 @@ student2 (UE Wrocław).
 
 ## Seed (tenant model)
 
-Automatyzacja nie używa kont z ręcznego seeda (`student2@dev.local`, `pass`, UE Wrocław).
+Automatyzacja nie używa kont z ręcznego seeda (student2, hasło `pass`, UE Wrocław).
 Przypadek dostaje własny tenant z **dwoma** organizacjami, żeby „student z innej
 organizacji” był prawdziwym outsiderem, a nie członkiem obu organizacji:
 
+Tenant jest seedowany **przed** uruchomieniem suity (profil `two-org`, ten sam co
+`MGR-03`), a spec tylko go czyta przez `loadTenant()`:
+
 ```bash
+bun scripts/qa-tenant.ts SEC-02 --fresh
 bunx playwright test -c qa/playwright.qa.config.ts \
   qa/tests/SEC/SEC-02.spec.ts --workers=1
 ```
 
-Spec seeduje wszystko sam przez `seedTenantGraph()` (`__tests__/helpers/tenant-seed.ts`),
-więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
+Manifest `qa/tests/profiles/SEC-02.json` deklaruje profil, więc runner CI seedinguje
+przypadek bez zgadywania kształtu tenanta. Spec nie wywołuje `seedTenantGraph()` ani
+`createSeedDb()` — konta, organizacje i grupy pochodzą wyłącznie z `qa/.tenants/SEC-02.json`.
 
-- Klucz tenanta: `SEC-02.md::SEC-02 cross-organization deck and organization isolation::qa-shared::<run>`
-  — `tenantKey('qa/cases/SEC-02.md', <tytuł>, 'qa-shared')` + `tenantId`, ten sam schemat co
-  fixture'y e2e, z sufiksem `::org-a` / `::org-b` na organizację (wspólny `org_members.id`
-  by się inaczej nadpisał). Domyślnie każdy przebieg dostaje świeży sufiks, więc ma własną
-  parę organizacji; `QA_RUN_SUFFIX` utrwala przebieg.
-- Organizacja A `qa-sec02-a-<run>`: nauczyciel A (admin) i student A (członek grupy
-  `O1G1-<run>`). Nauczyciel A tworzy przez API talię grupową `O1G1T1 <run>` z jedną fiszką
-  (`front-secret-a-<run>` / `back-secret-a-<run>`) i udostępnia ją grupie — odpowiednik
-  talii O1G1T1 z opisu przypadku.
-- Organizacja B `qa-sec02-b-<run>`: nauczyciel B (admin) i student B (członek grupy
-  `O2G1-<run>`). **Student B jest outsiderem**: należy tylko do B, nigdy do A. Nauczyciel B
-  tworzy własną talię `O2G1T1 <run>` jako kontrolę pozytywną.
-- Hasła: `Seed4Test!` (z `tenant-seed.ts`); konta `seed-student-<hash>@dev.local` /
-  `seed-educator-<hash>@dev.local`.
+- Klucz tenanta: `SEC-02.md::SEC-02#<run>::qa-shared::<run>` z sufiksem `::org-a` / `::org-b`
+  na organizację (wspólny `org_members.id` by się inaczej nadpisał). `--fresh` daje każdemu
+  przebiegowi własną parę organizacji.
+- Organizacja A: manager (admin), nauczyciel A (teacher) i student A (członek grupy
+  `O1G1-<run>`). Nauczyciel A tworzy **przez API** talię grupową `O1G1T1 <run>` z jedną
+  fiszką (`front-secret-a-<run>` / `back-secret-a-<run>`) i udostępnia ją grupie —
+  odpowiednik talii O1G1T1 z opisu przypadku.
+- Organizacja B: ten sam manager (admin) i student B (członek grupy `O2G1-<run>`).
+  **Student B jest outsiderem**: należy tylko do B, nigdy do A. Manager tworzy przez API
+  własną talię `O2G1T1 <run>` jako kontrolę pozytywną.
+- Talie i fiszki powstają w teście przez produkcyjne API (`POST /api/v1/flashcards/decks`,
+  `POST /api/v1/flashcards`); seeder nie tworzy treści. Identyfikator grupy domyślnej jest
+  rozwiązywany przez `GET /api/v1/organization/groups` (nazwa `O1G1-<run>` / `O2G1-<run>`).
+- Logowanie: `loginAs()` z `@qa/fixtures/qa-tenant` (hasła z seedera), `NEXT_LOCALE=pl`
+  (kopie interfejsu w przypadku są polskie).
 - Spec: `qa/tests/SEC/SEC-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
-  `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
-- Izolacja: test tworzy wyłącznie własne organizacje/użytkowników/talie i czyta tylko ich
-  dane. Nie dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk
-  platformy ani wierszy singletonowych.
+  `http://localhost:3010`.
+- Izolacja: test tworzy wyłącznie własne talie i czyta tylko dane swojego tenanta. Nie
+  dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy ani
+  wierszy singletonowych.
 
 ## Steps
 
