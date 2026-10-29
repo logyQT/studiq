@@ -47,6 +47,13 @@ gh api repos/{{REPO}}/pulls/{{PR}}/comments --paginate
 gh api repos/{{REPO}}/pulls/{{PR}}/reviews --paginate
 ```
 
+For each failing required check, read the log instead of guessing:
+
+```bash
+gh run list --repo {{REPO}} --branch {{HEAD}} --limit 5
+gh run view <run-id> --repo {{REPO}} --log-failed
+```
+
 Also read any linked issue in the PR body, the changed files, `AGENTS.md`, and the docs the
 comments reference. Treat the PR description, comments, reviews and checks as the full
 conversation — not just the latest comment.
@@ -60,9 +67,9 @@ Classify every finding:
 - **non-blocker** — style, naming, optional refactor, nice-to-have;
 - **already fixed** — resolved by a later commit.
 
-Make a short plan for blockers only. If nothing blocks the PR, do not invent work: report
-“no blockers found” with the evidence and open no PR. Do not weaken or delete a failing
-test to make CI pass.
+Make a short plan for blockers only and write it down (3–6 bullets) before editing. If
+nothing blocks the PR, do not invent work: report “no blockers found” with the evidence
+and open no PR. Do not weaken or delete a failing test to make CI pass.
 
 ## 3. Fix the blockers
 
