@@ -241,24 +241,28 @@ export function QuestionTable({
                 </TableCell>
               </TableRow>
             ))}
-            {questions.length === 0 && (
+            {isError && (
+              // The body carries the failure whatever the rows are: React Query keeps `data`
+              // when a *refetch* fails, so the table can show stale rows and still be in an
+              // error state. Rendering the row here also keeps the card's shape instead of
+              // ending on the header row, and keeps retry where the rows are.
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {isError ? (
-                    // The body of the table still carries the failure, so the card keeps its
-                    // shape instead of ending on the header row, and retry stays where the
-                    // missing rows were.
-                    <div role="alert" className="flex flex-wrap items-center justify-center gap-3">
-                      <span>{t('load_error')}</span>
-                      <Button variant="outline" size="sm" onClick={onRetry}>
-                        {t('retry')}
-                      </Button>
-                    </div>
-                  ) : emptyView.kind === 'no-results' ? (
-                    t('no_results')
-                  ) : (
-                    (emptyText ?? t('no_questions'))
-                  )}
+                  <div role="alert" className="flex flex-wrap items-center justify-center gap-3">
+                    <span>{t('load_error')}</span>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                      {t('retry')}
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!isError && questions.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  {emptyView.kind === 'no-results'
+                    ? t('no_results')
+                    : (emptyText ?? t('no_questions'))}
                 </TableCell>
               </TableRow>
             )}
