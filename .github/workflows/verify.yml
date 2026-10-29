@@ -144,6 +144,23 @@ jobs:
     needs: [checks, scope]
     # Still runs when `unit` was skipped for a tests-only diff.
     if: needs.checks.result == 'success'
+    # Sharded by area, one runner per shard. The suite is one long serial job
+    # (~12 min at 140 specs, growing), so splitting is what buys wall-clock time
+    # now — not more workers: the runner is 4 vCPU and raising QA_WORKERS only
+    # starves the app, Supabase and Chromium against each other.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - name: edu
+            paths: 'qa/tests/EDU'
+          - name: mgr-onb
+            paths: 'qa/tests/MGR qa/tests/ONB'
+          - name: aut-stu
+            paths: 'qa/tests/AUT qa/tests/STU'
+          - name: sec-pub-bil-lim-nfr
+            paths: 'qa/tests/SEC qa/tests/PUB qa/tests/BIL qa/tests/LIM qa/tests/NFR'
+    name: qa-suite (${{ matrix.shard.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -207,13 +224,13 @@ jobs:
         run: bun scripts/qa-tenant.ts --all --run "ci${{ github.run_id }}"
 
       - name: Run the QA suite
-        run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line
+        run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line ${{ matrix.shard.paths }}
 
       - name: Upload report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-suite-report
+          name: qa-suite-report-${{ matrix.shard.name }}
           path: |
             playwright-report
             test-results
