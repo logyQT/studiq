@@ -1,33 +1,33 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-  type SeedDb,
-} from '#test/helpers/tenant-seed';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * STU-05 — full flashcard study session (SM-2).
  *
  * Prerequisite (reconciled with the tenant seeder): a signed-in student with a deck
- * of a few cards. The legacy manual seed (`student1@dev.local`, password `pass`, CSV
- * `fiszki_poprawne.csv`) is never used: the spec seeds its own tenant and builds its
- * own deck through the product API, so it is self-contained and touches no other
- * tenant, plan, flag or singleton row.
+ * of a few cards. The legacy manual seed (`student1@…`, password `pass`, CSV
+ * `fiszki_poprawne.csv`) is never used; the case runs on its own tenant, seeded by
+ * the suite runner before every independent run:
  *
- * - Tenant key: `tenantKey('qa/cases/STU-05.md', 'STU-05 full flashcard study
- *   session#<run>', 'qa-shared')` — the same `tenantKey`/`tenantId` scheme as the e2e
- *   fixtures, with a fresh run suffix per independent run (`QA_RUN_SUFFIX` pins one).
- * - Org `qa-stu-05-<run>`: one manager (org admin, never used) and one student
- *   (`Seed4Test!`). The student creates deck `STU-05 <run>` with 8 cards
- *   (`Pytanie N <run>` / `Odpowiedz N <run>`) through `POST /api/v1/flashcards/decks`
- *   and `POST /api/v1/flashcards`, the same shape as the case's 8-card CSV import.
+ *   bun scripts/qa-tenant.ts STU-05 --fresh
+ *
+ * `qa/tests/profiles/STU-05.json` declares the default `content` profile: one
+ * organization with a manager (org admin, never used), an educator and the
+ * `student` account this case logs in as, plus the default group `G1`
+ * (`tenantKey('qa/cases/STU-05.md', 'STU-05#<run>', 'qa-shared')` + `tenantId` for
+ * every id). The profile seeds the graph only: the student builds its own deck,
+ * `STU-05 <run>` with 8 cards (`Pytanie N <run>` / `Odpowiedz N <run>`), through
+ * `POST /api/v1/flashcards/decks` and `POST /api/v1/flashcards` — the same shape as
+ * the case's 8-card CSV import. Nothing shared is read or written: no seed content,
+ * admin setting, feature flag, plan or singleton row.
+ *
+ * CI seeds the tenant **once** for the whole case and Playwright reuses it for every
+ * retry and every `--repeat-each` pass, so the test first clears the student's own
+ * leftovers: its `STU-05 …` deck (deleting a deck cascades its cards, their review
+ * state and their practice rows) and its daily new-card counter, which the default
+ * 20/day cap would otherwise exhaust on the third study run. Both are this tenant's
+ * own rows; no other row is touched.
  *
  * Acceptance points (case STU-05), walked on the shared app before writing this spec:
  * 1. The learn page offers „Rozpocznij naukę” for 8 new cards; the session shows the
@@ -50,19 +50,11 @@ import {
  * single row it created (see `qa/fixtures/qa-db.ts`). No other row is touched.
  */
 
-const CASE_FILE = 'qa/cases/STU-05.md';
-const TITLE = 'STU-05 full flashcard study session';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
-const KEY = tenantKey(CASE_FILE, `${TITLE}#${RUN_SUFFIX}`, PROJECT);
-const DECK_NAME = `STU-05 ${RUN_SUFFIX}`;
+const CASE = 'STU-05';
+const DECKS_URL = '/api/v1/flashcards/decks';
 const CARD_COUNT = 8;
 /** Correct ratings needed in the limited session (review-page target input). */
 const TARGET = 3;
-const CARDS = Array.from({ length: CARD_COUNT }, (_, index) => ({
-  front: `Pytanie ${index + 1} ${RUN_SUFFIX}`,
-  back: `Odpowiedz ${index + 1} ${RUN_SUFFIX}`,
-}));
 
 /** Polish copy the case quotes verbatim; `NEXT_LOCALE=pl` pins it for the run. */
 const UI = {
@@ -95,89 +87,52 @@ const UI = {
 const PLAIN_RATINGS = ['Nie pamiętam', 'Trudne', 'Dobrze', 'Łatwe'] as const;
 const LEARNING_RATINGS = [UI.ratingAgain, UI.ratingHard, UI.ratingGood, UI.ratingEasy] as const;
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
+interface Deck {
+  id: string;
+  name: string;
+}
+
+type QaDb = ReturnType<typeof createQaSupabase>;
 
 /**
- * Resolve the shared Supabase admin credentials. The worker's `qa/env.json` wins over
- * `process.env`: the repository `.env` names the per-slot stack, which is not running
- * in the shared QA setup, and `bun` auto-loads it.
+ * Reset this case's own artefacts so a retry or a repeat pass on the CI-seeded
+ * tenant starts from the case's stated prerequisite: a student with 8 *new* cards.
+ *
+ * - The run's deck (plus anything an interrupted attempt left under the same
+ *   prefix) is deleted through the product API; the schema cascades its cards and
+ *   therefore their `flashcard_review_state` and `flashcard_practice` rows.
+ * - The daily new-card budget is reset through the suite's service-role client:
+ *   each run introduces 8 new cards against the default 20/day cap, and the
+ *   product has no endpoint for the counter (only for the daily review goal).
  */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
+async function resetRunState(page: Page, tenant: QaTenant, db: QaDb): Promise<void> {
+  const student = tenant.users.student;
+  if (!student) throw new Error(`${CASE} tenant has no seeded student`);
+
+  const listResponse = await page.request.get(`${DECKS_URL}?limit=100`);
+  expect(listResponse.status(), `GET ${DECKS_URL}`).toBe(200);
+  const list = (await listResponse.json()) as ApiEnvelope<{ items: Deck[] }>;
+  for (const deck of list.data.items.filter((item) => item.name.startsWith(`${CASE} `))) {
+    const deleted = await page.request.delete(`${DECKS_URL}/${deck.id}`);
+    expect(deleted.status(), `DELETE ${DECKS_URL}/${deck.id} (${deck.name})`).toBe(200);
   }
 
-  return {
-    url: process.env.QA_SUPABASE_URL ?? fromEnvJson ?? LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-interface Stu05Tenant {
-  key: string;
-  student: SeedAccount;
-  orgId: string;
-  db: SeedDb;
-}
-
-/** The case's own org with one student member; no content, the spec creates the deck. */
-async function seedCaseTenant(): Promise<Stu05Tenant> {
-  const manager = buildAccount(KEY, 'manager', 'manager', { name: `STU-05 manager ${RUN_SUFFIX}` });
-  const student = buildAccount(KEY, 'student', 'student', { name: `STU-05 student ${RUN_SUFFIX}` });
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const seeded = await seedTenantGraph(db, {
-    key: KEY,
-    org: { id: tenantId(KEY, 'org'), name: `qa-stu-05-${RUN_SUFFIX}` },
-    defaultGroup: { id: tenantId(KEY, 'group:default'), name: 'G1', isDefault: true },
-    extraGroups: [],
-    owner: manager,
-    members: [student],
-    ownerOrgRole: 'admin',
-  });
-
-  return { key: KEY, student: seeded.members[0], orgId: seeded.orgId!, db };
-}
-
-/**
- * Real login through the API, the real org switch, then boot the app with the Polish
- * locale the case's copy is written in. Logs any previous persona out first so the run
- * can never inherit a session from another case in this worker.
- */
-async function signInAs(
-  page: Page,
-  baseURL: string,
-  account: SeedAccount,
-  orgId: string,
-): Promise<void> {
-  await page.request.post('/api/v1/auth/logout');
-
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: account.email, password: account.password },
-  });
-  expect(response.status(), `login ${account.email}`).toBe(200);
-
-  const switched = await page.request.post('/api/v1/me/orgs/switch', { data: { orgId } });
-  expect(switched.status(), `switch ${account.email} to ${orgId}`).toBe(200);
-
-  const { hostname } = new URL(baseURL);
-  await page
-    .context()
-    .addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' }]);
-
-  await page.goto('/app');
-  await expect(page).toHaveURL(/\/(app|edu|manage)(\/|$)/, { timeout: 30_000 });
+  const settings = await db
+    .from('user_study_settings')
+    .update({
+      new_cards_introduced: 0,
+      daily_reset_date: new Date().toISOString().slice(0, 10),
+    })
+    .eq('user_id', student.id);
+  expect(
+    settings.error,
+    `reset ${CASE} student daily new-card budget: ${settings.error?.message ?? ''}`,
+  ).toBeNull();
 }
 
 /** The flip card is the only `h-88` pointer target on the session screen. */
@@ -202,10 +157,25 @@ async function revealAnswer(page: Page): Promise<void> {
   await expect(hint).toHaveCount(0);
 }
 
+/**
+ * The card's own text. Both faces are in the DOM (the flip hides one with
+ * `backface-visibility`), and every card in the run has a unique front and back,
+ * so a different string means the session swapped in the next card.
+ */
+async function cardText(page: Page): Promise<string> {
+  return (await card(page).textContent())?.trim() ?? '';
+}
+
 /** Reveal and rate a card that is not the last one of the queue. */
 async function answerCard(page: Page, label: string): Promise<void> {
+  const answered = await cardText(page);
   await revealAnswer(page);
   await page.getByRole('button', { name: label, exact: true }).click();
+  // The rating unmounts the answered card and springs the next one in. Wait for the
+  // replacement to be on screen before touching the card again: clicking while the
+  // old node is still on top is a lost click (mousedown lands on it, mouseup after it
+  // is gone dispatches no click), which is what made this step flaky under CI load.
+  await expect.poll(() => cardText(page), { timeout: 10_000 }).not.toBe(answered);
   // Every non-terminal rating brings the next card, unflipped.
   await expect(page.getByText(UI.revealHint, { exact: true })).toBeVisible();
 }
@@ -214,7 +184,7 @@ async function answerCard(page: Page, label: string): Promise<void> {
  * Age the review-state rows this run just created so the cards are due now. Returns
  * how many rows were made due; the caller asserts the queue size against it.
  */
-async function ageLearningCards(db: SeedDb, studentId: string, cardIds: string[]): Promise<number> {
+async function ageLearningCards(db: QaDb, studentId: string, cardIds: string[]): Promise<number> {
   const { data, error } = await db
     .from('flashcard_review_state')
     .select('flashcard_id, learning_state')
@@ -242,29 +212,47 @@ async function ageLearningCards(db: SeedDb, studentId: string, cardIds: string[]
 }
 
 test.describe('STU-05 — full flashcard study session', () => {
-  test('walks the endless and limited review paths to their summaries', async ({
-    page,
-  }, testInfo) => {
+  test('walks the endless and limited review paths to their summaries', async ({ page }) => {
     test.setTimeout(240_000);
-    const baseURL = testInfo.project.use.baseURL ?? 'http://localhost:3010';
-    const tenant = await seedCaseTenant();
+    const tenant = loadTenant(CASE);
+    expect(tenant.profile, `${CASE} runs on the content profile`).toBe('content');
+    expect(
+      tenant.runSuffix,
+      'seed with --fresh: every independent run owns a new tenant',
+    ).toBeTruthy();
+    const student = tenant.users.student;
+    expect(student, `${CASE} seeds the student under test`).toBeTruthy();
+    expect(tenant.org, 'the student under test belongs to the tenant organization').toBeTruthy();
+    if (!student) throw new Error(`${CASE} tenant has no seeded student`);
 
-    await signInAs(page, baseURL, tenant.student, tenant.orgId);
+    // Content names carry the run suffix, so two seeded tenants never collide.
+    const run = tenant.runSuffix ?? tenant.key.slice(-6);
+    const deckName = `${CASE} ${run}`;
+    const cards = Array.from({ length: CARD_COUNT }, (_, index) => ({
+      front: `Pytanie ${index + 1} ${run}`,
+      back: `Odpowiedz ${index + 1} ${run}`,
+    }));
+
+    const db = createQaSupabase();
+
+    // ── Precondition: the case's tenant student, with no cards of its own yet ──
+    await loginAs(page, tenant, 'student', { locale: 'pl' });
+    await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
+    // A retry or a repeat pass reuses this tenant: drop what the previous pass left.
+    await resetRunState(page, tenant, db);
 
     // --- The case's deck: 8 cards, created through the product API ----------
-    const deckResponse = await page.request.post('/api/v1/flashcards/decks', {
-      data: { name: DECK_NAME },
-    });
-    expect(deckResponse.status(), `create deck ${DECK_NAME}`).toBe(201);
-    const deckId = ((await deckResponse.json()) as { data: { id: string } }).data.id;
+    const deckResponse = await page.request.post(DECKS_URL, { data: { name: deckName } });
+    expect(deckResponse.status(), `create deck ${deckName}`).toBe(201);
+    const deckId = ((await deckResponse.json()) as ApiEnvelope<{ id: string }>).data.id;
 
     const cardIds: string[] = [];
-    for (const cardContent of CARDS) {
+    for (const cardContent of cards) {
       const created = await page.request.post('/api/v1/flashcards', {
         data: { deckId, ...cardContent },
       });
       expect(created.status(), `create card ${cardContent.front}`).toBe(201);
-      cardIds.push(((await created.json()) as { data: { id: string } }).data.id);
+      cardIds.push(((await created.json()) as ApiEnvelope<{ id: string }>).data.id);
     }
     expect(cardIds).toHaveLength(CARD_COUNT);
 
@@ -348,14 +336,16 @@ test.describe('STU-05 — full flashcard study session', () => {
       .poll(
         async () => {
           const response = await page.request.get('/api/v1/flashcards/practice/states');
-          const body = (await response.json()) as { data: { practicedCards: number } };
+          const body = (await response.json()) as {
+            data: { practicedCards: number };
+          };
           return body.data.practicedCards;
         },
         { timeout: 20_000 },
       )
       .toBe(CARD_COUNT);
 
-    const dueCount = await ageLearningCards(tenant.db, tenant.student.id, cardIds);
+    const dueCount = await ageLearningCards(db, student.id, cardIds);
     await expect
       .poll(
         async () => {

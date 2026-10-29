@@ -14,32 +14,37 @@ Przygotuj talię z kilkoma fiszkami (import CSV – plik fiszki_poprawne.csv z f
 ## Seed (tenant model)
 
 Automatyzacja nie używa ręcznego seeda (`student1@dev.local`, `pass`, import CSV
-`fiszki_poprawne.csv`). Przypadek dostaje własny tenant z jedną organizacją i jednym
-studentem; talię z 8 fiszkami spec tworzy sam przez API produktu (odpowiednik importu
-CSV z opisu przypadku):
+`fiszki_poprawne.csv`). Przypadek dostaje własny tenant, zasiewany przez runner suite
+przed każdym niezależnym przebiegiem:
 
 ```bash
+bun scripts/qa-tenant.ts STU-05 --fresh
 bunx playwright test -c qa/playwright.qa.config.ts \
   qa/tests/STU/STU-05.spec.ts --workers=1
 ```
 
-Spec seeduje wszystko sam przez `seedTenantGraph()` (`__tests__/helpers/tenant-seed.ts`),
-więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
-
-- Klucz tenanta: `tenantKey('qa/cases/STU-05.md', 'STU-05 full flashcard study session#<run>', 'qa-shared')`
-  — ten sam schemat `tenantKey`/`tenantId` co fixture'y e2e. Domyślnie każdy przebieg ma
-  świeży sufiks (własny student, organizacja i talia); `QA_RUN_SUFFIX` utrwala przebieg.
-- Organizacja `qa-stu-05-<run>`: manager (admin organizacji, nieużywany w teście) oraz
-  student (członek, hasło `Seed4Test!`, konto `seed-student-<hash>@dev.local`).
-- Talia `STU-05 <run>` z 8 fiszkami (`Pytanie N <run>` / `Odpowiedz N <run>`) tworzona
-  przez `POST /api/v1/flashcards/decks` i `POST /api/v1/flashcards` jako student.
+- `qa/tests/profiles/STU-05.json` deklaruje domyślny profil `content`: jedna organizacja
+  z managerem (admin organizacji, nieużywany w teście), edukatorem i studentem, na
+  którym test się loguje, oraz domyślna grupa `G1`. Klucz tenanta:
+  `tenantKey('qa/cases/STU-05.md', 'STU-05#<run>', 'qa-shared')`, wszystkie id z
+  `tenantId` (albo zwrócone przez API tenanta); każdy niezależny przebieg dokłada świeży
+  sufiks.
+- Profil zasiewa wyłącznie graf, więc prerequisite „talia z 8 fiszkami” buduje sam spec
+  w tym samym tenancie: student tworzy talię `STU-05 <run>` i 8 fiszek
+  (`Pytanie N <run>` / `Odpowiedz N <run>`) przez `POST /api/v1/flashcards/decks` i
+  `POST /api/v1/flashcards` (odpowiednik importu CSV z opisu przypadku).
+- CI zasiewa tenant **raz** i używa go ponownie w każdym retry; dlatego test najpierw
+  usuwa własną talię `STU-05 …` (kaskadowo karty, ich `flashcard_review_state` i
+  `flashcard_practice`) przez API produktu i zeruje własny dzienny licznik nowych kart
+  studenta (limit 20/dzień wyczerpałby się w trzecim przebiegu). To wyłącznie wiersze
+  tego tenanta.
 - Faza „Limitowany" potrzebuje fiszek do powtórki, a harmonogram nie ma akcji „udostępnij
   teraz": spec postarza **własne** wiersze `flashcard_review_state` z pierwszej sesji (po
   id zwróconych przez API) — ten sam wyjątek „czas" co przy wygasających zaproszeniach
   (`qa/fixtures/qa-db.ts`). Żaden inny wiersz nie jest ruszany.
 - Spec: `qa/tests/STU/STU-05.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
-- Izolacja: test tworzy wyłącznie własnego użytkownika, organizację, talię i fiszki; nie
+- Izolacja: test tworzy i sprząta wyłącznie własną organizację, talię i fiszki; nie
   dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy ani
   wierszy singletonowych.
 
