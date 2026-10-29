@@ -1,17 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Page, type Response } from '@playwright/test';
-import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
-import { shortHash, tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  ensureAccount,
-  randomTag,
-  seedTenantGraph,
-  type SeedAccount,
-  tenantId,
-} from '#test/helpers/tenant-seed';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * MGR-INV-04 — accepting an invitation as an **existing** user.
@@ -21,44 +10,38 @@ import {
  * `student3@dev.local` (standalone B2C student, no organization). The legacy
  * manual accounts (`@dev.local`, password `pass`) are never used.
  *
- * Tenant: `tenantKey('qa/cases/MGR-INV-04.md', <title>, 'qa-shared')::<suffix>`.
- * The spec seeds its own graph through the shared helpers
- * (`__tests__/helpers/tenant-seed.ts`) on every run, so the three independent
- * runs never read a previous run's invitation/membership rows:
+ * Tenant: `bun scripts/qa-tenant.ts MGR-INV-04 --fresh` seeds it before the suite
+ * starts. `qa/tests/profiles/MGR-INV-04.json` declares the `org-limit` profile,
+ * the only seeded shape with accounts that are **not** members of the tenant's
+ * organization:
  *
- * - one organization + default group (id `tenantId(KEY, 'org' | 'group:default')`)
- * - the manager as its `admin`
- * - the invitee as an **existing** `student` account, enrolled in no org
+ * - one organization with its default group `G1` (ids
+ *   `tenantId(KEY, 'org' | 'group:default')`) and the manager as its `admin`,
+ *   plus an educator and a student member;
+ * - `invitee1` — a registered student account that belongs to no organization —
+ *   which joins this organization through the invitation, exactly like the
+ *   legacy `student3`.
+ *
+ * The spec never creates accounts, an organization or a group: the profile seeds
+ * the graph, and the invitation itself is minted through the manager page.
+ *
+ * Re-run safety: CI seeds one tenant per case and Playwright reuses it for every
+ * retry and every `--repeat-each` pass. A previous attempt leaves the invitee
+ * inside the organization with an accepted invitation row behind, so the run
+ * first removes **only this case's** rows (the invitee's invitations in this
+ * organization, its group and organization memberships) and every attempt starts
+ * from the case prerequisite: registered, outside the organization, no pending
+ * invitations.
  *
  * Nothing global is written (no settings, feature flags, plans, platform stats),
  * and no other case's tenant is touched.
  */
 
-declare global {
-  interface Window {
-    __qaToasts?: string[];
-  }
-}
-
 const CASE = 'MGR-INV-04';
-const CASE_FILE = 'qa/cases/MGR-INV-04.md';
-const TITLE = 'MGR-INV-04 accepting an invite as an existing user';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}${randomTag(4)}`;
-const KEY = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
 
-const ORG_ID = tenantId(KEY, 'org');
-const ORG_NAME = `qa-mgr-inv-04-${RUN_SUFFIX}`;
-const GROUP_ID = tenantId(KEY, 'group:default');
-const GROUP_NAME = 'INV-04 G1';
 /** The role under test: it must come from the invitation, not from a default. */
 const INVITE_ROLE_NAME = 'teacher';
 const INVITE_ROLE_LABEL = 'Teacher';
-
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 
 /** Polish copy the case quotes; the fixture pins `NEXT_LOCALE=pl`. */
 const COPY = {
@@ -112,92 +95,60 @@ interface CreatedInvitation {
   data: { invitationId: string; inviteLink: string; inviteCode: string };
 }
 
-let tenant!: QaTenant;
-let invitee!: SeedAccount;
-
-/** Resolve the shared Supabase admin credentials (env → worker config → local defaults). */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
+declare global {
+  interface Window {
+    __qaToasts?: string[];
   }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-function accountEmail(role: string): string {
-  return `qa+${shortHash(`${KEY}:${role}`)}+${role}@test.local`;
 }
 
 /**
- * Seed the case tenant and normalise the invitee to "registered, outside the
- * organization": the deletes only ever touch this tenant's rows and make a
- * pinned `QA_RUN_SUFFIX` re-run start from the same state.
+ * Reset this case's own rows so a retry or a `--repeat-each` pass on the
+ * CI-seeded tenant starts from the case prerequisite: an invitee that is
+ * registered but outside the organization, and no invitation history.
+ *
+ * The product offers no way to delete an accepted invitation, and removing a
+ * member is the member's own action, so the cleanup goes through the suite's
+ * service-role client — the same helper the other cases use to reset rows they
+ * own. The deletes are scoped to this tenant's organization, group and invitee.
  */
-async function seedCaseTenant(): Promise<void> {
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const manager = buildAccount(KEY, 'manager', 'manager', {
-    email: accountEmail('manager'),
-    name: 'QA manager',
-  });
-  invitee = buildAccount(KEY, 'invitee', 'student', {
-    email: accountEmail('invitee'),
-    name: 'QA invitee',
-  });
-
-  const seeded = await seedTenantGraph(db, {
-    key: KEY,
-    org: { id: ORG_ID, name: ORG_NAME },
-    defaultGroup: { id: GROUP_ID, name: GROUP_NAME, isDefault: true },
-    extraGroups: [],
-    owner: manager,
-    // No seeded members: the invitee must join through the invitation, and the
-    // helper would otherwise enroll every member straight into the org.
-    members: [],
-    ownerOrgRole: 'admin',
-  });
-
-  invitee = await ensureAccount(db, invitee);
-
-  const cleanup = [
-    db.from('invitations').delete().eq('organization_id', ORG_ID).eq('email', invitee.email),
-    db.from('group_members').delete().eq('group_id', GROUP_ID).eq('user_id', invitee.id),
-    db.from('org_members').delete().eq('organization_id', ORG_ID).eq('user_id', invitee.id),
-  ];
-  for (const result of await Promise.all(cleanup)) {
-    if (result.error) throw new Error(`seed ${KEY}: ${result.error.message}`);
+async function resetCaseState(tenant: QaTenant): Promise<void> {
+  const org = tenant.org;
+  const group = tenant.group;
+  const invitee = tenant.users.invitee1;
+  if (!org || !group || !invitee) {
+    throw new Error(`${CASE} fixture incomplete: run \`bun scripts/qa-tenant.ts ${CASE} --fresh\``);
   }
+  const db = createQaSupabase();
 
-  tenant = {
-    case: CASE,
-    key: KEY,
-    runSuffix: RUN_SUFFIX,
-    org: { id: seeded.orgId as string, name: ORG_NAME },
-    group: { id: GROUP_ID, name: GROUP_NAME },
-    users: {
-      manager: {
-        id: seeded.owner.id,
-        email: seeded.owner.email,
-        password: seeded.owner.password,
-      },
-      student: invitee,
-    },
-  };
+  const invitations = await db
+    .from('invitations')
+    .delete()
+    .eq('organization_id', org.id)
+    .eq('email', invitee.email);
+  expect(
+    invitations.error,
+    `reset ${CASE} invitations: ${invitations.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const groupMembers = await db
+    .from('group_members')
+    .delete()
+    .eq('group_id', group.id)
+    .eq('user_id', invitee.id);
+  expect(
+    groupMembers.error,
+    `reset ${CASE} group membership: ${groupMembers.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const orgMembers = await db
+    .from('org_members')
+    .delete()
+    .eq('organization_id', org.id)
+    .eq('user_id', invitee.id);
+  expect(
+    orgMembers.error,
+    `reset ${CASE} organization membership: ${orgMembers.error?.message ?? ''}`,
+  ).toBeNull();
 }
 
 /** Record every toast that appears, so a transient toast is still an assertion. */
@@ -239,12 +190,12 @@ function memberships(page: Page) {
 }
 
 /** Wait for `useOrgs` to settle the server-side `active_org_id` cookie on this org. */
-async function expectActiveOrg(page: Page): Promise<void> {
+async function expectActiveOrg(page: Page, orgId: string): Promise<void> {
   await expect
     .poll(async () => (await memberships(page)).find((org) => org.isActive)?.id, {
       timeout: 20_000,
     })
-    .toBe(ORG_ID);
+    .toBe(orgId);
 }
 
 function isInvitesRequest(response: Response, accepted: boolean): boolean {
@@ -267,26 +218,38 @@ function rowFor(page: Page, email: string) {
   return page.locator('table tbody tr').filter({ hasText: email });
 }
 
-test.beforeAll(async () => {
-  await seedCaseTenant();
-  // Evidence for a failing run: the deterministic tenant this run owns.
-  console.log(`MGR-INV-04 tenant: ${tenant.key}`);
-});
-
 test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
   test('the invitee joins /app/join with the invited role, and the token is single-use', async ({
     page,
   }) => {
     test.setTimeout(180_000);
 
+    const tenant = loadTenant(CASE);
+    expect(tenant.profile, `${CASE} needs the org-limit tenant profile`).toBe('org-limit');
+    const org = tenant.org;
+    const group = tenant.group;
+    const manager = tenant.users.manager;
+    const invitee = tenant.users.invitee1;
+    if (!org || !group || !manager || !invitee) {
+      throw new Error(
+        `${CASE} fixture incomplete: run \`bun scripts/qa-tenant.ts ${CASE} --fresh\``,
+      );
+    }
+
+    // Evidence for a failing run: the deterministic tenant this run owns.
+    console.log(`MGR-INV-04 tenant: ${tenant.key}`);
+
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    // A retry reuses this tenant, so drop whatever the previous attempt left.
+    await resetCaseState(tenant);
 
     // --- Step 1a: the manager invites the existing account -------------------
     // `/login` sends a manager to `/manage`, where `useOrgs` writes the
     // `active_org_id` cookie the invitations endpoints scope themselves by.
     await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
-    await expectActiveOrg(page);
+    await expectActiveOrg(page, org.id);
 
     await page.goto('/manage/invites');
     await expect(page.getByRole('heading', { name: COPY.invitesTitle, exact: true })).toBeVisible();
@@ -336,7 +299,11 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
 
     // --- Step 1b: the existing user accepts from /app/join -------------------
     await logout(page);
-    await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
+    await loginAs(page, tenant, 'invitee1', {
+      locale: 'pl',
+      waitFor: /\/app(\/|$)/,
+      activeOrgId: null,
+    });
 
     // Prerequisite made explicit: a registered account that is in no organization
     // yet — exactly the legacy `student3` (B2C) situation the case describes.
@@ -368,8 +335,8 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
     const joined = await memberships(page);
     expect(joined).toHaveLength(1);
     expect(joined[0]).toMatchObject({
-      id: ORG_ID,
-      name: ORG_NAME,
+      id: org.id,
+      name: org.name,
       orgRoleName: INVITE_ROLE_NAME,
       isActive: true,
     });
@@ -393,12 +360,12 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
     // The rejected replay changes nothing: still one organization, same role.
     const afterReplay = await memberships(page);
     expect(afterReplay).toHaveLength(1);
-    expect(afterReplay[0]).toMatchObject({ id: ORG_ID, orgRoleName: INVITE_ROLE_NAME });
+    expect(afterReplay[0]).toMatchObject({ id: org.id, orgRoleName: INVITE_ROLE_NAME });
 
     // --- Step 2: the manager sees the accepted invitation and the member ----
     await logout(page);
     await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
-    await expectActiveOrg(page);
+    await expectActiveOrg(page, org.id);
 
     await page.goto('/manage/invites');
     // Pending is the default view: an accepted invitation is no longer pending.
@@ -447,14 +414,14 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
     await expect(memberRow).toHaveCount(1);
     await expect(memberRow.getByTestId('member-role')).toHaveText(INVITE_ROLE_LABEL);
     // Accepting enrolls the invitee in the organization's default group.
-    await expect(memberRow.getByText(GROUP_NAME, { exact: true })).toBeVisible();
+    await expect(memberRow.getByText(group.name, { exact: true })).toBeVisible();
 
     const members = await getData<MemberRow[]>(page, '/api/v1/organization/members');
     const inviteeRows = members.filter((member) => member.id === invitee.id);
     expect(inviteeRows, 'exactly one membership row after the rejected replay').toHaveLength(1);
     expect(inviteeRows[0].email).toBe(invitee.email);
     expect(inviteeRows[0].orgRoleName).toBe(INVITE_ROLE_NAME);
-    expect(inviteeRows[0].groups.map((group) => group.id)).toEqual([GROUP_ID]);
+    expect(inviteeRows[0].groups.map((row) => row.id)).toEqual([group.id]);
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });
