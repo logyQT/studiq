@@ -1,37 +1,26 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { shortHash, tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-  type SeedDb,
-} from '#test/helpers/tenant-seed';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * SEC-05 — a student cannot perform a teacher action through the API.
  *
  * Prerequisite (reconciled with the tenant seeder): the legacy manual account
- * `student1@dev.local` (password `pass`) is never used. The spec seeds its own
- * tenant on every run, under a fresh run suffix, through the shared e2e helpers
- * (`__tests__/helpers/tenant-seed.ts`), so no account, organization or
- * membership is shared with another case or another run:
+ * `student1@…` (password `pass`) is never used. `qa/tests/profiles/SEC-05.json`
+ * declares the default `content` profile, which the suite runner seeds **once,
+ * before Playwright starts**, under the case's own run suffix:
  *
- * - org `qa-sec-05-<run>` with the first-run group `G1`, exactly like the
- *   manual seed's tenant (S1 is a student inside an organization, not a
- *   no-organization account) — so a 403 cannot be an artifact of the student
- *   having no tenant scope;
+ *   bun scripts/qa-tenant.ts SEC-05 --fresh
+ *
+ * - org `qa-sec-05-<run>` with the first-run group `G1` — so the student is a
+ *   student inside an organization, not a no-organization account, and a 403
+ *   cannot be an artifact of the student having no tenant scope;
  * - `student` (`STUDENT`) — the case subject, org role `member`;
- * - `teacher` (`EDUCATOR`) — the positive control, org role `teacher`;
+ * - `teacher` (`EDUCATOR`) — the positive control;
  * - `manager` (`MANAGER`) — org admin, keeps the graph realistic.
  *
  * Acceptance points from the case, all as the **student**, with its own
- * organization active (the cookie the app writes when an org is created or
- * switched):
+ * organization active (the cookie `loginAs` writes for the seeded membership):
  * 1. `POST /api/v1/teacher/quizzes {name:"x"}` → **403 `FORBIDDEN`**.
  * 2. `POST /api/v1/teacher/assignments {...}` → **403 `FORBIDDEN`**.
  * 3. `GET /api/v1/stats/teacher` → **403 `FORBIDDEN`**.
@@ -54,38 +43,24 @@ import {
  * - no over-block: the student's own panel (`/app`) loads and their own
  *   `GET /api/v1/stats/student` answers 200 with the same session.
  *
+ * The profile seeds the graph only. Before the student's attempts the spec
+ * deletes its own control quiz/assignment from an earlier pass on the same
+ * seeded tenant (a CI retry or `--repeat-each`), through the product API, so
+ * "the organization owns zero rows" stays an exact statement about the student's
+ * writes rather than about leftovers.
+ *
  * Nothing global is written (no admin setting, feature flag, plan, platform stat
  * or singleton row) and no other case's tenant is touched.
  */
 
-const CASE_FILE = 'qa/cases/SEC-05.md';
-const TITLE = 'SEC-05 student cannot call teacher endpoints';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
-/** The tenant identity of this run; every id below is derived from it. */
-const KEY = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-
-/** The organization's default group; the seeder enrolls every member in it. */
-const GROUP_NAME = 'G1';
-
+const CASE = 'SEC-05';
 const TEACHER_QUIZZES = '/api/v1/teacher/quizzes';
 const TEACHER_ASSIGNMENTS = '/api/v1/teacher/assignments';
 const TEACHER_STATS = '/api/v1/stats/teacher';
 const STUDENT_STATS = '/api/v1/stats/student';
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-
-interface CaseTenant {
-  run: string;
-  key: string;
-  org: { id: string; name: string };
-  manager: SeedAccount;
-  teacher: SeedAccount;
-  student: SeedAccount;
-}
+/** Names the positive control creates, and therefore the rows a re-run resets. */
+const CONTROL_PREFIX = 'SEC-05 control';
 
 interface ApiBody<T> {
   success: boolean;
@@ -113,109 +88,65 @@ interface TeacherAssignment {
   created_by: string;
 }
 
-/** Resolve the shared Supabase admin credentials (env → worker config → local defaults). */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-function accountEmail(role: string): string {
-  return `qa+${shortHash(`${KEY}:${role}`)}+${role}@test.local`;
-}
-
-/**
- * One organization with an admin, a teacher and the student the case is about.
- * The student is a real org member (mirrors `student1` in the manual seed) and
- * is enrolled in the default group `G1`.
- */
-async function seedCaseTenant(db: SeedDb): Promise<CaseTenant> {
-  const org = { id: tenantId(KEY, 'org'), name: `qa-sec-05-${RUN_SUFFIX}` };
-  const manager = buildAccount(KEY, 'manager', 'manager', {
-    email: accountEmail('manager'),
-    name: 'QA SEC-05 manager',
-  });
-  const teacher = buildAccount(KEY, 'teacher', 'educator', {
-    email: accountEmail('teacher'),
-    name: 'QA SEC-05 teacher',
-    orgRole: 'teacher',
-  });
-  const student = buildAccount(KEY, 'student', 'student', {
-    email: accountEmail('student'),
-    name: 'QA SEC-05 student',
-  });
-
-  const seeded = await seedTenantGraph(db, {
-    key: KEY,
-    org,
-    defaultGroup: { id: tenantId(KEY, 'group:default'), name: GROUP_NAME, isDefault: true },
-    extraGroups: [],
-    owner: manager,
-    members: [teacher, student],
-    ownerOrgRole: 'admin',
-  });
-
-  return {
-    run: RUN_SUFFIX,
-    key: KEY,
-    org,
-    manager: seeded.owner,
-    teacher: seeded.members[0]!,
-    student: seeded.members[1]!,
-  };
-}
-
-/**
- * Real login through the API, then boot the app with the tenant's organization
- * active and the locale the case's copy is written in. Logs any previous user
- * out first, so the run never inherits a session from the shared browser tile.
- */
-async function signInAs(
-  page: Page,
-  baseURL: string,
-  tenant: CaseTenant,
-  role: 'teacher' | 'student',
-): Promise<void> {
-  const account = tenant[role];
-  await page.request.post('/api/v1/auth/logout');
-
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: account.email, password: account.password },
-  });
-  expect(response.status(), `login ${account.email}`).toBe(200);
-
-  const { hostname } = new URL(baseURL);
-  await page.context().addCookies([
-    { name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' },
-    { name: 'active_org_id', value: tenant.org.id, domain: hostname, path: '/', httpOnly: true },
-  ]);
-
-  await page.goto('/login');
-  await expect(page).toHaveURL(role === 'teacher' ? /\/edu(\/|$)/ : /\/app(\/|$)/, {
-    timeout: 20_000,
-  });
-}
-
 interface CallResult {
   status: number;
   errorCode: string | null;
   body: string;
+}
+
+/**
+ * The seeded fixture must be the shape this case needs: one organization with a
+ * default group, an educator for the positive control and the student subject.
+ */
+function loadCaseTenant(): QaTenant {
+  const tenant = loadTenant(CASE);
+  expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
+  if (!tenant.org || !tenant.group || !tenant.users.teacher || !tenant.users.student) {
+    throw new Error(`${CASE} tenant is missing its organization, group, teacher or student`);
+  }
+  return tenant;
+}
+
+/**
+ * Real login through the API, then boot the app with the tenant's organization
+ * active and the Polish locale the case's copy is written in. Cookies are
+ * cleared first, so a role switch never inherits the previous session.
+ */
+async function switchUser(
+  page: Page,
+  tenant: QaTenant,
+  role: 'teacher' | 'student',
+): Promise<void> {
+  await page.context().clearCookies();
+  await loginAs(page, tenant, role, {
+    locale: 'pl',
+    waitFor: role === 'teacher' ? /\/edu(\/|$)/ : /\/app(\/|$)/,
+  });
+  await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+}
+
+/**
+ * Remove the control rows a previous pass on this same seeded tenant created.
+ * Only this case's own `SEC-05 control …` rows are deleted, through the product
+ * API, as their creator.
+ */
+async function resetControlRows(page: Page): Promise<void> {
+  const quizzesResponse = await page.request.get(TEACHER_QUIZZES);
+  expect(quizzesResponse.status(), 'GET /api/v1/teacher/quizzes while resetting').toBe(200);
+  for (const quiz of ((await quizzesResponse.json()) as ApiBody<Quiz[]>).data ?? []) {
+    if (!quiz.name.startsWith(CONTROL_PREFIX)) continue;
+    const deleted = await page.request.delete(`${TEACHER_QUIZZES}/${quiz.id}`);
+    expect(deleted.status(), `DELETE /api/v1/teacher/quizzes/${quiz.id}`).toBe(200);
+  }
+
+  const assignmentsResponse = await page.request.get(TEACHER_ASSIGNMENTS);
+  expect(assignmentsResponse.status(), 'GET /api/v1/teacher/assignments while resetting').toBe(200);
+  for (const assignment of ((await assignmentsResponse.json()) as ApiBody<TeacherAssignment[]>)
+    .data ?? []) {
+    if (!assignment.title.startsWith(CONTROL_PREFIX)) continue;
+    const deleted = await page.request.delete(`${TEACHER_ASSIGNMENTS}/${assignment.id}`);
+    expect(deleted.status(), `DELETE /api/v1/teacher/assignments/${assignment.id}`).toBe(200);
+  }
 }
 
 async function call(
@@ -249,35 +180,36 @@ function expectForbidden(result: CallResult, label: string): void {
 }
 
 test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpoints', () => {
-  let tenant: CaseTenant;
-  let db: SeedDb;
+  test('every teacher endpoint answers 403 FORBIDDEN and creates nothing', async ({ page }) => {
+    test.setTimeout(120_000);
 
-  test.beforeAll(async () => {
-    db = createSeedDb(resolveSupabase());
-    tenant = await seedCaseTenant(db);
+    const tenant = loadCaseTenant();
+    const org = tenant.org!;
+    const teacher = tenant.users.teacher!;
+    const student = tenant.users.student!;
+    const run = tenant.runSuffix ?? tenant.key.slice(-8);
+    const db = createQaSupabase();
+
     // Evidence for a failing run: the deterministic tenant this run owns.
     console.log(
-      `SEC-05 tenant key: ${tenant.key} (org ${tenant.org.id} / ${tenant.org.name}, ` +
-        `student ${tenant.student.email}, teacher ${tenant.teacher.email})`,
+      `SEC-05 tenant key: ${tenant.key} (org ${org.id} / ${org.name}, ` +
+        `student ${student.email}, teacher ${teacher.email})`,
     );
-  });
-
-  test('every teacher endpoint answers 403 FORBIDDEN and creates nothing', async ({
-    page,
-    baseURL,
-  }) => {
-    test.setTimeout(120_000);
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    const origin = baseURL ?? 'http://localhost:3010';
-    const { org, teacher, student } = tenant;
 
-    // --- Step 0: the case subject is a student with a real tenant scope ----
+    // --- Step 0: this tenant starts from an empty organization -------------
+    // A retry or a repeat pass on the same seeded tenant may still hold the
+    // previous pass's control rows; delete only this case's own rows through
+    // the API so the "creates nothing" check below is about the student.
+    await switchUser(page, tenant, 'teacher');
+    await resetControlRows(page);
+
+    // --- Step 0b: the case subject is a student with a real tenant scope --
     // The organization is active, so a 403 below cannot be "authenticated but
     // scoped to no organization" — it has to be the route's account-type rule.
-    await signInAs(page, origin, tenant, 'student');
-    await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+    await switchUser(page, tenant, 'student');
 
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status(), 'GET /api/v1/auth/me as the student').toBe(200);
@@ -383,10 +315,10 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     // --- Positive control: the tenant's educator is allowed the same calls -
     // Same endpoints, same active organization, same bodies: the server-side
     // boundary is the account type, and the routes themselves are healthy.
-    await signInAs(page, origin, tenant, 'teacher');
+    await switchUser(page, tenant, 'teacher');
 
     const quizResponse = await page.request.post(TEACHER_QUIZZES, {
-      data: { name: `SEC-05 control quiz ${tenant.run}` },
+      data: { name: `${CONTROL_PREFIX} quiz ${run}` },
     });
     expect(
       quizResponse.status(),
@@ -394,13 +326,13 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     ).toBe(201);
     const quiz = ((await quizResponse.json()) as ApiBody<Quiz>).data!;
     expect(quiz).toMatchObject({
-      name: `SEC-05 control quiz ${tenant.run}`,
+      name: `${CONTROL_PREFIX} quiz ${run}`,
       organization_id: org.id,
       created_by: teacher.id,
     });
 
     const assignmentResponse = await page.request.post(TEACHER_ASSIGNMENTS, {
-      data: { title: `SEC-05 control assignment ${tenant.run}` },
+      data: { title: `${CONTROL_PREFIX} assignment ${run}` },
     });
     expect(
       assignmentResponse.status(),
@@ -408,7 +340,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     ).toBe(201);
     const assignment = ((await assignmentResponse.json()) as ApiBody<TeacherAssignment>).data!;
     expect(assignment).toMatchObject({
-      title: `SEC-05 control assignment ${tenant.run}`,
+      title: `${CONTROL_PREFIX} assignment ${run}`,
       organization_id: org.id,
       created_by: teacher.id,
     });
