@@ -11,6 +11,38 @@
 
 Plik fiszki_poprawne.csv (folder Studiq_dane_testowe).
 
+## Seed (tenant model, reconciled)
+
+Automatyzacja nie używa kont z ręcznego seeda. Każde niezależne uruchomienie
+dostaje własny, świeżo zaseedowany tenant:
+
+```bash
+bun scripts/qa-tenant.ts STU-19 --fresh
+```
+
+- Profil tenanta: `qa/tests/profiles/STU-19.json` = `"content"` — jedna
+  organizacja, domyślna grupa `G1` oraz konta managera, nauczyciela i studenta.
+- Klucz tenanta: `STU-19.md::STU-19#<run>::qa-shared` —
+  `tenantKey('qa/cases/STU-19.md', 'STU-19#<run>', 'qa-shared')` + `tenantId`,
+  ten sam schemat co fixture'y e2e. Hasło startowe `Seed4Test!`.
+- Konto testowe to świeżo zaseedowany student tenanta; przed importem nie ma
+  żadnej talii, więc lista talii jest deterministyczna („0 talii”).
+- Plik `fiszki_poprawne.csv` nie jest częścią repozytorium, więc spec buduje
+  równoważny plik w pamięci (12 poprawnych wierszy: `front`, `back`, `topic`)
+  i wgrywa go przez pole pliku samego dialogu.
+- Spec: `qa/tests/STU/STU-19.spec.ts`, `NEXT_LOCALE=pl` (dokument cytuje polskie
+  napisy).
+- Uwagi o dryfie UI (spacer po współdzielonej aplikacji, 2026-10-29):
+  1. Przycisk na liście talii to „Importuj” (nie „Importuj CSV”); sam dialog ma
+     tytuł „Importuj CSV”. Spec klika etykietę, która jest w produkcie.
+  2. Krok 4 mówi „Wpisz nazwę talii (domyślnie «Zaimportowane Fiszki»)”, ale
+     dialog nie ma pola nazwy — talia zawsze powstaje z domyślną nazwą
+     „Zaimportowane Fiszki” (`imported_deck_default_name`). Oczekiwany rezultat
+     (utworzona talia z wszystkimi fiszkami) jest spełniony, więc spec asertuje
+     tę domyślną nazwę i nie koduje nieistniejącego pola.
+  3. Kolumna „Talia” jest opcjonalna i w tym scenariuszu pozostaje
+     niezmapowana — zgodnie z oczekiwanym rezultatem powstaje jedna talia.
+
 ## Steps
 
 1. Na liście talii wybierz „Importuj CSV”.
