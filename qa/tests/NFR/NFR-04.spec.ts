@@ -1,4 +1,4 @@
-import { devices, expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -31,9 +31,12 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * stat or singleton row.
  *
  * Device mode: the case's prerequisite is DevTools device mode at 375 × 812, so
- * the run uses Playwright's `iPhone X` descriptor — exactly that viewport, with
- * mobile UA and touch enabled. Nothing in the assertions depends on the UA; the
- * layout contract is the 375 px width, which the product's `sm` breakpoints use.
+ * the run emulates exactly that phone viewport on the runner's Chromium project:
+ * 375 × 812, `isMobile`, touch and a 3× device pixel ratio. The product's layout
+ * switches on the 375 px width (its `sm` breakpoints and the sidebar's `768 px`
+ * `matchMedia`), never on the UA, so the emulation is spelled out instead of
+ * borrowing a device descriptor: a descriptor carries its own browser engine, and
+ * this runner ships Chromium only.
  */
 
 const CASE = 'NFR-04';
@@ -76,7 +79,16 @@ interface QuizAttempt {
   id: string;
 }
 
-test.use({ ...devices['iPhone X'] });
+// The case's prerequisite is DevTools device mode at 375 × 812. Emulate it
+// explicitly on the runner's single Chromium project — the same viewport, mobile
+// layout viewport and touch the case asks for — instead of a device descriptor,
+// which would carry its own browser engine. This runner ships Chromium only.
+test.use({
+  viewport: { width: WIDTH, height: HEIGHT },
+  deviceScaleFactor: 3,
+  isMobile: true,
+  hasTouch: true,
+});
 
 function tenantOrThrow(): QaTenant {
   const tenant = loadTenant(CASE);

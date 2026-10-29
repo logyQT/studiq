@@ -35,9 +35,12 @@ case's own tenant and never the legacy accounts.
   so every run gets its own org/group/users from
   `tenantKey('qa/cases/NFR-04.md', 'NFR-04#<suffix>', 'qa-shared')` + `tenantId(key, entity)`.
   The spec reads the ids and credentials through `loadTenant('NFR-04')`.
-- Device mode: the Playwright run uses the `iPhone X` descriptor — exactly 375 × 812, mobile
-  UA and touch enabled — so the case's DevTools prerequisite is part of the test, not a
-  manual step.
+- Device mode: the Playwright run emulates the case's DevTools prerequisite on the runner's
+  single Chromium project — `viewport: 375 × 812`, `isMobile`, `hasTouch`,
+  `deviceScaleFactor: 3`. The layout contract is the 375 px width (the product's `sm`
+  breakpoints and the sidebar's `768 px` `matchMedia`), not the UA, so the emulation is
+  spelled out rather than borrowing a device descriptor — a descriptor carries its own
+  browser engine, and this runner ships Chromium only.
 - Content created by the spec through the product API and reset on every run: one personal
   deck with three flashcards (study session) and a two-question multiple-choice bank
   (practice quiz). A student's `question.read` scope is `own`, so the quiz is generated from
