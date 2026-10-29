@@ -65,6 +65,20 @@ one-off env, or the old slot stack. Do not let 16 workers mutate the same single
 - Default password for seeded fixture users is `Seed4Test!` (from `tenant-seed.ts`);
   do not use `pass` for new fixtures.
 
+## Asserting user-visible copy
+
+Specs assert the **literal** string the case specifies (usually Polish), and they do **not**
+resolve labels from `apps/web/src/i18n/messages/*.json`. Resolving from the app's own catalogue
+would compare the app against itself: it can no longer catch a missing translation, a wrong
+string, or a hard-coded English leak — which is exactly what NFR-01 exists to catch. The literal
+is the contract, so hard-coded copy in a spec is **not** a review finding on its own.
+
+The one exception is a **locale-parity sweep** (NFR-01, NFR-02), where the subject under test is
+that both catalogues agree; there the messages are imported on purpose, for both locales.
+
+What _is_ a finding: a literal the case does not specify, or literal copy used as a _selector_
+where a role/`data-slot` locator would be stable.
+
 ## Worker flow (one case per fresh session)
 
 1. Read `qa/cases/<CASEID>.md` and its prereqs.
