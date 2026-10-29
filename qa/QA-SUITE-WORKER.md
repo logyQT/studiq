@@ -32,7 +32,7 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
     `qa/tests` directory, never `--project=*`, never `--shard`, never a matrix.
   - `--workers=1` (and `--repeat-each=1`) is mandatory even on a big machine: the shared
     VM also runs the app, Supabase and eight browser tiles, and a parallel run OOM-kills
-    the box. One spec, one worker, three sequential runs.
+    the box. One spec, one worker, five sequential runs.
   - The same applies to any exploratory run: one spec at a time.
 - Use the **shared app/DB only**. Do not start/stop `qa-env`, Supabase, or another app.
 - Use browser tile `{{WORKER}}` only. Do not use the legacy `@dev.local` accounts or
@@ -93,13 +93,16 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 5. Write `qa/tests/<AREA>/{{CASE_ID}}.spec.ts` against the behavior you confirmed, with the
    case's acceptance criteria and the minimal adjacent regression paths that matter for the
    tested surface.
-6. Run the spec **3 independent times**, each with a fresh tenant — one worker, your file
+6. Run the spec **5 independent times**, each with a fresh tenant — one worker, your file
    only, never the suite:
    ```bash
    bunx playwright test qa/tests/<AREA>/{{CASE_ID}}.spec.ts --workers=1 --repeat-each=1
    ```
-   Green 3/3 is required. Keep the run IDs/logs as evidence.
-7. If all 3 are green:
+   Green 5/5 is required. Keep the run IDs/logs as evidence. A spec that only passes
+   with a fresh tenant but breaks when re-run against the same tenant is **not** green:
+   CI seeds once and retries against the same tenant (`--retries=2`), so also run
+   `CI=1 ... --repeat-each=2 --retries=2` on one seeded tenant before you call it done.
+7. If all 5 are green:
    - branch from `qa-suite` as `qa/{{CASE_ID}}`
    - commit only the spec, the reconciled case, and your own
      `qa/tests/profiles/{{CASE_ID}}.json` (no seeder/fixture rewrites)
@@ -112,7 +115,7 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 - case ID + worker
 - tenant key/run suffix
 - spec path
-- 3/3 run evidence
+- 5/5 run evidence
 - PR URL (only when admitted)
 - blockers/rejection reason
 
