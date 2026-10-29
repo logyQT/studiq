@@ -21,7 +21,7 @@ function PolandFlag() {
       aria-hidden="true"
       focusable="false"
       preserveAspectRatio="xMidYMid slice"
-      className="h-full w-full"
+      className="size-full"
     >
       <rect width="20" height="7.5" fill="#ffffff" />
       <rect y="7.5" width="20" height="7.5" fill="#DC143C" />
@@ -38,7 +38,7 @@ function UnitedKingdomFlag() {
       aria-hidden="true"
       focusable="false"
       preserveAspectRatio="xMidYMid slice"
-      className="h-full w-full"
+      className="size-full"
     >
       <clipPath id={clipId}>
         <path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z" />
