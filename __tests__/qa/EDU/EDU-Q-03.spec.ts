@@ -72,6 +72,8 @@ const COPY = {
   created: 'Pytanie utworzone',
   allTypes: 'Wszystkie',
   noQuestions: 'Brak pytań w tym banku. Utwórz swoje pierwsze pytanie!',
+  /** A filter that hides every row is not an empty bank (#666, #651). */
+  noResults: 'Brak pytań pasujących do filtrów.',
   edit: 'Edytuj',
 } as const;
 
@@ -304,7 +306,8 @@ test.describe('@case:EDU-Q-03 @area:EDU @prio:P2 true/false question', () => {
 
     await chooseTypeFilter(page, COPY.filterOpen);
     await expect(questionRow(page), 'an open-answer filter hides the P/F question').toHaveCount(0);
-    await expect(page.getByText(COPY.noQuestions, { exact: true })).toBeVisible();
+    // A filter, not an empty bank: the list names the filters instead of inviting a new question.
+    await expect(page.getByText(COPY.noResults, { exact: true })).toBeVisible();
 
     await chooseTypeFilter(page, COPY.allTypes);
     await expect(questionRow(page)).toHaveCount(1);
