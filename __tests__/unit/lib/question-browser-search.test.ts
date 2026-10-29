@@ -14,8 +14,16 @@ describe('question picker search', () => {
     'utf8',
   );
 
-  it('puts the search term in the query key', () => {
-    expect(source).toMatch(/queryKey: \['questions', selectedBankId \?\? 'all', debouncedSearch\]/);
+  it('puts the bank and the search term in the shared list key', () => {
+    expect(source).toContain('queryKey: questionKeys.list({');
+    expect(source).toContain('bankId: selectedBankId');
+    expect(source).toContain('search: debouncedSearch || undefined');
+    // No hand-written key: it would not be covered by the bank screen's invalidation.
+    expect(source).not.toMatch(/queryKey: \['questions'/);
+  });
+
+  it('does not draw the empty state while the bank or the term is loading', () => {
+    expect(source).toContain('!questionsPending && allQuestions.length === 0');
   });
 
   it('builds the URL with URLSearchParams, not by string interpolation', () => {

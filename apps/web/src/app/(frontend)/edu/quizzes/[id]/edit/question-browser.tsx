@@ -9,7 +9,7 @@ import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { availableQuestions, type BrowseQuestion } from '@/lib/question-browser';
-import { shouldRetryQuery } from '@/lib/query-retry';
+import { questionKeys } from '@/lib/query-keys';
 
 interface QuestionBrowserProps {
   existingIds: Set<string>;
@@ -86,14 +86,19 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
   if (debouncedSearch) params.set('search', debouncedSearch);
   const queryString = params.toString();
 
+  // The shared key keeps the bank and the term distinct, and puts the picker under the same
+  // prefix the bank screen invalidates after a create or a delete.
   const {
     data: questions,
+    isPending: questionsPending,
     isError: questionsError,
     refetch: refetchQuestions,
   } = useApiQuery<BrowseQuestion[]>({
-    queryKey: ['questions', selectedBankId ?? 'all', debouncedSearch],
+    queryKey: questionKeys.list({
+      bankId: selectedBankId,
+      search: debouncedSearch || undefined,
+    }),
     url: `/api/v1/questions${queryString ? `?${queryString}` : ''}`,
-    retry: shouldRetryQuery,
   });
 
   // The server is the only place that filters: a second pass over the returned rows with the
@@ -142,8 +147,10 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
                 draggable={draggable}
               />
             ))}
-            {allQuestions.length === 0 && (
+            {!questionsPending && allQuestions.length === 0 && (
               // The same shape as the error state and the other lists: icon, text, no dead end.
+              // Not while the term/bank is still loading: an empty response and a pending one
+              // are not the same answer.
               <EmptyState icon={SearchX} title={t('no_questions_found')} compact />
             )}
           </>
