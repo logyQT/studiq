@@ -534,6 +534,8 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       extraGroups: groupNames.slice(1).map((name, index) => ({
         id: tenantId(key, `group:${index + 2}`),
         name,
+        // `groups.is_default` is NOT NULL — every extra group must say `false`.
+        isDefault: false,
       })),
       owner: toAccount(ownerSpec),
       members: memberSpecs.map((member) => ({
