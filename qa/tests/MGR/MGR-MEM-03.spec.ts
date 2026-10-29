@@ -1,15 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-} from '#test/helpers/tenant-seed';
+import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * MGR-MEM-03 — the last admin cannot demote themselves or leave the organization.
@@ -19,14 +9,25 @@ import {
  * other rows to contrast against. The legacy manual seed (`manager@dev.local`,
  * password `pass`) is never used.
  *
- * Tenant: `tenantKey('qa/cases/MGR-MEM-03.md', <title>, 'qa-shared')::<run suffix>`.
- * Every org/user/role id is `tenantId(key, entity)`, so a run is reproducible by
- * pinning `QA_RUN_SUFFIX`; by default the suffix is fresh, which gives each
- * independent run its own organization, admin and members.
+ * Tenant: the `content` profile of this case (`qa/tests/profiles/MGR-MEM-03.json`),
+ * seeded **once, before Playwright starts**, by
  *
- * The spec seeds its own graph through the shared helpers
- * (`__tests__/helpers/tenant-seed.ts`). Nothing global is written — no settings,
- * flags, plans or platform rows — and no other case's tenant is touched.
+ *   bun scripts/qa-tenant.ts MGR-MEM-03 --fresh
+ *
+ * It is exactly the case's shape — one organization with its `admin` manager, a
+ * teacher (org role `teacher`) and a student (org role `member`), plus the default
+ * group `G1`. Every org/user/role id derives from
+ * `tenantKey('qa/cases/MGR-MEM-03.md', …)` + `tenantId(key, entity)`, so an
+ * independent run gets a brand-new organization, admin and members, and nothing
+ * leaks between runs. The spec seeds nothing itself.
+ *
+ * The case's own state changes go through the product's API, like the rest of the
+ * suite: the adjacent regression demotes the teacher and removes the student, so
+ * `prepareTenant` puts the tenant back to its starting roster (role change through
+ * `PUT /api/v1/organization/members`, a removed member re-added through the
+ * product's invite → accept flow) before every run. That keeps a CI retry
+ * (`--retries`) or a repeated run (`--repeat-each`) on the same seeded tenant at
+ * the same starting state instead of a half-mutated organization.
  *
  * Acceptance points:
  * 1. On `/manage/members` the admin's own row renders no role select and no
@@ -43,145 +44,172 @@ import {
  *    member through those endpoints.
  */
 
-const CASE_FILE = 'qa/cases/MGR-MEM-03.md';
-const TITLE = 'MGR-MEM-03 self role change and self removal are blocked';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+const CASE = 'MGR-MEM-03';
+const TENANT: QaTenant = loadTenant(CASE);
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+const MEMBERS_API = '/api/v1/organization/members';
+const ROLES_API = '/api/v1/organization/roles';
+const INVITES_API = '/api/v1/organization/invites';
+
+interface CaseAccount {
+  id: string;
+  email: string;
+  password: string;
+}
+
+interface OrgRole {
+  id: string;
+  name: string;
+}
+
+interface OrgMember {
+  id: string;
+  email: string;
+  orgRoleId: string;
+  orgRoleName: string;
+}
 
 interface CaseTenant {
-  key: string;
-  org: { id: string; name: string };
-  manager: SeedAccount;
-  teacher: SeedAccount;
-  student: SeedAccount;
   roles: { admin: string; teacher: string; member: string };
+  manager: CaseAccount;
+  teacher: CaseAccount;
+  student: CaseAccount;
+}
+
+function account(role: QaRole): CaseAccount {
+  const user = TENANT.users[role];
+  if (!user) throw new Error(`tenant ${CASE} has no seeded ${role} user`);
+  return user;
+}
+
+async function apiData<T>(page: Page, path: string): Promise<T> {
+  const response = await page.request.get(path);
+  expect(response.status(), `GET ${path}`).toBe(200);
+  const body = (await response.json()) as { success: boolean; data: T };
+  expect(body.success, `GET ${path} success`).toBe(true);
+  return body.data;
+}
+
+function roleId(roles: OrgRole[], name: string): string {
+  const role = roles.find((candidate) => candidate.name === name);
+  if (!role) throw new Error(`tenant ${CASE} has no org role "${name}"`);
+  return role.id;
+}
+
+/** The members page's own role change (`PUT /api/v1/organization/members`). */
+async function changeRole(
+  page: Page,
+  userId: string,
+  newOrgRoleId: string,
+  label: string,
+): Promise<void> {
+  const response = await page.request.put(MEMBERS_API, {
+    data: { targetUserId: userId, newOrgRoleId },
+  });
+  expect(response.status(), `${label} → ${response.status()} ${await response.text()}`).toBe(200);
 }
 
 /**
- * Resolve the shared Supabase admin credentials. `QA_SUPABASE_*` wins; otherwise
- * the routine `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`, then the
- * worker's `qa/env.json`, then the shared local defaults.
+ * Re-add a member the previous run removed (acceptance point 4). The product has
+ * no "add member" endpoint — membership starts with an invitation, so the manager
+ * invites the seeded account's address and that account accepts, exactly like
+ * `/manage/invites` → `/app/join`.
  */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
+async function rejoinAsStudent(
+  page: Page,
+  student: CaseAccount,
+  memberRoleId: string,
+): Promise<void> {
+  const invite = await page.request.post(INVITES_API, {
+    data: { email: student.email, targetOrgRoleId: memberRoleId },
+  });
+  expect(
+    invite.status(),
+    `POST ${INVITES_API} (${student.email}) → ${invite.status()} ${await invite.text()}`,
+  ).toBe(201);
+  const { data } = (await invite.json()) as { data: { inviteCode: string } };
+  const { inviteCode } = data;
+
+  await loginAs(page, TENANT, 'student', { locale: 'pl', waitFor: /\/app$/ });
+  const accepted = await page.request.post(`${INVITES_API}/accept`, {
+    data: { token: inviteCode },
+  });
+  expect(
+    accepted.status(),
+    `POST ${INVITES_API}/accept → ${accepted.status()} ${await accepted.text()}`,
+  ).toBe(200);
+}
+
+/**
+ * Put the seeded tenant back to the case's starting roster and return the ids the
+ * assertions need. Role ids come from `GET /api/v1/organization/roles` — the same
+ * endpoint the members page uses — instead of hard-coding a per-run uuid.
+ */
+async function prepareTenant(page: Page): Promise<CaseTenant> {
+  const manager = account('manager');
+  const teacher = account('teacher');
+  const student = account('student');
+
+  await loginAs(page, TENANT, 'manager', {
+    locale: 'pl',
+    waitFor: /\/manage$/,
+  });
+
+  const roles = await apiData<OrgRole[]>(page, ROLES_API);
+  const ids = {
+    admin: roleId(roles, 'admin'),
+    teacher: roleId(roles, 'teacher'),
+    member: roleId(roles, 'member'),
+  };
+
+  const members = await apiData<OrgMember[]>(page, MEMBERS_API);
+  const teacherRow = members.find((member) => member.email === teacher.email);
+  if (!teacherRow) {
+    throw new Error(`the seeded teacher ${teacher.email} is not in the tenant's organization`);
+  }
+  if (teacherRow.orgRoleId !== ids.teacher) {
+    await changeRole(page, teacher.id, ids.teacher, 'restore the teacher role');
   }
 
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
+  const studentRow = members.find((member) => member.email === student.email);
+  if (!studentRow) {
+    await rejoinAsStudent(page, student, ids.member);
+    await loginAs(page, TENANT, 'manager', {
+      locale: 'pl',
+      waitFor: /\/manage$/,
+    });
+  } else if (studentRow.orgRoleId !== ids.member) {
+    await changeRole(page, student.id, ids.member, 'restore the student role');
+  }
+
+  const restored = await apiData<OrgMember[]>(page, MEMBERS_API);
+  expect(
+    restored.map((member) => member.email).sort(),
+    'the case starts with exactly its three seeded members',
+  ).toEqual([manager.email, teacher.email, student.email].sort());
+
+  return { roles: ids, manager, teacher, student };
 }
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Seed the case's org: one `admin` (the manager, the only admin), one `teacher`
- * and one `member`. The manager is the org owner, exactly like an organization
- * created through the app.
- */
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const org = { id: tenantId(key, 'org'), name: `qa-mgr-mem03-${RUN_SUFFIX}` };
-  const groupId = tenantId(key, 'group:default');
-  const manager = buildAccount(key, 'manager', 'manager', { name: 'QA manager' });
-  const teacher = buildAccount(key, 'teacher', 'educator', {
-    name: 'QA teacher',
-    orgRole: 'teacher',
-  });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { id: groupId, name: 'G1', isDefault: true },
-    extraGroups: [],
-    owner: manager,
-    members: [teacher, student],
-    ownerOrgRole: 'admin',
-  });
-
-  const { admin, teacher: teacherRoleId, member } = seeded.roleIds;
-  if (!admin || !teacherRoleId || !member) {
-    throw new Error(`seed ${key}: one of the org roles (admin/teacher/member) is missing`);
-  }
-
-  return {
-    key,
-    org,
-    manager: seeded.owner,
-    teacher: seeded.members[0],
-    student: seeded.members[1],
-    roles: { admin, teacher: teacherRoleId, member },
-  };
-}
-
-/**
- * Real login through the API, then boot the app with the locale the case's copy
- * is written in and the tenant's organization active (the cookie the app writes
- * on org creation / switch). Without it the first org-scoped request would run
- * with no org context.
- */
-async function loginAsManager(page: Page, baseURL: string, tenant: CaseTenant): Promise<void> {
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: tenant.manager.email, password: tenant.manager.password },
-  });
-  expect(response.status(), `login ${tenant.manager.email}`).toBe(200);
-
-  const { hostname } = new URL(baseURL);
-  await page.context().addCookies([
-    { name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' },
-    { name: 'active_org_id', value: tenant.org.id, domain: hostname, path: '/', httpOnly: true },
-  ]);
-
-  await page.goto('/login');
-  await expect(page).toHaveURL(/\/manage$/);
-}
-
 test.describe('@case:MGR-MEM-03 @area:MGR @prio:P1 self role change and self removal', () => {
-  let tenant: CaseTenant;
-
-  test.beforeAll(async () => {
-    tenant = await seedCaseTenant();
-    console.log(
-      `MGR-MEM-03 tenant key: ${tenant.key} (org ${tenant.org.id}, admin ${tenant.manager.email})`,
-    );
-  });
-
-  test('the only admin cannot demote or remove themselves', async ({ page, baseURL }) => {
+  test('the only admin cannot demote or remove themselves', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    const origin = baseURL ?? 'http://localhost:3010';
 
-    await loginAsManager(page, origin, tenant);
+    const tenant = await prepareTenant(page);
 
     // Enter the page the way a manager does: dashboard → „Członkowie” in the sidebar.
     await page.locator('a[href="/manage/members"]').first().click();
     await expect(page).toHaveURL(/\/manage\/members$/);
     await expect(page.getByRole('heading', { name: 'Członkowie', exact: true })).toBeVisible();
 
-    const ownRow = page.getByRole('row', { name: new RegExp(escapeRegExp(tenant.manager.email)) });
+    const ownRow = page.getByRole('row', {
+      name: new RegExp(escapeRegExp(tenant.manager.email)),
+    });
     const teacherRow = page.getByRole('row', {
       name: new RegExp(escapeRegExp(tenant.teacher.email)),
     });
@@ -208,25 +236,34 @@ test.describe('@case:MGR-MEM-03 @area:MGR @prio:P1 self role change and self rem
     await expect(ownRow.getByRole('button', { name: /Zarządzaj grupami/ })).toHaveCount(0);
 
     // 1. The request behind a self-demotion is rejected, not silently applied.
-    const demote = await page.request.put('/api/v1/organization/members', {
-      data: { targetUserId: tenant.manager.id, newOrgRoleId: tenant.roles.member },
+    const demote = await page.request.put(MEMBERS_API, {
+      data: {
+        targetUserId: tenant.manager.id,
+        newOrgRoleId: tenant.roles.member,
+      },
     });
     expect(demote.status(), 'PUT /api/v1/organization/members (self → member)').toBe(403);
-    expect(await demote.json()).toMatchObject({ success: false, error: 'FORBIDDEN' });
+    expect(await demote.json()).toMatchObject({
+      success: false,
+      error: 'FORBIDDEN',
+    });
 
     // 2. Same for removing oneself from the organization.
-    const removeSelf = await page.request.delete('/api/v1/organization/members', {
+    const removeSelf = await page.request.delete(MEMBERS_API, {
       params: { userId: tenant.manager.id },
     });
     expect(removeSelf.status(), 'DELETE /api/v1/organization/members?userId=<self>').toBe(403);
-    expect(await removeSelf.json()).toMatchObject({ success: false, error: 'FORBIDDEN' });
+    expect(await removeSelf.json()).toMatchObject({
+      success: false,
+      error: 'FORBIDDEN',
+    });
 
     // 3. The organization still has its admin and all of its members.
-    const afterAttempts = await page.request.get('/api/v1/organization/members');
-    expect(afterAttempts.status(), 'GET /api/v1/organization/members').toBe(200);
+    const afterAttempts = await page.request.get(MEMBERS_API);
+    expect(afterAttempts.status(), `GET ${MEMBERS_API}`).toBe(200);
     const afterBody = (await afterAttempts.json()) as {
       success: boolean;
-      data: Array<{ id: string; email: string; orgRoleId: string; orgRoleName: string }>;
+      data: OrgMember[];
     };
     expect(afterBody.success).toBe(true);
     expect(afterBody.data).toHaveLength(3);
@@ -249,19 +286,22 @@ test.describe('@case:MGR-MEM-03 @area:MGR @prio:P1 self role change and self rem
     await expect(ownRowAfterReload).toContainText('(ty)');
 
     // 4. Adjacent regression: the self-guard does not block managing others.
-    const changeOther = await page.request.put('/api/v1/organization/members', {
-      data: { targetUserId: tenant.teacher.id, newOrgRoleId: tenant.roles.member },
+    const changeOther = await page.request.put(MEMBERS_API, {
+      data: {
+        targetUserId: tenant.teacher.id,
+        newOrgRoleId: tenant.roles.member,
+      },
     });
     expect(changeOther.status(), 'PUT /api/v1/organization/members (other → member)').toBe(200);
     expect(await changeOther.json()).toMatchObject({ success: true });
 
-    const removeOther = await page.request.delete('/api/v1/organization/members', {
+    const removeOther = await page.request.delete(MEMBERS_API, {
       params: { userId: tenant.student.id },
     });
     expect(removeOther.status(), 'DELETE /api/v1/organization/members?userId=<other>').toBe(200);
     expect(await removeOther.json()).toMatchObject({ success: true });
 
-    const finalList = await page.request.get('/api/v1/organization/members');
+    const finalList = await page.request.get(MEMBERS_API);
     expect(finalList.status()).toBe(200);
     const finalBody = (await finalList.json()) as {
       success: boolean;
