@@ -1,15 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
-import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-} from '#test/helpers/tenant-seed';
+import type { Page } from '@playwright/test';
+import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
 /**
  * EDU-02 — Menu boczne nauczyciela (/edu).
@@ -19,24 +9,24 @@ import {
  * `ai.chat` (the case lists „Asystent Q” in the main section). The legacy manual
  * account (`teacher1@dev.local`, password `pass`) is never used.
  *
- * Tenant: `tenantKey('qa/cases/EDU-02.md', 'EDU-02 teacher sidebar', 'qa-shared')::<run suffix>`.
- * One organization (default group `G1`) with an admin, a student and two educator
- * accounts:
+ * Tenant: `qa/tests/profiles/EDU-02.json`, seeded once before Playwright starts
+ * (`bun scripts/qa-tenant.ts EDU-02 --fresh`) and read through `loadTenant(CASE)`
+ * — the spec never seeds at runtime. The profile is the `content` shape with a
+ * declarative roster and the case's `hub` entitlement:
+ *   - `manager`  — org role `admin`;
  *   - `teacher`  — org role `teacher` → `ai.chat` + `group.manage`;
- *   - `teacher2` — org role `member`  → `ai.chat`, no `group.manage`.
- * The second account is the negative control for the case's „Grupy widoczne tylko
+ *   - `teacher2` — org role `member`  → `ai.chat`, no `group.manage`;
+ *   - `student`  — org role `member`, member of the default group `G1`.
+ * The second educator is the negative control for the case's „Grupy widoczne tylko
  * gdy plan ma funkcję group.manage”: every organization plan includes
  * `group.manage`, so the absence branch is exercised through the role's resolved
  * feature set, which is exactly what `/api/v1/features/me` returns and what the
  * sidebar filters on.
  *
- * The spec seeds its own graph through the shared helpers
- * (`__tests__/helpers/tenant-seed.ts`) instead of reading `qa/.tenants/EDU-02.json`
- * because the seeded role/plan shape is case-specific; every id is
- * `tenantId(key, entity)`. The entitlement is applied to this tenant's own
- * organization with `apply_org_plan` (the same RPC the billing webhook calls), so
- * no global plan, flag, setting or platform row is written and no other worker's
- * tenant is touched.
+ * The `hub` plan is applied to this tenant's own organization by the seeder with
+ * `apply_org_plan` (the same RPC the billing webhook calls), so no global plan,
+ * flag, setting or platform row is written and no other worker's tenant is
+ * touched.
  *
  * Acceptance points (confirmed on the shared app during the walk):
  * 1. Three sections with exactly these items: Główne (Przegląd, Asystent Q),
@@ -52,18 +42,9 @@ import {
  */
 
 const CASE = 'EDU-02';
-const CASE_FILE = 'qa/cases/EDU-02.md';
-const TITLE = 'EDU-02 teacher sidebar';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-
-/** The plan whose resolved feature set matches the case's expected menu. */
-const PLAN = 'hub';
+/** The tenant declared in `qa/tests/profiles/EDU-02.json` and seeded before the suite. */
+const tenant = loadTenant(CASE);
 
 const NOT_FOUND_COPY = 'Nie znaleziono strony';
 
@@ -112,96 +93,6 @@ const NAV_ITEMS: NavEntry[] = [
     marker: 'Aktywność studentów',
   },
 ];
-
-/**
- * Resolve the shared Supabase admin credentials. `QA_SUPABASE_*` wins; otherwise
- * the routine `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`, then the
- * worker's `qa/env.json`, then the shared local defaults.
- */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-/** Seed the case's organization: the entitled teacher, the unentitled one, a student. */
-async function seedCaseTenant(): Promise<QaTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const org = { id: tenantId(key, 'org'), name: `qa-edu02-${RUN_SUFFIX}` };
-  const group = { id: tenantId(key, 'group:default'), name: 'G1' };
-
-  const manager = buildAccount(key, 'manager', 'manager', { name: 'QA manager' });
-  const teacher = buildAccount(key, 'teacher', 'educator', {
-    name: 'QA teacher',
-    orgRole: 'teacher',
-  });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-  const teacher2 = buildAccount(key, 'teacher2', 'educator', {
-    name: 'QA teacher 2',
-    orgRole: 'member',
-  });
-
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { ...group, isDefault: true },
-    extraGroups: [],
-    owner: manager,
-    members: [teacher, student, teacher2],
-    ownerOrgRole: 'admin',
-  });
-
-  // The case's paid entitlement, applied to this tenant's own organization only.
-  const { error } = await db.rpc('apply_org_plan', { p_org_id: org.id, p_plan: PLAN });
-  if (error) throw new Error(`seed ${key}: apply_org_plan(${PLAN}) ${error.message}`);
-
-  const account = (seed: (typeof seeded.members)[number]) => ({
-    id: seed.id,
-    email: seed.email,
-    password: seed.password,
-  });
-
-  return {
-    case: CASE,
-    key,
-    profile: 'content',
-    plan: PLAN,
-    runSuffix: RUN_SUFFIX,
-    org,
-    group,
-    users: {
-      teacher: account(seeded.members[0]),
-      student: account(seeded.members[1]),
-      teacher2: account(seeded.members[2]),
-    },
-  };
-}
-
-let tenant: QaTenant;
-
-test.beforeAll(async () => {
-  tenant = await seedCaseTenant();
-  console.log(`EDU-02 tenant key: ${tenant.key} (org ${tenant.org?.id})`);
-});
 
 /** The desktop sidebar — the only navigation this case is about. */
 function sidebar(page: Page) {
