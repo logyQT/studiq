@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - '__tests__/**'
+      - 'qa/**'
       - 'scripts/**'
       - 'playwright.config.ts'
       - 'apps/**'
@@ -30,6 +31,90 @@ env:
 jobs:
   # Cheapest first, in the order a failure is cheapest to explain: lint, types.
   # Everything else waits on this.
+  # A QA-suite PR only touches qa/** (plus, occasionally, __tests__ helpers).
+  # The app, its unit/integration tests and the e2e matrix cannot change there,
+  # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
+  # the `qa-suite` job still run. Schedule/dispatch runs everything.
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+      qa_shards: ${{ steps.diff.outputs.qa_shards }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A shallow clone has no merge base, and the three-dot diff needs one.
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          echo "app=true" >> "$GITHUB_OUTPUT"
+          if [ -n "${BASE_REF:-}" ]; then
+            git fetch --no-tags origin "$BASE_REF"
+            changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+            echo "changed files:"; echo "$changed"
+            if ! echo "$changed" | grep -qvE '^(qa/|__tests__/)'; then
+              echo "app=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+          python3 - "${BASE_REF:-}" <<'PY' >> "$GITHUB_OUTPUT"
+          import json, subprocess, sys
+
+          # Balanced on the last observed shard times (7 / 6 / 6 / 5 min): STU is the
+          # slowest area, so it carries the two light ones (LIM, NFR); AUT joins the
+          # SEC/PUB/BIL group it used to sit next to in the old four-area shard.
+          shards = [
+              {"name": "edu", "paths": "__tests__/qa/EDU", "areas": ["EDU"]},
+              {"name": "mgr-onb", "paths": "__tests__/qa/MGR __tests__/qa/ONB", "areas": ["MGR", "ONB"]},
+              {
+                  "name": "stu-lim-nfr",
+                  "paths": "__tests__/qa/STU __tests__/qa/LIM __tests__/qa/NFR",
+                  "areas": ["STU", "LIM", "NFR"],
+              },
+              {
+                  "name": "aut-sec-pub-bil",
+                  "paths": "__tests__/qa/AUT __tests__/qa/SEC __tests__/qa/PUB __tests__/qa/BIL",
+                  "areas": ["AUT", "SEC", "PUB", "BIL"],
+              },
+          ]
+
+          # No base ref = nightly schedule / manual dispatch: run the whole suite.
+          base = sys.argv[1] if len(sys.argv) > 1 else ""
+          if not base:
+              selected = shards
+          else:
+              changed = subprocess.run(
+                  ["git", "diff", "--name-only", f"origin/{base}...HEAD"],
+                  capture_output=True, text=True, check=True,
+              ).stdout.split()
+              # Shared QA files, anything outside qa/, or a QA PR that touches no
+              # spec at all can change every area -> run all shards. Only a PR
+              # that touches specific __tests__/qa/<AREA>/ specs narrows.
+              shared = (
+                  "qa/fixtures/", "qa/playwright.qa.config.ts",
+                  "scripts/qa-tenant.ts", "scripts/qa-issue.ts",
+                  ".github/workflows/verify.yml", "package.json", "bun.lock",
+                  "apps/", "packages/", "supabase/", "__tests__/",
+              )
+              force_all = any(f.startswith(shared) for f in changed)
+              # A case PR adds a spec under __tests__/qa/<AREA>/ and/or a profile at
+              # __tests__/qa/profiles/<CASE>.json; both map to the case's area, so a
+              # normal case PR runs exactly one shard.
+              areas = set()
+              for f in changed:
+                  if f.startswith("__tests__/qa/profiles/") and f.endswith(".json"):
+                      areas.add(f.rsplit("/", 1)[-1].split("-")[0])
+                  elif f.startswith("qa/cases/") and f.endswith(".md"):
+                      areas.add(f.rsplit("/", 1)[-1].split("-")[0])
+                  elif f.startswith("__tests__/qa/") and len(f.split("/")) > 3:
+                      areas.add(f.split("/")[2])
+              touched = [s for s in shards if set(s["areas"]) & areas]
+              selected = shards if force_all or not touched else touched
+          print("qa_shards=" + json.dumps(selected))
+          PY
+
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -53,7 +138,8 @@ jobs:
         run: bun run typecheck:all
 
   unit:
-    needs: checks
+    needs: [checks, scope]
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -70,7 +156,8 @@ jobs:
       - run: bun run test:unit
 
   integration:
-    needs: checks
+    needs: [checks, scope]
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -106,10 +193,109 @@ jobs:
         if: always()
         run: bunx supabase stop --no-backup || true
 
+  # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
+  # :3010, one worker). The root config only sees __tests__/e2e, so without this
+  # job `__tests__/qa/**` would never run in CI.
+  qa-suite:
+    needs: [checks, scope]
+    # Still runs when `unit` was skipped for a tests-only diff.
+    if: needs.checks.result == 'success' && needs.scope.outputs.qa_shards != '[]'
+    # Sharded by area, one runner per shard. The suite is one long serial job
+    # (~12 min at 140 specs, growing), so splitting is what buys wall-clock time
+    # now — not more workers: the runner is 4 vCPU and raising QA_WORKERS only
+    # starves the app, Supabase and Chromium against each other.
+    #
+    # A PR runs only the shards whose areas it touches (see `scope`); a shared QA
+    # file, an app/packages change, or the nightly schedule runs all of them.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.scope.outputs.qa_shards) }}
+    name: qa-suite (${{ matrix.shard.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      QA_APP_URL: http://localhost:3010
+      # Every test owns its tenant, so CI can run four at a time on a 4-vCPU
+      # runner. Locally the same variable stays unset (workers: 1).
+      QA_WORKERS: '4'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+
+      - name: Start Supabase
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+
+      - name: Write env files
+        # The app reads apps/web/.env, but the QA seeder and the specs that seed
+        # their own tenant are plain Bun processes: without these vars in the job
+        # environment they fall back to the shared-VM localhost:54421 and fail
+        # with `fetch failed`. Export them to $GITHUB_ENV as well.
+        run: |
+          eval "$(bunx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3010"
+            echo "OTEL_SDK_DISABLED=true"
+          } > apps/web/.env
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "OTEL_SDK_DISABLED=true"
+            echo "QA_APP_URL=http://localhost:3010"
+          } >> "$GITHUB_ENV"
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build and start the shared app
+        run: |
+          bun run build
+          (cd apps/web && bunx next start -p 3010 > /tmp/qa-app.log 2>&1 &)
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3010/login && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3010/login
+
+      - name: Seed every tenant once
+        # Same shape as `scripts/e2e-seed.ts`: one process, one run suffix, before
+        # Playwright starts. Seeding inside the run would stall the app and the
+        # 4-worker suite against it; every spec still gets its own tenant because
+        # the suffix is folded into each case's key.
+        run: bun scripts/qa-tenant.ts --all --run "ci${{ github.run_id }}"
+
+      - name: Run the QA suite
+        run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line ${{ matrix.shard.paths }}
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-suite-report-${{ matrix.shard.name }}
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop --no-backup || true
+
   # One leg per browser so a red platform re-runs alone. Each leg owns its
   # tenant set (keys include the project) and its own Supabase instance.
   e2e:
-    needs: [checks, unit]
+    needs: [checks, scope]
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

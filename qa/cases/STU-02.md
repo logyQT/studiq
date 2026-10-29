@@ -11,6 +11,21 @@
 
 Zalogowany test-student@dev.local (brak treści).
 
+## Prereqs (tenant model)
+
+The case's own tenant, seeded by `bun scripts/qa-tenant.ts STU-02 --fresh` (never
+the legacy `test-student@dev.local` / `pass` account):
+
+- key: `tenantKey('qa/cases/STU-02.md', 'STU-02#<run suffix>', 'qa-shared')`
+- `__tests__/qa/profiles/STU-02.json` declares the default `content` profile: one
+  organization with its manager/teacher and the `student` account the case logs
+  in as. The student starts with **no content** (no deck, flashcard, question or
+  quiz attempt), which is the case's „brak treści” prerequisite.
+- the spec builds its deck, flashcard, question and quiz attempt inside that
+  tenant through the student's own session; every id comes from `tenantKey` /
+  `tenantId`, and no global row (admin settings, feature flags, plan catalogue,
+  platform stats) is read or written.
+
 ## Steps
 
 1. Na pulpicie sprawdź kartę „Pierwsze kroki”.

@@ -12,32 +12,42 @@ lives next to this file (`context.md`, `index.md`, `cases/<ID>.md`).
 ````markdown
 # QA agent — StudiQ (report-only)
 
+> **Shared mode (current):** all eight workers use the same app
+> (`http://localhost:3010`) and Supabase (`http://localhost:54421`); `qa/env.json`
+> is authoritative. Do not start/stop/reset `qa-env` or create a per-slot stack.
+> This manual prompt stays report-only: do not change code, commit, or open PRs.
+> Suite generation uses a separate prompt (`QA-SUITE-WORKER.md`) that branches
+> `qa/<CASEID>` from `qa-suite` and opens a PR into `qa-suite`.
+
 Run the manual QA scenario given at the bottom in the dashboard's live QA browser, and file GitHub issues. NEVER change code, commit, or open PRs. Report findings; do not fix.
 
 ## Environment (pre-provisioned — do not rebuild it)
 
-You run in one of eight persistent, isolated slots: **`qa-env-1` … `qa-env-8`**.
-Your checkout is a detached worktree with its own Supabase stack, web app and
-admin app. `qa/env.json` in this checkout is authoritative:
+You run in one of eight browser workers: **`qa-env-1` … `qa-env-8`**. All eight
+share **one app** (`http://localhost:3010`) and **one Supabase**
+(`http://localhost:54421`); only the browser tile/CDP port is per worker.
+`qa/env.json` in this checkout is authoritative:
 
-| key           | use                                                                 |
-| ------------- | ------------------------------------------------------------------- |
-| `envId`       | `qa-env-1` … `qa-env-8`                                             |
-| `appUrl`      | web app (replaces `http://localhost:3000`)                          |
-| `adminUrl`    | admin app (replaces `http://localhost:4000`)                        |
-| `supabaseUrl` | this slot's Supabase API                                            |
-| `dbContainer` | `docker exec <dbContainer> psql -U postgres -d postgres -c "<sql>"` |
-| `serviceName` | telemetry filter (`studiq-qa-env-N`)                                |
+| key           | use                                            |
+| ------------- | ---------------------------------------------- |
+| `envId`       | `qa-env-1` … `qa-env-8`                        |
+| `appUrl`      | shared web app (`http://localhost:3010`)       |
+| `adminUrl`    | shared admin app (`http://localhost:4010`)     |
+| `supabaseUrl` | shared Supabase API (`http://localhost:54421`) |
+| `dbContainer` | shared DB (`supabase_db_qa-env-1`)             |
+| `sharedEnv`   | `qa-env-1` — the only running stack            |
+| `serviceName` | telemetry filter (`studiq-qa-env-N`)           |
 
-- **Do not create worktrees, run `supabase start/stop`, `db reset`, or restart
-  the app.** Slots are provisioned from the main checkout with `scripts/qa-env`;
-  a broken slot is an `env` problem, never a `bug`. If the slot is down, say so
-  in the report and stop.
-- Your slot is a `main` checkout (detached, or on the branch under test); do
-  not rely on `git branch --show-current` and do not create branches. If a
-  feature is missing from `main`, note it in the report instead of filing a bug:
-  it is out of scope for the corpus.
-- The seed database is per slot. Resetting it is the operator's job, not yours.
+- **Never reset the shared database, run `supabase start/stop`, `db reset`,
+  restart the app, or start a per-slot stack.** A reset wipes every other
+  worker's tenant. A broken shared env is an `env` problem, never a `bug`.
+- Create your own data through the app/API; never edit or delete another
+  worker's org, users, groups or content.
+- Your checkout is the `qa-env-N` worktree. For manual QA, do not create
+  branches. For a QA-suite case, branch from `qa-suite` as `qa/<CASEID>` and
+  open a PR into `qa-suite`; never commit to `qa-suite` directly.
+- If a feature is missing from the app, note it in the report instead of filing
+  a bug: it is out of scope for the corpus unless the case under test covers it.
 - Shared observability stack: Tempo + Loki + Prometheus + Grafana at
   `http://localhost:3001` (already running; the `grafana` MCP server points at it).
 - `gh` is authed as logyQT; issues live in logyQT/studiq.
@@ -60,14 +70,13 @@ operator sees in tile `qa-env-N`, so leave the dashboard open while you work.
   They resolve the env from `qa/env.json`; pass `env: "qa-env-N"` only if a tool
   reports the wrong env.
 - **Env operations — `qa_env` server, no arguments at all:**
-  `qa_env_status`, `qa_env_reset` (destructive DB reset + seed),
-  `qa_env_reseed`, `qa_env_restart_app`, `qa_env_restart_browser`,
-  `qa_env_admin_up`, `qa_env_admin_down`, `qa_env_lock`.
-  They act on **your** slot only. There is no env or path parameter, so you
-  cannot target another environment by mistake. Admin is exclusive across all
-  slots: `qa_env_admin_up` fails with the current holder instead of stealing
-  the panel. Prefer these over raw `docker`, `supabase` or `scripts/qa-env`
-  commands.
+  `qa_env_status`, `qa_env_restart_browser`, `qa_env_admin_up`,
+  `qa_env_admin_down`, `qa_env_lock`.
+  **Do not call `qa_env_reset`, `qa_env_reseed` or `qa_env_restart_app`** — the
+  stack is shared, so a reset wipes every worker. Create data through the
+  app/API instead. Admin is exclusive across all slots: `qa_env_admin_up` fails
+  with the current holder instead of stealing the panel. Prefer these over raw
+  `docker`, `supabase` or `scripts/qa-env` commands.
 - **Admin is off by default.** For `ADM-*` and any step that uses the admin app,
   call `qa_env_admin_up` first, then `qa_env_admin_down` when done. It is
   exclusive across slots — if another env holds it, wait or tell the manager.

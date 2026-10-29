@@ -1,5 +1,10 @@
 # NFR-08 — Zgodność przeglądarek
 
+> **OUT OF SCOPE for qa-suite (2026-10-29).** This case asserts a relation _between_ browsers;
+> the QA-suite runner is chromium-only by design. Cross-browser coverage lives in the e2e matrix
+> (`__tests__/e2e`, firefox + webkit legs). Do not write a qa-suite spec and do not re-file.
+> Issue #923 is closed as not planned.
+
 - id: NFR-08
 - priority: P2 ważny
 - module: NFR – Wymagania niefunkcjonalne i międzyobszarowe

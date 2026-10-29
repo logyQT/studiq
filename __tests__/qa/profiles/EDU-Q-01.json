@@ -1,0 +1,9 @@
+{
+  "profile": "content",
+  "members": [
+    { "key": "teacher", "accountType": "educator", "orgRole": "teacher" },
+    { "key": "studentIn", "accountType": "student", "orgRole": "member" },
+    { "key": "studentOut", "accountType": "student", "orgRole": "member" }
+  ],
+  "groups": ["G1", "G2"]
+}
