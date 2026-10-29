@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
@@ -13,7 +11,9 @@ import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/q
  * `GET /rest/v1/flashcards`. Expected: no data for an anonymous caller (empty
  * list / 401) because RLS is enabled on the tables that hold user data. Nothing
  * about `@dev.local` accounts or the legacy port is used: the target is this
- * case's own tenant on the shared Supabase (`qa/env.json` → :54421).
+ * case's own tenant on the shared Supabase the app runs against (env-resolved:
+ * `NEXT_PUBLIC_SUPABASE_URL` in CI, `QA_SUPABASE_URL` locally; `:54421` on the
+ * shared dev stack).
  *
  * Tenant (deterministic, `content` profile, fresh run suffix per independent run):
  *
@@ -96,20 +96,28 @@ interface RestResponse {
 }
 
 /**
- * The shared Supabase the browser tile and the app actually use. The worker's
- * own `apps/web/.env` may still point at its idle stack, so `qa/env.json` wins
- * for the URL; the anon key is the same demo key everywhere and is taken from the
- * environment when a runner provides it.
+ * The shared Supabase the browser tile and the app actually use, resolved the way
+ * the rest of the suite resolves it: from the environment. CI exports
+ * `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` into the job env
+ * before seeding and running the suite; a local run points `QA_SUPABASE_URL` at
+ * the shared stack. The spec must never read `qa/env.json`: that file is a
+ * per-slot artifact that only exists on a developer machine, so a file read here
+ * fails the whole suite in CI with `ENOENT`.
  */
 function sharedSupabase(): { url: string; anonKey: string } {
-  const envFile = join(process.cwd(), 'qa', 'env.json');
-  const { supabaseUrl } = JSON.parse(readFileSync(envFile, 'utf8')) as { supabaseUrl?: string };
-  if (!supabaseUrl) throw new Error('qa/env.json has no supabaseUrl');
+  const url =
+    process.env.QA_SUPABASE_URL ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) {
+    throw new Error(
+      'SEC-13: no Supabase URL — set QA_SUPABASE_URL, SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL',
+    );
+  }
   const anonKey =
+    process.env.QA_SUPABASE_ANON_KEY ??
     process.env.SUPABASE_ANON_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
     LOCAL_DEMO_ANON_KEY;
-  return { url: supabaseUrl.replace(/\/+$/, ''), anonKey };
+  return { url: url.replace(/\/+$/, ''), anonKey };
 }
 
 /** A PostgREST read that carries the anon key as `apikey` and as the bearer token. */
