@@ -12,12 +12,12 @@ by this decision: tokens become _grants over an organization_, not a bag of reso
 `apps/admin` is a separate Next.js app on :4000. Its API routes deliberately skip `withAuth`, run on
 the service-role client, and trust `apps/admin/src/proxy.ts` as the only authorization point. Today
 that gate is `ADMIN_PEM_KEYS`: an env-resident Ed25519 keyring where each key carries semantic scopes
-(`orgs:read`, `users:purge`, …), the verified key id is forwarded as `x-admin-key-id`, and every
+(`organizations:read`, `users:purge`, …), the verified key id is forwarded as `x-admin-key-id`, and every
 allow/deny is logged. That was the right fix for #106 — a leaked key is no longer unlimited admin.
 
 It is still the wrong shape for tenant data, for three reasons:
 
-1. **A scope is global.** `orgs:read` reads _every_ organization. There is no dimension in which to
+1. **A scope is global.** `organizations:read` reads _every_ organization. There is no dimension in which to
    say "this key may look at WSK Merito for ticket #412 and nothing else". Any operator who can help
    one customer can read all of them, which is god mode with extra steps.
 2. **Nothing binds a request to a justification.** We can say _who_ (key id) and _when_, but not _why
@@ -87,9 +87,12 @@ Rules, all enforced in the database rather than in a service method:
   (if any) is unexpired. No row, no access. There is no fallback and no "platform admin" bypass.
 - **Read is 1 hour by default. Write is separate, rarer, shorter** (30 minutes) and requires a second
   approver. A write grant does not imply a read grant on another org.
-- **One live grant per (principal, org)** (partial unique index), so an audit row always resolves to
-  exactly one justification. Needing more time means a new grant with a new or extended ticket, not
-  an extension of the old row.
+- **One live grant per (principal, org)** (partial unique index on `(principal_id, org_id)` where
+  `revoked_at IS NULL`). Because `expires_at` cannot appear in an index predicate (`now()` is not
+  immutable), an **expired but unrevoked** row still occupies the slot: regranting is therefore
+  `UPDATE ... SET revoked_at = now()` then `INSERT` in **one transaction**, and a cleanup job
+  revokes expired rows so the slot never stays blocked. An implementation test asserts that a
+  second grant for the same principal and org can be created after the first expires.
 - **Append-only.** `scopes`, `org_id`, `expires_at`, `ticket_ref` and the approver fields cannot be
   updated; the only permitted mutation is setting `revoked_at` once. A trigger rejects anything else,
   including `revoked_at` being cleared.
@@ -118,25 +121,35 @@ Three layers, each required:
    `isAdmin`.
 2. **The query builder** — a single helper, `scopedQuery(ctx, table)`, is the only way admin services
    may reach a tenant table. It requires a non-empty `allowedOrgIds`, appends
-   `.in('organization_id', ctx.allowedOrgIds)`, and rejects tenant tables not on an explicit list.
+   `.in('organization_id', ctx.allowedOrgIds)`, and rejects any table that is not on an explicit
+   allowlist of org-addressable tables. **The allowlist is the scope boundary**: tables without an
+   `organization_id` (`quiz_attempts`, `student_answers`, `user_daily_activity`,
+   `flashcard_practice`, `flashcard_review_state`, `flashcard_study_sessions`) are **not** reachable
+   through it, and a service that needs them must first define an org-bound join or derive an org
+   column, in its own migration. Until that exists, the grant's honest scope is _content tables
+   only_; learning analytics are out of scope. This is a stated exclusion, not an oversight — see
+   ADR-0010 §6.
    Services receive `orgId` and assert membership in `allowedOrgIds` before building anything; they
    never accept a filter object from a controller. A count, an aggregate, an export and a "does this
    exist" probe all go through the same helper — existence probes return 404 for out-of-grant orgs,
    not 403, so the panel cannot be used as an org-existence oracle.
-3. **RLS as backstop** — the admin request path stops using `service_role` for tenant reads. It mints
-   a short-lived Supabase session for the principal (claim `platform_principal_id`) and queries with
-   the user-session client, so the existing tenant-floor policies apply. `rls_caller_org_ids()` gains
-   a sibling used by the same policies that returns org ids from _live grants_ for the JWT's
-   principal, joining `access_grant` at query time — so revoking a grant takes effect on the next
-   query even if the JWT is still valid. `service_role` is narrowed to migrations, seeds, and a
-   named allowlist of provisioning operations that carry no tenant read.
+3. **RLS as backstop, through the same path as ADR-0008.** There is **one** grant-to-tenant
+   integration, and it is the membership materialization described in ADR-0008 §3: the grant is
+   inserted as a real `org_members` row with the reserved `support` / `support_write` role and an
+   `expires_at`. The admin request path therefore stops using `service_role` for tenant reads and
+   queries with the user-scoped client, so the existing tenant-floor policies and
+   `rls_caller_org_ids()` apply unchanged — no second, claim-based resolver and no parallel
+   `platform_principal_id` JWT path. Revocation deletes the membership row (or sets its
+   `expires_at` in the past), so it takes effect on the next request rather than at token expiry;
+   the grant row remains the audit justification. `service_role` is narrowed to migrations, seeds,
+   and a named allowlist of provisioning operations that carry no tenant read.
 
 **How a new route is prevented from bypassing this.** Four guards, because one is never enough:
 
 - Route files under `apps/admin/src/app/(backend)/api/v1/**` must call `withPlatformAuth`; the
   existing PEM path is limited to a fixed, reviewed allowlist of platform-level scopes and may not
   be extended to org data.
-- `scripts/check-admin-scoping.ts`, wired into `bun run lint` next to the import-path guard, fails
+- `scripts/check-admin-scoping.ts` **must be added** (it does not exist yet) and wired into `bun run lint` next to the import-path guard; it fails
   when an `apps/admin/src/server/**` service imports the service-role client, calls `.from(<tenant
 table>)` without `scopedQuery(`, or when a route file has no `withPlatformAuth` export wrapper.
 - A route-inventory integration test enumerates the route filesystem and, for every route, asserts
@@ -172,11 +185,11 @@ the actual values stay in the resource's own history and in backups. Hashes are 
 an audit key in the secret manager, with the key id recorded, so a low-entropy field cannot be
 brute-forced back from its digest.
 
-**Why `grant_id` on every row is the load-bearing column.** Actor plus timestamp plus org is not
-enough: grants overlap, expire and get revoked, and a principal may have had three grants over the
-same org in a week. Without the grant id, "why did they have access at 14:32" requires reconstructing
-grant history from a table whose rows may have been dropped by retention. With it, every audit row
-pins the exact grant — its `reason`, `ticket_ref`, `granted_by`, `approved_by` and `expires_at` —
+**Why `grant_id` is the load-bearing column for access and mutation rows.** Actor plus timestamp
+plus org is not enough: grants overlap, expire and get revoked, and a principal may have had three
+grants over the same org in a week. Without the grant id, "why did they have access at 14:32"
+requires reconstructing grant history from a table whose rows may have been dropped by retention.
+With it, every access and mutation row pins the exact grant — its `reason`, `ticket_ref`, `granted_by`, `approved_by` and `expires_at` —
 and blast-radius review becomes a single group-by over `grant_id`: everything that principal touched
 under that justification, in that window, for that org.
 
@@ -185,22 +198,30 @@ under that justification, in that window, for that org.
 A mutation and its audit row are one transaction, and a mutation without an audit row must be
 impossible rather than merely unlikely:
 
-- Every admin write goes through a `SECURITY DEFINER` function. The function validates grant liveness
-  itself, sets the session context (`principal_id`, `grant_id`, `trace_id`, `ticket_ref`), performs
-  the change and inserts the mutation row. The app role has no `INSERT`/`UPDATE`/`DELETE` on tenant
+- Every admin write goes through a `SECURITY DEFINER` function. The function validates grant
+  liveness itself by selecting the grant row **`FOR SHARE`** (a write grant `FOR UPDATE`), which
+  serialises the check against a concurrent revocation under READ COMMITTED: a revoke that commits
+  first makes the mutation wait and then fail, and a mutation that commits first is legitimately
+  inside the grant's life. It then sets the session context (`principal_id`, `grant_id`, `trace_id`,
+  `ticket_ref`), performs the change and inserts the mutation row. The app role has no `INSERT`/`UPDATE`/`DELETE` on tenant
   tables — only `EXECUTE` on these functions — so the function is not a convention, it is the only
   door.
-- An `AFTER INSERT/UPDATE/DELETE` trigger on tenant tables reads that session context and raises if
-  `principal_id` or `grant_id` is missing. So even a future function that forgets to audit cannot
-  commit: the write fails and the error surfaces as a 500 with a trace id.
+- A **deferred constraint trigger** on tenant tables verifies, at commit, that a
+  `platform_audit_event` mutation row exists for this transaction (`txid_current()`), this
+  principal and this grant — not merely that the session context was set. A future function that
+  sets the context and forgets the row still cannot commit: the write fails and the error surfaces
+  as a 500 with a trace id.
 - If audit insert fails — a missing month partition, a revoked grant, a storage error — the whole
   transaction rolls back. Write availability is deliberately subordinate to audit completeness. At
   this scale the correct trade is "the operator retries" over "a silent write".
 
-Reads are audited asynchronously: the access row is enqueued (same pattern as `trace-queue`), the
-response is not blocked, and the drainer writes with an idempotency key of `trace_id + route` so
-retries do not duplicate. Losslessness is defined as at-least-once with a durable queue and a
-second copy in Tempo: `access_audit_lag_seconds` and a dead-letter count are alertable metrics, and a
+Reads are audited asynchronously: one access row **per authorized resource**, enqueued before the
+response is sent (same pattern as `trace-queue`), and the drainer writes with an idempotency key of
+`event_id` (a UUID minted per resource read), so retries do not duplicate but two rows in one list
+response stay distinct — `trace_id + route` would collapse them. This is **at-least-once, not
+lossless**: a process death between the enqueue and the drain loses that batch, and the documented
+loss window is one drain interval. Tempo is a second, weaker copy for correlation, not a
+guarantee. `access_audit_lag_seconds` and a dead-letter count are alertable metrics, and a
 queue that is down is a paging condition, not a warning. Denials are written synchronously — they
 are small, rare, and are the ones you cannot afford to lose during an attack.
 
@@ -220,8 +241,11 @@ are small, rare, and are the ones you cannot afford to lose during an attack.
   someone who can write to the database.
 - **Retention.** Access 90 days, mutation 2 years, security 1 year. A partition is dropped only after
   its anchor is confirmed present in WORM. A legal-hold flag on the partition suspends the drop.
-- **GDPR.** Audit rows are designed to contain no personal data: the actor is a principal id, never
-  an email or a name, and `metadata` is schema-validated to exclude free-form PII. Erasure therefore
+- **GDPR.** Audit rows contain **pseudonymised personal data**, not "no personal data": the actor is
+  a principal id (never an email or a name), but principal ids, resource ids, ticket references,
+  trace ids and timestamps can still link rows to individuals, and `metadata` is schema-validated
+  only to exclude free-form PII. The DPIA, retention, access and erasure analysis must cover those
+  fields. Erasure therefore
   does not delete audit rows — it redacts the _join_: the `platform_principal` row keeps its id but
   loses `subject` and `display_label` and gains `erased_at`. Every audit row still resolves, still
   proves "some operator had a grant for this org under this ticket", and no longer resolves to a
@@ -249,7 +273,7 @@ incident within 24 hours, recorded as `reviewed_by` / `reviewed_at` on the grant
 surfaces unreviewed break-glass grants and keeps escalating.
 
 Break-glass changes nothing about enforcement: it is a grant like any other, so org binding, the
-`socpedQuery` filter and RLS all still apply. It cannot write, cannot be granted to an agent, cannot
+`scopedQuery` filter and RLS all still apply. It cannot write, cannot be granted to an agent, cannot
 be self-reviewed, and cannot be issued while a normal grant for the same org is live — overlapping
 justifications are how attribution gets muddy at exactly the wrong moment.
 
@@ -266,8 +290,9 @@ justifications are how attribution gets muddy at exactly the wrong moment.
   keyring can no longer carry tenant scopes.
 - The audit table cannot become a shadow copy of customer data, and the customer can see support
   access without seeing their own data re-exposed through it.
-- The panel becomes usable in PEM mode (ADM-SEC-02's known defect) because the browser session comes
-  from the IdP, not from a signature the browser cannot produce.
+- The panel becomes usable in **OIDC/proxy mode** (ADM-SEC-02's known defect) because the browser
+  session comes from the IdP, not from a signature the browser cannot produce. PEM mode is the
+  machine plane and stays machine-only.
 - Guards are structural — lint, route inventory, RLS — so the invariant survives the next person who
   adds a route in a hurry.
 
