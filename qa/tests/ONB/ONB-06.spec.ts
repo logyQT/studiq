@@ -1,16 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { request as apiRequest, expect, test, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  ensureAccount,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-} from '#test/helpers/tenant-seed';
+import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { createSeedDb } from '#test/helpers/tenant-seed';
+import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
 /**
  * ONB-06 — student joins a class with an invite code (/app/join).
@@ -20,28 +12,47 @@ import {
  * invitation for their e-mail, i.e. what MGR-INV-01 produces. The legacy manual
  * accounts (`student3@dev.local`, password `pass`) are never used.
  *
- * Tenant: `tenantKey('qa/cases/ONB-06.md', <title>, 'qa-shared')::<run suffix>`.
- * Every org/user/role id is `tenantId(key, entity)`, so a run is reproducible by
- * pinning `QA_RUN_SUFFIX`; by default the suffix is fresh, which gives each
- * independent run its own org, its own invitation and its own expired code.
+ * Tenant: the `org-limit` profile, the only seeded shape that carries accounts
+ * which are **not** org members (`invitee1`, `invitee2`) next to an org with an
+ * `admin` manager and its default group `G1`:
  *
- * The spec seeds its own graph through the shared helpers
- * (`__tests__/helpers/tenant-seed.ts`) instead of reading `qa/.tenants/ONB-06.json`
- * because a valid invite is single-use: a file seeded out of band could not be
- * reused across the three independent runs. Nothing global is written — no
- * settings, flags, plans or platform rows — and no other case's tenant is
- * touched.
+ *   bun scripts/qa-tenant.ts ONB-06 --fresh
+ *
+ * The spec never seeds accounts, orgs or groups. What stays in the test is the
+ * case's own prerequisite — the invitation — because a code is single-use and a
+ * backdated one cannot live in `qa/.tenants/ONB-06.json`:
+ *
+ * - both `member` invitations are minted through the real product endpoint
+ *   (`POST /api/v1/organization/invites`, the MGR-INV-01 request) by the seeded
+ *   manager, so the inviter authority, role scope and expiry are production-shaped;
+ * - the second one is backdated through the service-role client to make the
+ *   „wygasły kod” path a real expired row (no API exposes `expires_at`);
+ * - `afterAll` returns the tenant to its seeded state (the joiner is removed
+ *   through `DELETE /api/v1/organization/members`), so CI's retries and
+ *   `--repeat-each` start from an org-less student again instead of a half-joined
+ *   one.
+ *
+ * Nothing global is written — no settings, flags, plans or platform rows — and no
+ * other case's tenant is touched.
  */
 
-const CASE_FILE = 'qa/cases/ONB-06.md';
-const TITLE = 'ONB-06 student joins a class with an invite code';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+const CASE = 'ONB-06';
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+const TENANT = loadTenant(CASE);
+
+function required<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(
+      `${CASE} fixture has no ${what}: run \`bun scripts/qa-tenant.ts ${CASE} --fresh\``,
+    );
+  }
+  return value;
+}
+
+const ORG = required(TENANT.org, 'organization');
+const MANAGER = required(TENANT.users.manager, 'manager (admin)');
+const STUDENT = required(TENANT.users.invitee1, 'invitee1 (the org-less student)');
+const OUTSIDER = required(TENANT.users.invitee2, 'invitee2 (the org-less outsider)');
 
 /** Polish copy quoted by the case; the default suite locale. */
 const COPY = {
@@ -57,15 +68,17 @@ const COPY = {
 } as const;
 
 const ACCEPT_PATH = '/api/v1/organization/invites/accept';
+const INVITES_PATH = '/api/v1/organization/invites';
+const MEMBERS_PATH = '/api/v1/organization/members';
 
-interface CaseTenant {
-  key: string;
-  org: { id: string; name: string };
-  student: SeedAccount;
-  /** Second org-less student: walks the invalid/expired codes, never joins. */
-  outsider: SeedAccount;
-  invite: { token: string; id: string };
-  expiredInvite: { token: string };
+/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
+const LOCAL_SUPABASE_URL = 'http://localhost:54421';
+const LOCAL_SERVICE_ROLE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+
+interface Invite {
+  id: string;
+  token: string;
 }
 
 interface OrgMembership {
@@ -75,20 +88,32 @@ interface OrgMembership {
   isActive: boolean;
 }
 
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
+/** The shared stack this worker runs against (`qa/env.json` is authoritative). */
+function workerEnv(): { appUrl: string; supabaseUrl?: string } {
   try {
     const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
+    return JSON.parse(raw) as { appUrl: string; supabaseUrl?: string };
   } catch {
     // qa/env.json is worker-local and gitignored; absence is fine.
+    return { appUrl: 'http://localhost:3010' };
   }
+}
 
+/**
+ * Resolve the shared Supabase admin credentials (env → CI env → worker config →
+ * local defaults). Used only to backdate the expired invitation.
+ */
+function resolveSupabase(): { url: string; serviceKey: string } {
   return {
     url:
       process.env.QA_SUPABASE_URL ??
       process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
+      workerEnv().supabaseUrl ??
       LOCAL_SUPABASE_URL,
     serviceKey:
       process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
@@ -97,89 +122,54 @@ function resolveSupabase(): { url: string; serviceKey: string } {
   };
 }
 
-/**
- * Seed the case's org + manager, two org-less students and the codes the case
- * needs. Both invitations are minted through the real MGR-INV-01 endpoint, so the
- * inviter authority and the `member` role are production-shaped; the second is
- * then given a past expiry so the „wygasły kod” path is real too.
- */
-async function seedCaseTenant(baseURL: string): Promise<CaseTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const org = { id: tenantId(key, 'org'), name: `qa-onb06-${RUN_SUFFIX}` };
-  const groupId = tenantId(key, 'group:default');
-  const manager = buildAccount(key, 'manager', 'manager', { name: 'QA manager' });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-  const outsider = buildAccount(key, 'outsider', 'student', { name: 'QA other student' });
-
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { id: groupId, name: 'G1', isDefault: true },
-    extraGroups: [],
-    owner: manager,
-    // Both students deliberately start with no organization: the case's precondition.
-    members: [],
-    ownerOrgRole: 'admin',
-  });
-  const studentAccount = await ensureAccount(db, student);
-  const outsiderAccount = await ensureAccount(db, outsider);
-
-  const memberRoleId = seeded.roleIds.member;
-  if (!memberRoleId) throw new Error(`seed ${key}: member role is missing`);
-
-  const api = await apiRequest.newContext({ baseURL });
-  try {
-    const managerLogin = await api.post('/api/v1/auth/login', {
-      data: { email: manager.email, password: manager.password },
-    });
-    expect(managerLogin.status(), `manager login (${manager.email})`).toBe(200);
-
-    async function invite(email: string): Promise<{ token: string; id: string }> {
-      const created = await api.post('/api/v1/organization/invites', {
-        data: { email, targetOrgRoleId: memberRoleId, organizationId: org.id, locale: 'pl' },
-      });
-      expect(created.status(), 'POST /api/v1/organization/invites').toBe(201);
-      const body = (await created.json()) as {
-        success: boolean;
-        data: { invitationId: string; inviteCode: string };
-      };
-      expect(body.success).toBe(true);
-      expect(body.data.inviteCode).toMatch(/^[0-9a-f]{32}$/);
-      return { token: body.data.inviteCode, id: body.data.invitationId };
-    }
-
-    const liveInvite = await invite(studentAccount.email);
-    const staleInvite = await invite(outsiderAccount.email);
-
-    const { error } = await db
-      .from('invitations')
-      .update({ expires_at: '2020-01-01T00:00:00.000Z' })
-      .eq('id', staleInvite.id);
-    if (error) throw new Error(`expire invite ${staleInvite.id}: ${error.message}`);
-
-    return {
-      key,
-      org,
-      student: studentAccount,
-      outsider: outsiderAccount,
-      invite: liveInvite,
-      expiredInvite: { token: staleInvite.token },
-    };
-  } finally {
-    await api.dispose();
-  }
+function appUrl(): string {
+  return process.env.QA_APP_URL ?? workerEnv().appUrl;
 }
 
-/** Real login through the API, so the session cookie lives in the page context. */
-async function login(page: Page, account: SeedAccount): Promise<void> {
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: account.email, password: account.password },
+/** A manager API context with the tenant org active, so roles/invites are org-scoped. */
+async function managerApi(): Promise<APIRequestContext> {
+  const api = await apiRequest.newContext({ baseURL: appUrl() });
+  const login = await api.post('/api/v1/auth/login', {
+    data: { email: MANAGER.email, password: MANAGER.password },
   });
-  expect(response.status(), `login ${account.email}`).toBe(200);
+  expect(login.status(), `manager login (${MANAGER.email})`).toBe(200);
+  const switched = await api.post('/api/v1/me/orgs/switch', { data: { orgId: ORG.id } });
+  expect([200, 204], 'activate the tenant org').toContain(switched.status());
+  return api;
 }
+
+/** The org's `member` role id — the role MGR-INV-01 grants. */
+async function memberRoleId(api: APIRequestContext): Promise<string> {
+  const response = await api.get('/api/v1/organization/roles');
+  expect(response.status(), 'GET /api/v1/organization/roles').toBe(200);
+  const body = (await response.json()) as ApiEnvelope<Array<{ id: string; name: string }>>;
+  const role = body.data.find((candidate) => candidate.name === 'member');
+  if (!role) throw new Error(`tenant ${CASE}: the org has no "member" role`);
+  return role.id;
+}
+
+/** Mint one live invitation through the real MGR-INV-01 endpoint. */
+async function mintInvite(
+  api: APIRequestContext,
+  email: string,
+  targetOrgRoleId: string,
+): Promise<Invite> {
+  const created = await api.post(INVITES_PATH, {
+    data: { email, targetOrgRoleId, organizationId: ORG.id, locale: 'pl' },
+  });
+  expect(created.status(), `POST ${INVITES_PATH}`).toBe(201);
+  const body = (await created.json()) as ApiEnvelope<{
+    invitationId: string;
+    inviteCode: string;
+  }>;
+  expect(body.success).toBe(true);
+  expect(body.data.inviteCode).toMatch(/^[0-9a-f]{32}$/);
+  return { token: body.data.inviteCode, id: body.data.invitationId };
+}
+
+/** The code MGR-INV-01 hands out for the live path and the one for the expired path. */
+let invite: Invite;
+let expiredInvite: Invite;
 
 async function currentOrgs(page: Page): Promise<OrgMembership[]> {
   const response = await page.request.get('/api/v1/me/orgs');
@@ -207,21 +197,42 @@ function isAcceptRequest(response: { url(): string; request(): { method(): strin
   return response.url().includes(ACCEPT_PATH) && response.request().method() === 'POST';
 }
 
+test.beforeAll(async () => {
+  const api = await managerApi();
+  try {
+    const roleId = await memberRoleId(api);
+    invite = await mintInvite(api, STUDENT.email, roleId);
+    expiredInvite = await mintInvite(api, OUTSIDER.email, roleId);
+  } finally {
+    await api.dispose();
+  }
+
+  // No API exposes `expires_at`, and a profile cannot carry a row that is already
+  // expired: backdate this tenant's own invitation so „wygasły kod” is a real
+  // expired invitation rather than a fabricated status.
+  const db = createSeedDb(resolveSupabase());
+  const { error } = await db
+    .from('invitations')
+    .update({ expires_at: '2020-01-01T00:00:00.000Z' })
+    .eq('id', expiredInvite.id);
+  if (error) throw new Error(`expire invite ${expiredInvite.id}: ${error.message}`);
+});
+
+test.afterAll(async () => {
+  // CI seeds once and retries against the same tenant, so the tenant has to end
+  // where it started: the joiner is removed through the product's own endpoint
+  // (which also drops its group membership and seat). A no-op run (test failed
+  // before joining) is fine — 404 means there is nothing to restore.
+  const api = await managerApi();
+  try {
+    const removed = await api.delete(`${MEMBERS_PATH}?userId=${STUDENT.id}`);
+    expect([200, 404], 'restore the org-less student').toContain(removed.status());
+  } finally {
+    await api.dispose();
+  }
+});
+
 test.describe('@case:ONB-06 @area:ONB @prio:P2 student joins a class by code', () => {
-  let tenant: CaseTenant;
-
-  test.beforeAll(async () => {
-    const baseURL = test.info().project.use.baseURL ?? 'http://localhost:3010';
-    tenant = await seedCaseTenant(baseURL);
-    console.log(`ONB-06 tenant key: ${tenant.key} (org ${tenant.org.id})`);
-  });
-
-  test.beforeEach(async ({ context, baseURL }) => {
-    // The case quotes Polish copy; pin the locale instead of trusting a profile.
-    const { hostname } = new URL(baseURL!);
-    await context.addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' }]);
-  });
-
   test('a student without an organization joins with a valid code and sees it in the switcher', async ({
     page,
   }) => {
@@ -236,7 +247,7 @@ test.describe('@case:ONB-06 @area:ONB @prio:P2 student joins a class by code', (
       }
     });
 
-    await login(page, tenant.student);
+    await loginAs(page, TENANT, 'invitee1', { locale: 'pl', activeOrgId: null });
     // Precondition on screen: this student belongs to no organization.
     expect(await currentOrgs(page)).toEqual([]);
 
@@ -269,7 +280,7 @@ test.describe('@case:ONB-06 @area:ONB @prio:P2 student joins a class by code', (
     await expect(page).toHaveURL(/\/app\/join$/);
 
     // 2. Paste the code from MGR-INV-01 and join.
-    await field.fill(tenant.invite.token);
+    await field.fill(invite.token);
     await expect(submit).toBeEnabled();
     await submit.click();
 
@@ -278,17 +289,17 @@ test.describe('@case:ONB-06 @area:ONB @prio:P2 student joins a class by code', (
     await expect(field).toHaveValue('');
 
     // The switcher immediately shows the joined class, no manual refresh needed.
-    await expect(orgSwitcher(page)).toContainText(tenant.org.name);
+    await expect(orgSwitcher(page)).toContainText(ORG.name);
 
     expect(acceptCalls, 'only the valid submit reached the accept endpoint').toHaveLength(1);
-    expect(JSON.parse(acceptCalls[0])).toEqual({ token: tenant.invite.token });
+    expect(JSON.parse(acceptCalls[0])).toEqual({ token: invite.token });
 
     // The membership is real: one org, member role, active.
     const orgs = await currentOrgs(page);
     expect(orgs).toHaveLength(1);
     expect(orgs[0]).toMatchObject({
-      id: tenant.org.id,
-      name: tenant.org.name,
+      id: ORG.id,
+      name: ORG.name,
       orgRoleName: 'member',
       isActive: true,
     });
@@ -296,10 +307,10 @@ test.describe('@case:ONB-06 @area:ONB @prio:P2 student joins a class by code', (
     // Refreshing keeps the class in the switcher.
     await page.reload();
     await expect(page).toHaveURL(/\/app\/join$/);
-    await expect(orgSwitcher(page)).toContainText(tenant.org.name);
+    await expect(orgSwitcher(page)).toContainText(ORG.name);
     await orgSwitcher(page).click();
     await expect(page.getByRole('menu')).toContainText(COPY.orgsLabel);
-    await expect(page.getByRole('menuitem', { name: new RegExp(tenant.org.name) })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: new RegExp(ORG.name) })).toBeVisible();
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });
@@ -310,7 +321,7 @@ test.describe('@case:ONB-06 @area:ONB @prio:P2 student joins a class by code', (
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
-    await login(page, tenant.outsider);
+    await loginAs(page, TENANT, 'invitee2', { locale: 'pl', activeOrgId: null });
     expect(await currentOrgs(page)).toEqual([]);
 
     // 3. Repeat with a bad code — reached directly, as the case allows.
@@ -332,7 +343,7 @@ test.describe('@case:ONB-06 @area:ONB @prio:P2 student joins a class by code', (
     // live. Reload first so the two attempts each start from a clean toast stack.
     expect(await currentOrgs(page)).toEqual([]);
     await page.goto('/app/join');
-    await field.fill(tenant.expiredInvite.token);
+    await field.fill(expiredInvite.token);
     // Editing clears the previous inline error before the next attempt.
     await expect(fieldError(page)).toHaveCount(0);
     const [expiredResponse] = await Promise.all([
