@@ -1,15 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-} from '#test/helpers/tenant-seed';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * EDU-DECK-03 — changing a deck's visibility „Tylko ja” ⇄ „Grupy” (/edu/flashcards
@@ -20,45 +10,46 @@ import {
  * group-visible deck shared to that group. The case's legacy accounts
  * (`teacher1@dev.local`, `student1..3`, password `pass`) are never used.
  *
- * Tenant: `tenantKey('qa/cases/EDU-DECK-03.md', 'EDU-DECK-03#<run>', 'qa-shared')`,
- * fresh run suffix per independent run. Every id is `tenantId(key, entity)`:
- *   - org A: the deck's organization, with groups `G1` (default, holds the student)
- *     and `G2` (second group the teacher leads) — the case's „dodaj drugą grupę”;
- *   - org B: a second organization the same teacher belongs to, with its own group
- *     `G3` — only there to prove the group picker stays inside the active org;
- *   - `teacher` (org role `teacher`, group teacher of G1/G2) and `student`
- *     (org A member and G1 member).
+ * Tenant: the `two-org` profile (`qa/tests/profiles/EDU-DECK-03.json`), seeded once
+ * before Playwright starts (`bun scripts/qa-tenant.ts --all --run <suffix>`) and
+ * read through `loadTenant(CASE)` — the spec never creates accounts, orgs or
+ * groups at runtime:
+ *   - org A: `teacherA` (educator, org role `teacher`) owns the deck and teaches
+ *     the default group `O1G1-<run>`; `studentA` is an org member and member of
+ *     `O1G1-<run>`. The second group `O1G2-<run>` is the case's „dodaj drugą
+ *     grupę”.
+ *   - org B: a second organization with its own groups `O2G1-<run>` / `O2G2-<run>`
+ *     — only there to prove the group picker stays inside the active org.
  *
- * `group.manage` comes from the org role the organization trigger seeds from the
- * default `launch` plan, and `canShareContentToGroups` requires the caller to be a
- * teacher of every selected group — hence the teacher owns the org and is enrolled
- * as `G2`'s teacher (the seeder only enrols the default group). Nothing global is
- * written: both organizations, the groups and the deck live in this tenant.
+ * The `two-org` seeder enrols a member in the default group only, so the two
+ * group-roster writes the case needs — `teacherA` teaches `O1G2-<run>` (the picker
+ * lists a group only when it has a teacher, and only a group teacher may share
+ * content to it) and `teacherA` is a member of org B teaching `O2G1-<run>` — are
+ * made once in `test.beforeAll` through the product's own endpoints (the same
+ * requests `/manage/groups` and `/manage/invites` make). They are tenant-local and
+ * idempotent, so a retry against the same tenant starts from the same state. The
+ * deck itself is created through the UI, as the case does.
  *
  * Acceptance points (walked on the shared app before writing the test):
- * 1. „Nowa talia” → „Grupy” → `G1` → „Utwórz” answers „Talia utworzona”; the deck is
- *    stored `visibility: 'group'` with exactly `[G1]` and the student sees it
- *    read-only (the case says „Podgląd”, the product renders „Przeglądaj”, a P3 copy
- *    difference — the test asserts the read-only entry point, not the wording).
+ * 1. „Nowa talia” → „Grupy” → `O1G1-<run>` → „Utwórz” answers „Talia utworzona”;
+ *    the deck is stored `visibility: 'group'` with exactly `[O1G1]` and the student
+ *    sees it read-only (the case says „Podgląd”, the product renders „Przeglądaj”,
+ *    a P3 copy difference — the test asserts the read-only entry point, not the
+ *    wording).
  * 2. „Edytuj” → „Tylko ja” → „Aktualizuj” answers „Talia zaktualizowana”, stores
  *    `visibility: 'personal'` and **clears the share links** (`groupIds: []`, no
  *    group badge): the student loses the deck — gone from the list, deck detail 404.
  * 3. „Edytuj” → „Grupy” requires at least one group again (submit disabled,
- *    „Wybierz co najmniej jedną grupę”); picking `G1` + `G2` restores the share with
- *    both groups, and the student sees the deck again.
- * 4. The group picker lists only groups of the **active** organization: `G1`, `G2`
- *    — never org B's `G3`, although the teacher belongs to it too.
+ *    „Wybierz co najmniej jedną grupę”); picking `O1G1` + `O1G2` restores the share
+ *    with both groups, and the student sees the deck again.
+ * 4. The group picker lists only groups of the **active** organization: `O1G1`,
+ *    `O1G2` — never org B's `O2G1`, although the teacher belongs to it too.
  */
 
 const CASE = 'EDU-DECK-03';
-const CASE_FILE = 'qa/cases/EDU-DECK-03.md';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
 
+/** The deck the case creates, and the groups its picker must offer. */
 const DECK_NAME = 'Matematyka – klasa 1';
-const GROUP_NAME = 'G1';
-const SECOND_GROUP_NAME = 'G2';
-const OTHER_ORG_GROUP_NAME = 'G3';
 
 /** Polish copy the case quotes, as rendered by the current product. */
 const COPY = {
@@ -79,21 +70,51 @@ const COPY = {
   noDecks: '0 talii',
 };
 
-/** Supabase local defaults (the service-role JWT is the `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-
-interface CaseTenant {
-  key: string;
-  group1: { id: string; name: string };
-  group2: { id: string; name: string };
-  otherOrgGroup: { id: string; name: string };
-  /** The educator who owns the deck (org A, teacher of G1 + G2). */
-  teacher: QaTenant;
-  /** Org A student, member of G1 — the reader the case calls student1. */
-  student: QaTenant;
+interface TenantUser {
+  id: string;
+  email: string;
+  password: string;
 }
+
+interface TenantOrg {
+  id: string;
+  name: string;
+  /** Default group first, then the org's second group. */
+  groups: string[];
+  student: TenantUser;
+  inviteEmail: string;
+  counts: { total: number; teachers: number; students: number };
+}
+
+/** The `two-org` tenant shape `scripts/qa-tenant.ts` writes for this case. */
+interface TwoOrgTenant extends QaTenant {
+  manager: TenantUser;
+  orgA: TenantOrg;
+  orgB: TenantOrg;
+  users: NonNullable<QaTenant['users']> & {
+    manager: TenantUser;
+    studentA: TenantUser;
+    teacherA: TenantUser;
+    studentB: TenantUser;
+  };
+}
+
+const TENANT = loadTenant(CASE) as TwoOrgTenant;
+
+/** Org A's default group (the deck's first share) and its second group. */
+const GROUP_NAME = TENANT.orgA.groups[0];
+const SECOND_GROUP_NAME = TENANT.orgA.groups[1];
+/** A group of org B — the teacher is a member there too, but it must never leak. */
+const OTHER_ORG_GROUP_NAME = TENANT.orgB.groups[0];
+
+interface CaseGroups {
+  group1: string;
+  group2: string;
+  otherOrgGroup: string;
+}
+
+/** Resolved once in `test.beforeAll` from the product's own group list. */
+let groups: CaseGroups;
 
 interface DeckListItem {
   id: string;
@@ -107,124 +128,20 @@ interface DeckListResult {
   total: number;
 }
 
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
 }
 
-function account(seed: { id: string; email: string; password: string }) {
-  return { id: seed.id, email: seed.email, password: seed.password };
+interface GroupRow {
+  id: string;
+  name: string;
 }
 
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = tenantKey(CASE_FILE, `${CASE}#${RUN_SUFFIX}`, PROJECT);
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  // Org A: the teacher owns the org (org role `teacher`) and its default group,
-  // so it may create decks and share them with the groups it leads.
-  const org = { id: tenantId(key, 'org'), name: `qa-edu-deck-03-${RUN_SUFFIX}` };
-  const group1 = { id: tenantId(key, 'group:default'), name: GROUP_NAME };
-  const group2 = { id: tenantId(key, 'group:second'), name: SECOND_GROUP_NAME };
-  const teacher = buildAccount(key, 'teacher', 'educator', {
-    name: 'QA teacher',
-    orgRole: 'teacher',
-  });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { ...group1, isDefault: true },
-    extraGroups: [{ ...group2, isDefault: false }],
-    owner: teacher,
-    members: [student],
-    ownerOrgRole: 'teacher',
-  });
-
-  // `seedTenantGraph` enrols only the default group; the picker lists a group only
-  // when it has a teacher, so enrol the owner as G2's teacher.
-  const secondGroupTeacher = await db.from('group_members').upsert(
-    {
-      id: tenantId(key, 'gm:second:owner'),
-      group_id: group2.id,
-      user_id: teacher.id,
-      role: 'teacher',
-    },
-    { onConflict: 'id' },
-  );
-  if (secondGroupTeacher.error) {
-    throw new Error(`seed ${CASE}: group_members(G2) ${secondGroupTeacher.error.message}`);
-  }
-
-  // Org B: the same teacher is a member of another organization with its own group,
-  // so a leaked cross-org option would be visible in the active-org picker.
-  const otherKey = `${key}:other`;
-  const otherOrg = { id: tenantId(otherKey, 'org'), name: `qa-edu-deck-03-other-${RUN_SUFFIX}` };
-  const otherGroup = { id: tenantId(otherKey, 'group:default'), name: OTHER_ORG_GROUP_NAME };
-  const otherManager = buildAccount(otherKey, 'manager', 'manager', { name: 'Other manager' });
-  const seededOther = await seedTenantGraph(db, {
-    key: otherKey,
-    org: otherOrg,
-    defaultGroup: { ...otherGroup, isDefault: true },
-    extraGroups: [],
-    owner: otherManager,
-    members: [{ ...teacher, orgRole: 'teacher' }],
-    ownerOrgRole: 'admin',
-  });
-
-  const base = {
-    case: CASE,
-    key,
-    profile: 'content' as const,
-    runSuffix: RUN_SUFFIX,
-  };
-
-  return {
-    key,
-    group1: { id: seeded.defaultGroupId!, name: GROUP_NAME },
-    group2,
-    otherOrgGroup: { id: seededOther.defaultGroupId!, name: OTHER_ORG_GROUP_NAME },
-    teacher: {
-      ...base,
-      org,
-      group: group1,
-      users: {
-        teacher: account(seeded.owner),
-        student: account(seeded.members[0]),
-      },
-    },
-    student: {
-      ...base,
-      org,
-      group: group1,
-      users: { student: account(seeded.members[0]) },
-    },
-  };
+interface GroupMemberRow {
+  userId: string;
+  role: 'teacher' | 'member';
 }
-
-let tenant: CaseTenant;
-
-test.beforeAll(async () => {
-  tenant = await seedCaseTenant();
-  console.log(`EDU-DECK-03 tenant key: ${tenant.key} (org ${tenant.teacher.org?.id})`);
-});
 
 /** A deck card in the grid, addressed by its own heading so no sibling matches. */
 function deckCard(page: Page, name: string): Locator {
@@ -241,11 +158,6 @@ function groupBadge(card: Locator, groupName: string): Locator {
   return card
     .locator('[data-slot="badge"]:visible')
     .filter({ hasText: new RegExp(`^${groupName}$`) });
-}
-
-interface ApiEnvelope<T> {
-  success: boolean;
-  data: T;
 }
 
 async function getData<T>(page: Page, url: string): Promise<T> {
@@ -293,6 +205,133 @@ async function openEditDialog(page: Page): Promise<Locator> {
   return dialog;
 }
 
+/**
+ * A retry against the same seeded tenant must start from the same state: drop the
+ * decks a previous run left behind so the deck screen is empty again. Only this
+ * case's own deck (same name, same tenant) is touched.
+ */
+async function resetDecks(page: Page): Promise<void> {
+  for (const deck of (await listDecks(page)).items.filter((row) => row.name === DECK_NAME)) {
+    const response = await page.request.delete(`/api/v1/flashcards/decks/${deck.id}`);
+    expect(response.ok(), `DELETE /api/v1/flashcards/decks/${deck.id} → ${response.status()}`).toBe(
+      true,
+    );
+  }
+}
+
+/** Id of one of the active organization's groups, as the product lists it. */
+async function findGroupId(page: Page, name: string): Promise<string> {
+  const list = await getData<GroupRow[]>(page, '/api/v1/organization/groups');
+  const group = list.find((row) => row.name === name);
+  expect(group, `group "${name}" is listed for the active organization`).toBeTruthy();
+  return group!.id;
+}
+
+/**
+ * The seeder enrols an org member in the default group with the `member` role, but
+ * a group is offered in the pickers only when it has a teacher and only a group
+ * `teacher` may share content to it. Promote the account through the manager's own
+ * roster endpoint — the same write `/manage/groups` performs. Idempotent.
+ */
+async function ensureGroupTeacher(page: Page, groupId: string, userId: string): Promise<void> {
+  const url = `/api/v1/organization/groups/${groupId}/members`;
+  const roster = await getData<GroupMemberRow[]>(page, url);
+  const current = roster.find((row) => row.userId === userId);
+  if (current?.role === 'teacher') return;
+
+  const members = current
+    ? roster.map((row) => (row.userId === userId ? { userId, role: 'teacher' as const } : row))
+    : [...roster, { userId, role: 'teacher' as const }];
+  const response = await page.request.put(url, { data: { members } });
+  expect(response.ok(), `PUT ${url} → ${response.status()} ${await response.text()}`).toBe(true);
+
+  const after = await getData<GroupMemberRow[]>(page, url);
+  expect(after.find((row) => row.userId === userId)?.role).toBe('teacher');
+}
+
+/**
+ * Make the educator a member of the second organization through the product's own
+ * invitation flow (the same requests `/manage/invites` and `/app/join` make), so
+ * the active-org picker has a real cross-organization membership to hide. A retry
+ * finds the membership already accepted and skips the invitation. Idempotent.
+ */
+async function ensureOrgMember(
+  inviter: Page,
+  invitee: Page,
+  orgId: string,
+  email: string,
+): Promise<void> {
+  const probe = await invitee.request.get(`/api/v1/organization/${orgId}`);
+  if (probe.status() === 200) return;
+  expect(probe.status(), 'a non-member cannot read the organization').toBe(403);
+
+  const roles = await getData<{ id: string; name: string }[]>(
+    inviter,
+    '/api/v1/organization/roles',
+  );
+  const memberRole = roles.find((row) => row.name === 'member');
+  expect(memberRole, 'the organization has its default member role').toBeTruthy();
+
+  const created = await inviter.request.post('/api/v1/organization/invites', {
+    data: { email, targetOrgRoleId: memberRole!.id },
+  });
+  expect(
+    created.status(),
+    `POST /api/v1/organization/invites → ${created.status()} ${await created.text()}`,
+  ).toBe(201);
+  const invitation = ((await created.json()) as ApiEnvelope<{ inviteCode: string }>).data;
+  expect(invitation.inviteCode, 'the invitation has a join code').toMatch(/^[0-9a-f]{32}$/);
+
+  const accepted = await invitee.request.post('/api/v1/organization/invites/accept', {
+    data: { token: invitation.inviteCode },
+  });
+  expect(
+    accepted.ok(),
+    `POST /api/v1/organization/invites/accept → ${accepted.status()} ${await accepted.text()}`,
+  ).toBe(true);
+
+  const after = await invitee.request.get(`/api/v1/organization/${orgId}`);
+  expect(after.status(), 'the accepted invitation makes the educator an org member').toBe(200);
+}
+
+/**
+ * The case's own tenant shape: org A with its second group led by the educator,
+ * and org B where the educator is a member and teaches a group. Nothing global is
+ * written — only this tenant's group rosters and org membership.
+ */
+test.beforeAll(async ({ browser }) => {
+  const baseURL = process.env.QA_APP_URL ?? 'http://localhost:3010';
+  const managerContext = await browser.newContext({ baseURL });
+  const teacherContext = await browser.newContext({ baseURL });
+  try {
+    const manager = await managerContext.newPage();
+    const teacher = await teacherContext.newPage();
+    const teacherId = TENANT.users.teacherA.id;
+
+    // Org A: the educator teaches both groups (the seeder only enrols the default).
+    await loginAs(manager, TENANT, 'manager', { locale: 'pl', activeOrgId: TENANT.orgA.id });
+    const group1 = await findGroupId(manager, GROUP_NAME);
+    const group2 = await findGroupId(manager, SECOND_GROUP_NAME);
+    await ensureGroupTeacher(manager, group2, teacherId);
+
+    // Org B: the same educator is a member and teaches its group, so a picker that
+    // leaked another organization's groups would offer it.
+    await loginAs(manager, TENANT, 'manager', { locale: 'pl', activeOrgId: TENANT.orgB.id });
+    const otherOrgGroup = await findGroupId(manager, OTHER_ORG_GROUP_NAME);
+    await loginAs(teacher, TENANT, 'teacherA', { locale: 'pl', activeOrgId: TENANT.orgA.id });
+    await ensureOrgMember(manager, teacher, TENANT.orgB.id, TENANT.users.teacherA.email);
+    // Accepting the invitation switches the invitee's active org; the roster write
+    // below needs the manager scoped to org B again.
+    await loginAs(manager, TENANT, 'manager', { locale: 'pl', activeOrgId: TENANT.orgB.id });
+    await ensureGroupTeacher(manager, otherOrgGroup, teacherId);
+
+    groups = { group1, group2, otherOrgGroup };
+  } finally {
+    await managerContext.close();
+    await teacherContext.close();
+  }
+});
+
 test.describe('@case:EDU-DECK-03 @area:EDU @prio:P2 deck visibility', () => {
   test('switches a group deck to „Tylko ja” and back, and the group student follows', async ({
     page,
@@ -303,11 +342,14 @@ test.describe('@case:EDU-DECK-03 @area:EDU @prio:P2 deck visibility', () => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
-    // ── Teacher: the EDU-DECK-02 deck, shared with G1 ─────────────────────
-    await loginAs(page, tenant.teacher, 'teacher', { locale: 'pl' });
+    // ── Teacher: the EDU-DECK-02 deck, shared with the default group ───────
+    await loginAs(page, TENANT, 'teacherA', { locale: 'pl', activeOrgId: TENANT.orgA.id });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
     await page.goto('/edu/flashcards');
     await expect(page).toHaveURL(/\/edu\/flashcards$/);
+
+    // A retry against the same tenant starts from an empty deck screen.
+    await resetDecks(page);
 
     await page.getByRole('button', { name: COPY.newDeck }).first().click();
     const createDialog = page.locator('[data-slot="dialog-content"]');
@@ -321,7 +363,7 @@ test.describe('@case:EDU-DECK-03 @area:EDU @prio:P2 deck visibility', () => {
     await expect(createDialog.getByText(COPY.groupsRequired, { exact: true })).toBeVisible();
     await expect(createDialog.getByRole('button', { name: COPY.create })).toBeDisabled();
 
-    // 4. The picker offers the active org's groups only — G3 belongs to org B.
+    // 4. The picker offers the active org's groups only — org B's group is hidden.
     await createDialog.getByRole('combobox').click();
     await expectVisibleGroupOptions(page, [GROUP_NAME, SECOND_GROUP_NAME]);
 
@@ -345,14 +387,14 @@ test.describe('@case:EDU-DECK-03 @area:EDU @prio:P2 deck visibility', () => {
 
     const created = await findDeck(page, DECK_NAME);
     expect(created.visibility, 'deck visibility').toBe('group');
-    expect(created.groupIds, 'deck group share').toEqual([tenant.group1.id]);
+    expect(created.groupIds, 'deck group share').toEqual([groups.group1]);
     const deckId = created.id;
 
-    // ── The G1 student sees the group deck, read-only ─────────────────────
+    // ── The default-group student sees the group deck, read-only ───────────
     const studentContext = await browser.newContext({ baseURL });
     try {
       const studentPage = await studentContext.newPage();
-      await loginAs(studentPage, tenant.student, 'student', { locale: 'pl' });
+      await loginAs(studentPage, TENANT, 'studentA', { locale: 'pl', activeOrgId: TENANT.orgA.id });
       expect(new URL(studentPage.url()).pathname, 'student lands on /app').toBe('/app');
       await studentPage.goto('/app/flashcards');
 
@@ -396,7 +438,7 @@ test.describe('@case:EDU-DECK-03 @area:EDU @prio:P2 deck visibility', () => {
       const hiddenDetail = await studentPage.request.get(`/api/v1/flashcards/decks/${deckId}`);
       expect(hiddenDetail.status(), 'a personal deck is invisible to the group student').toBe(404);
 
-      // ── Step 3: „Grupy” again, now with G1 + G2 ─────────────────────────
+      // ── Step 3: „Grupy” again, now with both groups ─────────────────────
       const restoreDialog = await openEditDialog(page);
       await expect(restoreDialog.locator('#visibility-personal')).toHaveAttribute(
         'aria-checked',
@@ -432,15 +474,16 @@ test.describe('@case:EDU-DECK-03 @area:EDU @prio:P2 deck visibility', () => {
       expect(restored.id).toBe(deckId);
       expect(restored.visibility, 'deck visibility after restoring „Grupy”').toBe('group');
       expect(restored.groupIds, 'both selected groups are shared').toEqual([
-        tenant.group1.id,
-        tenant.group2.id,
+        groups.group1,
+        groups.group2,
       ]);
 
       // ── Step 4: the student sees the deck again ─────────────────────────
       await studentPage.goto('/app/flashcards');
       const restoredStudentCard = deckCard(studentPage, DECK_NAME);
       await expect(restoredStudentCard).toBeVisible();
-      // The student only knows G1; the G2 badge is not part of its group map.
+      // The student only knows the default group; the second badge is not part of
+      // its group map.
       await expect(groupBadge(restoredStudentCard, GROUP_NAME)).toHaveText(GROUP_NAME);
       await expect(
         studentPage.getByText(COPY.noDecks, { exact: true }),
