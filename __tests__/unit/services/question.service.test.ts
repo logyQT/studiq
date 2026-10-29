@@ -251,7 +251,7 @@ describe('QuestionService', () => {
       const c = chain([{ id: 'q-1', content: 'Q1' }]);
       mock.from.mockReturnValue(c);
 
-      const result = await service.list(ctx, { topicIds: 'topic-1,topic-2' });
+      const result = await service.list(ctx, { topicIds: ['topic-1', 'topic-2'] });
 
       expect(result.success).toBe(true);
       expect(c.select).toHaveBeenCalledWith(
