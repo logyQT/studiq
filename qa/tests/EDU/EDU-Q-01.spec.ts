@@ -1,15 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-} from '#test/helpers/tenant-seed';
+import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { tenantId } from '#test/helpers/tenant-seed';
 
 /**
  * EDU-Q-01 — creating a question bank for a group (/edu/questions → /app/questions).
@@ -22,18 +13,25 @@ import {
  * „Grupy” scope. The case's legacy accounts (`teacher1@dev.local`, `student1..3`,
  * password `pass`) are never used.
  *
- * Tenant: `tenantKey('qa/cases/EDU-Q-01.md', 'EDU-Q-01 group question bank',
- * 'qa-shared')::<run suffix>`, a fresh suffix per independent run, every id from
- * `tenantId(key, entity)`:
- *   - `teacher` — educator and org role `teacher` (so it holds `question_bank.create`
- *     and `group.manage`), group teacher of both groups; only a group teacher may
- *     share content to a group;
+ * Tenant: the case's own declarative shape in
+ * `qa/tests/profiles/EDU-Q-01.json`, seeded once before Playwright starts
+ * (`bun scripts/qa-tenant.ts --all --run <suffix>`) and read through
+ * `loadTenant(CASE)` — the spec never creates accounts, orgs or groups at runtime:
+ *   - `teacher` — educator and org role `teacher` (so it holds
+ *     `question_bank.create` and `group.manage`); it leads both groups;
  *   - `studentIn` — org member and member of the default group `G1` (the case's
  *     student1);
- *   - `studentOut` — org member of the second group `G2` only. The seeder enrols
- *     every member in the default group, so the spec moves this one row to `G2`
- *     (tenant-local, deterministic id) — that is exactly the case's „student spoza
- *     grupy”.
+ *   - `studentOut` — org member of `G2` only (the case's „student spoza grupy”);
+ *   - `groups: ["G1", "G2"]` — `G1` is the default group (`O1G1`), `G2` exists so
+ *     a member of the same organization is demonstrably outside the share and the
+ *     group multi-select has more than one option.
+ *
+ * The seeder enrols every member in the default group and leaves `G2` without a
+ * teacher, so the two group rosters the case needs — `G1` = teacher + student1,
+ * `G2` = teacher + the student outside the group — are written once in
+ * `test.beforeAll` through the product's own roster endpoint (the same write
+ * `/manage/groups` performs): tenant-local and idempotent. `G2`'s id is the
+ * deterministic `tenantId(key, 'group:2')` the declarative `groups` field assigns.
  *
  * Nothing global is read or written: no admin setting, feature flag, plan,
  * platform stat or singleton row, and no other worker's tenant.
@@ -58,10 +56,6 @@ import {
  */
 
 const CASE = 'EDU-Q-01';
-const CASE_FILE = 'qa/cases/EDU-Q-01.md';
-const TITLE = 'EDU-Q-01 group question bank';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
 
 const BANKS_URL = '/api/v1/questions/banks';
 
@@ -100,22 +94,28 @@ const DESCRIPTION = 'Dział: kinematyka';
 const GROUP_1 = 'G1';
 const GROUP_2 = 'G2';
 
-/** Supabase local defaults (the service-role JWT is the `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+const TENANT = loadTenant(CASE);
 
-interface CaseTenant {
-  key: string;
-  group1: { id: string; name: string };
-  group2: { id: string; name: string };
-  /** The educator who creates the bank (org A, group teacher of G1 + G2). */
-  teacher: QaTenant;
-  /** Org member, member of G1 — the case's student1. */
-  studentIn: QaTenant;
-  /** Org member, member of G2 only — the case's „student spoza grupy”. */
-  studentOut: QaTenant;
+interface TenantUser {
+  id: string;
+  email: string;
+  password: string;
 }
+
+function user(key: string): TenantUser {
+  const account = TENANT.users[key];
+  if (!account) throw new Error(`${CASE} tenant has no seeded ${key} user`);
+  return account;
+}
+
+const TEACHER = user('teacher');
+const STUDENT_IN = user('studentIn');
+const STUDENT_OUT = user('studentOut');
+
+/** The default group `G1` (`O1G1`) and the empty second group `G2`. */
+const GROUP_1_ID = TENANT.group?.id;
+const GROUP_2_ID = tenantId(TENANT.key, 'group:2');
+if (!GROUP_1_ID) throw new Error(`${CASE} tenant has no seeded default group`);
 
 interface BankListItem {
   id: string;
@@ -139,116 +139,10 @@ interface ApiEnvelope<T> {
   data: T;
 }
 
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
+interface GroupMemberRow {
+  userId: string;
+  role: 'teacher' | 'member';
 }
-
-function account(seed: { id: string; email: string; password: string }) {
-  return { id: seed.id, email: seed.email, password: seed.password };
-}
-
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const org = { id: tenantId(key, 'org'), name: `qa-eduq01-${RUN_SUFFIX}` };
-  const group1 = { id: tenantId(key, 'group:default'), name: GROUP_1 };
-  const group2 = { id: tenantId(key, 'group:second'), name: GROUP_2 };
-  const teacher = buildAccount(key, 'teacher', 'educator', {
-    name: 'QA teacher',
-    orgRole: 'teacher',
-  });
-  const studentIn = buildAccount(key, 'student-in', 'student', { name: 'QA student in G1' });
-  const studentOut = buildAccount(key, 'student-out', 'student', { name: 'QA student outside G1' });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { ...group1, isDefault: true },
-    extraGroups: [{ ...group2, isDefault: false }],
-    owner: teacher,
-    members: [studentIn, studentOut],
-    ownerOrgRole: 'teacher',
-  });
-
-  // `seedTenantGraph` enrols every member in the default group; the case needs one
-  // org member who is in G2 only. Move that membership row (its id is deterministic).
-  const moved = await db
-    .from('group_members')
-    .update({ group_id: group2.id })
-    .eq('id', tenantId(key, 'gm:1'));
-  if (moved.error)
-    throw new Error(`seed ${CASE}: group_members(studentOut → G2) ${moved.error.message}`);
-
-  // A group is offered in the pickers only when it has a teacher, and only a group
-  // teacher may share content to it: enrol the owner as G2's teacher too.
-  const secondGroupTeacher = await db.from('group_members').upsert(
-    {
-      id: tenantId(key, 'gm:second:owner'),
-      group_id: group2.id,
-      user_id: teacher.id,
-      role: 'teacher',
-    },
-    { onConflict: 'id' },
-  );
-  if (secondGroupTeacher.error) {
-    throw new Error(`seed ${CASE}: group_members(G2 teacher) ${secondGroupTeacher.error.message}`);
-  }
-
-  const base = { case: CASE, key, profile: 'content' as const, runSuffix: RUN_SUFFIX };
-
-  return {
-    key,
-    group1,
-    group2,
-    teacher: {
-      ...base,
-      org,
-      group: group1,
-      users: { teacher: account(seeded.owner) },
-    },
-    // Both student tenants expose the account under the fixture's `student` key;
-    // they are separate objects, so `loginAs(..., 'student')` stays unambiguous.
-    studentIn: {
-      ...base,
-      org,
-      group: group1,
-      users: { student: account(seeded.members[0]) },
-    },
-    studentOut: {
-      ...base,
-      org,
-      group: group2,
-      users: { student: account(seeded.members[1]) },
-    },
-  };
-}
-
-let tenant: CaseTenant;
-
-test.beforeAll(async () => {
-  tenant = await seedCaseTenant();
-  console.log(`EDU-Q-01 tenant key: ${tenant.key} (org ${tenant.teacher.org?.id})`);
-});
 
 /** A bank card in the grid, addressed by its own heading so no sibling matches. */
 function bankCard(page: Page, name: string): Locator {
@@ -282,6 +176,19 @@ async function listBanks(page: Page): Promise<BankListResult> {
 
 async function findBank(page: Page, name: string): Promise<BankListItem | undefined> {
   return (await listBanks(page)).items.find((bank) => bank.name === name);
+}
+
+/**
+ * A retry against the same seeded tenant must start from the same state: drop the
+ * banks a previous run left behind (the case's own names only, same tenant) so the
+ * first test can create „Fizyka” through the dialog again.
+ */
+async function resetBanks(page: Page): Promise<void> {
+  const names: string[] = Object.values(BANKS);
+  for (const bank of (await listBanks(page)).items.filter((row) => names.includes(row.name))) {
+    const response = await page.request.delete(`${BANKS_URL}/${bank.id}`);
+    expect(response.ok(), `DELETE ${BANKS_URL}/${bank.id} → ${response.status()}`).toBe(true);
+  }
 }
 
 /**
@@ -328,6 +235,43 @@ function watchPage(page: Page) {
   return { pageErrors, failedDocuments };
 }
 
+/** Replace a group's roster through the manager/creator endpoint. */
+async function setGroupMembers(
+  page: Page,
+  groupId: string,
+  members: GroupMemberRow[],
+): Promise<void> {
+  const url = `/api/v1/organization/groups/${groupId}/members`;
+  const response = await page.request.put(url, { data: { members } });
+  expect(response.ok(), `PUT ${url} → ${response.status()} ${await response.text()}`).toBe(true);
+}
+
+/**
+ * The case's own group shape: `G1` holds the teacher and student1, `G2` holds the
+ * teacher and only the student outside the group. The seeder enrols every member
+ * in the default group and leaves `G2` without a teacher (a group is offered in the
+ * pickers only when it has one), so both rosters are written here through the same
+ * endpoint `/manage/groups` uses — tenant-local and idempotent.
+ */
+test.beforeAll(async ({ browser }) => {
+  const baseURL = process.env.QA_APP_URL ?? 'http://localhost:3010';
+  const context = await browser.newContext({ baseURL });
+  try {
+    const page = await context.newPage();
+    await loginAs(page, TENANT, 'teacher', { locale: 'pl' });
+    await setGroupMembers(page, GROUP_1_ID, [
+      { userId: TEACHER.id, role: 'teacher' },
+      { userId: STUDENT_IN.id, role: 'member' },
+    ]);
+    await setGroupMembers(page, GROUP_2_ID, [
+      { userId: TEACHER.id, role: 'teacher' },
+      { userId: STUDENT_OUT.id, role: 'member' },
+    ]);
+  } finally {
+    await context.close();
+  }
+});
+
 test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
   test('creates a „Grupy” bank that the G1 student reads and a G2 student does not', async ({
     page,
@@ -338,10 +282,14 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     const { pageErrors, failedDocuments } = watchPage(page);
 
     // ── Teacher: „Nowy bank” → „Fizyka” → „Grupy” → G1 ─────────────────────
-    await loginAs(page, tenant.teacher, 'teacher', { locale: 'pl' });
+    await loginAs(page, TENANT, 'teacher', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
     await page.goto('/edu/questions');
     await expect(page).toHaveURL(/\/edu\/questions$/);
+
+    // A retry against the same tenant starts from an empty bank list.
+    await resetBanks(page);
+    await page.reload();
 
     await page.getByRole('button', { name: COPY.newBank }).first().click();
     const dialog = page.locator('[data-slot="dialog-content"]');
@@ -384,10 +332,10 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     expect(created, 'the created bank is readable by its author').toBeTruthy();
     const bankId = created!.id;
     expect(created!.visibility, 'bank visibility').toBe('group');
-    expect(created!.groupIds, 'bank group share').toEqual([tenant.group1.id]);
+    expect(created!.groupIds, 'bank group share').toEqual([GROUP_1_ID]);
     expect(created!.description, 'the optional description is stored').toBe(DESCRIPTION);
     expect(created!.organization_id, 'the bank belongs to the tenant organization').toBe(
-      tenant.teacher.org!.id,
+      TENANT.org!.id,
     );
 
     // ── 2. The G1 student sees the bank read-only ──────────────────────────
@@ -397,7 +345,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
       const inErrors: string[] = [];
       studentPage.on('pageerror', (error) => inErrors.push(error.message));
 
-      await loginAs(studentPage, tenant.studentIn, 'student', { locale: 'pl' });
+      await loginAs(studentPage, TENANT, 'studentIn', { locale: 'pl' });
       expect(new URL(studentPage.url()).pathname, 'student lands on /app').toBe('/app');
       await studentPage.goto('/app/questions');
 
@@ -443,7 +391,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
       const outErrors: string[] = [];
       outsiderPage.on('pageerror', (error) => outErrors.push(error.message));
 
-      await loginAs(outsiderPage, tenant.studentOut, 'student', { locale: 'pl' });
+      await loginAs(outsiderPage, TENANT, 'studentOut', { locale: 'pl' });
       expect(new URL(outsiderPage.url()).pathname, 'student lands on /app').toBe('/app');
       await outsiderPage.goto('/app/questions');
 
@@ -476,19 +424,20 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     test.setTimeout(150_000);
     const { pageErrors } = watchPage(page);
 
-    await loginAs(page, tenant.teacher, 'teacher', { locale: 'pl' });
+    await loginAs(page, TENANT, 'teacher', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
 
-    // This test is self-contained: its own bank through the UI is created by the
-    // first test, but a single-test run still needs all three banks to filter.
+    // This test is self-contained: it rebuilds the three banks it filters, so a
+    // single-test run and a repeat against the same tenant both start clean.
+    await resetBanks(page);
     await ensureBank(page, BANKS.group, {
       visibility: 'group',
-      groupIds: [tenant.group1.id],
+      groupIds: [GROUP_1_ID],
       description: DESCRIPTION,
     });
     await ensureBank(page, BANKS.secondGroup, {
       visibility: 'group',
-      groupIds: [tenant.group2.id],
+      groupIds: [GROUP_2_ID],
     });
     await ensureBank(page, BANKS.personal, { visibility: 'personal' });
 
@@ -534,7 +483,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     // Picking only G1 keeps the G1 bank and drops the G2 and ungrouped ones.
     await groupSelect.click();
     await expect(page.getByRole('option', { name: GROUP_1, exact: true })).toBeVisible();
-    const g1Request = bankListRequest(page, (params) => params.get('groups') === tenant.group1.id);
+    const g1Request = bankListRequest(page, (params) => params.get('groups') === GROUP_1_ID);
     await page.getByRole('option', { name: GROUP_1, exact: true }).click();
     await g1Request;
     await page.keyboard.press('Escape');
@@ -552,7 +501,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     ).toHaveCount(0);
 
     // „Moje grupy” selects G1 + G2: both group banks stay, the personal one does not.
-    const bothGroups = [tenant.group1.id, tenant.group2.id].sort().join(',');
+    const bothGroups = [GROUP_1_ID, GROUP_2_ID].sort().join(',');
     const mineGroupsRequest = bankListRequest(
       page,
       (params) => (params.get('groups') ?? '').split(',').sort().join(',') === bothGroups,
