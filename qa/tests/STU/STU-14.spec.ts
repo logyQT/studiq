@@ -1,22 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import {
-  request as apiRequest,
-  expect,
-  test,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test';
-import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-} from '#test/helpers/tenant-seed';
+import { expect, test, type Page } from '@playwright/test';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { tenantId } from '#test/helpers/tenant-seed';
 
 /**
  * STU-14 — deck list: ownership filter and group filter (/app/flashcards).
@@ -26,12 +10,20 @@ import {
  * (`student1@dev.local`, password `pass`) and its O1G1/O1G2 content are never
  * used; the spec owns the whole graph.
  *
- * Tenant: `tenantKey('qa/cases/STU-14.md', 'STU-14#<run>', 'qa-shared')`, a fresh
- * run suffix per independent run. Every id is `tenantId(key, entity)`:
- *   - org: one organization, default group `O1G1` and a second group `O1G2`;
- *   - `teacher`: org role `teacher`, the teacher of both groups, so it may share
- *     a deck with either of them;
+ * Tenant: `qa/tests/profiles/STU-14.json` declares a declarative `content`
+ * shape, seeded **once before Playwright starts** by
+ * `bun scripts/qa-tenant.ts --all --run <suffix>`:
+ *   - org: one organization, default group `O1G1` and a second, empty group
+ *     `O1G2` (`groups`: first is the default, the rest are seeded empty);
+ *   - `teacher`: org role `teacher`, the group teacher of `O1G1` (the seeder
+ *     enrols the owner that way);
  *   - `student`: org member, a member of `O1G1` only (never of `O1G2`).
+ *
+ * `O1G2` is created without members, so before sharing a deck with it the spec
+ * makes the teacher its group teacher through the product's own group-roster
+ * endpoint (`PUT /api/v1/organization/groups/<id>/members`, the same write
+ * `/manage/groups` performs). That is a tenant-local group membership change,
+ * not tenant shape: accounts, org and groups all come from the pre-suite seed.
  *
  * Content is built through the product's flashcard API, so nothing is shared
  * with another case:
@@ -51,12 +43,16 @@ import {
  */
 
 const CASE = 'STU-14';
-const CASE_FILE = 'qa/cases/STU-14.md';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+const TENANT = loadTenant(CASE);
+
+/**
+ * The seeder's deterministic id for the second declared group (`groups[1]`).
+ * The groups API lists a group only once it has a teacher, so the empty `O1G2`
+ * cannot be discovered by name before this spec enrols the teacher in it.
+ */
+const GROUP_G2_ID = tenantId(TENANT.key, 'group:2');
 
 const GROUP_G1 = 'O1G1';
-const GROUP_G2 = 'O1G2';
 const GROUP_DECK = 'O1G1T1';
 const OTHER_GROUP_DECK = 'O1G2T2';
 const PERSONAL_DECK = 'O1S1';
@@ -73,18 +69,6 @@ const COPY = {
   retiredSharedScope: 'Udostępnione',
 } as const;
 
-/** Supabase local defaults (the service-role JWT is the `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-
-interface CaseTenant extends QaTenant {
-  users: {
-    teacher: { id: string; email: string; password: string };
-    student: { id: string; email: string; password: string };
-  };
-}
-
 interface DeckRow {
   id: string;
   name: string;
@@ -97,97 +81,75 @@ interface DeckListBody {
   data: { items: DeckRow[]; total: number };
 }
 
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
+interface GroupMemberRow {
+  userId: string;
+  role: 'teacher' | 'member';
 }
 
-function account(seed: SeedAccount) {
-  return { id: seed.id, email: seed.email, password: seed.password };
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
+/** `GET` an endpoint as the signed-in user and unwrap the response envelope. */
+async function getData<T>(page: Page, url: string): Promise<T> {
+  const response = await page.request.get(url);
+  expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
+  const body = (await response.json()) as ApiEnvelope<T>;
+  expect(body.success, `GET ${url} success flag`).toBe(true);
+  return body.data;
+}
+
+/** The tenant's decks, as the deck list API returns them for the current user. */
+async function listDecks(page: Page): Promise<DeckRow[]> {
+  return (await getData<{ items: DeckRow[] }>(page, '/api/v1/flashcards/decks?limit=100')).items;
 }
 
 /**
- * Seed the org graph. The teacher is the org's `teacher` (and the default
- * group's teacher), the student is a plain member of `O1G1` only. `O1G2` gets the
- * teacher as its teacher so the second group deck is legitimate, never injected
- * as a row the API would have refused.
+ * Only a group `teacher` may share a deck with the group
+ * (`canShareContentToGroups`), and the seeder creates the extra groups empty.
+ * Enrol the tenant teacher through the product's roster endpoint — the same
+ * write `/manage/groups` performs — keeping every other member untouched.
  */
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = tenantKey(CASE_FILE, `${CASE}#${RUN_SUFFIX}`, PROJECT);
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
+async function ensureTeacherLeadsGroup(
+  page: Page,
+  tenant: QaTenant,
+  groupId: string,
+): Promise<void> {
+  const teacher = tenant.users.teacher;
+  if (!teacher) throw new Error(`${CASE} needs the declarative tenant profile (teacher)`);
 
-  const org = { id: tenantId(key, 'org'), name: `qa-stu-14-${RUN_SUFFIX}` };
-  const groupG1 = { id: tenantId(key, 'group:default'), name: GROUP_G1 };
-  const groupG2 = { id: tenantId(key, 'group:second'), name: GROUP_G2 };
-  const teacher = buildAccount(key, 'teacher', 'educator', {
-    name: 'QA teacher',
-    orgRole: 'teacher',
-  });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
+  const url = `/api/v1/organization/groups/${groupId}/members`;
+  const roster = await getData<GroupMemberRow[]>(page, url);
+  const member = roster.find((row) => row.userId === teacher.id);
+  if (member?.role === 'teacher') return;
 
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { ...groupG1, isDefault: true },
-    extraGroups: [{ ...groupG2, isDefault: false }],
-    owner: teacher,
-    members: [student],
-    ownerOrgRole: 'teacher',
-  });
+  const members = [
+    ...roster.filter((row) => row.userId !== teacher.id),
+    { userId: teacher.id, role: 'teacher' as const },
+  ];
+  const response = await page.request.put(url, { data: { members } });
+  expect(response.ok(), `PUT ${url} → ${response.status()} ${await response.text()}`).toBe(true);
 
-  // Sharing to a group requires a `teacher` group membership; the seeder only
-  // enrols the owner in the default group.
-  const secondGroupTeacher = await db.from('group_members').upsert(
-    {
-      id: tenantId(key, 'gm:second:teacher'),
-      group_id: groupG2.id,
-      user_id: teacher.id,
-      role: 'teacher',
-    },
-    { onConflict: 'id' },
+  const after = await getData<GroupMemberRow[]>(page, url);
+  expect(after.find((row) => row.userId === teacher.id)?.role, 'the teacher now teaches O1G2').toBe(
+    'teacher',
   );
-  if (secondGroupTeacher.error) {
-    throw new Error(`seed ${key}: group_members(O1G2) ${secondGroupTeacher.error.message}`);
-  }
-
-  return {
-    case: CASE,
-    profile: 'content',
-    runSuffix: RUN_SUFFIX,
-    key,
-    org,
-    group: groupG1,
-    users: {
-      teacher: account(seeded.owner),
-      student: account(seeded.members[0]),
-    },
-  };
 }
 
-let tenant: CaseTenant;
-
-test.beforeAll(async () => {
-  tenant = await seedCaseTenant();
-  console.log(`STU-14 tenant key: ${tenant.key} (org ${tenant.org?.id})`);
-});
+/**
+ * A retry (or a `--repeat-each` pass) runs against the same seeded tenant: drop
+ * the decks a previous pass left behind so the list starts from the same state.
+ * Only this case's own decks (same names, same tenant) are touched.
+ */
+async function deleteDecksNamed(page: Page, names: readonly string[]): Promise<void> {
+  for (const deck of (await listDecks(page)).filter((row) => names.includes(row.name))) {
+    const response = await page.request.delete(`/api/v1/flashcards/decks/${deck.id}`);
+    expect(response.ok(), `DELETE /api/v1/flashcards/decks/${deck.id} → ${response.status()}`).toBe(
+      true,
+    );
+  }
+}
 
 /** A visible deck card in the grid, addressed by its own heading. */
 function deckCard(page: Page, name: string) {
@@ -207,10 +169,10 @@ function groupFilter(page: Page) {
 }
 
 async function createDeckAs(
-  api: APIRequestContext,
+  page: Page,
   data: { name: string; visibility?: 'personal' | 'group'; groupIds?: string[] },
 ): Promise<DeckRow> {
-  const response = await api.post('/api/v1/flashcards/decks', { data });
+  const response = await page.request.post('/api/v1/flashcards/decks', { data });
   expect(response.status(), `POST /api/v1/flashcards/decks (${data.name})`).toBe(201);
   const body = (await response.json()) as { data: DeckRow };
   return body.data;
@@ -219,50 +181,49 @@ async function createDeckAs(
 test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
   test('lists the group and personal decks and filters them by owner and group', async ({
     page,
-    baseURL,
   }) => {
     test.setTimeout(120_000);
 
-    // ── Build the tenant content through the API ─────────────────────────────
-    const teacherApi = await apiRequest.newContext({ baseURL });
-    let groupDeck: DeckRow;
-    let otherGroupDeck: DeckRow;
-    try {
-      const login = await teacherApi.post('/api/v1/auth/login', {
-        data: { email: tenant.users.teacher.email, password: tenant.users.teacher.password },
-      });
-      expect(login.status(), 'teacher login').toBe(200);
-      const switched = await teacherApi.post('/api/v1/me/orgs/switch', {
-        data: { orgId: tenant.org!.id },
-      });
-      expect(switched.status(), 'teacher org switch').toBe(200);
-
-      groupDeck = await createDeckAs(teacherApi, {
-        name: GROUP_DECK,
-        visibility: 'group',
-        groupIds: [tenant.group!.id],
-      });
-      otherGroupDeck = await createDeckAs(teacherApi, {
-        name: OTHER_GROUP_DECK,
-        visibility: 'group',
-        groupIds: [tenantId(tenant.key, 'group:second')],
-      });
-
-      // Guard the fixture itself: the deck the student must NOT see really exists
-      // and is shared with a different group.
-      const teacherList = await teacherApi.get('/api/v1/flashcards/decks');
-      expect(teacherList.status(), 'teacher deck list').toBe(200);
-      const teacherDecks = ((await teacherList.json()) as DeckListBody).data.items;
-      expect(
-        teacherDecks.find((deck) => deck.id === otherGroupDeck.id)?.groupIds,
-        'O1G2T2 is shared with O1G2',
-      ).toEqual([tenantId(tenant.key, 'group:second')]);
-    } finally {
-      await teacherApi.dispose();
+    const tenant = TENANT;
+    expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
+    const groupG1 = tenant.group;
+    const teacher = tenant.users.teacher;
+    const student = tenant.users.student;
+    if (!groupG1 || !teacher || !student) {
+      throw new Error(`${CASE} tenant is missing its default group, teacher or student`);
     }
 
+    // ── Build the tenant content through the API ─────────────────────────────
+    // The teacher first joins O1G2 as its group teacher (empty in the seed), so
+    // the second group deck is legitimate, never injected as a row the API would
+    // have refused.
+    await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
+    await ensureTeacherLeadsGroup(page, tenant, GROUP_G2_ID);
+    await deleteDecksNamed(page, [GROUP_DECK, OTHER_GROUP_DECK]);
+
+    const groupDeck = await createDeckAs(page, {
+      name: GROUP_DECK,
+      visibility: 'group',
+      groupIds: [groupG1.id],
+    });
+    const otherGroupDeck = await createDeckAs(page, {
+      name: OTHER_GROUP_DECK,
+      visibility: 'group',
+      groupIds: [GROUP_G2_ID],
+    });
+
+    // Guard the fixture itself: the deck the student must NOT see really exists
+    // and is shared with a different group.
+    const teacherDecks = await listDecks(page);
+    expect(
+      teacherDecks.find((deck) => deck.id === otherGroupDeck.id)?.groupIds,
+      'O1G2T2 is shared with O1G2',
+    ).toEqual([GROUP_G2_ID]);
+
+    await page.context().clearCookies();
     await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app/ });
-    const personalDeck = await createDeckAs(page.request, { name: PERSONAL_DECK });
+    await deleteDecksNamed(page, [PERSONAL_DECK]);
+    const personalDeck = await createDeckAs(page, { name: PERSONAL_DECK });
     expect(personalDeck.visibility ?? 'personal', 'a new deck defaults to personal').toBe(
       'personal',
     );
@@ -352,7 +313,7 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
       'owner=mine returns exactly the student’s own deck',
     ).toEqual([personalDeck.id]);
 
-    const byGroup = await page.request.get(`/api/v1/flashcards/decks?groups=${tenant.group!.id}`);
+    const byGroup = await page.request.get(`/api/v1/flashcards/decks?groups=${groupG1.id}`);
     expect(byGroup.status(), 'GET decks?groups=O1G1').toBe(200);
     expect(
       ((await byGroup.json()) as DeckListBody).data.items.map((deck) => deck.id),
@@ -360,9 +321,7 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
     ).toEqual([groupDeck.id]);
 
     // A foreign group id cannot widen the caller’s RBAC scope.
-    const foreignGroup = await page.request.get(
-      `/api/v1/flashcards/decks?groups=${tenantId(tenant.key, 'group:second')}`,
-    );
+    const foreignGroup = await page.request.get(`/api/v1/flashcards/decks?groups=${GROUP_G2_ID}`);
     expect(foreignGroup.status(), 'GET decks?groups=O1G2').toBe(200);
     expect(
       ((await foreignGroup.json()) as DeckListBody).data.items,
