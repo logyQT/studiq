@@ -1,15 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-} from '#test/helpers/tenant-seed';
+import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * MGR-ROL-03 — the role permission editor (`/manage/roles` → „Uprawnienia roli”).
@@ -19,15 +9,24 @@ import {
  * used; the case's own tenant provides the manager (admin), the custom role, the
  * custom-role user and the content the scopes are checked against.
  *
- * Tenant: `tenantKey('qa/cases/MGR-ROL-03.md', <title>, 'qa-shared')::<run suffix>`.
- * Every org/role/user/content id is `tenantId(key, entity)`, so a run is reproducible
- * by pinning `QA_RUN_SUFFIX`; by default the suffix is fresh, which gives each
- * independent run its own organization, role, users and content.
+ * Tenant: `qa/tests/profiles/MGR-ROL-03.json` declares `{ profile: "content", plan:
+ * "hub" }`, so the suite seeds one organization with its admin (`manager`), teacher,
+ * member (`student`) and default group **before Playwright starts**:
  *
- * The org is moved onto the `hub` plan through the product's own `apply_org_plan()`
- * (the same RPC a plan upgrade calls): custom roles are a `role.builder` feature, and
- * the Launch plan deliberately has no role builder. This is tenant-local — the plan
- * catalog, feature flags and every other org are untouched.
+ *   bun scripts/qa-tenant.ts --all --run <suffix>
+ *   bun scripts/qa-tenant.ts MGR-ROL-03 --fresh
+ *
+ * `--plan hub` puts *this tenant's own* organization on Hub through
+ * `apply_org_plan()`: custom roles are a `role.builder` feature, and the Launch plan
+ * deliberately has no role builder. This is tenant-local — the plan catalog, feature
+ * flags and every other org are untouched.
+ *
+ * The spec then provisions the case's own prerequisite **through the product API**:
+ * it resets any content a previous run on the same seeded tenant left behind, creates
+ * the `content-reader` custom role (zero grants), creates the three content families
+ * that make the scopes distinguishable — `own` by the custom-role member, `group`
+ * shared with the tenant's default group, `org` at organization level — and finally
+ * grants the role to the member. Nothing is written through the service role.
  *
  * Acceptance points:
  * 1. „Uprawnienia roli” opens the editor with the five case sections (Fiszki, Talie,
@@ -44,10 +43,7 @@ import {
  *    saved permissions are live, not a one-off snapshot.
  */
 
-const CASE_FILE = 'qa/cases/MGR-ROL-03.md';
-const TITLE = 'MGR-ROL-03 role permission editor scopes';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+const CASE = 'MGR-ROL-03';
 
 const ROLE_NAME = 'content-reader';
 const ROLE_DESCRIPTION = 'Custom role for MGR-ROL-03';
@@ -59,6 +55,9 @@ const CANCEL_LABEL = 'Anuluj';
 
 type Scope = 'own' | 'group' | 'organization';
 
+/** The three content families, keyed by the scope they are visible in. */
+type ContentScope = 'own' | 'group' | 'org';
+
 const SECTIONS = [
   { key: 'flashcard', title: 'Fiszki' },
   { key: 'deck', title: 'Talie' },
@@ -69,10 +68,12 @@ const SECTIONS = [
 
 const ACTIONS = ['read', 'create', 'update', 'delete'] as const;
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+/** Content names, one per scope family, so the UI can be asserted by name. */
+const CONTENT_NAMES = {
+  deck: { own: 'deck-own', group: 'deck-group', org: 'deck-org' },
+  topic: { own: 'topic-own', group: 'topic-group', org: 'topic-org' },
+  bank: { own: 'bank-own', group: 'bank-group', org: 'bank-org' },
+} as const;
 
 interface ContentRow {
   id: string;
@@ -87,313 +88,246 @@ interface QuestionRow {
   id: string;
 }
 
-interface CaseTenant {
-  key: string;
-  org: { id: string; name: string };
-  group: { id: string; name: string };
-  manager: SeedAccount;
-  reader: SeedAccount;
+/** The content the three scopes are checked against, as created by this run. */
+interface CaseContent {
+  decks: Record<ContentScope, ContentRow>;
+  topics: Record<ContentScope, ContentRow>;
+  banks: Record<ContentScope, ContentRow>;
+  cards: Record<ContentScope, CardRow>;
+  questions: Record<ContentScope, QuestionRow>;
+}
+
+/** The seeded tenant plus the state this spec provisioned through the API. */
+interface CaseContext {
+  tenant: QaTenant;
+  content: CaseContent;
   roleId: string;
-  decks: Record<Scope, ContentRow>;
-  topics: Record<Scope, ContentRow>;
-  banks: Record<Scope, ContentRow>;
-  cards: Record<Scope, CardRow>;
-  questions: Record<Scope, QuestionRow>;
+}
+
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
+async function getJson<T>(page: Page, url: string): Promise<T> {
+  const response = await page.request.get(url);
+  expect(response.status(), `GET ${url}`).toBe(200);
+  const body = (await response.json()) as ApiEnvelope<T>;
+  expect(body.success, `GET ${url} success`).toBe(true);
+  return body.data;
+}
+
+async function postJson<T>(page: Page, url: string, data: unknown): Promise<T> {
+  const response = await page.request.post(url, { data });
+  expect(response.status(), `POST ${url} → ${await response.text()}`).toBe(201);
+  const body = (await response.json()) as ApiEnvelope<T>;
+  expect(body.success, `POST ${url} success`).toBe(true);
+  return body.data;
+}
+
+async function putJson<T>(page: Page, url: string, data: unknown): Promise<T> {
+  const response = await page.request.put(url, { data });
+  expect(response.status(), `PUT ${url} → ${await response.text()}`).toBe(200);
+  const body = (await response.json()) as ApiEnvelope<T>;
+  expect(body.success, `PUT ${url} success`).toBe(true);
+  return body.data;
 }
 
 /**
- * Resolve the shared Supabase admin credentials. `QA_SUPABASE_*` wins; otherwise
- * the routine `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`, then the
- * worker's `qa/env.json`, then the shared local defaults.
- */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-/**
- * Seed the case's org, its custom role and the three content families that make the
- * three scopes distinguishable:
+ * Delete the tenant's content through the product API, so a repeated run on the same
+ * seeded tenant starts from an empty organization instead of inheriting the previous
+ * run's rows. Cards/questions go first, then their decks/banks, then the topics.
  *
- * - `own`   — created by the custom-role user,
+ * A question can only be deleted by its creator, so a row the admin is refused is
+ * removed by the member account instead (both calls are the product's own DELETE).
+ */
+async function resetContent(page: Page, tenant: QaTenant): Promise<void> {
+  for (const path of [
+    '/api/v1/questions',
+    '/api/v1/flashcards',
+    '/api/v1/flashcards/decks',
+    '/api/v1/questions/banks',
+    '/api/v1/flashcards/topics',
+  ]) {
+    const ownedByMember: string[] = [];
+    for (const row of await listRows(page, path)) {
+      const url = `${path}/${row.id as string}`;
+      const response = await page.request.delete(url);
+      if (response.status() === 403) {
+        ownedByMember.push(url);
+        continue;
+      }
+      expect(response.status(), `DELETE ${url}`).toBe(200);
+    }
+    if (ownedByMember.length === 0) continue;
+
+    await signInAs(page, tenant, 'student', /\/app(\/|$)/);
+    for (const url of ownedByMember) {
+      const response = await page.request.delete(url);
+      expect(response.status(), `DELETE ${url} (as the member who created it)`).toBe(200);
+    }
+    await signInAs(page, tenant, 'manager', /\/manage$/);
+  }
+}
+
+/**
+ * The case's prerequisite: the custom role exists before the editor is opened, with
+ * no permissions at all (a fresh tenant has none; a repeated run may still carry the
+ * grants the previous run saved).
+ */
+async function ensureCustomRole(page: Page): Promise<string> {
+  const roles = await getJson<Array<{ id: string; name: string; isSystem: boolean }>>(
+    page,
+    '/api/v1/organization/roles',
+  );
+  const existing = roles.find((role) => !role.isSystem && role.name === ROLE_NAME);
+  const role =
+    existing ??
+    (await postJson<{ id: string }>(page, '/api/v1/organization/roles', {
+      name: ROLE_NAME,
+      description: ROLE_DESCRIPTION,
+    }));
+
+  await putJson(page, `/api/v1/organization/roles/${role.id}/permissions`, { permissions: [] });
+  return role.id;
+}
+
+/** The id of one of the tenant org's system roles (`admin`, `teacher`, `member`). */
+async function orgRoleId(page: Page, name: string): Promise<string> {
+  const roles = await getJson<Array<{ id: string; name: string }>>(
+    page,
+    '/api/v1/organization/roles',
+  );
+  const role = roles.find((candidate) => candidate.name === name);
+  if (!role) throw new Error(`tenant org has no ${name} role`);
+  return role.id;
+}
+
+/** Give the tenant's member (the student account) an org role. */
+async function setMemberRole(page: Page, tenant: QaTenant, roleId: string): Promise<void> {
+  const reader = tenant.users.student;
+  if (!reader) throw new Error(`tenant ${tenant.case} has no seeded student user`);
+  await putJson(page, '/api/v1/organization/members', {
+    targetUserId: reader.id,
+    newOrgRoleId: roleId,
+  });
+}
+
+/**
+ * Create the three content families that make the three scopes distinguishable,
+ * through the product API:
+ *
+ * - `own`   — created by the custom-role member,
  * - `group` — created by the admin and shared with the tenant's default group,
  * - `org`   — created by the admin, in the org, not shared with any group.
  *
  * Group scope must therefore yield own + group, organization scope all three, and
- * own scope only the first. Content is written through the service-role client with
- * deterministic ids; it is tenant-local and touches nothing shared.
+ * own scope only the first. Everything stays inside the tenant's own organization.
  */
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const org = { id: tenantId(key, 'org'), name: `qa-mgr-rol03-${RUN_SUFFIX}` };
-  const group = { id: tenantId(key, 'group:default'), name: 'G1' };
+async function createContent(page: Page, tenant: QaTenant): Promise<CaseContent> {
+  const groupId = tenant.group?.id;
+  if (!groupId) throw new Error(`tenant ${tenant.case}: the content profile seeds no group`);
 
-  const manager = buildAccount(key, 'manager', 'manager', { name: 'QA manager' });
-  const reader = buildAccount(key, 'reader', 'student', { name: 'QA custom role reader' });
+  const createCard = (deckId: string, scope: ContentScope): Promise<CardRow> =>
+    postJson<CardRow>(page, '/api/v1/flashcards', {
+      deckId,
+      front: `${CONTENT_NAMES.deck[scope]}-front`,
+      back: `${CONTENT_NAMES.deck[scope]}-back`,
+    });
+  const createQuestion = (bankId: string, scope: ContentScope): Promise<QuestionRow> =>
+    postJson<QuestionRow>(page, '/api/v1/questions', {
+      bankId,
+      type: 'mcq',
+      content: `${CONTENT_NAMES.bank[scope]}-question`,
+      answers: [
+        { content: 'correct', isCorrect: true },
+        { content: 'wrong', isCorrect: false },
+      ],
+    });
 
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { id: group.id, name: group.name, isDefault: true },
-    extraGroups: [],
-    owner: manager,
-    members: [reader],
-    ownerOrgRole: 'admin',
+  // `own` — the member creates their own deck/topic/bank and one row in each, while
+  // still holding the default `member` role (a role without grants cannot create).
+  await signInAs(page, tenant, 'student', /\/app(\/|$)/);
+  const ownDeck = await postJson<ContentRow>(page, '/api/v1/flashcards/decks', {
+    name: CONTENT_NAMES.deck.own,
+    visibility: 'personal',
   });
+  const ownTopic = await postJson<ContentRow>(page, '/api/v1/flashcards/topics', {
+    name: CONTENT_NAMES.topic.own,
+    visibility: 'personal',
+  });
+  const ownBank = await postJson<ContentRow>(page, '/api/v1/questions/banks', {
+    name: CONTENT_NAMES.bank.own,
+    visibility: 'personal',
+  });
+  const ownCard = await createCard(ownDeck.id, 'own');
+  const ownQuestion = await createQuestion(ownBank.id, 'own');
 
-  // Custom roles are the `role.builder` feature, which the Launch plan does not
-  // include. Upgrade this tenant's own org to Hub with the product's plan RPC.
-  const upgrade = await db.rpc('apply_org_plan', { p_org_id: org.id, p_plan: 'hub' });
-  if (upgrade.error) {
-    throw new Error(`seed ${key}: apply_org_plan(hub) failed: ${upgrade.error.message}`);
-  }
-
-  // Prerequisite: a custom role that exists before the editor is opened.
-  const roleId = tenantId(key, 'role:content-reader');
-  const role = await db.from('org_roles').upsert(
-    {
-      id: roleId,
-      organization_id: org.id,
-      name: ROLE_NAME,
-      display_name: ROLE_NAME,
-      description: ROLE_DESCRIPTION,
-      is_system: false,
-    },
-    { onConflict: 'id' },
-  );
-  if (role.error) throw new Error(`seed ${key}: org_roles ${role.error.message}`);
-
-  // A pinned run suffix must start from the case's prerequisite, not from the
-  // permissions a previous run left behind: the custom role starts without any.
-  const clear = await db.from('org_role_permissions').delete().eq('org_role_id', roleId);
-  if (clear.error) throw new Error(`seed ${key}: clear permissions ${clear.error.message}`);
-
-  // Give the custom-role user that role in the tenant org.
-  const membership = await db
-    .from('org_members')
-    .update({ org_role_id: roleId })
-    .eq('organization_id', org.id)
-    .eq('user_id', reader.id);
-  if (membership.error) throw new Error(`seed ${key}: org_members ${membership.error.message}`);
-
-  const now = new Date().toISOString();
-
-  const deckRows = {
-    own: { id: tenantId(key, 'deck:own'), name: `deck-own-${RUN_SUFFIX}` },
-    group: { id: tenantId(key, 'deck:group'), name: `deck-group-${RUN_SUFFIX}` },
-    org: { id: tenantId(key, 'deck:org'), name: `deck-org-${RUN_SUFFIX}` },
-  };
-  const topicRows = {
-    own: { id: tenantId(key, 'topic:own'), name: `topic-own-${RUN_SUFFIX}` },
-    group: { id: tenantId(key, 'topic:group'), name: `topic-group-${RUN_SUFFIX}` },
-    org: { id: tenantId(key, 'topic:org'), name: `topic-org-${RUN_SUFFIX}` },
-  };
-  const bankRows = {
-    own: { id: tenantId(key, 'bank:own'), name: `bank-own-${RUN_SUFFIX}` },
-    group: { id: tenantId(key, 'bank:group'), name: `bank-group-${RUN_SUFFIX}` },
-    org: { id: tenantId(key, 'bank:org'), name: `bank-org-${RUN_SUFFIX}` },
-  };
-
-  const decks = await db.from('flashcard_decks').upsert(
-    [
-      {
-        ...deckRows.own,
-        organization_id: org.id,
-        created_by: reader.id,
-        visibility: 'personal' as const,
-        created_at: now,
-      },
-      {
-        ...deckRows.group,
-        organization_id: org.id,
-        created_by: manager.id,
-        visibility: 'group' as const,
-        created_at: now,
-      },
-      {
-        ...deckRows.org,
-        organization_id: org.id,
-        created_by: manager.id,
-        visibility: 'personal' as const,
-        created_at: now,
-      },
-    ],
-    { onConflict: 'id' },
-  );
-  if (decks.error) throw new Error(`seed ${key}: flashcard_decks ${decks.error.message}`);
-
-  const deckGroups = await db
-    .from('deck_groups')
-    .upsert([{ deck_id: deckRows.group.id, group_id: group.id }], {
-      onConflict: 'deck_id,group_id',
-    });
-  if (deckGroups.error) {
-    throw new Error(`seed ${key}: deck_groups ${deckGroups.error.message}`);
-  }
-
-  const topics = await db.from('topics').upsert(
-    [
-      {
-        ...topicRows.own,
-        organization_id: org.id,
-        created_by: reader.id,
-        visibility: 'personal' as const,
-        created_at: now,
-      },
-      {
-        ...topicRows.group,
-        organization_id: org.id,
-        created_by: manager.id,
-        visibility: 'group' as const,
-        created_at: now,
-      },
-      {
-        ...topicRows.org,
-        organization_id: org.id,
-        created_by: manager.id,
-        visibility: 'personal' as const,
-        created_at: now,
-      },
-    ],
-    { onConflict: 'id' },
-  );
-  if (topics.error) throw new Error(`seed ${key}: topics ${topics.error.message}`);
-
-  const topicGroups = await db
-    .from('topic_groups')
-    .upsert([{ topic_id: topicRows.group.id, group_id: group.id }], {
-      onConflict: 'topic_id,group_id',
-    });
-  if (topicGroups.error) {
-    throw new Error(`seed ${key}: topic_groups ${topicGroups.error.message}`);
-  }
-
-  const banks = await db.from('question_banks').upsert(
-    [
-      {
-        ...bankRows.own,
-        organization_id: org.id,
-        created_by: reader.id,
-        visibility: 'personal' as const,
-        created_at: now,
-      },
-      {
-        ...bankRows.group,
-        organization_id: org.id,
-        created_by: manager.id,
-        visibility: 'group' as const,
-        created_at: now,
-      },
-      {
-        ...bankRows.org,
-        organization_id: org.id,
-        created_by: manager.id,
-        visibility: 'personal' as const,
-        created_at: now,
-      },
-    ],
-    { onConflict: 'id' },
-  );
-  if (banks.error) throw new Error(`seed ${key}: question_banks ${banks.error.message}`);
-
-  const bankGroups = await db
-    .from('bank_groups')
-    .upsert([{ bank_id: bankRows.group.id, group_id: group.id }], {
-      onConflict: 'bank_id,group_id',
-    });
-  if (bankGroups.error) {
-    throw new Error(`seed ${key}: bank_groups ${bankGroups.error.message}`);
-  }
-
-  const cardRows = {
-    own: { id: tenantId(key, 'card:own'), deck_id: deckRows.own.id, created_by: reader.id },
-    group: { id: tenantId(key, 'card:group'), deck_id: deckRows.group.id, created_by: manager.id },
-    org: { id: tenantId(key, 'card:org'), deck_id: deckRows.org.id, created_by: manager.id },
-  };
-  const cards = await db.from('flashcards').upsert(
-    (Object.entries(cardRows) as Array<[Scope, (typeof cardRows)[Scope]]>).map(([scope, card]) => ({
-      id: card.id,
-      organization_id: org.id,
-      deck_id: card.deck_id,
-      created_by: card.created_by,
-      front: `front-${scope}-${RUN_SUFFIX}`,
-      back: `back-${scope}-${RUN_SUFFIX}`,
-      visibility: 'personal' as const,
-    })),
-    { onConflict: 'id' },
-  );
-  if (cards.error) throw new Error(`seed ${key}: flashcards ${cards.error.message}`);
-
-  const questionRows = {
-    own: { id: tenantId(key, 'question:own'), bank_id: bankRows.own.id, created_by: reader.id },
-    group: {
-      id: tenantId(key, 'question:group'),
-      bank_id: bankRows.group.id,
-      created_by: manager.id,
-    },
-    org: { id: tenantId(key, 'question:org'), bank_id: bankRows.org.id, created_by: manager.id },
-  };
-  const questions = await db.from('questions').upsert(
-    (Object.entries(questionRows) as Array<[Scope, (typeof questionRows)[Scope]]>).map(
-      ([scope, question]) => ({
-        id: question.id,
-        organization_id: org.id,
-        bank_id: question.bank_id,
-        created_by: question.created_by,
-        type: 'mcq' as const,
-        content: `question-${scope}-${RUN_SUFFIX}`,
-        visibility: 'personal' as const,
-      }),
-    ),
-    { onConflict: 'id' },
-  );
-  if (questions.error) throw new Error(`seed ${key}: questions ${questions.error.message}`);
+  // `group` and `org` — the admin creates both; only the `group` rows are shared
+  // with the tenant's default group.
+  await signInAs(page, tenant, 'manager', /\/manage$/);
+  const groupDeck = await postJson<ContentRow>(page, '/api/v1/flashcards/decks', {
+    name: CONTENT_NAMES.deck.group,
+    visibility: 'group',
+    groupIds: [groupId],
+  });
+  const orgDeck = await postJson<ContentRow>(page, '/api/v1/flashcards/decks', {
+    name: CONTENT_NAMES.deck.org,
+    visibility: 'personal',
+  });
+  const groupTopic = await postJson<ContentRow>(page, '/api/v1/flashcards/topics', {
+    name: CONTENT_NAMES.topic.group,
+    visibility: 'group',
+    groupIds: [groupId],
+  });
+  const orgTopic = await postJson<ContentRow>(page, '/api/v1/flashcards/topics', {
+    name: CONTENT_NAMES.topic.org,
+    visibility: 'personal',
+  });
+  const groupBank = await postJson<ContentRow>(page, '/api/v1/questions/banks', {
+    name: CONTENT_NAMES.bank.group,
+    visibility: 'group',
+    groupIds: [groupId],
+  });
+  const orgBank = await postJson<ContentRow>(page, '/api/v1/questions/banks', {
+    name: CONTENT_NAMES.bank.org,
+    visibility: 'personal',
+  });
+  const groupCard = await createCard(groupDeck.id, 'group');
+  const orgCard = await createCard(orgDeck.id, 'org');
+  const groupQuestion = await createQuestion(groupBank.id, 'group');
+  const orgQuestion = await createQuestion(orgBank.id, 'org');
 
   return {
-    key,
-    org,
-    group,
-    manager: seeded.owner,
-    reader: seeded.members[0],
-    roleId,
-    decks: deckRows,
-    topics: topicRows,
-    banks: bankRows,
+    decks: {
+      own: { id: ownDeck.id, name: ownDeck.name },
+      group: { id: groupDeck.id, name: groupDeck.name },
+      org: { id: orgDeck.id, name: orgDeck.name },
+    },
+    topics: {
+      own: { id: ownTopic.id, name: ownTopic.name },
+      group: { id: groupTopic.id, name: groupTopic.name },
+      org: { id: orgTopic.id, name: orgTopic.name },
+    },
+    banks: {
+      own: { id: ownBank.id, name: ownBank.name },
+      group: { id: groupBank.id, name: groupBank.name },
+      org: { id: orgBank.id, name: orgBank.name },
+    },
     cards: {
-      own: { id: cardRows.own.id },
-      group: { id: cardRows.group.id },
-      org: { id: cardRows.org.id },
+      own: { id: ownCard.id },
+      group: { id: groupCard.id },
+      org: { id: orgCard.id },
     },
     questions: {
-      own: { id: questionRows.own.id },
-      group: { id: questionRows.group.id },
-      org: { id: questionRows.org.id },
+      own: { id: ownQuestion.id },
+      group: { id: groupQuestion.id },
+      org: { id: orgQuestion.id },
     },
   };
 }
-
 /** Rows of a tenant scope: own → 1, group → 2 (own + group), organization → 3. */
-function visibleFor<T>(rows: Record<Scope, T>, scope: Scope): T[] {
+function visibleFor<T>(rows: Record<ContentScope, T>, scope: Scope): T[] {
   if (scope === 'own') return [rows.own];
   if (scope === 'group') return [rows.own, rows.group];
   return [rows.own, rows.group, rows.org];
@@ -406,26 +340,12 @@ function visibleFor<T>(rows: Record<Scope, T>, scope: Scope): T[] {
  */
 async function signInAs(
   page: Page,
-  baseURL: string,
-  account: SeedAccount,
-  orgId: string,
+  tenant: QaTenant,
+  role: QaRole,
   waitFor: RegExp,
 ): Promise<void> {
   await page.request.post('/api/v1/auth/logout');
-
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: account.email, password: account.password },
-  });
-  expect(response.status(), `login ${account.email}`).toBe(200);
-
-  const { hostname } = new URL(baseURL);
-  await page.context().addCookies([
-    { name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' },
-    { name: 'active_org_id', value: orgId, domain: hostname, path: '/', httpOnly: true },
-  ]);
-
-  await page.goto('/login');
-  await expect(page).toHaveURL(waitFor, { timeout: 20_000 });
+  await loginAs(page, tenant, role, { locale: 'pl', waitFor });
 }
 
 interface ListBody {
@@ -486,13 +406,8 @@ async function setAllSections(dialog: Locator, scope: Scope) {
  * A full manager round: sign in, open the role editor, set the five sections to
  * `scope`, save, assert the toast + persistence + readback.
  */
-async function saveRoleScope(
-  page: Page,
-  baseURL: string,
-  tenant: CaseTenant,
-  scope: Scope,
-): Promise<void> {
-  await signInAs(page, baseURL, tenant.manager, tenant.org.id, /\/manage$/);
+async function saveRoleScope(page: Page, context: CaseContext, scope: Scope): Promise<void> {
+  await signInAs(page, context.tenant, 'manager', /\/manage$/);
 
   // Enter the page the way a manager does: dashboard → „Role” in the sidebar.
   await page.locator('a[href="/manage/roles"]').first().click();
@@ -528,7 +443,7 @@ async function saveRoleScope(
   await expect(row.getByText('20 uprawnień')).toBeVisible();
 
   // The write persisted exactly the 20 scopes, not a subset or a stale merge.
-  const permissions = await readRolePermissions(page, tenant.roleId);
+  const permissions = await readRolePermissions(page, context.roleId);
   expect(permissions).toHaveLength(SECTIONS.length * ACTIONS.length);
   for (const permission of permissions) {
     expect(permission.scope, `${permission.permissionName} scope`).toBe(scope);
@@ -561,19 +476,14 @@ function visibleText(page: Page, text: string) {
  * Step 4: sign in as the holder of the custom role and assert the content that user
  * may see, on the API the pages call and on the user's content pages.
  */
-async function expectReaderContent(
-  page: Page,
-  baseURL: string,
-  tenant: CaseTenant,
-  scope: Scope,
-): Promise<void> {
-  await signInAs(page, baseURL, tenant.reader, tenant.org.id, /\/app(\/|$)/);
+async function expectReaderContent(page: Page, context: CaseContext, scope: Scope): Promise<void> {
+  await signInAs(page, context.tenant, 'student', /\/app(\/|$)/);
 
-  const expectedDecks = visibleFor(tenant.decks, scope);
-  const expectedCards = visibleFor(tenant.cards, scope);
-  const expectedTopics = visibleFor(tenant.topics, scope);
-  const expectedBanks = visibleFor(tenant.banks, scope);
-  const expectedQuestions = visibleFor(tenant.questions, scope);
+  const expectedDecks = visibleFor(context.content.decks, scope);
+  const expectedCards = visibleFor(context.content.cards, scope);
+  const expectedTopics = visibleFor(context.content.topics, scope);
+  const expectedBanks = visibleFor(context.content.banks, scope);
+  const expectedQuestions = visibleFor(context.content.questions, scope);
 
   // „Własne” → only own; „Grupa” → own + group; „Organizacja” → all org content.
   expect(await listIds(page, '/api/v1/flashcards/decks'), 'decks').toEqual(
@@ -601,7 +511,7 @@ async function expectReaderContent(
   for (const deck of expectedDecks) {
     await expect(visibleText(page, deck.name), `visible deck ${deck.name}`).toHaveCount(1);
   }
-  for (const deck of Object.values(tenant.decks).filter(
+  for (const deck of Object.values(context.content.decks).filter(
     (candidate) => !expectedDecks.some((expected) => expected.id === candidate.id),
   )) {
     await expect(visibleText(page, deck.name), `hidden deck ${deck.name}`).toHaveCount(0);
@@ -612,7 +522,7 @@ async function expectReaderContent(
   for (const topic of expectedTopics) {
     await expect(visibleText(page, topic.name), `visible topic ${topic.name}`).toHaveCount(1);
   }
-  for (const topic of Object.values(tenant.topics).filter(
+  for (const topic of Object.values(context.content.topics).filter(
     (candidate) => !expectedTopics.some((expected) => expected.id === candidate.id),
   )) {
     await expect(visibleText(page, topic.name), `hidden topic ${topic.name}`).toHaveCount(0);
@@ -622,7 +532,7 @@ async function expectReaderContent(
   for (const bank of expectedBanks) {
     await expect(visibleText(page, bank.name), `visible bank ${bank.name}`).toHaveCount(1);
   }
-  for (const bank of Object.values(tenant.banks).filter(
+  for (const bank of Object.values(context.content.banks).filter(
     (candidate) => !expectedBanks.some((expected) => expected.id === candidate.id),
   )) {
     await expect(visibleText(page, bank.name), `hidden bank ${bank.name}`).toHaveCount(0);
@@ -632,26 +542,33 @@ async function expectReaderContent(
 test.describe('@case:MGR-ROL-03 @area:MGR @prio:P2 role permission editor', () => {
   test.setTimeout(240_000);
 
-  let tenant: CaseTenant;
-
-  test.beforeAll(async () => {
-    tenant = await seedCaseTenant();
-    console.log(
-      `MGR-ROL-03 tenant key: ${tenant.key} (org ${tenant.org.id}, role ${tenant.roleId}, ` +
-        `manager ${tenant.manager.email}, reader ${tenant.reader.email})`,
-    );
-  });
-
-  test('scopes saved in the role editor drive the member content access', async ({
-    page,
-    baseURL,
-  }) => {
+  test('scopes saved in the role editor drive the member content access', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    const origin = baseURL ?? 'http://localhost:3010';
 
-    // The custom role starts without permissions (the case's prerequisite).
-    await signInAs(page, origin, tenant.manager, tenant.org.id, /\/manage$/);
+    const tenant = loadTenant(CASE);
+    expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
+    expect(tenant.plan, `${CASE} needs its tenant org on Hub`).toBe('hub');
+    expect(tenant.org, `${CASE} needs the seeded organization`).toBeTruthy();
+    expect(tenant.group, `${CASE} needs the seeded default group`).toBeTruthy();
+
+    // --- Prerequisite: the custom role, zero grants, and the scope content --------
+    // Everything below is provisioned through the product API, so a repeated run on
+    // the same seeded tenant starts from the case's own prerequisite rather than
+    // from the state the previous run left behind.
+    await signInAs(page, tenant, 'manager', /\/manage$/);
+    const roleId = await ensureCustomRole(page);
+    // The default `member` role first, so the member can create (and clean up) the
+    // content that is theirs before the custom role takes its grants away.
+    await setMemberRole(page, tenant, await orgRoleId(page, 'member'));
+    await resetContent(page, tenant);
+    const content = await createContent(page, tenant);
+    // The custom role's single member: the tenant's student account.
+    await setMemberRole(page, tenant, roleId);
+
+    const context: CaseContext = { tenant, content, roleId };
+
+    // Role and content are in place; the editor opens on the tenant's own role.
     await page.goto('/manage/roles');
     await expect(page.getByRole('heading', { level: 1, name: 'Role' })).toBeVisible();
     const roleRow = page.getByRole('row', { name: new RegExp(ROLE_NAME) });
@@ -660,16 +577,16 @@ test.describe('@case:MGR-ROL-03 @area:MGR @prio:P2 role permission editor', () =
     await expect(roleRow.locator('td').nth(3)).toHaveText('0 uprawnień');
 
     // „Własne” for all five sections → the member sees only their own content.
-    await saveRoleScope(page, origin, tenant, 'own');
-    await expectReaderContent(page, origin, tenant, 'own');
+    await saveRoleScope(page, context, 'own');
+    await expectReaderContent(page, context, 'own');
 
     // „Grupa” for all five sections → own + group content, never org-only content.
-    await saveRoleScope(page, origin, tenant, 'group');
-    await expectReaderContent(page, origin, tenant, 'group');
+    await saveRoleScope(page, context, 'group');
+    await expectReaderContent(page, context, 'group');
 
     // „Organizacja” for all five sections → all of the organization's content.
-    await saveRoleScope(page, origin, tenant, 'organization');
-    await expectReaderContent(page, origin, tenant, 'organization');
+    await saveRoleScope(page, context, 'organization');
+    await expectReaderContent(page, context, 'organization');
 
     expect(pageErrors, 'uncaught page errors during the walk').toEqual([]);
   });
