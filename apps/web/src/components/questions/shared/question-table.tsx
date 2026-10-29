@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
+import { resolveListEmptyView } from '@/lib/list-empty-view';
 
 interface QuestionTableProps {
   /** The current page, already searched, filtered and sorted by the server. */
@@ -57,6 +58,9 @@ interface QuestionTableProps {
   showReportButton?: boolean;
   /** Replaces the default empty state, e.g. when the viewer cannot add questions. */
   emptyText?: string;
+  /** The list failed to load: say so, never "nothing here yet, create the first one". */
+  isError?: boolean;
+  onRetry: () => void;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -82,10 +86,18 @@ export function QuestionTable({
   canDelete,
   showReportButton = false,
   emptyText,
+  isError = false,
+  onRetry,
   t,
 }: QuestionTableProps) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const hasFilters = search.trim() !== '' || typeFilter !== 'all';
+  // One rule for every list (#666): a filter that hid every row says so, and never reuses the
+  // "nothing here yet, create the first one" copy — not even the read-only variant of it.
+  const emptyView = resolveListEmptyView({
+    visibleCount: questions.length,
+    query: search,
+    activeFilters: typeFilter === 'all' ? 0 : 1,
+  });
 
   function toggleSort(field: string) {
     if (sortBy === field) {
@@ -229,10 +241,28 @@ export function QuestionTable({
                 </TableCell>
               </TableRow>
             ))}
-            {questions.length === 0 && (
+            {isError && (
+              // The body carries the failure whatever the rows are: React Query keeps `data`
+              // when a *refetch* fails, so the table can show stale rows and still be in an
+              // error state. Rendering the row here also keeps the card's shape instead of
+              // ending on the header row, and keeps retry where the rows are.
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {emptyText ?? (hasFilters ? t('no_results') : t('no_questions'))}
+                  <div role="alert" className="flex flex-wrap items-center justify-center gap-3">
+                    <span>{t('load_error')}</span>
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                      {t('retry')}
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!isError && questions.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  {emptyView.kind === 'no-results'
+                    ? t('no_results')
+                    : (emptyText ?? t('no_questions'))}
                 </TableCell>
               </TableRow>
             )}

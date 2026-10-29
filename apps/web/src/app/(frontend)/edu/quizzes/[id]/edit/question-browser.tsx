@@ -2,17 +2,14 @@
 
 import { useDraggable } from '@dnd-kit/core';
 import { Badge, Input } from '@studiq/ui';
-import { GripVertical, Plus } from 'lucide-react';
+import { GripVertical, Plus, SearchX } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { type ChangeEvent, useState } from 'react';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
-
-interface BrowseQuestion {
-  id: string;
-  content: string;
-  type: string;
-}
+import { availableQuestions, type BrowseQuestion } from '@/lib/question-browser';
+import { shouldRetryQuery } from '@/lib/query-retry';
 
 interface QuestionBrowserProps {
   existingIds: Set<string>;
@@ -89,15 +86,19 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
   if (debouncedSearch) params.set('search', debouncedSearch);
   const queryString = params.toString();
 
-  const { data: questions } = useApiQuery<BrowseQuestion[]>({
+  const {
+    data: questions,
+    isError: questionsError,
+    refetch: refetchQuestions,
+  } = useApiQuery<BrowseQuestion[]>({
     queryKey: ['questions', selectedBankId ?? 'all', debouncedSearch],
     url: `/api/v1/questions${queryString ? `?${queryString}` : ''}`,
+    retry: shouldRetryQuery,
   });
 
-  const allQuestions = (questions ?? []).filter((q) => !existingIds.has(q.id));
-  const filtered = search
-    ? allQuestions.filter((q) => q.content.toLowerCase().includes(search.toLowerCase()))
-    : allQuestions;
+  // The server is the only place that filters: a second pass over the returned rows with the
+  // raw input hid rows the API had matched (trimmed term, `*` as a wildcard).
+  const allQuestions = availableQuestions(questions, existingIds);
 
   return (
     <div className="space-y-4">
@@ -127,13 +128,25 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
       </div>
 
       <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-        {filtered.map((q) => (
-          <BrowserItem key={q.id} question={q} onAdd={(q) => onAdd([q])} draggable={draggable} />
-        ))}
-        {filtered.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            {t('no_questions_found')}
-          </p>
+        {questionsError ? (
+          // A failed request is not "no question matches": name the failure and offer a retry,
+          // like every other list on the app.
+          <ErrorState onRetry={() => refetchQuestions()} compact />
+        ) : (
+          <>
+            {allQuestions.map((q) => (
+              <BrowserItem
+                key={q.id}
+                question={q}
+                onAdd={(q) => onAdd([q])}
+                draggable={draggable}
+              />
+            ))}
+            {allQuestions.length === 0 && (
+              // The same shape as the error state and the other lists: icon, text, no dead end.
+              <EmptyState icon={SearchX} title={t('no_questions_found')} compact />
+            )}
+          </>
         )}
       </div>
     </div>
