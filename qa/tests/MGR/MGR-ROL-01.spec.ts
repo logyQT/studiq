@@ -1,15 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-} from '#test/helpers/tenant-seed';
-import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * MGR-ROL-01 — creating a custom role on an organization plan that lacks
@@ -20,11 +10,14 @@ import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * trigger, so no global plan row is touched — with a manager who is its `admin`.
  * The legacy manual seed (`manager@dev.local`, password `pass`) is never used.
  *
- * Tenant: `tenantKey('qa/cases/MGR-ROL-01.md', 'MGR-ROL-01 role builder gate',
- * 'qa-shared')::<run suffix>`. Every org/user/group id is `tenantId(key, entity)`,
- * so a run is reproducible by pinning `QA_RUN_SUFFIX`; by default the suffix is
- * fresh, which gives each independent run its own organization and users.
- * Nothing global is written (no settings, flags, plans or platform rows).
+ * Tenant: the `content` profile of this case
+ * (`qa/tests/profiles/MGR-ROL-01.json`), seeded before the suite starts by
+ * `bun scripts/qa-tenant.ts MGR-ROL-01 --fresh`: one organization on Launch with
+ * an `admin` manager, a teacher, a student and the default group `G1`, all
+ * derived from `tenantKey('qa/cases/MGR-ROL-01.md', ...)` + `tenantId(key, entity)`.
+ * A fresh run suffix gives each independent run its own organization and users;
+ * the retry-safe setup lives in the profile, so the spec only reads it. Nothing
+ * global is written (no settings, flags, plans or platform rows).
  *
  * Walk observation (shared app, pl): the manual case was written against a build
  * where `/manage/roles` offered „Nowa rola” on Launch and the attempt failed at
@@ -44,18 +37,11 @@ import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * the case asked to confirm.
  */
 
-const CASE_FILE = 'qa/cases/MGR-ROL-01.md';
-const TITLE = 'MGR-ROL-01 role builder gate';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+const CASE = 'MGR-ROL-01';
+const TENANT: QaTenant = loadTenant(CASE);
 
 const ROLE_NAME = 'Asystent';
 const ROLE_DESCRIPTION = 'Rola testowa MGR-ROL-01';
-
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 
 interface OrgRoleRow {
   id: string;
@@ -73,80 +59,6 @@ interface PlanInfo {
   features: string[];
 }
 
-/**
- * Resolve the shared Supabase the QA tenant lives in. `qa/env.json` wins over the
- * worker's `apps/web/.env`, which often points at that worker's own, idle stack.
- */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      fromEnvJson ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-/**
- * Seed the case's tenant: one organization (Launch by the org trigger) with an
- * admin manager, a teacher and a student. The teacher/student exist so the
- * organization is a normal tenant graph; only the manager is used.
- */
-async function seedCaseTenant(): Promise<QaTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const org = { id: tenantId(key, 'org'), name: `qa-mgr-rol-01-${RUN_SUFFIX}` };
-  const group = { id: tenantId(key, 'group:default'), name: 'G1', isDefault: true };
-  const manager = buildAccount(key, 'manager', 'manager', { name: 'QA manager' });
-  const teacher = buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-
-  const seeded = await seedTenantGraph(createSeedDb(resolveSupabase()), {
-    key,
-    org,
-    defaultGroup: group,
-    extraGroups: [],
-    owner: manager,
-    members: [teacher, student],
-    ownerOrgRole: 'admin',
-  });
-
-  const tenant: QaTenant = {
-    case: 'MGR-ROL-01',
-    key,
-    profile: 'content',
-    runSuffix: RUN_SUFFIX,
-    org,
-    group: { id: group.id, name: group.name },
-    users: {
-      manager: { id: seeded.owner.id, email: seeded.owner.email, password: seeded.owner.password },
-      teacher: {
-        id: seeded.members[0].id,
-        email: seeded.members[0].email,
-        password: seeded.members[0].password,
-      },
-      student: {
-        id: seeded.members[1].id,
-        email: seeded.members[1].email,
-        password: seeded.members[1].password,
-      },
-    },
-  };
-
-  return tenant;
-}
-
 /** `GET` an endpoint as the signed-in user and unwrap the response envelope. */
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
@@ -161,13 +73,6 @@ function roleRow(page: Page, name: string) {
 }
 
 test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role builder plan gate', () => {
-  let tenant: QaTenant;
-
-  test.beforeAll(async () => {
-    tenant = await seedCaseTenant();
-    console.log(`MGR-ROL-01 tenant key: ${tenant.key} (run ${RUN_SUFFIX})`);
-  });
-
   test('Launch plan withholds role writes and the API rejects a direct create', async ({
     page,
   }) => {
@@ -175,7 +80,7 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role builder plan gate', () =
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     // Manager of this org, Polish UI like the case.
-    await loginAs(page, tenant, 'manager', { locale: 'pl' });
+    await loginAs(page, TENANT, 'manager', { locale: 'pl' });
     await expect(page).toHaveURL(/\/manage$/);
 
     // The case's entry point: the „Role” section of the manager panel.
