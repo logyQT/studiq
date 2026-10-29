@@ -23,8 +23,8 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * `O1G1`). In the tenant model the educator owns one group question bank (question
  * „EDU-Q-06 Jaka jest stolica Francji?”, correct answer „Paryż”) and one deck shared
  * to `G1`; the seeded student is a `G1` member. Both are prepared through the product
- * API, because `seedTenantGraph` only builds the org/group/user graph. The seeder
- * enrolls group members as group `member` and only a group `teacher` may share
+ * API, because the pre-suite tenant seed only builds the org/group/user graph. The
+ * seeder enrolls group members as group `member` and only a group `teacher` may share
  * content to a group, so the spec promotes the educator through the manager's own
  * group-roster endpoint first (tenant-local, idempotent).
  *
