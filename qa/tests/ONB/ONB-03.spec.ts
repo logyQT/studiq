@@ -1,56 +1,69 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { request as apiRequest, expect, test, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  ensureAccount,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-} from '#test/helpers/tenant-seed';
+import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
 /**
  * ONB-03 — joining an existing organization with an invite code (teacher role).
  *
  * Prerequisite (reconciled with the tenant seeder): an educator with **no
  * organization** and a live `teacher` invitation minted by the org's manager —
- * the same graph MGR-INV produces. The legacy manual seed (`teacher1@dev.local`,
- * password `pass`) is never used.
+ * the same graph MGR-INV produces. The legacy manual teacher account (password
+ * `pass`) is never used.
  *
- * Tenant: `tenantKey('qa/cases/ONB-03.md', <title>, 'qa-shared')::<run suffix>`.
- * Every org/user/role id is `tenantId(key, entity)`, so a run is reproducible by
- * pinning `QA_RUN_SUFFIX`; by default the suffix is fresh, which gives each
- * independent run its own org and its own single-use invite.
+ * Tenant: `{ "profile": "content", members: [manager/admin], solo: invitee }` in
+ * `qa/tests/profiles/ONB-03.json`, seeded once before the suite by
+ * `bun scripts/qa-tenant.ts --all --run <suffix>`:
  *
- * The spec seeds its own graph through the shared helpers
- * (`__tests__/helpers/tenant-seed.ts`) instead of reading `qa/.tenants/ONB-03.json`
- * so the run stays self-contained: the invite must be unconsumed, and an invite
- * is single-use. Nothing global is written — no settings, flags, plans or
- * platform rows — and no other case's tenant is touched.
+ * - `members` declares the exact roster the invite needs: one `manager` who is
+ *   the org `admin` (and therefore may mint a `teacher` invitation);
+ * - `solo` declares the one account that belongs to **no** organization — the
+ *   educator who joins (and the one who walks the bad-code path);
+ * - the default group `G1` comes with the org, so `/setup/join` previews a real
+ *   organization.
+ *
+ * The spec never seeds accounts, orgs, roles or groups. What stays in the test is
+ * the case's own prerequisite — the invitation — because a code is single-use and
+ * cannot live in `qa/.tenants/ONB-03.json`: it is minted through the real product
+ * endpoint (`POST /api/v1/organization/invites`, the MGR-INV-01 request) by the
+ * seeded manager, so the inviter authority, the `teacher` role scope and the
+ * 7-day expiry are production-shaped. `afterEach` returns the tenant to its
+ * seeded state (the joiner is removed through `DELETE /api/v1/organization/members`),
+ * so the case's step 4 — and CI's retries/`--repeat-each` — start from an org-less
+ * educator again instead of a half-joined one.
+ *
+ * Nothing global is written — no settings, flags, plans or platform rows — and no
+ * other case's tenant is touched.
  */
 
-const CASE_FILE = 'qa/cases/ONB-03.md';
-const TITLE = 'ONB-03 join an existing organization with an invite code';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+const CASE = 'ONB-03';
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+const TENANT = loadTenant(CASE);
 
-interface CaseTenant {
-  key: string;
-  org: { id: string; name: string };
-  manager: SeedAccount;
-  /** Educator who accepts the invite. */
-  invitee: SeedAccount;
-  /** Second educator, used for the invalid-code path; never joins. */
-  outsider: SeedAccount;
-  invite: { token: string; id: string };
+function required<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(
+      `${CASE} fixture has no ${what}: run \`bun scripts/qa-tenant.ts ${CASE} --fresh\``,
+    );
+  }
+  return value;
+}
+
+const ORG = required(TENANT.org, 'organization');
+const MANAGER = required(TENANT.users.manager, 'manager (admin)');
+const INVITEE = required(TENANT.users.invitee, 'invitee (the org-less educator)');
+
+const INVITES_PATH = '/api/v1/organization/invites';
+const MEMBERS_PATH = '/api/v1/organization/members';
+
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
+interface Invite {
+  id: string;
+  token: string;
 }
 
 interface OrgMembership {
@@ -60,6 +73,65 @@ interface OrgMembership {
   isActive: boolean;
 }
 
+/** The shared stack this worker runs against (`qa/env.json` is authoritative). */
+function workerEnv(): { appUrl: string } {
+  try {
+    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
+    return JSON.parse(raw) as { appUrl: string };
+  } catch {
+    // qa/env.json is worker-local and gitignored; absence is fine.
+    return { appUrl: 'http://localhost:3010' };
+  }
+}
+
+function appUrl(): string {
+  return process.env.QA_APP_URL ?? workerEnv().appUrl;
+}
+
+/** A manager API context with the tenant org active, so invites are org-scoped. */
+async function managerApi(): Promise<APIRequestContext> {
+  const api = await apiRequest.newContext({ baseURL: appUrl() });
+  const login = await api.post('/api/v1/auth/login', {
+    data: { email: MANAGER.email, password: MANAGER.password },
+  });
+  expect(login.status(), `manager login (${MANAGER.email})`).toBe(200);
+  const switched = await api.post('/api/v1/me/orgs/switch', { data: { orgId: ORG.id } });
+  expect([200, 204], 'activate the tenant org').toContain(switched.status());
+  return api;
+}
+
+/** The org's `teacher` role id — the role the case's invite grants. */
+async function teacherRoleId(api: APIRequestContext): Promise<string> {
+  const response = await api.get('/api/v1/organization/roles');
+  expect(response.status(), 'GET /api/v1/organization/roles').toBe(200);
+  const body = (await response.json()) as ApiEnvelope<Array<{ id: string; name: string }>>;
+  const role = body.data.find((candidate) => candidate.name === 'teacher');
+  if (!role) throw new Error(`tenant ${CASE}: the org has no "teacher" role`);
+  return role.id;
+}
+
+/** Mint one live `teacher` invitation through the real MGR-INV-01 endpoint. */
+async function mintInvite(
+  api: APIRequestContext,
+  email: string,
+  targetOrgRoleId: string,
+): Promise<Invite> {
+  const created = await api.post(INVITES_PATH, {
+    data: { email, targetOrgRoleId, organizationId: ORG.id, locale: 'pl' },
+  });
+  expect(created.status(), `POST ${INVITES_PATH}`).toBe(201);
+  const body = (await created.json()) as ApiEnvelope<{
+    invitationId: string;
+    inviteCode: string;
+  }>;
+  expect(body.success).toBe(true);
+  expect(body.data.inviteCode).toMatch(/^[0-9a-f]{32}$/);
+  return { token: body.data.inviteCode, id: body.data.invitationId };
+}
+
+/** Fresh per suite repetition: an invitation is single-use and time-limited. */
+let invite: Invite;
+
 async function currentOrgs(page: Page): Promise<OrgMembership[]> {
   const response = await page.request.get('/api/v1/me/orgs');
   expect(response.status(), 'GET /api/v1/me/orgs').toBe(200);
@@ -68,132 +140,41 @@ async function currentOrgs(page: Page): Promise<OrgMembership[]> {
   return body.data;
 }
 
-/** Real login through the API, so the session cookie lives in the page context. */
-async function login(page: Page, account: SeedAccount): Promise<void> {
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: account.email, password: account.password },
-  });
-  expect(response.status(), `login ${account.email}`).toBe(200);
-}
-
-/**
- * Resolve the shared Supabase admin credentials. `QA_SUPABASE_*` wins; otherwise
- * the routine `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (CI), then
- * the worker's `qa/env.json`, then the shared local defaults.
- */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
+test.beforeAll(async () => {
+  const api = await managerApi();
   try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-/**
- * Seed the case's org + manager, two org-less educators, and one live `teacher`
- * invitation created through the real MGR-INV endpoint (so the inviter, the
- * expiry and the `can_assign_org_role` authority match production).
- */
-async function seedCaseTenant(baseURL: string): Promise<CaseTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const org = { id: tenantId(key, 'org'), name: `qa-onb03-${RUN_SUFFIX}` };
-  const groupId = tenantId(key, 'group:default');
-  const manager = buildAccount(key, 'manager', 'manager', { name: 'QA manager' });
-  const invitee = buildAccount(key, 'teacher', 'educator', { name: 'QA invitee teacher' });
-  const outsider = buildAccount(key, 'outsider', 'educator', { name: 'QA other teacher' });
-
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { id: groupId, name: 'G1', isDefault: true },
-    extraGroups: [],
-    owner: manager,
-    // Both educators deliberately start with no org: the case's prerequisite.
-    members: [],
-    ownerOrgRole: 'admin',
-  });
-  const inviteeAccount = await ensureAccount(db, invitee);
-  const outsiderAccount = await ensureAccount(db, outsider);
-
-  const teacherRoleId = seeded.roleIds.teacher;
-  if (!teacherRoleId) throw new Error(`seed ${key}: teacher role is missing`);
-
-  const api = await apiRequest.newContext({ baseURL });
-  try {
-    const managerLogin = await api.post('/api/v1/auth/login', {
-      data: { email: manager.email, password: manager.password },
-    });
-    expect(managerLogin.status(), `manager login (${manager.email})`).toBe(200);
-
-    const created = await api.post('/api/v1/organization/invites', {
-      data: {
-        email: inviteeAccount.email,
-        targetOrgRoleId: teacherRoleId,
-        organizationId: org.id,
-        locale: 'pl',
-      },
-    });
-    expect(created.status(), 'POST /api/v1/organization/invites').toBe(201);
-    const body = (await created.json()) as {
-      success: boolean;
-      data: { invitationId: string; inviteCode: string };
-    };
-    expect(body.success).toBe(true);
-    expect(body.data.inviteCode).toMatch(/^[0-9a-f]{32}$/);
-
-    return {
-      key,
-      org,
-      manager,
-      invitee: inviteeAccount,
-      outsider: outsiderAccount,
-      invite: { token: body.data.inviteCode, id: body.data.invitationId },
-    };
+    invite = await mintInvite(api, INVITEE.email, await teacherRoleId(api));
   } finally {
     await api.dispose();
   }
-}
+});
+
+test.afterEach(async () => {
+  // The case walks one educator: steps 1-3 join with the valid code, step 4 retries
+  // with the invalid one, so the account has to be org-less again for "joins
+  // nothing" to be provable. CI seeds once and retries/repeats against the same
+  // tenant, so restore the seeded state after every test: the joiner is removed
+  // through the product's own endpoint (which also drops its group membership and
+  // seat). A run that failed before joining is fine — 404 means nothing to restore.
+  const api = await managerApi();
+  try {
+    const removed = await api.delete(`${MEMBERS_PATH}?userId=${INVITEE.id}`);
+    expect([200, 404], 'restore the org-less educator').toContain(removed.status());
+  } finally {
+    await api.dispose();
+  }
+});
 
 test.describe('@case:ONB-03 @area:ONB @prio:P2 join an organization by invite code', () => {
-  let tenant: CaseTenant;
-
-  // The graph is created once per spec run; each test signs in as its own
-  // seeded user, so the two paths share no mutable state.
-  test.beforeAll(async () => {
-    const baseURL = test.info().project.use.baseURL ?? 'http://localhost:3010';
-    tenant = await seedCaseTenant(baseURL);
-    console.log(`ONB-03 tenant key: ${tenant.key} (org ${tenant.org.id})`);
-  });
-
-  test.beforeEach(async ({ context, baseURL }) => {
-    // A Polish teacher: the case quotes Polish copy, so pin the locale instead
-    // of relying on the default of a fresh profile.
-    const { hostname } = new URL(baseURL!);
-    await context.addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' }]);
-  });
-
   test('a valid code previews the organization and joins it as teacher', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
-    await login(page, tenant.invitee);
+    await loginAs(page, TENANT, 'invitee', {
+      locale: 'pl',
+      activeOrgId: null,
+      waitFor: /\/setup$/,
+    });
     // Prerequisite: the teacher has no organization, so /setup is the chooser.
     expect(await currentOrgs(page)).toEqual([]);
 
@@ -213,13 +194,13 @@ test.describe('@case:ONB-03 @area:ONB @prio:P2 join an organization by invite co
     await expect(page.getByText('Kod zaproszenia', { exact: true })).toBeVisible();
 
     // 2. Paste the invite code from MGR-INV.
-    await page.locator('#invite-code').fill(tenant.invite.token);
+    await page.locator('#invite-code').fill(invite.token);
 
     // 3. Preview: "Zostałeś zaproszony do …", org name, role, join button.
     const preview = page.locator('main [data-slot="card"]');
     await expect(preview).toHaveCount(1);
     await expect(page.getByText(/Zostałeś zaproszony do/i)).toBeVisible();
-    await expect(preview).toContainText(tenant.org.name);
+    await expect(preview).toContainText(ORG.name);
     await expect(preview.getByText('teacher', { exact: true })).toBeVisible();
     const joinButton = page.getByRole('button', { name: 'Dołącz do organizacji', exact: true });
     await expect(joinButton).toBeVisible();
@@ -233,15 +214,15 @@ test.describe('@case:ONB-03 @area:ONB @prio:P2 join an organization by invite co
     // Accepted: the teacher dashboard, with the org in the switcher.
     await expect(page).toHaveURL(/\/edu$/);
     const switcher = page.locator('[data-slot="sidebar-header"] [data-sidebar="menu-button"]');
-    await expect(switcher).toContainText(tenant.org.name);
+    await expect(switcher).toContainText(ORG.name);
     await expect(switcher).toContainText('Teacher');
 
     // The accepted invite granted exactly this org with the teacher role.
     const orgs = await currentOrgs(page);
     expect(orgs).toHaveLength(1);
     expect(orgs[0]).toMatchObject({
-      id: tenant.org.id,
-      name: tenant.org.name,
+      id: ORG.id,
+      name: ORG.name,
       orgRoleName: 'teacher',
       isActive: true,
     });
@@ -258,7 +239,11 @@ test.describe('@case:ONB-03 @area:ONB @prio:P2 join an organization by invite co
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
-    await login(page, tenant.outsider);
+    await loginAs(page, TENANT, 'invitee', {
+      locale: 'pl',
+      activeOrgId: null,
+      waitFor: /\/setup$/,
+    });
     expect(await currentOrgs(page)).toEqual([]);
 
     // 4. Repeat with the invalid code "abc".
