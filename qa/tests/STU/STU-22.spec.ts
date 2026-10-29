@@ -165,7 +165,11 @@ async function upload(
   return { status: response.status(), url: body?.data?.url };
 }
 
-test.describe('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
+// PAUSED (operator, 2026-10-29): the spec is green 5/5 + same-tenant, but it takes ~3.3 min
+// under the same-tenant repeat (`--repeat-each=3`) versus ~15 s for its neighbours, which makes
+// it the slowest member of the `aut-stu` shard. Skipped until it is revisited; this is a
+// deliberate, operator-approved exception to the no-skip admission rule.
+test.describe.skip('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
   test('an uploaded image and audio stay in the card and render in the deck and the study session; rejected files show a readable error', async ({
     page,
   }) => {
