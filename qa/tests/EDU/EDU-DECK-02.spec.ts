@@ -1,16 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
-import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  ensureAccount,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-} from '#test/helpers/tenant-seed';
+import type { Page } from '@playwright/test';
+import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * EDU-DECK-02 — Utworzenie talii dla grupy (/edu/flashcards → /app/flashcards).
@@ -20,24 +9,28 @@ import {
  * default group. The case's legacy accounts (`teacher1@dev.local`, `student1..3`,
  * password `pass`) are never used.
  *
- * Tenant: `tenantKey('qa/cases/EDU-DECK-02.md', 'EDU-DECK-02#<run>', 'qa-shared')`,
- * fresh run suffix per independent run. Every id is `tenantId(key, entity)`:
- *   - org A: the group-deck org; `teacher` (org role `teacher`, group role
- *     `teacher`) owns it, `student` is a member of org A and of group `G1`;
- *   - org B: `student2` — a member of a different organization (its own group);
- *   - `student3` — a standalone student account that belongs to no organization.
+ * Tenant: `qa/tests/profiles/EDU-DECK-02.json` — the `two-org` shape plus one
+ * org-less account, seeded once before Playwright starts
+ * (`bun scripts/qa-tenant.ts EDU-DECK-02 --fresh`) and read through
+ * `loadTenant(CASE)`; the spec never seeds at runtime:
+ *   - org A (`org`) — `teacherA` (org role `teacher`, group role `teacher`) shares
+ *     the deck; `studentA` is a member of org A and of the default group `G1`;
+ *   - org B (`orgB`) — `studentB`, a member of a different organization (its own
+ *     group);
+ *   - `standalone` (`solo`) — a student account that belongs to no organization.
  *
  * `group.manage` comes from the org role that the org trigger seeds from the
  * default `launch` plan, and `canShareContentToGroups` requires the caller to be
- * a *teacher* of the group — hence the teacher is the group owner rather than a
- * patched row. Nothing global is written: the two organizations, the group and
- * the deck all live in this tenant.
+ * a *teacher* of the group — the seeder enrols `teacherA` as the default group's
+ * teacher, exactly as the org's own group screen would. Nothing global is written:
+ * the two organizations, the group and the deck all live in this tenant.
  *
  * Acceptance points (walked on the shared app before writing the test):
  * 1. „Nowa talia” with „Widoczność: Grupy” needs at least one group: the submit is
- *    disabled and „Wybierz co najmniej jedną grupę” is shown until G1 is picked.
+ *    disabled and „Wybierz co najmniej jedną grupę” is shown until the tenant group
+ *    is picked.
  * 2. „Utwórz” answers the toast „Talia utworzona”; the teacher's card carries the
- *    group badge (G1) and the „Zarządzaj” affordance; the API stores the deck with
+ *    group badge and the „Zarządzaj” affordance; the API stores the deck with
  *    `visibility: 'group'` and exactly the selected `groupIds`.
  * 3. The group's student sees the same deck in /app/flashcards with the group
  *    badge and a read-only affordance — the case says „Podgląd”, the product
@@ -49,13 +42,38 @@ import {
  */
 
 const CASE = 'EDU-DECK-02';
-const CASE_FILE = 'qa/cases/EDU-DECK-02.md';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+
+interface TenantUser {
+  id: string;
+  email: string;
+  password: string;
+}
+
+interface TenantOrg {
+  id: string;
+  name: string;
+  /** Default group first, then the org's second group. */
+  groups: string[];
+}
+
+/** The `two-org` tenant the profile declares, plus its `solo` student. */
+interface TwoOrgTenant extends QaTenant {
+  orgA: TenantOrg;
+  orgB: TenantOrg;
+  users: NonNullable<QaTenant['users']> & {
+    teacherA: TenantUser;
+    studentA: TenantUser;
+    studentB: TenantUser;
+    standalone: TenantUser;
+  };
+}
+
+const tenant = loadTenant(CASE) as TwoOrgTenant;
 
 const DECK_NAME = 'Matematyka – klasa 1';
-const GROUP_NAME = 'G1';
-const OTHER_GROUP_NAME = 'G2';
+
+/** The default group of org A — the group the deck is shared with. */
+const GROUP_NAME = tenant.group!.name;
 
 /** Polish copy the case quotes, as rendered by the current product. */
 const COPY = {
@@ -72,144 +90,6 @@ const COPY = {
   deleteItem: 'Usuń',
   noDecks: '0 talii',
 };
-
-/** Supabase local defaults (the service-role JWT is the `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-
-interface CaseTenant {
-  key: string;
-  /** Org A — the group deck's organization, with its teacher and student. */
-  org: QaTenant;
-  /** The same org, addressed as the student who should see the deck. */
-  memberStudent: QaTenant;
-  /** Org B — a different organization with its own student. */
-  otherOrg: QaTenant;
-  /** A student account that belongs to no organization. */
-  standalone: QaTenant;
-}
-
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-function account(seed: { id: string; email: string; password: string }) {
-  return { id: seed.id, email: seed.email, password: seed.password };
-}
-
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = tenantKey(CASE_FILE, `${CASE}#${RUN_SUFFIX}`, PROJECT);
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  // Org A: the teacher is the group's teacher, so it may share content with it.
-  const org = { id: tenantId(key, 'org'), name: `qa-edu-deck-02-${RUN_SUFFIX}` };
-  const group = { id: tenantId(key, 'group:default'), name: GROUP_NAME };
-  const teacher = buildAccount(key, 'teacher', 'educator', {
-    name: 'QA teacher',
-    orgRole: 'teacher',
-  });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-  const seededOrg = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { ...group, isDefault: true },
-    extraGroups: [],
-    owner: teacher,
-    members: [student],
-    ownerOrgRole: 'teacher',
-  });
-
-  // Org B: an unrelated organization, with its own default group and member.
-  const otherKey = `${key}:other`;
-  const otherOrg = { id: tenantId(otherKey, 'org'), name: `qa-edu-deck-02-other-${RUN_SUFFIX}` };
-  const otherManager = buildAccount(otherKey, 'manager', 'manager', { name: 'Other manager' });
-  const otherStudent = buildAccount(otherKey, 'student', 'student', { name: 'Other student' });
-  const seededOther = await seedTenantGraph(db, {
-    key: otherKey,
-    org: otherOrg,
-    defaultGroup: {
-      id: tenantId(otherKey, 'group:default'),
-      name: OTHER_GROUP_NAME,
-      isDefault: true,
-    },
-    extraGroups: [],
-    owner: otherManager,
-    members: [otherStudent],
-    ownerOrgRole: 'admin',
-  });
-
-  // A standalone student: the auth account exists, but no organization membership.
-  const standalone = await ensureAccount(
-    db,
-    buildAccount(key, 'standalone', 'student', { name: 'Standalone student' }),
-  );
-
-  const base = {
-    case: CASE,
-    key,
-    profile: 'content' as const,
-    runSuffix: RUN_SUFFIX,
-  };
-
-  return {
-    key,
-    org: {
-      ...base,
-      org,
-      group,
-      users: {
-        teacher: account(seededOrg.owner),
-        student: account(seededOrg.members[0]),
-      },
-    },
-    memberStudent: {
-      ...base,
-      org,
-      group,
-      users: { student: account(seededOrg.members[0]) },
-    },
-    otherOrg: {
-      ...base,
-      key: otherKey,
-      org: otherOrg,
-      group: { id: seededOther.defaultGroupId!, name: OTHER_GROUP_NAME },
-      users: { student: account(seededOther.members[0]) },
-    },
-    standalone: {
-      ...base,
-      org: null,
-      group: null,
-      users: { student: account(standalone) },
-    },
-  };
-}
-
-let tenant: CaseTenant;
-
-test.beforeAll(async () => {
-  tenant = await seedCaseTenant();
-  console.log(`EDU-DECK-02 tenant key: ${tenant.key} (org ${tenant.org.org?.id})`);
-});
 
 /** A deck card in the grid, addressed by its own heading so no sibling matches. */
 function deckCard(page: Page, name: string) {
@@ -237,7 +117,7 @@ test.describe('@case:EDU-DECK-02 @area:EDU @prio:P1 group deck', () => {
     const dialog = page.locator('[data-slot="dialog-content"]');
 
     // ── Teacher creates the group deck through /edu/flashcards ────────────
-    await loginAs(page, tenant.org, 'teacher', { locale: 'pl' });
+    await loginAs(page, tenant, 'teacherA', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
     await page.goto('/edu/flashcards');
 
@@ -287,13 +167,13 @@ test.describe('@case:EDU-DECK-02 @area:EDU @prio:P1 group deck', () => {
     const created = list.data.items.find((deck) => deck.name === DECK_NAME);
     expect(created, 'the new deck is listed for its creator').toBeTruthy();
     expect(created!.visibility, 'deck visibility').toBe('group');
-    expect(created!.groupIds, 'deck group share').toEqual([tenant.org.group!.id]);
+    expect(created!.groupIds, 'deck group share').toEqual([tenant.group!.id]);
 
     // ── The group's student sees the deck, read-only ──────────────────────
     const studentContext = await browser.newContext({ baseURL });
     try {
       const studentPage = await studentContext.newPage();
-      await loginAs(studentPage, tenant.memberStudent, 'student', { locale: 'pl' });
+      await loginAs(studentPage, tenant, 'studentA', { locale: 'pl' });
       expect(new URL(studentPage.url()).pathname, 'student lands on /app').toBe('/app');
       await studentPage.goto('/app/flashcards');
 
@@ -312,16 +192,23 @@ test.describe('@case:EDU-DECK-02 @area:EDU @prio:P1 group deck', () => {
     }
 
     // ── Neither a student of another org nor a student without an org ─────
-    const invisible: { label: string; tenant: QaTenant }[] = [
-      { label: 'another organization', tenant: tenant.otherOrg },
-      { label: 'no organization', tenant: tenant.standalone },
+    const invisible: {
+      label: string;
+      role: 'studentB' | 'standalone';
+      activeOrgId: string | null;
+    }[] = [
+      { label: 'another organization', role: 'studentB', activeOrgId: tenant.orgB.id },
+      { label: 'no organization', role: 'standalone', activeOrgId: null },
     ];
 
     for (const candidate of invisible) {
       const context = await browser.newContext({ baseURL });
       try {
         const outsider = await context.newPage();
-        await loginAs(outsider, candidate.tenant, 'student', { locale: 'pl' });
+        await loginAs(outsider, tenant, candidate.role, {
+          locale: 'pl',
+          activeOrgId: candidate.activeOrgId,
+        });
         await outsider.goto('/app/flashcards');
         // The list has resolved once its (empty) count is rendered.
         await expect(outsider.getByText(COPY.noDecks, { exact: true })).toBeVisible();
