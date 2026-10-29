@@ -3,6 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# gh auth lives in /home/node; a root-started bot cannot read the PR or open the
+# fix PR (`/fixpr`). Drop to the repo user on start/restart, always.
+if [ "$(id -u)" -eq 0 ] && id -u node >/dev/null 2>&1; then
+  exec runuser -u node -- env HOME=/home/node USER=node bash "$0" "$@"
+fi
+
 PID_FILE=.pid
 LOG_FILE=discord.log
 COMMAND=${1:-status}
