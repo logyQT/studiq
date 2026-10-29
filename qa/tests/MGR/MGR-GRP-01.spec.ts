@@ -1,15 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-} from '#test/helpers/tenant-seed';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * MGR-GRP-01 — listing, creating, editing and deleting organization groups
@@ -19,14 +9,22 @@ import {
  * already has two groups, one of them populated. The legacy manual seed
  * (`manager@dev.local`, password `pass`) is never used.
  *
- * Tenant: `tenantKey('qa/cases/MGR-GRP-01.md', 'MGR-GRP-01 groups CRUD', 'qa-shared')::<run suffix>`.
- * Every org/user/group id is `tenantId(key, entity)`, so a run is reproducible by
- * pinning `QA_RUN_SUFFIX`; by default the suffix is fresh, which gives each
- * independent run its own organization and groups.
+ * Tenant: the case's profile (`qa/tests/profiles/MGR-GRP-01.json`), seeded once
+ * before Playwright starts by `bun scripts/qa-tenant.ts --all --run <suffix>`:
+ * the `content` profile with an explicit roster and two declarative groups —
  *
- * The spec seeds its own graph through the shared helpers
- * (`__tests__/helpers/tenant-seed.ts`): org + admin manager + teacher + student in
- * the default group `G1`, plus an empty second group `G2` — the case's „2 grupy”.
+ * - the manager as the org `admin` (the only role the case uses) and a teacher +
+ *   student as org members;
+ * - `G1`, the default group, where the manager is the teacher and the teacher +
+ *   student are members (renders 3 / 1);
+ * - `G2`, seeded empty (renders 0 / 0) — the case's „2 grupy”.
+ *
+ * All ids derive from `tenantKey('qa/cases/MGR-GRP-01.md', …)` + the batch run
+ * suffix, so an independent run gets a brand-new organization and groups. The
+ * spec never seeds: it reads the tenant with `loadTenant('MGR-GRP-01')`, and
+ * „Grupa C” is created through the product's own UI in the test — content, not
+ * tenant shape.
+ *
  * Nothing global is written (no settings, flags, plans or platform rows) and no
  * other case's tenant is touched.
  *
@@ -39,18 +37,14 @@ import {
  *    zaktualizowana” and renames the row in place (description preserved).
  * 4. „Usuń” opens „Usunąć grupę?” with the warning that every member is removed
  *    from it; cancelling keeps the group, confirming shows „Grupa usunięta” and
- *    the row (and the row in the API) is gone while the two seeded groups stay.
+ *    the row (and the row in the API) is gone while the two pre-existing groups stay.
  */
 
-const CASE_FILE = 'qa/cases/MGR-GRP-01.md';
-const TITLE = 'MGR-GRP-01 groups CRUD';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+const CASE = 'MGR-GRP-01';
+const TENANT: QaTenant = loadTenant(CASE);
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+/** The second, empty group declared in the case profile (`groups: ["G1", "G2"]`). */
+const SECOND_GROUP = 'G2';
 
 interface GroupRow {
   id: string;
@@ -59,98 +53,6 @@ interface GroupRow {
   memberCount: number;
   teacherCount: number;
   canManage: boolean;
-}
-
-interface CaseTenant {
-  key: string;
-  org: { id: string; name: string };
-  manager: SeedAccount;
-  /** Group every org gets; the manager teaches it and two members belong to it. */
-  defaultGroup: { id: string; name: string };
-  /** Second, empty group — the case's „(2 grupy)” prerequisite. */
-  secondGroup: { id: string; name: string };
-}
-
-/**
- * Resolve the shared Supabase admin credentials. `QA_SUPABASE_*` wins; otherwise
- * the routine `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`, then the
- * worker's `qa/env.json`, then the shared local defaults.
- */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-/** Seed the case's organization: admin manager + teacher + student, two groups. */
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const org = { id: tenantId(key, 'org'), name: `qa-mgr-grp01-${RUN_SUFFIX}` };
-  const manager = buildAccount(key, 'manager', 'manager', { name: 'QA manager' });
-  const teacher = buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-  const defaultGroup = { id: tenantId(key, 'group:default'), name: 'G1', isDefault: true };
-  const secondGroup = { id: tenantId(key, 'group:second'), name: 'G2', isDefault: false };
-
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup,
-    extraGroups: [secondGroup],
-    owner: manager,
-    members: [teacher, student],
-    ownerOrgRole: 'admin',
-  });
-
-  return {
-    key,
-    org,
-    manager: seeded.owner,
-    defaultGroup: { id: defaultGroup.id, name: defaultGroup.name },
-    secondGroup: { id: secondGroup.id, name: secondGroup.name },
-  };
-}
-
-/**
- * Polish copy is asserted because the case quotes the Polish UI; the login helper
- * pins `NEXT_LOCALE=pl`, so a locale cookie left by an earlier case cannot change
- * the strings under test.
- */
-async function pinPolish(page: Page, baseURL: string): Promise<void> {
-  const { hostname } = new URL(baseURL);
-  await page
-    .context()
-    .addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' }]);
-}
-
-/** Real login through the API, so the session cookie lives in the page context. */
-async function loginAsManager(page: Page, tenant: CaseTenant, baseURL: string): Promise<void> {
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: tenant.manager.email, password: tenant.manager.password },
-  });
-  expect(response.status(), `login ${tenant.manager.email}`).toBe(200);
-  await pinPolish(page, baseURL);
-  await page.goto('/login');
-  await expect(page).toHaveURL(/\/manage$/);
 }
 
 /** The rows the groups page renders, read through the same API the page calls. */
@@ -168,32 +70,40 @@ function groupRow(page: Page, name: string) {
 }
 
 test.describe('@case:MGR-GRP-01 @area:MGR @prio:P1 organization groups CRUD', () => {
-  let tenant: CaseTenant;
-
-  test.beforeAll(async () => {
-    tenant = await seedCaseTenant();
-    console.log(`MGR-GRP-01 tenant key: ${tenant.key} (org ${tenant.org.id})`);
-  });
-
-  test('lists, creates, edits and deletes a group', async ({ page, baseURL }) => {
+  test('lists, creates, edits and deletes a group', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    const origin = baseURL ?? 'http://localhost:3010';
 
-    await loginAsManager(page, tenant, origin);
+    const org = TENANT.org;
+    const defaultGroup = TENANT.group;
+    if (!org || !defaultGroup) {
+      throw new Error(`tenant ${CASE} needs the content profile (org + default group)`);
+    }
 
-    // The dashboard settles the active organization first; the case's own entry
-    // point is the „Grupy” sidebar item.
+    // Polish copy is asserted because the case quotes the Polish UI; `loginAs`
+    // pins `NEXT_LOCALE=pl`, so a locale cookie left by an earlier case cannot
+    // change the strings under test. It also seeds the tenant's `active_org_id`,
+    // the cookie the app writes when an organization is created or switched.
+    await loginAs(page, TENANT, 'manager', { locale: 'pl', waitFor: /\/manage$/ });
+
+    // The second group is declared in the profile; resolve its id once so the
+    // final assertion can prove the delete touched only the group created in
+    // the walk.
+    const secondGroup = (await listGroups(page)).find((group) => group.name === SECOND_GROUP);
+    if (!secondGroup) throw new Error(`tenant ${CASE} has no seeded ${SECOND_GROUP} group`);
+
+    // The case's own entry point is the „Grupy” sidebar item; the dashboard
+    // settles the active organization first.
     await expect(
       page.locator('[data-slot="sidebar-header"] [data-sidebar="menu-button"]'),
-    ).toContainText(tenant.org.name);
+    ).toContainText(org.name);
     await page.locator('a[href="/manage/groups"]').first().click();
     await expect(page).toHaveURL(/\/manage\/groups$/);
     await expect(page.getByRole('heading', { name: 'Grupy', exact: true })).toBeVisible();
 
     // 1. The table: Nazwa / Członkowie / Nauczyciele / Akcje, and the case's two
     // pre-existing groups with their real counts (G1: 2 members + the manager as
-    // teacher; G2: empty).
+    // teacher; the second group: empty).
     for (const column of ['Nazwa', 'Członkowie', 'Nauczyciele', 'Akcje']) {
       await expect(
         page.getByRole('columnheader', { name: column, exact: true }),
@@ -201,12 +111,12 @@ test.describe('@case:MGR-GRP-01 @area:MGR @prio:P1 organization groups CRUD', ()
       ).toBeVisible();
     }
 
-    const existing = groupRow(page, tenant.defaultGroup.name);
+    const existing = groupRow(page, defaultGroup.name);
     await expect(existing).toBeVisible();
     await expect(existing.getByRole('cell').nth(1)).toHaveText('3');
     await expect(existing.getByRole('cell').nth(2)).toHaveText('1');
 
-    const emptyExisting = groupRow(page, tenant.secondGroup.name);
+    const emptyExisting = groupRow(page, secondGroup.name);
     await expect(emptyExisting).toBeVisible();
     await expect(emptyExisting.getByRole('cell').nth(1)).toHaveText('0');
     await expect(emptyExisting.getByRole('cell').nth(2)).toHaveText('0');
@@ -304,9 +214,9 @@ test.describe('@case:MGR-GRP-01 @area:MGR @prio:P1 organization groups CRUD', ()
     ).toEqual([]);
     expect(
       afterDelete.map((group) => group.id).sort(),
-      'the two seeded groups are untouched',
-    ).toEqual([tenant.defaultGroup.id, tenant.secondGroup.id].sort());
-    expect(afterDelete.find((group) => group.id === tenant.defaultGroup.id)?.memberCount).toBe(3);
+      'the two pre-existing groups are untouched',
+    ).toEqual([defaultGroup.id, secondGroup.id].sort());
+    expect(afterDelete.find((group) => group.id === defaultGroup.id)?.memberCount).toBe(3);
 
     expect(pageErrors, 'uncaught page errors during groups CRUD').toEqual([]);
   });
