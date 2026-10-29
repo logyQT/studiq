@@ -89,10 +89,10 @@ one-off env, or the old slot stack. Do not let 16 workers mutate the same single
      Issues are triaged in a separate batch, not by the worker.
 6. Write the Playwright spec against the behavior you confirmed in the walk, using the
    tenant fixture.
-7. Run it **three independent times**, each with a fresh tenant/run suffix:
+7. Run it **five independent times**, each with a fresh tenant/run suffix:
    - `bunx playwright test qa/tests/<AREA>/<CASEID>.spec.ts --workers=1 --repeat-each=1`
    - no `test.skip`, `test.fixme`, `test.soft`, or expected-failure wrappers
-8. Only if **3/3 runs are green**:
+8. Only if **5/5 runs are green**:
    - branch from `qa-suite` as `qa/<CASEID>`
    - commit the spec + the reconciled case + any fixture changes
    - open a PR **into `qa-suite`**, not `main`
@@ -105,7 +105,7 @@ The manager starts fresh sessions, one per case, on the eight workers. It does *
 start/stop the shared app or Supabase, and it does not provision per-worker stacks.
 
 **Intended event path — not built yet.** When a worker opens a PR into `qa-suite`, a watcher
-fires an event at the manager; the manager re-runs the spec three times from a clean tenant
+fires an event at the manager; the manager re-runs the spec five times from a clean tenant
 and merges only if that re-run is green. Today dispatch is manual (`!suite <CASEID>`), and the
 `qa/tools/qa-manager.py` referenced below does not exist on this branch — until both land,
 treat dispatch and merging as manual, operator-driven steps.
@@ -118,7 +118,7 @@ It assigns:
 
 It admits a PR only when all are true:
 
-1. worker reports **3/3 green independent runs**;
+1. worker reports **5/5 green independent runs**;
 2. no skip/fixme/soft/expected-failure;
 3. no legacy `@dev.local`/`pass` accounts;
 4. test uses a per-case tenant and deterministic IDs;
@@ -165,7 +165,7 @@ the integration branch until the suite is stable. WebKit remains blocked.
 ## Next step
 
 Pick one small suite (PUB is the safest) and run 2–3 cases through this loop manually.
-Only add specs after 3/3 green runs. Then wire the QA Playwright project and the CI matrix.
+Only add specs after 5/5 green runs. Then wire the QA Playwright project and the CI matrix.
 
 ## Branch protection and CodeRabbit
 

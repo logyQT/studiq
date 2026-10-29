@@ -74,7 +74,7 @@ another worker's tenant or the shared singleton rows.
 
 A worker's PR goes into `qa-suite` only when **all** are true:
 
-1. The test passes **3/3 independent runs**, each with a fresh tenant/run suffix.
+1. The test passes **5/5 independent runs**, each with a fresh tenant/run suffix.
 2. No `test.skip`, `test.fixme`, `test.soft`, expected-failure wrapper, or manual step.
 3. No legacy `@dev.local`/`pass` accounts; only the case's seeded tenant users.
 4. IDs/orgs/groups are derived from `tenantKey`/`tenantId`; no hard-coded shared UUIDs.
@@ -121,7 +121,7 @@ a suite test; it stays a repro/issue until the fix lands and the test is green.
 
 ## Reporting
 
-Per case: case ID, worker, 3/3 evidence, spec path, PR, merge status, or rejection reason.
+Per case: case ID, worker, 5/5 evidence, spec path, PR, merge status, or rejection reason.
 No free-text “looks good” admissions.
 
 ## Start condition
