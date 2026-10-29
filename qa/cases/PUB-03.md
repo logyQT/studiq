@@ -11,6 +11,29 @@
 
 Brak sesji.
 
+## Seed (QA-suite tenant)
+
+Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `student1@dev.local`, …).
+Kafelek cennika jest publiczny, więc przypadek nie potrzebuje zalogowanego użytkownika — jego
+izolowany tenant istnieje tylko jako nazwa przypadku i dowód izolacji:
+
+```bash
+bun scripts/qa-tenant.ts PUB-03 --reset   # usuń poprzedni tenant
+bun scripts/qa-tenant.ts PUB-03           # seed od zera (deterministyczny)
+```
+
+- Klucz tenanta: `qa/cases/PUB-03.md::PUB-03::qa-shared` (`tenantKey` + `tenantId`, ten sam
+  schemat co fixture'y e2e).
+- Organizacja `qa-pub-03-shared` + manager / teacher / student (`Seed4Test!`, hasła z
+  `tenant-seed.ts`), grupa `G1`. Reset i seed przed każdym niezależnym przebiegiem.
+- Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`): przed uruchomieniem
+  skryptu eksportuje `NEXT_PUBLIC_SUPABASE_URL` i `SUPABASE_SERVICE_ROLE_KEY` ze shared worktree,
+  bo lokalny `apps/web/.env` worktree'a wskazuje na jego własny Supabase.
+- Przeglądarka startuje z pustym stanem sesji (`storageState: { cookies: [], origins: [] }`)
+  i ustawionym `NEXT_LOCALE=pl`; żaden użytkownik tenanta nie jest zalogowany.
+- Spec nie zapisuje żadnych współdzielonych rekordów: katalog planów czyta tylko przez
+  publiczne `GET /api/v1/subscription-plans?for=<typ>` i porównuje z nim wyrenderowane karty.
+
 ## Steps
 
 1. Otwórz /pricing.

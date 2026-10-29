@@ -1,0 +1,4 @@
+{
+  "profile": "two-org",
+  "solo": { "key": "standalone", "accountType": "student", "name": "Standalone student" }
+}
