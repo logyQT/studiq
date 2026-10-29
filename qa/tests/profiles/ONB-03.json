@@ -1,0 +1,5 @@
+{
+  "profile": "content",
+  "members": [{ "key": "manager", "accountType": "manager", "orgRole": "admin" }],
+  "solo": { "key": "invitee", "accountType": "educator" }
+}
