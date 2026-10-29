@@ -87,6 +87,11 @@ Rules, all enforced in the database rather than in a service method:
   (if any) is unexpired. No row, no access. There is no fallback and no "platform admin" bypass.
 - **Read is 1 hour by default. Write is separate, rarer, shorter** (30 minutes) and requires a second
   approver. A write grant does not imply a read grant on another org.
+- **At most one live grant per organization, from any principal.** Creation takes a row lock on
+  the organization (`SELECT ... FROM organizations WHERE id = $1 FOR UPDATE`) and then rejects if any
+  other live grant exists for that org — including one held by a different principal. The check and
+  the insert are therefore serialized: a concurrent normal grant and a break-glass grant cannot both
+  land, which is what keeps "one justification per org at a time" true rather than aspirational.
 - **One live grant per (principal, org)** (partial unique index on `(principal_id, org_id)` where
   `revoked_at IS NULL`). Because `expires_at` cannot appear in an index predicate (`now()` is not
   immutable), an **expired but unrevoked** row still occupies the slot: regranting is therefore
@@ -139,9 +144,11 @@ Three layers, each required:
    `expires_at`. The admin request path therefore stops using `service_role` for tenant reads and
    queries with the user-scoped client, so the existing tenant-floor policies and
    `rls_caller_org_ids()` apply unchanged — no second, claim-based resolver and no parallel
-   `platform_principal_id` JWT path. Revocation deletes the membership row (or sets its
-   `expires_at` in the past), so it takes effect on the next request rather than at token expiry;
-   the grant row remains the audit justification. `service_role` is narrowed to migrations, seeds,
+   `platform_principal_id` JWT path. Revocation **deletes the membership row**, so it takes effect
+   on the next request rather than at token expiry; expiry-only revocation is safe only when
+   `withAuth`, every membership resolver and the RLS membership policy all enforce the `expires_at`
+   predicate, and one resolver that forgets it turns an expired grant into permanent access. The
+   grant row remains the audit justification. `service_role` is narrowed to migrations, seeds,
    and a named allowlist of provisioning operations that carry no tenant read.
 
 **How a new route is prevented from bypassing this.** Four guards, because one is never enough:
@@ -149,9 +156,13 @@ Three layers, each required:
 - Route files under `apps/admin/src/app/(backend)/api/v1/**` must call `withPlatformAuth`; the
   existing PEM path is limited to a fixed, reviewed allowlist of platform-level scopes and may not
   be extended to org data.
-- `scripts/check-admin-scoping.ts` **must be added** (it does not exist yet) and wired into `bun run lint` next to the import-path guard; it fails
-  when an `apps/admin/src/server/**` service imports the service-role client, calls `.from(<tenant
-table>)` without `scopedQuery(`, or when a route file has no `withPlatformAuth` export wrapper.
+- `scripts/check-admin-scoping.ts` **must be added** (it does not exist yet) and wired into
+  `bun run lint` next to the import-path guard. Its scope is **not just `apps/admin`**: admin routes
+  call shared services in `packages/server/src/services/**`, so the guard also fails when a module
+  reachable from the admin app imports the service-role client or calls `.from(<tenant table>)`
+  without `scopedQuery(`. `OrganizationService.getAll` is the worked example — reachable from the
+  panel, lists every organization, and must take the scoped path rather than a global query. The
+  guard also fails a route file with no `withPlatformAuth` export wrapper.
 - A route-inventory integration test enumerates the route filesystem and, for every route, asserts
   that a principal granted org A receives zero org B rows. A new route is covered the day it is
   added, without anyone remembering to write a test.
@@ -207,8 +218,12 @@ impossible rather than merely unlikely:
   tables — only `EXECUTE` on these functions — so the function is not a convention, it is the only
   door.
 - A **deferred constraint trigger** on tenant tables verifies, at commit, that a
-  `platform_audit_event` mutation row exists for this transaction (`txid_current()`), this
-  principal and this grant — not merely that the session context was set. A future function that
+  `platform_audit_event` mutation row exists for this transaction (`txid_current()`) **that matches
+  the change itself**: the same `resource_type` and `resource_id` (the row's primary key), the same
+  `action` (`insert`/`update`/`delete`) and the same `after_hash`. The function mints a
+  `mutation_correlation_id` per row change, sets it in the session context and writes it on the
+  audit row, so a multi-row write is validated as a complete set rather than "some row exists" —
+  not merely that the session context was set. A future function that
   sets the context and forgets the row still cannot commit: the write fails and the error surfaces
   as a 500 with a trace id.
 - If audit insert fails — a missing month partition, a revoked grant, a storage error — the whole
