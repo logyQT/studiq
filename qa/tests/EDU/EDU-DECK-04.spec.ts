@@ -1,15 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-} from '#test/helpers/tenant-seed';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * EDU-DECK-04 — Fiszki w talii nauczyciela (/edu/flashcards/<deckId>).
@@ -19,16 +9,18 @@ import {
  * the organization's teacher. The case's legacy accounts (`teacher1@dev.local`,
  * password `pass`) are never used.
  *
- * Tenant: `tenantKey('qa/cases/EDU-DECK-04.md', 'EDU-DECK-04#<run>', 'qa-shared')`,
- * fresh run suffix per independent run, every id from `tenantId(key, entity)`:
- *   - the teacher is the org owner with the org role `teacher` and the group role
- *     `teacher`, so it may both own the deck and share it with `G1` (the same shape
- *     EDU-DECK-02 uses);
- *   - the student is an org member and a `G1` member (the group the deck is shared
+ * Tenant: the `content` profile, seeded once before Playwright starts
+ * (`bun scripts/qa-tenant.ts EDU-DECK-04 --fresh`) and read through
+ * `loadTenant(CASE)` — the spec never seeds at runtime:
+ *   - `teacher` is the organization's educator and a member of the default group
+ *     `G1`; only a group *teacher* may share content with a group, so the spec
+ *     promotes it through the manager's own group-roster endpoint first (the same
+ *     write `/manage/groups` performs, tenant-local and idempotent);
+ *   - `student` is an org member and a `G1` member (the group the deck is shared
  *     with) — a prerequisite, not a subject of this case.
  * Nothing global is written: no admin setting, feature flag, plan, platform stat or
- * singleton row. The deck and the topic are created through the product API inside
- * this tenant.
+ * singleton row. The deck, the topic and the cards are created through the product
+ * API inside this tenant.
  *
  * Acceptance points (walked on the shared app before writing the test):
  * 1. „Dodaj fiszkę” opens „Utwórz Nową Fiszkę”; the right-hand pane renders the
@@ -46,12 +38,8 @@ import {
  */
 
 const CASE = 'EDU-DECK-04';
-const CASE_FILE = 'qa/cases/EDU-DECK-04.md';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
 
 const DECK_NAME = 'Matematyka – klasa 1';
-const GROUP_NAME = 'G1';
 const TOPIC_NAME = 'Arytmetyka';
 
 /** The case's two card generations: the CRUD pass, then the topic pass. */
@@ -87,11 +75,6 @@ function cardsCountLabel(count: number): string {
   return `${count} fiszek`;
 }
 
-/** Supabase local defaults (the service-role JWT is the `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-
 interface ApiEnvelope<T> {
   success: boolean;
   data: T;
@@ -117,94 +100,10 @@ interface TopicRow {
   name: string;
 }
 
-interface CaseTenant {
-  key: string;
-  tenant: QaTenant;
-  orgId: string;
-  groupId: string;
+interface GroupMemberRow {
+  userId: string;
+  role: 'teacher' | 'member';
 }
-
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-/**
- * Seed the case's own organization: the teacher owns it (org role `teacher`, group
- * role `teacher`), the group `G1` is the organization's default group and the
- * student is a member of both — the prerequisite EDU-DECK-02 leaves behind.
- */
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = tenantKey(CASE_FILE, `${CASE}#${RUN_SUFFIX}`, PROJECT);
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const org = { id: tenantId(key, 'org'), name: `qa-edu-deck-04-${RUN_SUFFIX}` };
-  const group = { id: tenantId(key, 'group:default'), name: GROUP_NAME };
-  const teacher = buildAccount(key, 'teacher', 'educator', {
-    name: 'QA teacher',
-    orgRole: 'teacher',
-  });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: { ...group, isDefault: true },
-    extraGroups: [],
-    owner: teacher,
-    members: [student],
-    ownerOrgRole: 'teacher',
-  });
-
-  const account = (user: { id: string; email: string; password: string }) => ({
-    id: user.id,
-    email: user.email,
-    password: user.password,
-  });
-
-  return {
-    key,
-    orgId: seeded.orgId!,
-    groupId: seeded.defaultGroupId!,
-    tenant: {
-      case: CASE,
-      key,
-      profile: 'content',
-      runSuffix: RUN_SUFFIX,
-      org,
-      group,
-      users: {
-        teacher: account(seeded.owner),
-        student: account(seeded.members[0]),
-      },
-    },
-  };
-}
-
-let tenant: CaseTenant;
-
-test.beforeAll(async () => {
-  tenant = await seedCaseTenant();
-  console.log(`EDU-DECK-04 tenant key: ${tenant.key} (org ${tenant.orgId})`);
-});
 
 /** `GET` an endpoint as the signed-in user and unwrap the response envelope. */
 async function getData<T>(page: Page, url: string): Promise<T> {
@@ -222,6 +121,79 @@ async function listCards(page: Page, deckId: string): Promise<FlashcardRow[]> {
     `/api/v1/flashcards?deckIds=${deckId}&limit=100`,
   );
   return data.items;
+}
+
+/** The tenant's decks, as the deck list API returns them. */
+async function listDecks(page: Page): Promise<DeckRow[]> {
+  return (await getData<{ items: DeckRow[] }>(page, '/api/v1/flashcards/decks?limit=100')).items;
+}
+
+/**
+ * The tenant seeder enrols group members with the group `member` role, but only a
+ * group `teacher` may share a deck to the group (`canShareContentToGroups`). Promote
+ * the educator through the manager's own roster endpoint — the same write
+ * `/manage/groups` performs — keeping every other member untouched.
+ */
+async function ensureEducatorLeadsGroup(page: Page, tenant: QaTenant): Promise<void> {
+  const groupId = tenant.group?.id;
+  const educator = tenant.users.teacher;
+  if (!groupId || !educator) {
+    throw new Error(`${CASE} needs the content tenant profile (org, group and educator)`);
+  }
+
+  const url = `/api/v1/organization/groups/${groupId}/members`;
+  const roster = await getData<GroupMemberRow[]>(page, url);
+  const member = roster.find((row) => row.userId === educator.id);
+  expect(member, 'the seeded educator is a member of the tenant group').toBeTruthy();
+  if (member!.role === 'teacher') return;
+
+  const response = await page.request.put(url, {
+    data: {
+      members: roster.map((row) =>
+        row.userId === educator.id ? { userId: row.userId, role: 'teacher' } : row,
+      ),
+    },
+  });
+  expect(response.ok(), `PUT ${url} → ${response.status()} ${await response.text()}`).toBe(true);
+
+  const after = await getData<GroupMemberRow[]>(page, url);
+  expect(
+    after.find((row) => row.userId === educator.id)?.role,
+    'the educator now teaches the tenant group',
+  ).toBe('teacher');
+}
+
+/**
+ * A retry against the same seeded tenant must start from the same state: drop the
+ * decks a previous run left behind so the deck screen is empty again. Only this
+ * case's own decks (same name, same tenant) are touched.
+ */
+async function resetDecks(page: Page): Promise<void> {
+  for (const deck of (await listDecks(page)).filter((row) => row.name === DECK_NAME)) {
+    const response = await page.request.delete(`/api/v1/flashcards/decks/${deck.id}`);
+    expect(response.ok(), `DELETE /api/v1/flashcards/decks/${deck.id} → ${response.status()}`).toBe(
+      true,
+    );
+  }
+}
+
+/** The tenant's topic, created once per tenant (a re-run reuses it). */
+async function ensureTopic(page: Page): Promise<TopicRow> {
+  const { items } = await getData<{ items: TopicRow[] }>(
+    page,
+    '/api/v1/flashcards/topics?limit=100',
+  );
+  const existing = items.find((row) => row.name === TOPIC_NAME);
+  if (existing) return existing;
+
+  const response = await page.request.post('/api/v1/flashcards/topics', {
+    data: { name: TOPIC_NAME },
+  });
+  expect(
+    response.status(),
+    `POST /api/v1/flashcards/topics → ${response.status()} ${await response.text()}`,
+  ).toBe(201);
+  return ((await response.json()) as ApiEnvelope<TopicRow>).data;
 }
 
 /** The deck screen's card element (`<Card id="fc-<flashcard id>">`). */
@@ -253,15 +225,29 @@ async function openCardMenu(page: Page, card: Locator): Promise<void> {
 test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD', () => {
   test('creates, edits, deletes and topic-tags a flashcard in a teacher deck', async ({ page }) => {
     test.setTimeout(120_000);
+    const tenant = loadTenant(CASE);
+    expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
+    const groupId = tenant.group?.id;
+    if (!groupId) throw new Error(`${CASE} needs the content tenant profile (org + group)`);
+
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
-    // ── Prerequisite: EDU-DECK-02's group deck, inside this tenant ──────────
-    await loginAs(page, tenant.tenant, 'teacher', { locale: 'pl' });
+    // ── Prerequisite: the group-shared deck, inside this tenant ─────────────
+    // Only a group teacher may share a deck with `G1`; the seeder enrols the
+    // educator as a group member, so the manager promotes it first.
+    await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+    await ensureEducatorLeadsGroup(page, tenant);
+
+    await page.context().clearCookies();
+    await loginAs(page, tenant, 'teacher', { locale: 'pl' });
     expect(new URL(page.url()).pathname, 'educator lands on /edu').toBe('/edu');
 
+    // A retry against the same tenant starts from an empty deck screen.
+    await resetDecks(page);
+
     const deckResponse = await page.request.post('/api/v1/flashcards/decks', {
-      data: { name: DECK_NAME, visibility: 'group', groupIds: [tenant.groupId] },
+      data: { name: DECK_NAME, visibility: 'group', groupIds: [groupId] },
     });
     expect(
       deckResponse.status(),
@@ -269,16 +255,9 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
     ).toBe(201);
     const deck = ((await deckResponse.json()) as ApiEnvelope<DeckRow>).data;
     expect(deck.visibility, 'the prerequisite deck is shared with the group').toBe('group');
-    expect(deck.groupIds).toEqual([tenant.groupId]);
+    expect(deck.groupIds).toEqual([groupId]);
 
-    const topicResponse = await page.request.post('/api/v1/flashcards/topics', {
-      data: { name: TOPIC_NAME },
-    });
-    expect(
-      topicResponse.status(),
-      `POST /api/v1/flashcards/topics → ${topicResponse.status()} ${await topicResponse.text()}`,
-    ).toBe(201);
-    const topic = ((await topicResponse.json()) as ApiEnvelope<TopicRow>).data;
+    const topic = await ensureTopic(page);
     expect(topic.name).toBe(TOPIC_NAME);
 
     await page.goto(`/edu/flashcards/${deck.id}`);
