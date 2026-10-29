@@ -24,6 +24,7 @@ const HELP = `**QA manager commands**
 \`!free\` — free slots
 \`!run <ID> [--env N]\` — dispatch a manual scenario
 \`!suite <CASEID> [--env N]\` — start a QA-suite worker for one case
+\`/fixpr <PR> [note]\` — fix blockers in a new branch, PR into the PR branch
 \`!queue <ID…>\` — fill free slots
 \`!report [env]\` — last agent report
 \`!decisions\` — pending decisions

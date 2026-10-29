@@ -1,5 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { type AttachmentBuilder, Client, Events, type Message, type TextChannel } from 'discord.js';
+import {
+  ApplicationCommandOptionType,
+  type ApplicationCommandData,
+  type AttachmentBuilder,
+  Client,
+  Events,
+  type Message,
+  type TextChannel,
+} from 'discord.js';
 import { Bridge } from './bridge';
 import { handleCommand } from './commands';
 import { type Config, loadDotenv, readConfig } from './config';
@@ -272,24 +280,50 @@ async function main(): Promise<void> {
   console.log(`${online}/${clients.length} bots online`);
   if (online === 0) process.exit(1);
 
-  // `/status` is a guild command (instant) on every bot: it steers the session
-  // bound to that channel, so the reply arrives through the normal relay.
+  // Guild slash commands are instant. `/status` is a side question about the
+  // session bound to the channel; `/fixpr` spawns its own fix worktree/session.
+  const commandDefs: ApplicationCommandData[] = [
+    {
+      name: 'status',
+      description: 'Ask the agent for a short status (what now, what is blocked, next step)',
+    },
+    {
+      name: 'fixpr',
+      description: 'Fix blockers on an open PR in a new branch, then PR into that PR branch',
+      options: [
+        {
+          type: ApplicationCommandOptionType.Integer,
+          name: 'pr',
+          description: 'Pull request number',
+          required: true,
+          min_value: 1,
+        },
+        {
+          type: ApplicationCommandOptionType.String,
+          name: 'note',
+          description: 'What still needs attention (optional)',
+          required: false,
+          max_length: 1_000,
+        },
+      ],
+    },
+  ];
   if (!config.dryRun) {
     for (const [label, client] of clients) {
       void (async () => {
         try {
           const guild = await client.guilds.fetch(config.guildId);
           const existing = await guild.commands.fetch();
-          if (existing.some((c) => c.name === 'status')) return;
-          await guild.commands.create({
-            name: 'status',
-            description: 'Ask the agent for a short status (what now, what is blocked, next step)',
-          });
-          log.info(label, 'registered /status');
+          const names = new Set(existing.map((c) => c.name));
+          for (const def of commandDefs) {
+            if (names.has(def.name)) continue;
+            await guild.commands.create(def);
+            log.info(label, `registered /${def.name}`);
+          }
         } catch (err) {
           log.warn(
             label,
-            `could not register /status: ${err instanceof Error ? err.message : String(err)}`,
+            `could not register slash commands: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       })();
@@ -387,6 +421,29 @@ async function main(): Promise<void> {
       })().catch((err) =>
         log.error(label, `status command: ${err instanceof Error ? err.message : String(err)}`),
       );
+    });
+
+    // `/fixpr <PR>` creates a fix worktree + a fresh agent session. It never
+    // steers the session bound to this channel, so it is safe to run anywhere.
+    client.on(Events.InteractionCreate, (interaction) => {
+      void (async () => {
+        if (!interaction.isChatInputCommand() || interaction.commandName !== 'fixpr') return;
+        if (interaction.channelId !== channelId) return;
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          const pr = interaction.options.getInteger('pr', true);
+          const note = interaction.options.getString('note') ?? '';
+          const res = await qa.fixpr(pr, note);
+          const out = (res.stdout || res.stderr || `exit ${res.code}`).trim();
+          await interaction.editReply(out.slice(0, 1_900) || 'No output.');
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          log.error(label, `fixpr command: ${message}`);
+          await interaction
+            .editReply(`fixpr failed: ${message.slice(0, 1_500)}`)
+            .catch(() => undefined);
+        }
+      })();
     });
 
     client.on(Events.MessageCreate, (message: Message) => {

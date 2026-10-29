@@ -68,6 +68,17 @@ export class QaManager {
     return this.runRaw(args, 180_000);
   }
 
+  async fixpr(pr: number, note?: string): Promise<RunResult> {
+    QaManager.assert(Number.isInteger(pr) && pr > 0 && pr < 1_000_000, 'PR number');
+    const args = ['fixpr', String(pr)];
+    const trimmed = (note ?? '').trim();
+    if (trimmed) {
+      QaManager.assert(trimmed.length <= 1_000, 'note');
+      args.push('--note', trimmed);
+    }
+    return this.runRaw(args, 300_000);
+  }
+
   async queue(scenarios: string[]): Promise<RunResult> {
     for (const id of scenarios) QaManager.assert(SCENARIO.test(id), `scenario id (${id})`);
     return this.runRaw(['queue', ...scenarios], 180_000);

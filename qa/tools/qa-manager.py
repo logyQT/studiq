@@ -43,7 +43,11 @@ MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "h
 SLOTS = {n: f"/workspaces/studiq/.worktrees/qa-env-{n}" for n in range(1, 9)}
 DASHBOARD = "http://localhost:5000/"
 SUITE_DIR = "/workspaces/studiq/.worktrees/qa-suite"
-SUITE_MANAGER = ROOT / ".qa-fix" / "qa-suite-manager.json"
+SUITE_MANAGER = Path("/workspaces/studiq/.qa-fix/qa-suite-manager.json")
+MAIN_DIR = Path("/workspaces/studiq")
+FIX_WORKTREES = MAIN_DIR / ".worktrees"
+REPO = "logyQT/studiq"
+FIX_PR_PROMPT = QA / "fixing" / "FIX-PR.md"
 
 
 def slot_env(n: int) -> dict:
@@ -161,10 +165,10 @@ def last_text(sid: str) -> str:
     return ""
 
 
-def create_session(slot: int, title: str, text: str, model: dict | None = None) -> str:
+def create_session_at(directory: str, title: str, text: str, model: dict | None = None) -> str:
     created = api("POST", "/api/session", {
         "title": title,
-        "location": {"directory": SLOTS[slot]},
+        "location": {"directory": directory},
         "model": model or MODEL,
     })
     session = created.get("data", created) if isinstance(created, dict) else created
@@ -173,6 +177,10 @@ def create_session(slot: int, title: str, text: str, model: dict | None = None) 
         raise SystemExit(f"session create failed: {json.dumps(created)[:400]}")
     api("POST", f"/api/session/{sid}/prompt", {"text": text})
     return sid
+
+
+def create_session(slot: int, title: str, text: str, model: dict | None = None) -> str:
+    return create_session_at(SLOTS[slot], title, text, model)
 
 
 # ------------------------------------------------------------------- scenarios
@@ -230,6 +238,37 @@ def suite_prompt(case: str, worker: int) -> str:
         "{{BROWSER_PORT}}": str(9220 + worker),
         "{{APP_URL}}": app_url,
         "{{SUPABASE_URL}}": supabase,
+    }.items():
+        text = text.replace(key, value)
+    return text
+
+
+def fixpr_prompt(
+    pr: int,
+    title: str,
+    url: str,
+    repo: str,
+    head: str,
+    base: str,
+    branch: str,
+    worktree: str,
+    note: str,
+) -> str:
+    md = FIX_PR_PROMPT.read_text(encoding="utf-8")
+    m = re.search(r"`{3,}markdown\n(.*?)\n`{3,}", md, re.S)
+    if not m:
+        raise SystemExit(f"prompt block not found in {FIX_PR_PROMPT}")
+    text = m.group(1).strip()
+    for key, value in {
+        "{{PR}}": str(pr),
+        "{{TITLE}}": title,
+        "{{URL}}": url,
+        "{{REPO}}": repo,
+        "{{HEAD}}": head,
+        "{{BASE}}": base,
+        "{{BRANCH}}": branch,
+        "{{WORKTREE}}": worktree,
+        "{{NOTE}}": note or "(none — assess the PR yourself)",
     }.items():
         text = text.replace(key, value)
     return text
@@ -641,6 +680,109 @@ def cmd_manager(args) -> None:
     SUITE_MANAGER.write_text(json.dumps({"session": sid, "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, indent=1))
     print(f"qa-suite manager\t{sid}\t{SUITE_DIR}")
     print(f"state: {SUITE_MANAGER}  (qa-suite-watch reads it)")
+
+
+def gh_json(args: list[str], timeout: int = 90) -> dict:
+    if not shutil.which("gh"):
+        raise SystemExit("gh is not installed")
+    try:
+        proc = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise SystemExit(f"gh {' '.join(args[:3])} timed out")
+    if proc.returncode != 0:
+        raise SystemExit(f"gh failed: {(proc.stderr or proc.stdout).strip()[:500]}")
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        raise SystemExit(f"gh returned non-JSON: {proc.stdout[:300]}")
+
+
+def git_run(args: list[str], timeout: int = 120) -> str:
+    proc = subprocess.run(
+        ["git", "-C", str(MAIN_DIR), *args], capture_output=True, text=True, timeout=timeout
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"git {' '.join(args[:3])} failed: {(proc.stderr or proc.stdout).strip()[:500]}")
+    return proc.stdout.strip()
+
+
+def branch_taken(branch: str) -> bool:
+    local = subprocess.run(
+        ["git", "-C", str(MAIN_DIR), "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
+        capture_output=True, text=True,
+    )
+    if local.returncode == 0:
+        return True
+    remote = subprocess.run(
+        ["git", "-C", str(MAIN_DIR), "ls-remote", "--heads", "origin", branch],
+        capture_output=True, text=True,
+    )
+    return bool(remote.stdout.strip())
+
+
+def cmd_fixpr(args) -> None:
+    """Create a fix worktree for an open PR and dispatch one fix-PR agent."""
+    pr = int(args.pr)
+    if pr <= 0:
+        raise SystemExit("PR number must be positive")
+    repo = (args.repo or REPO).strip()
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+        raise SystemExit(f"invalid repo: {repo}")
+    note = (args.note or "").strip()
+
+    data = gh_json([
+        "pr", "view", str(pr), "--repo", repo, "--json",
+        "number,title,url,state,isDraft,headRefName,baseRefName,headRepositoryOwner",
+    ])
+    state = str(data.get("state") or "").upper()
+    if state and state != "OPEN":
+        raise SystemExit(f"PR #{pr} is {state.lower()}, not open")
+    head = str(data.get("headRefName") or "")
+    base = str(data.get("baseRefName") or "")
+    title = str(data.get("title") or f"PR #{pr}")
+    url = str(data.get("url") or f"https://github.com/{repo}/pull/{pr}")
+    owner = str((data.get("headRepositoryOwner") or {}).get("login") or "")
+    if not head or not base:
+        raise SystemExit("could not read head/base branch from gh")
+    if owner and owner.lower() != repo.split("/")[0].lower():
+        raise SystemExit(
+            f"PR head is {owner}/{head}; cross-fork fix PRs are not supported "
+            f"(create the branch in {repo} first)"
+        )
+
+    slug = re.sub(r"[^a-z0-9]+", "-", head.lower()).strip("-")[:40]
+    stem = f"fix/pr-{pr}-{slug}" if slug else f"fix/pr-{pr}"
+    branch = stem
+    worktree = FIX_WORKTREES / f"fix-pr-{pr}"
+    bump = 2
+    while branch_taken(branch) or worktree.exists():
+        branch = f"{stem}-r{bump}"
+        worktree = FIX_WORKTREES / f"fix-pr-{pr}-r{bump}"
+        bump += 1
+
+    if args.dry_run:
+        print(
+            f"would fix #{pr} in {worktree} on {branch} -> PR base {head} "
+            f"({repo}, {len(note)} char note)"
+        )
+        return
+
+    FIX_WORKTREES.mkdir(parents=True, exist_ok=True)
+    git_run(["fetch", "origin", head])
+    git_run(["worktree", "add", str(worktree), "-b", branch, f"origin/{head}"])
+
+    text = fixpr_prompt(pr, title, url, repo, head, base, branch, str(worktree), note)
+    session_title = f"[FIX-PR] #{pr} {title}"[:100]
+    try:
+        sid = create_session_at(str(worktree), session_title, text)
+    except Exception:
+        git_run(["worktree", "remove", str(worktree), "--force"])
+        raise
+
+    print(f"fixpr\t#{pr}\t{sid}\t{branch}")
+    print(f"worktree: {worktree}")
+    print(f"fix PR target: {head} (original PR base: {base})")
+    print("agent: read the PR conversation, fix blockers, open the fix PR, stop")
 
 
 def cmd_queue(args) -> None:
@@ -1056,6 +1198,13 @@ def main() -> None:
     mg = sub.add_parser("manager", help="start the QA-suite manager in the qa-suite checkout")
     mg.add_argument("--dry-run", action="store_true")
     mg.set_defaults(fn=cmd_manager)
+
+    fp = sub.add_parser("fixpr", help="fix blockers on an open PR and PR into its branch")
+    fp.add_argument("pr", type=int)
+    fp.add_argument("--note", default="", help="what the operator says is still wrong")
+    fp.add_argument("--repo", default=REPO)
+    fp.add_argument("--dry-run", action="store_true")
+    fp.set_defaults(fn=cmd_fixpr)
 
     su = sub.add_parser("suite", help="start a QA-suite worker for one case")
     su.add_argument("case")
