@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
+import { resolveListEmptyView } from '@/lib/list-empty-view';
 
 interface QuestionTableProps {
   /** The current page, already searched, filtered and sorted by the server. */
@@ -85,7 +86,13 @@ export function QuestionTable({
   t,
 }: QuestionTableProps) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const hasFilters = search.trim() !== '' || typeFilter !== 'all';
+  // One rule for every list (#666): a filter that hid every row says so, and never reuses the
+  // "nothing here yet, create the first one" copy — not even the read-only variant of it.
+  const emptyView = resolveListEmptyView({
+    visibleCount: questions.length,
+    query: search,
+    activeFilters: typeFilter === 'all' ? 0 : 1,
+  });
 
   function toggleSort(field: string) {
     if (sortBy === field) {
@@ -229,10 +236,12 @@ export function QuestionTable({
                 </TableCell>
               </TableRow>
             ))}
-            {questions.length === 0 && (
+            {emptyView.kind !== 'none' && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {emptyText ?? (hasFilters ? t('no_results') : t('no_questions'))}
+                  {emptyView.kind === 'no-results'
+                    ? t('no_results')
+                    : (emptyText ?? t('no_questions'))}
                 </TableCell>
               </TableRow>
             )}

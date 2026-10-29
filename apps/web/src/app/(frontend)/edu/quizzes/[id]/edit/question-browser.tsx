@@ -7,12 +7,7 @@ import { useTranslations } from 'next-intl';
 import { type ChangeEvent, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
-
-interface BrowseQuestion {
-  id: string;
-  content: string;
-  type: string;
-}
+import { availableQuestions, type BrowseQuestion } from '@/lib/question-browser';
 
 interface QuestionBrowserProps {
   existingIds: Set<string>;
@@ -94,10 +89,9 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
     url: `/api/v1/questions${queryString ? `?${queryString}` : ''}`,
   });
 
-  const allQuestions = (questions ?? []).filter((q) => !existingIds.has(q.id));
-  const filtered = search
-    ? allQuestions.filter((q) => q.content.toLowerCase().includes(search.toLowerCase()))
-    : allQuestions;
+  // The server is the only place that filters: a second pass over the returned rows with the
+  // raw input hid rows the API had matched (trimmed term, `*` as a wildcard).
+  const allQuestions = availableQuestions(questions, existingIds);
 
   return (
     <div className="space-y-4">
@@ -127,10 +121,10 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
       </div>
 
       <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-        {filtered.map((q) => (
+        {allQuestions.map((q) => (
           <BrowserItem key={q.id} question={q} onAdd={(q) => onAdd([q])} draggable={draggable} />
         ))}
-        {filtered.length === 0 && (
+        {allQuestions.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">
             {t('no_questions_found')}
           </p>

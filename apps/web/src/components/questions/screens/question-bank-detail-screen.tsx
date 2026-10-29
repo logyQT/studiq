@@ -22,6 +22,8 @@ import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { bankAccess } from '@/lib/bank-access';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
+import { isQuestionListUnavailable } from '@/lib/question-list-state';
+import { shouldRetryQuery } from '@/lib/query-retry';
 import { SrLabel } from '@/components/shared/sr-label';
 
 const QUESTIONS_PAGE_SIZE = 25;
@@ -99,9 +101,17 @@ export function QuestionBankDetailScreen({
     },
     placeholderData: keepPreviousData,
     staleTime: Infinity,
+    // A 422 for a bad filter (or a 404 for a bank that does not exist) is terminal: retrying
+    // it only delays the banner.
+    retry: shouldRetryQuery,
   });
   const questions: Question[] = questionsPage?.items ?? [];
   const total = questionsPage?.total ?? 0;
+  // Nothing loaded yet: the error banner is the whole answer, not an empty bank.
+  const questionsUnavailable = isQuestionListUnavailable({
+    isError: questionsError,
+    hasPage: questionsPage != null,
+  });
 
   // Land on the last page that still exists after deleting the last row of a page.
   const lastPage = Math.max(1, Math.ceil(total / QUESTIONS_PAGE_SIZE));
@@ -212,44 +222,46 @@ export function QuestionBankDetailScreen({
         </div>
       )}
 
-      <QuestionTable
-        questions={questions}
-        isLoading={questionsLoading}
-        isFetching={questionsFetching}
-        total={total}
-        page={page}
-        pageSize={QUESTIONS_PAGE_SIZE}
-        onPageChange={setPage}
-        search={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPage(1);
-        }}
-        typeFilter={typeFilter}
-        onTypeFilterChange={(value) => {
-          setTypeFilter(value);
-          setPage(1);
-        }}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        onSortChange={(sb, so) => {
-          setSortBy(sb);
-          setSortOrder(so);
-          setPage(1);
-        }}
-        onEdit={openEdit}
-        onDelete={setDeleteId}
-        onCreateFlashcard={basePath.startsWith('/edu') ? setFlashcardSourceQuestion : undefined}
-        canUpdate={(q) =>
-          access.allowQuestionAction(permission('question.update', { createdBy: q.created_by }))
-        }
-        canDelete={(q) =>
-          access.allowQuestionAction(permission('question.delete', { createdBy: q.created_by }))
-        }
-        emptyText={access.readOnly ? t('no_questions_read_only') : undefined}
-        showReportButton={basePath.startsWith('/app')}
-        t={t}
-      />
+      {!questionsUnavailable && (
+        <QuestionTable
+          questions={questions}
+          isLoading={questionsLoading}
+          isFetching={questionsFetching}
+          total={total}
+          page={page}
+          pageSize={QUESTIONS_PAGE_SIZE}
+          onPageChange={setPage}
+          search={search}
+          onSearchChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+          typeFilter={typeFilter}
+          onTypeFilterChange={(value) => {
+            setTypeFilter(value);
+            setPage(1);
+          }}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onSortChange={(sb, so) => {
+            setSortBy(sb);
+            setSortOrder(so);
+            setPage(1);
+          }}
+          onEdit={openEdit}
+          onDelete={setDeleteId}
+          onCreateFlashcard={basePath.startsWith('/edu') ? setFlashcardSourceQuestion : undefined}
+          canUpdate={(q) =>
+            access.allowQuestionAction(permission('question.update', { createdBy: q.created_by }))
+          }
+          canDelete={(q) =>
+            access.allowQuestionAction(permission('question.delete', { createdBy: q.created_by }))
+          }
+          emptyText={access.readOnly ? t('no_questions_read_only') : undefined}
+          showReportButton={basePath.startsWith('/app')}
+          t={t}
+        />
+      )}
 
       <CreateFromQuestionDialog
         question={flashcardSourceQuestion}
