@@ -1,16 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { shortHash, tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-  type SeedDb,
-} from '#test/helpers/tenant-seed';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * SEC-04 — a manager of one organization cannot read or manage another
@@ -18,20 +8,24 @@ import {
  *
  * Prerequisite (reconciled with the tenant seeder): a manager of one
  * organization while a **different** organization exists alongside it. The
- * legacy manual seed (`manager2@dev.local`, `student1@dev.local`, password
- * `pass`) is never used. The spec seeds two independent tenant graphs on every
- * run, under one run suffix, so no account, organization or membership is
- * shared with another case or another run:
+ * legacy manual accounts (`manager2`, `student1`, password `pass`) are never
+ * used. `qa/tests/profiles/SEC-04.json` declares two
+ * organizations with two different owners, seeded once before Playwright starts:
  *
- * - org A (`qa-sec-04-a-<run>`) — only the attacker: a manager with the org
+ *   bun scripts/qa-tenant.ts SEC-04 --fresh
+ *
+ * - org A (`orgs[0]`, key `a`) — only `managerA`, a manager with the org
  *   `admin` role. This is the "Akademia Górnicza" side of the case: no other
  *   members, so any row that leaks in from elsewhere is obvious.
- * - org B (`qa-sec-04-b-<run>`) — its own manager (org `admin`) and S1, a
- *   student with the org `member` role. This is the "WSB Merito" side of the
- *   case; its student is the cross-organization target.
+ * - org B (`orgs[1]`, key `org2`) — its own `managerB` (org `admin`) and
+ *   `studentB`, a student with the org `member` role. This is the "WSB Merito"
+ *   side of the case; its student is the cross-organization target.
  *
+ * Each organization has its own owner, so the two admins share no membership.
  * The two organizations have deliberately different membership (1 vs 2), so a
  * list that leaked the other organization cannot coincide with the expected one.
+ * The spec only reads `loadTenant('SEC-04')` and signs the seeded accounts in
+ * with `loginAs`; it never creates an account, organization or membership.
  *
  * Acceptance points from the case:
  * 1. `GET /api/v1/organization/members` returns the attacker's own
@@ -54,37 +48,34 @@ import {
  * stat or singleton row) and no other case's tenant is touched.
  */
 
-const CASE_FILE = 'qa/cases/SEC-04.md';
-const TITLE = 'SEC-04 cross-organization isolation';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
-/** The tenant identity of this run; every id below is derived from it. */
-const KEY = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-const KEY_A = `${KEY}::org-a`;
-const KEY_B = `${KEY}::org-b`;
-
-/** The organization's default group; the seeder enrolls every member in it. */
-const GROUP_NAME = 'G1';
+const CASE = 'SEC-04';
+const TENANT = loadTenant(CASE) as CaseTenant;
 
 /** Polish copy from `ManageMembersPage`. */
 const COPY = { title: 'Członkowie', membersSuffix: 'łącznie' } as const;
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+interface TenantUser {
+  id: string;
+  email: string;
+  password: string;
+}
 
-interface CaseTenant {
-  run: string;
+interface TenantOrg {
   key: string;
-  orgA: { id: string; name: string };
-  orgB: { id: string; name: string };
-  managerA: SeedAccount;
-  managerB: SeedAccount;
-  studentB: SeedAccount;
-  /** Org role ids, so a request can name a role that belongs to the other org. */
-  roleA: { admin: string };
-  roleB: { admin: string; member: string };
+  id: string;
+  name: string;
+  groupId: string;
+  groupName: string;
+}
+
+/** Shape `scripts/qa-tenant.ts` writes for the profile's `orgs` declaration. */
+interface CaseTenant extends QaTenant {
+  orgs: [TenantOrg, TenantOrg];
+  users: {
+    managerA: TenantUser;
+    managerB: TenantUser;
+    studentB: TenantUser;
+  };
 }
 
 interface Member {
@@ -96,128 +87,59 @@ interface Member {
   organization_id: string;
 }
 
+interface OrgRole {
+  id: string;
+  name: string;
+  isSystem: boolean;
+}
+
 interface ApiBody<T> {
   success: boolean;
   data?: T;
   error?: string;
 }
 
-/** Resolve the shared Supabase admin credentials (env → worker config → local defaults). */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-function accountEmail(role: string): string {
-  return `qa+${shortHash(`${KEY}:${role}`)}+${role}@test.local`;
+async function getData<T>(page: Page, path: string): Promise<T> {
+  const response = await page.request.get(path);
+  expect(response.status(), `GET ${path}`).toBe(200);
+  const body = (await response.json()) as ApiBody<T>;
+  expect(body.success, `GET ${path} success`).toBe(true);
+  return body.data as T;
 }
 
 /**
- * Two organizations that share nothing: the attacker's org A has a single
- * admin; org B has its own admin and the student whose user id is the target of
- * the cross-organization attempts.
+ * A fresh session for one of the two seeded owners, with that organization
+ * active (the cookie the app writes when an organization is created or
+ * switched). Clearing cookies first means one login never inherits the other
+ * organization's context.
  */
-async function seedCaseTenant(db: SeedDb): Promise<CaseTenant> {
-  const orgA = { id: tenantId(KEY_A, 'org'), name: `qa-sec-04-a-${RUN_SUFFIX}` };
-  const orgB = { id: tenantId(KEY_B, 'org'), name: `qa-sec-04-b-${RUN_SUFFIX}` };
-
-  const managerA = buildAccount(KEY_A, 'manager', 'manager', {
-    email: accountEmail('manager-a'),
-    name: 'QA SEC-04 manager A',
-  });
-  const managerB = buildAccount(KEY_B, 'manager', 'manager', {
-    email: accountEmail('manager-b'),
-    name: 'QA SEC-04 manager B',
-  });
-  const studentB = buildAccount(KEY_B, 'student', 'student', {
-    email: accountEmail('student-b'),
-    name: 'QA SEC-04 student B',
-  });
-
-  const seededA = await seedTenantGraph(db, {
-    key: KEY_A,
-    org: orgA,
-    defaultGroup: { id: tenantId(KEY_A, 'group:default'), name: GROUP_NAME, isDefault: true },
-    extraGroups: [],
-    owner: managerA,
-    members: [],
-    ownerOrgRole: 'admin',
-  });
-  const seededB = await seedTenantGraph(db, {
-    key: KEY_B,
-    org: orgB,
-    defaultGroup: { id: tenantId(KEY_B, 'group:default'), name: GROUP_NAME, isDefault: true },
-    extraGroups: [],
-    owner: managerB,
-    members: [studentB],
-    ownerOrgRole: 'admin',
-  });
-
-  return {
-    run: RUN_SUFFIX,
-    key: KEY,
-    orgA,
-    orgB,
-    managerA: seededA.owner,
-    managerB: seededB.owner,
-    studentB: seededB.members[0]!,
-    roleA: { admin: seededA.roleIds.admin! },
-    roleB: { admin: seededB.roleIds.admin!, member: seededB.roleIds.member! },
-  };
-}
-
-/**
- * Real login through the API, then boot the app with the locale the case's copy
- * is written in and the given organization active (the cookie the app writes
- * when an organization is created or switched). Logs any previous user out
- * first, so the run never inherits a session from another worker.
- */
-async function signInAs(
+async function switchUser(
   page: Page,
-  baseURL: string,
-  account: SeedAccount,
+  role: 'managerA' | 'managerB',
   activeOrgId: string,
 ): Promise<void> {
-  await page.request.post('/api/v1/auth/logout');
-
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: account.email, password: account.password },
+  await page.context().clearCookies();
+  await loginAs(page, TENANT, role, {
+    locale: 'pl',
+    activeOrgId,
+    waitFor: /\/manage$/,
   });
-  expect(response.status(), `login ${account.email}`).toBe(200);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+}
 
-  const { hostname } = new URL(baseURL);
-  await page.context().addCookies([
-    { name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' },
-    { name: 'active_org_id', value: activeOrgId, domain: hostname, path: '/', httpOnly: true },
-  ]);
-
-  await page.goto('/manage');
-  await expect(page).toHaveURL(/\/manage$/, { timeout: 20_000 });
+/** The active organization's own system-role ids, read through the product API. */
+async function orgRoleIds(page: Page): Promise<Record<'admin' | 'teacher' | 'member', string>> {
+  const roles = await getData<OrgRole[]>(page, '/api/v1/organization/roles');
+  const roleId = (name: 'admin' | 'teacher' | 'member'): string => {
+    const role = roles.find((row) => row.name === name && row.isSystem);
+    expect(role, `the organization has its system ${name} role`).toBeTruthy();
+    return role!.id;
+  };
+  return { admin: roleId('admin'), teacher: roleId('teacher'), member: roleId('member') };
 }
 
 async function listMembers(page: Page): Promise<Member[]> {
-  const response = await page.request.get('/api/v1/organization/members');
-  expect(response.status(), 'GET /api/v1/organization/members').toBe(200);
-  const body = (await response.json()) as ApiBody<Member[]>;
-  expect(body.success).toBe(true);
-  return body.data ?? [];
+  return getData<Member[]>(page, '/api/v1/organization/members');
 }
 
 /** A cross-organization role change: the raw status and the app error code. */
@@ -246,29 +168,38 @@ function expectRejected(result: { status: number; error?: string }, label: strin
 }
 
 test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', () => {
-  let tenant: CaseTenant;
-  let db: SeedDb;
-
-  test.beforeAll(async () => {
-    db = createSeedDb(resolveSupabase());
-    tenant = await seedCaseTenant(db);
-    // Evidence for a failing run: the deterministic tenant this run owns.
-    console.log(
-      `SEC-04 tenant key: ${tenant.key} (org A ${tenant.orgA.id} / ${tenant.orgA.name}, ` +
-        `org B ${tenant.orgB.id} / ${tenant.orgB.name}, manager A ${tenant.managerA.email})`,
-    );
-  });
-
-  test('a manager cannot read or modify another organization', async ({ page, baseURL }) => {
+  test('a manager cannot read or modify another organization', async ({ page }) => {
     test.setTimeout(120_000);
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    const origin = baseURL ?? 'http://localhost:3010';
-    const { orgA, orgB, managerA, managerB, studentB } = tenant;
+
+    const [orgA, orgB] = TENANT.orgs;
+    const { managerA, managerB, studentB } = TENANT.users;
+    // Read-only service client for the post-condition check; every write in this
+    // test goes through the product API.
+    const db = createQaSupabase();
+
+    // Evidence for a failing run: the deterministic tenant this run owns.
+    console.log(
+      `SEC-04 tenant key: ${TENANT.key} (org A ${orgA.id} / ${orgA.name}, ` +
+        `org B ${orgB.id} / ${orgB.name}, manager A ${managerA.email})`,
+    );
+
+    // Role rows belong to one organization, so each set is resolved from its own
+    // admin session: an id from org A is not a role of org B and vice versa.
+    await switchUser(page, 'managerA', orgA.id);
+    const roleA = await orgRoleIds(page);
+    await switchUser(page, 'managerB', orgB.id);
+    const roleB = await orgRoleIds(page);
+    const victimView = await listMembers(page);
+    const studentBMember = victimView.find((member) => member.id === studentB.id);
+    expect(studentBMember, 'the org-B student is a member of org B').toBeTruthy();
+    const studentBName = studentBMember!.full_name;
+    expect(studentBName, 'the seeded student has a display name').toBeTruthy();
 
     // Start as org A's manager with org A active.
-    await signInAs(page, origin, managerA, orgA.id);
+    await switchUser(page, 'managerA', orgA.id);
 
     // --- Step 1: GET /api/v1/organization/members -------------------------
     const members = await listMembers(page);
@@ -279,13 +210,15 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
       orgRoleName: 'admin',
       organization_id: orgA.id,
     });
+    const managerAName = members[0]!.full_name;
+    expect(managerAName, 'the seeded manager has a display name').toBeTruthy();
     // The other organization's student appears under no shape: id, e-mail, name.
     expect(
       members.some((member) => member.id === studentB.id),
       'the other organization’s user must not be listed',
     ).toBe(false);
     expect(members.map((member) => member.email)).not.toContain(studentB.email);
-    expect(members.map((member) => member.full_name)).not.toContain(studentB.name);
+    expect(members.map((member) => member.full_name)).not.toContain(studentBName);
 
     // The same list as the manager sees it: one row, the organization counter
     // matches, and the other organization's student is nowhere on the page.
@@ -297,23 +230,23 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     ).toBeVisible();
     const membersTable = page.getByRole('table');
     await expect(membersTable.getByText(managerA.email, { exact: true })).toBeVisible();
-    await expect(membersTable).toContainText(managerA.name!);
+    await expect(membersTable).toContainText(managerAName!);
     await expect(page.getByText(`1 ${COPY.membersSuffix}`, { exact: true })).toBeVisible();
     await expect(page.getByText(studentB.email)).toHaveCount(0);
-    await expect(page.getByText(studentB.name!, { exact: true })).toHaveCount(0);
+    await expect(page.getByText(studentBName!, { exact: true })).toHaveCount(0);
     await expect(page.getByText(orgB.name, { exact: true })).toHaveCount(0);
 
     // --- Step 2: PUT /api/v1/organization/members -------------------------
     // (a) The other organization's user named with a role id from the
     //     attacker's own organization: the target is not a member here.
     expectRejected(
-      await attemptRoleChange(page, studentB.id, tenant.roleA.admin),
+      await attemptRoleChange(page, studentB.id, roleA.admin),
       'foreign user + own org role',
     );
     // (b) The other organization's user named with the other organization's own
     //     admin role id: the role is not one of this organization.
     expectRejected(
-      await attemptRoleChange(page, studentB.id, tenant.roleB.admin),
+      await attemptRoleChange(page, studentB.id, roleB.admin),
       'foreign user + foreign org role',
     );
     // (c) The other organization's user with an unknown role id: still no write.
@@ -347,7 +280,7 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     // --- Adjacent: a forged active-org cookie grants nothing --------------
     // `withAuth` derives the active organization from a real membership row, so
     // simply naming the other organization in the cookie cannot open it.
-    const { hostname } = new URL(origin);
+    const { hostname } = new URL(page.url());
     await page
       .context()
       .addCookies([
@@ -375,7 +308,7 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     expect(victimMemberships.data, 'the victim keeps exactly one membership').toHaveLength(1);
     expect(victimMemberships.data![0]).toMatchObject({
       organization_id: orgB.id,
-      org_role_id: tenant.roleB.member,
+      org_role_id: roleB.member,
     });
 
     const attackerMemberships = await db
@@ -386,11 +319,11 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     expect(attackerMemberships.data, 'the attacker gained no second membership').toHaveLength(1);
     expect(attackerMemberships.data![0]).toMatchObject({
       organization_id: orgA.id,
-      org_role_id: tenant.roleA.admin,
+      org_role_id: roleA.admin,
     });
 
     // --- The victim's own manager still sees an untouched organization ----
-    await signInAs(page, origin, managerB, orgB.id);
+    await switchUser(page, 'managerB', orgB.id);
     const victimMembers = await listMembers(page);
     expect(victimMembers.map((member) => member.id).sort()).toEqual(
       [managerB.id, studentB.id].sort(),
@@ -403,7 +336,7 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     const oppositeBody = await oppositeOrg.text();
     expect(oppositeBody).not.toContain(orgA.name);
     expectRejected(
-      await attemptRoleChange(page, managerA.id, tenant.roleB.admin),
+      await attemptRoleChange(page, managerA.id, roleB.admin),
       'reverse direction: foreign user + own org role',
     );
 
