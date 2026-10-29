@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * STU-16 — Edycja talii (`/app/flashcards`).
@@ -31,6 +32,11 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  *   the header in place.
  * - A blank name is refused with the error toast „Nazwa talii jest wymagana”: the
  *   dialog stays open and the deck is not written.
+ *
+ * CI seeds that tenant once for the whole case and Playwright retries reuse it,
+ * so the test first clears the student's own decks: every attempt creates the
+ * prerequisite deck, and a retry must never find the previous attempt's card
+ * next to the one it just made.
  *
  * Acceptance points asserted here: the toast, the new name and description on the
  * list and in the deck view, and the same values in `GET /api/v1/flashcards/decks/:id`
@@ -112,6 +118,36 @@ async function deckDialog(page: Page, title: string): Promise<Locator> {
   return dialog;
 }
 
+/**
+ * Retry-safety: CI seeds a case tenant **once** and reuses it for every retry,
+ * so an attempt that walks the edit flow (or dies halfway through it) leaves
+ * its deck behind. The next attempt creates the prerequisite deck again, the
+ * list then renders two cards with the same name, and `deckCard()` matches both
+ * — the failure is a duplicate row, not a product bug. Reset just this tenant
+ * student's decks so every attempt starts from the same first-run state.
+ *
+ * The product has no "delete every deck" action for this flow, so cleanup goes
+ * through the suite's service-role client (the same helper the other cases use
+ * to touch their own rows). Deleting a deck cascades its flashcards.
+ */
+async function resetStudentDeckState(tenant: QaTenant): Promise<void> {
+  const student = tenant.users.student;
+  if (!student) throw new Error(`${CASE} tenant has no student to reset`);
+  if (!tenant.org) throw new Error(`${CASE} tenant has no organization to reset`);
+  const db = createQaSupabase();
+
+  const decks = await db
+    .from('flashcard_decks')
+    .delete()
+    .eq('created_by', student.id)
+    .eq('organization_id', tenant.org.id)
+    .select('id');
+  expect(
+    decks.error,
+    `delete ${CASE} student flashcard decks: ${decks.error?.message ?? ''}`,
+  ).toBeNull();
+}
+
 test.describe('@case:STU-16 @area:STU @prio:P2 deck edit', () => {
   test('editing a deck updates its name and description on the list and in the deck view', async ({
     page,
@@ -136,6 +172,8 @@ test.describe('@case:STU-16 @area:STU @prio:P2 deck edit', () => {
       }
     });
 
+    // A retry reuses this tenant, so drop whatever the previous attempt left.
+    await resetStudentDeckState(tenant);
     await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
     expect(new URL(page.url()).pathname, 'the student lands on /app').toBe('/app');
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
