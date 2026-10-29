@@ -99,6 +99,8 @@ jobs:
               for f in changed:
                   if f.startswith("qa/tests/profiles/") and f.endswith(".json"):
                       areas.add(f.rsplit("/", 1)[-1].split("-")[0])
+                  elif f.startswith("qa/cases/") and f.endswith(".md"):
+                      areas.add(f.rsplit("/", 1)[-1].split("-")[0])
                   elif f.startswith("qa/tests/") and len(f.split("/")) > 3:
                       areas.add(f.split("/")[2])
               touched = [s for s in shards if set(s["areas"]) & areas]
