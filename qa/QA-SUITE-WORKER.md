@@ -43,6 +43,10 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
   platform stats, singleton rows, or another worker's tenant.
 - Assert the **intended** behavior. A test that reproduces an unfixed bug is not a suite
   test.
+- **Assert the case's copy literally** (Polish, in „…”). Do not resolve labels from
+  `apps/web/src/i18n/messages/*.json`: comparing the app to its own catalogue cannot catch a
+  missing or wrong translation. Only locale-parity sweeps (NFR-01/NFR-02) import the messages,
+  because there both locales are the subject.
 - **If the case does not pass, or you cannot be sure what the correct behavior is, stop and
   file a defect.** Never write a failing, skipped or expected-to-fail spec, and never guess
   the intended behavior from the case text. Include the case ID, expected vs observed, the
