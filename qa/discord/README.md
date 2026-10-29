@@ -59,7 +59,9 @@ sends are throttled and queued well inside Discord's limits.
 | --------------------- | ------------------------------------------- |
 | `!status`             | slot, state, scenario, pending, session     |
 | `!free`               | free slot numbers                           |
-| `!run <ID> [--env N]` | dispatch a scenario                         |
+| `!run <ID> [--env N]` | dispatch a manual QA scenario               |
+| `!suite <CASEID> [--env N]` | start a QA-suite worker for one case |
+| `/fixpr <PR> [note]`  | fix blockers in a new branch, PR into the PR branch |
 | `!queue <ID…>`        | fill free slots from a list                 |
 | `!report [env]`       | last assistant report                       |
 | `!decisions`          | pending decisions                           |
@@ -69,6 +71,11 @@ sends are throttled and queued well inside Discord's limits.
 | `!spawn <dec>`        | spawn an investigator                       |
 | `!screenshot [env]`   | capture the slot browser and attach the PNG |
 | `!help`               | command list                                |
+
+`/fixpr` starts its own agent: it reads the PR conversation, reviews and checks,
+creates `fix/pr-<n>-<head>` in a dedicated worktree, fixes only the blockers and
+opens a PR into the PR's head branch. It never commits to that branch or `main`,
+and stops once the fix PR is open. `note` is optional context from the operator.
 
 Anything that does not start with `!` goes to the agent: in `#manager` to a
 dedicated `Discord Manager` session running `qa/MANAGER-PROMPT.md`, in `#env-N`
