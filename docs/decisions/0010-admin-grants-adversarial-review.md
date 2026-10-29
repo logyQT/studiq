@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — **review record, not an accepted decision**. It constrains ADR-0007 (`docs/decisions/0007-admin-api-auth.md`) and the two forthcoming ADRs for the grant model and the audit log. Nothing here is implemented.
+Proposed — **review record, not an accepted decision**. It constrains [ADR-0007: Admin API auth](0007-admin-api-auth.md) and its two proposed companions, [ADR-0008: admin panel authentication](0008-admin-panel-auth.md) and [ADR-0009: org-scoped access grants and an audit trail](0009-admin-access-grants-and-audit.md). Nothing here is implemented.
 
 Scope of the review: the claim that a support engineer or an **agent** can be given a _narrow, time-boxed_ view of one organization, running **the same queries a member would**, with `org_id` bound by the grant and no god mode. I looked for where that claim is falsifiable in today's code.
 
@@ -52,7 +52,7 @@ Same for `plan-limit.service.ts:50`, `plan-feature.service.ts:35`, `user-overrid
 
 So the attribution chain ends in a log line — and ADR-0007 already records that the admin app has **no `instrumentation.ts`**, so those records land on `console` (`docs/decisions/0007-admin-api-auth.md:74-75`; there is still no `apps/admin/src/instrumentation.ts`). A `users:purge` hard delete today leaves: no DB row, no durable log, no `x-trace-id` consumer (the admin app never calls `withRequestInstrumentation`, so `packages/server/src/lib/request-instrumentation.ts:130-142` — the one place that logs failures with a trace id — does not run).
 
-**This is the highest-value change in either ADR,** and it is also the cheapest: thread the key id into `RequestContext`, and write one `admin_audit_log` row in the same statement as the mutation (see §7/§8 for why "same statement" is not automatic here).
+**This is the highest-value change in either ADR,** and it is also the cheapest: thread the key id into `RequestContext`, and write one `platform_audit_event` mutation row in the same statement as the mutation (see §7/§8 for why "same statement" is not automatic here).
 
 ### 3. P0 — ADR-0007's scopes have **no tenant dimension**, so a "narrow" key is not narrow
 
@@ -74,7 +74,12 @@ Two designs follow, and the ADR must pick one explicitly:
 - **(A) The grant is a real row.** Insert a time-boxed `org_members` row with a `support` role. Zero changes to `withAuth`, RLS, `accessibleFilter`, or any service; "same queries a member would" becomes literally true. Cost: the org sees a new member, and the row must be excluded from rosters, seat counts and `member_count` (`organization.service.ts:135-163`), plus a new `support` role that cannot be handed out (`can_assign_org_role`, `supabase/migrations/20261024124756_rls_all_public_tables.sql:216-244`) and cannot be self-granted.
 - **(B) The grant is a claim.** New resolver in `withAuth` that derives `activeOrgId` from a grant token. This is the one that reads best in an ADR and is the one §1 disqualifies, unless every org-scoped query path is first made fail-closed (`orgId` required, `any` removed). That is a large, testable, but non-trivial prerequisite.
 
-The honest ordering is: **(B) is only sound after §1 is closed; (A) is sound today.** If the ADR wants (B), §1 is a blocking prerequisite, not a follow-up.
+The honest ordering is: **(B) is only sound after §1 is closed; (A) is sound today for grant-backed
+sessions that go through `withAuth` and RLS.** It does **not** make `apps/admin` safe on its own: those
+routes skip `withAuth` and run on the service-role client, so a membership row is not consulted there
+and RLS does not apply. (A) is a prerequisite for the _query plane_, not a substitute for moving the
+admin API onto a user-scoped client with `withPlatformAuth` (ADR-0009 §3). If the ADR wants (B), §1
+is a blocking prerequisite, not a follow-up.
 
 ### 5. P1 — A synthetic "support role" escalates to org manager unless its feature rows are seeded
 
@@ -97,7 +102,7 @@ The ticket the operator explicitly wants to design for — _"org crashed, we can
 
 ### 8. P1 — Audit rows will be destroyed by the very operations they must record
 
-`supabase/schemas/04_profiles.sql:8` (`profiles.id → auth.users ON DELETE CASCADE`) and `65_payments.sql:14-15` (`payments.user_id → profiles CASCADE`, `organization_id → organizations SET NULL`) show the existing convention: child rows die with the subject. If `admin_audit_log.subject_user_id`/`organization_id` follow that convention, then:
+`supabase/schemas/04_profiles.sql:8` (`profiles.id → auth.users ON DELETE CASCADE`) and `65_payments.sql:14-15` (`payments.user_id → profiles CASCADE`, `organization_id → organizations SET NULL`) show the existing convention: child rows die with the subject. If `platform_audit_event.subject_user_id`/`organization_id` follow that convention, then:
 
 - `purgeNow` → `deleteAccount` → `auth.admin.deleteUser` (`user-admin.service.ts:136`) cascades away the profile, its payments, **and the audit rows describing the purge**. The one operation that most needs an audit trail is the one that erases it.
 - Deleting an organization (`organization.service.ts:320`) cascades to `org_roles`, `org_members`, `groups` (`03`/`05`/`56` schemas, `ON DELETE CASCADE`).
@@ -112,7 +117,7 @@ PostgREST gives no cross-statement transaction. Today:
 - `softDeleteUser` (`:331-350`) bans first, then writes markers — deliberately, and documented at `:326-330`.
 - `purgeExpired` runs on **every** `listUsers()` (`:63-96`, called at `:199`) in batches of 100, i.e. up to 300 sequential round trips on a `GET /api/v1/users`.
 
-The smallest closure: for the irreversible paths (`purgeNow`, `purge-expired`, `deleteAccount`, `apply_org_plan`), move the whole sequence into one `SECURITY DEFINER` RPC that writes the audit row in the same transaction and asserts the grant is still live at write time. Everything else can keep the "write audit after success, include `outcome`" pattern. Never let the audit row be written by the _client_ or by a separate PostgREST call.
+The smallest closure: **every admin write** — irreversible or not — moves into a `SECURITY DEFINER` RPC that writes the audit row in the same transaction and asserts the grant is still live at write time. That matches ADR-0009 §5; the earlier "audit after success" split is dropped, because a write that commits without its row is exactly the gap this record exists to close. Never let the audit row be written by the _client_ or by a separate PostgREST call.
 
 ### 10. P1 — Agent credentials: the stack offers two options, neither both short-lived and org-bound
 
@@ -130,7 +135,7 @@ The ADR needs to state: agent grants are minted as rows (user + temporary member
 ### 11. P2 — Operational cost: 1000 MAU vs 100k, and why the audit table is not an MAU problem
 
 - **The org predicate is cheap.** Content tables lead with `organization_id` (`30_flashcards.sql:33-38`, `34_flashcard_decks.sql:27-28`, `57_question_banks.sql:28-29`, `31_topics.sql:24-25`, `24_questions.sql:29`). Making the predicate mandatory costs nothing at 1000 or 100k. The tables that would need new composite indexes are the analytics ones (`quiz_attempts.completed_at`, `user_daily_activity.date` — both single-column today), and those already need the org column from §6.
-- **Dashboard aggregates are the first thing to break.** `admin_platform_stats` does full `COUNT(*)` over `profiles`, `flashcards`, `questions`, `question_banks`, `quiz_attempts`, `storage.objects` on every page load (`20261027120000_admin_platform_stats.sql:36-86`). At 1000 MAU that is tens of milliseconds; at 100k users / millions of cards it is multi-second and uncached (`STABLE`, not materialized). The ADR should require a materialized view or a snapshot table refreshed on a schedule before this is exposed to a grant-scoped audience.
+- **Dashboard aggregates are the first thing to break.** `admin_platform_stats` does full `COUNT(*)` over `profiles`, `flashcards`, `questions`, `question_banks`, `quiz_attempts`, `storage.objects` on every page load (`20261027120000_admin_platform_stats.sql:36-86`). At 1000 MAU that is tens of milliseconds; at 100k users / millions of cards it is likely multi-second. Those figures are **estimates, not measurements** — they need a `EXPLAIN (ANALYZE, BUFFERS)` run on representative data before they are quoted as fact. Note that `STABLE` is a PostgreSQL volatility classification (the function sees one snapshot per statement); it is not evidence of caching or materialisation, and the function is neither. The ADR should require a materialized view or a snapshot table refreshed on a schedule before this is exposed to a grant-scoped audience.
 - **`GET /users` gets slower as the trash grows**, because `purgeExpired()` is a write path on a read path (`user-admin.service.ts:14-16`). It needs to become a scheduled job before `users:read` is handed to agents that poll.
 - **Audit growth is driven by agent request rate, not by MAU.** Two support humans at 200 requests/day ≈ 146k rows/year — trivial. One agent polling at 1 req/s ≈ 31M rows/year. Therefore: **audit mutations and grant lifecycle, not reads** (reads go to OTel/Tempo, correlated by `x-trace-id`; `request-instrumentation.ts:66-73` already provides it, the admin app just does not use it). With that split, monthly `RANGE` partitions on `created_at` + 24-month retention + a daily `sha256` digest over the day's rows (anchored outside the DB) is enough at both scales, and hash chaining per-row is unnecessary complexity at 1000 MAU.
 - **Duplicated implementations will drift.** `createServiceClient` exists verbatim in `packages/server/src/lib/supabase/service.ts:3-13` and `apps/admin/src/lib/supabase/service.ts:3-13`. A grant-aware client factory must be one module, or the second one will be the one that forgets the grant.
@@ -146,7 +151,7 @@ If the grant model is to hold, the two ADRs must state these invariants. They ar
 3. **No `any` for support principals, ever.** Support scopes are an explicit allow-list of permission keys, resolved through `org_role_permissions` on the support role, and the support role is `is_system`, non-assignable, and seeded with **explicit all-disabled** `org_role_features` so the plan fallback cannot fire (§5).
 4. **The actor reaches the DB.** Key id / principal id / grant id / `trace_id` are threaded from the proxy into `RequestContext` and written by the mutation itself. `x-admin-key-id` being set and never read is a bug, not a limitation (§2).
 5. **Audit is append-only, FK-free, same-transaction for irreversible writes.** No cascade from `profiles`/`organizations`; a `SECURITY DEFINER` RPC owns purge/plan/role mutations and writes the row atomically (§7, §8, §9).
-6. **The admin panel is not on the public front door.** The UI is unauthenticated by design (`ADM-SEC-02`), so the ADR must name the network/identity gate (private network, SSO proxy, or mTLS at the edge) as a _requirement_, not an assumption, and add a check that refuses to serve `/api/*` to a non-internal origin.
+6. **The admin panel is not on the public front door.** The UI is unauthenticated by design (`ADM-SEC-02`), so the ADR must name the network/identity gate (private network, SSO proxy, or mTLS at the edge) as a _requirement_, not an assumption, and refuse `/api/*` unless the request carries a **verified proxy assertion** (signed JWT or mTLS client cert) or a precisely defined trusted network signal. The HTTP `Origin` header is attacker-controlled and must not be treated as proof of internal access.
 7. **Storage and analytics are named exclusions or included explicitly.** Public buckets and org-less analytics tables are outside "org-scoped" unless the ADR says otherwise (§6, §7).
 
 ---
@@ -155,7 +160,7 @@ If the grant model is to hold, the two ADRs must state these invariants. They ar
 
 ### Positive
 
-- Invariant 1 alone removes the entire class of "forgot the org filter" bugs, not just the admin panel's — it is the same helper every service uses.
+- Invariant 1 removes the class of "forgot the org filter" bugs **on query paths that use the shared helper**. It does not cover RPC parameters or routes that bypass the helper: those still need explicit organization binding, and the `withPlatformAuth`, `scopedQuery` and RLS controls in ADR-0009 §3 are what close them. It is the same helper every service uses, which is why the coverage gap is small — not zero.
 - Making the grant a row means the database, not the panel, is the enforcement point; a compromised service-role client still cannot resolve a different `activeOrgId`.
 - The org predicate is index-supported on every content table, so the narrow design is cheap to run at both 1000 and 100k MAU.
 - FK-free audit survives the operations it records, which is the only property that makes the log worth having.
@@ -185,7 +190,7 @@ So: accept the goal, reject the token-with-optional-filter shape, and make the t
 
 ## The 5 hardest questions (blocking)
 
-1. **Is the grant a row or a claim?** If a claim, do you accept that `buildQueryFilter`/`accessibleFilter` returning `{}` for `any` (`authz.ts:106-107`, `:290-291`) must be removed repo-wide _before_ the grant ships? If a row, does support appear in the org roster, and who accepts that (`ADM-ORG-02` counts members)?
+1. **Is the grant a row or a claim?** If a claim, do you accept that `buildQueryFilter`/`accessibleFilter` returning `{}` for `any` (`authz.ts:106-107`, `:290-291`) must be rejected **for grant-bound contexts** before the grant ships — `any` may remain for ordinary product scopes, but grant minting must refuse it (Invariant 1)? If a row, does support appear in the org roster, and who accepts that (`ADM-ORG-02` counts members)?
 2. **Where is the network gate, and who owns it?** `ADM-SEC-02` says the UI is unauthenticated and the API is the only boundary; `apps/admin` runs on `:4000` with no allowlist in code. Is the panel behind a private network / SSO proxy, and is that a deploy-time requirement the ADR can assert?
 3. **What is the grant's ceiling when the org is broken?** "Org crashed, nobody can log in" means the support engineer may need `org_roles`/`org_members`/`organizations` **write** access to repair it. Does the grant ever include write, and if so, how is a manager-level repair distinguished from an account takeover?
 4. **Does the audit cover reads or only writes?** If only writes, an agent can exfiltrate an entire org's roster and content with zero audit rows. If reads too, the table is a 31M-row/year time series at agent request rates — which do you accept, and what is the retention/legal position?
