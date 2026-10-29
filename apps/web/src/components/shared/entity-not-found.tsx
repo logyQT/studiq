@@ -4,6 +4,8 @@ import { Button, Card, CardContent } from '@studiq/ui';
 import { FileX, Home } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { dashboardHomeFor } from '@/lib/dashboard-home';
 
 type Props = {
   titleKey: string;
@@ -12,6 +14,8 @@ type Props = {
 
 export function EntityNotFound({ titleKey, descriptionKey }: Props) {
   const t = useTranslations('EntityNotFound');
+  const { user } = useAuth();
+  const dashboardHref = dashboardHomeFor(user?.app_metadata?.account_type);
 
   return (
     <Card className="mx-auto max-w-md">
@@ -22,7 +26,7 @@ export function EntityNotFound({ titleKey, descriptionKey }: Props) {
           <p className="text-sm text-muted-foreground">{t(descriptionKey)}</p>
         </div>
         <Button asChild variant="outline" size="sm">
-          <Link href="/app">
+          <Link href={dashboardHref}>
             <Home className="h-4 w-4 mr-1.5" />
             {t('go_dashboard')}
           </Link>

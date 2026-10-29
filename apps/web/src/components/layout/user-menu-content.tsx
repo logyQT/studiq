@@ -1,12 +1,13 @@
 'use client';
 
-import { AccountType } from '@studiq/authz';
+import type { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
 import { BadgeCheck, Check, CreditCard, Globe, LogOut, Moon, Sparkles, Sun } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { dashboardHomeFor } from '@/lib/dashboard-home';
 import { cn } from '@/lib/utils';
 
 type Locale = 'pl' | 'en';
@@ -95,16 +96,7 @@ export function UserMenuItems({
   const { setTheme } = useTheme();
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
-  const dashboardPrefix = (() => {
-    switch (accountType) {
-      case AccountType.EDUCATOR:
-        return '/edu';
-      case AccountType.MANAGER:
-        return '/manage';
-      default:
-        return '/app';
-    }
-  })();
+  const dashboardPrefix = dashboardHomeFor(accountType);
 
   async function handleLogout() {
     try {
