@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * STU-10 — Quiz „Sprawdź się”: wznowienie niedokończonego quizu.
@@ -19,6 +20,10 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  * with three multiple-choice questions (`question.create` = `own`) and generates
  * a 3-question quiz through `/app/study/quiz`. Nothing shared is read or
  * written — no seed content, plan catalogue row, feature flag or other tenant.
+ *
+ * CI seeds that tenant once for the whole case and Playwright retries reuse it,
+ * so the test first clears the student's own attempts and banks: a retry must
+ * never depend on (or trip over) state the previous attempt left behind.
  *
  * Acceptance points (walked on the shared app before writing the test):
  * 1. Leaving a running quiz (back to „Sprawdź się”) shows the banner
@@ -116,6 +121,43 @@ async function listAttempts(page: Page): Promise<AttemptSummary[]> {
   return ((await response.json()) as { data: AttemptSummary[] }).data;
 }
 
+/**
+ * Retry-safety: CI seeds a case tenant **once** and reuses it for every retry,
+ * so an attempt that dies mid-run leaves its question bank, history entry and
+ * open attempt behind. The next attempt would then no longer see the empty
+ * state this case asserts (and the daily/bank quotas would eventually answer
+ * 429). Reset just this case's own artefacts — the tenant's student and org —
+ * so every attempt starts from the same first-run state.
+ *
+ * The product has no delete endpoint for quiz attempts, so cleanup goes through
+ * the suite's service-role client (the same helper other cases use to touch
+ * their own rows). Deleting the bank cascades its questions; deleting the
+ * attempt cascades its answers and attempt questions.
+ */
+async function resetStudentQuizState(tenant: QaTenant): Promise<void> {
+  const student = tenant.users.student;
+  if (!student) throw new Error(`${CASE} tenant has no student to reset`);
+  if (!tenant.org) throw new Error(`${CASE} tenant has no organization to reset`);
+  const db = createQaSupabase();
+
+  const attempts = await db.from('quiz_attempts').delete().eq('user_id', student.id).select('id');
+  expect(
+    attempts.error,
+    `delete ${CASE} student quiz attempts: ${attempts.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const banks = await db
+    .from('question_banks')
+    .delete()
+    .eq('created_by', student.id)
+    .eq('organization_id', tenant.org.id)
+    .select('id');
+  expect(
+    banks.error,
+    `delete ${CASE} student question banks: ${banks.error?.message ?? ''}`,
+  ).toBeNull();
+}
+
 /** The student's own multiple-choice bank, created through the product API. */
 async function seedQuestionBank(page: Page): Promise<void> {
   const bank = await page.request.post('/api/v1/questions/banks', {
@@ -200,6 +242,8 @@ test.describe('@case:STU-10 @area:STU @prio:P2 unfinished quiz', () => {
     expect(tenant.org, 'the student under test belongs to the tenant organization').toBeTruthy();
 
     // ── Precondition: a student on /app with no quiz of its own yet ─────────
+    // A retry reuses this tenant, so drop whatever the previous attempt left.
+    await resetStudentQuizState(tenant);
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
 
@@ -316,7 +360,7 @@ test.describe('@case:STU-10 @area:STU @prio:P2 unfinished quiz', () => {
     await expect(page).toHaveURL(new RegExp(`/app/study/session/quiz/${attemptId}/review$`), {
       timeout: 20_000,
     });
-    await expect(page.getByText(COPY.reviewTitle, { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: COPY.reviewTitle, exact: true })).toBeVisible();
     // One wrong pick (Q1) and two correct ones (Q2, Q3) out of three.
     await expect(page.getByText(`2 z ${QUESTION_COUNT} poprawnych`, { exact: true })).toBeVisible();
 
@@ -337,6 +381,6 @@ test.describe('@case:STU-10 @area:STU @prio:P2 unfinished quiz', () => {
     await expect(page).toHaveURL(new RegExp(`/app/study/session/quiz/${attemptId}/review$`), {
       timeout: 20_000,
     });
-    await expect(page.getByText(COPY.reviewTitle, { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: COPY.reviewTitle, exact: true })).toBeVisible();
   });
 });
