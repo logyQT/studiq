@@ -20,7 +20,7 @@ tenant:
 
 ```bash
 bun scripts/qa-tenant.ts STU-51 --fresh
-# qa/tests/profiles/STU-51.json → {"profile": "bare", "role": "student"}
+# __tests__/qa/profiles/STU-51.json → {"profile": "bare", "role": "student"}
 ```
 
 - Tenant key: `STU-51.md::STU-51#<run suffix>::qa-shared` —

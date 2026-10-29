@@ -36,7 +36,7 @@ jar).
   `qa-pub-06-shared`, manager/teacher/student, password `Seed4Test!`). The spec
   asserts none of those rows; the tenant exists so the case has a deterministic,
   isolated identity like every other suite test.
-- Spec: `qa/tests/PUB/PUB-06.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/PUB/PUB-06.spec.ts`, project `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: each test starts with an empty cookie jar, so `NEXT_LOCALE` falls
   back to the `pl` default and the test never reads or writes another tenant's

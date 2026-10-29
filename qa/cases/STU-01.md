@@ -18,7 +18,7 @@ instead of the legacy `student1@dev.local` account:
 
 - tenant key: `tenantKey("qa/cases/STU-01.md", "STU-01", "qa-shared")`; each independent
   run adds a suffix — `tenantKey(..., "STU-01#<suffix>", ...)`
-- seed: `bun scripts/qa-tenant.ts STU-01 --fresh` (profile `content`, `qa/tests/profiles/STU-01.json`)
+- seed: `bun scripts/qa-tenant.ts STU-01 --fresh` (profile `content`, `__tests__/qa/profiles/STU-01.json`)
   → org `qa-stu-01-<suffix>` with manager/teacher/student (`Seed4Test!`, profile
   `content`); the dashboard user is the tenant's `student` (`QA student`). The org, group
   and account ids stay deterministic through `tenantKey`/`tenantId`

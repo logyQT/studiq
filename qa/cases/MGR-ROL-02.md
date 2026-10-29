@@ -46,7 +46,7 @@ innej organizacji:
 bun scripts/qa-tenant.ts MGR-ROL-02 --fresh
 ```
 
-- `qa/tests/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
+- `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
   tenanta na plan Hub. `apply_org_plan` odświeża snapshot `org_role_features`, dzięki
   czemu rola `admin` dostaje `role.builder`; `/api/v1/features/me` zwraca tę funkcję.
@@ -59,7 +59,7 @@ bun scripts/qa-tenant.ts MGR-ROL-02 --fresh
   obrębie przebiegu (bez losowych UUID).
 - Świeży tenant ma wyłącznie role systemowe `admin`, `teacher`, `member` — spec wymaga
   braku ról niestandardowych, więc „Asystent” zawsze powstaje w tym przebiegu.
-- Spec: `qa/tests/MGR/MGR-ROL-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-ROL-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie role swojej organizacji; nie dotyka flag
   funkcji, katalogu planów (`plan_features` czyta tylko pośrednio przez RPC), ustawień

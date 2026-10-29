@@ -47,7 +47,7 @@ bun scripts/qa-tenant.ts MGR-MEM-04 --fresh
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`);
   `scripts/qa-tenant.ts` bierze URL z `qa/env.json`, a klucz service role z
   `apps/web/.env`.
-- Spec: `qa/tests/MGR/MGR-MEM-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-MEM-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test czyta i usuwa wyłącznie wiersze `org_members` swojej organizacji. Nie
   dotyka innego tenanta, flag funkcji, planów ani wierszy singletonowych.

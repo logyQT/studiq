@@ -29,7 +29,7 @@ Expected:
 ## Seed (QA-suite)
 
 - Tenant: `bun scripts/qa-tenant.ts STU-16 --fresh`, profile `content`
-  (`qa/tests/profiles/STU-16.json`) — its own organization, manager, teacher and student.
+  (`__tests__/qa/profiles/STU-16.json`) — its own organization, manager, teacher and student.
 - Accounts: the legacy `student1@dev.local` is the tenant's `users.student`
   (`loginAs(page, tenant, 'student')`); no legacy/manual account is used.
 - Content: the STU-15 prerequisite deck is created by the spec through the flashcard

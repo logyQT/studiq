@@ -4,7 +4,7 @@
 - priority: P2 ważny
 - module: STU – Panel studenta (/app)
 - section: Zgłoszenia nieprawidłowości (student)
-- prereqs: tenant `content` z edukatorem i studentem (`qa/tests/profiles/STU-41.json`)
+- prereqs: tenant `content` z edukatorem i studentem (`__tests__/qa/profiles/STU-41.json`)
 - source: StudiQ Dokument Testera v1.3
 
 ## Prerequisite (verbatim)
@@ -20,10 +20,10 @@ suite przed każdym niezależnym przebiegiem:
 ```bash
 bun scripts/qa-tenant.ts STU-41 --fresh
 bunx playwright test -c qa/playwright.qa.config.ts \
-  qa/tests/STU/STU-41.spec.ts --workers=1
+  __tests__/qa/STU/STU-41.spec.ts --workers=1
 ```
 
-- `qa/tests/profiles/STU-41.json` deklaruje profil `content`: jedna organizacja
+- `__tests__/qa/profiles/STU-41.json` deklaruje profil `content`: jedna organizacja
   `qa-stu-41-<run>` z managerem (admin organizacji, nieużywany w teście), edukatorem
   i studentem, na którym test się loguje, oraz domyślna grupa `G1`. Klucz tenanta:
   `tenantKey('qa/cases/STU-41.md', 'STU-41#<run>', 'qa-shared')`, wszystkie id z
@@ -40,7 +40,7 @@ bunx playwright test -c qa/playwright.qa.config.ts \
   tylko zniknięcie plakietki. Każde wykonanie najpierw czyści własne nieprzeczytane
   potwierdzenia obu uczestników, a potem tworzy nowe zgłoszenia, więc CI (jeden seed,
   retry na tym samym tenancie) nadal widzi dokładne 2 → 1 → 0.
-- Spec: `qa/tests/STU/STU-41.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/STU/STU-41.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test tworzy wyłącznie własny bank, pytania, zgłoszenia i odpowiedzi; nie
   dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy

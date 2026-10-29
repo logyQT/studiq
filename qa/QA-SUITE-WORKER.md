@@ -28,8 +28,8 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 ## Rules
 
 - **HARD RULE — never run the full suite, and always `--workers=1`.**
-  - Run **only your own spec file** (`qa/tests/<AREA>/<CASEID>.spec.ts`), never the
-    `qa/tests` directory, never `--project=*`, never `--shard`, never a matrix.
+  - Run **only your own spec file** (`__tests__/qa/<AREA>/<CASEID>.spec.ts`), never the
+    `__tests__/qa` directory, never `--project=*`, never `--shard`, never a matrix.
   - `--workers=1` (and `--repeat-each=1`) is mandatory even on a big machine: the shared
     VM also runs the app, Supabase and eight browser tiles, and a parallel run OOM-kills
     the box. One spec, one worker, five sequential runs.
@@ -71,7 +71,7 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
    model — this case's tenant, its users, and the tenant shape it needs — and keep the human
    observations.
 2. **Declare the tenant shape in the case's own profile file.** One JSON file per case:
-   `qa/tests/profiles/{{CASE_ID}}.json`, containing that case's entry only, e.g.
+   `__tests__/qa/profiles/{{CASE_ID}}.json`, containing that case's entry only, e.g.
    `"bare"`, `{ "profile": "bare", "role": "manager" }`, `"org-limit"`,
    `{ "profile": "content", "plan": "hub" }`.
    There is **no shared manifest** — do not create or edit a `profiles.json`, and do not
@@ -96,13 +96,13 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 4. **If the walk fails or the expected behavior is ambiguous: stop.** Do not write the spec.
    Open an issue (case ID, expected vs observed, tenant key, evidence) and end the session.
    A failing test that encodes a guess is worse than no test.
-5. Write `qa/tests/<AREA>/{{CASE_ID}}.spec.ts` against the behavior you confirmed, with the
+5. Write `__tests__/qa/<AREA>/{{CASE_ID}}.spec.ts` against the behavior you confirmed, with the
    case's acceptance criteria and the minimal adjacent regression paths that matter for the
    tested surface.
 6. Run the spec **5 independent times**, each with a fresh tenant — one worker, your file
    only, never the suite:
    ```bash
-   bunx playwright test qa/tests/<AREA>/{{CASE_ID}}.spec.ts --workers=1 --repeat-each=1
+   bunx playwright test __tests__/qa/<AREA>/{{CASE_ID}}.spec.ts --workers=1 --repeat-each=1
    ```
    Green 5/5 is required. Keep the run IDs/logs as evidence. A spec that only passes
    with a fresh tenant but breaks when re-run against the same tenant is **not** green:
@@ -111,7 +111,7 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 7. If all 5 are green:
    - branch from `qa-suite` as `qa/{{CASE_ID}}`
    - commit only the spec, the reconciled case, and your own
-     `qa/tests/profiles/{{CASE_ID}}.json` (no seeder/fixture rewrites)
+     `__tests__/qa/profiles/{{CASE_ID}}.json` (no seeder/fixture rewrites)
    - open a PR into `qa-suite` from `qa/{{CASE_ID}}`, never commit directly
 8. If anything is flaky, skipped, blocked, or requires shared mutable data: do not open
    the PR; report the exact failure (step 4 applies).

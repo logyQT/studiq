@@ -17,7 +17,7 @@ The case's own tenant, seeded by `bun scripts/qa-tenant.ts STU-10 --fresh` (neve
 the legacy `student1@dev.local` / `pass` account):
 
 - key: `tenantKey('qa/cases/STU-10.md', 'STU-10#<run suffix>', 'qa-shared')`
-- `qa/tests/profiles/STU-10.json` declares the default `content` profile: one
+- `__tests__/qa/profiles/STU-10.json` declares the default `content` profile: one
   organization on its default `launch` plan (whose member role grants `quiz`),
   the tenant's manager/teacher, and the `student` account the case logs in as;
 - the profile seeds the graph only, so the „Rozpoczęty quiz” prerequisite is built

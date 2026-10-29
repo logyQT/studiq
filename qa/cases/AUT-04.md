@@ -35,7 +35,7 @@ still its own tenant:
   user, group or content row is needed; the spec derives each registration address
   from the key with `shortHash` (`qa+<hash>+aut04@test.local`) instead of colliding
   with another case's rows.
-- **Profile**: none, so no entry is needed in `qa/tests/profiles/<CASE>.json`.
+- **Profile**: none, so no entry is needed in `__tests__/qa/profiles/<CASE>.json`.
 - **Password** for the created accounts: `Seed4Test!`.
 - **Global state**: nothing is read or written — no settings, feature flags, plans,
   platform rows or another tenant.

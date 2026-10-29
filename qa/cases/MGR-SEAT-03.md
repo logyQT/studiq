@@ -49,7 +49,7 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
 - Weryfikacja „członek wraca do planu bazowego”: `GET /api/v1/me/plan` członka przed
   zwolnieniem zwraca plan miejsca (`pro`), a po zwolnieniu jego plan osobisty (`base`) —
   ten sam, który zwraca `GET /api/v1/me/personal-plan`.
-- Spec: `qa/tests/MGR/MGR-SEAT-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-SEAT-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (organizacja,
   członkowie, pule i przydziały miejsc). Katalog planów jest tylko czytany (nazwa planu do

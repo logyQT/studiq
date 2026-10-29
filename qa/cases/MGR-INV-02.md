@@ -31,7 +31,7 @@ bun scripts/qa-tenant.ts MGR-INV-02 --fresh
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`);
   `scripts/qa-tenant.ts` bierze URL z `qa/env.json`, a klucz service role z
   `apps/web/.env`.
-- Spec: `qa/tests/MGR/MGR-INV-02.spec.ts`, projekt `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/MGR/MGR-INV-02.spec.ts`, projekt `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są
   polskie).
 - Izolacja: test czyta role wyłącznie z aktywnej organizacji tenanta i wysyła

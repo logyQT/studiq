@@ -20,7 +20,7 @@ dostaje własny, świeżo zaseedowany tenant:
 bun scripts/qa-tenant.ts STU-12 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/STU-12.json` = `"content"` — jedna
+- Profil tenanta: `__tests__/qa/profiles/STU-12.json` = `"content"` — jedna
   organizacja, domyślna grupa `G1` oraz konta managera, nauczyciela i studenta.
 - Klucz tenanta: `STU-12.md::STU-12#<run>::qa-shared` —
   `tenantKey('qa/cases/STU-12.md', 'STU-12#<run>', 'qa-shared')` + `tenantId`,
@@ -29,7 +29,7 @@ bun scripts/qa-tenant.ts STU-12 --fresh
   próby quizu). Prerekwizyt „po kilku quizach” spec tworzy sam, przez API
   produktu: bank pytań + jedno pytanie, jedna ukończona próba (1/1) i jedna
   rozpoczęta, niezakończona. Hasło startowe `Seed4Test!`.
-- Spec: `qa/tests/STU/STU-12.spec.ts`, `NEXT_LOCALE=pl` (dokument cytuje polskie
+- Spec: `__tests__/qa/STU/STU-12.spec.ts`, `NEXT_LOCALE=pl` (dokument cytuje polskie
   napisy).
 - Uwaga o dryfie UI (spacer po współdzielonej aplikacji, 2026-10-28): oczekiwany
   rezultat powyżej opisuje karty quizów sprzed konsolidacji centrum statystyk

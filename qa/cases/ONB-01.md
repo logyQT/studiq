@@ -35,7 +35,7 @@ the default `content` one:
   It creates one educator (`seed-educator-<hash>@dev.local`, password `Seed4Test!`),
   no organisation, no group and no content. The spec reads the account from
   `qa/.tenants/ONB-01.json`; it never creates accounts itself.
-- Spec: `qa/tests/ONB/ONB-01.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/ONB/ONB-01.spec.ts`, project `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: the tenant owns no org, group, deck, bank or quiz row, and the spec
   only reads (`GET /api/v1/me/orgs`, page navigations). Nothing global or singleton

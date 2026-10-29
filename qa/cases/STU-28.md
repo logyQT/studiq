@@ -14,7 +14,7 @@ Talia z ≥ 5 fiszkami; druga talia B.
 ## Seed (QA-suite)
 
 - Tenant: `bun scripts/qa-tenant.ts STU-28 --fresh`
-  (`qa/tests/profiles/STU-28.json` → `content`), key
+  (`__tests__/qa/profiles/STU-28.json` → `content`), key
   `tenantKey('qa/cases/STU-28.md', 'STU-28#<run>', 'qa-shared')`; the spec signs in as
   the tenant's `users.student` (`loginAs(page, tenant, 'student', { locale: 'pl' })`).
   No legacy/manual account (`student1@dev.local`, `pass`) is used.

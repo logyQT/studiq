@@ -32,7 +32,7 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
 - Organizacja: `qa-mgr-02-<suffix>` (plan `launch`), grupa domyślna `G1`.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
   bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
-- Spec: `qa/tests/MGR/MGR-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (pozycje menu w przypadku są polskie).
 - Izolacja: test czyta wyłącznie menu i strony `/manage/*` swojej organizacji; nie dotyka
   flag funkcji, katalogu planów, statystyk platformy ani wierszy singletonowych.

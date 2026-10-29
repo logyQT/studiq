@@ -26,7 +26,7 @@ The case was written against the legacy manual seed (`student-classroom@dev.loca
 password `pass`, organization „Classroom”). The suite version uses the case's own
 tenant and never the legacy account.
 
-- Profile: `org-limit` (`qa/tests/profiles/STU-43.json`) — an organization
+- Profile: `org-limit` (`__tests__/qa/profiles/STU-43.json`) — an organization
   `qa-stu-43-<suffix>` with a manager, two educators, the org `student` this case signs
   in as, and two `invitee` student accounts that are **not** org members. All ids come
   from `tenantKey('qa/cases/STU-43.md', 'STU-43#<suffix>', 'qa-shared')` +

@@ -32,7 +32,7 @@ Profil `org-limit` + plan `launch` seeduje dokładnie ten stan:
 bun scripts/qa-tenant.ts LIM-04 --fresh
 ```
 
-- Plik profilu: `qa/tests/profiles/LIM-04.json` →
+- Plik profilu: `__tests__/qa/profiles/LIM-04.json` →
   `{ "profile": "org-limit", "plan": "launch" }`.
 - Klucz tenanta: `LIM-04.md::LIM-04#<run>::qa-shared` —
   `tenantKey('qa/cases/LIM-04.md', 'LIM-04#<run>', 'qa-shared')` + `tenantId`, ten sam
@@ -46,7 +46,7 @@ bun scripts/qa-tenant.ts LIM-04 --fresh
   `org_members`, `Seed4Test!`; służą do sprawdzenia granicy 5/5 przez `/app/join`.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
   bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
-- Spec: `qa/tests/LIM/LIM-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/LIM/LIM-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu są polskie, jak w dokumencie).
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (org, jego grupy,
   członkowie, zaproszenia); nie dotyka flag funkcji, katalogu planów ani wierszy

@@ -17,7 +17,7 @@ The case's own tenant, seeded by `bun scripts/qa-tenant.ts STU-02 --fresh` (neve
 the legacy `test-student@dev.local` / `pass` account):
 
 - key: `tenantKey('qa/cases/STU-02.md', 'STU-02#<run suffix>', 'qa-shared')`
-- `qa/tests/profiles/STU-02.json` declares the default `content` profile: one
+- `__tests__/qa/profiles/STU-02.json` declares the default `content` profile: one
   organization with its manager/teacher and the `student` account the case logs
   in as. The student starts with **no content** (no deck, flashcard, question or
   quiz attempt), which is the case's „brak treści” prerequisite.

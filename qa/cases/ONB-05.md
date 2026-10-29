@@ -40,7 +40,7 @@ bun scripts/qa-tenant.ts ONB-05 --profile bare --role student --fresh
   **zero** wierszy `org_members`, grup i treści.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
   bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
-- Spec: `qa/tests/ONB/ONB-05.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/ONB/ONB-05.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: tenant nie posiada organizacji, grupy, talii, banku ani quizu; spec tylko
   czyta (`GET /api/v1/me/orgs`, nawigacje i jedno rozwinięcie menu). Nie dotyka innego

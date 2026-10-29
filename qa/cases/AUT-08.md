@@ -43,7 +43,7 @@ keeps the case's steps and expected copy, and maps them onto the case's own tena
   account or with another worker's tenant.
 - Step 4 types the tenant student's e-mail in upper case with its real password —
   the same account, different casing.
-- Spec: `qa/tests/AUT/AUT-08.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/AUT/AUT-08.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`.
 - Isolation: every test runs in a fresh browser context (no session, as the
   prerequisite requires). The only writes are the login attempts themselves; nothing

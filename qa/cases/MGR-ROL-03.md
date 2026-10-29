@@ -19,7 +19,7 @@ sprawdzane są zakresy:
 
 ```bash
 bunx playwright test -c qa/playwright.qa.config.ts \
-  qa/tests/MGR/MGR-ROL-03.spec.ts --workers=1
+  __tests__/qa/MGR/MGR-ROL-03.spec.ts --workers=1
 ```
 
 Spec seeduje wszystko sam przez `seedTenantGraph()` (`__tests__/helpers/tenant-seed.ts`),
@@ -40,7 +40,7 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
   - `own` — utworzone przez użytkownika roli,
   - `group` — utworzone przez admina i udostępnione grupie `G1`,
   - `org` — utworzone przez admina w organizacji, bez udostępnienia grupie.
-- Spec: `qa/tests/MGR/MGR-ROL-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-ROL-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test edytuje wyłącznie role i treści własnego tenanta i czyta listy treści
   własnej organizacji. Nie dotyka innego tenanta, ustawień admina, flag funkcji, planów

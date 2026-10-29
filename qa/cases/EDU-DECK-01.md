@@ -28,7 +28,7 @@ The case was written against the legacy manual seed (`teacher1@dev.local`, passw
 organizations WSB Merito / UE Wrocław, decks `O1G1T1` / `O2G1T1`). The suite version uses the
 case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-DECK-01.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/EDU-DECK-01.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`, group `teacher`),
   `teacher` (account type `educator`, org `member`), `student`.
 - Seed: `bun scripts/qa-tenant.ts EDU-DECK-01 --fresh` — a fresh run suffix per independent

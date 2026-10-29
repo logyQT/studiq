@@ -45,7 +45,7 @@ bun scripts/qa-tenant.ts BIL-06 --fresh
   ucznia dla `user_id` innego użytkownika zwraca 403 `FORBIDDEN`. Endpoint jest publiczny
   tylko na poziomie proxy — uwierzytelnia wywołującego sam i działa wyłącznie na jego
   koncie, więc opisane nadanie planu dowolnemu użytkownikowi nie występuje.
-- Spec (`qa/tests/BIL/BIL-06.spec.ts`) dodatkowo sprawdza ścieżkę kontrolną: właściciel
+- Spec (`__tests__/qa/BIL/BIL-06.spec.ts`) dodatkowo sprawdza ścieżkę kontrolną: właściciel
   sesji nadal może kupić plan dla siebie (200, `{"received":true}`).
 - Żaden globalny wiersz (ustawienia admina, flagi funkcji, katalog planów, statystyki,
   singletony) nie jest zapisywany; specyfikacja dotyka wyłącznie wierszy własnego tenanta.

@@ -46,7 +46,7 @@ bun scripts/qa-tenant.ts MGR-INV-01 --fresh   # new org + users per independent 
   exactly as in the case.
 - **Roles**: the org's trigger-created defaults; „member” is the `member` role, whose
   display name is „Student”.
-- **Profile**: `content` (the default, so no entry is needed in `qa/tests/profiles/<CASE>.json`).
+- **Profile**: `content` (the default, so no entry is needed in `__tests__/qa/profiles/<CASE>.json`).
 
 ## Walk observations (shared app, pl)
 

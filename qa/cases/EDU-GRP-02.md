@@ -48,7 +48,7 @@ nauczyciel.
 bun scripts/qa-tenant.ts EDU-GRP-02 --fresh
 ```
 
-- Profil: `org-limit` (`qa/tests/profiles/EDU-GRP-02.json`) — jedyny seedowany kształt z
+- Profil: `org-limit` (`__tests__/qa/profiles/EDU-GRP-02.json`) — jedyny seedowany kształt z
   nauczycielem w roli organizacyjnej `teacher` (a więc z `group.manage`): admin
   (`users.manager`), dwóch nauczycieli (`users.teacher`, `users.teacher2`) i uczeń
   (`users.student`), plus konta `users.invitee1` / `users.invitee2`, które **nie są**
@@ -70,7 +70,7 @@ bun scripts/qa-tenant.ts EDU-GRP-02 --fresh
   jest poza grupą do momentu zapisu, a talia jest już przypisana do grupy.
 - Grupa domyślna `G1` (4 członków, 1 nauczyciel) należy do managera i służy jako kontrola
   izolacji: zapis składu „Grupa testowa” nie może zmienić jej liczników.
-- Spec: `qa/tests/EDU/EDU-GRP-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/EDU/EDU-GRP-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (organizacja, jej
   członkowie, jej grupy i składy grup, jego talie); nie dotyka flag funkcji, katalogu

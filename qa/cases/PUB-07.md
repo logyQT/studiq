@@ -38,7 +38,7 @@ shared app and a fresh browser context (empty cookie jar).
   (org `qa-pub-07-<suffix>`, manager/teacher/student, password `Seed4Test!`).
   The spec asserts none of those rows; the tenant exists so the case has a
   deterministic, isolated identity like every other suite test.
-- Spec: `qa/tests/PUB/PUB-07.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/PUB/PUB-07.spec.ts`, project `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: the browser starts from `storageState: { cookies: [], origins: [] }`
   with `NEXT_LOCALE=pl` pinned; no user of the tenant is signed in and nothing

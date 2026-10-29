@@ -20,7 +20,7 @@ dostaje własny, świeżo zaseedowany tenant:
 bun scripts/qa-tenant.ts STU-19 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/STU-19.json` = `"content"` — jedna
+- Profil tenanta: `__tests__/qa/profiles/STU-19.json` = `"content"` — jedna
   organizacja, domyślna grupa `G1` oraz konta managera, nauczyciela i studenta.
 - Klucz tenanta: `STU-19.md::STU-19#<run>::qa-shared` —
   `tenantKey('qa/cases/STU-19.md', 'STU-19#<run>', 'qa-shared')` + `tenantId`,
@@ -30,7 +30,7 @@ bun scripts/qa-tenant.ts STU-19 --fresh
 - Plik `fiszki_poprawne.csv` nie jest częścią repozytorium, więc spec buduje
   równoważny plik w pamięci (12 poprawnych wierszy: `front`, `back`, `topic`)
   i wgrywa go przez pole pliku samego dialogu.
-- Spec: `qa/tests/STU/STU-19.spec.ts`, `NEXT_LOCALE=pl` (dokument cytuje polskie
+- Spec: `__tests__/qa/STU/STU-19.spec.ts`, `NEXT_LOCALE=pl` (dokument cytuje polskie
   napisy).
 - Uwagi o dryfie UI (spacer po współdzielonej aplikacji, 2026-10-29):
   1. Przycisk na liście talii to „Importuj” (nie „Importuj CSV”); sam dialog ma

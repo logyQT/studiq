@@ -30,7 +30,7 @@ globalnego katalogu planów czy planu innej organizacji:
 bun scripts/qa-tenant.ts MGR-SET-03 --fresh
 ```
 
-- `qa/tests/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
+- `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
   tenanta na plan Hub. `apply_org_plan` odświeża snapshot `org_role_features`, dzięki
   czemu rola `admin` dostaje `branding`; `/api/v1/features/me` zwraca tę funkcję, a
@@ -49,7 +49,7 @@ bun scripts/qa-tenant.ts MGR-SET-03 --fresh
   `too-big.png` (6 MB, `image/png`). Wybór plików przez `setInputFiles` omija filtr
   `accept` selektora — tak samo jak przeciągnięcie pliku lub wybór „wszystkie pliki” —
   więc żądanie naprawdę dociera do serwera i jest tam walidowane.
-- Spec: `qa/tests/MGR/MGR-SET-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-SET-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie logo swojej organizacji; nie dotyka flag
   funkcji, katalogu planów, ustawień admina, statystyk platformy ani wierszy

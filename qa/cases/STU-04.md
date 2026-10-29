@@ -14,7 +14,7 @@ Zalogowany student1; w O1G1T1 i O1S1 są fiszki.
 ## Seed (QA-suite)
 
 - Tenant: `bun scripts/qa-tenant.ts STU-04 --fresh`, profile `content`
-  (`qa/tests/profiles/STU-04.json`) — its own organization, manager, teacher and student.
+  (`__tests__/qa/profiles/STU-04.json`) — its own organization, manager, teacher and student.
 - Accounts: the legacy `student1@dev.local` is the tenant's `users.student`
   (`loginAs(page, tenant, 'student')`); no legacy/manual account is used.
 - Content: the legacy O1G1T1/O1S1 decks are replaced by a deck the spec creates through

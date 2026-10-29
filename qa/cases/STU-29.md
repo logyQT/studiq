@@ -17,7 +17,7 @@ The case was written against the legacy manual seed (`student1@dev.local` = S1,
 `teacher1@dev.local` = T1, password `pass`, deck `O1G1T1` in WSB Merito / group O1G1).
 The suite version uses the case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/STU-29.json`) — one organization with its default
+- Profile: `content` (`__tests__/qa/profiles/STU-29.json`) — one organization with its default
   group `G1`, and one account per account type: `manager` (org `admin`, `G1` teacher),
   `teacher` (the case's T1) and `student` (S1, `G1` member).
 - Seed: `bun scripts/qa-tenant.ts STU-29 --fresh` — a fresh run suffix per independent run,

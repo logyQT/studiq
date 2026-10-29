@@ -37,7 +37,7 @@ suite never signs in as a legacy account; it uses the case's own isolated tenant
 - `--fresh` gives every independent run a new run suffix, so each run owns a brand-new
   tenant while every id stays derived from `qa/.tenants/AUT-11.json`; the spec contains no
   hard-coded UUID.
-- Spec: `qa/tests/AUT/AUT-11.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/AUT/AUT-11.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`.
 - Isolation: the spec writes nothing. It signs in through `POST /api/v1/auth/login` and
   reads `GET /api/v1/auth/me`. No global admin setting, feature flag, plan, platform stat

@@ -21,7 +21,7 @@ independent run:
 bun scripts/qa-tenant.ts BIL-04 --fresh
 ```
 
-`qa/tests/profiles/BIL-04.json` declares the default `content` profile: one
+`__tests__/qa/profiles/BIL-04.json` declares the default `content` profile: one
 organization on the free `launch` plan (the DB default — no `--plan` override),
 its `manager` (org role `admin`, account type manager) as the buyer, plus the
 tenant's `teacher` and `student` and the default group `G1`. That is the case's

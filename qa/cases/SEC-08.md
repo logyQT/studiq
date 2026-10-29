@@ -39,7 +39,7 @@ hasło `pass`). Każde niezależne uruchomienie dostaje własny, świeżo zaseed
 bun scripts/qa-tenant.ts SEC-08 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/SEC-08.json` = `"org-limit"` — organizacja z adminem,
+- Profil tenanta: `__tests__/qa/profiles/SEC-08.json` = `"org-limit"` — organizacja z adminem,
   dwoma nauczycielami i członkiem (`member`) oraz **dwoma kontami studentów spoza
   organizacji** (`invitee1`, `invitee2`). Ten profil daje jednocześnie ofiarę wewnątrz
   organizacji i drugie konto studenckie do odegrania S2.

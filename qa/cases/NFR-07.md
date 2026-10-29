@@ -25,7 +25,7 @@ Podczas całego testowania.
 The case was written against the legacy manual seed (`student1@dev.local`, `pass`, ...). The
 suite version uses the case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/NFR-07.json`) — one organization with a default group
+- Profile: `content` (`__tests__/qa/profiles/NFR-07.json`) — one organization with a default group
   and one account per account type: `manager`, `teacher`, `student`.
 - Seed: `bun scripts/qa-tenant.ts NFR-07 --fresh` — a fresh run suffix per independent run, so
   every run gets its own org/group/users from

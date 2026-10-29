@@ -27,7 +27,7 @@ The case was written against the legacy manual seed (`teacher1@dev.local`, passw
 organization WSB Merito, group `O1G1`). The suite version uses the case's own tenant and never
 the legacy accounts.
 
-- Profile: `org-limit` (`qa/tests/profiles/EDU-GRP-01.json`) — one organization with an
+- Profile: `org-limit` (`__tests__/qa/profiles/EDU-GRP-01.json`) — one organization with an
   `admin` manager, two org-`teacher` educators and one org-`member` student, plus the default
   group `G1` (every member enrolled, the manager as its group `teacher`). The case only uses
   the first educator (`teacher`) and `G1`; the extra accounts keep the profile shared with the

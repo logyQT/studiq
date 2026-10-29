@@ -15,7 +15,7 @@ Bank z pytaniami.
 
 The case runs on its own `content` tenant, not on the legacy manual seed
 (`teacher1@dev.local`, `student1@dev.local`, `O1G1`, password `pass`). The shape is
-declared in `qa/tests/profiles/EDU-Q-06.json` and seeded with:
+declared in `__tests__/qa/profiles/EDU-Q-06.json` and seeded with:
 
 ```bash
 bun scripts/qa-tenant.ts EDU-Q-06 --fresh

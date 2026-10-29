@@ -62,7 +62,7 @@ The case was written against the legacy manual seed (`student1@dev.local`, passw
 organization WSB Merito, personal deck `O1S1`). The suite version uses the case's own tenant
 and never the legacy account.
 
-- Profile: `content` (`qa/tests/profiles/STU-24.json`) — one organization, one default group
+- Profile: `content` (`__tests__/qa/profiles/STU-24.json`) — one organization, one default group
   `G1`, and one account per account type: `manager`, `teacher`, `student`. The spec signs in
   as `student`; the org context is what scopes the deck, the card and the topics it creates.
 - Seed: `bun scripts/qa-tenant.ts STU-24 --fresh` — a fresh run suffix per independent run, so

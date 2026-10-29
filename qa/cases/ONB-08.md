@@ -50,7 +50,7 @@ bun scripts/qa-tenant.ts ONB-08 --profile content --fresh
   koliduje z innym workerem.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
   bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
-- Spec: `qa/tests/ONB/ONB-08.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/ONB/ONB-08.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Link aktywacyjny jest odczytywany z catchera poczty wspólnego stacku
   (`qa/fixtures/qa-mail.ts`: `QA_MAIL_URL`, w przeciwnym razie port API Supabase + 3 —

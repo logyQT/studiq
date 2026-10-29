@@ -28,7 +28,7 @@ The case was written against the legacy manual seed (`student1@dev.local`,
 `teacher1@dev.local`, deck `O1G1T1`, password `pass`). The suite version uses the case's
 own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/STU-39.json`) — one organization, the default
+- Profile: `content` (`__tests__/qa/profiles/STU-39.json`) — one organization, the default
   group `G1`, and one account per account type: `manager` (org `admin`, group `teacher`),
   `teacher` (account type `educator`, org + group `member` — the case's T1) and `student`
   (org `member`, member of `G1` — the case's S1).

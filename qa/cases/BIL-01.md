@@ -38,7 +38,7 @@ bun scripts/qa-tenant.ts BIL-01 --fresh   # new org + users per independent run
   without a seat assignment, so `/api/v1/me/plan` resolves their **personal** plan —
   `profiles.personal_plan_key`, default `base` (#270/#181). That is the "plan Base"
   of the prerequisite; `--plan` is not needed.
-- **Profile**: `content` (the default, so `qa/tests/profiles/BIL-01.json` needs no
+- **Profile**: `content` (the default, so `__tests__/qa/profiles/BIL-01.json` needs no
   entry).
 - **Read-only shared data**: the Base plan row and its features/limits are part of the
   global plan catalogue. The case can only exist against that catalogue, so the spec

@@ -13,7 +13,7 @@ Talie A i B.
 
 ## Seed (QA-suite)
 
-- Tenant: the case's own `content` tenant (`qa/tests/profiles/STU-26.json`), seeded
+- Tenant: the case's own `content` tenant (`__tests__/qa/profiles/STU-26.json`), seeded
   with `bun scripts/qa-tenant.ts STU-26 --fresh` — one fresh run suffix per
   independent run. All ids come from
   `tenantKey('qa/cases/STU-26.md', 'STU-26#<run>', 'qa-shared')` +

@@ -50,7 +50,7 @@ i kartkówki. Nie jest to zmiana seedera ani żadnego fixture'u.
 bun scripts/qa-tenant.ts SEC-09 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/SEC-09.json` = `"org-limit"` — organizacja
+- Profil tenanta: `__tests__/qa/profiles/SEC-09.json` = `"org-limit"` — organizacja
   `qa-sec-09-<run>` z adminem (`manager`), dwoma nauczycielami (`teacher`, `teacher2`;
   oba typu `educator` z rolą `teacher`), członkiem (`student`) i grupą domyślną `G1`,
   oraz dwoma kontami studentów **poza organizacją** (`invitee1`, `invitee2`).

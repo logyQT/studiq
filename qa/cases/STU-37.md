@@ -4,7 +4,7 @@
 - priority: P2 ważny
 - module: STU – Panel studenta (/app)
 - section: Kartkówki studenta (/app/assignments)
-- prereqs: tenant `content` z edukatorem i studentem (`qa/tests/profiles/STU-37.json`)
+- prereqs: tenant `content` z edukatorem i studentem (`__tests__/qa/profiles/STU-37.json`)
 - source: StudiQ Dokument Testera v1.3
 
 ## Prerequisite (verbatim)
@@ -20,10 +20,10 @@ suite przed każdym niezależnym przebiegiem:
 ```bash
 bun scripts/qa-tenant.ts STU-37 --fresh
 bunx playwright test -c qa/playwright.qa.config.ts \
-  qa/tests/STU/STU-37.spec.ts --workers=1
+  __tests__/qa/STU/STU-37.spec.ts --workers=1
 ```
 
-- `qa/tests/profiles/STU-37.json` deklaruje profil `content`: jedna organizacja
+- `__tests__/qa/profiles/STU-37.json` deklaruje profil `content`: jedna organizacja
   `qa-stu-37-<run>` z managerem (admin organizacji, nieużywany w teście), edukatorem
   i studentem, na którym test się loguje, oraz domyślna grupa `G1`. Klucz tenanta:
   `tenantKey('qa/cases/STU-37.md', 'STU-37#<run>', 'qa-shared')`, wszystkie id z
@@ -41,7 +41,7 @@ bunx playwright test -c qa/playwright.qa.config.ts \
   `maxAttempts: 1` trzyma kartkówki w sekcji „Ukończone”; CI zasiewa tenant **raz**
   i używa go ponownie w każdym retry, więc ponowny przebieg dokłada tylko nowe
   kartkówki, których asercje nie dotyczą.
-- Spec: `qa/tests/STU/STU-37.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/STU/STU-37.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test tworzy wyłącznie własny bank, pytania, kartkówki i próby; nie dotyka
   innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy ani

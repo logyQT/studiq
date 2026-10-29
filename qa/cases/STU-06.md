@@ -29,7 +29,7 @@ The case was written against the legacy manual seed (`student1@dev.local`, passw
 organization WSB Merito, group O1G1, personal deck `O1S1`). The suite version uses the case's
 own tenant and never the legacy account.
 
-- Profile: `content` (`qa/tests/profiles/STU-06.json`) — one organization, one default group
+- Profile: `content` (`__tests__/qa/profiles/STU-06.json`) — one organization, one default group
   `G1`, and one account per account type: `manager`, `teacher`, `student`. The spec signs in
   as `student`.
 - Seed: `bun scripts/qa-tenant.ts STU-06 --fresh` — a fresh run suffix per independent run, so

@@ -41,7 +41,7 @@ bookkeeping that gives the run a deterministic, isolated identity:
 - The spec consumes no seeded account: it only derives the form's e-mail from
   `tenant.key` (`qa+<shortHash(key)>+register@test.local`), so a run can never
   collide with a seeded user or with another worker's tenant.
-- Spec: `qa/tests/AUT/AUT-03.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/AUT/AUT-03.spec.ts`, project `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: invalid passwords are rejected client-side by `RegisterSchema`, so
   no request reaches `POST /api/v1/auth/register` and nothing is written. The two

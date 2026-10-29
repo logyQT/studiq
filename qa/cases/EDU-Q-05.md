@@ -43,10 +43,10 @@ EDU-Q-02, password `pass`). The suite version uses the case's own tenant and nev
 accounts.
 
 ```bash
-bun scripts/qa-tenant.ts EDU-Q-05 --fresh   # profile from qa/tests/profiles/EDU-Q-05.json
+bun scripts/qa-tenant.ts EDU-Q-05 --fresh   # profile from __tests__/qa/profiles/EDU-Q-05.json
 ```
 
-- Profile: `content` (`qa/tests/profiles/EDU-Q-05.json`) — one organization, the default group
+- Profile: `content` (`__tests__/qa/profiles/EDU-Q-05.json`) — one organization, the default group
   `G1`, and one account per account type: `manager` (org `admin`), `teacher` (account type
   `educator`, org `member` — the „T1” analogue that owns the question) and `student`. An
   educator's default `question.create/update/delete` scope is `own`, which is exactly what the
@@ -90,5 +90,5 @@ bun scripts/qa-tenant.ts EDU-Q-05 --fresh   # profile from qa/tests/profiles/EDU
   `ON DELETE CASCADE`; the quiz detail then lists no questions). Because the case leaves the
   expected behaviour open, the spec asserts only the unambiguous edit/delete points above and
   the cascade stays a walk note.
-- Spec: `qa/tests/EDU/EDU-Q-05.spec.ts`; run with
-  `bunx playwright test -c qa/playwright.qa.config.ts qa/tests/EDU/EDU-Q-05.spec.ts --workers=1`.
+- Spec: `__tests__/qa/EDU/EDU-Q-05.spec.ts`; run with
+  `bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-Q-05.spec.ts --workers=1`.

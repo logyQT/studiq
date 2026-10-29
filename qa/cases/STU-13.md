@@ -14,7 +14,7 @@ Zalogowany student1.
 ## Seed (QA-suite)
 
 - Tenant: `bun scripts/qa-tenant.ts STU-13 --fresh`, profile `content`
-  (`qa/tests/profiles/STU-13.json`) — its own organization, manager, teacher and student.
+  (`__tests__/qa/profiles/STU-13.json`) — its own organization, manager, teacher and student.
 - Accounts: the legacy `student1@dev.local` is the tenant's `users.student`
   (`loginAs(page, tenant, 'student')`); no legacy/manual account is used.
 - Content: none. The page renders no tenant data, so the spec seeds nothing and

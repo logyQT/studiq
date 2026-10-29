@@ -17,7 +17,7 @@ The case was written against the legacy manual seed (`teacher1@dev.local`, passw
 `pass`, organization WSB Merito, bank „Fizyka”). The suite version uses the case's
 own tenant and never the legacy accounts.
 
-- `qa/tests/profiles/EDU-Q-02.json` declares the `content` profile: an organization
+- `__tests__/qa/profiles/EDU-Q-02.json` declares the `content` profile: an organization
   (`qa-edu-q-02-<suffix>`), a manager, an educator `teacher`, a `student` and the
   default group `G1`. Seed it with
   `bun scripts/qa-tenant.ts EDU-Q-02 --fresh` (a fresh run suffix per independent

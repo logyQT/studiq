@@ -17,7 +17,7 @@ The case's own tenant, seeded by `bun scripts/qa-tenant.ts STU-11 --fresh` (neve
 the legacy manual accounts or `pass`):
 
 - key: `tenantKey('qa/cases/STU-11.md', 'STU-11#<run suffix>', 'qa-shared')`
-- `qa/tests/profiles/STU-11.json` declares the default `content` profile: one
+- `__tests__/qa/profiles/STU-11.json` declares the default `content` profile: one
   organization with the default group `G1`, its manager/teacher, and the student
   the case signs in as;
 - the completed quiz is created inside that tenant through the product API by the

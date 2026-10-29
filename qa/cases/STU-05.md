@@ -20,10 +20,10 @@ przed każdym niezależnym przebiegiem:
 ```bash
 bun scripts/qa-tenant.ts STU-05 --fresh
 bunx playwright test -c qa/playwright.qa.config.ts \
-  qa/tests/STU/STU-05.spec.ts --workers=1
+  __tests__/qa/STU/STU-05.spec.ts --workers=1
 ```
 
-- `qa/tests/profiles/STU-05.json` deklaruje domyślny profil `content`: jedna organizacja
+- `__tests__/qa/profiles/STU-05.json` deklaruje domyślny profil `content`: jedna organizacja
   z managerem (admin organizacji, nieużywany w teście), edukatorem i studentem, na
   którym test się loguje, oraz domyślna grupa `G1`. Klucz tenanta:
   `tenantKey('qa/cases/STU-05.md', 'STU-05#<run>', 'qa-shared')`, wszystkie id z
@@ -42,7 +42,7 @@ bunx playwright test -c qa/playwright.qa.config.ts \
   teraz": spec postarza **własne** wiersze `flashcard_review_state` z pierwszej sesji (po
   id zwróconych przez API) — ten sam wyjątek „czas" co przy wygasających zaproszeniach
   (`qa/fixtures/qa-db.ts`). Żaden inny wiersz nie jest ruszany.
-- Spec: `qa/tests/STU/STU-05.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/STU/STU-05.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test tworzy i sprząta wyłącznie własną organizację, talię i fiszki; nie
   dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy ani

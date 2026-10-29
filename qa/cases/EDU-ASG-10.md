@@ -13,7 +13,7 @@ Kartkówka z pytaniami.
 
 ## Seed (QA-suite)
 
-- Tenant: the case's own `content` tenant (`qa/tests/profiles/EDU-ASG-10.json`), seeded with
+- Tenant: the case's own `content` tenant (`__tests__/qa/profiles/EDU-ASG-10.json`), seeded with
   `bun scripts/qa-tenant.ts EDU-ASG-10 --fresh` — one fresh run suffix per independent run.
   All ids come from `tenantKey('qa/cases/EDU-ASG-10.md', 'EDU-ASG-10#<run>', 'qa-shared')` +
   `tenantId(key, entity)`.

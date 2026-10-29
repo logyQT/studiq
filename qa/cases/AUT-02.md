@@ -42,7 +42,7 @@ identity; the two accounts are created by the spec through `/register`:
 - Activation: the confirmation mail is read from the shared stack's mail catcher
   (`qa/fixtures/qa-mail.ts`, filtered to this run's own address) and the link is
   replayed against `QA_APP_URL`.
-- Spec: `qa/tests/AUT/AUT-02.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/AUT/AUT-02.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`.
 - Isolation: the two fresh accounts own no organisation, group or content, and the
   spec only reads `GET /api/v1/auth/me` and `GET /api/v1/me/orgs`. Nothing global

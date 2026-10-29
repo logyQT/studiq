@@ -29,7 +29,7 @@ same tenant's teacher and manager. It therefore runs against the case's own tena
   `tenantKey('qa/cases/AUT-16.md', 'AUT-16#<run>', 'qa-shared')`, with
   `tenantId(key, …)` for the org, group and accounts.
 - Seed: `bun scripts/qa-tenant.ts AUT-16 --profile content --fresh` against the
-  shared Supabase (`qa/tests/profiles/AUT-16.json` declares the `content` profile
+  shared Supabase (`__tests__/qa/profiles/AUT-16.json` declares the `content` profile
   for the CI seeder). The profile gives this tenant an org with a manager, a
   teacher and a student; all three are used, and none of them is shared with
   another case. A **fresh run suffix per independent run** keeps the tenant
@@ -38,7 +38,7 @@ same tenant's teacher and manager. It therefore runs against the case's own tena
   `seed-educator-<shortHash>@dev.local` and `seed-manager-<shortHash>@dev.local` /
   `Seed4Test!` from the fixture; no legacy `@dev.local` manual account and no shared
   `pass` password appears in the spec.
-- Spec: `qa/tests/AUT/AUT-16.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/AUT/AUT-16.spec.ts`, project `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: the spec only reads (`POST /api/v1/auth/login`, `GET /api/v1/auth/me`,
   `GET /api/v1/teacher/assignments`, `GET /api/v1/organization/members`,

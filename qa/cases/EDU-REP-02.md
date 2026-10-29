@@ -40,7 +40,7 @@ The case was written against the legacy manual seed (`teacher1@dev.local`,
 `student1@dev.local`, password `pass`, bank/deck `O1G1T1`). The suite version uses the
 case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-REP-02.json`) — one organization, one
+- Profile: `content` (`__tests__/qa/profiles/EDU-REP-02.json`) — one organization, one
   default group `G1`, and one account per account type: `manager` (org `admin`),
   `teacher` (account type `educator`), `student`. The case is the educator's report
   thread, so the walk signs in as `teacher` and then as the reporting `student`.

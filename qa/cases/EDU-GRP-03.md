@@ -28,10 +28,10 @@ groups `O1G1`/`O1G2`, password `pass`). The suite version uses the case's own te
 the legacy accounts.
 
 ```bash
-bun scripts/qa-tenant.ts EDU-GRP-03 --fresh   # profile from qa/tests/profiles/EDU-GRP-03.json
+bun scripts/qa-tenant.ts EDU-GRP-03 --fresh   # profile from __tests__/qa/profiles/EDU-GRP-03.json
 ```
 
-- Profile: `org-limit` (`qa/tests/profiles/EDU-GRP-03.json`). It is the seeded shape that gives
+- Profile: `org-limit` (`__tests__/qa/profiles/EDU-GRP-03.json`). It is the seeded shape that gives
   the organization **two teachers with the real org `teacher` role** — the entitlement that
   carries `group.manage` and therefore the „Nowa grupa”/„Edytuj”/„Usuń” actions on `/edu/groups`.
   The `content` profile seeds its single teacher as an org `member`, so it cannot manage groups.
@@ -62,5 +62,5 @@ bun scripts/qa-tenant.ts EDU-GRP-03 --fresh   # profile from qa/tests/profiles/E
   the disabled UI is backed by the server, not just hidden buttons.
 - Nothing global is read or written: no admin setting, feature flag, plan, platform stat or
   singleton row; only this tenant's org, users and groups.
-- Spec: `qa/tests/EDU/EDU-GRP-03.spec.ts`; run with
-  `bunx playwright test -c qa/playwright.qa.config.ts qa/tests/EDU/EDU-GRP-03.spec.ts --workers=1`.
+- Spec: `__tests__/qa/EDU/EDU-GRP-03.spec.ts`; run with
+  `bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-GRP-03.spec.ts --workers=1`.
