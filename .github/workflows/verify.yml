@@ -39,25 +39,72 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app: ${{ steps.diff.outputs.app }}
+      qa_shards: ${{ steps.diff.outputs.qa_shards }}
     steps:
       - uses: actions/checkout@v7
         with:
           # A shallow clone has no merge base, and the three-dot diff needs one.
           fetch-depth: 0
       - id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ -z "${{ github.base_ref }}" ]; then
-            echo "app=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          set -euo pipefail
+          echo "app=true" >> "$GITHUB_OUTPUT"
+          if [ -n "${BASE_REF:-}" ]; then
+            git fetch --no-tags origin "$BASE_REF"
+            changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+            echo "changed files:"; echo "$changed"
+            if ! echo "$changed" | grep -qvE '^(qa/|__tests__/)'; then
+              echo "app=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
-          git fetch --no-tags origin "${{ github.base_ref }}"
-          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
-          echo "changed files:"; echo "$changed"
-          if echo "$changed" | grep -qvE '^(qa/|__tests__/)'; then
-            echo "app=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "app=false" >> "$GITHUB_OUTPUT"
-          fi
+          python3 - "${BASE_REF:-}" <<'PY' >> "$GITHUB_OUTPUT"
+          import json, subprocess, sys
+
+          shards = [
+              {"name": "edu", "paths": "qa/tests/EDU", "areas": ["EDU"]},
+              {"name": "mgr-onb", "paths": "qa/tests/MGR qa/tests/ONB", "areas": ["MGR", "ONB"]},
+              {"name": "aut-stu", "paths": "qa/tests/AUT qa/tests/STU", "areas": ["AUT", "STU"]},
+              {
+                  "name": "sec-pub-bil-lim-nfr",
+                  "paths": "qa/tests/SEC qa/tests/PUB qa/tests/BIL qa/tests/LIM qa/tests/NFR",
+                  "areas": ["SEC", "PUB", "BIL", "LIM", "NFR"],
+              },
+          ]
+
+          # No base ref = nightly schedule / manual dispatch: run the whole suite.
+          base = sys.argv[1] if len(sys.argv) > 1 else ""
+          if not base:
+              selected = shards
+          else:
+              changed = subprocess.run(
+                  ["git", "diff", "--name-only", f"origin/{base}...HEAD"],
+                  capture_output=True, text=True, check=True,
+              ).stdout.split()
+              # Shared QA files, anything outside qa/, or a QA PR that touches no
+              # spec at all can change every area -> run all shards. Only a PR
+              # that touches specific qa/tests/<AREA>/ specs narrows.
+              shared = (
+                  "qa/fixtures/", "qa/playwright.qa.config.ts",
+                  "scripts/qa-tenant.ts", "scripts/qa-issue.ts",
+                  ".github/workflows/verify.yml", "package.json", "bun.lock",
+                  "apps/", "packages/", "supabase/", "__tests__/",
+              )
+              force_all = any(f.startswith(shared) for f in changed)
+              # A case PR adds a spec under qa/tests/<AREA>/ and/or a profile at
+              # qa/tests/profiles/<CASE>.json; both map to the case's area, so a
+              # normal case PR runs exactly one shard.
+              areas = set()
+              for f in changed:
+                  if f.startswith("qa/tests/profiles/") and f.endswith(".json"):
+                      areas.add(f.rsplit("/", 1)[-1].split("-")[0])
+                  elif f.startswith("qa/tests/") and len(f.split("/")) > 3:
+                      areas.add(f.split("/")[2])
+              touched = [s for s in shards if set(s["areas"]) & areas]
+              selected = shards if force_all or not touched else touched
+          print("qa_shards=" + json.dumps(selected))
+          PY
 
   checks:
     runs-on: ubuntu-latest
@@ -143,7 +190,19 @@ jobs:
   qa-suite:
     needs: [checks, scope]
     # Still runs when `unit` was skipped for a tests-only diff.
-    if: needs.checks.result == 'success'
+    if: needs.checks.result == 'success' && needs.scope.outputs.qa_shards != '[]'
+    # Sharded by area, one runner per shard. The suite is one long serial job
+    # (~12 min at 140 specs, growing), so splitting is what buys wall-clock time
+    # now — not more workers: the runner is 4 vCPU and raising QA_WORKERS only
+    # starves the app, Supabase and Chromium against each other.
+    #
+    # A PR runs only the shards whose areas it touches (see `scope`); a shared QA
+    # file, an app/packages change, or the nightly schedule runs all of them.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.scope.outputs.qa_shards) }}
+    name: qa-suite (${{ matrix.shard.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -207,13 +266,13 @@ jobs:
         run: bun scripts/qa-tenant.ts --all --run "ci${{ github.run_id }}"
 
       - name: Run the QA suite
-        run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line
+        run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line ${{ matrix.shard.paths }}
 
       - name: Upload report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-suite-report
+          name: qa-suite-report-${{ matrix.shard.name }}
           path: |
             playwright-report
             test-results
