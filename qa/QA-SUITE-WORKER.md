@@ -50,8 +50,14 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
   batch; you do not fix them and you do not leave a placeholder spec behind.
 - **Never call `gh issue create` directly — defects go through the dedup helper:**
   ```bash
-  bun scripts/qa-issue.ts <CASEID> --title "<short symptom>" --body-file /tmp/<CASEID>-issue.md
+  bun scripts/qa-issue.ts <CASEID> --title "<short symptom>" --body-file /tmp/<CASEID>-issue.md \
+    --attach dashboard/shots/qa-env-<N>-<stamp>-<CASEID>-<what>.png
   ```
+  **Evidence is uploaded, never described.** Every screenshot you cite must be passed with
+  `--attach` (repeatable, `gh --attach` under the hood). A filesystem path in the body is
+  invisible to every reader — the helper now **refuses** a body containing one, so a run that
+  only pastes `/workspaces/...`, `dashboard/shots/...` or `.qa-evidence/...` exits 3.
+  Name screenshots `<CASEID>-<what>.png` so the alt text is meaningful.
   It searches every issue (open **and** closed) for the case id and an optional
   `--search "<symptom text>"`, comments your evidence on an existing match, and only creates
   a new `[QA-SUITE] <CASEID> <symptom>` issue when nothing matches. One defect = one issue:
