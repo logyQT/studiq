@@ -15,7 +15,7 @@ Edytor quizu.
 
 Legacy accounts (`teacher-classroom@dev.local`, password `pass`) are never used.
 The case runs in its own deterministic tenant, declared in
-`qa/tests/profiles/EDU-QZ-02.json` (`{ "profile": "content" }`):
+`__tests__/qa/profiles/EDU-QZ-02.json` (`{ "profile": "content" }`):
 
 ```bash
 bun scripts/qa-tenant.ts EDU-QZ-02 --fresh

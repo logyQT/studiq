@@ -37,7 +37,7 @@ nothing but the tenant graph:
 - Accounts: `seed-student-<shortHash>@dev.local` / `Seed4Test!` from the fixture;
   no legacy `@dev.local` manual account and no shared password `pass` appears in
   the spec.
-- Spec: `qa/tests/AUT/AUT-10.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/AUT/AUT-10.spec.ts`, project `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: the spec only reads (`POST /api/v1/auth/login`,
   `GET /api/v1/auth/me`) inside its own tenant. It never mutates admin settings,

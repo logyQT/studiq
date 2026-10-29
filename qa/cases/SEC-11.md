@@ -17,7 +17,7 @@ The case's own tenant, seeded by `bun scripts/qa-tenant.ts SEC-11 --fresh` (neve
 legacy `manager@dev.local` / `teacher1@dev.local` / `pass` accounts):
 
 - key: `tenantKey('qa/cases/SEC-11.md', 'SEC-11#<run suffix>', 'qa-shared')`
-- `qa/tests/profiles/SEC-11.json` declares `{ "profile": "content", "plan": "hub" }`: one
+- `__tests__/qa/profiles/SEC-11.json` declares `{ "profile": "content", "plan": "hub" }`: one
   organization on **Hub** (so the manager's logo upload passes the `branding` feature gate,
   which is otherwise a 403 before any file is looked at), the tenant's
   manager/teacher/student, and the default group `G1`.

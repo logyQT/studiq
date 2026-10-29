@@ -20,7 +20,7 @@ those accounts; it runs on its own tenant:
 
 ```bash
 bun scripts/qa-tenant.ts STU-34 --fresh
-# qa/tests/profiles/STU-34.json → "content"
+# __tests__/qa/profiles/STU-34.json → "content"
 ```
 
 That gives the student under test its own organization `qa-stu-34-<run suffix>` with a

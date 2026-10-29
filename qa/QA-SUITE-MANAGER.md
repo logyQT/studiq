@@ -94,7 +94,7 @@ a suite test; it stays a repro/issue until the fix lands and the test is green.
 
 ## Tenant profiles and shared fixtures
 
-- The tenant shape for a case lives in **`qa/tests/profiles/<CASE>.json`** — one file per
+- The tenant shape for a case lives in **`__tests__/qa/profiles/<CASE>.json`** — one file per
   case, read by `scripts/qa-tenant.ts`. There is no shared manifest: a case PR adds one
   file, so two case PRs cannot conflict on it.
 - `scripts/qa-tenant.ts` and `qa/fixtures/*` are **manager-owned**. A case PR that adds a

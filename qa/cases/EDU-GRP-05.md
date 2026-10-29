@@ -50,7 +50,7 @@ feature override (ADM-OVR) on that account. The suite version uses the case's ow
 never the legacy accounts, and it takes the prerequisite's second option — _„użyj konta bez
 tej funkcji”_ — instead of mutating a global admin setting.
 
-- Profile: `content` (`qa/tests/profiles/EDU-GRP-05.json`) — one organization with an
+- Profile: `content` (`__tests__/qa/profiles/EDU-GRP-05.json`) — one organization with an
   `admin` manager, an org-`member` educator and an org-`member` student, plus the default
   group `G1` (all three enrolled, the manager as its group `teacher`).
 - Why that profile: `group.manage` is an org-role entitlement, not a personal plan. The org

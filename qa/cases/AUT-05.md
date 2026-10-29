@@ -35,7 +35,7 @@ exactly what a case tenant provides, so it uses the default `content` profile:
   through the Supabase Admin API with `email_confirm: true`, which is the state
   GoTrue rejects as `user_already_exists`. The spec reads the tenant from
   `qa/.tenants/AUT-05.json`; it never creates tenant accounts itself.
-- Spec: `qa/tests/AUT/AUT-05.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/AUT/AUT-05.spec.ts`, project `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: the visitor is anonymous, and the only data the spec touches is
   the tenant's own student account (its address and login) plus one fresh

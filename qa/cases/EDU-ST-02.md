@@ -14,7 +14,7 @@ Po kilku próbach quizów/fiszek studenta SC.
 ## Prereqs / Seed (reconciled with the tenant seeder)
 
 - Tenant: `bun scripts/qa-tenant.ts EDU-ST-02 --fresh`, declared in
-  `qa/tests/profiles/EDU-ST-02.json` as `{ "profile": "org-limit", "plan": "campus" }`.
+  `__tests__/qa/profiles/EDU-ST-02.json` as `{ "profile": "org-limit", "plan": "campus" }`.
 - Organization `qa-edu-st-02-<suffix>` with an admin, two educators (`teacher`,
   `teacher2`) and one student, plus the default group `G1`.
 - The legacy manual accounts (`teacher-classroom@dev.local`,
@@ -36,7 +36,7 @@ Po kilku próbach quizów/fiszek studenta SC.
   (`--repeat-each`, CI retries on one seeded tenant) from exhausting the
   `max_decks` / `max_question_banks` quotas. No global plan, feature flag, admin
   setting, platform stat or singleton row is touched.
-- Spec: `qa/tests/EDU/EDU-ST-02.spec.ts`.
+- Spec: `__tests__/qa/EDU/EDU-ST-02.spec.ts`.
 
 ## Steps
 

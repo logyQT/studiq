@@ -30,7 +30,7 @@ startuje od własnych, świeżych wierszy:
   - `student` — konto studenta, rola organizacyjna `member`; odpowiednik `S1` (wyszukiwanie po e-mailu);
   - `unnamed` — drugie konto studenta z **pustą nazwą** (stan „Bez imienia”); formularz rejestracji
     wymaga imienia, więc wiersz jest seedowany bezpośrednio, a nie podstawiany odpowiedzią API.
-- Spec: `qa/tests/MGR/MGR-MEM-01.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-MEM-01.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test czyta wyłącznie listę członków i role własnej organizacji oraz jej stan
   w `/manage/members`; poza seedem własnego tenanta nic nie zapisuje. Nie dotyka flag funkcji,

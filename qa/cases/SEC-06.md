@@ -22,7 +22,7 @@ każdym niezależnym uruchomieniu:
 bun scripts/qa-tenant.ts SEC-06 --fresh
 ```
 
-- Profil `org-limit` + plan `hub` (`qa/tests/profiles/SEC-06.json`). `apply_org_plan`
+- Profil `org-limit` + plan `hub` (`__tests__/qa/profiles/SEC-06.json`). `apply_org_plan`
   dotyczy wyłącznie organizacji tego tenanta — nie zmienia katalogu planów, flag funkcji
   ani żadnego wiersza singletonowego.
 - Organizacja `qa-sec-06-<suffix>` z domyślną grupą `G1` i czterema członkami: `manager`
@@ -36,7 +36,7 @@ bun scripts/qa-tenant.ts SEC-06 --fresh
 - Identyfikatory: `tenantKey('qa/cases/SEC-06.md', 'SEC-06#<suffix>', 'qa-shared')` +
   `tenantId(key, entity)`; adresy e-mail i nazwa roli kontrolnej zawierają sufiks przebiegu,
   więc dwa przebiegi nigdy nie kolidują.
-- Spec: `qa/tests/SEC/SEC-06.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/SEC/SEC-06.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 
 ## Steps

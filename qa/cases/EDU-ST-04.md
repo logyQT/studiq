@@ -18,7 +18,7 @@ the legacy `teacher-classroom@dev.local` / `student-classroom@dev.local` / `pass
 accounts):
 
 - key: `tenantKey('qa/cases/EDU-ST-04.md', 'EDU-ST-04#<run suffix>', 'qa-shared')`
-- `qa/tests/profiles/EDU-ST-04.json` declares the default `content` profile: one
+- `__tests__/qa/profiles/EDU-ST-04.json` declares the default `content` profile: one
   organization (`qa-edu-st-04-<suffix>`) with the default group `G1`, its manager,
   an `educator` teacher and a `student`.
 - `GET /api/v1/stats/teacher/quizzes` aggregates the attempts of the org members
@@ -79,5 +79,5 @@ fresh suffix into the key, so a re-run never sees a previous run's attempts.
 
 ## Test
 
-`qa/tests/EDU/EDU-ST-04.spec.ts` — one spec, one worker:
-`bunx playwright test -c qa/playwright.qa.config.ts qa/tests/EDU/EDU-ST-04.spec.ts --workers=1 --repeat-each=1`
+`__tests__/qa/EDU/EDU-ST-04.spec.ts` — one spec, one worker:
+`bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-ST-04.spec.ts --workers=1 --repeat-each=1`

@@ -49,7 +49,7 @@ niezależne uruchomienie dostaje własny, świeżo zaseedowany tenant:
 bun scripts/qa-tenant.ts AUT-13 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/AUT-13.json` = `{"profile": "bare", "role": "student"}`.
+- Profil tenanta: `__tests__/qa/profiles/AUT-13.json` = `{"profile": "bare", "role": "student"}`.
 
 - Klucz tenanta: `AUT-13.md::AUT-13#<run>::qa-shared` —
   `tenantKey('qa/cases/AUT-13.md', 'AUT-13#<run>', 'qa-shared')`, ten sam schemat co

@@ -19,7 +19,7 @@ The legacy prerequisite names the manual seed account `student-classroom@dev.loc
 
 ```bash
 bun scripts/qa-tenant.ts STU-31 --fresh
-# qa/tests/profiles/STU-31.json → "content"
+# __tests__/qa/profiles/STU-31.json → "content"
 ```
 
 That gives the student under test its own organization `qa-stu-31-<run suffix>` with a

@@ -27,7 +27,7 @@ The case was written against the legacy manual seed (`teacher-classroom@dev.loca
 `student-classroom@dev.local`, organization „Classroom”, group „Classroom Group”). The suite
 version uses the case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-ASG-05.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/EDU-ASG-05.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`, group `teacher`),
   `teacher` (account type `educator`), `student`.
 - Seed: `bun scripts/qa-tenant.ts EDU-ASG-05 --fresh` — a fresh run suffix per independent

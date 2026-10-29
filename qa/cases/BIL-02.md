@@ -35,7 +35,7 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
   `--fresh` the title carries a run suffix, so every independent run gets brand-new
   (still deterministic) ids via `tenantId(key, entity)`.
 - **Profile**: `content` (org `qa-bil-02-<suffix>`, manager `admin`, teacher, student,
-  default group `G1`), declared in `qa/tests/profiles/BIL-02.json`. Both legs of the case
+  default group `G1`), declared in `__tests__/qa/profiles/BIL-02.json`. Both legs of the case
   need an account, so the profile is the default one.
 - **Users**: the tenant's `student` (password `Seed4Test!`) is the „student1” leg. The
   tenant's `teacher` (an `educator` account) is the „teacher1” leg.

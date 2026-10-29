@@ -20,10 +20,10 @@ suite przed każdym niezależnym przebiegiem:
 ```bash
 bun scripts/qa-tenant.ts STU-30 --fresh
 bunx playwright test -c qa/playwright.qa.config.ts \
-  qa/tests/STU/STU-30.spec.ts --workers=1
+  __tests__/qa/STU/STU-30.spec.ts --workers=1
 ```
 
-- `qa/tests/profiles/STU-30.json` deklaruje domyślny profil `content`: jedna organizacja
+- `__tests__/qa/profiles/STU-30.json` deklaruje domyślny profil `content`: jedna organizacja
   z managerem (admin organizacji, nieużywany w teście), edukatorem i studentem, na którym
   test się loguje, oraz domyślna grupa `G1`. Klucz tenanta:
   `tenantKey('qa/cases/STU-30.md', 'STU-30#<run>', 'qa-shared')`, wszystkie id z

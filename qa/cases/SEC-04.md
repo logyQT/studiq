@@ -35,7 +35,7 @@ niezależne uruchomienie startuje od własnych, świeżych kont i organizacji:
     (odpowiednik `S1`).
 - Organizacje mają różną liczbę członków (1 vs 2), więc lista, która wyciekłaby z drugiej
   organizacji, nie może przypadkowo pokryć się z oczekiwaną.
-- Spec: `qa/tests/SEC/SEC-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/SEC/SEC-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test czyta i próbuje zapisywać wyłącznie w granicach własnego tenanta; poza
   seedem własnych organizacji nic nie zmienia. Nie dotyka flag funkcji, katalogu planów,

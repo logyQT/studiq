@@ -31,7 +31,7 @@ oczekiwanego rezultatu.
 bun scripts/qa-tenant.ts SEC-12 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/SEC-12.json` =
+- Profil tenanta: `__tests__/qa/profiles/SEC-12.json` =
   `{ "profile": "bare", "role": "student" }` — jedno konto studenta bez organizacji
   i bez grupy, hasło `Seed4Test!`.
 - Klucz tenanta: `SEC-12.md::SEC-12#<run>::qa-shared`

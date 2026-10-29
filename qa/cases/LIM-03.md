@@ -24,7 +24,7 @@ The tenant reproduces the same "already at the cap" starting point at the
 shows) instead of the artificially lowered 2:
 
 ```bash
-bun scripts/qa-tenant.ts LIM-03 --fresh   # profile: qa/tests/profiles/LIM-03.json
+bun scripts/qa-tenant.ts LIM-03 --fresh   # profile: __tests__/qa/profiles/LIM-03.json
 ```
 
 - **Profile**: `bare` / `student` — one student, no organization, no group and

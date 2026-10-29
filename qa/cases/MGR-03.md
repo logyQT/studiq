@@ -19,7 +19,7 @@ organizacji, i osobnym zestawem danych w każdej z nich:
 
 ```bash
 bunx playwright test -c qa/playwright.qa.config.ts \
-  qa/tests/MGR/MGR-03.spec.ts --workers=1
+  __tests__/qa/MGR/MGR-03.spec.ts --workers=1
 ```
 
 Spec seeduje wszystko sam przez `seedTenantGraph()` (`__tests__/helpers/tenant-seed.ts`),
@@ -45,7 +45,7 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
 - Druga grupa w każdej organizacji ma managera jako nauczyciela. Lista grup
   (`/api/v1/organization/groups`) pokazuje grupę tylko wtedy, gdy ma członka z rolą
   `teacher`.
-- Spec: `qa/tests/MGR/MGR-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test przełącza wyłącznie organizacje własnego tenanta i czyta listy własnych
   organizacji. Nie dotyka innego tenanta, ustawień admina, flag funkcji, planów,

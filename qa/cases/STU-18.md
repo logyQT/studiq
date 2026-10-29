@@ -13,7 +13,7 @@ Własna talia (utwórz tymczasową).
 
 ## Seed (QA-suite)
 
-- Tenant: the case's own `content` tenant (`qa/tests/profiles/STU-18.json`), seeded
+- Tenant: the case's own `content` tenant (`__tests__/qa/profiles/STU-18.json`), seeded
   with `bun scripts/qa-tenant.ts STU-18 --fresh` — one fresh run suffix per
   independent run. All ids come from
   `tenantKey('qa/cases/STU-18.md', 'STU-18#<run>', 'qa-shared')` +

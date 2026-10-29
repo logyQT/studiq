@@ -42,7 +42,7 @@ bun scripts/qa-tenant.ts MGR-GRP-02 --profile org-limit --fresh
 - Grupa „Grupa C” jest warunkiem wstępnym przypadku, więc spec tworzy ją przez
   `POST /api/v1/organization/groups` i startuje z pustym składem (0 członków,
   0 nauczycieli).
-- Spec: `qa/tests/MGR/MGR-GRP-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-GRP-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (org, jego członkowie,
   jego grupy i składy grup); nie dotyka flag funkcji, katalogu planów, ustawień admina ani

@@ -31,7 +31,7 @@ organization whose educator has **already onboarded**, which is what the
   `tenantKey('qa/cases/AUT-17.md', 'AUT-17#<run>', 'qa-shared')`
   → `AUT-17.md::AUT-17#<run>::qa-shared`
 - Seed: `bun scripts/qa-tenant.ts AUT-17 --profile content --fresh` against the
-  shared Supabase (profile also declared in `qa/tests/profiles/AUT-17.json`). It
+  shared Supabase (profile also declared in `__tests__/qa/profiles/AUT-17.json`). It
   creates an organization, its manager/teacher/student and a default group
   (`seed-<role>-<hash>@dev.local`, password `Seed4Test!`), all derived from the
   tenant key through `tenantId`. `--fresh` gives every independent run its own
@@ -41,8 +41,8 @@ organization whose educator has **already onboarded**, which is what the
   not an org-role teacher. That does not change the case: the proxy decides on
   the JWT `account_type` (`educator`), not on the org role, so the route matrix is
   the same one `teacher1` would see.
-- Spec: `qa/tests/AUT/AUT-17.spec.ts`, run with
-  `bunx playwright test -c qa/playwright.qa.config.ts qa/tests/AUT/AUT-17.spec.ts --workers=1`,
+- Spec: `__tests__/qa/AUT/AUT-17.spec.ts`, run with
+  `bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/AUT/AUT-17.spec.ts --workers=1`,
   baseURL `http://localhost:3010`.
 - Isolation: the spec only reads its own tenant (teacher + manager of the same
   tenant, its org list) and writes nothing. No global admin setting, feature flag,

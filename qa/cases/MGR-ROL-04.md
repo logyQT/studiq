@@ -34,7 +34,7 @@ przez globalną flagę czy zmianę planu innej organizacji:
 bun scripts/qa-tenant.ts MGR-ROL-04 --fresh
 ```
 
-- `qa/tests/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
+- `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
   tenanta na plan Hub. Rola `admin` dostaje wtedy `role.builder` w snapshocie
   `org_role_features`, a `/api/v1/features/me` zwraca tę funkcję.
@@ -49,7 +49,7 @@ bun scripts/qa-tenant.ts MGR-ROL-04 --fresh
   `POST /api/v1/organization/roles` tworzy „Asystent QA” (z członkiem) i „Pusta QA”
   (bez członków), a `PUT /api/v1/organization/members` przypisuje T1 do „Asystent QA”.
   Trzecia rola, „Anulowana QA”, powstaje tylko na potrzeby ścieżki anulowania.
-- Spec: `qa/tests/MGR/MGR-ROL-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-ROL-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie role oraz członkostwa swojej organizacji; nie
   dotyka flag funkcji, katalogu planów (`plan_features` czyta tylko pośrednio przez RPC),

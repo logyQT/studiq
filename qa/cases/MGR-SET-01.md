@@ -34,7 +34,7 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
   przypadek używa wyłącznie managera.
 - Konto managera: `seed-manager-<hash>@dev.local` / `Seed4Test!`,
   `app_metadata.account_type = manager`.
-- Spec: `qa/tests/MGR/MGR-SET-01.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-SET-01.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie w przypadku są polskie).
 - Izolacja: test czyta i zmienia wyłącznie własną organizację (i tylko ją próbuje
   zmienić — zapisy brandingu są odrzucane); nie dotyka planów, flag, statystyk ani

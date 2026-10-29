@@ -9,7 +9,7 @@
 
 ## Tenant (QA-suite seed)
 
-- Profil: `content` (`qa/tests/profiles/STU-36.json`).
+- Profil: `content` (`__tests__/qa/profiles/STU-36.json`).
 - Seed: `bun scripts/qa-tenant.ts STU-36 --fresh` — organizacja
   `qa-stu-36-<suffix>`, manager, nauczyciel i uczeń, domyślna grupa `G1`.
   Wszystkie id pochodzą z `tenantKey('qa/cases/STU-36.md', 'STU-36#<suffix>', 'qa-shared')`

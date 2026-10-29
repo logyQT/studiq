@@ -31,7 +31,7 @@ każdym niezależnym uruchomieniu:
 bun scripts/qa-tenant.ts SEC-10 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/SEC-10.json` = `"content"` — organizacja
+- Profil tenanta: `__tests__/qa/profiles/SEC-10.json` = `"content"` — organizacja
   `qa-sec-10-<suffix>`, domyślna grupa `G1`, konto `manager` (rola organizacji
   `admin`), konto `teacher` (typ `educator`) i konto `student`; hasło `Seed4Test!`.
 - Klucz tenanta: `qa/cases/SEC-10.md::SEC-10#<run>::qa-shared`

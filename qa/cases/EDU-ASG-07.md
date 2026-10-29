@@ -18,7 +18,7 @@ the legacy `teacher-classroom@dev.local` / `student-classroom@dev.local` / `pass
 accounts):
 
 - key: `tenantKey('qa/cases/EDU-ASG-07.md', 'EDU-ASG-07#<run suffix>', 'qa-shared')`
-- `qa/tests/profiles/EDU-ASG-07.json` declares the default `content` profile: one
+- `__tests__/qa/profiles/EDU-ASG-07.json` declares the default `content` profile: one
   organization (`qa-edu-asg-07-<suffix>`) with the default group `G1`, its manager,
   an `educator` teacher and a `student` — the tenant's „SC”;
 - the tenant's `teacher` is an org member, so `assignment.*` resolves to the `own`
@@ -76,5 +76,5 @@ fresh suffix into the key, so a re-run never sees a previous run's assignment.
 
 ## Test
 
-`qa/tests/EDU/EDU-ASG-07.spec.ts` — one spec, one worker:
-`bunx playwright test -c qa/playwright.qa.config.ts qa/tests/EDU/EDU-ASG-07.spec.ts --workers=1 --repeat-each=1`
+`__tests__/qa/EDU/EDU-ASG-07.spec.ts` — one spec, one worker:
+`bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-ASG-07.spec.ts --workers=1 --repeat-each=1`

@@ -63,7 +63,7 @@ import {
 
 const ROOT = join(import.meta.dir, '..');
 const CASES = join(ROOT, 'qa', 'cases');
-const TESTS = join(ROOT, 'qa', 'tests');
+const TESTS = join(ROOT, '__tests__', 'qa');
 const OUT = join(ROOT, 'qa', '.tenants');
 
 const PROFILES = ['content', 'bare', 'org-limit', 'two-org'] as const;
@@ -124,7 +124,7 @@ const USAGE =
   'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--json] [--reset]';
 
 /**
- * The CI seed contract: `qa/tests/profiles/<CASE>.json` declares the tenant shape
+ * The CI seed contract: `__tests__/qa/profiles/<CASE>.json` declares the tenant shape
  * a case needs, so a runner can seed every spec without guessing. One file per
  * case means two case PRs never edit the same file. An explicit `--profile` /
  * `--role` on the command line always wins.
@@ -750,7 +750,7 @@ loadEnv();
 if (all) {
   const cases = specsOnDisk();
   if (cases.length === 0) {
-    console.error('--all found no specs under qa/tests/*/*.spec.ts');
+    console.error('--all found no specs under __tests__/qa/*/*.spec.ts');
     process.exit(2);
   }
   // One suffix for the whole batch: a suite run is one tenant set, and every

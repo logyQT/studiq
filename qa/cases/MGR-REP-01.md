@@ -44,7 +44,7 @@ tenant with the same shape instead:
      manager), which is also why the thread is reachable for the reply in step 2.
 - The spec seeds the graph at run time with the shared helpers
   (`__tests__/helpers/tenant-seed.ts`); no profile is added to
-  `qa/tests/profiles/<CASE>.json`, because each independent run needs its own reports.
+  `__tests__/qa/profiles/<CASE>.json`, because each independent run needs its own reports.
 
 ## Walk observations (qa-env-1, shared app :3010 / DB :54421, pl)
 

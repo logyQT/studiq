@@ -21,7 +21,7 @@ every independent run:
 bun scripts/qa-tenant.ts STU-42 --fresh
 ```
 
-- Profile: `content` (`qa/tests/profiles/STU-42.json`) — one organization, an
+- Profile: `content` (`__tests__/qa/profiles/STU-42.json`) — one organization, an
   unused manager/org admin, an educator, and the `student` account the case logs in
   as, plus the default group `G1`.
 - Tenant key: `tenantKey('qa/cases/STU-42.md', 'STU-42#<run>', 'qa-shared')`; every
@@ -36,7 +36,7 @@ bun scripts/qa-tenant.ts STU-42 --fresh
   cards, practice rows and review state) and rebuild the fixture, so a retry never
   sees a previous pass's rows.
 
-Spec: `qa/tests/STU/STU-42.spec.ts` (Playwright, `qa/tests/STU/`).
+Spec: `__tests__/qa/STU/STU-42.spec.ts` (Playwright, `__tests__/qa/STU/`).
 
 ## Prerequisite context
 

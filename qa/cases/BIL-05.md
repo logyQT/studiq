@@ -20,7 +20,7 @@ case's own tenant, seeded before each independent run:
 bun scripts/qa-tenant.ts BIL-05 --fresh
 ```
 
-`qa/tests/profiles/BIL-05.json` declares `bare`/`student`: one **student under test**
+`__tests__/qa/profiles/BIL-05.json` declares `bare`/`student`: one **student under test**
 (`users.student`), no organization, no group, and the default free `base` personal
 plan that the `handle_new_user` trigger writes. Every id derives from
 `tenantKey('qa/cases/BIL-05.md', 'BIL-05#<run>', 'qa-shared')` + `tenantId`; the

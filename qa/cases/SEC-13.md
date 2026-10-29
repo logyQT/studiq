@@ -28,7 +28,7 @@ dostaje własny, świeżo zaseedowany tenant:
 bun scripts/qa-tenant.ts SEC-13 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/SEC-13.json` = `"content"` — organizacja z managerem,
+- Profil tenanta: `__tests__/qa/profiles/SEC-13.json` = `"content"` — organizacja z managerem,
   nauczycielem i studentem (czyli trzy realne wiersze `profiles`) oraz grupa `G1`.
 - Klucz tenanta: `qa/cases/SEC-13.md::SEC-13#<run>::qa-shared`
   (`tenantKey('qa/cases/SEC-13.md', 'SEC-13#<run>', 'qa-shared')`, `tenantId` dla każdego

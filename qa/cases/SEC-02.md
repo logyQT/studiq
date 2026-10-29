@@ -23,10 +23,10 @@ Tenant jest seedowany **przed** uruchomieniem suity (profil `two-org`, ten sam c
 ```bash
 bun scripts/qa-tenant.ts SEC-02 --fresh
 bunx playwright test -c qa/playwright.qa.config.ts \
-  qa/tests/SEC/SEC-02.spec.ts --workers=1
+  __tests__/qa/SEC/SEC-02.spec.ts --workers=1
 ```
 
-Manifest `qa/tests/profiles/SEC-02.json` deklaruje profil, więc runner CI seedinguje
+Manifest `__tests__/qa/profiles/SEC-02.json` deklaruje profil, więc runner CI seedinguje
 przypadek bez zgadywania kształtu tenanta. Spec nie wywołuje `seedTenantGraph()` ani
 `createSeedDb()` — konta, organizacje i grupy pochodzą wyłącznie z `qa/.tenants/SEC-02.json`.
 
@@ -45,7 +45,7 @@ przypadek bez zgadywania kształtu tenanta. Spec nie wywołuje `seedTenantGraph(
   rozwiązywany przez `GET /api/v1/organization/groups` (nazwa `O1G1-<run>` / `O2G1-<run>`).
 - Logowanie: `loginAs()` z `@qa/fixtures/qa-tenant` (hasła z seedera), `NEXT_LOCALE=pl`
   (kopie interfejsu w przypadku są polskie).
-- Spec: `qa/tests/SEC/SEC-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/SEC/SEC-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`.
 - Izolacja: test tworzy wyłącznie własne talie i czyta tylko dane swojego tenanta. Nie
   dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy ani

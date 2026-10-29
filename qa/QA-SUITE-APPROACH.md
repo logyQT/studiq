@@ -59,7 +59,7 @@ one-off env, or the old slot stack. Do not let 16 workers mutate the same single
   in an automated QA test. Use the per-case tenant users.
 - The only exception is a test that explicitly verifies the legacy seed dataset; mark it
   clearly and do not let it depend on mutable state.
-- Test file: `qa/tests/<AREA>/<CASEID>.spec.ts`.
+- Test file: `__tests__/qa/<AREA>/<CASEID>.spec.ts`.
 - The test must derive all IDs from its tenant fixture; no hard-coded UUIDs or shared
   org/group names.
 - Default password for seeded fixture users is `Seed4Test!` (from `tenant-seed.ts`);
@@ -90,7 +90,7 @@ one-off env, or the old slot stack. Do not let 16 workers mutate the same single
 6. Write the Playwright spec against the behavior you confirmed in the walk, using the
    tenant fixture.
 7. Run it **five independent times**, each with a fresh tenant/run suffix:
-   - `bunx playwright test qa/tests/<AREA>/<CASEID>.spec.ts --workers=1 --repeat-each=1`
+   - `bunx playwright test __tests__/qa/<AREA>/<CASEID>.spec.ts --workers=1 --repeat-each=1`
    - no `test.skip`, `test.fixme`, `test.soft`, or expected-failure wrappers
 8. Only if **5/5 runs are green**:
    - branch from `qa-suite` as `qa/<CASEID>`
@@ -136,10 +136,10 @@ failing test that encodes a guess.
 Proposed:
 
 ```text
-qa/tests/
+__tests__/qa/
   PUB/  AUT/  ONB/  STU/  EDU/  MGR/
 qa/fixtures/qa-tenant.ts     # reuses e2e tenantKey/seedTenantGraph
-qa/playwright.qa.config.ts   # testDir qa/tests, chromium only
+qa/playwright.qa.config.ts   # testDir __tests__/qa, chromium only
 ```
 
 Split the GitHub job by area (or Playwright project), e.g.:

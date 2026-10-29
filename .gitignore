@@ -65,3 +65,9 @@ __tests__/e2e/.seed/
 
 # QA case tenants (generated)
 qa/.tenants/
+
+# QA run artefacts (never commit)
+.qa-app.log
+.qa-app.pid
+test-results/
+playwright-report/

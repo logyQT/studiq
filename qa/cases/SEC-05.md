@@ -30,7 +30,7 @@ w `test.beforeAll`, więc każde niezależne uruchomienie startuje od świeżych
   - `teacher` (`qa+<hash>+teacher@test.local`) — kontrola pozytywna, typ konta `educator`,
     rola organizacyjna `teacher`;
   - `manager` (`qa+<hash>+manager@test.local`) — admin organizacji (spójny graf tenanta).
-- Spec: `qa/tests/SEC/SEC-05.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/SEC/SEC-05.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i próbuje zapisywać wyłącznie w granicach własnego tenanta; nie dotyka
   flag funkcji, katalogu planów, statystyk platformy, ustawień admina ani wierszy

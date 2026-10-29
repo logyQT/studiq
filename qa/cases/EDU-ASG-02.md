@@ -29,7 +29,7 @@ The case was written against the legacy manual seed (`teacher1@dev.local`, passw
 organization WSB Merito, banks/topics `O1G1T1`). The suite version uses the case's own tenant
 and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-ASG-02.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/EDU-ASG-02.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`), `teacher` (account
   type `educator`), `student`. The case is about the educator's assignment editor, so it
   signs in as `teacher`.

@@ -62,14 +62,21 @@ jobs:
           python3 - "${BASE_REF:-}" <<'PY' >> "$GITHUB_OUTPUT"
           import json, subprocess, sys
 
+          # Balanced on the last observed shard times (7 / 6 / 6 / 5 min): STU is the
+          # slowest area, so it carries the two light ones (LIM, NFR); AUT joins the
+          # SEC/PUB/BIL group it used to sit next to in the old four-area shard.
           shards = [
-              {"name": "edu", "paths": "qa/tests/EDU", "areas": ["EDU"]},
-              {"name": "mgr-onb", "paths": "qa/tests/MGR qa/tests/ONB", "areas": ["MGR", "ONB"]},
-              {"name": "aut-stu", "paths": "qa/tests/AUT qa/tests/STU", "areas": ["AUT", "STU"]},
+              {"name": "edu", "paths": "__tests__/qa/EDU", "areas": ["EDU"]},
+              {"name": "mgr-onb", "paths": "__tests__/qa/MGR __tests__/qa/ONB", "areas": ["MGR", "ONB"]},
               {
-                  "name": "sec-pub-bil-lim-nfr",
-                  "paths": "qa/tests/SEC qa/tests/PUB qa/tests/BIL qa/tests/LIM qa/tests/NFR",
-                  "areas": ["SEC", "PUB", "BIL", "LIM", "NFR"],
+                  "name": "stu-lim-nfr",
+                  "paths": "__tests__/qa/STU __tests__/qa/LIM __tests__/qa/NFR",
+                  "areas": ["STU", "LIM", "NFR"],
+              },
+              {
+                  "name": "aut-sec-pub-bil",
+                  "paths": "__tests__/qa/AUT __tests__/qa/SEC __tests__/qa/PUB __tests__/qa/BIL",
+                  "areas": ["AUT", "SEC", "PUB", "BIL"],
               },
           ]
 
@@ -84,7 +91,7 @@ jobs:
               ).stdout.split()
               # Shared QA files, anything outside qa/, or a QA PR that touches no
               # spec at all can change every area -> run all shards. Only a PR
-              # that touches specific qa/tests/<AREA>/ specs narrows.
+              # that touches specific __tests__/qa/<AREA>/ specs narrows.
               shared = (
                   "qa/fixtures/", "qa/playwright.qa.config.ts",
                   "scripts/qa-tenant.ts", "scripts/qa-issue.ts",
@@ -92,16 +99,16 @@ jobs:
                   "apps/", "packages/", "supabase/", "__tests__/",
               )
               force_all = any(f.startswith(shared) for f in changed)
-              # A case PR adds a spec under qa/tests/<AREA>/ and/or a profile at
-              # qa/tests/profiles/<CASE>.json; both map to the case's area, so a
+              # A case PR adds a spec under __tests__/qa/<AREA>/ and/or a profile at
+              # __tests__/qa/profiles/<CASE>.json; both map to the case's area, so a
               # normal case PR runs exactly one shard.
               areas = set()
               for f in changed:
-                  if f.startswith("qa/tests/profiles/") and f.endswith(".json"):
+                  if f.startswith("__tests__/qa/profiles/") and f.endswith(".json"):
                       areas.add(f.rsplit("/", 1)[-1].split("-")[0])
                   elif f.startswith("qa/cases/") and f.endswith(".md"):
                       areas.add(f.rsplit("/", 1)[-1].split("-")[0])
-                  elif f.startswith("qa/tests/") and len(f.split("/")) > 3:
+                  elif f.startswith("__tests__/qa/") and len(f.split("/")) > 3:
                       areas.add(f.split("/")[2])
               touched = [s for s in shards if set(s["areas"]) & areas]
               selected = shards if force_all or not touched else touched
@@ -188,7 +195,7 @@ jobs:
 
   # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
-  # job `qa/tests/**` would never run in CI.
+  # job `__tests__/qa/**` would never run in CI.
   qa-suite:
     needs: [checks, scope]
     # Still runs when `unit` was skipped for a tests-only diff.

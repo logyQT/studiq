@@ -30,7 +30,7 @@ The case was written against the legacy manual seed (`student-classroom@dev.loca
 `teacher-classroom@dev.local`, group „Classroom Group”). The suite version uses the
 case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/STU-35.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/STU-35.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`), `teacher` and
   the `student` who solves the quiz. All ids come from
   `tenantKey('qa/cases/STU-35.md', 'STU-35#<suffix>', 'qa-shared')` + `tenantId(key, entity)`.

@@ -21,7 +21,7 @@ context (empty cookie jar).
 - Case tenant (deterministic, bookkeeping only):
   `tenantKey('qa/cases/PUB-05.md', 'PUB-05', 'qa-shared')` →
   `PUB-05.md::PUB-05::qa-shared`; the seeder's default `content` profile.
-- Profile: `qa/tests/profiles/PUB-05.json` (`"content"`), so
+- Profile: `__tests__/qa/profiles/PUB-05.json` (`"content"`), so
   `bun scripts/qa-tenant.ts PUB-05` creates org `qa-pub-05-shared` with
   manager/teacher/student (`Seed4Test!`) and group `G1`.
 - Each independent run uses a fresh suffix:
@@ -29,7 +29,7 @@ context (empty cookie jar).
   `qa-pub-05-<suffix>` org. The spec consumes none of those rows; the tenant
   exists so the case has a deterministic, isolated identity like every other
   suite test.
-- Spec: `qa/tests/PUB/PUB-05.spec.ts`, runner `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/PUB/PUB-05.spec.ts`, runner `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: `storageState: { cookies: [], origins: [] }` plus an explicit
   `NEXT_LOCALE=pl`; nothing shared (plans, flags, settings, platform stats) is

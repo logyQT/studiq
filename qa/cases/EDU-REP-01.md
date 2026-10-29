@@ -32,7 +32,7 @@ The case was written against the legacy manual seed (`teacher1@dev.local`,
 `student1@dev.local`, deck `O1G1T1`, password `pass`). The suite version uses the case's
 own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-REP-01.json`) — one organization, the default
+- Profile: `content` (`__tests__/qa/profiles/EDU-REP-01.json`) — one organization, the default
   group `G1`, and one account per account type: `manager` (org `admin`, group `teacher`),
   `teacher` (account type `educator`, org `member` — the case's T1) and `student`
   (org `member`, member of `G1` — the case's S1).

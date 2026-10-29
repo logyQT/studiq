@@ -32,7 +32,7 @@ bun scripts/qa-tenant.ts MGR-01 --fresh
   przenosi zaseedowanego wykładowcę na rolę `teacher` przez
   `PUT /api/v1/organization/members` — ten sam endpoint, którego używa strona
   `/manage/members`. Zapis jest idempotentny i dotyczy wyłącznie tego tenanta.
-- Spec: `qa/tests/MGR/MGR-01.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-01.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test czyta `/api/v1/organization/members` i `/api/v1/organization/roles`
   własnej organizacji oraz zmienia rolę jej członka. Nie dotyka innego tenanta, flag

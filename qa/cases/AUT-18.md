@@ -30,7 +30,7 @@ suite never signs in as a legacy account; it uses the case's own isolated tenant
   (organization, default group, users) is an RFC-4122 UUIDv5 derived from that key.
 - Seed: `bun scripts/qa-tenant.ts AUT-18 --profile content --fresh` against the shared
   Supabase (`qa/env.json` → `http://localhost:54421`). The profile is declared once in
-  `qa/tests/profiles/AUT-18.json`, so the CI seeder (`bun scripts/qa-tenant.ts AUT-18`)
+  `__tests__/qa/profiles/AUT-18.json`, so the CI seeder (`bun scripts/qa-tenant.ts AUT-18`)
   builds the same tenant. `content` creates one organization with a manager (admin), an
   educator, a student and the default group — the manager is the subject of the case, and
   the educator is the adjacent branch of the `/setup` vs `/setup/org` rule.
@@ -40,7 +40,7 @@ suite never signs in as a legacy account; it uses the case's own isolated tenant
 - `--fresh` gives every independent run a new run suffix, so each run owns a brand-new
   tenant while every id stays derived from `qa/.tenants/AUT-18.json`; the spec contains no
   hard-coded UUID.
-- Spec: `qa/tests/AUT/AUT-18.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/AUT/AUT-18.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`.
 - Isolation: the spec writes nothing — it only opens pages and reads `GET
 /api/v1/auth/me`. It never submits the organization form, so no organization, member or

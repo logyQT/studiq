@@ -16,7 +16,7 @@ Własny bank z pytaniami.
 The case was written against the legacy manual seed (`student1@dev.local`, password
 `pass`). The suite version uses the case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/STU-33.json`) — one organization with its default
+- Profile: `content` (`__tests__/qa/profiles/STU-33.json`) — one organization with its default
   group `G1`, and one account per account type: `manager` (org `admin`, `G1` teacher),
   `teacher` and the `student` under test (`student1` → the tenant `student`).
 - Seed: `bun scripts/qa-tenant.ts STU-33 --fresh` — a fresh run suffix per independent run,

@@ -9,7 +9,7 @@
 
 ## Tenant (QA-suite seed)
 
-- Profil: `{ "profile": "bare", "role": "student" }` (`qa/tests/profiles/STU-52.json`).
+- Profil: `{ "profile": "bare", "role": "student" }` (`__tests__/qa/profiles/STU-52.json`).
 - Seed: `bun scripts/qa-tenant.ts STU-52 --fresh` — jedno konto studenta bez organizacji
   i bez grupy, z osobistym planem `base`, który zapisuje trigger `handle_new_user`.
   Wszystkie id pochodzą z

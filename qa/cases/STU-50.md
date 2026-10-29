@@ -51,7 +51,7 @@ Konto TS.
 The case was written against the legacy manual seed (`test-student@dev.local` / „TS”, password
 `pass`, no content). The suite version uses the case's own tenant and never the legacy account.
 
-- Profile: `content` (`qa/tests/profiles/STU-50.json`) — one organization, one default group
+- Profile: `content` (`__tests__/qa/profiles/STU-50.json`) — one organization, one default group
   `G1`, and one account per account type (`manager`, `teacher`, `student`). The spec signs in
   as `student`, the „TS” analogue; the case only touches that account's own profile.
 - Seed: `bun scripts/qa-tenant.ts STU-50 --fresh` — a fresh run suffix per independent run, so

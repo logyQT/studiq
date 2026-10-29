@@ -41,7 +41,7 @@ The case was written against the legacy manual seed (`student1@dev.local` in gro
 `O1G1`, `teacher1@dev.local`, password `pass`, bank/question `O1G1T1`). The suite version
 uses the case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/STU-40.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/STU-40.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`), `teacher`
   (account type `educator`, the „T1” analogue that owns the reported question) and
   `student` (org `member` in `G1`, the „S1” analogue and the reporting student).

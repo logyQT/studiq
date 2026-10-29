@@ -15,7 +15,7 @@ Aktywność studentów w ostatnich dniach.
 
 Legacy accounts (`teacher1@dev.local`, `student1@dev.local`, password `pass`) are
 never used. The case runs in its own deterministic tenant, declared in
-`qa/tests/profiles/EDU-ST-03.json` (`{ "profile": "content" }`):
+`__tests__/qa/profiles/EDU-ST-03.json` (`{ "profile": "content" }`):
 
 ```bash
 bun scripts/qa-tenant.ts EDU-ST-03 --fresh

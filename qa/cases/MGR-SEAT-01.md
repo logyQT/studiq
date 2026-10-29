@@ -36,7 +36,7 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
   po zakupie jest dokładnie tą, którą kupił test.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
   bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
-- Spec: `qa/tests/MGR/MGR-SEAT-01.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-SEAT-01.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie w przypadku są polskie).
 - Izolacja: test czyta i zapisuje wyłącznie pule miejsc (`org_seat_pools`) swojej
   organizacji; nie dotyka katalogu planów, flag funkcji, statystyk platformy ani wierszy

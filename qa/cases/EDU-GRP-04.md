@@ -32,7 +32,7 @@ organizacji na planie **Launch** (`plan_limits.max_groups = 3`).
 bun scripts/qa-tenant.ts EDU-GRP-04 --fresh
 ```
 
-- Profil w `qa/tests/profiles/EDU-GRP-04.json`: `{"profile":"org-limit","plan":"launch"}`.
+- Profil w `__tests__/qa/profiles/EDU-GRP-04.json`: `{"profile":"org-limit","plan":"launch"}`.
   Profil `content` nie wystarcza: enroluje konto edukatora z rolą org `member`, więc
   `/edu/groups` nie pokazuje akcji zapisu. `org-limit` jako jedyny nadaje kontu `teacher`
   rolę organizacyjną `teacher` (i ma o jednego członka mniej niż limit planu — dla licznika
@@ -48,7 +48,7 @@ bun scripts/qa-tenant.ts EDU-GRP-04 --fresh
   1 nauczyciel). Przypadek mówi o dwóch istniejących grupach (O1G1, O1G2); seeder tworzy
   dokładnie jedną grupę domyślną, więc `G1` odpowiada pierwszej z nich, a drugą tworzy
   spec — dzięki temu trzecia grupa mieści się w limicie, a czwarta jest odrzucana.
-- Spec: `qa/tests/EDU/EDU-GRP-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/EDU/EDU-GRP-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie organizację tenanta i grupy utworzone przez
   jego konto `teacher`; nie dotyka flag funkcji, katalogu planów, ustawień admina ani

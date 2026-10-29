@@ -44,7 +44,7 @@ tenant profile:
   manage/invites „Anuluj zaproszenie?” action). Expiry has no API, so the spec
   backdates the one row it just created via the service client in
   `qa/fixtures/qa-db.ts`, matched by that row's token.
-- Spec: `qa/tests/ONB/ONB-09.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/ONB/ONB-09.spec.ts`, project `qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: every row the spec writes lives in this case's organization and is
   deleted or aged by the spec itself; nothing global (admin settings, feature

@@ -29,7 +29,7 @@ The case was written against the legacy manual seed (`teacher-classroom@dev.loca
 `pass`, organization „Classroom”). The suite version uses the case's own tenant and never the
 legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-ASG-01.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/EDU-ASG-01.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`), `teacher` (account
   type `educator`, org `member` — the „TC” analogue that creates the assignment), `student`.
 - Seed: `bun scripts/qa-tenant.ts EDU-ASG-01 --fresh` — a fresh run suffix per independent

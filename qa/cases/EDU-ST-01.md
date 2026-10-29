@@ -33,7 +33,7 @@ The case was written against the legacy manual seed (`teacher-classroom@dev.loca
 cards / 2 topics / 1 student). The suite version uses the case's own tenant and never the
 legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-ST-01.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/EDU-ST-01.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`, group `teacher`),
   `teacher` (account type `educator`, org `member`, the case's TC) and `student` (org member,
   group `member` — the one learner the „Studenci” card counts).
@@ -65,5 +65,5 @@ entity)`. The spec reads the ids through `loadTenant('EDU-ST-01')`.
   organization — `useOrgs` auto-selects the only membership and a teacher without an
   organization is redirected to `/setup` — so the hidden-card state is not reachable through
   the UI.
-- Spec: `qa/tests/EDU/EDU-ST-01.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/EDU/EDU-ST-01.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (the document quotes Polish copy).

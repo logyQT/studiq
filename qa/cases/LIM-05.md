@@ -30,7 +30,7 @@ konto i organizacja pochodzą wyłącznie z tenanta przypadku; skrót M1 odpowia
 bun scripts/qa-tenant.ts LIM-05 --fresh
 ```
 
-- `qa/tests/profiles/LIM-05.json` deklaruje `{ "profile": "content", "plan": "hub" }`. Profil
+- `__tests__/qa/profiles/LIM-05.json` deklaruje `{ "profile": "content", "plan": "hub" }`. Profil
   `content` tworzy organizację `qa-lim-05-<suffix>` z managerem (`admin`), nauczycielem i
   studentem; `plan: "hub"` przenosi **tę jedną** organizację na Hub przez `apply_org_plan`
   — ten sam RPC, który wywołuje webhook płatności — dzięki czemu rola `admin` ma funkcję

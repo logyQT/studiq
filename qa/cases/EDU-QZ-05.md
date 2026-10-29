@@ -25,7 +25,7 @@ The case was written against the legacy manual seed (`teacher-classroom@dev.loca
 `pass`, organization „Classroom”, quizy „Historia — Średniowiecze” / „Geografia i Nauka —
 Odkrycia”). The suite version uses the case's own tenant and never the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-QZ-05.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/EDU-QZ-05.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`), `teacher` (account
   type `educator`, org `member` — the „TC” analogue that owns the quiz), `student`.
 - Seed: `bun scripts/qa-tenant.ts EDU-QZ-05 --fresh` — a fresh run suffix per independent

@@ -27,7 +27,7 @@ uruchomienie dostaje własny, świeżo zaseedowany tenant:
 bun scripts/qa-tenant.ts SEC-03 --fresh
 ```
 
-- Profil tenanta: `qa/tests/profiles/SEC-03.json` = `"org-limit"` — organizacja z adminem
+- Profil tenanta: `__tests__/qa/profiles/SEC-03.json` = `"org-limit"` — organizacja z adminem
   (prowadzącym grupę `G1`), dwoma nauczycielami i członkiem oraz **dwoma kontami studentów
   spoza organizacji** (`invitee1`, `invitee2`). To jedyny profil, który daje jednocześnie
   istniejącą organizację z treściami i konto studenta bez organizacji.

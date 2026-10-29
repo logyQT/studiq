@@ -13,7 +13,7 @@ Quiz z ≥ 3 pytaniami.
 
 ## Seed (QA-suite)
 
-- Tenant: the case's own `content` tenant (`qa/tests/profiles/EDU-QZ-03.json`),
+- Tenant: the case's own `content` tenant (`__tests__/qa/profiles/EDU-QZ-03.json`),
   seeded with `bun scripts/qa-tenant.ts EDU-QZ-03 --fresh` — one fresh run suffix
   per independent run. All ids come from
   `tenantKey('qa/cases/EDU-QZ-03.md', 'EDU-QZ-03#<run>', 'qa-shared')` +

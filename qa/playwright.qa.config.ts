@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * QA-suite runner: one shared app + one shared Supabase, one spec per case.
  *
- *   bunx playwright test -c qa/playwright.qa.config.ts qa/tests/<AREA>/<CASEID>.spec.ts --workers=1
+ *   bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/<AREA>/<CASEID>.spec.ts --workers=1
  *
  * Local: keep `workers` at 1 — the dev box also hosts the app, Supabase and the
  * eight browser tiles, and a parallel run OOM-kills it. CI sets QA_WORKERS (each
@@ -11,8 +11,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   // `testDir` is resolved relative to this config file, not the repo root:
-  // `./qa/tests` would point at `qa/qa/tests` and match zero specs.
-  testDir: './tests',
+  // `./tests` would point at `qa/tests`, and `../qa/tests` at the repo root.
+  // The specs live with the rest of the test tree, under `__tests__/qa`.
+  // The specs live with the rest of the test tree, under `__tests__/qa`.
+  testDir: '../__tests__/qa',
   fullyParallel: false,
   workers: Number(process.env.QA_WORKERS ?? 1),
   // The CI runner is 4 vCPU and hosts Supabase, the Next app and four Chromium

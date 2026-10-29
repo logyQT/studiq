@@ -28,7 +28,7 @@ The case was written against the legacy manual seed (`teacher-classroom@dev.loca
 „Geografia i Nauka” with 6 questions). The suite version uses the case's own tenant and never
 the legacy accounts.
 
-- Profile: `content` (`qa/tests/profiles/EDU-ASG-03.json`) — one organization, one default
+- Profile: `content` (`__tests__/qa/profiles/EDU-ASG-03.json`) — one organization, one default
   group `G1`, and one account per account type: `manager` (org `admin`), `teacher` (account
   type `educator`, org `member`), `student`.
 - Seed: `bun scripts/qa-tenant.ts EDU-ASG-03 --fresh` — a fresh run suffix per independent

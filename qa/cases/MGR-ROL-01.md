@@ -35,7 +35,7 @@ bun scripts/qa-tenant.ts MGR-ROL-01 --fresh   # nowa organizacja i użytkownicy 
   (`organizations.plan`); nie ruszamy globalnego katalogu planów ani flag.
 - **Użytkownicy** (hasło `Seed4Test!`): `manager` (manager, rola org `admin`) — tylko
   on jest potrzebny; `teacher` i `student` dopełniają graf tenantа.
-- **Profil**: `content` (domyślny, więc bez wpisu w `qa/tests/profiles/<CASE>.json`).
+- **Profil**: `content` (domyślny, więc bez wpisu w `__tests__/qa/profiles/<CASE>.json`).
 - Plan i uprawnienia są odczytywane w tym samym przebiegu przez `/api/v1/me/plan`,
   `/api/v1/features/me` i `/api/v1/subscription-plans` — nic nie jest zaszyte na sztywno.
 

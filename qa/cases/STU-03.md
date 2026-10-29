@@ -17,7 +17,7 @@ The case's own tenant, seeded by `bun scripts/qa-tenant.ts STU-03 --fresh` (neve
 the legacy `student1@dev.local` / `pass` account):
 
 - key: `tenantKey('qa/cases/STU-03.md', 'STU-03#<run suffix>', 'qa-shared')`
-- `qa/tests/profiles/STU-03.json` declares the default `content` profile: one
+- `__tests__/qa/profiles/STU-03.json` declares the default `content` profile: one
   organization with the default group `G1`, its manager/teacher, and the student
   the case logs in as;
 - the organization keeps its default `launch` plan, whose member role grants

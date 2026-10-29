@@ -13,7 +13,7 @@ Zalogowany teacher1@dev.local.
 
 ## Prereqs (tenant model)
 
-The case's own tenant, seeded by `qa/tests/EDU/EDU-02.spec.ts` (never the legacy
+The case's own tenant, seeded by `__tests__/qa/EDU/EDU-02.spec.ts` (never the legacy
 `teacher1@dev.local` / `pass` account):
 
 - key: `tenantKey('qa/cases/EDU-02.md', 'EDU-02 teacher sidebar', 'qa-shared')::<run suffix>`
