@@ -1,10 +1,22 @@
+export interface LoadedQuestionTotal {
+  bankId: string;
+  total: number;
+}
+
 /**
- * A failed first load has nothing to draw: the table must not fall through to the
- * "no questions in this bank / create your first question" row next to the error banner,
- * which invited a read-only viewer to create a question in a bank that never loaded.
+ * `total` the pager renders.
  *
- * A failed refetch that still has a page keeps the stale rows and the banner (#651 QA).
+ * React Query only applies `keepPreviousData` while a query is pending: when a page or filter
+ * request errors it drops the data, so `total` would fall to 0 and the pager (with the only way
+ * back to the previous page) unmounted along with the rows. The list keeps the last total that
+ * loaded for the same bank instead, and the banner explains the failure (#668 QA).
  */
-export function isQuestionListUnavailable(input: { isError: boolean; hasPage: boolean }): boolean {
-  return input.isError && !input.hasPage;
+export function questionPagerTotal(input: {
+  current: number | undefined;
+  lastLoaded: LoadedQuestionTotal | undefined;
+  bankId: string;
+}): number {
+  if (input.current !== undefined) return input.current;
+  if (input.lastLoaded?.bankId === input.bankId) return input.lastLoaded.total;
+  return 0;
 }

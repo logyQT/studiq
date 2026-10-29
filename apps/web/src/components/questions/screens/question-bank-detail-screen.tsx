@@ -8,7 +8,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { ArrowLeft, Eye, Plus } from 'lucide-react';
 import Link from 'next/link';
 import type { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CreateFromQuestionDialog } from '@/components/flashcards/dialogs/create-from-question-dialog';
 import { QuestionFormDialog } from '@/components/questions/shared/question-form-dialog';
@@ -22,7 +22,7 @@ import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { bankAccess } from '@/lib/bank-access';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
-import { isQuestionListUnavailable } from '@/lib/question-list-state';
+import { type LoadedQuestionTotal, questionPagerTotal } from '@/lib/question-list-state';
 import { shouldRetryQuery } from '@/lib/query-retry';
 import { SrLabel } from '@/components/shared/sr-label';
 
@@ -106,11 +106,17 @@ export function QuestionBankDetailScreen({
     retry: shouldRetryQuery,
   });
   const questions: Question[] = questionsPage?.items ?? [];
-  const total = questionsPage?.total ?? 0;
-  // Nothing loaded yet: the error banner is the whole answer, not an empty bank.
-  const questionsUnavailable = isQuestionListUnavailable({
-    isError: questionsError,
-    hasPage: questionsPage != null,
+  // React Query drops `keepPreviousData` once a query errors, so `total` would fall to 0 and take
+  // the pager (and the way back to the previous page) with it. Remember the last total for this
+  // bank; the banner explains the failure and the controls stay usable.
+  const lastTotal = useRef<LoadedQuestionTotal | undefined>(undefined);
+  useEffect(() => {
+    if (questionsPage) lastTotal.current = { bankId, total: questionsPage.total };
+  }, [questionsPage, bankId]);
+  const total = questionPagerTotal({
+    current: questionsPage?.total,
+    lastLoaded: lastTotal.current,
+    bankId,
   });
 
   // Land on the last page that still exists after deleting the last row of a page.
@@ -210,58 +216,46 @@ export function QuestionBankDetailScreen({
         </p>
       )}
 
-      {questionsError && (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm"
-        >
-          <span>{t('load_error')}</span>
-          <Button variant="outline" size="sm" onClick={() => refetchQuestions()}>
-            {t('retry')}
-          </Button>
-        </div>
-      )}
-
-      {!questionsUnavailable && (
-        <QuestionTable
-          questions={questions}
-          isLoading={questionsLoading}
-          isFetching={questionsFetching}
-          total={total}
-          page={page}
-          pageSize={QUESTIONS_PAGE_SIZE}
-          onPageChange={setPage}
-          search={search}
-          onSearchChange={(value) => {
-            setSearch(value);
-            setPage(1);
-          }}
-          typeFilter={typeFilter}
-          onTypeFilterChange={(value) => {
-            setTypeFilter(value);
-            setPage(1);
-          }}
-          sortBy={sortBy}
-          sortOrder={sortOrder}
-          onSortChange={(sb, so) => {
-            setSortBy(sb);
-            setSortOrder(so);
-            setPage(1);
-          }}
-          onEdit={openEdit}
-          onDelete={setDeleteId}
-          onCreateFlashcard={basePath.startsWith('/edu') ? setFlashcardSourceQuestion : undefined}
-          canUpdate={(q) =>
-            access.allowQuestionAction(permission('question.update', { createdBy: q.created_by }))
-          }
-          canDelete={(q) =>
-            access.allowQuestionAction(permission('question.delete', { createdBy: q.created_by }))
-          }
-          emptyText={access.readOnly ? t('no_questions_read_only') : undefined}
-          showReportButton={basePath.startsWith('/app')}
-          t={t}
-        />
-      )}
+      <QuestionTable
+        questions={questions}
+        isLoading={questionsLoading}
+        isFetching={questionsFetching}
+        total={total}
+        page={page}
+        pageSize={QUESTIONS_PAGE_SIZE}
+        onPageChange={setPage}
+        search={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
+        typeFilter={typeFilter}
+        onTypeFilterChange={(value) => {
+          setTypeFilter(value);
+          setPage(1);
+        }}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(sb, so) => {
+          setSortBy(sb);
+          setSortOrder(so);
+          setPage(1);
+        }}
+        onEdit={openEdit}
+        onDelete={setDeleteId}
+        onCreateFlashcard={basePath.startsWith('/edu') ? setFlashcardSourceQuestion : undefined}
+        canUpdate={(q) =>
+          access.allowQuestionAction(permission('question.update', { createdBy: q.created_by }))
+        }
+        canDelete={(q) =>
+          access.allowQuestionAction(permission('question.delete', { createdBy: q.created_by }))
+        }
+        emptyText={access.readOnly ? t('no_questions_read_only') : undefined}
+        isError={questionsError}
+        onRetry={() => refetchQuestions()}
+        showReportButton={basePath.startsWith('/app')}
+        t={t}
+      />
 
       <CreateFromQuestionDialog
         question={flashcardSourceQuestion}

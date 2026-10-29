@@ -58,6 +58,9 @@ interface QuestionTableProps {
   showReportButton?: boolean;
   /** Replaces the default empty state, e.g. when the viewer cannot add questions. */
   emptyText?: string;
+  /** The list failed to load: say so, never "nothing here yet, create the first one". */
+  isError?: boolean;
+  onRetry: () => void;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -83,6 +86,8 @@ export function QuestionTable({
   canDelete,
   showReportButton = false,
   emptyText,
+  isError = false,
+  onRetry,
   t,
 }: QuestionTableProps) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -236,12 +241,24 @@ export function QuestionTable({
                 </TableCell>
               </TableRow>
             ))}
-            {emptyView.kind !== 'none' && (
+            {questions.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {emptyView.kind === 'no-results'
-                    ? t('no_results')
-                    : (emptyText ?? t('no_questions'))}
+                  {isError ? (
+                    // The body of the table still carries the failure, so the card keeps its
+                    // shape instead of ending on the header row, and retry stays where the
+                    // missing rows were.
+                    <div role="alert" className="flex flex-wrap items-center justify-center gap-3">
+                      <span>{t('load_error')}</span>
+                      <Button variant="outline" size="sm" onClick={onRetry}>
+                        {t('retry')}
+                      </Button>
+                    </div>
+                  ) : emptyView.kind === 'no-results' ? (
+                    t('no_results')
+                  ) : (
+                    (emptyText ?? t('no_questions'))
+                  )}
                 </TableCell>
               </TableRow>
             )}
