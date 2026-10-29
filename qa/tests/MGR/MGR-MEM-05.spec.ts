@@ -1,29 +1,32 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { tenantKey } from '#test/e2e/fixtures/ids';
-import {
-  buildAccount,
-  createSeedDb,
-  randomTag,
-  seedTenantGraph,
-  tenantId,
-  type SeedAccount,
-} from '#test/helpers/tenant-seed';
+import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * MGR-MEM-05 — managing a member's group membership from the members table.
  *
- * Prerequisite (reconciled with the tenant seeder): a manager whose organization
- * has two groups, `O1G1` and `O1G2`, plus a student who starts in `O1G1`. Each
- * group owns one group-visible deck, so the student's membership has an
- * observable effect on what content they see. The legacy manual seed
- * (`manager@dev.local`, `pass`) is never used.
+ * Tenant: the `content` profile of this case (`qa/tests/profiles/MGR-MEM-05.json`),
+ * seeded before the suite starts by `bun scripts/qa-tenant.ts MGR-MEM-05 --fresh`.
+ * It gives one organization with its `admin` manager, a teacher, a student and the
+ * default group `G1`, all derived from `tenantKey('qa/cases/MGR-MEM-05.md', …)` +
+ * `tenantId(key, entity)`, so an independent run gets a brand-new organization and
+ * nothing leaks between runs. The legacy manual seed (`manager@dev.local`, `pass`)
+ * is never used.
  *
- * Tenant: `tenantKey('qa/cases/MGR-MEM-05.md', 'MGR-MEM-05 group membership', 'qa-shared')`
- * plus a per-run suffix (`QA_RUN_SUFFIX`, otherwise fresh). Every org/user/group/
- * deck id is `tenantId(key, entity)`, so an independent run gets a brand-new
- * organization and nothing leaks between runs.
+ * The case's group shape is built inside that tenant through the product's own API
+ * in `beforeAll`, never by a runtime seeder:
+ *
+ * 1. the seeded default group is renamed to the case's `O1G1`;
+ * 2. the manager creates the second group `O1G2`;
+ * 3. the rosters are set to the case's starting state — `O1G1` holds the manager
+ *    (teacher), the teacher and the student (members); `O1G2` starts with the
+ *    manager as its teacher only (sharing group content requires teaching it);
+ * 4. the manager creates one group-visible deck per group (`O1G1 deck`,
+ *    `O1G2 deck`), so the student's membership has an observable effect on the
+ *    content they see.
+ *
+ * Every step is idempotent (the group is renamed/adopted and the decks are reused
+ * by name), so a CI retry against the same seeded tenant starts from the same
+ * state instead of growing the org.
  *
  * The case's acceptance points, confirmed on the shared app during the walk:
  * 1. „Zarządzaj grupami” opens the dialog „Zarządzaj grupami: <member>” with one
@@ -38,25 +41,22 @@ import {
  *    `O1G1` deck to the `O1G2` deck.
  *
  * Nothing global is written: no admin setting, feature flag, plan, platform stat
- * or singleton row. The two group decks and the manager's teacher membership in
- * `O1G2` (needed to create group-visible content there) are seeded into this
- * case's own tenant only.
+ * or singleton row.
  */
 
-const CASE_FILE = 'qa/cases/MGR-MEM-05.md';
-const TITLE = 'MGR-MEM-05 group membership';
-const PROJECT = 'qa-shared';
-const RUN_SUFFIX = process.env.QA_RUN_SUFFIX ?? `${Date.now().toString(36)}-${randomTag(4)}`;
+const CASE = 'MGR-MEM-05';
+const TENANT: QaTenant = loadTenant(CASE);
 
 const GROUP1 = 'O1G1';
 const GROUP2 = 'O1G2';
 const DECK1_NAME = 'O1G1 deck';
 const DECK2_NAME = 'O1G2 deck';
 
-/** Supabase local defaults (the service-role JWT is the public `supabase start` demo key). */
-const LOCAL_SUPABASE_URL = 'http://localhost:54421';
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+interface CaseAccount {
+  id: string;
+  email: string;
+  password: string;
+}
 
 interface MemberGroup {
   id: string;
@@ -79,205 +79,54 @@ interface OrgGroup {
   teacherCount: number;
 }
 
+interface NamedRow {
+  id: string;
+  name: string;
+}
+
 interface CaseTenant {
-  key: string;
   org: { id: string; name: string };
-  manager: SeedAccount;
-  teacher: SeedAccount;
-  student: SeedAccount;
-  group1: { id: string; name: string };
-  group2: { id: string; name: string };
-  deck1: { id: string; name: string };
-  deck2: { id: string; name: string };
+  manager: CaseAccount;
+  teacher: CaseAccount;
+  student: CaseAccount;
+  group1: NamedRow;
+  group2: NamedRow;
+  deck1: NamedRow;
+  deck2: NamedRow;
 }
 
-function parseDotEnv(path: string): Record<string, string> {
-  try {
-    const values: Record<string, string> = {};
-    for (const line of readFileSync(path, 'utf8').split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const separator = trimmed.indexOf('=');
-      if (separator <= 0) continue;
-      values[trimmed.slice(0, separator).trim()] = trimmed.slice(separator + 1).trim();
-    }
-    return values;
-  } catch {
-    return {};
-  }
+function account(tenant: QaTenant, role: QaRole): CaseAccount {
+  const user = tenant.users[role];
+  if (!user) throw new Error(`tenant ${tenant.case} has no seeded ${role} user`);
+  return user;
 }
 
 /**
- * Resolve the shared Supabase admin credentials. `QA_SUPABASE_*` wins; otherwise
- * the routine `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`, then the
- * worker's `qa/env.json` (the shared stack this tile talks to), then the app's
- * own `apps/web/.env` — which is the only source in CI, where the app and the
- * database are on the default local ports — and finally the shared local defaults.
+ * A signed-in API session for one seeded account, pinned to the tenant's org. The
+ * app only writes `active_org_id` when an org is created or switched, so a seeded
+ * membership needs the cookie set here — otherwise `withAuth` scopes the request
+ * to no org and the setup rows land outside the tenant.
  */
-function resolveSupabase(): { url: string; serviceKey: string } {
-  let fromEnvJson: string | undefined;
-  try {
-    const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    fromEnvJson = (JSON.parse(raw) as { supabaseUrl?: string }).supabaseUrl;
-  } catch {
-    // qa/env.json is worker-local and gitignored; absence is fine.
-  }
-  const fromAppEnv = parseDotEnv(join(process.cwd(), 'apps', 'web', '.env'));
-
-  return {
-    url:
-      process.env.QA_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      fromEnvJson ??
-      fromAppEnv.NEXT_PUBLIC_SUPABASE_URL ??
-      LOCAL_SUPABASE_URL,
-    serviceKey:
-      process.env.QA_SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      fromAppEnv.SUPABASE_SERVICE_ROLE_KEY ??
-      LOCAL_SERVICE_ROLE_KEY,
-  };
-}
-
-/**
- * Seed the case's organization: admin manager + teacher + student, the case's two
- * groups, and one group-visible deck per group. The student starts in `O1G1` (the
- * seeder enrolls every member there); the manager additionally teaches `O1G2` so
- * that group-visible content can be created for it through the product API rules.
- */
-async function seedCaseTenant(): Promise<CaseTenant> {
-  const key = `${tenantKey(CASE_FILE, TITLE, PROJECT)}::${RUN_SUFFIX}`;
-  const org = { id: tenantId(key, 'org'), name: `qa-mgr-mem05-${RUN_SUFFIX}` };
-  const manager = buildAccount(key, 'manager', 'manager', { name: 'QA manager' });
-  const teacher = buildAccount(key, 'teacher', 'educator', { name: 'QA teacher' });
-  const student = buildAccount(key, 'student', 'student', { name: 'QA student' });
-  const group1 = { id: tenantId(key, 'group:o1g1'), name: GROUP1, isDefault: true };
-  const group2 = { id: tenantId(key, 'group:o1g2'), name: GROUP2, isDefault: false };
-  const deck1 = { id: tenantId(key, 'deck:o1g1'), name: DECK1_NAME };
-  const deck2 = { id: tenantId(key, 'deck:o1g2'), name: DECK2_NAME };
-
-  const { url, serviceKey } = resolveSupabase();
-  const db = createSeedDb({ url, serviceKey });
-
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org,
-    defaultGroup: group1,
-    extraGroups: [group2],
-    owner: manager,
-    members: [teacher, student],
-    ownerOrgRole: 'admin',
-  });
-
-  // The manager teaches both groups, mirroring a manager who owns the content of
-  // each group; the seeder only enrolls the owner in the default group.
-  const { error: managerGroupError } = await db.from('group_members').upsert(
-    {
-      id: tenantId(key, 'gm:manager:o1g2'),
-      group_id: group2.id,
-      user_id: seeded.owner.id,
-      role: 'teacher',
-    },
-    { onConflict: 'id' },
-  );
-  if (managerGroupError) {
-    throw new Error(`seed ${key}: manager in ${GROUP2} ${managerGroupError.message}`);
-  }
-
-  const { error: deckError } = await db.from('flashcard_decks').upsert(
-    [
-      {
-        id: deck1.id,
-        organization_id: org.id,
-        created_by: seeded.owner.id,
-        name: deck1.name,
-        visibility: 'group' as const,
-      },
-      {
-        id: deck2.id,
-        organization_id: org.id,
-        created_by: seeded.owner.id,
-        name: deck2.name,
-        visibility: 'group' as const,
-      },
-    ],
-    { onConflict: 'id' },
-  );
-  if (deckError) throw new Error(`seed ${key}: decks ${deckError.message}`);
-
-  const { error: deckGroupsError } = await db.from('deck_groups').upsert(
-    [
-      { deck_id: deck1.id, group_id: group1.id },
-      { deck_id: deck2.id, group_id: group2.id },
-    ],
-    { onConflict: 'deck_id,group_id' },
-  );
-  if (deckGroupsError) throw new Error(`seed ${key}: deck_groups ${deckGroupsError.message}`);
-
-  return {
-    key,
-    org,
-    manager: seeded.owner,
-    teacher: seeded.members[0],
-    student: seeded.members[1],
-    group1: { id: group1.id, name: group1.name },
-    group2: { id: group2.id, name: group2.name },
-    deck1,
-    deck2,
-  };
-}
-
-/**
- * Polish copy is asserted because the case quotes the Polish UI; the login helper
- * pins `NEXT_LOCALE=pl`, so a locale cookie left by an earlier case cannot change
- * the strings under test.
- */
-async function pinPolish(page: Page, baseURL: string): Promise<void> {
-  const { hostname } = new URL(baseURL);
-  await page
-    .context()
-    .addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' }]);
-}
-
-/** The active-org cookie the org-scoped endpoints resolve the organization from. */
-async function pinActiveOrg(page: Page, baseURL: string, orgId: string): Promise<void> {
-  const { hostname } = new URL(baseURL);
-  await page
-    .context()
-    .addCookies([
-      { name: 'active_org_id', value: orgId, domain: hostname, path: '/', httpOnly: true },
-    ]);
-}
-
-/** Real login through the API, so the session cookie lives in the page context. */
-async function loginAsManager(page: Page, tenant: CaseTenant, baseURL: string): Promise<void> {
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: tenant.manager.email, password: tenant.manager.password },
-  });
-  expect(response.status(), `login ${tenant.manager.email}`).toBe(200);
-  await pinPolish(page, baseURL);
-  await pinActiveOrg(page, baseURL, tenant.org.id);
-  await page.goto('/login');
-  await expect(page).toHaveURL(/\/manage$/);
-}
-
-/** A separate student session, so the manager's cookies are never replaced. */
-async function loginAsStudent(
+async function apiSession(
   browser: Browser,
-  tenant: CaseTenant,
   baseURL: string,
-): Promise<Page> {
+  role: QaRole,
+): Promise<{ page: Page; close: () => Promise<void> }> {
+  const orgId = TENANT.org?.id;
+  if (!orgId) throw new Error(`tenant ${CASE} needs the content profile (org + manager)`);
+  const user = account(TENANT, role);
+  const { hostname } = new URL(baseURL);
   const context = await browser.newContext({ baseURL });
+  await context.addCookies([
+    { name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' },
+    { name: 'active_org_id', value: orgId, domain: hostname, path: '/', httpOnly: true },
+  ]);
   const page = await context.newPage();
   const response = await page.request.post('/api/v1/auth/login', {
-    data: { email: tenant.student.email, password: tenant.student.password },
+    data: { email: user.email, password: user.password },
   });
-  expect(response.status(), `login ${tenant.student.email}`).toBe(200);
-  await pinPolish(page, baseURL);
-  await pinActiveOrg(page, baseURL, tenant.org.id);
-  await page.goto('/login');
-  await expect(page).toHaveURL(/\/app$/);
-  return page;
+  expect(response.status(), `login ${role} (${user.email})`).toBe(200);
+  return { page, close: () => context.close() };
 }
 
 async function apiData<T>(page: Page, path: string): Promise<T> {
@@ -286,6 +135,131 @@ async function apiData<T>(page: Page, path: string): Promise<T> {
   const body = (await response.json()) as { success: boolean; data: T };
   expect(body.success, `GET ${path} success`).toBe(true);
   return body.data;
+}
+
+/** Rename an existing group (the groups page's own `PUT`). */
+async function renameGroup(page: Page, groupId: string, name: string): Promise<void> {
+  const response = await page.request.put(`/api/v1/organization/groups/${groupId}`, {
+    data: { name },
+  });
+  expect(
+    response.status(),
+    `PUT /api/v1/organization/groups/${groupId} → ${response.status()} ${await response.text()}`,
+  ).toBe(200);
+}
+
+/**
+ * The case's second group. It is created once per tenant and reused by name, so a
+ * retry (CI seeds one tenant and retries against it) never grows the org past its
+ * plan's group limit. `/api/v1/organization/groups` only lists teacher-led groups,
+ * which both groups are after `prepareCaseTenant` sets their rosters.
+ */
+async function ensureGroup(page: Page, name: string): Promise<NamedRow> {
+  const groups = await apiData<NamedRow[]>(page, '/api/v1/organization/groups');
+  const existing = groups.find((group) => group.name === name);
+  if (existing) return existing;
+
+  const created = await page.request.post('/api/v1/organization/groups', { data: { name } });
+  expect(
+    created.status(),
+    `POST /api/v1/organization/groups (${name}) → ${created.status()} ${await created.text()}`,
+  ).toBe(201);
+  const body = (await created.json()) as { success: boolean; data: NamedRow };
+  return body.data;
+}
+
+/** Replace a group's roster (the group page's own `PUT`, `role: teacher | member`). */
+async function setGroupMembers(
+  page: Page,
+  groupId: string,
+  members: Array<{ userId: string; role: 'teacher' | 'member' }>,
+): Promise<void> {
+  const response = await page.request.put(`/api/v1/organization/groups/${groupId}/members`, {
+    data: { members },
+  });
+  expect(
+    response.status(),
+    `PUT /api/v1/organization/groups/${groupId}/members → ${response.status()} ${await response.text()}`,
+  ).toBe(200);
+}
+
+/** A group-visible deck of this tenant, created once and reused by later runs. */
+async function ensureDeck(page: Page, name: string, groupId: string): Promise<NamedRow> {
+  const list = await apiData<{ items: NamedRow[] }>(page, '/api/v1/flashcards/decks?limit=100');
+  const existing = list.items.find((deck) => deck.name === name);
+  if (existing) return existing;
+
+  const created = await page.request.post('/api/v1/flashcards/decks', {
+    data: { name, visibility: 'group', groupIds: [groupId] },
+  });
+  expect(
+    created.status(),
+    `POST /api/v1/flashcards/decks (${name}) → ${created.status()} ${await created.text()}`,
+  ).toBe(201);
+  const body = (await created.json()) as { success: boolean; data: NamedRow };
+  return body.data;
+}
+
+/**
+ * Build the case's tenant shape inside the seeded organization: `O1G1` (the
+ * renamed default group) with the manager as its teacher, the teacher and the
+ * student as members; `O1G2` with the manager as its teacher only; one
+ * group-visible deck per group. The rosters are set on every run, so a retry
+ * starts from the case's starting state even after a previous run moved the
+ * student.
+ */
+async function prepareCaseTenant(browser: Browser, baseURL: string): Promise<CaseTenant> {
+  const org = TENANT.org;
+  const defaultGroupId = TENANT.group?.id;
+  if (!org || !defaultGroupId) {
+    throw new Error(`tenant ${CASE} needs the content profile (org + default group)`);
+  }
+  const manager = account(TENANT, 'manager');
+  const teacher = account(TENANT, 'teacher');
+  const student = account(TENANT, 'student');
+
+  const session = await apiSession(browser, baseURL, 'manager');
+  try {
+    const { page } = session;
+    // 1–2. The case's two groups: the default `G1` becomes `O1G1`, `O1G2` is added.
+    await renameGroup(page, defaultGroupId, GROUP1);
+    const group2 = await ensureGroup(page, GROUP2);
+    const group1: NamedRow = { id: defaultGroupId, name: GROUP1 };
+
+    // 3. The case's starting rosters: the student in `O1G1` as a member, `O1G2`
+    //    with the manager as its only (teacher) member, who may share content to it.
+    await setGroupMembers(page, group1.id, [
+      { userId: manager.id, role: 'teacher' },
+      { userId: teacher.id, role: 'member' },
+      { userId: student.id, role: 'member' },
+    ]);
+    await setGroupMembers(page, group2.id, [{ userId: manager.id, role: 'teacher' }]);
+
+    // 4. One group-visible deck per group, so the move changes what the student sees.
+    const deck1 = await ensureDeck(page, DECK1_NAME, group1.id);
+    const deck2 = await ensureDeck(page, DECK2_NAME, group2.id);
+
+    return {
+      org,
+      manager,
+      teacher,
+      student,
+      group1,
+      group2: { id: group2.id, name: group2.name },
+      deck1,
+      deck2,
+    };
+  } finally {
+    await session.close();
+  }
+}
+
+/** A separate student session, so the manager's cookies are never replaced. */
+async function loginAsStudent(browser: Browser, baseURL: string): Promise<Page> {
+  const context = await browser.newContext({ baseURL });
+  const page = await context.newPage();
+  await loginAs(page, TENANT, 'student', { locale: 'pl', waitFor: /\/app$/ });
+  return page;
 }
 
 function listMembers(page: Page): Promise<OrgMember[]> {
@@ -332,9 +306,11 @@ function deckHeading(page: Page, name: string) {
 test.describe('@case:MGR-MEM-05 @area:MGR @prio:P2 member group membership management', () => {
   let tenant: CaseTenant;
 
-  test.beforeAll(async () => {
-    tenant = await seedCaseTenant();
-    console.log(`MGR-MEM-05 tenant key: ${tenant.key} (org ${tenant.org.id})`);
+  test.beforeAll(async ({ browser, baseURL }) => {
+    tenant = await prepareCaseTenant(browser, baseURL ?? 'http://localhost:3010');
+    console.log(`MGR-MEM-05 tenant key: ${TENANT.key} (org ${tenant.org.id})`);
+    console.log(`MGR-MEM-05 group ${GROUP1}: ${tenant.group1.id}`);
+    console.log(`MGR-MEM-05 group ${GROUP2}: ${tenant.group2.id}`);
   });
 
   test('moves a student between groups and the student sees the new group content', async ({
@@ -347,7 +323,7 @@ test.describe('@case:MGR-MEM-05 @area:MGR @prio:P2 member group membership manag
     const origin = baseURL ?? 'http://localhost:3010';
 
     // --- Before: the student belongs to O1G1 and sees only its deck ---------
-    const studentPage = await loginAsStudent(browser, tenant, origin);
+    const studentPage = await loginAsStudent(browser, origin);
     try {
       await studentPage.goto('/app/flashcards');
       await expect(deckHeading(studentPage, tenant.deck1.name)).toBeVisible();
@@ -357,7 +333,7 @@ test.describe('@case:MGR-MEM-05 @area:MGR @prio:P2 member group membership manag
       ]);
 
       // --- Step 1: open „Zarządzaj grupami” for the student -----------------
-      await loginAsManager(page, tenant, origin);
+      await loginAs(page, TENANT, 'manager', { locale: 'pl', waitFor: /\/manage$/ });
       // Enter the page the way a user does (dashboard → sidebar), so the active
       // organization settles before the org-scoped list requests.
       await page.goto('/manage');
