@@ -28,7 +28,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * 1. The card's menu is „Więcej akcji fiszki” → „Tematy” with „Dodaj Temat”,
  *    „Zarządzaj Tematami” and „Zobacz według Tematu”.
  * 2. „Dodaj Temat” opens the dialog „Dodaj Temat” / „Wpisz nazwę, aby utworzyć
- *    nowy temat, lub wybierz istniejący” with the empty field „Nazwa tematu…” and
+ *    nowy temat, lub wybierz istniejący” with the empty field „Nazwa tematu...” and
  *    the not-yet-assigned topics. Typing a name with no match shows both the
  *    „Utwórz „Nowy temat”” row and the case's „Nie znaleziono pasujących
  *    tematów” copy. Choosing the create row stores the topic, assigns it to the
