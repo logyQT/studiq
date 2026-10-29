@@ -2,25 +2,13 @@
 
 import { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
-import { BadgeCheck, Check, CreditCard, Globe, LogOut, Moon, Sparkles, Sun } from 'lucide-react';
+import { BadgeCheck, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
+import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
 import { cn } from '@/lib/utils';
-
-type Locale = 'pl' | 'en';
-
-function getLocale(): Locale {
-  if (typeof document === 'undefined') return 'pl';
-  const match = document.cookie.match(/NEXT_LOCALE=(pl|en)/);
-  return (match?.[1] as Locale) || 'pl';
-}
-
-function changeLanguage(lang: Locale) {
-  document.cookie = `NEXT_LOCALE=${lang}; path=/; max-age=31536000`;
-  window.location.reload();
-}
 
 export function UserMenuHeader() {
   const { user } = useAuth();
@@ -80,19 +68,33 @@ function MenuDivider({ variant }: { variant: UserMenuVariant }) {
 
 export type UserMenuVariant = 'menu' | 'plain';
 
-export function UserMenuItems({
-  onItemClick,
-  variant = 'menu',
-}: {
-  onItemClick?: () => void;
-  /** 'menu' inside a Radix DropdownMenuContent; 'plain' for non-menu contexts such as a Sheet. */
-  variant?: UserMenuVariant;
-}) {
+export type UserMenuItemsProps =
+  | {
+      variant?: 'menu';
+      onItemClick?: () => void;
+    }
+  | {
+      /** 'plain' — non-menu contexts such as the mobile navbar sheet. */
+      variant: 'plain';
+      onItemClick?: () => void;
+      /** Mobile drawer: open the separate language view instead of expanding inline. */
+      onOpenLanguage?: () => void;
+    };
+
+export function UserMenuItems(props: UserMenuItemsProps) {
+  const { onItemClick } = props;
+  const variant: UserMenuVariant = props.variant ?? 'menu';
   const t = useTranslations('DashboardLayout');
   const router = useRouter();
   const { user } = useAuth();
-  const locale = getLocale();
-  const { setTheme } = useTheme();
+  // The language row is the only language entry; it owns the panel and the
+  // locale commit (see language-menu-row.tsx) so no surface re-implements them.
+  const languageRow =
+    props.variant === 'plain' ? (
+      <LanguageMenuRow variant="plain" onOpen={props.onOpenLanguage} />
+    ) : (
+      <LanguageMenuRow variant="menu" />
+    );
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const dashboardPrefix = (() => {
@@ -166,45 +168,16 @@ export function UserMenuItems({
 
       <MenuDivider variant={variant} />
 
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          changeLanguage('pl');
-          onItemClick?.();
-        }}
-      >
-        <Globe className="size-4 text-muted-foreground" />
-        <span>Polski</span>
-        {locale === 'pl' && <Check className="ml-auto size-4" />}
-      </MenuEntry>
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          changeLanguage('en');
-          onItemClick?.();
-        }}
-      >
-        <Globe className="size-4 text-muted-foreground" />
-        <span>English</span>
-        {locale === 'en' && <Check className="ml-auto size-4" />}
-      </MenuEntry>
+      {languageRow}
 
       <MenuDivider variant={variant} />
 
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          const isDark = document.documentElement.classList.contains('dark');
-          setTheme(isDark ? 'light' : 'dark');
-          onItemClick?.();
-        }}
-      >
-        <div className="relative size-4">
-          <Sun className="size-4 absolute rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="size-4 absolute rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-        </div>
-        <span>{t('theme')}</span>
-      </MenuEntry>
+      {/* A setting, not a menu action: choosing a theme keeps the menu open so the hint stays visible (#635). */}
+      <div className="flex items-center gap-2 px-2 py-1 text-sm">
+        <Palette aria-hidden="true" className="size-4 text-muted-foreground" />
+        <span className="flex-1">{t('theme')}</span>
+        <ThemeSwitch size={variant === 'plain' ? 'lg' : 'sm'} />
+      </div>
 
       <MenuDivider variant={variant} />
 

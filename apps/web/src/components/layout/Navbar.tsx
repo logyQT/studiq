@@ -144,6 +144,7 @@ export function Navbar() {
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
+                    aria-label={t('user_menu')}
                     className="rounded-full transition hover:scale-105 active:scale-95"
                   >
                     <UserAvatar name={user.user_metadata?.name} email={user.email} size={36} />

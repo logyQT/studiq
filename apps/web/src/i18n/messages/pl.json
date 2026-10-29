@@ -172,6 +172,7 @@
     "register": "Rejestracja",
     "logout": "Wyloguj się",
     "mobile_menu": "Menu",
+    "user_menu": "Menu użytkownika",
     "account": "Konto",
     "billing": "Płatności",
     "notifications": "Powiadomienia",
@@ -334,7 +335,7 @@
     "manage_seats": "Licencje",
     "manage_settings": "Ustawienia",
     "app_overview": "Przegląd",
-    "app_quiz": "Testy",
+    "app_quiz": "Sprawdź się",
     "breadcrumb_quiz_session": "Sesja testowa",
     "breadcrumb_quiz_review": "Wyniki testu",
     "app_flashcards": "Fiszki",
@@ -362,7 +363,6 @@
     "edu_classroom": "Klasa",
     "classroom_invite": "Zaproś studentów",
     "classroom_members": "Członkowie",
-    "language": "Język",
     "theme": "Motyw",
     "orgs_label": "Organizacje",
     "sidebar_main": "Główne",
@@ -373,7 +373,6 @@
     "sidebar_statistics": "Statystyki",
     "app_learn": "Ucz się",
     "app_cram": "Wkuwaj",
-    "app_quiz": "Sprawdź się",
     "app_live": "Na żywo",
     "edu_assignments": "Kartkówki",
     "app_assignments": "Kartkówki",
@@ -389,7 +388,8 @@
     "upgrade": "Wybierz plan",
     "question_banks": "Pytania",
     "question_reports": "Zgłoszenia",
-    "edu_groups": "Grupy"
+    "edu_groups": "Grupy",
+    "user_menu": "Menu użytkownika"
   },
   "EduOverviewPage": {
     "title": "Panel Nauczyciela",
@@ -2938,5 +2938,25 @@
     "problem": "Problem",
     "unavailable": "Nie można sprawdzić statusu",
     "last_checked": "Ostatnie sprawdzenie"
+  },
+  "LanguageSwitcher": {
+    "label": "Język",
+    "search_label": "Szukaj języka",
+    "search_placeholder": "Szukaj języka lub kodu…",
+    "empty_title": "Brak pasującego języka",
+    "empty_hint": "Wpisz nazwę (np. „polski”) lub kod (np. „pl”).",
+    "empty_clear": "Wyczyść",
+    "current": "bieżący",
+    "changed": "Zmieniono język na {language}.",
+    "back": "Wróć"
+  },
+  "ThemeSwitch": {
+    "label": "Motyw",
+    "light": "Jasny",
+    "system": "System",
+    "dark": "Ciemny",
+    "system_resolved": "System ({theme})",
+    "resolved_light": "jasny",
+    "resolved_dark": "ciemny"
   }
 }
