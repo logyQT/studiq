@@ -2,10 +2,10 @@
 
 import { useDraggable } from '@dnd-kit/core';
 import { Badge, Input } from '@studiq/ui';
-import { GripVertical, Plus } from 'lucide-react';
+import { GripVertical, Plus, SearchX } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { type ChangeEvent, useState } from 'react';
-import { ErrorState } from '@/components/shared/empty-state';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { availableQuestions, type BrowseQuestion } from '@/lib/question-browser';
@@ -143,9 +143,8 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
               />
             ))}
             {allQuestions.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                {t('no_questions_found')}
-              </p>
+              // The same shape as the error state and the other lists: icon, text, no dead end.
+              <EmptyState icon={SearchX} title={t('no_questions_found')} compact />
             )}
           </>
         )}
