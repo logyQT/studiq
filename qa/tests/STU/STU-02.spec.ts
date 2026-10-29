@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * STU-02 — Checklista „Pierwsze kroki” (student, `/app`).
@@ -21,6 +22,11 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  * inside that tenant, through the student's own session — nothing global
  * (settings, feature flags, plan catalogue, platform stats) and no other
  * worker's tenant is read or written.
+ *
+ * CI seeds that tenant once for the whole case and Playwright retries reuse it,
+ * so the test first clears the student's own content: the checklist is derived
+ * from the student's stats, and a retry must never start from the all-done card
+ * the previous attempt left behind.
  *
  * Acceptance points (walked on the shared app :3010 before writing the spec):
  * 1. The card opens with „Pierwsze kroki” + „Wykonaj te kroki, aby rozpocząć
@@ -136,6 +142,86 @@ function visible(locator: Locator): Locator {
   return locator.filter({ visible: true });
 }
 
+/**
+ * Retry-safety: CI seeds a case tenant **once** and reuses it for every retry,
+ * so an attempt that completes the checklist (or dies halfway through it)
+ * leaves the decks, cards, questions, attempts and practice rows behind. The
+ * checklist renders from `/api/v1/stats/student`, which would then report the
+ * all-done card instead of the empty one this case asserts. Reset just the
+ * tenant's own student artefacts so every attempt starts from the same
+ * first-run state.
+ *
+ * The product exposes no "delete my history" action for these aggregates, so
+ * cleanup goes through the suite's service-role client (the same helper the
+ * other cases use to touch their own rows). Deleting a deck cascades its
+ * flashcards, and a bank cascades its questions; practice, review state and
+ * study sessions are per-user aggregates that are dropped first.
+ */
+async function resetStudentChecklistState(tenant: QaTenant): Promise<void> {
+  const student = tenant.users.student;
+  if (!student) throw new Error(`${CASE} tenant has no student to reset`);
+  if (!tenant.org) throw new Error(`${CASE} tenant has no organization to reset`);
+  const db = createQaSupabase();
+
+  const attempts = await db.from('quiz_attempts').delete().eq('user_id', student.id).select('id');
+  expect(
+    attempts.error,
+    `delete ${CASE} student quiz attempts: ${attempts.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const practice = await db
+    .from('flashcard_practice')
+    .delete()
+    .eq('user_id', student.id)
+    .select('id');
+  expect(
+    practice.error,
+    `delete ${CASE} student practice rows: ${practice.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const reviews = await db
+    .from('flashcard_review_state')
+    .delete()
+    .eq('user_id', student.id)
+    .select('flashcard_id');
+  expect(
+    reviews.error,
+    `delete ${CASE} student review state: ${reviews.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const sessions = await db
+    .from('flashcard_study_sessions')
+    .delete()
+    .eq('user_id', student.id)
+    .select('id');
+  expect(
+    sessions.error,
+    `delete ${CASE} student study sessions: ${sessions.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const banks = await db
+    .from('question_banks')
+    .delete()
+    .eq('created_by', student.id)
+    .eq('organization_id', tenant.org.id)
+    .select('id');
+  expect(
+    banks.error,
+    `delete ${CASE} student question banks: ${banks.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const decks = await db
+    .from('flashcard_decks')
+    .delete()
+    .eq('created_by', student.id)
+    .eq('organization_id', tenant.org.id)
+    .select('id');
+  expect(
+    decks.error,
+    `delete ${CASE} student flashcard decks: ${decks.error?.message ?? ''}`,
+  ).toBeNull();
+}
+
 /** The deck created above, as the product API lists it for this student. */
 async function findDeck(page: Page, name: string): Promise<DeckItem> {
   const response = await page.request.get('/api/v1/flashcards/decks?limit=200');
@@ -167,6 +253,8 @@ test.describe('@case:STU-02 @area:STU @prio:P2 student first-steps checklist', (
       }
     });
 
+    // A retry reuses this tenant, so drop whatever the previous attempt left.
+    await resetStudentChecklistState(tenant);
     await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
     expect(new URL(page.url()).pathname, 'the student lands on /app').toBe('/app');
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
