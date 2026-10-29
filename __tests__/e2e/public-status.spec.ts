@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 
 const title = t('StatusPage.title');
@@ -8,6 +8,13 @@ const unavailable = t('StatusPage.unavailable');
 const lastChecked = t('StatusPage.last_checked');
 
 const HEALTH_URL = '**/api/v1/health';
+
+/**
+ * #634 added two app-wide polite live regions (`role="status"`): the locale
+ * announcer in the root layout and the theme switch inside the footer. Scope
+ * the locator to the page's own status region so they cannot collide with it.
+ */
+const statusRegion = (page: Page) => page.getByRole('main').getByRole('status');
 
 function healthBody(
   status: 'healthy' | 'degraded' | 'unhealthy',
@@ -44,7 +51,7 @@ test.describe('Public status page', () => {
     await page.goto('/status');
 
     await expect(page.getByRole('heading', { level: 1 })).toContainText(title);
-    const status = page.getByRole('status');
+    const status = statusRegion(page);
     await expect(status).toContainText(operational);
     await expect(page.getByText(lastChecked)).toBeVisible();
   });
@@ -60,7 +67,7 @@ test.describe('Public status page', () => {
 
     await page.goto('/status');
 
-    const status = page.getByRole('status');
+    const status = statusRegion(page);
     await expect(status).toContainText(problem);
     await expect(status).not.toContainText(operational);
   });
@@ -76,7 +83,7 @@ test.describe('Public status page', () => {
 
     await page.goto('/status');
 
-    const status = page.getByRole('status');
+    const status = statusRegion(page);
     await expect(status).toContainText(problem);
     await expect(status).not.toContainText(unavailable);
   });
@@ -86,7 +93,7 @@ test.describe('Public status page', () => {
 
     await page.goto('/status');
 
-    await expect(page.getByRole('status')).toContainText(unavailable);
+    await expect(statusRegion(page)).toContainText(unavailable);
   });
 
   /**
@@ -112,7 +119,7 @@ test.describe('Public status page', () => {
 
     await page.goto('/status');
 
-    const status = page.getByRole('status');
+    const status = statusRegion(page);
     await expect(status).toContainText(operational);
 
     const checkedLine = page.getByText(lastChecked);
@@ -142,7 +149,7 @@ test.describe('Public status page', () => {
 
     await page.goto('/status');
 
-    await expect(page.getByRole('status')).toContainText(operational);
+    await expect(statusRegion(page)).toContainText(operational);
 
     const checkedLine = page.getByText(lastChecked);
     const firstChecked = await checkedLine.textContent();
@@ -151,8 +158,8 @@ test.describe('Public status page', () => {
     mode = 'abort';
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
 
-    await expect(page.getByRole('status')).toContainText(unavailable);
-    await expect(page.getByRole('status')).not.toContainText(operational);
+    await expect(statusRegion(page)).toContainText(unavailable);
+    await expect(statusRegion(page)).not.toContainText(operational);
     await expect(checkedLine).not.toHaveText(firstChecked as string);
   });
 
@@ -171,6 +178,6 @@ test.describe('Public status page', () => {
     await expect(page).toHaveURL(/\/status$/);
     await expect(page.getByRole('heading', { level: 1 })).toContainText(title);
     // The page is rendered, not the raw JSON document the API returns.
-    await expect(page.getByRole('status')).toContainText(operational);
+    await expect(statusRegion(page)).toContainText(operational);
   });
 });
