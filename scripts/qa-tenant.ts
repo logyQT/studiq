@@ -111,6 +111,11 @@ interface ProfileShape {
   members?: MemberSpec[];
   groups?: string[];
   solo?: MemberSpec;
+  /**
+   * Several organizations that do **not** share an owner (`SEC-04`: two admins,
+   * each a member of only their own org). Each org gets its own deterministic key.
+   */
+  orgs?: { owner: MemberSpec; members?: MemberSpec[] }[];
 }
 
 type ProfileEntry = string | ({ profile?: string; role?: string; plan?: string } & ProfileShape);
@@ -147,7 +152,12 @@ function declaredPlan(entry: ProfileEntry | undefined): string | undefined {
 
 function declaredShape(entry: ProfileEntry | undefined): ProfileShape {
   if (typeof entry === 'string' || !entry) return {};
-  return { members: entry.members, groups: entry.groups, solo: entry.solo };
+  return {
+    members: entry.members,
+    groups: entry.groups,
+    solo: entry.solo,
+    orgs: entry.orgs,
+  };
 }
 
 /** The cases the suite actually runs: one spec file per case. */
@@ -507,6 +517,82 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
           password: seeded.owner.password,
         },
       },
+    });
+    return;
+  }
+
+  // Declarative multi-org (`orgs` in the profile file): each org has its own owner,
+  // so isolation between organizations can be asserted without seeding in the test.
+  if (shape.orgs?.length) {
+    const orgUsers: Record<string, { id: string; email: string; password: string }> = {};
+    const seededOrgs: { id: string; name: string; groupId: string; groupName: string }[] = [];
+
+    for (const [index, orgSpec] of shape.orgs.entries()) {
+      // A distinct seeding key per org keeps every derived id (memberships, group
+      // rows) unique while staying deterministic.
+      const orgKey = index === 0 ? key : `${key}:org${index + 1}`;
+      const suffix = index === 0 ? '' : `-${index + 1}`;
+      const groupNames = shape.groups?.length ? shape.groups : ['G1'];
+      const toAccount = (member: MemberSpec) =>
+        buildAccount(orgKey, member.key, member.accountType, {
+          name: member.name ?? `QA ${member.key}`,
+          ...(member.orgRole ? { orgRole: member.orgRole } : {}),
+        });
+
+      const seededOrg = await seedTenantGraph(db, {
+        key: orgKey,
+        org: { id: tenantId(orgKey, 'org'), name: `${orgName}${suffix}` },
+        defaultGroup: {
+          id: tenantId(orgKey, 'group:default'),
+          name: groupNames[0],
+          isDefault: true,
+        },
+        extraGroups: groupNames.slice(1).map((name, extraIndex) => ({
+          id: tenantId(orgKey, `group:${extraIndex + 2}`),
+          name,
+          isDefault: false,
+        })),
+        owner: toAccount({ ...orgSpec.owner, orgRole: orgSpec.owner.orgRole ?? 'admin' }),
+        members: (orgSpec.members ?? []).map((member) => ({
+          ...toAccount(member),
+          orgRole: member.orgRole ?? 'member',
+        })),
+        ownerOrgRole: orgSpec.owner.orgRole ?? 'admin',
+      });
+
+      orgUsers[orgSpec.owner.key] = {
+        id: seededOrg.owner.id,
+        email: seededOrg.owner.email,
+        password: seededOrg.owner.password,
+      };
+      (orgSpec.members ?? []).forEach((member, memberIndex) => {
+        const account = seededOrg.members[memberIndex];
+        orgUsers[member.key] = {
+          id: account.id,
+          email: account.email,
+          password: account.password,
+        };
+      });
+      seededOrgs.push({
+        id: tenantId(orgKey, 'org'),
+        name: `${orgName}${suffix}`,
+        groupId: tenantId(orgKey, 'group:default'),
+        groupName: groupNames[0],
+      });
+    }
+
+    writeTenant({
+      case: caseId,
+      profile,
+      runSuffix: runSuffix || null,
+      key,
+      org: { id: seededOrgs[0].id, name: seededOrgs[0].name },
+      group: { id: seededOrgs[0].groupId, name: seededOrgs[0].groupName },
+      orgs: seededOrgs.map((org, index) => ({
+        key: index === 0 ? 'a' : `org${index + 1}`,
+        ...org,
+      })),
+      users: orgUsers,
     });
     return;
   }
