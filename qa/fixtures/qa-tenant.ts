@@ -13,11 +13,15 @@ import { test as base, expect, type Page } from '@playwright/test';
  * An `org-limit` tenant sits one seat below its plan capacity (`ONB-10`): an org
  * with an admin, two teachers and one member, plus two invitee accounts that are
  * **not** org members, so they can accept an invitation through `/app/join`.
+ *
+ * A `two-org` tenant (`MGR-03`, `SEC-02`) is one manager who administers two
+ * organizations; `org` mirrors the first one and `orgA` / `orgB` carry each
+ * organization's people and group names (see `scripts/qa-tenant.ts`).
  */
 export interface QaTenant {
   case: string;
   key: string;
-  profile?: 'content' | 'bare' | 'org-limit';
+  profile?: 'content' | 'bare' | 'org-limit' | 'two-org';
   /** Account type of the single user in a `bare` tenant. */
   role?: 'teacher' | 'manager' | 'student';
   runSuffix?: string | null;
@@ -27,7 +31,16 @@ export interface QaTenant {
   group: { id: string; name: string } | null;
   users: Partial<
     Record<
-      'manager' | 'teacher' | 'teacher2' | 'student' | 'invitee1' | 'invitee2',
+      | 'manager'
+      | 'teacher'
+      | 'teacher2'
+      | 'student'
+      // `two-org` tenants name each org's people explicitly (`MGR-03`, `SEC-02`).
+      | 'studentA'
+      | 'teacherA'
+      | 'studentB'
+      | 'invitee1'
+      | 'invitee2',
       { id: string; email: string; password: string }
     >
   >;
