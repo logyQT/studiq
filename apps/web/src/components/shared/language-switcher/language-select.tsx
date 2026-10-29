@@ -35,6 +35,11 @@ export function LanguageSelect({ variant = 'ghost', className }: LanguageSelectP
       <SelectTrigger
         // Name + value, so a screen reader hears "Język: Polski" on the trigger.
         aria-label={`${t('label')}: ${option.endonym}`}
+        // The user menu renders this inline; keep the menu's roving focus from
+        // also handling the arrows that open the listbox (and vice versa).
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') event.stopPropagation();
+        }}
         className={cn(
           'w-auto gap-1.5 text-sm font-normal shadow-none transition-colors',
           variant === 'ghost' &&

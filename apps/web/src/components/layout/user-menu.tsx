@@ -20,7 +20,11 @@ import {
 import { ChevronLeft, ChevronsUpDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
+import {
+  UserMenuHeader,
+  UserMenuItems,
+  handleUserMenuTab,
+} from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LanguageSwitcherPanel } from '@/components/shared/language-switcher/language-switcher-panel';
 import { cn } from '@/lib/utils';
@@ -162,6 +166,7 @@ export function UserMenu({ className }: UserMenuProps) {
             side="right"
             align="end"
             sideOffset={4}
+            onKeyDown={(event) => handleUserMenuTab(event, () => setOpen(false))}
           >
             <DropdownMenuLabel className="p-0 font-normal">
               <UserMenuHeader />

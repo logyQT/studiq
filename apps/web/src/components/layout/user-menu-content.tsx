@@ -5,6 +5,7 @@ import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui'
 import { BadgeCheck, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
@@ -67,6 +68,79 @@ function MenuDivider({ variant }: { variant: UserMenuVariant }) {
 }
 
 export type UserMenuVariant = 'menu' | 'plain';
+
+/**
+ * Keyboard access for the inline language select and theme switch.
+ *
+ * Radix cancels `Tab` inside `DropdownMenuContent`, and its roving focus only
+ * visits `menuitem`s, so those two controls would be pointer-only. Keep the
+ * panel and its markup exactly as they are; this only routes `Tab`:
+ *
+ *   menuitem → language select → theme switch → out of the menu (and back).
+ *
+ * The controls themselves keep their own keys (arrows/Enter/Space); see
+ * `LanguageSelect` (stops the menu from also handling the arrows that open the
+ * listbox) and `ThemeSwitch` (already stops arrow propagation).
+ */
+export function handleUserMenuTab(
+  event: ReactKeyboardEvent<HTMLElement>,
+  onClose: () => void,
+): void {
+  if (event.key !== 'Tab') return;
+
+  const content = event.currentTarget;
+  const active = document.activeElement as HTMLElement | null;
+  const language = content.querySelector<HTMLElement>('[role="combobox"]');
+  const themeGroup = content.querySelector<HTMLElement>('[role="radiogroup"]');
+  const items = [...content.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  // The menu item right before the settings rows in DOM order: the target for
+  // Shift+Tab out of the language select (the roving item may be unset when the
+  // menu was opened with the pointer).
+  const itemBeforeLanguage = language
+    ? items
+        .filter(
+          (item) =>
+            (item.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+        )
+        .at(-1)
+    : undefined;
+
+  // Pointer-opened menus keep focus on the menu container (roving focus only
+  // enters on keyboard open). Start the Tab path from the container.
+  if (active === content) {
+    event.preventDefault();
+    if (event.shiftKey) onClose();
+    else language?.focus();
+    return;
+  }
+
+  // The menu's roving focus: move into the settings rows, backwards leaves.
+  if (active?.getAttribute('role') === 'menuitem') {
+    event.preventDefault();
+    if (event.shiftKey) onClose();
+    else language?.focus();
+    return;
+  }
+
+  if (active && active === language) {
+    event.preventDefault();
+    if (event.shiftKey) itemBeforeLanguage?.focus();
+    else
+      (
+        themeGroup?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]') ??
+        themeGroup?.querySelector<HTMLElement>('[role="radio"]')
+      )?.focus();
+    return;
+  }
+
+  // Inside the theme radiogroup: backwards returns to the select, forwards
+  // leaves the menu (focus goes back to the trigger).
+  if (active && themeGroup?.contains(active)) {
+    event.preventDefault();
+    if (event.shiftKey) language?.focus();
+    else onClose();
+  }
+}
 
 export type UserMenuItemsProps =
   | {
