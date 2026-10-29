@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
  * STU-12 — Historia quizów (student, `/app`).
@@ -22,6 +23,10 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  * practice attempt that is submitted correctly and a second attempt that is left
  * in progress. No global setting, feature flag, plan, platform stat or singleton
  * row is read or written, and `--fresh` gives every run its own key.
+ *
+ * CI seeds that tenant once for the whole case and Playwright retries reuse it,
+ * so the test first clears the student's own attempts and banks: a retry must
+ * never depend on (or trip over) state the previous attempt left behind.
  *
  * Reconciliation note (walk on the shared app, 2026-10-28): the case's expected
  * list wording („Test praktyczny” type caption, per-row „W trakcie”, „Wznów”)
@@ -119,6 +124,43 @@ async function openQuizPage(page: Page): Promise<void> {
   await expect(recentCard(page), 'the quiz history card is rendered').toBeVisible();
 }
 
+/**
+ * Retry-safety: CI seeds a case tenant **once** and reuses it for every retry,
+ * so an attempt that dies mid-run leaves its question bank, history entry and
+ * open attempt behind. The next attempt would then no longer see the empty
+ * state this case asserts (and the daily/bank quotas would eventually answer
+ * 429). Reset just this case's own artefacts — the tenant's student and org —
+ * so every attempt starts from the same first-run state.
+ *
+ * The product has no delete endpoint for quiz attempts, so cleanup goes through
+ * the suite's service-role client (the same helper other cases use to touch
+ * their own rows). Deleting the bank cascades its questions; deleting the
+ * attempt cascades its answers and attempt questions.
+ */
+async function resetStudentQuizState(tenant: QaTenant): Promise<void> {
+  const student = tenant.users.student;
+  if (!student) throw new Error(`${CASE} tenant has no student to reset`);
+  if (!tenant.org) throw new Error(`${CASE} tenant has no organization to reset`);
+  const db = createQaSupabase();
+
+  const attempts = await db.from('quiz_attempts').delete().eq('user_id', student.id).select('id');
+  expect(
+    attempts.error,
+    `delete ${CASE} student quiz attempts: ${attempts.error?.message ?? ''}`,
+  ).toBeNull();
+
+  const banks = await db
+    .from('question_banks')
+    .delete()
+    .eq('created_by', student.id)
+    .eq('organization_id', tenant.org.id)
+    .select('id');
+  expect(
+    banks.error,
+    `delete ${CASE} student question banks: ${banks.error?.message ?? ''}`,
+  ).toBeNull();
+}
+
 test.describe('@case:STU-12 @area:STU @prio:P2 student quiz history', () => {
   test('shows the empty history, then attempts with score/date/review, the in-progress entry and the full history', async ({
     page,
@@ -129,6 +171,8 @@ test.describe('@case:STU-12 @area:STU @prio:P2 student quiz history', () => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
+    // A retry reuses this tenant, so drop whatever the previous attempt left.
+    await resetStudentQuizState(tenant);
     await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
