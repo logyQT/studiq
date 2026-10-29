@@ -89,7 +89,31 @@ const fresh = args.includes('--fresh');
 const all = args.includes('--all');
 const CASE_ID_PATTERN = /^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/;
 
-type ProfileEntry = string | { profile?: string; role?: string; plan?: string };
+/** One account in a declarative tenant shape. */
+interface MemberSpec {
+  /** Key under `tenant.users` (e.g. `teacher`, `teacher2`, `studentA`). */
+  key: string;
+  accountType: 'manager' | 'educator' | 'student';
+  /** Org role when the account is an organization member. Default `member`. */
+  orgRole?: 'admin' | 'teacher' | 'member';
+  name?: string;
+}
+
+/**
+ * Extra tenant shape, declarative so a case that needs a non-standard roster does
+ * not have to seed inside the Playwright worker (which collides with the app and
+ * the other workers on a 4-vCPU runner):
+ *   `members` — explicit roster; replaces the default manager/teacher/student
+ *   `groups`  — group names, the first is the default group
+ *   `solo`    — one account that belongs to no organization at all
+ */
+interface ProfileShape {
+  members?: MemberSpec[];
+  groups?: string[];
+  solo?: MemberSpec;
+}
+
+type ProfileEntry = string | ({ profile?: string; role?: string; plan?: string } & ProfileShape);
 
 const USAGE =
   'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--json] [--reset]';
@@ -119,6 +143,11 @@ function declaredRole(entry: ProfileEntry | undefined): string | undefined {
 
 function declaredPlan(entry: ProfileEntry | undefined): string | undefined {
   return typeof entry === 'string' ? undefined : entry?.plan;
+}
+
+function declaredShape(entry: ProfileEntry | undefined): ProfileShape {
+  if (typeof entry === 'string' || !entry) return {};
+  return { members: entry.members, groups: entry.groups, solo: entry.solo };
 }
 
 /** The cases the suite actually runs: one spec file per case. */
@@ -164,7 +193,12 @@ function loadEnv(): void {
  * `two-org` — one manager who is admin in two organizations (MGR-03). Both graphs
  * are built here so the spec never seeds at runtime: only the suite seeder does.
  */
-async function seedTwoOrg(db: ReturnType<typeof createSeedDb>, caseId: string, runSuffix: string) {
+async function seedTwoOrg(
+  db: ReturnType<typeof createSeedDb>,
+  caseId: string,
+  runSuffix: string,
+  solo?: MemberSpec,
+) {
   const base = `${tenantKey(`qa/cases/${caseId}.md`, `${caseId}#${runSuffix}`, 'qa-shared')}::${runSuffix}`;
   const keyA = `${base}::org-a`;
   const keyB = `${base}::org-b`;
@@ -277,6 +311,13 @@ async function seedTwoOrg(db: ReturnType<typeof createSeedDb>, caseId: string, r
     invite: { id: tenantId(keyB, 'invite:b'), email: `mgr03-invite-b-${runSuffix}@test.local` },
   });
 
+  const soloAccount = solo
+    ? await ensureAccount(
+        db,
+        buildAccount(base, solo.key, solo.accountType, { name: solo.name ?? `QA ${solo.key}` }),
+      )
+    : undefined;
+
   const tenant = {
     case: caseId,
     profile: 'two-org',
@@ -290,6 +331,15 @@ async function seedTwoOrg(db: ReturnType<typeof createSeedDb>, caseId: string, r
       studentA: { id: studentA.id, email: studentA.email, password: studentA.password },
       teacherA: { id: teacherA.id, email: teacherA.email, password: teacherA.password },
       studentB: { id: studentB.id, email: studentB.email, password: studentB.password },
+      ...(soloAccount
+        ? {
+            [solo!.key]: {
+              id: soloAccount.id,
+              email: soloAccount.email,
+              password: soloAccount.password,
+            },
+          }
+        : {}),
     },
     // `org` mirrors org A so generic tooling (and `loadTenant`) still sees a tenant.
     org: { id: orgA.id, name: orgA.name },
@@ -320,6 +370,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
   const role = opts.role ?? declaredRole(entry) ?? 'teacher';
   const plan = opts.plan ?? declaredPlan(entry);
   const runSuffix = opts.runSuffix;
+  const shape = declaredShape(entry);
 
   if (!PROFILES.includes(profile)) {
     throw new Error(`unknown profile "${profile}": expected ${PROFILES.join(', ')}`);
@@ -423,7 +474,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
   }
 
   if (profile === 'two-org') {
-    await seedTwoOrg(db, caseId, runSuffix);
+    await seedTwoOrg(db, caseId, runSuffix, shape.solo);
     return;
   }
 
@@ -456,6 +507,81 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
           password: seeded.owner.password,
         },
       },
+    });
+    return;
+  }
+
+  // Declarative roster (`members` / `groups` / `solo` in the case's profile file):
+  // a case with a non-standard set of accounts — two educators with different org
+  // roles, an exact three-person roster, a second empty group, an org-less control —
+  // declares it here instead of seeding inside the Playwright worker, where it would
+  // collide with the app and the other workers on the CI runner.
+  if (shape.members?.length) {
+    const specs = shape.members;
+    const ownerSpec = specs.find((member) => member.orgRole === 'admin') ?? specs[0];
+    const memberSpecs = specs.filter((member) => member !== ownerSpec);
+    const toAccount = (member: MemberSpec) =>
+      buildAccount(key, member.key, member.accountType, {
+        name: member.name ?? `QA ${member.key}`,
+        ...(member.orgRole ? { orgRole: member.orgRole } : {}),
+      });
+    const groupNames = shape.groups?.length ? shape.groups : ['G1'];
+
+    const seededShape = await seedTenantGraph(db, {
+      key,
+      org: { id: orgId, name: orgName },
+      defaultGroup: { id: groupId, name: groupNames[0], isDefault: true },
+      extraGroups: groupNames.slice(1).map((name, index) => ({
+        id: tenantId(key, `group:${index + 2}`),
+        name,
+      })),
+      owner: toAccount(ownerSpec),
+      members: memberSpecs.map((member) => ({
+        ...toAccount(member),
+        orgRole: member.orgRole ?? 'member',
+      })),
+      ownerOrgRole: ownerSpec.orgRole ?? 'admin',
+    });
+
+    if (plan) {
+      const { error } = await db.rpc('apply_org_plan', { p_org_id: orgId, p_plan: plan });
+      if (error) throw new Error(`seed ${caseId}: apply_org_plan(${plan}) ${error.message}`);
+    }
+
+    const shapeUsers: Record<string, { id: string; email: string; password: string }> = {
+      [ownerSpec.key]: {
+        id: seededShape.owner.id,
+        email: seededShape.owner.email,
+        password: seededShape.owner.password,
+      },
+    };
+    memberSpecs.forEach((member, index) => {
+      const account = seededShape.members[index];
+      shapeUsers[member.key] = {
+        id: account.id,
+        email: account.email,
+        password: account.password,
+      };
+    });
+    if (shape.solo) {
+      const solo = await ensureAccount(
+        db,
+        buildAccount(key, shape.solo.key, shape.solo.accountType, {
+          name: shape.solo.name ?? `QA ${shape.solo.key}`,
+        }),
+      );
+      shapeUsers[shape.solo.key] = { id: solo.id, email: solo.email, password: solo.password };
+    }
+
+    writeTenant({
+      case: caseId,
+      profile,
+      runSuffix: runSuffix || null,
+      key,
+      plan: plan ?? null,
+      org: { id: orgId, name: orgName },
+      group: { id: groupId, name: groupNames[0] },
+      users: shapeUsers,
     });
     return;
   }

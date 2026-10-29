@@ -29,21 +29,13 @@ export interface QaTenant {
   plan?: string | null;
   org: { id: string; name: string } | null;
   group: { id: string; name: string } | null;
-  users: Partial<
-    Record<
-      | 'manager'
-      | 'teacher'
-      | 'teacher2'
-      | 'student'
-      // `two-org` tenants name each org's people explicitly (`MGR-03`, `SEC-02`).
-      | 'studentA'
-      | 'teacherA'
-      | 'studentB'
-      | 'invitee1'
-      | 'invitee2',
-      { id: string; email: string; password: string }
-    >
-  >;
+  /**
+   * Keyed by the account's `key`: the defaults are `manager` / `teacher` /
+   * `teacher2` / `student` / `invitee*` (`two-org` tenants name each org's people
+   * `studentA` / `teacherA` / `studentB`), and a declarative `members` / `solo`
+   * roster in the case's profile file may add any key it declares.
+   */
+  users: Record<string, { id: string; email: string; password: string }>;
 }
 
 export type QaRole = keyof NonNullable<QaTenant['users']>;
