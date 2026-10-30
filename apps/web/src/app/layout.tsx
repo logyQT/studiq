@@ -7,6 +7,7 @@ import { AuthProvider } from '@/components/providers/AuthProvider';
 import { BrandAccent } from '@/components/providers/BrandAccent';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { LocaleAnnouncerProvider } from '@/components/shared/language-switcher/locale-announcer';
 
 import '@/app/globals.css';
 import { ToastProvider } from '@studiq/ui';
@@ -113,25 +114,27 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <NextIntlClientProvider messages={messages}>
-            <QueryProvider>
-              <AuthProvider>
-                <BrandAccent />
-                <ToastProvider>{children}</ToastProvider>
-                <Toaster
-                  position="top-center"
-                  richColors
-                  duration={4000}
-                  toastOptions={{
-                    classNames: {
-                      success: 'toast-success',
-                      error: 'toast-error',
-                      warning: 'toast-warning',
-                      info: 'toast-info',
-                    },
-                  }}
-                />
-              </AuthProvider>
-            </QueryProvider>
+            <LocaleAnnouncerProvider>
+              <QueryProvider>
+                <AuthProvider>
+                  <BrandAccent />
+                  <ToastProvider>{children}</ToastProvider>
+                  <Toaster
+                    position="top-center"
+                    richColors
+                    duration={4000}
+                    toastOptions={{
+                      classNames: {
+                        success: 'toast-success',
+                        error: 'toast-error',
+                        warning: 'toast-warning',
+                        info: 'toast-info',
+                      },
+                    }}
+                  />
+                </AuthProvider>
+              </QueryProvider>
+            </LocaleAnnouncerProvider>
           </NextIntlClientProvider>
         </ThemeProvider>
       </body>

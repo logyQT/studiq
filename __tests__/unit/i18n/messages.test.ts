@@ -550,3 +550,34 @@ describe('i18n message script hygiene', () => {
     },
   );
 });
+
+describe('language switcher copy (#634)', () => {
+  /**
+   * One shared panel serves the footer, the navbar menu, the sidebar menu and
+   * the mobile sheet, so a key present in only one locale would print a raw
+   * `LanguageSwitcher.*` key in that surface.
+   */
+  it('has the same LanguageSwitcher keys in en and pl', () => {
+    expect(Object.keys(en.LanguageSwitcher).sort()).toEqual(
+      Object.keys(pl.LanguageSwitcher).sort(),
+    );
+  });
+
+  it('carries the visible label and the announcement placeholder in both locales', () => {
+    for (const [locale, messages] of Object.entries(locales)) {
+      expect(messages.LanguageSwitcher.label, locale).toBeTruthy();
+      expect(messages.LanguageSwitcher.changed, locale).toContain('{language}');
+    }
+  });
+
+  it('names the avatar menu button for the focus handoff', () => {
+    expect(en.Navbar.user_menu).toBe('User menu');
+    expect(pl.Navbar.user_menu).toBe('Menu użytkownika');
+  });
+
+  /** The language row now uses `LanguageSwitcher.label`; the old key is dead. */
+  it('drops the unused DashboardLayout.language key', () => {
+    expect(en.DashboardLayout).not.toHaveProperty('language');
+    expect(pl.DashboardLayout).not.toHaveProperty('language');
+  });
+});

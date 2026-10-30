@@ -86,10 +86,13 @@ async function expectNoCyrillic(page: Page, where: string): Promise<void> {
   expect(text, `${where} contains only Polish/English copy`).not.toMatch(CYRILLIC);
 }
 
-/** Use the footer language toggle the same way a visitor does. */
+/** Use the footer language select the same way a visitor does. */
 async function switchLanguage(page: Page, label: 'Polski' | 'English'): Promise<void> {
-  await page.locator('footer button[title="Language"]').click();
-  await page.getByRole('menuitem', { name: new RegExp(label) }).click();
+  await page
+    .locator('footer')
+    .getByRole('combobox', { name: /^(Język|Language):/ })
+    .click();
+  await page.getByRole('option', { name: new RegExp(label) }).click();
 }
 
 async function localeCookie(page: Page): Promise<string | undefined> {
