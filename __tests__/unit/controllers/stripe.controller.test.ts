@@ -2,15 +2,18 @@ import type { RequestContext } from '@studiq/authz';
 import { StripeController } from '@studiq/server/controllers/stripe.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-function createMockService() {
+function createMockGateway() {
   return {
+    driver: 'mock' as const,
     createCheckoutSession: vi.fn(),
-    handleWebhook: vi.fn(),
     createPortalSession: vi.fn(),
+    changePlan: vi.fn(),
+    cancelAtPeriodEnd: vi.fn(),
+    handleWebhook: vi.fn(),
   };
 }
 
-let mockService: ReturnType<typeof createMockService>;
+let gateway: ReturnType<typeof createMockGateway>;
 let controller: StripeController;
 const mockCtx: RequestContext = {
   traceId: 'test',
@@ -34,8 +37,8 @@ const validEvent = {
 describe('StripeController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockService = createMockService();
-    controller = new StripeController(mockService as any);
+    gateway = createMockGateway();
+    controller = new StripeController(gateway as any);
   });
 
   describe('createCheckoutSession', () => {
@@ -43,26 +46,39 @@ describe('StripeController', () => {
       const response = await controller.createCheckoutSession(mockCtx, {});
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
-      expect(mockService.createCheckoutSession).not.toHaveBeenCalled();
+      expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
     });
 
-    it('passes the caller account type to the service', async () => {
-      mockService.createCheckoutSession.mockResolvedValueOnce({
+    it('passes the authenticated actor and plan to the gateway', async () => {
+      gateway.createCheckoutSession.mockResolvedValueOnce({
         success: true,
         data: { url: 'u', sessionId: 's' },
       });
       const response = await controller.createCheckoutSession(mockCtx, { planId: 'spark' });
       expect(response.success).toBe(true);
-      expect(mockService.createCheckoutSession).toHaveBeenCalledWith(
-        'spark',
-        'student',
-        'u-1',
-        undefined,
+      expect(gateway.createCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u-1',
+          accountType: 'student',
+          planKey: 'spark',
+          idempotencyKey: expect.any(String),
+        }),
+      );
+    });
+
+    it('passes the target organization through', async () => {
+      gateway.createCheckoutSession.mockResolvedValueOnce({
+        success: true,
+        data: { url: 'u', sessionId: 's' },
+      });
+      await controller.createCheckoutSession(mockCtx, { planId: 'hub', orgId: 'org-1' });
+      expect(gateway.createCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({ planKey: 'hub', orgId: 'org-1' }),
       );
     });
 
     it('returns 403 when the plan does not match the account type', async () => {
-      mockService.createCheckoutSession.mockResolvedValueOnce({
+      gateway.createCheckoutSession.mockResolvedValueOnce({
         success: false,
         error: 'FORBIDDEN',
       });
@@ -77,7 +93,7 @@ describe('StripeController', () => {
       const response = await controller.handleWebhook(mockCtx, { type: 'x' });
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
-      expect(mockService.handleWebhook).not.toHaveBeenCalled();
+      expect(gateway.handleWebhook).not.toHaveBeenCalled();
     });
 
     it("rejects an event for another user's account (#192)", async () => {
@@ -87,35 +103,60 @@ describe('StripeController', () => {
       });
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect(mockService.handleWebhook).not.toHaveBeenCalled();
+      expect(gateway.handleWebhook).not.toHaveBeenCalled();
     });
 
-    it("applies the caller's own event and passes the authenticated identity", async () => {
-      mockService.handleWebhook.mockResolvedValueOnce({ success: true, data: undefined });
+    it("applies the caller's own event through the mock envelope", async () => {
+      gateway.handleWebhook.mockResolvedValueOnce({ success: true, data: { received: true } });
       const response = await controller.handleWebhook(mockCtx, validEvent);
       expect(response.success).toBe(true);
-      expect(mockService.handleWebhook).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'checkout.session.completed', plan_id: 'spark' }),
-        'student',
-        'u-1', // ctx.userId, not the body value
-      );
+      expect(gateway.handleWebhook).toHaveBeenCalledWith({
+        kind: 'mock',
+        ctx: mockCtx,
+        event: {
+          type: 'checkout.session.completed',
+          session_id: 's-1',
+          plan_id: 'spark',
+        },
+      });
     });
 
-    it('never forwards the body user_id to the service (#227)', async () => {
-      mockService.handleWebhook.mockResolvedValueOnce({ success: true, data: undefined });
-      const response = await controller.handleWebhook(mockCtx, validEvent);
-      expect(response.success).toBe(true);
-      expect(mockService.handleWebhook.mock.calls[0][0]).not.toHaveProperty('user_id');
+    it('never forwards the body user_id to the gateway (#227)', async () => {
+      gateway.handleWebhook.mockResolvedValueOnce({ success: true, data: { received: true } });
+      await controller.handleWebhook(mockCtx, validEvent);
+      expect(gateway.handleWebhook.mock.calls[0][0].event).not.toHaveProperty('user_id');
+    });
+
+    it('passes org_id through when present', async () => {
+      gateway.handleWebhook.mockResolvedValueOnce({ success: true, data: { received: true } });
+      await controller.handleWebhook(mockCtx, { ...validEvent, org_id: 'org-1' });
+      expect(gateway.handleWebhook.mock.calls[0][0].event).toMatchObject({ org_id: 'org-1' });
     });
 
     it('returns 403 when the plan is not meant for the account type', async () => {
-      mockService.handleWebhook.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
+      gateway.handleWebhook.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
       const response = await controller.handleWebhook(mockCtx, {
         ...validEvent,
         plan_id: 'campus',
       });
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
+    });
+  });
+
+  describe('createPortalSession', () => {
+    it('passes the authenticated identity and active org to the gateway', async () => {
+      gateway.createPortalSession.mockResolvedValueOnce({
+        success: true,
+        data: { url: '/app/billing' },
+      });
+      const response = await controller.createPortalSession(mockCtx);
+      expect(response.success).toBe(true);
+      expect(gateway.createPortalSession).toHaveBeenCalledWith({
+        userId: 'u-1',
+        accountType: 'student',
+        activeOrgId: null,
+      });
     });
   });
 });
