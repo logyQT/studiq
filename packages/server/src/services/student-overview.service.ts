@@ -95,7 +95,9 @@ export class StudentOverviewService {
         .select('id, total_questions, started_at, config, draft_answers')
         .eq('user_id', ctx.userId)
         .is('completed_at', null)
-        .is('assignment_id', null)
+        // The durable marker, not `assignment_id`: it is NULL on an assignment attempt whose
+        // assignment was deleted (#657).
+        .eq('is_assignment_attempt', false)
         .gte('started_at', resumeSince)
         .order('started_at', { ascending: false })
         .limit(1),

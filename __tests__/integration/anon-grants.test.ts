@@ -84,6 +84,13 @@ describe('anon role grants (#191)', () => {
       },
     ],
     [
+      'get_student_insights',
+      {
+        p_user_id: '00000000-0000-4000-8001-000000000005',
+        p_days: 30,
+      },
+    ],
+    [
       'apply_org_plan',
       {
         p_org_id: '00000000-0000-4000-8000-00000000000e',

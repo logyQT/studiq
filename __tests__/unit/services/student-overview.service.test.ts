@@ -127,7 +127,7 @@ describe('StudentOverviewService.getOverview', () => {
     // Only the caller's own, unfinished, non-assignment attempts of the last 7 days.
     expect(open.eq).toHaveBeenCalledWith('user_id', 'student-1');
     expect(open.is).toHaveBeenCalledWith('completed_at', null);
-    expect(open.is).toHaveBeenCalledWith('assignment_id', null);
+    expect(open.eq).toHaveBeenCalledWith('is_assignment_attempt', false);
     expect(open.gte).toHaveBeenCalledWith('started_at', '2026-10-20T12:00:00.000Z');
   });
 
