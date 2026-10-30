@@ -105,7 +105,9 @@ export const CompleteSessionSchema = registry.register(
     durationMs: z
       .number({ error: ValidationErrorCode.NUMBER })
       .int({ error: ValidationErrorCode.INTEGER })
-      .positive({ error: ValidationErrorCode.POSITIVE_NUMBER }),
+      .positive({ error: ValidationErrorCode.POSITIVE_NUMBER })
+      // Two hours, the same cap the statistics apply: a longer session cannot be stored at all.
+      .max(7_200_000, { error: ValidationErrorCode.TOO_BIG }),
     cardsStudied: z
       .number({ error: ValidationErrorCode.NUMBER })
       .int({ error: ValidationErrorCode.INTEGER })
