@@ -48,8 +48,17 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
      public.resource_permissions,
      public.user_feature_overrides,
      public.profiles,
-     public.payments
+     public.payments,
+     public.billing_subscriptions
   FROM authenticated;
+
+-- Service-role-only billing tables: no PostgREST surface at all. Without this,
+-- `GRANT ALL ON ALL TABLES` above would leave SELECT granted and RLS would
+-- silently return zero rows instead of failing closed.
+REVOKE ALL ON public.billing_customers,
+              public.stripe_prices,
+              public.stripe_webhook_events
+  FROM authenticated, anon;
 
 -- Destructive maintenance privileges are never used through PostgREST.
 REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated, anon;
