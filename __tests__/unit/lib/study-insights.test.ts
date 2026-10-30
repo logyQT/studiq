@@ -315,6 +315,19 @@ describe('insight cards, second review round (#657)', () => {
     expect(empty.indexOf("t('study_time_note')")).toBeLessThan(empty.indexOf('<>'));
   });
 
+  it('the assignment marker is database-controlled, not client-controlled', () => {
+    const migration = readFileSync(
+      'supabase/migrations/20261028100200_student_insights.sql',
+      'utf8',
+    );
+    const schema = readFileSync('supabase/schemas/39_quiz_attempts.sql', 'utf8');
+    for (const sql of [migration, schema]) {
+      expect(sql).toContain('trg_quiz_attempts_assignment_marker');
+      expect(sql).toContain('NEW.is_assignment_attempt := NEW.assignment_id IS NOT NULL');
+      expect(sql).toContain('NEW.is_assignment_attempt := OLD.is_assignment_attempt');
+    }
+  });
+
   it('the range selector reads differently from the activity chart one on the same page', () => {
     const card = readFileSync('apps/web/src/components/stats/study-time-card.tsx', 'utf8');
     expect(card).toContain("t('study_range_days'");

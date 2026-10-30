@@ -29,9 +29,34 @@ ALTER TABLE public.quiz_attempts
 
 -- Best effort for rows created before the marker: attempts whose assignment still exists keep
 -- their provenance. An attempt whose assignment was already deleted cannot be recovered.
+-- (Runs before the trigger below exists: on UPDATE the trigger preserves the old value.)
 UPDATE public.quiz_attempts
 SET is_assignment_attempt = true
 WHERE assignment_id IS NOT NULL;
+
+-- The marker is database-controlled, never client-controlled: a student may update their own
+-- attempts through PostgREST, and the quota, the resume card and the mastery RPC all trust this
+-- value. An insert derives it from `assignment_id`; an update keeps the stored value, so the
+-- `ON DELETE SET NULL` referential action cannot flip it either.
+CREATE OR REPLACE FUNCTION public.quiz_attempts_assignment_marker()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW.is_assignment_attempt := NEW.assignment_id IS NOT NULL;
+  ELSE
+    NEW.is_assignment_attempt := OLD.is_assignment_attempt;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_quiz_attempts_assignment_marker ON public.quiz_attempts;
+CREATE TRIGGER trg_quiz_attempts_assignment_marker
+  BEFORE INSERT OR UPDATE ON public.quiz_attempts
+  FOR EACH ROW EXECUTE FUNCTION public.quiz_attempts_assignment_marker();
 
 CREATE OR REPLACE FUNCTION public.get_student_insights(
   p_user_id uuid,

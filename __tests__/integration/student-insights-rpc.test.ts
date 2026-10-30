@@ -226,8 +226,6 @@ describe('get_student_insights rules (#657 review)', () => {
     const finished = (ms: number, extra: Record<string, unknown> = {}) => ({
       user_id: studentId,
       config: { marker: MARK },
-      // Multi-row insert: every object carries the key, PostgREST rejects keys that differ.
-      is_assignment_attempt: false,
       started_at: new Date(now.getTime() - ms).toISOString(),
       completed_at: now.toISOString(),
       ...extra,
@@ -236,10 +234,10 @@ describe('get_student_insights rules (#657 review)', () => {
       .from('quiz_attempts')
       .insert([
         finished(60_000), // practice: 1 min
-        finished(30_000, { assignment_id: assignment, is_assignment_attempt: true }),
-        finished(20_000, { assignment_id: deletedAssignment, is_assignment_attempt: true }),
+        finished(30_000, { assignment_id: assignment }),
+        finished(20_000, { assignment_id: deletedAssignment }),
         // 8 h elapsed: the quiz half of the two-hour cap
-        finished(8 * HOUR, { assignment_id: assignment, is_assignment_attempt: true }),
+        finished(8 * HOUR, { assignment_id: assignment }),
       ])
       .select('id, assignment_id, is_assignment_attempt');
     if (tError) throw tError;
@@ -352,6 +350,33 @@ describe('get_student_insights rules (#657 review)', () => {
         accuracy: 100,
       },
     ]);
+  });
+
+  it('keeps the assignment marker database-controlled, so a client cannot flip it', async () => {
+    const select = () =>
+      service
+        .from('quiz_attempts')
+        .select('id, assignment_id, is_assignment_attempt')
+        .eq('config->>marker', MARK);
+    const { data: rows, error } = await select();
+    if (error) throw error;
+    const practice = rows!.find((row) => !row.assignment_id && !row.is_assignment_attempt)!;
+    const assignmentAttempt = rows!.find((row) => row.is_assignment_attempt)!;
+
+    // The student can update their own attempt through PostgREST (RLS FOR ALL); the trigger
+    // keeps the stored provenance.
+    await student
+      .from('quiz_attempts')
+      .update({ is_assignment_attempt: true })
+      .eq('id', practice.id);
+    await student
+      .from('quiz_attempts')
+      .update({ is_assignment_attempt: false })
+      .eq('id', assignmentAttempt.id);
+
+    const { data: after } = await select();
+    expect(after!.find((row) => row.id === practice.id)!.is_assignment_attempt).toBe(false);
+    expect(after!.find((row) => row.id === assignmentAttempt.id)!.is_assignment_attempt).toBe(true);
   });
 
   it('buckets the retention curve by the gap to the previous review, and keeps empty buckets', async () => {
