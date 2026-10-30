@@ -54,6 +54,8 @@ bell in place — plus the shipped entries around it.
 
 The entry is only rendered where the bell is mounted (`notifications` prop on the shared
 menu, passed from the dashboard `UserMenu`), so the public pages keep the menu without it.
+The mobile drawer keeps the menu without it too: the bell is already in the header there,
+and the `plain` variant does not pass the prop.
 
 ## Walk observations (shared app 3010 / DB 54421, worker qa-env-7, pl, 2026-10-29)
 

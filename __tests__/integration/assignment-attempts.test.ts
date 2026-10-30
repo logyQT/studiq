@@ -254,9 +254,12 @@ describe(`Assignment Attempts Integration`, () => {
     await cleanupQuestions(teacher.user.id, 'seed-question-');
     if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
     // `nonTargeted` is an account this file created; delete it after its rows are gone.
-    await createServiceClient()
-      .auth.admin.deleteUser(nonTargeted.id)
-      .catch(() => {});
+    const { error: deleteError } = await createServiceClient().auth.admin.deleteUser(
+      nonTargeted.id,
+    );
+    if (deleteError) {
+      throw new Error(`Failed to delete the non-targeted test account: ${deleteError.message}`);
+    }
   });
 
   it('refuses a target outside the assignment organisation and keeps the existing ones (#235)', async () => {

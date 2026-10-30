@@ -27,7 +27,9 @@ import { loadTenant, loginAs, type QaRole } from '@qa/fixtures/qa-tenant';
  *
  * The entry is only rendered on dashboard menus (`notifications` prop), because
  * the public pages have no bell: the teacher and manager cases pin that the shared
- * component shows it on `/edu` and `/manage` too.
+ * component shows it on `/edu` and `/manage` too. The mobile drawer keeps the menu
+ * without it — the bell sits in the header there, so the row is not needed and the
+ * plain variant does not pass the prop.
  */
 
 const CASE = 'STU-53';
@@ -47,6 +49,7 @@ const SETTINGS = { language: 'Język: Polski', theme: 'Motyw' } as const;
 const NOTIFICATIONS_ITEM = /^(powiadomienia|notifications)$/i;
 
 /** The bell popover (Radix PopoverContent, role="dialog" with its title as the name). */
+/** Polish copy from `Notifications.title` (`apps/web/src/i18n/messages/pl.json`). */
 const NOTIFICATIONS_DIALOG = 'Powiadomienia';
 
 /** The user menu sits at the bottom of the dashboard sidebar on every dashboard. */
