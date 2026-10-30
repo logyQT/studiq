@@ -22,7 +22,7 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 vi.mock('@studiq/server/services/question.service', () => ({
-  questionService: { list: vi.fn() },
+  questionService: { listBankQuestions: vi.fn() },
 }));
 vi.mock('@studiq/server/services/question-bank.service', () => ({
   questionBankService: { getById: vi.fn() },
@@ -81,7 +81,7 @@ describe('QuestionTransferService.exportBank', () => {
 
   it('maps the questions of a readable bank, answers in their stored order', async () => {
     vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'Fizyka' }) as any);
-    vi.mocked(questionService.list).mockResolvedValue(
+    vi.mocked(questionService.listBankQuestions).mockResolvedValue(
       success([
         {
           type: 'mcq',
@@ -99,7 +99,7 @@ describe('QuestionTransferService.exportBank', () => {
 
     const result = await service.exportBank(ctx, 'bank-1');
 
-    expect(questionService.list).toHaveBeenCalledWith(ctx, { bankId: 'bank-1' });
+    expect(questionService.listBankQuestions).toHaveBeenCalledWith('bank-1');
     expect(result.success && result.data).toEqual({
       bankName: 'Fizyka',
       questions: [
@@ -123,7 +123,7 @@ describe('QuestionTransferService.exportBank', () => {
     vi.mocked(questionBankService.getById).mockResolvedValue(
       success({ name: 'B', question_count: questionCount }) as any,
     );
-    vi.mocked(questionService.list).mockResolvedValue(success(rows) as any);
+    vi.mocked(questionService.listBankQuestions).mockResolvedValue(success(rows) as any);
   };
   const row = (over: Record<string, unknown> = {}) => ({
     type: 'mcq',
@@ -147,7 +147,7 @@ describe('QuestionTransferService.exportBank', () => {
     const result = await service.exportBank(ctx, 'bank-1');
 
     expect(result).toMatchObject({ success: false, error: 'UNPROCESSABLE_ENTITY' });
-    expect(questionService.list).not.toHaveBeenCalled();
+    expect(questionService.listBankQuestions).not.toHaveBeenCalled();
   });
 
   it('never answers with fewer questions than the bank holds', async () => {
@@ -189,7 +189,7 @@ describe('QuestionTransferService.exportBank', () => {
     const result = await service.exportBank(ctx, 'foreign');
 
     expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
-    expect(questionService.list).not.toHaveBeenCalled();
+    expect(questionService.listBankQuestions).not.toHaveBeenCalled();
   });
 });
 

@@ -190,6 +190,29 @@ export class QuestionService {
     return success(paged ? { items, total: count ?? items.length, page, limit } : items);
   }
 
+  /**
+   * Every question of one bank, in the full shape an export needs, **without** the
+   * `question.read` scope filter.
+   *
+   * The caller must already have checked `question_bank.read` on this bank: reading a bank means
+   * reading the whole bank, answer key included (decision B, #678). Reading the questions through
+   * `list` instead would apply a second, narrower scope — a role that may read the bank at
+   * `organization` scope but questions only at `own` would get a partial file. RLS still bounds
+   * the rows to the caller's own or same-organisation questions.
+   */
+  async listBankQuestions(bankId: string): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
+
+    const { data, error } = await supabase
+      .from('questions')
+      .select(questionSelect())
+      .eq('bank_id', bankId);
+    if (error) return toDbFailure(error);
+
+    const rows = (data ?? []) as unknown as QuestionTopicRow[];
+    return success(rows.map((row) => withTopics(row)));
+  }
+
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 

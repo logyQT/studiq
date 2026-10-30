@@ -27,16 +27,26 @@ export const TRANSFER_CSV_COLUMNS = [
   'correct',
 ] as const;
 
-const FORMULA_ESCAPE = /^'[=+\-@\t\r]/;
+const FORMULA_ESCAPE = /^'+[=+\-@\t\r]/;
 
-/** Undoes `neutralizeCsvFormula`, so an exported file imports back to the same text. */
+/**
+ * Undoes `neutralizeCsvFormula`/`textCell`, so an exported file imports back to the same text.
+ * Exactly one apostrophe is stripped: that is the one `textCell` added, whichever case it was.
+ */
 function restoreCsvFormula(value: string): string {
   return FORMULA_ESCAPE.test(value) ? value.slice(1) : value;
 }
 
-/** Text cells carry user input, so a leading `=`, `+`, `-` or `@` must not become a formula. */
+/**
+ * Text cells carry user input, so a leading `=`, `+`, `-` or `@` must not become a formula.
+ * A value that already starts with literal apostrophes before such a character gets one more,
+ * otherwise the apostrophe the user typed would be eaten by `restoreCsvFormula` on the way back
+ * (`'=SUM(A1)` must stay `'=SUM(A1)`, not become `=SUM(A1)`).
+ */
 function textCell(value: string): string {
-  return neutralizeCsvFormula(value);
+  const neutralized = neutralizeCsvFormula(value);
+  if (neutralized !== value) return neutralized;
+  return FORMULA_ESCAPE.test(value) ? `'${value}` : value;
 }
 
 /** Serialises questions in the bank layout: the BOM and fixed header first, one row per question. */

@@ -55,6 +55,9 @@ export class QuestionTransferService {
     ServiceResult<{ bankName: string; questions: TransferQuestion[]; notReimportable: number }>
   > {
     // The bank lookup applies the read permission, so a foreign or unknown bank is NOT_FOUND.
+    // From here the whole bank is readable (decision B, #678), so the questions are listed by
+    // bank only: `questionService.list` would apply the narrower `question.read` scope on top
+    // and hand back fewer rows than the bank has.
     const bank = await questionBankService.getById(bankId, ctx);
     if (!bank.success) return failure(bank.error);
 
@@ -64,7 +67,7 @@ export class QuestionTransferService {
     const declared = Number((bank.data as { question_count?: number }).question_count ?? 0);
     if (declared > EXPORT_MAX_QUESTIONS) return failure('UNPROCESSABLE_ENTITY');
 
-    const listed = await questionService.list(ctx, { bankId });
+    const listed = await questionService.listBankQuestions(bankId);
     if (!listed.success) return failure(listed.error);
 
     const rows = listed.data as ListedQuestion[];

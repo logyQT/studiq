@@ -83,12 +83,32 @@ describe('questionsToCsv', () => {
 });
 
 describe('csvRecordsToQuestions', () => {
+  it('keeps a literal apostrophe before a formula character', () => {
+    const csv = questionsToCsv([{ ...mcq, content: "'=SUM(A1)" }]);
+    // One more apostrophe than the user typed: the extra one is what `restoreCsvFormula` eats.
+    expect(csv).toContain("''=SUM(A1)");
+
+    const { questions } = readCsv(csv);
+    expect(questions[0].content).toBe("'=SUM(A1)");
+  });
+
   it('round-trips an export, including topics, explanation and formulas', () => {
     const originals = [
       mcq,
       trueFalse,
       open,
       { ...mcq, content: '=1+1', explanation: undefined, topics: [] },
+      // Values that look escaped already: the apostrophes are the user's text, not our escape.
+      {
+        ...mcq,
+        content: "'=SUM(A1)",
+        explanation: "'+1",
+        topics: ["'=T"],
+        answers: [
+          { content: "'-2", isCorrect: true },
+          { content: '@SUM(A1)', isCorrect: false },
+        ],
+      },
     ].map((q) => TransferQuestionSchema.parse(q));
 
     const { questions, issues } = readCsv(questionsToCsv(originals));
