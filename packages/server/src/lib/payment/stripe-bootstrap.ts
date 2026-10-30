@@ -70,14 +70,24 @@ export function selectBootstrapPrices(
 
     if (!plan.isActive) continue;
 
-    const amount = plan.priceMonthly ?? 0;
-    if (!Number.isInteger(amount) || amount <= 0) continue; // free tier
-
     let valid = true;
     const fail = (message: string) => {
       errors.push(`${plan.key}: ${message}`);
       valid = false;
     };
+
+    const amount = plan.priceMonthly ?? 0;
+    if (amount === 0) continue; // free tier
+
+    if (!Number.isInteger(amount)) {
+      fail('amount must be an integer number of minor units');
+    } else if (amount < 0) {
+      fail('amount must not be negative');
+    } else if (amount < PLN_MIN_CHARGE_MINOR) {
+      fail(
+        `amount ${amount} is below the ${BOOTSTRAP_CURRENCY} minimum of ${PLN_MIN_CHARGE_MINOR} minor units`,
+      );
+    }
 
     if (!/^[a-z0-9_]+$/.test(plan.key)) {
       fail('key must match /^[a-z0-9_]+$/ so it can be used in a lookup key');
@@ -89,11 +99,6 @@ export function selectBootstrapPrices(
     const currency = (plan.currency ?? BOOTSTRAP_CURRENCY).trim().toUpperCase();
     if (currency !== BOOTSTRAP_CURRENCY) {
       fail(`currency must be ${BOOTSTRAP_CURRENCY}, got "${plan.currency ?? ''}"`);
-    }
-    if (amount < PLN_MIN_CHARGE_MINOR) {
-      fail(
-        `amount ${amount} is below the ${BOOTSTRAP_CURRENCY} minimum of ${PLN_MIN_CHARGE_MINOR} minor units`,
-      );
     }
 
     if (!valid) continue;

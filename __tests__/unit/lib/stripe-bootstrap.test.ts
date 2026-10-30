@@ -80,6 +80,20 @@ describe('selectBootstrapPrices', () => {
     expect(errors[0]).toContain('below the PLN minimum');
   });
 
+  it('rejects a negative amount instead of treating it as a free tier', () => {
+    const { prices, errors } = selectBootstrapPrices([plan({ priceMonthly: -100 })]);
+
+    expect(prices).toEqual([]);
+    expect(errors).toEqual(['spark: amount must not be negative']);
+  });
+
+  it('rejects a non-integer amount', () => {
+    const { prices, errors } = selectBootstrapPrices([plan({ priceMonthly: 999.5 })]);
+
+    expect(prices).toEqual([]);
+    expect(errors).toEqual(['spark: amount must be an integer number of minor units']);
+  });
+
   it('rejects an invalid plan key and an empty name', () => {
     const { prices, errors } = selectBootstrapPrices([
       plan({ key: 'Spark Plan' }),

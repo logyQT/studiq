@@ -167,14 +167,17 @@ async function ensurePrice(
       },
     },
     {
-      idempotencyKey: `studiq-bootstrap-price:${livemode ? 'live' : 'test'}:${row.planKey}:${row.unitAmount}:${row.currency}`,
+      idempotencyKey: `studiq-bootstrap-price:${livemode ? 'live' : 'test'}:${row.planKey}:${row.unitAmount}:${row.currency}:${current?.id ?? 'no-current-price'}`,
     },
   );
 
   return { price, created: true };
 }
 
-function portalParams(livemode: boolean): Stripe.BillingPortal.ConfigurationCreateParams {
+function portalParams(
+  livemode: boolean,
+  siteUrl: string,
+): Stripe.BillingPortal.ConfigurationCreateParams {
   return {
     name: 'StudiQ',
     business_profile: {
@@ -197,7 +200,7 @@ function portalParams(livemode: boolean): Stripe.BillingPortal.ConfigurationCrea
         allowed_updates: ['email', 'address', 'name', 'tax_id'],
       },
     },
-    default_return_url: `${getSiteUrl()}/app/billing`,
+    default_return_url: `${siteUrl}/app/billing`,
     metadata: {
       studiq_managed: 'true',
       studiq_livemode: String(livemode),
@@ -208,6 +211,7 @@ function portalParams(livemode: boolean): Stripe.BillingPortal.ConfigurationCrea
 async function ensurePortalConfiguration(
   stripe: Stripe,
   livemode: boolean,
+  siteUrl: string,
 ): Promise<{ id: string; created: boolean }> {
   let existing: Stripe.BillingPortal.Configuration | undefined;
   for await (const configuration of stripe.billingPortal.configurations.list({ limit: 100 })) {
@@ -224,12 +228,12 @@ async function ensurePortalConfiguration(
   if (existing) {
     const updated = await stripe.billingPortal.configurations.update(
       existing.id,
-      portalParams(livemode) as Stripe.BillingPortal.ConfigurationUpdateParams,
+      portalParams(livemode, siteUrl) as Stripe.BillingPortal.ConfigurationUpdateParams,
     );
     return { id: updated.id, created: false };
   }
 
-  const created = await stripe.billingPortal.configurations.create(portalParams(livemode));
+  const created = await stripe.billingPortal.configurations.create(portalParams(livemode, siteUrl));
   return { id: created.id, created: true };
 }
 
@@ -248,6 +252,19 @@ async function main(): Promise<void> {
     throw new BootstrapError('refusing a live key without --live');
   }
 
+  const siteUrl = getSiteUrl();
+  if (livemode) {
+    assert(
+      siteUrl.startsWith('https://'),
+      'NEXT_PUBLIC_SITE_URL must start with https:// in live mode (the portal return URL cannot be localhost)',
+    );
+  }
+
+  assert(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
+    'NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to write stripe_prices',
+  );
+
   const plans = await loadCatalog();
   const { prices, errors } = selectBootstrapPrices(plans);
 
@@ -264,18 +281,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  assert(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
-    'NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to write stripe_prices',
-  );
-
   const stripe = new Stripe(secretKey, {
     apiVersion: API_VERSION,
     maxNetworkRetries: 2,
     timeout: 20_000,
   });
 
-  console.log(`Bootstrapping Stripe ${modeLabel(livemode)} mode against ${getSiteUrl()}…\n`);
+  console.log(`Bootstrapping Stripe ${modeLabel(livemode)} mode against ${siteUrl}…\n`);
 
   const supabase = createServiceClient();
   const productCache = await loadProducts(stripe);
@@ -337,7 +349,7 @@ async function main(): Promise<void> {
     console.log(`\nDeactivated ${stalePlans.length} stale mapping(s): ${stalePlans.join(', ')}`);
   }
 
-  const portal = await ensurePortalConfiguration(stripe, livemode);
+  const portal = await ensurePortalConfiguration(stripe, livemode, siteUrl);
 
   console.log(
     `\nBootstrap complete (${modeLabel(livemode)}): ${prices.length} plans, ` +
