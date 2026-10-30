@@ -27,6 +27,7 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
      public.user_feature_overrides,
      public.profiles,
      public.payments,
+     public.notifications,
      public.billing_subscriptions
   FROM authenticated;
 
@@ -66,6 +67,7 @@ GRANT EXECUTE ON FUNCTION public.count_new_cards(uuid, text, uuid) TO authentica
 GRANT EXECUTE ON FUNCTION public.get_due_breakdown(uuid, uuid, uuid, uuid[], uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_due_flashcards(uuid, text, uuid, integer, uuid[], uuid[], integer, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_practice_state_breakdown(uuid, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_student_insights(uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_teacher_problematic_questions(uuid, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_teacher_stats(uuid[], uuid, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_user_group_ids(uuid, uuid) TO authenticated;

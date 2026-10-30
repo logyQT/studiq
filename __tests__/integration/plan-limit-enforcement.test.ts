@@ -87,7 +87,7 @@ describe(`Plan limit enforcement`, () => {
       .from('quiz_attempts')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .is('assignment_id', null);
+      .eq('is_assignment_attempt', false);
     return count ?? 0;
   }
 

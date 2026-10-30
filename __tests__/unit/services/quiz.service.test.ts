@@ -218,7 +218,7 @@ describe('QuizService', () => {
       expect(mock.from).toHaveBeenCalledWith('quiz_attempts');
       expect(countBuilder.select).toHaveBeenCalledWith('*', { count: 'exact', head: true });
       expect(countBuilder.eq).toHaveBeenCalledWith('user_id', ctx.userId);
-      expect(countBuilder.is).toHaveBeenCalledWith('assignment_id', null);
+      expect(countBuilder.eq).toHaveBeenCalledWith('is_assignment_attempt', false);
       expect(countBuilder.gte).toHaveBeenCalledWith('started_at', expect.any(String));
       expect(limitsResolver.checkLimit).toHaveBeenCalledWith(ctx, 'max_quiz_attempts_per_day', 2);
     });
