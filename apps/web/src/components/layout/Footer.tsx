@@ -3,8 +3,8 @@
 import { GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { LanguageToggle } from '@/components/layout/LanguageToggle';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
+import { LanguageSwitcher } from '@/components/shared/language-switcher/language-switcher';
 
 export function Footer() {
   const t = useTranslations('Footer');
@@ -88,7 +88,7 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">{t('copyright')}</p>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <LanguageToggle />
+            <LanguageSwitcher />
           </div>
         </div>
       </div>

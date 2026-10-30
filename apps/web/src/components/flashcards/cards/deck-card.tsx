@@ -305,7 +305,9 @@ export const DeckCard = memo(
       prev.canDelete === next.canDelete &&
       prev.isSelecting === next.isSelecting &&
       prev.isSelected === next.isSelected &&
-      prev.groupNames?.join(',') === next.groupNames?.join(',')
+      prev.groupNames?.join(',') === next.groupNames?.join(',') &&
+      // A new translator means the locale changed: re-render the copy (#634).
+      prev.t === next.t
     );
   },
 );

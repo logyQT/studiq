@@ -23,7 +23,7 @@ export async function register() {
   // The exporters read OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318).
   const sdk = new NodeSDK({
     resource: resourceFromAttributes({
-      [ATTR_SERVICE_NAME]: 'studiq',
+      [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? 'studiq',
       [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV ?? 'development',
     }),
     traceExporter: new OTLPTraceExporter(),

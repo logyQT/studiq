@@ -7,9 +7,11 @@ import { AuthProvider } from '@/components/providers/AuthProvider';
 import { BrandAccent } from '@/components/providers/BrandAccent';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { LocaleAnnouncerProvider } from '@/components/shared/language-switcher/locale-announcer';
 
 import '@/app/globals.css';
 import { ToastProvider } from '@studiq/ui';
+import { getSiteUrl } from '@studiq/server/lib/site-url';
 
 /**
  * =============================================================================
@@ -32,7 +34,7 @@ const geistMono = Geist_Mono({
  * =============================================================================
  * Dokumentacja: https://nextjs.org/docs/app/api-reference/functions/generate-metadata
  */
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+const siteUrl = getSiteUrl();
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
@@ -113,25 +115,27 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <NextIntlClientProvider messages={messages}>
-            <QueryProvider>
-              <AuthProvider>
-                <BrandAccent />
-                <ToastProvider>{children}</ToastProvider>
-                <Toaster
-                  position="top-center"
-                  richColors
-                  duration={4000}
-                  toastOptions={{
-                    classNames: {
-                      success: 'toast-success',
-                      error: 'toast-error',
-                      warning: 'toast-warning',
-                      info: 'toast-info',
-                    },
-                  }}
-                />
-              </AuthProvider>
-            </QueryProvider>
+            <LocaleAnnouncerProvider>
+              <QueryProvider>
+                <AuthProvider>
+                  <BrandAccent />
+                  <ToastProvider>{children}</ToastProvider>
+                  <Toaster
+                    position="top-center"
+                    richColors
+                    duration={4000}
+                    toastOptions={{
+                      classNames: {
+                        success: 'toast-success',
+                        error: 'toast-error',
+                        warning: 'toast-warning',
+                        info: 'toast-info',
+                      },
+                    }}
+                  />
+                </AuthProvider>
+              </QueryProvider>
+            </LocaleAnnouncerProvider>
           </NextIntlClientProvider>
         </ThemeProvider>
       </body>

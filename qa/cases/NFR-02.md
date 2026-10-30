@@ -13,14 +13,45 @@ Zalogowany użytkownik.
 
 ## Steps
 
-1. W menu użytkownika wybierz „English”, potem „Polski”.
-2. Powtórz na stronach publicznych (jeśli dostępny przełącznik) i w panelu admina.
+1. Na komputerze otwórz menu użytkownika (avatar w nagłówku albo menu w pasku bocznym). Jest w nim
+   **jeden** wiersz „Język” z polem wyboru po prawej („🇵🇱 Polski ⌄”) i wiersz „Motyw” z
+   przełącznikiem trzech pozycji (Jasny · System · Ciemny). Nie ma osobnych pozycji
+   „Polski” / „English”.
+2. Kliknij pole wyboru języka: rozwija się lista (bez pola wyszukiwania) z flagą, nazwą języka
+   w nim samym i — szarym — nazwą w języku interfejsu („English · angielski”); aktualny język ma
+   ✓. Wybierz „English” kliknięciem albo klawiszami (Enter → strzałka → Enter). Menu zostaje
+   otwarte.
+3. Wybierz z powrotem „Polski”.
+4. Powtórz na stronach publicznych, np. na `/pricing`: w stopce to samo pole wyboru
+   („Język: Polski”).
+5. Na wąskim ekranie (390×844), w panelu bocznym aplikacji: przycisk konta na dole otwiera panel
+   wysuwany od dołu; wiersz „Język” przechodzi do widoku „‹ Język” z polem „Szukaj języka lub
+   kodu…”. Wpisz `ang`, `en`, `pol` (wyniki tylko pasujące od początku słowa), potem `zzz`
+   („Brak pasującego języka”) i wyczyść pole przyciskiem ✕. Wybierz „English” — widok wraca do
+   menu, panel zostaje otwarty, a wiersz pokazuje „English”.
+6. Na wąskim ekranie w menu hamburger na stronach publicznych wiersz „Język” rozwija ten sam
+   panel z wyszukiwaniem **w miejscu**; po wybraniu języka panel się zwija, a fokus wraca
+   **na wiersz „Język”**.
+7. Przełącz język na głębokiej podstronie (np. `/app/stats/content`) i sprawdź adres oraz pozycję
+   przewinięcia; następnie odśwież stronę (F5).
 
 ## Expected result
 
-- Po zmianie strona przeładowuje się w wybranym języku (ciasteczko NEXT_LOCALE, ważne rok); przy zaznaczonym aktualnym języku widoczny ✓.
-- Wersja angielska nie zawiera polskich fragmentów, a polska – angielskich; liczebniki (fiszka/fiszki/fiszek) odmieniają się poprawnie.
-- Język jest zapamiętany po ponownym logowaniu.
+- Język jest **jednym, opisanym kontrolnym elementem** („Język” + aktualna nazwa), a nie dwoma
+  osobnymi pozycjami menu. Flaga jest dekoracyjna, nazwa języka jest zawsze widoczna i nie jest
+  tłumaczona przez tłumacza przeglądarki.
+- Na komputerze wybór to zwykłe pole wyboru bez wyszukiwania; na ekranach dotykowych panel ma
+  pole wyszukiwania (po nazwie własnej, nazwie w języku interfejsu i kodzie, bez znaczenia
+  wielkości liter i polskich znaków); przy braku dopasowania widać „Brak pasującego języka”.
+- Po wybraniu języka treść zmienia się **bez przeładowania strony** (w tym karty talii i banków
+  pytań): adres i pozycja przewinięcia pozostają. Ciasteczko `NEXT_LOCALE` jest ważne rok.
+- Zmiana języka jest komunikowana czytnikowi ekranu **raz**, w języku, w którym użytkownik czytał
+  stronę.
+- Na telefonie panel wysuwany od dołu ma własne miejsce i nie zasłania nawigacji; pole
+  wyszukiwania przyjmuje fokus i tekst.
+- Wersja angielska nie zawiera polskich fragmentów, a polska – angielskich; liczebniki
+  (fiszka/fiszki/fiszek) odmieniają się poprawnie.
+- Język jest zapamiętany po ponownym logowaniu i po odświeżeniu strony.
 
 ## QA tenant fixture (reconciled)
 
@@ -50,6 +81,9 @@ The suite version uses the case's own tenant and never the legacy accounts.
   singleton rows or another tenant.
 
 ## Walk observations (shared app, pl ⇄ en)
+
+> Recorded against the previous switcher (two „Polski” / „English” menu rows, full page reload),
+> before #634 / #635. The current behaviour is described in **Steps** and **Expected result**.
 
 - User menu (sidebar, bottom): „Polski” / „English” each carry a globe icon; the active one
   shows a `lucide-check` ✓ on the right. Choosing a language writes

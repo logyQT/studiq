@@ -29,8 +29,9 @@ import { loadTenant, loginAs, type QaRole } from '@qa/fixtures/qa-tenant';
  *
  * Walk on the shared app (:3010, Polish UI, worker qa-env-7, 2026-10-29) confirmed the
  * menu for the student, the teacher and the manager:
- * - The user menu is the sidebar-footer button. It opens exactly „Wybierz plan”,
- *   „Konto”, „Płatności”, „Polski”, „English”, „Motyw”, „Wyloguj się”.
+ * - The user menu is the sidebar-footer button. It opens „Wybierz plan”,
+ *   „Konto”, „Płatności”, „Wyloguj się”, plus the „Język” row with its select
+ *   (#634) and the „Motyw” three-position switch (#635).
  * - There is no „Powiadomienia” / „Notifications” entry for any of the three roles,
  *   and no notifications screen: `/app/notifications` answers 404.
  * - „Konto” still opens `/app/account` and the menu closes; Escape closes the menu
@@ -44,11 +45,11 @@ const MENU = {
   upgrade: 'Wybierz plan',
   account: 'Konto',
   billing: 'Płatności',
-  polish: 'Polski',
-  english: 'English',
-  theme: 'Motyw',
   logout: 'Wyloguj się',
 } as const;
+
+/** The setting rows (#634 language select, #635 theme switch) — not menu items. */
+const SETTINGS = { language: 'Język: Polski', theme: 'Motyw' } as const;
 
 /** The dead entry hidden by #280 — either locale's label must stay absent. */
 const NOTIFICATIONS_ITEM = /^(powiadomienia|notifications)$/i;
@@ -86,6 +87,15 @@ async function expectShippedEntries(page: Page): Promise<void> {
       `the „${label}” entry is in the user menu`,
     ).toBeVisible();
   }
+  const menu = page.getByRole('menu');
+  await expect(
+    menu.getByRole('combobox', { name: SETTINGS.language }),
+    'the language row with its select is in the user menu',
+  ).toBeVisible();
+  await expect(
+    menu.getByRole('radiogroup', { name: SETTINGS.theme }),
+    'the theme switch is in the user menu',
+  ).toBeVisible();
 }
 
 test.describe('@case:STU-53 @area:STU @prio:P3 user menu without notifications', () => {

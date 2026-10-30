@@ -20,11 +20,14 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * no admin setting, feature flag, plan catalogue, platform stat or singleton row.
  *
  * Acceptance points confirmed on the shared app during the walk:
- * 1. The user menu shows „Polski” and „English” with a ✓ on the active one.
- * 2. Choosing a language reloads the page in that language (`document.lang`,
- *    nav, breadcrumb, headings, menu copy) and stores `NEXT_LOCALE` for 365 days.
- * 3. The public footer toggle switches the landing page copy both ways (it uses
- *    `router.refresh()`, not a full reload, so the URL stays `/`).
+ * 1. The user menu has one labelled language control (#634): a „Język” row with
+ *    a select showing the current language — no separate „Polski”/„English”
+ *    entries — and the theme row is a three-position switch (#635).
+ * 2. Choosing a language switches the page in place (`router.refresh()`, no
+ *    document reload: `document.lang`, nav, breadcrumb, headings, menu copy)
+ *    and stores `NEXT_LOCALE` for 365 days.
+ * 3. The public footer select switches the landing page copy both ways (also
+ *    in place, so the URL stays `/`).
  * 4. `flashcards_count` inflects for 1 / 2 / 5: „1 fiszka”, „2 fiszki”,
  *    „5 fiszek” vs „1 flashcard”, „2 flashcards”, „5 flashcards”.
  * 5. The choice survives a logout and a new form sign-in.
@@ -78,10 +81,16 @@ const CHROME: Record<
   },
 };
 
-/** Full user-menu copy. „Polski”/„English” stay in their own language by design. */
+/** User-menu actions. Language and theme are setting rows (a select / a switch), not items. */
 const MENU: Record<Locale, string[]> = {
-  pl: ['Wybierz plan', 'Konto', 'Płatności', 'Polski', 'English', 'Motyw', 'Wyloguj się'],
-  en: ['Upgrade', 'Account', 'Billing', 'Polski', 'English', 'Theme', 'Logout'],
+  pl: ['Wybierz plan', 'Konto', 'Płatności', 'Wyloguj się'],
+  en: ['Upgrade', 'Account', 'Billing', 'Logout'],
+};
+
+/** Accessible names of the setting rows: „<label>: <current endonym>” and the theme group. */
+const SETTINGS: Record<Locale, { language: string; theme: string }> = {
+  pl: { language: 'Język: Polski', theme: 'Motyw' },
+  en: { language: 'Language: English', theme: 'Theme' },
 };
 
 const LOGIN_COPY: Record<
@@ -127,8 +136,6 @@ const DECKS = [
   { name: `${CASE} B`, count: 2 },
   { name: `${CASE} C`, count: 5 },
 ] as const;
-
-const LANGUAGE_NAME: Record<Locale, string> = { pl: 'Polski', en: 'English' };
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -235,24 +242,21 @@ async function openUserMenu(page: Page, email: string): Promise<void> {
   await expect(page.getByRole('menu')).toBeVisible();
 }
 
-/** The open user menu is fully in `locale` and the ✓ sits on the active language. */
+/** The open user menu is fully in `locale`, with one language select showing the active language. */
 async function expectMenuLocale(page: Page, locale: Locale): Promise<void> {
-  await expect(page.getByRole('menuitem')).toHaveText(MENU[locale]);
-
-  for (const name of ['Polski', 'English'] as const) {
-    const item = page.getByRole('menuitem', { name, exact: true });
-    await expect(item, `„${name}” item`).toHaveCount(1);
-    await expect(
-      item.locator('svg.lucide-check'),
-      `check mark on „${name}” when ${locale} is active`,
-    ).toHaveCount(LANGUAGE_NAME[locale] === name ? 1 : 0);
-  }
+  const menu = page.getByRole('menu');
+  await expect(menu.getByRole('menuitem')).toHaveText(MENU[locale]);
+  // One labelled language control (#634) — the old „Polski”/„English” entries are gone.
+  await expect(menu.getByRole('combobox', { name: SETTINGS[locale].language })).toHaveCount(1);
+  await expect(menu.getByRole('menuitem', { name: /^(Polski|English)$/ })).toHaveCount(0);
+  // The theme row is the three-position switch (#635).
+  await expect(menu.getByRole('radiogroup', { name: SETTINGS[locale].theme })).toHaveCount(1);
 }
 
 /**
- * Pick a language in the user menu the way a tester does. The component writes
- * the cookie and calls `window.location.reload()`, so the click is followed by a
- * full document load.
+ * Pick a language in the user menu the way a tester does: open the menu, open
+ * the language select, choose the option. The switch is in place
+ * (`router.refresh()`); the menu stays open (it is a setting), so close it.
  */
 async function switchLanguage(
   page: Page,
@@ -260,16 +264,25 @@ async function switchLanguage(
   target: 'Polski' | 'English',
 ): Promise<void> {
   await openUserMenu(page, email);
-  const loaded = page.waitForEvent('load');
-  await page.getByRole('menuitem', { name: target, exact: true }).click();
-  await loaded;
+  await page
+    .getByRole('menu')
+    .getByRole('combobox', { name: /^(Język|Language):/ })
+    .click();
+  await page.getByRole('option', { name: new RegExp(target) }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', target === 'Polski' ? 'pl' : 'en');
+  // Let the select finish closing, then dismiss the menu itself.
+  await expect(page.getByRole('listbox')).toBeHidden();
+  await page.getByRole('menu').press('Escape');
+  await expect(page.getByRole('menu')).toBeHidden();
 }
 
-/** The public footer toggle (no full reload — it calls `router.refresh()`). */
+/** The public footer select (in place — `router.refresh()`). */
 async function switchFooterLanguage(page: Page, target: 'Polski' | 'English'): Promise<void> {
-  await page.locator('footer button[title="Language"]').click();
-  await page.getByRole('menuitem', { name: new RegExp(target) }).click();
+  await page
+    .locator('footer')
+    .getByRole('combobox', { name: /^(Język|Language):/ })
+    .click();
+  await page.getByRole('option', { name: new RegExp(target) }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', target === 'Polski' ? 'pl' : 'en');
 }
 
@@ -337,7 +350,7 @@ async function expectLoginLocale(page: Page, locale: Locale): Promise<void> {
 }
 
 test.describe('NFR-02 — language switch PL ⇄ EN', () => {
-  test('the user menu reloads the panel in the chosen language, marks it with a check and stores it for a year', async ({
+  test('the user menu switches the panel in place to the chosen language and stores it for a year', async ({
     page,
   }) => {
     const tenant = loadTenant(CASE);
@@ -351,14 +364,15 @@ test.describe('NFR-02 — language switch PL ⇄ EN', () => {
     await openUserMenu(page, student.email);
     await expectMenuLocale(page, 'pl');
 
+    await page.evaluate(() => {
+      (window as unknown as { __localeMarker?: string }).__localeMarker = 'alive';
+    });
     await switchLanguage(page, student.email, 'English');
-    // The switch is a full reload, not a client-side re-render.
-    const navigationType = await page.evaluate(
-      () =>
-        (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)
-          ?.type,
-    );
-    expect(navigationType, 'the user-menu switch reloads the document').toBe('reload');
+    // The switch is in place (`router.refresh()`), not a document reload.
+    expect(
+      await page.evaluate(() => (window as unknown as { __localeMarker?: string }).__localeMarker),
+      'the user-menu switch keeps the document (no reload)',
+    ).toBe('alive');
 
     await expectDashboardLocale(page, 'en');
     await expectLocaleCookie(page, 'en');
@@ -370,7 +384,7 @@ test.describe('NFR-02 — language switch PL ⇄ EN', () => {
     await expectLocaleCookie(page, 'pl');
   });
 
-  test('the public footer toggle switches the landing page copy both ways', async ({ page }) => {
+  test('the public footer select switches the landing page copy both ways', async ({ page }) => {
     // A visitor: no session, no locale cookie, so the app serves its `pl` default.
     await page.goto('/');
     await expect(page).toHaveURL(/\/$/);
