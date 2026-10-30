@@ -1,22 +1,18 @@
 name: verify
 
-# Manual + nightly + PRs that touch the suite or the app. `workflow_dispatch`
-# only works once this file is on the default branch; PRs run it directly.
+# Manual + nightly + every PR. `workflow_dispatch` only works once this file is
+# on the default branch; PRs run it directly.
+#
+# No workflow-level `paths:` filter on purpose: a workflow skipped by a path
+# filter never reports its jobs, so the checks `main` requires would sit in
+# "Expected — waiting for status to be reported" and a docs-only PR could never
+# merge. The work is still scoped per job by the `scope` job below: a job skipped
+# with `if:` reports success and satisfies a required check.
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 3 * * *'
   pull_request:
-    paths:
-      - '__tests__/**'
-      - 'qa/**'
-      - 'scripts/**'
-      - 'playwright.config.ts'
-      - 'apps/**'
-      - 'packages/**'
-      - 'supabase/**'
-      - 'bun.lock'
-      - '.github/workflows/verify.yml'
 
 concurrency:
   group: verify-${{ github.ref }}
@@ -34,7 +30,9 @@ jobs:
   # A QA-suite PR only touches qa/** (plus, occasionally, __tests__ helpers).
   # The app, its unit/integration tests and the e2e matrix cannot change there,
   # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
-  # the `qa-suite` job still run. Schedule/dispatch runs everything.
+  # the `qa-suite` job still run. A docs-only PR (docs/**, any *.md) is treated
+  # the same way: no app code can change, so only `checks` runs.
+  # Schedule/dispatch runs everything.
   scope:
     runs-on: ubuntu-latest
     outputs:
@@ -55,7 +53,7 @@ jobs:
             git fetch --no-tags origin "$BASE_REF"
             changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
             echo "changed files:"; echo "$changed"
-            if ! echo "$changed" | grep -qvE '^(qa/|__tests__/)'; then
+            if ! echo "$changed" | grep -qvE '^(qa/|__tests__/|docs/)|\.md$'; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
