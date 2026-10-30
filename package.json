@@ -21,6 +21,7 @@
     "test": "vitest run",
     "test:unit": "vitest run __tests__/unit/",
     "test:integration": "vitest run __tests__/integration",
+    "test:stripe": "RUN_STRIPE_TESTS=1 bun --env-file=.env x vitest run __tests__/integration/stripe-sandbox.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
