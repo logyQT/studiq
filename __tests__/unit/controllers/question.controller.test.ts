@@ -146,15 +146,51 @@ describe('QuestionController', () => {
       expect(response).toEqual({ success: true, statusCode: 200, data: questions });
     });
 
-    it('passes filters to service', async () => {
+    it('passes the parsed filters, with defaults, to the service', async () => {
       mockService.list.mockResolvedValueOnce(success([]));
+      const bankId = '11111111-1111-4111-8111-111111111111';
 
-      await controller.list(mockCtx, { bankId: 'sub-1', type: 'mcq' });
+      await controller.list(mockCtx, { bankId, type: 'mcq' });
 
       expect(mockService.list).toHaveBeenCalledWith(mockCtx, {
-        bankId: 'sub-1',
+        bankId,
         type: 'mcq',
+        limit: 25,
+        sortOrder: 'desc',
+        topicIds: [],
       });
+    });
+
+    it('passes paging, search and sort to the service as numbers and enums (#651)', async () => {
+      mockService.list.mockResolvedValueOnce(success({ items: [], total: 0, page: 2, limit: 10 }));
+
+      await controller.list(mockCtx, {
+        page: '2',
+        limit: '10',
+        search: ' algebra ',
+        sortBy: 'content',
+        sortOrder: 'asc',
+      });
+
+      expect(mockService.list).toHaveBeenCalledWith(mockCtx, {
+        page: 2,
+        limit: 10,
+        search: 'algebra',
+        sortBy: 'content',
+        sortOrder: 'asc',
+        topicIds: [],
+      });
+    });
+
+    it('answers 422 for an invalid query without calling the service', async () => {
+      const response = await controller.list(mockCtx, { page: '0', sortBy: 'password' });
+
+      expect(response).toMatchObject({
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+      });
+      expect(mockService.list).not.toHaveBeenCalled();
     });
 
     it('returns failure when service returns failure', async () => {

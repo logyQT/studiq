@@ -16,7 +16,7 @@
     "@studiq/ui": "workspace:*",
     "@supabase/supabase-js": "^2.118.0",
     "@tanstack/react-query": "^5.104.5",
-    "lucide-react": "^1.47.0",
+    "lucide-react": "^1.61.0",
     "next": "16.4.3",
     "next-intl": "^4.14.9",
     "react": "^19.3.1",

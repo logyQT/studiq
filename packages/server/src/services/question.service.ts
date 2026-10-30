@@ -6,6 +6,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateQuestionInput,
+  QuestionListQuery,
   UpdateQuestionInput,
 } from '@studiq/server/models/question.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
@@ -44,6 +45,18 @@ function withTopics<T extends { question_topic_assignments?: QuestionTopicLink[]
 function questionSelect(topicFilter = false) {
   const embed = `question_topic_assignments${topicFilter ? '!inner' : ''}(topic_id, topics(id, name))`;
   return `*, question_answers:question_options(*), ${embed}`;
+}
+
+/**
+ * `%`, `_` and `\` are wildcards / escapes in LIKE: a search for "50%" must mean the text. PostgREST
+ *
+ * PostgREST turns every `*` of an `ilike` value into `%` BEFORE the pattern reaches SQL, so an
+ * escaped `\*` would arrive as an escaped literal `%` and never match a `*`. A `*` in the search
+ * therefore becomes the single-character wildcard `_`: it still matches the literal `*` (and,
+ * harmlessly, any other character in that place).
+ */
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (c) => `\\${c}`).replace(/\*/g, '_');
 }
 
 export class QuestionService {
@@ -106,35 +119,75 @@ export class QuestionService {
 
   async list(
     ctx: RequestContext,
-    filters?: { bankId?: string; topicIds?: string; type?: string },
+    filters?: Partial<QuestionListQuery>,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
+    const page = filters?.page;
+    const limit = filters?.limit ?? 25;
+    const paged = page !== undefined;
+
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
-    if (filter._impossible) return success([]);
+    if (filter._impossible) return success(paged ? { items: [], total: 0, page, limit } : []);
 
-    const topicIds = filters?.topicIds?.split(',').filter(Boolean) ?? [];
+    const topicIds = filters?.topicIds ?? [];
     const hasTopicFilter = topicIds.length > 0;
+    const columns = questionSelect(hasTopicFilter);
 
-    let query = supabase.from('questions').select(questionSelect(hasTopicFilter));
+    // One place builds the filter chain, so the rows of a page and the total that drives the
+    // pager can never be scoped differently.
+    const buildFiltered = (options?: { count: 'exact'; head?: boolean }) => {
+      let query = options
+        ? supabase.from('questions').select(columns, options)
+        : supabase.from('questions').select(columns);
 
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+      if (filter.or) query = query.or(filter.or);
+      if (filter.created_by) query = query.eq('created_by', filter.created_by);
+      if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
-    if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
-    // The topic embed must be `!inner` for the filter to narrow the parent rows —
-    // a plain embed only filters the nested array (same approach as flashcard.service).
-    if (hasTopicFilter)
-      query = query.filter('question_topic_assignments.topic_id', 'in', `(${topicIds.join(',')})`);
-    if (filters?.type) query = query.eq('type', filters.type);
+      if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
+      // The topic embed must be `!inner` for the filter to narrow the parent rows —
+      // a plain embed only filters the nested array (same approach as flashcard.service).
+      if (hasTopicFilter)
+        query = query.filter(
+          'question_topic_assignments.topic_id',
+          'in',
+          `(${topicIds.join(',')})`,
+        );
+      if (filters?.type) query = query.eq('type', filters.type);
+      if (filters?.search) query = query.ilike('content', `%${escapeLike(filters.search)}%`);
+      return query;
+    };
 
-    const { data, error } = await query;
+    let query = buildFiltered(paged ? { count: 'exact' } : undefined);
+
+    if (filters?.sortBy || paged) {
+      // `id` as the tie-breaker keeps pages stable when many rows share the sort value.
+      query = query
+        .order(filters?.sortBy ?? 'created_at', { ascending: filters?.sortOrder === 'asc' })
+        .order('id');
+    }
+    if (paged) query = query.range((page - 1) * limit, page * limit - 1);
+
+    const { data, error, count } = await query;
+    // PostgREST answers a range past the last row with PGRST103 (416). A page that no longer
+    // exists (rows deleted, stale link) is an empty page, not a server error — but the set it
+    // paged through still has rows, so the answer carries the real total (the pager clamps to
+    // the last page from it).
+    if (paged && error?.code === 'PGRST103') {
+      const { count: total, error: countError } = await buildFiltered({
+        count: 'exact',
+        head: true,
+      });
+      if (countError) return toDbFailure(countError);
+      return success({ items: [], total: total ?? 0, page, limit });
+    }
     if (error) return toDbFailure(error);
     // `select()` receives a dynamic projection string, so PostgREST cannot infer
     // the row shape here; the cast matches the embed declared above.
     const rows = (data ?? []) as unknown as QuestionTopicRow[];
-    return success(rows.map((row) => withTopics(row)));
+    const items = rows.map((row) => withTopics(row));
+    return success(paged ? { items, total: count ?? items.length, page, limit } : items);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {

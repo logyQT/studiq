@@ -13,9 +13,9 @@ Talia z EDU-DECK-02.
 
 ## Prerequisite context
 
-### EDU-DECK-02 — Utworzenie talii dla grupy
+### EDU-DECK-02 — Utworzenie talii dla grupy (źródło warunku)
 
-_Warunek wstępny: T1, aktywna organizacja WSB Merito._
+_Warunek wstępny w oryginale: T1, aktywna organizacja WSB Merito._
 
 1. Kliknij „Nowa talia”. Nazwa „Matematyka – klasa 1”, opis opcjonalny.
 2. Zmień „Widoczność” na „Grupy” i wybierz grupę O1G1 w „Wybierz grupy…”.
@@ -27,6 +27,23 @@ Expected:
 - Toast „Talia utworzona”; talia z plakietką grupy „O1G1”.
 - student1 widzi nową talię z etykietą „Podgląd” (bez możliwości edycji).
 - student2 (inna organizacja) i student3 (bez organizacji) NIE widzą tej talii.
+
+## Seed (model tenanta)
+
+Scenariusz jest odtwarzany w **własnym tenancie** przypadku, nie na kontach legacy
+(`teacher1@dev.local`, `student1`, hasło `pass`). Każde uruchomienie ma świeży suffix:
+
+- `tenantKey('qa/cases/EDU-DECK-04.md', 'EDU-DECK-04#<run>', 'qa-shared')` →
+  `tenantId(key, …)` dla organizacji, grupy i kont;
+- organizacja `qa-edu-deck-04-<run>`; nauczyciel (`educator`) jest właścicielem
+  organizacji z rolą org `teacher` i rolą grupową `teacher` (może udostępniać treści),
+  uczeń jest członkiem organizacji i grupy `G1`;
+- warunek „Talia z EDU-DECK-02” powstaje przez `POST /api/v1/flashcards/decks`
+  („Matematyka – klasa 1”, `visibility: 'group'`, `groupIds: [G1]`) w tym tenancie;
+- temat do kroku 3 powstaje przez `POST /api/v1/flashcards/topics` w tym samym tenancie.
+
+Nic globalnego nie jest czytane ani zapisywane: żadne ustawienie admina, flaga
+funkcji, plan, statystyka platformy ani wiersz singletonu.
 
 ## Steps
 
