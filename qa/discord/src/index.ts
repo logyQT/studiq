@@ -177,6 +177,7 @@ async function ensureManagerSession(
       title: 'Discord Manager',
       directory: config.manager.directory,
       model: { providerID: 'opencode-go', id: 'deepseek-v4.1-flash', variant: 'high' },
+      metadata: { qaAutonomous: true },
     });
     log.info('manager', `created session ${session.id}`);
     state.managerSessionId = session.id;

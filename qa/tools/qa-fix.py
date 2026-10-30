@@ -145,6 +145,7 @@ def ensure_overseer_session() -> str:
         "title": "Overseer",
         "location": {"directory": str(ROOT)},
         "model": MODEL,
+        "metadata": {"qaAutonomous": True},
     })
     session = created.get("data", created) if isinstance(created, dict) else created
     sid = session.get("id")
@@ -187,6 +188,7 @@ def create_session(env: int, title: str, text: str) -> str:
         "title": title,
         "location": {"directory": SLOTS[env]},
         "model": MODEL,
+        "metadata": {"qaAutonomous": True},
     })
     session = created.get("data", created) if isinstance(created, dict) else created
     sid = session.get("id")

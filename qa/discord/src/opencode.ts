@@ -127,6 +127,7 @@ export class OpencodeClient {
     title: string;
     directory: string;
     model?: { providerID: string; id: string; variant?: string };
+    metadata?: Record<string, unknown>;
   }): Promise<SessionSummary> {
     const body = await this.request<Record<string, unknown>>(
       '/api/session',
@@ -136,6 +137,7 @@ export class OpencodeClient {
           title: input.title,
           location: { directory: input.directory },
           ...(input.model ? { model: input.model } : {}),
+          ...(input.metadata ? { metadata: input.metadata } : {}),
         }),
       },
       30_000,

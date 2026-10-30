@@ -209,6 +209,7 @@ def cmd_manager(args) -> None:
                 "title": "Discord Manager",
                 "location": {"directory": str(ENV_ROOT)},
                 "model": MODEL,
+                "metadata": {"qaAutonomous": True},
             },
         )
         session = created.get("data", created)
@@ -243,6 +244,7 @@ def cmd_probe(args) -> None:
             "title": "Rotation probe",
             "location": {"directory": str(ROOT / ".worktrees" / "qa-env-8")},
             "model": MODEL,
+            "metadata": {"qaAutonomous": True},
         },
     )
     session = created.get("data", created)

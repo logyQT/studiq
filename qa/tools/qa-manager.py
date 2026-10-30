@@ -170,6 +170,9 @@ def create_session_at(directory: str, title: str, text: str, model: dict | None 
         "title": title,
         "location": {"directory": directory},
         "model": model or MODEL,
+        # Opt this session into the no-question guard: it is spawned by the
+        # orchestrator/Discord, not opened by the operator.
+        "metadata": {"qaAutonomous": True},
     })
     session = created.get("data", created) if isinstance(created, dict) else created
     sid = session.get("id")
@@ -670,6 +673,7 @@ def cmd_manager(args) -> None:
         "title": "[QA-SUITE] manager",
         "location": {"directory": SUITE_DIR},
         "model": MODEL,
+        "metadata": {"qaAutonomous": True},
     })
     session = created.get("data", created) if isinstance(created, dict) else created
     sid = session.get("id")

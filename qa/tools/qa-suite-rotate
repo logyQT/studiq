@@ -88,7 +88,12 @@ def rotate(limit: int, dry: bool) -> dict:
     created = api(
         "POST",
         "/api/session",
-        {"title": "[QA-SUITE] manager", "location": {"directory": str(SUITE)}, "model": MODEL},
+        {
+            "title": "[QA-SUITE] manager",
+            "location": {"directory": str(SUITE)},
+            "model": MODEL,
+            "metadata": {"qaAutonomous": True},
+        },
     )
     session = created.get("data", created) if isinstance(created, dict) else created
     new_sid = session.get("id")
