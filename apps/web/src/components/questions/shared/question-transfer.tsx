@@ -65,13 +65,24 @@ const TEMPLATE: TransferQuestion[] = [
 
 type Problem = { row: number; kind: 'type' | 'content' | 'answers' | 'correct' | 'other' };
 
-function download(filename: string, body: string, type: string) {
+/**
+ * Saves a body as a file. The anchor is attached while it is clicked and the object URL is
+ * revoked on a later task, because Firefox and Safari cancel a download whose URL disappears
+ * (or whose anchor was never in the document) before the browser has started it.
+ */
+function download(filename: string, body: BlobPart, type: string) {
   const url = URL.createObjectURL(new Blob([body], { type }));
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  // Both the anchor and its URL outlive the click: a download that has not started yet is
+  // cancelled when either disappears.
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 0);
 }
 
 /** Reads a CSV or JSON file into questions, with every row problem found on the way. */
@@ -130,6 +141,11 @@ interface ImportDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Reads a file, shows every row problem it found and sends nothing until the whole file is
+ * clean: a partial import would leave the user guessing which rows made it. The dialog stays
+ * open on failure so the same file can be fixed and loaded again.
+ */
 function ImportDialog({ bankId, open, onOpenChange }: ImportDialogProps) {
   const t = useTranslations('QuestionTransfer');
   const queryClient = useQueryClient();
@@ -350,7 +366,9 @@ export function QuestionBankTransfer({
       const filename =
         /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ??
         `questions.${format}`;
-      download(filename, await res.text(), res.headers.get('Content-Type') ?? 'text/plain');
+      // The body is read as a blob, not text: `res.text()` decodes UTF-8 and drops the leading
+      // BOM, and Excel then renders Polish characters as mojibake.
+      download(filename, await res.blob(), res.headers.get('Content-Type') ?? 'text/plain');
       const skipped = Number(res.headers.get('X-Studiq-Not-Reimportable') ?? 0);
       if (skipped > 0) toast.warning(t('export_not_reimportable', { count: skipped }));
     } catch {

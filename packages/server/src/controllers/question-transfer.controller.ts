@@ -36,9 +36,18 @@ function fileSlug(name: string): string {
   return slug || 'bank';
 }
 
+/**
+ * Turns a bank into a downloadable file and a validated file into questions. The file mapping
+ * lives here (not in the service) so the service only knows the question shape.
+ */
 export class QuestionTransferController {
   constructor(private questionTransferService: QuestionTransferService) {}
 
+  /**
+   * Answers with the whole bank as a downloadable file. The mapping lives in the controller
+   * (not the service) so the service only knows the question shape, and the file name is
+   * slugged because header values must stay ASCII.
+   */
   async exportBank(
     bankId: string,
     query: unknown,
@@ -76,6 +85,11 @@ export class QuestionTransferController {
     return controllerResponse.success(file);
   }
 
+  /**
+   * Validates the whole batch before the service sees it, so a single bad row rejects the file
+   * instead of importing the good rows and reporting the rest afterwards. 201, because the
+   * request creates questions.
+   */
   async importQuestions(
     bankId: string,
     body: unknown,

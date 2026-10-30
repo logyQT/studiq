@@ -39,6 +39,7 @@ function textCell(value: string): string {
   return neutralizeCsvFormula(value);
 }
 
+/** Serialises questions in the bank layout: the BOM and fixed header first, one row per question. */
 export function questionsToCsv(questions: TransferQuestion[]): string {
   const rows: string[][] = [[...TRANSFER_CSV_COLUMNS]];
 

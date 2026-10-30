@@ -1,5 +1,6 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { can, check } from '@studiq/server/lib/authz';
+import { error as logError } from '@studiq/server/lib/log';
 import { QuestionTransferController } from '@studiq/server/controllers/question-transfer.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
 import type { TransferQuestion } from '@studiq/server/models/question-transfer.model';
@@ -26,6 +27,11 @@ vi.mock('@studiq/server/services/question.service', () => ({
 vi.mock('@studiq/server/services/question-bank.service', () => ({
   questionBankService: { getById: vi.fn() },
 }));
+vi.mock('@studiq/server/lib/log', () => ({
+  log: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
 
 // #652: export reads a bank through the same access-checked services as the screens; import
 // validates against the database (bank, permission, plan limit) and lands completely or not
@@ -51,6 +57,9 @@ const ctx: RequestContext = {
   groupIds: [],
   permissionScopes: {},
 };
+
+/** The same caller with no organisation selected in the app. */
+const personalCtx: RequestContext = { ...ctx, activeOrgId: null };
 
 const q = (over: Partial<TransferQuestion> = {}): TransferQuestion => ({
   type: 'mcq',
@@ -194,7 +203,15 @@ describe('QuestionTransferService.importQuestions', () => {
     inserts = {};
     const queues: Record<string, Array<Record<string, unknown>>> = {
       question_banks: [
-        { data: { id: 'bank-1', visibility: 'group', created_by: 'teacher-1' }, error: null },
+        {
+          data: {
+            id: 'bank-1',
+            visibility: 'group',
+            created_by: 'teacher-1',
+            organization_id: 'org-1',
+          },
+          error: null,
+        },
       ],
       questions: [
         { count: 3, data: null, error: null },
@@ -295,12 +312,57 @@ describe('QuestionTransferService.importQuestions', () => {
 
     // "mechanika" and "Mechanika" are the same existing topic, "Optyka" is created.
     expect(inserts.topics[0]).toEqual([
-      expect.objectContaining({ name: 'Optyka', created_by: 'teacher-1', visibility: 'personal' }),
+      expect.objectContaining({
+        name: 'Optyka',
+        created_by: 'teacher-1',
+        organization_id: 'org-1',
+        visibility: 'personal',
+      }),
     ]);
     expect(inserts.question_topic_assignments[0]).toEqual([
       { question_id: questions[0].id, topic_id: 'topic-1' },
       { question_id: questions[0].id, topic_id: 'topic-2' },
     ]);
+  });
+
+  it('keeps a personal bank personal even when an organisation is active', async () => {
+    setup({
+      question_banks: [
+        {
+          data: {
+            id: 'bank-1',
+            visibility: 'personal',
+            created_by: 'teacher-1',
+            organization_id: null,
+          },
+          error: null,
+        },
+      ],
+    });
+
+    await service.importQuestions(ctx, 'bank-1', [q({ topics: ['Optyka'] })]);
+
+    expect(inserts.questions[0][0]).toMatchObject({ organization_id: null });
+    expect(inserts.topics[0][0]).toMatchObject({ name: 'Optyka', organization_id: null });
+    // The limit count and the topic lookup follow the bank's tenant, not `ctx.activeOrgId`: a
+    // personal bucket is `IS NULL`, never `eq(col, null)` (the 22P02/500 case).
+    expect(tables.questions[0].eq.mock.calls.map((call) => call[0])).toEqual(['created_by']);
+    expect(tables.questions[0].is).toHaveBeenCalledWith('organization_id', null);
+    expect(tables.topics[0].is).toHaveBeenCalledWith('organization_id', null);
+    // Counted and charged in the same bucket: the personal plan, not the selected org's.
+    expect(limitsResolver.checkLimit.mock.calls[0][0].activeOrgId).toBeNull();
+  });
+
+  it('writes into the bank organisation even when no organisation is active', async () => {
+    setup();
+
+    await service.importQuestions(personalCtx, 'bank-1', [q({ topics: ['Optyka'] })]);
+
+    expect(inserts.questions[0][0]).toMatchObject({ organization_id: 'org-1' });
+    expect(inserts.topics[0][0]).toMatchObject({ name: 'Optyka', organization_id: 'org-1' });
+    expect(tables.questions[0].eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    // ...and the org's plan counts it, even though no org is selected in the app.
+    expect(limitsResolver.checkLimit.mock.calls[0][0].activeOrgId).toBe('org-1');
   });
 
   it('writes no option or topic rows for questions that have none', async () => {
@@ -320,6 +382,65 @@ describe('QuestionTransferService.importQuestions', () => {
     const cleanup = tables.questions.at(-1);
     expect(cleanup.delete).toHaveBeenCalled();
     expect(cleanup.in).toHaveBeenCalledWith('id', created);
+  });
+
+  it('removes a failed import in batches of 100 ids', async () => {
+    setup({ question_options: [{ data: null, error: { code: 'XX000', message: 'boom' } }] });
+    const many = Array.from({ length: 250 }, (_, i) => q({ content: `Q${i}` }));
+
+    const result = await service.importQuestions(ctx, 'bank-1', many);
+
+    expect(result.success).toBe(false);
+    const created = (inserts.questions[0] as any[]).map((r) => r.id);
+    // One `in (…)` per 100 ids: the whole batch in one request is ~18 KB of query string.
+    const chunks = tables.questions.slice(2).map((b) => b.in.mock.calls[0][1] as string[]);
+    expect(chunks.map((ids) => ids.length)).toEqual([100, 100, 50]);
+    expect(chunks.flat()).toEqual(created);
+  });
+
+  it('reports the failure the caller hit and logs the rollback failure separately', async () => {
+    setup({
+      questions: [
+        { count: 3, data: null, error: null },
+        { data: null, error: null },
+        { data: null, error: { code: '42501', message: 'denied' } },
+      ],
+      question_options: [{ data: null, error: { code: 'XX000', message: 'boom' } }],
+    });
+
+    const result = await service.importQuestions(ctx, 'bank-1', [q(), q()]);
+
+    // The original write failed, not the caller's access: `42501` from the cleanup must not turn
+    // a half-written import into "you may not add questions to this bank".
+    expect(result).toMatchObject({ success: false, error: 'INTERNAL_SERVER' });
+    expect(logError).toHaveBeenCalledWith('question-transfer.rollback_failed', {
+      bankId: 'bank-1',
+      total: 2,
+      remaining: 2,
+      originalError: 'XX000: boom',
+      cleanupError: '42501: denied',
+    });
+  });
+
+  it('logs only the questions the rollback never reached', async () => {
+    setup({
+      questions: [
+        { count: 0, data: null, error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: null, error: { code: '57014', message: 'timeout' } },
+      ],
+      question_options: [{ data: null, error: { code: 'XX000', message: 'boom' } }],
+    });
+    const many = Array.from({ length: 250 }, (_, i) => q({ content: `Q${i}` }));
+
+    await service.importQuestions(ctx, 'bank-1', many);
+
+    // The first 100 were deleted; the other 150 are what the log reports as left behind.
+    expect(logError).toHaveBeenCalledWith(
+      'question-transfer.rollback_failed',
+      expect.objectContaining({ total: 250, remaining: 150 }),
+    );
   });
 });
 

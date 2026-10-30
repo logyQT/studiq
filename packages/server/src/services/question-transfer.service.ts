@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { can, check, Permission } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
+import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -14,7 +15,14 @@ import {
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import { questionService } from '@studiq/server/services/question.service';
 import { questionBankService } from '@studiq/server/services/question-bank.service';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * Questions are removed 100 ids per request: one `in (…)` with the whole import (500 UUIDs)
+ * is ~18 KB of query string and can be refused by a gateway, which would silently skip the
+ * rollback and leave half-written questions behind.
+ */
+const ROLLBACK_BATCH_SIZE = 100;
 
 /** Row of `questionService.list` as far as the export needs it. */
 interface ListedQuestion {
@@ -25,6 +33,10 @@ interface ListedQuestion {
   question_answers?: Array<{ content: string; is_correct: boolean; order_index: number | null }>;
 }
 
+/**
+ * Question-bank import/export (#652). Export follows read and never truncates, import follows
+ * update and lands completely or not at all; both stay in the bank's tenant, not the caller's.
+ */
 export class QuestionTransferService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -101,15 +113,32 @@ export class QuestionTransferService {
     if (!bank) return failure('NOT_FOUND');
     await check(ctx, Permission.QUESTION_BANK_UPDATE, bank);
 
+    // The tenant is the bank's, not the caller's active organisation: `own` scope only compares
+    // `created_by`, so taking it from the context would write a personal bank's questions into
+    // whichever org happens to be active (and the reverse, which hides them from the org view).
+    const organizationId: string | null = bank.organization_id ?? null;
+
+    // The plan and the count must be the same bucket: a personal bank's questions are checked
+    // against the personal plan, an org bank's against that org's plan, whichever org happens
+    // to be selected in the app. `max_questions` is a user-scope key, so the resolver only uses
+    // the org to pick between the seat and the org plan (and falls back to personal when the
+    // caller is not a member of a stale/forged id).
     let owned = supabase
       .from('questions')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
-    if (ctx.activeOrgId) owned = owned.eq('organization_id', ctx.activeOrgId);
+    owned = organizationId
+      ? owned.eq('organization_id', organizationId)
+      : owned.is('organization_id', null);
     const { count } = await owned;
-    await limitsResolver.checkLimit(ctx, 'max_questions', count ?? 0, questions.length);
+    await limitsResolver.checkLimit(
+      { ...ctx, activeOrgId: organizationId },
+      'max_questions',
+      count ?? 0,
+      questions.length,
+    );
 
-    const topicIds = await this.resolveTopics(supabase, ctx, questions);
+    const topicIds = await this.resolveTopics(supabase, ctx, questions, organizationId);
     if (!topicIds.success) return failure(topicIds.error);
 
     // Ids are chosen here, so options and topic links never depend on the order a
@@ -123,7 +152,7 @@ export class QuestionTransferService {
         content: q.content,
         explanation: q.explanation ?? null,
         created_by: ctx.userId,
-        organization_id: ctx.activeOrgId,
+        organization_id: organizationId,
         visibility: bank.visibility ?? 'personal',
         bank_id: bankId,
       })),
@@ -152,7 +181,20 @@ export class QuestionTransferService {
       const failed = write ? (await write).error : null;
       if (failed) {
         // Cascades remove the options and topic links of the questions created above.
-        await supabase.from('questions').delete().in('id', ids);
+        const cleanup = await this.removeCreated(supabase, ids);
+        if (cleanup.error) {
+          // The leftovers are recorded here, but the response still describes the failure the
+          // caller hit: a cleanup error is not an authorization verdict (`42501` would turn a
+          // half-written import into "you may not add questions"), and the span should carry the
+          // cause, not the rollback.
+          logError('question-transfer.rollback_failed', {
+            bankId,
+            total: ids.length,
+            remaining: cleanup.remaining,
+            originalError: `${failed.code}: ${failed.message}`,
+            cleanupError: `${cleanup.error.code}: ${cleanup.error.message}`,
+          });
+        }
         return toDbFailure(failed);
       }
     }
@@ -160,11 +202,31 @@ export class QuestionTransferService {
     return success({ imported: questions.length });
   }
 
+  /**
+   * Deletes the questions of a failed import in batches. `remaining` counts the ids still in the
+   * database when batching stopped, the failed batch included, so the log does not overstate what
+   * the rollback left behind.
+   */
+  private async removeCreated(
+    supabase: SupabaseClient,
+    ids: string[],
+  ): Promise<{ error: PostgrestError | null; remaining: number }> {
+    for (let i = 0; i < ids.length; i += ROLLBACK_BATCH_SIZE) {
+      const { error } = await supabase
+        .from('questions')
+        .delete()
+        .in('id', ids.slice(i, i + ROLLBACK_BATCH_SIZE));
+      if (error) return { error, remaining: ids.length - i };
+    }
+    return { error: null, remaining: 0 };
+  }
+
   /** Name (lower case) -> topic id for every topic the file mentions; missing ones are created. */
   private async resolveTopics(
     supabase: SupabaseClient,
     ctx: RequestContext,
     questions: TransferQuestion[],
+    organizationId: string | null,
   ): Promise<ServiceResult<Map<string, string>>> {
     const wanted = new Map<string, string>();
     for (const q of questions) {
@@ -176,8 +238,8 @@ export class QuestionTransferService {
     if (wanted.size === 0) return success(byName);
 
     let existing = supabase.from('topics').select('id, name').eq('created_by', ctx.userId);
-    existing = ctx.activeOrgId
-      ? existing.eq('organization_id', ctx.activeOrgId)
+    existing = organizationId
+      ? existing.eq('organization_id', organizationId)
       : existing.is('organization_id', null);
     const { data: own, error } = await existing;
     if (error) return toDbFailure(error);
@@ -191,7 +253,7 @@ export class QuestionTransferService {
           missing.map((name) => ({
             name,
             created_by: ctx.userId,
-            organization_id: ctx.activeOrgId,
+            organization_id: organizationId,
             visibility: 'personal',
           })),
         )

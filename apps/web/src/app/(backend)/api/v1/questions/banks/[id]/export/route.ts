@@ -6,6 +6,11 @@ import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { type NextRequest, NextResponse } from 'next/server';
 
+/**
+ * `GET /api/v1/questions/banks/:id/export?format=csv|json`. The file is built from the same
+ * read access as the screen, so export is refused exactly where the bank is unreadable; it is
+ * never cached or sniffed because it carries the answer key.
+ */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {
     const { id } = await params;
