@@ -51,7 +51,7 @@ export function LanguageMenuRow(props: LanguageMenuRowProps) {
   if (props.variant === 'menu') {
     return (
       <div className="flex items-center gap-2 px-2 py-1 text-sm">
-        <Globe aria-hidden="true" className="size-4 text-muted-foreground" />
+        <Globe aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         <span className="flex-1">{t('label')}</span>
         <LanguageSelect />
       </div>

@@ -248,7 +248,7 @@ export function UserMenuItems(props: UserMenuItemsProps) {
 
       {/* A setting, not a menu action: choosing a theme keeps the menu open so the hint stays visible (#635). */}
       <div className="flex items-center gap-2 px-2 py-1 text-sm">
-        <Palette aria-hidden="true" className="size-4 text-muted-foreground" />
+        <Palette aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         <span className="flex-1">{t('theme')}</span>
         <ThemeSwitch size={variant === 'plain' ? 'lg' : 'sm'} />
       </div>

@@ -156,7 +156,7 @@ export function Navbar() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"
-                  className="w-56"
+                  className="w-60"
                   onKeyDown={(event) => handleUserMenuTab(event, () => setAvatarOpen(false))}
                 >
                   <UserMenuHeader />
