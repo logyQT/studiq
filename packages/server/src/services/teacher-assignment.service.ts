@@ -14,6 +14,11 @@ import type {
   UpdateTeacherAssignmentInput,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  type Notifier,
+  noopNotifier,
+  notificationService,
+} from '@studiq/server/services/notification.service';
 
 /**
  * The `draft_answers` column is only ever served through
@@ -24,6 +29,12 @@ function toAttemptPayload(attempt: Record<string, unknown>): Record<string, unkn
   const { draft_answers: _draftAnswers, ...attemptFields } = attempt;
   return attemptFields;
 }
+
+/**
+ * `.in()` values travel in the request URL, so target lists are checked in chunks instead of
+ * one request that a large class would push over the gateway's URL limit.
+ */
+const TARGET_CHUNK = 200;
 
 /**
  * Columns shared by the student list and detail attempt payloads. Explicit
@@ -66,7 +77,11 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 }
 
 export class TeacherAssignmentService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(
+    private createClient: () => Promise<SupabaseClient>,
+    /** Tells students about a published assignment and a first grade; none in unit tests. */
+    private notifier: Notifier = noopNotifier,
+  ) {}
 
   async create(
     data: CreateTeacherAssignmentInput,
@@ -263,6 +278,15 @@ export class TeacherAssignmentService {
 
     if (count === 0) return failure('BAD_REQUEST');
 
+    // Only a save that leaves the assignment already published is silent; publishing a draft
+    // (including one that was unpublished before) tells the students. A failed read must not
+    // turn into a notification, so it skips the fan-out instead of guessing.
+    const { data: before, error: beforeError } = await supabase
+      .from('teacher_assignments')
+      .select('status')
+      .eq('id', id)
+      .single();
+
     const updateData: Record<string, unknown> = {
       status: 'published',
       updated_at: new Date().toISOString(),
@@ -278,6 +302,10 @@ export class TeacherAssignmentService {
       .single();
 
     if (error) return toDbFailure(error);
+
+    if (!beforeError && before?.status !== 'published') {
+      await this.notifier.assignmentPublished({ assignmentId: id, teacherId: ctx.userId });
+    }
     return success(updated);
   }
 
@@ -460,6 +488,11 @@ export class TeacherAssignmentService {
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
 
+    // Every target must belong to the assignment's organisation: the ids come from the request,
+    // and notifications and results are fanned out from them (#235).
+    const foreign = await this.hasForeignTargets(supabase, id, data, ctx);
+    if (foreign) return failure('BAD_REQUEST');
+
     await supabase.from('assignment_targets').delete().eq('assignment_id', id);
 
     const rows: Array<{
@@ -557,12 +590,13 @@ export class TeacherAssignmentService {
 
     const { data: attempt } = await supabase
       .from('quiz_attempts')
-      .select('id')
+      .select('id, graded_at')
       .eq('assignment_id', id)
       .eq('user_id', studentId)
       .single();
 
     if (!attempt) return failure('NOT_FOUND');
+    const firstGrade = !attempt.graded_at;
 
     // The bound is per question (`assignment_questions.points`), so it cannot
     // live in the Zod schema. Reject before writing: points above the maximum
@@ -619,6 +653,9 @@ export class TeacherAssignmentService {
       .eq('id', attempt.id);
 
     if (gradeError) return toDbFailure(gradeError);
+
+    // Every saved answer re-stamps `graded_at`; the student is told once, at the first grade.
+    if (firstGrade) await this.notifier.assignmentGraded({ assignmentId: id, studentId });
 
     return success(null);
   }
@@ -1107,6 +1144,89 @@ export class TeacherAssignmentService {
     return success({ imageUrl });
   }
 
+  /**
+   * True when a group or student of `data` is not part of the assignment's organisation.
+   *
+   * A personal assignment (`organization_id` NULL, a legacy row: new ones are created inside an
+   * organisation) has no tenant of its own: direct student targets keep working, while a group
+   * is organisation-owned and must belong to one of the caller's organisations (its members
+   * would otherwise gain access to another tenant's assignment). Counts are requested with
+   * `head: true` so a long target list is not truncated by the PostgREST row limit, and the ids
+   * are sent in chunks so a large class does not overflow the request URL.
+   */
+  private async hasForeignTargets(
+    supabase: SupabaseClient,
+    assignmentId: string,
+    data: SetTargetsInput,
+    ctx: RequestContext,
+  ): Promise<boolean> {
+    const groupIds = [...new Set(data.groupIds ?? [])];
+    const studentIds = [...new Set(data.studentIds ?? [])];
+    if (groupIds.length === 0 && studentIds.length === 0) return false;
+
+    const { data: assignment, error: assignmentError } = await supabase
+      .from('teacher_assignments')
+      .select('organization_id')
+      .eq('id', assignmentId)
+      .single();
+    // Fail closed: a failed read must not be mistaken for a personal (no-organisation) row.
+    if (assignmentError || !assignment) return true;
+    const organizationId = assignment.organization_id as string | null;
+
+    if (organizationId === null) {
+      if (groupIds.length === 0) return false;
+
+      const { data: memberships } = await supabase
+        .from('org_members')
+        .select('organization_id')
+        .eq('user_id', ctx.userId);
+      const callerOrgIds = [
+        ...new Set((memberships ?? []).map((m) => m.organization_id as string)),
+      ];
+      if (callerOrgIds.length === 0) return true;
+
+      let found = 0;
+      for (let i = 0; i < groupIds.length; i += TARGET_CHUNK) {
+        const { count, error } = await supabase
+          .from('groups')
+          .select('id', { count: 'exact', head: true })
+          .in('id', groupIds.slice(i, i + TARGET_CHUNK))
+          .in('organization_id', callerOrgIds);
+        if (error) return true;
+        found += count ?? 0;
+      }
+      return found !== groupIds.length;
+    }
+
+    if (groupIds.length > 0) {
+      let found = 0;
+      for (let i = 0; i < groupIds.length; i += TARGET_CHUNK) {
+        const { count, error } = await supabase
+          .from('groups')
+          .select('id', { count: 'exact', head: true })
+          .in('id', groupIds.slice(i, i + TARGET_CHUNK))
+          .eq('organization_id', organizationId);
+        if (error) return true;
+        found += count ?? 0;
+      }
+      if (found !== groupIds.length) return true;
+    }
+    if (studentIds.length > 0) {
+      let found = 0;
+      for (let i = 0; i < studentIds.length; i += TARGET_CHUNK) {
+        const { count, error } = await supabase
+          .from('org_members')
+          .select('user_id', { count: 'exact', head: true })
+          .in('user_id', studentIds.slice(i, i + TARGET_CHUNK))
+          .eq('organization_id', organizationId);
+        if (error) return true;
+        found += count ?? 0;
+      }
+      if (found !== studentIds.length) return true;
+    }
+    return false;
+  }
+
   private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {
     const supabase = await this.createClient();
 
@@ -1127,6 +1247,6 @@ export class TeacherAssignmentService {
   }
 }
 export const teacherAssignmentService = wrapService(
-  new TeacherAssignmentService(createClient),
+  new TeacherAssignmentService(createClient, notificationService),
   'teacher-assignment.service',
 );

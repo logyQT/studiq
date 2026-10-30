@@ -19,7 +19,7 @@ import {
 } from '@studiq/ui';
 import { ChevronLeft, ChevronsUpDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   UserMenuHeader,
   UserMenuItems,
@@ -27,6 +27,7 @@ import {
 } from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LanguageSwitcherPanel } from '@/components/shared/language-switcher/language-switcher-panel';
+import { OPEN_NOTIFICATIONS_EVENT } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 
 interface UserMenuProps {
@@ -40,6 +41,19 @@ export function UserMenu({ className }: UserMenuProps) {
   const tl = useTranslations('LanguageSwitcher');
   const [drawerView, setDrawerView] = useState<'menu' | 'language'>('menu');
   const [open, setOpen] = useState(false);
+  // Selecting the notifications entry opens the header bell popover while this
+  // menu is closing. Radix's close-focus return would move focus to the trigger,
+  // outside that popover, and dismiss it as a focus-outside. Skip the return for
+  // that one selection; every other item keeps the normal focus behaviour.
+  const skipFocusReturn = useRef(false);
+
+  useEffect(() => {
+    const onOpenNotifications = () => {
+      skipFocusReturn.current = true;
+    };
+    window.addEventListener(OPEN_NOTIFICATIONS_EVENT, onOpenNotifications);
+    return () => window.removeEventListener(OPEN_NOTIFICATIONS_EVENT, onOpenNotifications);
+  }, []);
 
   if (!user) {
     return (
@@ -149,7 +163,13 @@ export function UserMenu({ className }: UserMenuProps) {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenu
+          open={open}
+          onOpenChange={(next) => {
+            if (next) skipFocusReturn.current = false;
+            setOpen(next);
+          }}
+        >
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
@@ -167,12 +187,17 @@ export function UserMenu({ className }: UserMenuProps) {
             align="end"
             sideOffset={4}
             onKeyDown={(event) => handleUserMenuTab(event, () => setOpen(false))}
+            onCloseAutoFocus={(event) => {
+              if (!skipFocusReturn.current) return;
+              skipFocusReturn.current = false;
+              event.preventDefault();
+            }}
           >
             <DropdownMenuLabel className="p-0 font-normal">
               <UserMenuHeader />
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <UserMenuItems onItemClick={() => setOpen(false)} />
+            <UserMenuItems notifications onItemClick={() => setOpen(false)} />
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

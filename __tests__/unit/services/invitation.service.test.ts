@@ -890,6 +890,54 @@ describe('InvitationService', () => {
       );
     });
 
+    it('tells the inviter that the invitation was accepted (#664)', async () => {
+      const admin = adminClient();
+      const notifier = { invitationAccepted: vi.fn().mockResolvedValue(undefined) };
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+        () => null,
+        notifier as any,
+      );
+      admin.from
+        .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(countQb(2))
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(qb({ id: 'inv-1' })) // claim
+        .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
+        .mockReturnValueOnce(qb({ id: 'group-1' }))
+        .mockReturnValue(qb(null));
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(true);
+      expect(notifier.invitationAccepted).toHaveBeenCalledOnce();
+      expect(notifier.invitationAccepted).toHaveBeenCalledWith({
+        inviterId: 'manager-1',
+        memberId: 'joining-user',
+        organizationId: 'org-1',
+      });
+    });
+
+    it('does not notify anybody when the accept is refused (full organization)', async () => {
+      const admin = adminClient();
+      const notifier = { invitationAccepted: vi.fn().mockResolvedValue(undefined) };
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+        () => null,
+        notifier as any,
+      );
+      admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(5));
+      vi.mocked(limitsResolver.checkOrgLimit).mockRejectedValueOnce(
+        new AppError('USAGE_LIMIT_EXCEEDED'),
+      );
+
+      await expect(service.acceptInvitation(joiningCtx, 'tok')).rejects.toThrow();
+
+      expect(notifier.invitationAccepted).not.toHaveBeenCalled();
+    });
+
     it('accepts by user id for the activation callback (#311)', async () => {
       // Same flow as `acceptInvitation`, but addressed by user id: the callback
       // has a verified Supabase user and no withAuth() RequestContext.

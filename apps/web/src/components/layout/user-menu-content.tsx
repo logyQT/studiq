@@ -2,13 +2,14 @@
 
 import { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
-import { BadgeCheck, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
+import { BadgeCheck, Bell, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
+import { OPEN_NOTIFICATIONS_EVENT } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 
 export function UserMenuHeader() {
@@ -162,6 +163,11 @@ export type UserMenuItemsProps =
   | {
       variant?: 'menu';
       onItemClick?: () => void;
+      /**
+       * Offer the notifications entry. It opens the bell of the dashboard header, so it is only
+       * for menus inside a dashboard: the public pages have no bell and the entry would do nothing.
+       */
+      notifications?: boolean;
     }
   | {
       /** 'plain' — non-menu contexts such as the mobile navbar sheet. */
@@ -169,10 +175,12 @@ export type UserMenuItemsProps =
       onItemClick?: () => void;
       /** Mobile drawer: open the separate language view instead of expanding inline. */
       onOpenLanguage?: () => void;
+      /** Same as the menu variant: only where the dashboard bell exists. */
+      notifications?: boolean;
     };
 
 export function UserMenuItems(props: UserMenuItemsProps) {
-  const { onItemClick } = props;
+  const { onItemClick, notifications = false } = props;
   const variant: UserMenuVariant = props.variant ?? 'menu';
   const t = useTranslations('DashboardLayout');
   const router = useRouter();
@@ -243,18 +251,19 @@ export function UserMenuItems(props: UserMenuItemsProps) {
         <CreditCard className="size-4 text-muted-foreground" />
         <span>{t('billing')}</span>
       </MenuEntry>
-      {/*
-       * TODO(notifications): hidden in #280 — this entry had no destination and only closed
-       * the menu. Re-add it here (and `DashboardLayout.notifications` in both locale files)
-       * once a notifications surface exists. Intended shape:
-       * - system notifications pushed by platform ops;
-       * - manager notifications to the whole organization or to specific groups;
-       * - notifications when new content is shared — opt-in/out per user, with a teacher
-       *   override to force-notify on share (tick in the content share menu);
-       * - always-on notifications when a new assignment appears, repeated as the deadline
-       *   approaches;
-       * - the model must stay expandable; good candidate for its own service.
-       */}
+      {notifications && (
+        <MenuEntry
+          variant={variant}
+          onSelect={() => {
+            // The notification centre is the bell in the header; this opens it.
+            window.dispatchEvent(new Event(OPEN_NOTIFICATIONS_EVENT));
+            onItemClick?.();
+          }}
+        >
+          <Bell className="size-4 text-muted-foreground" />
+          <span>{t('notifications')}</span>
+        </MenuEntry>
+      )}
 
       <MenuDivider variant={variant} />
 

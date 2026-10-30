@@ -328,6 +328,23 @@
     "submit_button": "Save password",
     "SUCCESS_PASSWORD_UPDATED": "Password has been updated. Welcome back!"
   },
+  "Notifications": {
+    "load_error": "Notifications could not be loaded",
+    "retry": "Try again",
+    "title": "Notifications",
+    "button": "Notifications",
+    "button_unread": "Notifications, {count} unread",
+    "mark_all_read": "Mark all as read",
+    "loading": "Loading…",
+    "empty": "You have no notifications yet.",
+    "unread": "Unread",
+    "untitled": "untitled",
+    "someone": "someone",
+    "type_assignment_published": "New assignment: {title}",
+    "type_assignment_graded": "Your assignment was graded: {title}",
+    "type_report_message": "New message in a report from: {name}",
+    "type_invitation_accepted": "Invitation accepted: {name}"
+  },
   "Breadcrumbs": {
     "difficulty": "Difficulty",
     "print_assignment": "Print assignment",
@@ -338,6 +355,7 @@
     "session_new": "New cards"
   },
   "DashboardLayout": {
+    "notifications": "Notifications",
     "ai_chat": "Q Assistant",
     "edu_overview": "Overview",
     "edu_questions": "Questions",

@@ -14,6 +14,11 @@ import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ZodIssue } from 'zod';
+import {
+  type Notifier,
+  noopNotifier,
+  notificationService,
+} from '@studiq/server/services/notification.service';
 
 /** The one place the copyable registration link is built, so link and code cannot drift. */
 function buildInviteLink(baseUrl: string, token: string): string {
@@ -67,6 +72,8 @@ export class InvitationService {
     private createAdminClient: () => SupabaseClient = createServiceClient,
     /** Null when no mail adapter is configured: the copyable link is then the only delivery path. */
     private getMailer: () => Mailer | null = () => null,
+    /** Tells the inviter that the invitation was accepted; none in unit tests. */
+    private notifier: Notifier = noopNotifier,
   ) {}
 
   /**
@@ -691,6 +698,14 @@ export class InvitationService {
       if (me) return toDbFailure(me);
     }
 
+    if (invite.inviterId) {
+      await this.notifier.invitationAccepted({
+        inviterId: invite.inviterId,
+        memberId: userId,
+        organizationId,
+      });
+    }
+
     return success({ id: org.id, name: org.name, orgRoleId: invite.targetOrgRoleId });
   }
 
@@ -828,6 +843,6 @@ export class InvitationService {
   }
 }
 export const invitationService = wrapService(
-  new InvitationService(createClient, createServiceClient, getMailer),
+  new InvitationService(createClient, createServiceClient, getMailer, notificationService),
   'invitation.service',
 );

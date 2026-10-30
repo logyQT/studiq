@@ -310,6 +310,23 @@
     "submit_button": "Zapisz hasło",
     "SUCCESS_PASSWORD_UPDATED": "Hasło zostało zmienione. Witaj z powrotem!"
   },
+  "Notifications": {
+    "load_error": "Nie udało się wczytać powiadomień",
+    "retry": "Spróbuj ponownie",
+    "title": "Powiadomienia",
+    "button": "Powiadomienia",
+    "button_unread": "Powiadomienia, {count, plural, one {# nieprzeczytane} few {# nieprzeczytane} other {# nieprzeczytanych}}",
+    "mark_all_read": "Oznacz wszystkie jako przeczytane",
+    "loading": "Ładowanie…",
+    "empty": "Nie masz jeszcze powiadomień.",
+    "unread": "Nieprzeczytane",
+    "untitled": "bez tytułu",
+    "someone": "ktoś",
+    "type_assignment_published": "Nowa kartkówka: {title}",
+    "type_assignment_graded": "Oceniono Twoją pracę: {title}",
+    "type_report_message": "Nowa wiadomość w zgłoszeniu od: {name}",
+    "type_invitation_accepted": "Zaproszenie przyjęte: {name}"
+  },
   "Breadcrumbs": {
     "difficulty": "Poziom trudności",
     "print_assignment": "Drukuj kartkówkę",
@@ -320,6 +337,7 @@
     "session_new": "Nowe fiszki"
   },
   "DashboardLayout": {
+    "notifications": "Powiadomienia",
     "ai_chat": "Asystent Q",
     "edu_overview": "Przegląd",
     "edu_questions": "Pytania",
