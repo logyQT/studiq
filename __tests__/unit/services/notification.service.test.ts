@@ -323,6 +323,28 @@ describe('NotificationService: producers', () => {
     }
   });
 
+  it('dedupes repeated group targets and chunks the group lookup', async () => {
+    const groups = Array.from({ length: 250 }, (_, i) => `g${i}`);
+    const targets = [...groups, ...groups].map((group_id) => ({ group_id, student_id: null }));
+    const insert = builder();
+    const { admin, service: s } = service({
+      teacher_assignments: [
+        builder({ data: { title: 'T', organization_id: 'org-1' }, error: null }),
+      ],
+      assignment_targets: [builder({ data: targets, error: null })],
+      group_members: [builder({ data: [{ user_id: 'a' }], error: null })],
+      org_members: [builder({ data: [{ user_id: 'a' }], error: null })],
+      notifications: [insert],
+    });
+
+    await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
+
+    expect(admin.calls.group_members).toHaveLength(2);
+    expect((admin.calls.group_members[0].in.mock.calls[0][1] as string[]).length).toBe(200);
+    expect((admin.calls.group_members[1].in.mock.calls[0][1] as string[]).length).toBe(50);
+    expect(insert.insert).toHaveBeenCalledOnce();
+  });
+
   it('pages through the assignment targets instead of trusting one response', async () => {
     const firstPage = Array.from({ length: 500 }, (_, i) => ({
       group_id: null,

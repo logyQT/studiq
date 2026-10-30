@@ -196,22 +196,22 @@ export class NotificationService implements Notifier {
       }
 
       const recipients = new Set<string>();
-      const groupIds: string[] = [];
+      const groupIds = [...new Set(targets.flatMap((t) => (t.group_id ? [t.group_id] : [])))];
       for (const target of targets) {
         if (target.student_id) recipients.add(target.student_id);
-        if (target.group_id) groupIds.push(target.group_id);
       }
 
       // A target is a raw id the request supplied, so the recipients are never taken from it
       // as they are: groups are resolved through the assignment's organisation, and every
       // recipient must still be a member of it. Otherwise a teacher of two organisations could
       // push one tenant's assignment title into another tenant's bell.
-      if (groupIds.length > 0) {
+      for (let g = 0; g < groupIds.length; g += IN_CHUNK) {
+        const groupChunk = groupIds.slice(g, g + IN_CHUNK);
         for (let from = 0; ; from += READ_PAGE) {
           const { data: members, error: membersError } = await admin
             .from('group_members')
             .select('user_id, groups!inner(organization_id)')
-            .in('group_id', groupIds)
+            .in('group_id', groupChunk)
             .eq('role', 'member')
             .eq('groups.organization_id', assignment.organizationId)
             .order('id', { ascending: true })

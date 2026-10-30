@@ -106,6 +106,23 @@ describe('TeacherAssignmentService notifies students', () => {
     expect(notifier.assignmentPublished).not.toHaveBeenCalled();
   });
 
+  it('tells nobody when the previous status cannot be read', async () => {
+    const statusRead = chain(null);
+    const failure = { data: null, error: { code: 'PGRST116', message: 'no rows' } };
+    statusRead.single = vi.fn().mockResolvedValue(failure);
+    statusRead.then = (onfulfilled: any) => Promise.resolve(failure).then(onfulfilled);
+    mock.from
+      .mockReturnValueOnce(owned())
+      .mockReturnValueOnce(chain(null, 1)) // targets
+      .mockReturnValueOnce(statusRead) // status before, unreadable
+      .mockReturnValueOnce(chain({ id: 'a1', status: 'published' })); // update
+
+    const result = await service.publish('a1', undefined, undefined, ctx);
+
+    expect(result.success).toBe(true);
+    expect(notifier.assignmentPublished).not.toHaveBeenCalled();
+  });
+
   it('tells nobody when publishing fails', async () => {
     mock.from.mockReturnValueOnce(chain(null)); // not the owner
 

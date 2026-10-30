@@ -31,6 +31,12 @@ function toAttemptPayload(attempt: Record<string, unknown>): Record<string, unkn
 }
 
 /**
+ * `.in()` values travel in the request URL, so target lists are checked in chunks instead of
+ * one request that a large class would push over the gateway's URL limit.
+ */
+const TARGET_CHUNK = 200;
+
+/**
  * Columns shared by the student list and detail attempt payloads. Explicit
  * columns keep `draft_answers` out of the read path (#349).
  */
@@ -272,9 +278,10 @@ export class TeacherAssignmentService {
 
     if (count === 0) return failure('BAD_REQUEST');
 
-    // Only the first publication tells the students; changing the deadline of a published
-    // assignment later must not notify them again.
-    const { data: before } = await supabase
+    // Only a save that leaves the assignment already published is silent; publishing a draft
+    // (including one that was unpublished before) tells the students. A failed read must not
+    // turn into a notification, so it skips the fan-out instead of guessing.
+    const { data: before, error: beforeError } = await supabase
       .from('teacher_assignments')
       .select('status')
       .eq('id', id)
@@ -296,7 +303,7 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    if (before?.status !== 'published') {
+    if (!beforeError && before?.status !== 'published') {
       await this.notifier.assignmentPublished({ assignmentId: id, teacherId: ctx.userId });
     }
     return success(updated);
@@ -1140,11 +1147,12 @@ export class TeacherAssignmentService {
   /**
    * True when a group or student of `data` is not part of the assignment's organisation.
    *
-   * A personal assignment (`organization_id` NULL) has no tenant of its own: direct student
-   * targets are the supported personal flow and are accepted as supplied, while a group is
-   * organisation-owned and must belong to one of the caller's organisations (its members would
-   * otherwise gain access to another tenant's assignment). Counts are requested with
-   * `head: true` so a long target list is not truncated by the PostgREST row limit.
+   * A personal assignment (`organization_id` NULL, a legacy row: new ones are created inside an
+   * organisation) has no tenant of its own: direct student targets keep working, while a group
+   * is organisation-owned and must belong to one of the caller's organisations (its members
+   * would otherwise gain access to another tenant's assignment). Counts are requested with
+   * `head: true` so a long target list is not truncated by the PostgREST row limit, and the ids
+   * are sent in chunks so a large class does not overflow the request URL.
    */
   private async hasForeignTargets(
     supabase: SupabaseClient,
@@ -1156,14 +1164,16 @@ export class TeacherAssignmentService {
     const studentIds = [...new Set(data.studentIds ?? [])];
     if (groupIds.length === 0 && studentIds.length === 0) return false;
 
-    const { data: assignment } = await supabase
+    const { data: assignment, error: assignmentError } = await supabase
       .from('teacher_assignments')
       .select('organization_id')
       .eq('id', assignmentId)
       .single();
-    const organizationId = assignment?.organization_id as string | null | undefined;
+    // Fail closed: a failed read must not be mistaken for a personal (no-organisation) row.
+    if (assignmentError || !assignment) return true;
+    const organizationId = assignment.organization_id as string | null;
 
-    if (!organizationId) {
+    if (organizationId === null) {
       if (groupIds.length === 0) return false;
 
       const { data: memberships } = await supabase
@@ -1175,32 +1185,44 @@ export class TeacherAssignmentService {
       ];
       if (callerOrgIds.length === 0) return true;
 
-      const { count, error } = await supabase
-        .from('groups')
-        .select('id', { count: 'exact', head: true })
-        .in('id', groupIds)
-        .in('organization_id', callerOrgIds);
-      if (error) return true;
-      return (count ?? 0) !== groupIds.length;
+      let found = 0;
+      for (let i = 0; i < groupIds.length; i += TARGET_CHUNK) {
+        const { count, error } = await supabase
+          .from('groups')
+          .select('id', { count: 'exact', head: true })
+          .in('id', groupIds.slice(i, i + TARGET_CHUNK))
+          .in('organization_id', callerOrgIds);
+        if (error) return true;
+        found += count ?? 0;
+      }
+      return found !== groupIds.length;
     }
 
     if (groupIds.length > 0) {
-      const { count, error } = await supabase
-        .from('groups')
-        .select('id', { count: 'exact', head: true })
-        .in('id', groupIds)
-        .eq('organization_id', organizationId);
-      if (error) return true;
-      if ((count ?? 0) !== groupIds.length) return true;
+      let found = 0;
+      for (let i = 0; i < groupIds.length; i += TARGET_CHUNK) {
+        const { count, error } = await supabase
+          .from('groups')
+          .select('id', { count: 'exact', head: true })
+          .in('id', groupIds.slice(i, i + TARGET_CHUNK))
+          .eq('organization_id', organizationId);
+        if (error) return true;
+        found += count ?? 0;
+      }
+      if (found !== groupIds.length) return true;
     }
     if (studentIds.length > 0) {
-      const { count, error } = await supabase
-        .from('org_members')
-        .select('user_id', { count: 'exact', head: true })
-        .in('user_id', studentIds)
-        .eq('organization_id', organizationId);
-      if (error) return true;
-      if ((count ?? 0) !== studentIds.length) return true;
+      let found = 0;
+      for (let i = 0; i < studentIds.length; i += TARGET_CHUNK) {
+        const { count, error } = await supabase
+          .from('org_members')
+          .select('user_id', { count: 'exact', head: true })
+          .in('user_id', studentIds.slice(i, i + TARGET_CHUNK))
+          .eq('organization_id', organizationId);
+        if (error) return true;
+        found += count ?? 0;
+      }
+      if (found !== studentIds.length) return true;
     }
     return false;
   }

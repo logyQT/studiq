@@ -692,6 +692,34 @@ describe('TeacherAssignmentService', () => {
       expect(tables).not.toContain('assignment_targets');
     });
 
+    it('checks a long student list in chunks and sums the matches', async () => {
+      const studentIds = Array.from({ length: 250 }, (_, i) => `s${i}`);
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(chain({ organization_id: orgId }))
+        .mockReturnValueOnce(chain(null, 200))
+        .mockReturnValueOnce(chain(null, 50))
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { studentIds }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(mock.from.mock.calls.filter(([table]) => table === 'org_members')).toHaveLength(2);
+    });
+
+    it('refuses targets when the assignment read fails instead of treating it as personal', async () => {
+      mock.from
+        .mockReturnValueOnce(owned())
+        .mockReturnValueOnce(failingChain({ code: 'PGRST116', message: 'no rows' }))
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { studentIds: ['s-1'] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'BAD_REQUEST' });
+      const tables = mock.from.mock.calls.map(([table]: [string]) => table);
+      expect(tables).not.toContain('assignment_targets');
+    });
+
     it('clears targets when no groups or students', async () => {
       mock.from
         .mockReturnValueOnce(
