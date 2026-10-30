@@ -10,7 +10,8 @@ import {
  * `type,content,explanation,topics,answer_1 … answer_10,correct`
  *
  * - `type`: `mcq`, `true_false` or `open`.
- * - `topics`: names separated by `;`.
+ * - `topics`: names separated by `;`. A name that itself contains `;` or `\` escapes it with
+ *   `\` (`Geo\;grafia`), so a topic always round-trips as the same single topic.
  * - `answer_N`: the options in order; empty cells are skipped.
  * - `correct`: the 1-based numbers of the right answer columns, separated by `;`
  *   (`2` or `1;3`).
@@ -28,6 +29,34 @@ export const TRANSFER_CSV_COLUMNS = [
 ] as const;
 
 const FORMULA_ESCAPE = /^'+[=+\-@\t\r]/;
+
+/**
+ * One CSV cell holds every topic of a question, separated by `;`. A `;` or `\` inside a name is
+ * escaped with `\`, otherwise `Geo;grafia` would come back as two topics.
+ */
+function joinTopics(topics: string[]): string {
+  return topics.map((topic) => topic.replace(/\\/g, '\\\\').replace(/;/g, '\\;')).join(';');
+}
+
+function splitTopics(cell: string): string[] {
+  const topics: string[] = [];
+  let current = '';
+  for (let i = 0; i < cell.length; i += 1) {
+    const char = cell[i];
+    const next = cell[i + 1];
+    if (char === '\\' && (next === '\\' || next === ';')) {
+      current += next;
+      i += 1;
+    } else if (char === ';') {
+      topics.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  topics.push(current);
+  return topics.map((topic) => topic.trim()).filter(Boolean);
+}
 
 /**
  * Undoes `neutralizeCsvFormula`/`textCell`, so an exported file imports back to the same text.
@@ -66,7 +95,7 @@ export function questionsToCsv(questions: TransferQuestion[]): string {
       question.type,
       textCell(question.content),
       textCell(question.explanation ?? ''),
-      textCell(question.topics.join(';')),
+      textCell(joinTopics(question.topics)),
       ...answerCells,
       correct,
     ]);
@@ -127,10 +156,7 @@ export function csvRecordsToQuestions(records: Array<Record<string, string | und
       type: cell('type').toLowerCase() as TransferQuestion['type'],
       content: cell('content'),
       ...(explanation ? { explanation } : {}),
-      topics: cell('topics')
-        .split(';')
-        .map((topic) => topic.trim())
-        .filter(Boolean),
+      topics: splitTopics(cell('topics')),
       answers: answerColumns
         .map((content, i) => ({ content, isCorrect: correctColumns.has(i + 1) }))
         .filter((answer) => answer.content !== ''),

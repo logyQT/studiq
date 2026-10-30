@@ -155,6 +155,16 @@ describe('csvRecordsToQuestions', () => {
     expect(issues).toEqual([{ row: 1, code: 'INVALID_CORRECT' }]);
   });
 
+  it('keeps a topic that contains the separator or a backslash as one topic', () => {
+    const csv = questionsToCsv([{ ...open, topics: ['Geo;grafia', 'C:\\temp', 'A'] }]);
+    // The `;` is the cell's own separator, so a name containing it escapes it first.
+    expect(csv).toContain('Geo\\;grafia');
+
+    const { questions, issues } = readCsv(csv);
+    expect(issues).toEqual([]);
+    expect(questions[0].topics).toEqual(['Geo;grafia', 'C:\\temp', 'A']);
+  });
+
   it('splits topics on ; and drops blanks and surrounding spaces', () => {
     const { questions } = csvRecordsToQuestions([
       { type: 'open', content: 'Q', topics: ' A ;; B;' },
