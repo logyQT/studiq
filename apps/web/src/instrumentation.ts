@@ -1,9 +1,16 @@
 export async function register() {
-  // A bad MAIL_DRIVER / SMTP setting must stop the server at boot (#604), not surface later as
-  // invitations that silently never arrive. Runs before the telemetry opt-out below.
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // A bad MAIL_DRIVER / SMTP setting must stop the server at boot (#604), not surface later as
+    // invitations that silently never arrive. Runs before the telemetry opt-out below.
     const { getMailer } = await import('@studiq/server/lib/mailer');
     getMailer();
+
+    // The same rule for payments (#662): a bad PAYMENT_DRIVER or missing
+    // Stripe setting must crash at boot, not on the first checkout. `mock`
+    // (the default) needs no configuration.
+    const { getPaymentGateway } =
+      await import('@studiq/server/lib/payment/payment-gateway.factory');
+    getPaymentGateway();
   }
 
   if (process.env.OTEL_SDK_DISABLED === 'true') return;

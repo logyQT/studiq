@@ -1,15 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import type { RequestContext } from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
+import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway';
+import { getPaymentGateway } from '@studiq/server/lib/payment/payment-gateway.factory';
 import { isFailure } from '@studiq/server/lib/service-result';
-import {
-  type MockStripeService,
-  mockStripeService,
-} from '@studiq/server/services/mock-stripe.service';
 
 export class StripeController {
-  constructor(private mockStripeService: MockStripeService) {}
+  constructor(private readonly gateway: PaymentGateway) {}
 
   async createCheckoutSession(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
     const { planId, orgId } = body as Record<string, string | undefined>;
@@ -18,12 +17,15 @@ export class StripeController {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const result = await this.mockStripeService.createCheckoutSession(
-      planId,
-      ctx.accountType,
-      ctx.userId,
-      orgId,
-    );
+    const result = await this.gateway.createCheckoutSession({
+      userId: ctx.userId,
+      accountType: ctx.accountType,
+      planKey: planId,
+      ...(orgId ? { orgId } : {}),
+      // Phase 1: the mock ignores it. Phase 2 replaces this with the
+      // deterministic owner+plan+time-bucket key that collapses double clicks.
+      idempotencyKey: randomUUID(),
+    });
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -46,22 +48,31 @@ export class StripeController {
 
     // The mock webhook is called by the checkout page itself, so it may only
     // ever act on the caller's own account. This is the only place that reads
-    // the body `user_id`; the service gets the authenticated id instead.
+    // the body `user_id`; the gateway gets the authenticated id instead.
     if (user_id !== ctx.userId) return controllerResponse.error('FORBIDDEN');
 
-    const result = await this.mockStripeService.handleWebhook(
-      { type, session_id, plan_id, org_id },
-      ctx.accountType,
-      ctx.userId,
-    );
+    const result = await this.gateway.handleWebhook({
+      kind: 'mock',
+      ctx,
+      event: {
+        type,
+        session_id,
+        plan_id,
+        ...(org_id ? { org_id } : {}),
+      },
+    });
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
-    return controllerResponse.success({ received: true });
+    return controllerResponse.success(result.data);
   }
 
   async createPortalSession(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.mockStripeService.createPortalSession(ctx.userId);
+    const result = await this.gateway.createPortalSession({
+      userId: ctx.userId,
+      accountType: ctx.accountType,
+      activeOrgId: ctx.activeOrgId,
+    });
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -69,6 +80,6 @@ export class StripeController {
   }
 }
 export const stripeController = wrapService(
-  new StripeController(mockStripeService),
+  new StripeController(getPaymentGateway()),
   'stripe.controller',
 );

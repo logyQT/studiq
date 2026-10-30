@@ -1,7 +1,7 @@
 # Real Stripe integration behind the payment interface (#662)
 
 **Date:** 2026-10-30
-**Status:** Design — approved decisions, not implemented
+**Status:** Design — approved decisions. Phase 1 (gateway seam + `PAYMENT_DRIVER` boot validation) implemented; the mock is still the only adapter.
 **Issue:** [#662](https://github.com/logyQT/studiq/issues/662) (ROADMAP Phase 6)
 **Scope owner:** SoCoCold (Alan) per the issue body; the issue currently has no GitHub assignee
 
@@ -453,6 +453,8 @@ export interface StripeClient {
 ```
 
 `stripeClient` is constructed once per process with the pinned API version; tests inject a fake object, no network.
+
+**Phase 1 implementation note.** The shipped seam (`packages/server/src/lib/payment/payment-gateway.ts`) uses the caller-shaped inputs `userId`, `accountType`, `planKey`, `orgId?`, `locale?`, `idempotencyKey` — exactly the fields `MockStripeService` already takes — so routing the controller through the gateway is behaviour-preserving. `MockPaymentGateway` delegates to the existing service; `changePlan`/`cancelAtPeriodEnd` return `NOT_FOUND` because the simulation has no subscription. `BillingService`, the resolved `PaymentOwner`, and `priceId`/`customerId` fields arrive with the Stripe adapter in Phase 2; the shapes above remain the target contract.
 
 ### 3.4 Route-level webhook contract (explicit branching)
 
