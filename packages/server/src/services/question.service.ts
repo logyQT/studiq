@@ -192,25 +192,30 @@ export class QuestionService {
 
   /**
    * Every question of one bank, in the full shape an export needs, **without** the
-   * `question.read` scope filter.
+   * `question.read` scope filter, plus the exact number of rows the query matched.
    *
    * The caller must already have checked `question_bank.read` on this bank: reading a bank means
    * reading the whole bank, answer key included (decision B, #678). Reading the questions through
    * `list` instead would apply a second, narrower scope — a role that may read the bank at
    * `organization` scope but questions only at `own` would get a partial file. RLS still bounds
    * the rows to the caller's own or same-organisation questions.
+   *
+   * `total` is the `count` of the same query, so it stays right when PostgREST clamps the rows at
+   * its `max_rows`: `rows.length < total` means the result was cut, not that the bank is smaller.
    */
-  async listBankQuestions(bankId: string): Promise<ServiceResult<unknown>> {
+  async listBankQuestions(
+    bankId: string,
+  ): Promise<ServiceResult<{ questions: unknown[]; total: number }>> {
     const supabase = await this.createClient();
 
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from('questions')
-      .select(questionSelect())
+      .select(questionSelect(), { count: 'exact' })
       .eq('bank_id', bankId);
     if (error) return toDbFailure(error);
 
     const rows = (data ?? []) as unknown as QuestionTopicRow[];
-    return success(rows.map((row) => withTopics(row)));
+    return success({ questions: rows.map((row) => withTopics(row)), total: count ?? rows.length });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {

@@ -196,13 +196,17 @@ describe('QuestionService', () => {
   describe('listBankQuestions', () => {
     it('scopes by the bank only, never by the caller or their active organisation', async () => {
       const questions = [{ id: 'q-1', content: 'Q1' }];
-      const query = chain(questions);
+      const query = chain(questions, 7);
       mock.from.mockReturnValue(query);
 
       const result = await service.listBankQuestions('bank-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([{ id: 'q-1', content: 'Q1', topics: [] }]);
+      // `total` comes from the query's own count, so a clamped result is still detectable.
+      expect(result.data).toEqual({
+        questions: [{ id: 'q-1', content: 'Q1', topics: [] }],
+        total: 7,
+      });
       // The caller already checked `question_bank.read`; adding `question.read` here is what
       // made an authorised export return a partial file (#669 review).
       expect(query.eq).toHaveBeenCalledWith('bank_id', 'bank-1');

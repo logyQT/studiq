@@ -82,19 +82,22 @@ describe('QuestionTransferService.exportBank', () => {
   it('maps the questions of a readable bank, answers in their stored order', async () => {
     vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'Fizyka' }) as any);
     vi.mocked(questionService.listBankQuestions).mockResolvedValue(
-      success([
-        {
-          type: 'mcq',
-          content: 'Q1',
-          explanation: 'because',
-          topics: [{ name: 'Mechanika' }],
-          question_answers: [
-            { content: 'B', is_correct: false, order_index: 1 },
-            { content: 'A', is_correct: true, order_index: 0 },
-          ],
-        },
-        { type: 'open', content: 'Q2', explanation: null, topics: [], question_answers: [] },
-      ]) as any,
+      success({
+        total: 2,
+        questions: [
+          {
+            type: 'mcq',
+            content: 'Q1',
+            explanation: 'because',
+            topics: [{ name: 'Mechanika' }],
+            question_answers: [
+              { content: 'B', is_correct: false, order_index: 1 },
+              { content: 'A', is_correct: true, order_index: 0 },
+            ],
+          },
+          { type: 'open', content: 'Q2', explanation: null, topics: [], question_answers: [] },
+        ],
+      }) as any,
     );
 
     const result = await service.exportBank(ctx, 'bank-1');
@@ -119,11 +122,12 @@ describe('QuestionTransferService.exportBank', () => {
     });
   });
 
-  const listed = (rows: unknown[], questionCount = rows.length) => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(
-      success({ name: 'B', question_count: questionCount }) as any,
+  /** `total` is the query's exact count; it can exceed the rows PostgREST returned. */
+  const listed = (rows: unknown[], total = rows.length) => {
+    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }) as any);
+    vi.mocked(questionService.listBankQuestions).mockResolvedValue(
+      success({ questions: rows, total }) as any,
     );
-    vi.mocked(questionService.listBankQuestions).mockResolvedValue(success(rows) as any);
   };
   const row = (over: Record<string, unknown> = {}) => ({
     type: 'mcq',
@@ -137,8 +141,8 @@ describe('QuestionTransferService.exportBank', () => {
     ...over,
   });
 
-  it('refuses a bank above the cap before reading it, the way PostgREST would clamp it', async () => {
-    // The real query returns at most 1000 rows (max_rows), so the bank's own count decides.
+  it('refuses a bank above the cap instead of shipping the clamped rows', async () => {
+    // PostgREST hands back at most 1000 rows (max_rows); the exact total is what decides.
     listed(
       Array.from({ length: 1000 }, () => row()),
       1500,
@@ -147,10 +151,9 @@ describe('QuestionTransferService.exportBank', () => {
     const result = await service.exportBank(ctx, 'bank-1');
 
     expect(result).toMatchObject({ success: false, error: 'UNPROCESSABLE_ENTITY' });
-    expect(questionService.listBankQuestions).not.toHaveBeenCalled();
   });
 
-  it('never answers with fewer questions than the bank holds', async () => {
+  it('fails instead of answering with fewer questions than the query matched', async () => {
     listed(
       Array.from({ length: 10 }, () => row()),
       12,
@@ -158,7 +161,7 @@ describe('QuestionTransferService.exportBank', () => {
 
     const result = await service.exportBank(ctx, 'bank-1');
 
-    expect(result.success).toBe(false);
+    expect(result).toMatchObject({ success: false, error: 'INTERNAL_SERVER' });
   });
 
   it('exports a bank of exactly the cap', async () => {

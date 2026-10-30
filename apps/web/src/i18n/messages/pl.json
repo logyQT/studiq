@@ -2418,7 +2418,7 @@
     "groups_empty": "Nie znaleziono grup"
   },
   "QuestionTransfer": {
-    "export_note": "Eksport zawiera cały bank pytań, razem z kluczem odpowiedzi i wyjaśnieniami.",
+    "export_note": "Odczyt banku pytań daje cały bank, razem z kluczem odpowiedzi i wyjaśnieniami. Eksport zapisuje wszystko do pliku.",
     "export_failed": "Nie udało się pobrać eksportu.",
     "export_too_large": "Ten bank pytań jest zbyt duży do eksportu (maks. 1000 pytań). Podziel go na mniejsze.",
     "export_not_reimportable": "{count, plural, one {# pytanie} few {# pytania} other {# pytań}} z eksportu nie przejdzie importu bez poprawek (np. zbyt wiele odpowiedzi).",
@@ -2430,7 +2430,8 @@
     "import_desc": "Wczytaj plik CSV lub JSON (wyeksportowany z StudiQ albo według szablonu). Pytania trafią do tego banku.",
     "choose_file": "Wybierz plik CSV lub JSON",
     "download_template": "Pobierz szablon CSV",
-    "file_too_large": "Plik jest za duży (maksymalnie 1 MB).",
+    "file_too_large": "Plik jest za duży (maksymalnie 5 MB).",
+    "topics_hint": "Tematy rozdziela ; — aby ; lub \\ było częścią nazwy tematu, poprzedź je znakiem \\ (np. Geo\\;grafia).",
     "unreadable": "Nie udało się odczytać pliku.",
     "no_questions": "W pliku nie znaleziono pytań.",
     "too_many": "Plik zawiera {count, plural, one {# pytanie} few {# pytania} other {# pytań}}, a naraz można zaimportować najwyżej {max}.",

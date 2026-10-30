@@ -35,7 +35,14 @@ import { useApiMutation } from '@/hooks/use-api';
 import { ApiError, apiPost } from '@/lib/api';
 import { questionKeys } from '@/lib/query-keys';
 
-const MAX_FILE_BYTES = 1_000_000;
+/**
+ * The largest file the browser will read. 500 questions (the import limit) can legally hold
+ * ~4 KB of text each — 255 chars of content, 255 of explanation, ten 255-char answers and ten
+ * 100-char topics — and JSON escaping can double that, so a maximal file is ~4.3 MB. A 1 MB
+ * cap rejected files the API accepts; 5 MB is that bound with headroom, and it is still small
+ * enough to read and parse on the main thread.
+ */
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const PREVIEW_ROWS = 5;
 const SHOWN_PROBLEMS = 8;
 
@@ -266,6 +273,8 @@ function ImportDialog({ bankId, open, onOpenChange }: ImportDialogProps) {
               {t('download_template')}
             </Button>
           </div>
+
+          <p className="text-xs text-muted-foreground">{t('topics_hint')}</p>
 
           {fileName && ready && (
             <p className="text-sm text-muted-foreground">

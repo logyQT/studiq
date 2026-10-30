@@ -43,9 +43,9 @@ export class QuestionTransferService {
   /**
    * Every question of a bank the caller may read, in the shape both file formats use.
    *
-   * Export follows read: `questionService.list` already returns the answer key and the
-   * explanation to anyone who can read the bank, so reading a bank means having all of it. A bank
-   * above `EXPORT_MAX_QUESTIONS` is refused (422) instead of being cut off. `notReimportable`
+   * Export follows read: reading a bank means having all of it, answer key included, so the bank
+   * is listed by its id rather than through the narrower `question.read` scope. A bank above
+   * `EXPORT_MAX_QUESTIONS` is refused (422) instead of being cut off. `notReimportable`
    * counts the questions the importer would reject (the data is exported as it is).
    */
   async exportBank(
@@ -55,24 +55,24 @@ export class QuestionTransferService {
     ServiceResult<{ bankName: string; questions: TransferQuestion[]; notReimportable: number }>
   > {
     // The bank lookup applies the read permission, so a foreign or unknown bank is NOT_FOUND.
-    // From here the whole bank is readable (decision B, #678), so the questions are listed by
-    // bank only: `questionService.list` would apply the narrower `question.read` scope on top
-    // and hand back fewer rows than the bank has.
+    // From here the whole bank is readable (decision B, #678).
     const bank = await questionBankService.getById(bankId, ctx);
     if (!bank.success) return failure(bank.error);
-
-    // The size is checked BEFORE reading: `questionService.list` has no range, so PostgREST clamps
-    // it at its `max_rows` (1000) and a longer bank would come back silently truncated. The bank's
-    // own question count (what the caller can see) is what tells a large bank from a cut one.
-    const declared = Number((bank.data as { question_count?: number }).question_count ?? 0);
-    if (declared > EXPORT_MAX_QUESTIONS) return failure('UNPROCESSABLE_ENTITY');
 
     const listed = await questionService.listBankQuestions(bankId);
     if (!listed.success) return failure(listed.error);
 
-    const rows = listed.data as ListedQuestion[];
-    // Rows are never fewer than the bank claims: a shortfall would be a silent truncation.
-    if (rows.length < declared) return failure('INTERNAL_SERVER');
+    const { questions: rows, total } = listed.data as {
+      questions: ListedQuestion[];
+      total: number;
+    };
+
+    // The cap is decided by the exact total of the query that builds the file: a longer bank is
+    // refused (422) instead of being cut off at PostgREST's `max_rows` and shipped as a
+    // "complete" export. The same number proves the read was not clamped.
+    if (total > EXPORT_MAX_QUESTIONS) return failure('UNPROCESSABLE_ENTITY');
+    if (rows.length < total) return failure('INTERNAL_SERVER');
+
     const questions = rows.map((row): TransferQuestion => {
       const answers = [...(row.question_answers ?? [])].sort(
         (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
