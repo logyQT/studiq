@@ -2,36 +2,15 @@
 
 import { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
-import {
-  BadgeCheck,
-  Bell,
-  Check,
-  CreditCard,
-  Globe,
-  LogOut,
-  Moon,
-  Sparkles,
-  Sun,
-} from 'lucide-react';
+import { BadgeCheck, Bell, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useTheme } from 'next-themes';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
+import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
 import { OPEN_NOTIFICATIONS_EVENT } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
-
-type Locale = 'pl' | 'en';
-
-function getLocale(): Locale {
-  if (typeof document === 'undefined') return 'pl';
-  const match = document.cookie.match(/NEXT_LOCALE=(pl|en)/);
-  return (match?.[1] as Locale) || 'pl';
-}
-
-function changeLanguage(lang: Locale) {
-  document.cookie = `NEXT_LOCALE=${lang}; path=/; max-age=31536000`;
-  window.location.reload();
-}
 
 export function UserMenuHeader() {
   const { user } = useAuth();
@@ -91,25 +70,129 @@ function MenuDivider({ variant }: { variant: UserMenuVariant }) {
 
 export type UserMenuVariant = 'menu' | 'plain';
 
-export function UserMenuItems({
-  onItemClick,
-  variant = 'menu',
-  notifications = false,
-}: {
-  onItemClick?: () => void;
-  /**
-   * Offer the notifications entry. It opens the bell of the dashboard header, so it is only for
-   * menus inside a dashboard: the public pages have no bell and the entry would do nothing.
-   */
-  notifications?: boolean;
-  /** 'menu' inside a Radix DropdownMenuContent; 'plain' for non-menu contexts such as a Sheet. */
-  variant?: UserMenuVariant;
-}) {
+/** Focus the checked radio of the inline theme switch (or the first one). */
+function focusThemeRadio(themeGroup: HTMLElement | null): void {
+  (
+    themeGroup?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]') ??
+    themeGroup?.querySelector<HTMLElement>('[role="radio"]')
+  )?.focus();
+}
+
+/**
+ * Keyboard access for the inline language select and theme switch.
+ *
+ * Radix cancels `Tab` inside `DropdownMenuContent`, and its roving focus only
+ * visits `menuitem`s, so those two controls would be pointer-only. Keep the
+ * panel and its markup exactly as they are; this only routes `Tab`:
+ *
+ *   items before settings → language select → theme switch → out of the menu
+ *   (and back); the logout item after the settings rows already leaves forwards.
+ *
+ * The controls themselves keep their own keys (arrows/Enter/Space); see
+ * `LanguageSelect` (stops the menu from also handling the arrows that open the
+ * listbox) and `ThemeSwitch` (already stops arrow propagation).
+ */
+export function handleUserMenuTab(
+  event: ReactKeyboardEvent<HTMLElement>,
+  onClose: () => void,
+): void {
+  if (event.key !== 'Tab') return;
+
+  const content = event.currentTarget;
+  const active = document.activeElement as HTMLElement | null;
+  const language = content.querySelector<HTMLElement>('[role="combobox"]');
+  const themeGroup = content.querySelector<HTMLElement>('[role="radiogroup"]');
+  const items = [...content.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  // The menu item right before the settings rows in DOM order: the target for
+  // Shift+Tab out of the language select (the roving item may be unset when the
+  // menu was opened with the pointer).
+  const itemBeforeLanguage = language
+    ? items
+        .filter(
+          (item) =>
+            (item.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+        )
+        .at(-1)
+    : undefined;
+
+  // Pointer-opened menus keep focus on the menu container (roving focus only
+  // enters on keyboard open). Start the Tab path from the container.
+  if (active === content) {
+    event.preventDefault();
+    if (event.shiftKey) onClose();
+    else language?.focus();
+    return;
+  }
+
+  // The menu's roving focus: move into the settings rows, backwards leaves.
+  // Items after the settings rows (logout) must leave forwards instead of
+  // jumping back to the select, and go back to the theme switch on Shift+Tab.
+  if (active?.getAttribute('role') === 'menuitem') {
+    const isAfterSettings =
+      language != null &&
+      (language.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    event.preventDefault();
+    if (!isAfterSettings) {
+      if (event.shiftKey) onClose();
+      else language?.focus();
+    } else if (event.shiftKey) {
+      focusThemeRadio(themeGroup);
+    } else {
+      onClose();
+    }
+    return;
+  }
+
+  if (active && active === language) {
+    event.preventDefault();
+    if (event.shiftKey) itemBeforeLanguage?.focus();
+    else focusThemeRadio(themeGroup);
+    return;
+  }
+
+  // Inside the theme radiogroup: backwards returns to the select, forwards
+  // leaves the menu (focus goes back to the trigger).
+  if (active && themeGroup?.contains(active)) {
+    event.preventDefault();
+    if (event.shiftKey) language?.focus();
+    else onClose();
+  }
+}
+
+export type UserMenuItemsProps =
+  | {
+      variant?: 'menu';
+      onItemClick?: () => void;
+      /**
+       * Offer the notifications entry. It opens the bell of the dashboard header, so it is only
+       * for menus inside a dashboard: the public pages have no bell and the entry would do nothing.
+       */
+      notifications?: boolean;
+    }
+  | {
+      /** 'plain' — non-menu contexts such as the mobile navbar sheet. */
+      variant: 'plain';
+      onItemClick?: () => void;
+      /** Mobile drawer: open the separate language view instead of expanding inline. */
+      onOpenLanguage?: () => void;
+      /** Same as the menu variant: only where the dashboard bell exists. */
+      notifications?: boolean;
+    };
+
+export function UserMenuItems(props: UserMenuItemsProps) {
+  const { onItemClick, notifications = false } = props;
+  const variant: UserMenuVariant = props.variant ?? 'menu';
   const t = useTranslations('DashboardLayout');
   const router = useRouter();
   const { user } = useAuth();
-  const locale = getLocale();
-  const { setTheme } = useTheme();
+  // The language row is the only language entry; it owns the panel and the
+  // locale commit (see language-menu-row.tsx) so no surface re-implements them.
+  const languageRow =
+    props.variant === 'plain' ? (
+      <LanguageMenuRow variant="plain" onOpen={props.onOpenLanguage} />
+    ) : (
+      <LanguageMenuRow variant="menu" />
+    );
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const dashboardPrefix = (() => {
@@ -184,45 +267,16 @@ export function UserMenuItems({
 
       <MenuDivider variant={variant} />
 
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          changeLanguage('pl');
-          onItemClick?.();
-        }}
-      >
-        <Globe className="size-4 text-muted-foreground" />
-        <span>Polski</span>
-        {locale === 'pl' && <Check className="ml-auto size-4" />}
-      </MenuEntry>
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          changeLanguage('en');
-          onItemClick?.();
-        }}
-      >
-        <Globe className="size-4 text-muted-foreground" />
-        <span>English</span>
-        {locale === 'en' && <Check className="ml-auto size-4" />}
-      </MenuEntry>
+      {languageRow}
 
       <MenuDivider variant={variant} />
 
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          const isDark = document.documentElement.classList.contains('dark');
-          setTheme(isDark ? 'light' : 'dark');
-          onItemClick?.();
-        }}
-      >
-        <div className="relative size-4">
-          <Sun className="size-4 absolute rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="size-4 absolute rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-        </div>
-        <span>{t('theme')}</span>
-      </MenuEntry>
+      {/* A setting, not a menu action: choosing a theme keeps the menu open so the hint stays visible (#635). */}
+      <div className="flex items-center gap-2 px-2 py-1 text-sm">
+        <Palette aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <span className="flex-1">{t('theme')}</span>
+        <ThemeSwitch size={variant === 'plain' ? 'lg' : 'sm'} />
+      </div>
 
       <MenuDivider variant={variant} />
 

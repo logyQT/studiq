@@ -1,0 +1,9 @@
+{
+  "profile": "content",
+  "members": [
+    { "key": "manager", "accountType": "manager", "orgRole": "admin", "name": "QA manager" },
+    { "key": "teacher", "accountType": "educator", "orgRole": "member", "name": "QA teacher" },
+    { "key": "student", "accountType": "student", "orgRole": "member", "name": "QA student" }
+  ],
+  "groups": ["G1", "G2"]
+}

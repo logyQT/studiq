@@ -1,8 +1,9 @@
 import { cookies } from 'next/headers';
 import { getRequestConfig } from 'next-intl/server';
+import { DEFAULT_LOCALE, LOCALE_COOKIE, LOCALES, resolveLocale } from '@/lib/locale';
 
-export const locales = ['pl', 'en'];
-const defaultLocale = 'pl';
+/** Derived from the single locale source (`lib/locale.ts`) — never re-declared. */
+export const locales = LOCALES;
 
 function mergeCommon(raw: Record<string, Record<string, string>>) {
   const common = raw.Common ?? {};
@@ -15,9 +16,7 @@ function mergeCommon(raw: Record<string, Record<string, string>>) {
 
 export default getRequestConfig(async () => {
   const cookieStore = await cookies();
-  const locale = cookieStore.get('NEXT_LOCALE')?.value || defaultLocale;
-
-  const activeLocale = locales.includes(locale) ? locale : defaultLocale;
+  const activeLocale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value ?? DEFAULT_LOCALE);
 
   return {
     locale: activeLocale,

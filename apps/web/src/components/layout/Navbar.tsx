@@ -27,7 +27,11 @@ import { useState } from 'react';
 import { DesktopNav } from '@/components/layout/navbar/desktop-nav';
 import { MobileNav } from '@/components/layout/navbar/mobile-nav';
 import type { NavLink } from '@/components/layout/navbar/types';
-import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
+import {
+  UserMenuHeader,
+  UserMenuItems,
+  handleUserMenuTab,
+} from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useBranding } from '@/hooks/use-branding';
 
@@ -144,12 +148,17 @@ export function Navbar() {
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
+                    aria-label={t('user_menu')}
                     className="rounded-full transition hover:scale-105 active:scale-95"
                   >
                     <UserAvatar name={user.user_metadata?.name} email={user.email} size={36} />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuContent
+                  align="end"
+                  className="w-60"
+                  onKeyDown={(event) => handleUserMenuTab(event, () => setAvatarOpen(false))}
+                >
                   <UserMenuHeader />
                   <DropdownMenuSeparator />
                   <UserMenuItems onItemClick={() => setAvatarOpen(false)} />
