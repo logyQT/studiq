@@ -207,13 +207,27 @@ ensure_docker() {
 # ── apps/web/.env rendering ──────────────────────────────────────────────────
 format_env_value() {
   local value=$1
-  if [[ "$value" =~ [[:space:]#\"\'\$] ]]; then
-    value=${value//\\/\\\\}
-    value=${value//\"/\\\"}
-    printf '"%s"' "$value"
-  else
-    printf '%s' "$value"
+  # dotenv-expand runs over every value; `\$` is the one escape it honours in
+  # both bare and quoted values.
+  local escaped=${value//\$/\\\$}
+
+  # No quoting needed (matches the previous behaviour): bare values keep
+  # backslashes verbatim through @next/env.
+  if [[ "$value" != *[[:space:]\#\"\']* ]]; then
+    printf '%s' "$escaped"
+    return
   fi
+
+  # Prefer single quotes: @next/env keeps backslashes verbatim inside them, so
+  # literal `\n` / `\r` survive (double quotes turn them into newline / CR).
+  if [[ "$value" != *"'"* ]]; then
+    printf "'%s'" "$escaped"
+    return
+  fi
+
+  # An apostrophe cannot be escaped in a single-quoted value; double quotes are
+  # the only remaining option (rare for the generated web env).
+  printf '"%s"' "$escaped"
 }
 
 render_web_env() {
@@ -253,15 +267,34 @@ read_web_pid() {
   local pid
   pid=$(tr -d '[:space:]' <"$WEB_PID_FILE")
   pid_alive "$pid" || return 1
-  printf '%s' "$pid"
+  # A PID can be reused after a crash. Only trust it when its command line is
+  # still the web dev server, so `status` never reports and `down` never kills
+  # an unrelated process.
+  local command
+  command=$(ps -o command= -p "$pid" 2>/dev/null) || return 1
+  if [[ "$command" == *"@studiq/web"* ]]; then
+    printf '%s' "$pid"
+    return 0
+  fi
+  # The child `next dev` belongs to this checkout; do not trust another repo's.
+  if [[ "$command" == *"$REPO_ROOT"* && "$command" == *next* ]]; then
+    printf '%s' "$pid"
+    return 0
+  fi
+  return 1
 }
 
+# Wait for the HTTP health check. When a PID is supplied, stop early as soon as
+# that process exits instead of burning the whole timeout.
 wait_for_web() {
-  local timeout=${1:-120} waited=0 code
+  local timeout=${1:-120} pid=${2:-} waited=0 code
   while (( waited < timeout )); do
     code=$(web_code)
     if [[ "$code" == "200" ]]; then
       return 0
+    fi
+    if [[ -n "$pid" ]] && ! pid_alive "$pid"; then
+      return 2
     fi
     sleep 1
     waited=$((waited + 1))
@@ -279,7 +312,7 @@ start_web() {
       return 0
     fi
     warn "Web pid $existing is alive but not answering yet; waiting…"
-    if wait_for_web 60; then
+    if wait_for_web 60 "$existing"; then
       info "Web is ready (pid $existing)"
       return 0
     fi
@@ -311,9 +344,12 @@ start_web() {
   printf '%s\n' "$pid" >"$WEB_PID_FILE"
   info "Started web dev server (pid $pid) → $WEB_LOG"
 
-  if ! wait_for_web 120; then
+  if ! wait_for_web 120 "$pid"; then
     printf '\n──── last 40 lines of %s ────\n' "$WEB_LOG" >&2
     tail -n 40 "$WEB_LOG" >&2 || true
+    if ! pid_alive "$pid"; then
+      fail "Web dev server (pid $pid) exited during startup. See $WEB_LOG."
+    fi
     fail "Web did not answer on $(web_url) within 120s."
   fi
   info "Web is ready (pid $pid)"
@@ -488,20 +524,24 @@ cmd_reset_db() {
 
 cmd_build() {
   load_root_env
-  load_web_env_fallback
   apply_basic_defaults
-  guard_shared_stack
   ensure_bun
 
   if web_pid=$(read_web_pid); then
     fail "The dev server is running (pid $web_pid). Run 'bun dev:down' before 'bun dev:build'."
   fi
 
-  # Prefer fresh keys, but allow an offline build from the existing generated env.
-  if supabase_healthy; then
-    load_supabase_status || true
+  # Prefer fresh keys when the stack is up and readable; only fall back to the
+  # existing generated env for an offline build. Loading that fallback first
+  # would let a rotated anon/service key silently win over the live one.
+  if supabase_healthy && load_supabase_status; then
     merge_supabase_env
+  else
+    load_web_env_fallback
   fi
+
+  # Run after fallback/merge so a QA URL from either source is still caught.
+  guard_shared_stack
   render_web_env
 
   header "Building @studiq/web"
