@@ -75,8 +75,11 @@ reviews:
     # Reviewing them burns tokens on code that is still moving.
     drafts: false
     # Only `main` is long-lived; feature branches target it directly.
+    # `experimental/stripe-integration` is the stacked branch for #662: small
+    # PRs land there first, then the whole feature is reviewed against main.
     base_branches:
       - 'main'
+      - 'experimental/stripe-integration'
       # QA-suite integration branch. PRs are normally tagged [QA-SUITE] below
       # and skipped; keeping the branch listed makes the intent explicit.
       - 'qa-suite'
