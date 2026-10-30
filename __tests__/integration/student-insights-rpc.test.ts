@@ -364,15 +364,22 @@ describe('get_student_insights rules (#657 review)', () => {
     const assignmentAttempt = rows!.find((row) => row.is_assignment_attempt)!;
 
     // The student can update their own attempt through PostgREST (RLS FOR ALL); the trigger
-    // keeps the stored provenance.
-    await student
+    // keeps the stored provenance. `.select()` proves the write reached the row instead of
+    // being filtered by RLS, which would make this test vacuous.
+    const { data: touchedPractice, error: practiceError } = await student
       .from('quiz_attempts')
       .update({ is_assignment_attempt: true })
-      .eq('id', practice.id);
-    await student
+      .eq('id', practice.id)
+      .select('id');
+    expect(practiceError).toBeNull();
+    expect(touchedPractice).toHaveLength(1);
+    const { data: touchedAssignment, error: assignmentError } = await student
       .from('quiz_attempts')
       .update({ is_assignment_attempt: false })
-      .eq('id', assignmentAttempt.id);
+      .eq('id', assignmentAttempt.id)
+      .select('id');
+    expect(assignmentError).toBeNull();
+    expect(touchedAssignment).toHaveLength(1);
 
     const { data: after } = await select();
     expect(after!.find((row) => row.id === practice.id)!.is_assignment_attempt).toBe(false);

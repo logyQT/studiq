@@ -38,6 +38,11 @@ WHERE assignment_id IS NOT NULL;
 -- attempts through PostgREST, and the quota, the resume card and the mastery RPC all trust this
 -- value. An insert derives it from `assignment_id`; an update keeps the stored value, so the
 -- `ON DELETE SET NULL` referential action cannot flip it either.
+--
+-- Trade-off of re-deriving on insert: a logical copy of the table (pg_dump --data-only, a
+-- restore) re-inserts orphaned assignment attempts with `assignment_id = NULL`, so they come
+-- back as practice attempts. Preserving an explicit `true` instead would let a client insert
+-- `true` to dodge the daily practice quota, so the derivation wins.
 CREATE OR REPLACE FUNCTION public.quiz_attempts_assignment_marker()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -34,7 +34,9 @@ CREATE UNIQUE INDEX quiz_attempts_one_open_per_assignment
 
 -- The assignment marker is database-controlled: derived on insert, preserved on update. A
 -- student may update their own attempts through PostgREST, and the quota, the resume card and
--- the student insights all trust this value (#657).
+-- the student insights all trust this value (#657). A logical copy (pg_dump --data-only, a
+-- restore) re-derives the marker and turns orphaned assignment attempts into practice ones;
+-- the alternative (trusting an explicit `true` on insert) would reopen the quota bypass.
 CREATE OR REPLACE FUNCTION public.quiz_attempts_assignment_marker()
 RETURNS trigger
 LANGUAGE plpgsql
