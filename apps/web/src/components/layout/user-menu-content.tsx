@@ -69,6 +69,14 @@ function MenuDivider({ variant }: { variant: UserMenuVariant }) {
 
 export type UserMenuVariant = 'menu' | 'plain';
 
+/** Focus the checked radio of the inline theme switch (or the first one). */
+function focusThemeRadio(themeGroup: HTMLElement | null): void {
+  (
+    themeGroup?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]') ??
+    themeGroup?.querySelector<HTMLElement>('[role="radio"]')
+  )?.focus();
+}
+
 /**
  * Keyboard access for the inline language select and theme switch.
  *
@@ -76,7 +84,8 @@ export type UserMenuVariant = 'menu' | 'plain';
  * visits `menuitem`s, so those two controls would be pointer-only. Keep the
  * panel and its markup exactly as they are; this only routes `Tab`:
  *
- *   menuitem → language select → theme switch → out of the menu (and back).
+ *   items before settings → language select → theme switch → out of the menu
+ *   (and back); the logout item after the settings rows already leaves forwards.
  *
  * The controls themselves keep their own keys (arrows/Enter/Space); see
  * `LanguageSelect` (stops the menu from also handling the arrows that open the
@@ -115,21 +124,28 @@ export function handleUserMenuTab(
   }
 
   // The menu's roving focus: move into the settings rows, backwards leaves.
+  // Items after the settings rows (logout) must leave forwards instead of
+  // jumping back to the select, and go back to the theme switch on Shift+Tab.
   if (active?.getAttribute('role') === 'menuitem') {
+    const isAfterSettings =
+      language != null &&
+      (language.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     event.preventDefault();
-    if (event.shiftKey) onClose();
-    else language?.focus();
+    if (!isAfterSettings) {
+      if (event.shiftKey) onClose();
+      else language?.focus();
+    } else if (event.shiftKey) {
+      focusThemeRadio(themeGroup);
+    } else {
+      onClose();
+    }
     return;
   }
 
   if (active && active === language) {
     event.preventDefault();
     if (event.shiftKey) itemBeforeLanguage?.focus();
-    else
-      (
-        themeGroup?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]') ??
-        themeGroup?.querySelector<HTMLElement>('[role="radio"]')
-      )?.focus();
+    else focusThemeRadio(themeGroup);
     return;
   }
 
