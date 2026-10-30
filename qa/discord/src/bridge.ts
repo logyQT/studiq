@@ -140,6 +140,9 @@ export class Bridge {
       const previous = this.sessionId;
       this.sessionId = next;
       if (next) {
+        // Any session driven through Discord is an autonomous round: the
+        // operator is not at the TUI to answer a blocking question.
+        await this.opencode.markAutonomous(next).catch(() => undefined);
         if (previous) {
           // A new session appeared (e.g. dispatch). Seed only messages older
           // than the grace window so a reply that arrived before we noticed

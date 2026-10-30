@@ -156,6 +156,7 @@ async function ensureManagerSession(
   if (stored) {
     try {
       await opencode.messages(stored, 1);
+      await opencode.markAutonomous(stored).catch(() => undefined);
       log.info('manager', `reusing session ${stored}`);
       return stored;
     } catch (err) {

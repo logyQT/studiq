@@ -160,6 +160,18 @@ export class OpencodeClient {
     );
   }
 
+  /** Mark a Discord-bound session so the no-question guard applies to it. */
+  async markAutonomous(sessionId: string): Promise<void> {
+    await this.request(
+      `/api/session/${encodeURIComponent(sessionId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ metadata: { qaAutonomous: true } }),
+      },
+      15_000,
+    );
+  }
+
   /** Current session for a slot: an active one if any, else the newest. */
   async resolveSession(directory: string): Promise<SessionSummary | null> {
     const [sessions, active] = await Promise.all([
