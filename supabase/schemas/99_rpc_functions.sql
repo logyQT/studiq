@@ -880,14 +880,14 @@ BEGIN
 END;
 $$;
 
-// ==========================================
-// get_student_insights (#657, ROADMAP 5C)
-// Study time, per-topic mastery and the retention curve of the caller, aggregated in SQL
-// (the volume is every review and answer of the window). SECURITY INVOKER: the caller's own
-// rows only, RLS stays the floor. Assignment attempts are excluded from mastery because a
-// teacher may withhold their results — keyed on the durable `is_assignment_attempt` marker,
-// not on `assignment_id`, which becomes NULL when the assignment is deleted.
-// ==========================================
+-- ==========================================
+-- get_student_insights (#657, ROADMAP 5C)
+-- Study time, per-topic mastery and the retention curve of the caller, aggregated in SQL
+-- (the volume is every review and answer of the window). SECURITY INVOKER: the caller's own
+-- rows only, RLS stays the floor. Assignment attempts are excluded from mastery because a
+-- teacher may withhold their results — keyed on the durable `is_assignment_attempt` marker,
+-- not on `assignment_id`, which becomes NULL when the assignment is deleted.
+-- ==========================================
 
 CREATE OR REPLACE FUNCTION public.get_student_insights(
   p_user_id uuid,

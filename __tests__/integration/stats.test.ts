@@ -149,6 +149,9 @@ describe(`Stats Integration`, () => {
     const { error } = await service.from('quiz_attempts').insert([
       {
         user_id: member.id,
+        // Every row of a multi-row insert carries this column: a key missing from one object
+        // arrives as NULL, not as the column default (#657).
+        is_assignment_attempt: false,
         score: 8,
         total_questions: 10,
         config: { title: inOrgTitle },
@@ -160,6 +163,7 @@ describe(`Stats Integration`, () => {
         // config-less — the label comes from the assignment's quiz (#207).
         user_id: member.id,
         assignment_id: assignment.id,
+        is_assignment_attempt: true,
         score: 6,
         total_points: 8,
         total_questions: 8,
@@ -169,6 +173,7 @@ describe(`Stats Integration`, () => {
       },
       {
         user_id: outsider.id,
+        is_assignment_attempt: false,
         score: 0,
         total_questions: 10,
         config: { title: outsiderTitle },
@@ -179,6 +184,7 @@ describe(`Stats Integration`, () => {
         // Started but never finished (#212): counts as an attempt, never as a
         // completed one, and never contributes to avgScore.
         user_id: member.id,
+        is_assignment_attempt: false,
         score: 3,
         total_questions: 10,
         config: { title: inOrgTitle },

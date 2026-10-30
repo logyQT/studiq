@@ -84,7 +84,13 @@ export function RetentionCurveCard() {
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
                 <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} unit="%" />
-                <Tooltip content={<ChartTooltipContent />} />
+                <Tooltip
+                  content={
+                    // The shared tooltip renders no value when it is 0; a real 0 % bucket is
+                    // drawn as a 4 px sliver and must still read "0 %".
+                    <ChartTooltipContent formatter={(value) => `${value}%`} />
+                  }
+                />
                 {/* A bucket without reviews is drawn as no bar at all; a real 0 % keeps a sliver. */}
                 <Bar
                   dataKey="accuracy"

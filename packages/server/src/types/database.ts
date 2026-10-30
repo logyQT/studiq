@@ -2301,6 +2301,10 @@ export type Database = {
         Args: { p_created_by?: string; p_organization_id?: string; p_user_id: string };
         Returns: Json;
       };
+      get_student_insights: {
+        Args: { p_days?: number; p_user_id: string };
+        Returns: Json;
+      };
       get_teacher_problematic_questions: {
         Args: { p_bank_id?: string; p_organization_id?: string; p_user_id: string };
         Returns: Json;

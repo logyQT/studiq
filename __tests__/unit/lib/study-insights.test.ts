@@ -291,6 +291,13 @@ describe('the three insight cards report failures (#657 review)', () => {
     // the declarative copy once lost a `$` at each end of the body
     expect(schema).not.toMatch(/^\$;$/m);
     expect(schema).not.toMatch(/^AS \$$/m);
+    // every statement of the declarative file is SQL, never a JS comment
+    expect(schema).not.toMatch(/^\/\//m);
+    // the window and the mastery filter are part of both copies
+    for (const sql of [migration, schema]) {
+      expect(sql).toContain('make_interval(days => v_days)');
+      expect(sql).toContain('AND NOT qa.is_assignment_attempt');
+    }
   });
 });
 

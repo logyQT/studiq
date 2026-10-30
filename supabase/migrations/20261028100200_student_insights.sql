@@ -19,6 +19,20 @@
 -- run for another user.
 -- ==========================================
 
+-- The durable assignment marker the mastery block filters on. `quiz_attempts.assignment_id` is
+-- `ON DELETE SET NULL`, so deleting an assignment would otherwise turn its finished attempts
+-- into practice quizzes; the marker is written once, when the attempt is created, and survives
+-- the deletion. It is added here, before the function that reads it, so a live `db push` never
+-- exposes a function that references a column the table does not have yet.
+ALTER TABLE public.quiz_attempts
+  ADD COLUMN IF NOT EXISTS is_assignment_attempt boolean NOT NULL DEFAULT false;
+
+-- Best effort for rows created before the marker: attempts whose assignment still exists keep
+-- their provenance. An attempt whose assignment was already deleted cannot be recovered.
+UPDATE public.quiz_attempts
+SET is_assignment_attempt = true
+WHERE assignment_id IS NOT NULL;
+
 CREATE OR REPLACE FUNCTION public.get_student_insights(
   p_user_id uuid,
   p_days integer DEFAULT 30
