@@ -38,7 +38,11 @@ CREATE TABLE public.billing_customers (
   livemode           boolean NOT NULL,
   created_at         timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT billing_customers_one_owner
-    CHECK ((user_id IS NULL) <> (organization_id IS NULL))
+    CHECK ((user_id IS NULL) <> (organization_id IS NULL)),
+  -- Referenced by the owner/mode composite FKs on billing_subscriptions, so a
+  -- subscription cannot pair one owner's customer with another owner or mode.
+  CONSTRAINT billing_customers_user_mode_key UNIQUE (id, user_id, livemode),
+  CONSTRAINT billing_customers_organization_mode_key UNIQUE (id, organization_id, livemode)
 );
 
 CREATE UNIQUE INDEX billing_customers_user_livemode_key
@@ -52,8 +56,7 @@ CREATE UNIQUE INDEX billing_customers_organization_livemode_key
 CREATE TABLE public.billing_subscriptions (
   id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   stripe_subscription_id text NOT NULL UNIQUE,
-  billing_customer_id    uuid NOT NULL
-                           REFERENCES public.billing_customers(id) ON DELETE CASCADE,
+  billing_customer_id    uuid NOT NULL,
   user_id                uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   organization_id        uuid REFERENCES public.organizations(id) ON DELETE CASCADE,
   -- The admin who bought the plan. Nullable: the profile may be purged while
@@ -83,7 +86,17 @@ CREATE TABLE public.billing_subscriptions (
   created_at             timestamptz NOT NULL DEFAULT now(),
   updated_at             timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT billing_subscriptions_one_owner
-    CHECK ((user_id IS NULL) <> (organization_id IS NULL))
+    CHECK ((user_id IS NULL) <> (organization_id IS NULL)),
+  -- MATCH SIMPLE: the user FK is skipped for an org row (user_id NULL) and the
+  -- org FK is skipped for a personal row, so exactly one applies.
+  CONSTRAINT billing_subscriptions_customer_user_fkey
+    FOREIGN KEY (billing_customer_id, user_id, livemode)
+    REFERENCES public.billing_customers (id, user_id, livemode)
+    ON DELETE CASCADE,
+  CONSTRAINT billing_subscriptions_customer_organization_fkey
+    FOREIGN KEY (billing_customer_id, organization_id, livemode)
+    REFERENCES public.billing_customers (id, organization_id, livemode)
+    ON DELETE CASCADE
 );
 
 CREATE UNIQUE INDEX billing_subscriptions_one_active_organization

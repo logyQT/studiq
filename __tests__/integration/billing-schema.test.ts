@@ -194,6 +194,29 @@ describe('billing schema (#662)', () => {
       expect(orphan.error?.code).toBe('23514');
     });
 
+    it('rejects a customer that belongs to another owner or mode', async () => {
+      const wrongOwner = await service.from('billing_subscriptions').insert(
+        subscriptionRow({
+          stripe_subscription_id: `sub_test_${tag('mismatch-owner')}`,
+          checkout_session_id: null,
+          user_id: other.id,
+          purchaser_user_id: other.id,
+          status: 'canceled',
+        }),
+      );
+      expect(wrongOwner.error?.code).toBe('23503');
+
+      const wrongMode = await service.from('billing_subscriptions').insert(
+        subscriptionRow({
+          stripe_subscription_id: `sub_test_${tag('mismatch-mode')}`,
+          checkout_session_id: null,
+          status: 'canceled',
+          livemode: true,
+        }),
+      );
+      expect(wrongMode.error?.code).toBe('23503');
+    });
+
     it('lets an owner read their rows but never write them', async () => {
       const own = await ownerSession
         .from('billing_subscriptions')

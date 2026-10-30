@@ -27,10 +27,7 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
      public.user_feature_overrides,
      public.profiles,
      public.payments,
-     public.billing_customers,
-     public.billing_subscriptions,
-     public.stripe_prices,
-     public.stripe_webhook_events
+     public.billing_subscriptions
   FROM authenticated;
 
 -- Service-role-only billing tables: no PostgREST surface at all. Without this,
