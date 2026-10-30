@@ -172,6 +172,9 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       - name: Start Supabase
+        env:
+          APP_URL: http://localhost:3000
+          SUPABASE_URL: http://localhost:54321
         run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
       - name: Write root .env
         # vitest's loadEnv() reads the repo root; integration imports the route
@@ -230,6 +233,11 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Start Supabase
+        env:
+          # `supabase/config.toml` resolves `auth.site_url` from `env(APP_URL)`;
+          # without it the QA e-mails carry relative callback links.
+          APP_URL: http://localhost:3010
+          SUPABASE_URL: http://localhost:54321
         run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
 
       - name: Write env files
@@ -321,6 +329,9 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Start Supabase
+        env:
+          APP_URL: http://localhost:3000
+          SUPABASE_URL: http://localhost:54321
         # studio/logflare/vector/edge-runtime are not used by the app; skipping
         # them saves ~4 GB of pulls and a couple of minutes.
         run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
@@ -396,6 +407,9 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       - name: Start Supabase
+        env:
+          APP_URL: http://localhost:3000
+          SUPABASE_URL: http://localhost:54321
         run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
       - name: Write admin env
         run: |
