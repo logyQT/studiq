@@ -253,6 +253,10 @@ describe(`Assignment Attempts Integration`, () => {
     await cleanupTeacherAssignments(teacher.user.id);
     await cleanupQuestions(teacher.user.id, 'seed-question-');
     if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
+    // `nonTargeted` is an account this file created; delete it after its rows are gone.
+    await createServiceClient()
+      .auth.admin.deleteUser(nonTargeted.id)
+      .catch(() => {});
   });
 
   it('refuses a target outside the assignment organisation and keeps the existing ones (#235)', async () => {
