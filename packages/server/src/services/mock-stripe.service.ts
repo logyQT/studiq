@@ -1,6 +1,7 @@
 import { isOrgAdminRole, type Nullable } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { getSiteUrl } from '@studiq/server/lib/site-url';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -102,7 +103,7 @@ export class MockStripeService {
     }
 
     const sessionId = crypto.randomUUID();
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const baseUrl = getSiteUrl();
     const orgParam = purchasable.data.isOrgPlan ? `&org_id=${orgId}` : '';
     const url = `${baseUrl}/checkout?session_id=${sessionId}&plan_id=${planId}${orgParam}`;
 
@@ -175,7 +176,7 @@ export class MockStripeService {
   }
 
   async createPortalSession(_userId: string): Promise<ServiceResult<{ url: string }>> {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const baseUrl = getSiteUrl();
     return success({ url: `${baseUrl}/app/billing` });
   }
 }

@@ -11,6 +11,7 @@ import { LocaleAnnouncerProvider } from '@/components/shared/language-switcher/l
 
 import '@/app/globals.css';
 import { ToastProvider } from '@studiq/ui';
+import { getSiteUrl } from '@studiq/server/lib/site-url';
 
 /**
  * =============================================================================
@@ -33,7 +34,7 @@ const geistMono = Geist_Mono({
  * =============================================================================
  * Dokumentacja: https://nextjs.org/docs/app/api-reference/functions/generate-metadata
  */
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+const siteUrl = getSiteUrl();
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
