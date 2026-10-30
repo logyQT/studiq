@@ -1137,7 +1137,15 @@ export class TeacherAssignmentService {
     return success({ imageUrl });
   }
 
-  /** True when a group or student of `data` is not part of the assignment's organisation. */
+  /**
+   * True when a group or student of `data` is not part of the assignment's organisation.
+   *
+   * A personal assignment (`organization_id` NULL) has no tenant of its own: direct student
+   * targets are the supported personal flow and are accepted as supplied, while a group is
+   * organisation-owned and must belong to one of the caller's organisations (its members would
+   * otherwise gain access to another tenant's assignment). Counts are requested with
+   * `head: true` so a long target list is not truncated by the PostgREST row limit.
+   */
   private async hasForeignTargets(
     supabase: SupabaseClient,
     assignmentId: string,
@@ -1153,24 +1161,46 @@ export class TeacherAssignmentService {
       .select('organization_id')
       .eq('id', assignmentId)
       .single();
-    const organizationId = assignment?.organization_id ?? ctx.activeOrgId;
-    if (!organizationId) return true;
+    const organizationId = assignment?.organization_id as string | null | undefined;
+
+    if (!organizationId) {
+      if (groupIds.length === 0) return false;
+
+      const { data: memberships } = await supabase
+        .from('org_members')
+        .select('organization_id')
+        .eq('user_id', ctx.userId);
+      const callerOrgIds = [
+        ...new Set((memberships ?? []).map((m) => m.organization_id as string)),
+      ];
+      if (callerOrgIds.length === 0) return true;
+
+      const { count, error } = await supabase
+        .from('groups')
+        .select('id', { count: 'exact', head: true })
+        .in('id', groupIds)
+        .in('organization_id', callerOrgIds);
+      if (error) return true;
+      return (count ?? 0) !== groupIds.length;
+    }
 
     if (groupIds.length > 0) {
-      const { data: groups } = await supabase
+      const { count, error } = await supabase
         .from('groups')
-        .select('id')
+        .select('id', { count: 'exact', head: true })
         .in('id', groupIds)
         .eq('organization_id', organizationId);
-      if ((groups?.length ?? 0) !== groupIds.length) return true;
+      if (error) return true;
+      if ((count ?? 0) !== groupIds.length) return true;
     }
     if (studentIds.length > 0) {
-      const { data: members } = await supabase
+      const { count, error } = await supabase
         .from('org_members')
-        .select('user_id')
+        .select('user_id', { count: 'exact', head: true })
         .in('user_id', studentIds)
         .eq('organization_id', organizationId);
-      if ((members?.length ?? 0) !== studentIds.length) return true;
+      if (error) return true;
+      if ((count ?? 0) !== studentIds.length) return true;
     }
     return false;
   }

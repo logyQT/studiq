@@ -33,6 +33,7 @@ describe(`Assignment Attempts Integration`, () => {
   let teacher!: BeforeResult;
   let student!: BeforeResult;
   let other!: TestUserFixture;
+  let nonTargeted!: TestUserFixture;
   let assignmentId: string;
 
   async function startAs(
@@ -48,13 +49,13 @@ describe(`Assignment Attempts Integration`, () => {
     return { status: response.status, body: await response.json() };
   }
 
-  async function openAttemptCount(): Promise<number> {
+  async function openAttemptCount(userId: string = student.user.id): Promise<number> {
     const supabase = createServiceClient();
     const { data, error } = await supabase
       .from('quiz_attempts')
       .select('id')
       .eq('assignment_id', assignmentId)
-      .eq('user_id', student.user.id)
+      .eq('user_id', userId)
       .is('completed_at', null);
     if (error) throw new Error(`Failed to count open attempts: ${error.message}`);
     return (data ?? []).length;
@@ -160,6 +161,9 @@ describe(`Assignment Attempts Integration`, () => {
     teacher = await before({ role: 'educator', org: true, questions: 2, assignment: true });
     student = await before({ role: 'student' });
     other = await createTestUser({ role: 'student' });
+    // An organisation member who is not targeted: the path that must be refused for a missing
+    // target rather than for a missing organisation membership.
+    nonTargeted = await createTestUser({ role: 'student' });
 
     assignmentId = teacher.created.assignmentId as string;
     if (!assignmentId) throw new Error('Assignment was not seeded');
@@ -175,6 +179,11 @@ describe(`Assignment Attempts Integration`, () => {
     await seedOrgMembership({
       organizationId: teacher.orgId,
       userId: student.user.id,
+      orgRoleId: memberRole.id,
+    });
+    await seedOrgMembership({
+      organizationId: teacher.orgId,
+      userId: nonTargeted.id,
       orgRoleId: memberRole.id,
     });
 
@@ -234,11 +243,13 @@ describe(`Assignment Attempts Integration`, () => {
     await setShowResults(false);
     await cleanupQuizAttempts(student.user.id);
     await cleanupQuizAttempts(other.id);
+    await cleanupQuizAttempts(nonTargeted.id);
   });
 
   afterAll(async () => {
     await cleanupQuizAttempts(student.user.id);
     await cleanupQuizAttempts(other.id);
+    await cleanupQuizAttempts(nonTargeted.id);
     await cleanupTeacherAssignments(teacher.user.id);
     await cleanupQuestions(teacher.user.id, 'seed-question-');
     if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
@@ -354,10 +365,16 @@ describe(`Assignment Attempts Integration`, () => {
     expect(await openAttemptCount()).toBe(0);
   });
 
-  it('returns 404 for a student who is not targeted (#369)', async () => {
+  it('returns 404 for an organisation member who is not targeted (#369)', async () => {
+    const result = await startAs(nonTargeted);
+    expect(result.status).toBe(404);
+    expect(await openAttemptCount(nonTargeted.id)).toBe(0);
+  });
+
+  it('returns 404 for a student outside the assignment organisation (#369, #235)', async () => {
     const result = await startAs(other);
     expect(result.status).toBe(404);
-    expect(await openAttemptCount()).toBe(0);
+    expect(await openAttemptCount(other.id)).toBe(0);
   });
 
   it('exposes the remaining budget after the first of two attempts (#372)', async () => {

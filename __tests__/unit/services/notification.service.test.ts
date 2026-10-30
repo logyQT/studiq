@@ -31,7 +31,7 @@ const ctx: RequestContext = {
 /** A thenable query builder that records what was chained and resolves to `result`. */
 function builder(result: Record<string, unknown> = { data: null, error: null }) {
   const b: any = {};
-  for (const m of ['select', 'eq', 'in', 'is', 'order', 'limit', 'update', 'insert']) {
+  for (const m of ['select', 'eq', 'in', 'is', 'order', 'limit', 'range', 'update', 'insert']) {
     b[m] = vi.fn(() => b);
   }
   b.maybeSingle = vi.fn().mockResolvedValue(result);
@@ -291,13 +291,21 @@ describe('NotificationService: producers', () => {
   it('sends large classes in batches of 500', async () => {
     const students = Array.from({ length: 1200 }, (_, i) => ({ user_id: `s${i}` }));
     const inserts = [builder(), builder(), builder()];
-    const { service: s } = service({
+    // PostgREST returns at most 1000 rows, so both lookups walk pages; the org
+    // membership check chunks its `.in()` list so the request URL stays short.
+    const { admin, service: s } = service({
       teacher_assignments: [
         builder({ data: { title: 'T', organization_id: 'org-1' }, error: null }),
       ],
       assignment_targets: [builder({ data: [{ group_id: 'g1', student_id: null }], error: null })],
-      group_members: [builder({ data: students, error: null })],
-      org_members: [builder({ data: students, error: null })],
+      group_members: [
+        builder({ data: students.slice(0, 500), error: null }),
+        builder({ data: students.slice(500, 1000), error: null }),
+        builder({ data: students.slice(1000), error: null }),
+      ],
+      org_members: Array.from({ length: 6 }, (_, i) =>
+        builder({ data: students.slice(i * 200, (i + 1) * 200), error: null }),
+      ),
       // A copy: the fake client takes builders off the front of the queue.
       notifications: [...inserts],
     });
@@ -307,6 +315,37 @@ describe('NotificationService: producers', () => {
     expect(inserts.map((b) => (b.insert.mock.calls[0]?.[0] as unknown[]).length)).toEqual([
       500, 500, 200,
     ]);
+    expect(admin.calls.group_members).toHaveLength(3);
+    expect(admin.calls.org_members).toHaveLength(6);
+    for (const chunk of admin.calls.org_members) {
+      const ids = chunk.in.mock.calls[0][1] as string[];
+      expect(ids.length).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it('pages through the assignment targets instead of trusting one response', async () => {
+    const firstPage = Array.from({ length: 500 }, (_, i) => ({
+      group_id: null,
+      student_id: `s${i}`,
+    }));
+    const insert = builder();
+    const { admin, service: s } = service({
+      teacher_assignments: [
+        builder({ data: { title: 'T', organization_id: 'org-1' }, error: null }),
+      ],
+      assignment_targets: [
+        builder({ data: firstPage, error: null }),
+        builder({ data: [{ group_id: null, student_id: 'last' }], error: null }),
+      ],
+      org_members: [builder({ data: [...firstPage, { user_id: 'last' }], error: null })],
+      notifications: [insert],
+    });
+
+    await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
+
+    expect(admin.calls.assignment_targets).toHaveLength(2);
+    const rows = insert.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows.map((r) => r.user_id)).toContain('last');
   });
 
   it('tells the student their assignment was graded, with its title', async () => {

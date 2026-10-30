@@ -64,6 +64,15 @@ interface NotificationRow {
 /** Inserts are sent in batches so one big class does not become one huge statement. */
 const INSERT_BATCH = 500;
 
+/**
+ * PostgREST caps a response at 1000 rows, so reads walk pages instead of trusting one query to
+ * return everything: a large class must not silently lose its later members.
+ */
+const READ_PAGE = 500;
+
+/** `.in()` values travel in the request URL, so they are chunked rather than sent all at once. */
+const IN_CHUNK = 200;
+
 /** Only a code or a class name is logged: database messages can quote ids and names. */
 function errorCode(err: unknown): string {
   if (err && typeof err === 'object') {
@@ -173,17 +182,24 @@ export class NotificationService implements Notifier {
       const assignment = await this.assignment(input.assignmentId);
       if (!assignment?.organizationId) return;
 
-      const { data: targets, error } = await admin
-        .from('assignment_targets')
-        .select('group_id, student_id')
-        .eq('assignment_id', input.assignmentId);
-      if (error) throw error;
+      const targets: Array<{ group_id: string | null; student_id: string | null }> = [];
+      for (let from = 0; ; from += READ_PAGE) {
+        const { data: page, error } = await admin
+          .from('assignment_targets')
+          .select('group_id, student_id')
+          .eq('assignment_id', input.assignmentId)
+          .order('id', { ascending: true })
+          .range(from, from + READ_PAGE - 1);
+        if (error) throw error;
+        targets.push(...(page ?? []));
+        if ((page ?? []).length < READ_PAGE) break;
+      }
 
       const recipients = new Set<string>();
       const groupIds: string[] = [];
-      for (const target of targets ?? []) {
-        if (target.student_id) recipients.add(target.student_id as string);
-        if (target.group_id) groupIds.push(target.group_id as string);
+      for (const target of targets) {
+        if (target.student_id) recipients.add(target.student_id);
+        if (target.group_id) groupIds.push(target.group_id);
       }
 
       // A target is a raw id the request supplied, so the recipients are never taken from it
@@ -191,28 +207,37 @@ export class NotificationService implements Notifier {
       // recipient must still be a member of it. Otherwise a teacher of two organisations could
       // push one tenant's assignment title into another tenant's bell.
       if (groupIds.length > 0) {
-        const { data: members, error: membersError } = await admin
-          .from('group_members')
-          .select('user_id, groups!inner(organization_id)')
-          .in('group_id', groupIds)
-          .eq('role', 'member')
-          .eq('groups.organization_id', assignment.organizationId);
-        if (membersError) throw membersError;
-        for (const member of members ?? []) recipients.add(member.user_id as string);
+        for (let from = 0; ; from += READ_PAGE) {
+          const { data: members, error: membersError } = await admin
+            .from('group_members')
+            .select('user_id, groups!inner(organization_id)')
+            .in('group_id', groupIds)
+            .eq('role', 'member')
+            .eq('groups.organization_id', assignment.organizationId)
+            .order('id', { ascending: true })
+            .range(from, from + READ_PAGE - 1);
+          if (membersError) throw membersError;
+          for (const member of members ?? []) recipients.add(member.user_id as string);
+          if ((members ?? []).length < READ_PAGE) break;
+        }
       }
 
       // The teacher may sit in the group too; they know they published it.
       recipients.delete(input.teacherId);
 
       if (recipients.size > 0) {
-        const { data: orgMembers, error: orgError } = await admin
-          .from('org_members')
-          .select('user_id')
-          .eq('organization_id', assignment.organizationId)
-          .in('user_id', [...recipients]);
-        if (orgError) throw orgError;
-        const inOrg = new Set((orgMembers ?? []).map((m) => m.user_id as string));
-        for (const id of [...recipients]) if (!inOrg.has(id)) recipients.delete(id);
+        const inOrg = new Set<string>();
+        const ids = [...recipients];
+        for (let i = 0; i < ids.length; i += IN_CHUNK) {
+          const { data: orgMembers, error: orgError } = await admin
+            .from('org_members')
+            .select('user_id')
+            .eq('organization_id', assignment.organizationId)
+            .in('user_id', ids.slice(i, i + IN_CHUNK));
+          if (orgError) throw orgError;
+          for (const member of orgMembers ?? []) inOrg.add(member.user_id as string);
+        }
+        for (const id of ids) if (!inOrg.has(id)) recipients.delete(id);
       }
 
       await this.insert(

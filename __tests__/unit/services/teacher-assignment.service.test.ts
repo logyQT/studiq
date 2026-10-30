@@ -608,9 +608,8 @@ describe('TeacherAssignmentService', () => {
       mock.from
         .mockReturnValueOnce(owned())
         .mockReturnValueOnce(chain({ organization_id: orgId })) // the assignment's organisation
-        .mockReturnValueOnce(chain([{ id: 'g-1' }])) // the group is in it
-        .mockReturnValueOnce(chain([{ user_id: 's-1' }])) // and so is the student
-        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce(chain(null, 1)) // the group is in it
+        .mockReturnValueOnce(chain(null, 1)) // and so is the student
         .mockReturnValue(chain(null));
 
       const result = await service.setTargets(
@@ -626,7 +625,7 @@ describe('TeacherAssignmentService', () => {
       mock.from
         .mockReturnValueOnce(owned())
         .mockReturnValueOnce(chain({ organization_id: orgId }))
-        .mockReturnValueOnce(chain([])) // no group of this organisation matches
+        .mockReturnValueOnce(chain(null, 0)) // no group of this organisation matches
         .mockReturnValue(chain(null));
 
       const result = await service.setTargets(assignmentId, { groupIds: ['g-foreign'] }, ctx);
@@ -640,7 +639,7 @@ describe('TeacherAssignmentService', () => {
       mock.from
         .mockReturnValueOnce(owned())
         .mockReturnValueOnce(chain({ organization_id: orgId }))
-        .mockReturnValueOnce(chain([{ user_id: 's-1' }])) // only one of the two is a member
+        .mockReturnValueOnce(chain(null, 1)) // only one of the two is a member
         .mockReturnValue(chain(null));
 
       const result = await service.setTargets(
@@ -650,6 +649,47 @@ describe('TeacherAssignmentService', () => {
       );
 
       expect(result).toMatchObject({ success: false, error: 'BAD_REQUEST' });
+    });
+
+    it('accepts a direct student target on a personal assignment (no organisation)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ organization_id: null }))
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { studentIds: ['s-1'] }, ctx);
+
+      expect(result.success).toBe(true);
+      const tables = mock.from.mock.calls.map(([table]: [string]) => table);
+      expect(tables).toContain('assignment_targets');
+    });
+
+    it("accepts a group target on a personal assignment when it is one of the caller's groups", async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ organization_id: null }))
+        .mockReturnValueOnce(chain([{ organization_id: orgId }])) // the caller's organisations
+        .mockReturnValueOnce(chain(null, 1)) // the group is in one of them
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { groupIds: ['g-1'] }, ctx);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('refuses a group of another organisation on a personal assignment', async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(chain({ organization_id: null }))
+        .mockReturnValueOnce(chain([{ organization_id: orgId }]))
+        .mockReturnValueOnce(chain(null, 0))
+        .mockReturnValue(chain(null));
+
+      const result = await service.setTargets(assignmentId, { groupIds: ['g-foreign'] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'BAD_REQUEST' });
+      const tables = mock.from.mock.calls.map(([table]: [string]) => table);
+      expect(tables).not.toContain('assignment_targets');
     });
 
     it('clears targets when no groups or students', async () => {
