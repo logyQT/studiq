@@ -26,6 +26,7 @@ import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { applyCramAction, cramActionForRating } from '@/lib/cram-queue';
 import { formatDateTime } from '@/lib/datetime';
 import { flashcardKeys } from '@/lib/query-keys';
+import { overlayOpen } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
 interface Flashcard {
@@ -576,6 +577,9 @@ export default function SessionClient(props: SessionClientProps) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (terminalRef.current || noCardRef.current) return;
+      // Space and 1-4 rate and flip cards: never while a dialog or menu is on top (the shortcuts
+      // list, a confirmation), where they would silently write a review.
+      if (overlayOpen()) return;
       const tag = (document.activeElement as HTMLElement)?.tagName;
       if (
         tag === 'INPUT' ||

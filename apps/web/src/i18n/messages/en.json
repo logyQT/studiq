@@ -62,6 +62,37 @@
     "remove_answer": "Remove answer {number}",
     "clear_selection": "Clear selection"
   },
+  "Shortcuts": {
+    "title": "Keyboard shortcuts",
+    "description": "Shortcuts do not work while you type in a text field. The list shows the main ones.",
+    "button_title": "Keyboard shortcuts (?)",
+    "then": "then",
+    "group_general": "General",
+    "help": "Show this list",
+    "search": "Search",
+    "search_slash": "Search (outside text fields)",
+    "close": "Close the dialog",
+    "group_nav": "Go to",
+    "group_study": "Study session",
+    "study_flip": "Flip the flashcard",
+    "study_rate": "Rate the answer: again / hard / good / easy",
+    "study_audio": "Play or pause audio",
+    "study_panel": "Show the session shortcuts",
+    "nav": {
+      "home": "Overview",
+      "decks": "Decks",
+      "study": "Study",
+      "questions": "Questions",
+      "quizzes": "Quizzes",
+      "assignments": "Assignments",
+      "groups": "Groups",
+      "stats": "Statistics",
+      "members": "Members",
+      "invites": "Invitations",
+      "roles": "Roles",
+      "settings": "Settings"
+    }
+  },
   "Errors": {
     "ERROR_INTERNAL_SERVER": "An unexpected server error occurred. Please try again later.",
     "ERROR_INVALID_INPUT": "The provided data is invalid.",
