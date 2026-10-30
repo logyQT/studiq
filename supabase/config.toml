@@ -161,7 +161,7 @@ max_indexes = 5
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
-# in emails. Supplied by the root `.env` (exported by `bun dev:up` before `supabase start`).
+# in emails. Set APP_URL before `supabase start` — `bun dev:up` and the verify workflow both do.
 site_url = "env(APP_URL)"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = ["env(APP_URL)"]
