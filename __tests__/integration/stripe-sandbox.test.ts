@@ -75,7 +75,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       );
     }
     portal = await stripe.billingPortal.configurations.retrieve(portalId);
-  });
+  }, 30_000);
 
   it('runs against a PL account that presents PLN in test mode', async () => {
     const account = await stripe.accounts.retrieve();
