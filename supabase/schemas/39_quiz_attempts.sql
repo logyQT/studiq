@@ -14,6 +14,10 @@ CREATE TABLE public.quiz_attempts (
   started_at       timestamptz DEFAULT now(),
   completed_at     timestamptz,
   assignment_id    uuid REFERENCES public.teacher_assignments(id) ON DELETE SET NULL,
+  -- Set once when the attempt is created, never cleared: `assignment_id` becomes NULL when the
+  -- assignment is deleted, this marker keeps the attempt out of the student's practice insights
+  -- (see 20261030203549_student_insights_followups.sql, #657).
+  is_assignment_attempt boolean NOT NULL DEFAULT false,
   graded_at        timestamptz
 );
 

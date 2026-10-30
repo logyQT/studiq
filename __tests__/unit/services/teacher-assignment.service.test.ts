@@ -1830,6 +1830,7 @@ describe('TeacherAssignmentService', () => {
       expect(attemptChain.insert).toHaveBeenCalledWith({
         user_id: userId,
         assignment_id: assignmentId,
+        is_assignment_attempt: true,
         score: 0,
         total_questions: 4,
         total_points: 5,

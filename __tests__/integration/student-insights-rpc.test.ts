@@ -65,8 +65,9 @@ describe('get_student_insights (#657)', () => {
 });
 
 // The rules the statistics rest on, proven with rows built here (nothing depends on the seed):
-//  * mastery leaves out assignment attempts (a teacher may withhold their results) and open
-//    questions (an ungraded free-text answer is stored `is_correct = false`);
+//  * mastery leaves out assignment attempts (a teacher may withhold their results), even after
+//    the assignment is deleted, and open questions (an ungraded free-text answer is stored
+//    `is_correct = false`);
 //  * study time counts both flashcard sessions and quizzes, assignment quizzes included, and
 //    caps every source at two hours;
 //  * the weekday series is ISO (index 0 = Monday).
@@ -141,9 +142,21 @@ describe('get_student_insights rules (#657 review)', () => {
       .single();
     if (aError) throw aError;
 
+    // An assignment that is deleted after the attempt was taken: the FK nulls `assignment_id`,
+    // only the durable marker keeps the attempt out of the mastery (#657 review).
+    const { data: deletedAssignment, error: dError } = await service
+      .from('teacher_assignments')
+      .insert({ created_by: TEACHER_ID, organization_id: ORG, title: MARK })
+      .select('id')
+      .single();
+    if (dError) throw dError;
+
     const finished = (started: Date, ms: number, extra: Record<string, unknown> = {}) => ({
       user_id: STUDENT_ID,
       config: { marker: MARK },
+      // Every row of a multi-row insert needs the column: PostgREST fills a key missing from
+      // one object with NULL instead of the column default.
+      is_assignment_attempt: false,
       started_at: started.toISOString(),
       completed_at: new Date(started.getTime() + ms).toISOString(),
       ...extra,
@@ -152,18 +165,34 @@ describe('get_student_insights rules (#657 review)', () => {
       .from('quiz_attempts')
       .insert([
         finished(new Date(now.getTime() - 60_000), 60_000), // practice: 1 min
-        finished(new Date(now.getTime() - 30_000), 30_000, { assignment_id: assignment.id }),
+        finished(new Date(now.getTime() - 30_000), 30_000, {
+          assignment_id: assignment.id,
+          is_assignment_attempt: true,
+        }),
+        finished(new Date(now.getTime() - 20_000), 20_000, {
+          assignment_id: deletedAssignment.id,
+          is_assignment_attempt: true,
+        }),
       ])
-      .select('id, assignment_id');
+      .select('id, assignment_id, is_assignment_attempt');
     if (tError) throw tError;
-    const practice = attempts!.find((a) => !a.assignment_id)!.id;
-    const asg = attempts!.find((a) => a.assignment_id)!.id;
+    const practice = attempts!.find((a) => !a.is_assignment_attempt)!.id;
+    const asg = attempts!.find((a) => a.assignment_id === assignment.id)!.id;
+    const orphan = attempts!.find((a) => a.assignment_id === deletedAssignment.id)!.id;
     const { error: sError } = await service.from('student_answers').insert([
       { attempt_id: practice, question_id: mcq, is_correct: true },
       { attempt_id: practice, question_id: open, is_correct: true }, // open answers never count
       { attempt_id: asg, question_id: mcq, is_correct: true }, // assignment answers never count
+      { attempt_id: orphan, question_id: mcq, is_correct: true }, // not even after the delete
     ]);
     if (sError) throw sError;
+
+    // Deleting the assignment nulls `assignment_id` on the finished attempts (ON DELETE SET NULL).
+    const { error: delError } = await service
+      .from('teacher_assignments')
+      .delete()
+      .eq('id', deletedAssignment.id);
+    if (delError) throw delError;
 
     const session = (completed: Date, ms: number) => ({
       user_id: STUDENT_ID,
@@ -189,23 +218,25 @@ describe('get_student_insights rules (#657 review)', () => {
   it('counts the practice answer to a closed question and nothing else for mastery', async () => {
     const after = await insights();
 
-    // the open answer and the assignment answer are both stored as correct, yet add nothing
+    // the open answer, the assignment answer and the answer of a deleted assignment are all
+    // stored as correct, yet add nothing
     expect(answers(after) - answers(before)).toBe(1);
   });
 
   it('caps every study-time source at two hours and counts assignment quizzes', async () => {
     const after = await insights();
 
-    // 8 h session -> 2 h, a 10 min session, a 1 min practice quiz, a 30 s assignment quiz
+    // 8 h session -> 2 h, a 10 min session, a 1 min practice quiz, a 30 s assignment quiz and
+    // a 20 s quiz whose assignment was deleted
     expect(after.studyTime.totalMs - before.studyTime.totalMs).toBe(
-      2 * HOUR + 600_000 + 60_000 + 30_000,
+      2 * HOUR + 600_000 + 60_000 + 30_000 + 20_000,
     );
   });
 
   it('buckets the weekdays ISO style, Monday first', async () => {
     const after = await insights();
     const expected = [0, 0, 0, 0, 0, 0, 0];
-    expected[weekday(now)] += 2 * HOUR + 60_000 + 30_000;
+    expected[weekday(now)] += 2 * HOUR + 60_000 + 30_000 + 20_000;
     expected[weekday(monday)] += 600_000;
 
     const delta = after.studyTime.byWeekday.map((ms, i) => ms - before.studyTime.byWeekday[i]);

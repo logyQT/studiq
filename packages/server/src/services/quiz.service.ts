@@ -75,6 +75,9 @@ export class QuizService {
       .from('quiz_attempts')
       .insert({
         user_id: ctx.userId,
+        // Durable provenance for the student insights (#657): a practice quiz is never an
+        // assignment attempt, not even when the bulk insert below mixes both kinds of row.
+        is_assignment_attempt: false,
         score: 0,
         total_questions: selectedQuestions.length,
         config: config as unknown as Record<string, unknown>,

@@ -880,13 +880,14 @@ BEGIN
 END;
 $$;
 
--- ==========================================
--- get_student_insights (#657, ROADMAP 5C)
--- Study time, per-topic mastery and the retention curve of the caller, aggregated in SQL
--- (the volume is every review and answer of the window). SECURITY INVOKER: the caller's own
--- rows only, RLS stays the floor. Assignment attempts are excluded from mastery because a
--- teacher may withhold their results.
--- ==========================================
+// ==========================================
+// get_student_insights (#657, ROADMAP 5C)
+// Study time, per-topic mastery and the retention curve of the caller, aggregated in SQL
+// (the volume is every review and answer of the window). SECURITY INVOKER: the caller's own
+// rows only, RLS stays the floor. Assignment attempts are excluded from mastery because a
+// teacher may withhold their results — keyed on the durable `is_assignment_attempt` marker,
+// not on `assignment_id`, which becomes NULL when the assignment is deleted.
+// ==========================================
 
 CREATE OR REPLACE FUNCTION public.get_student_insights(
   p_user_id uuid,
@@ -900,7 +901,7 @@ SET search_path = ''
 AS $$
 DECLARE
   v_days integer := GREATEST(1, LEAST(COALESCE(p_days, 30), 365));
-  v_since timestamptz := now() - make_interval(days => GREATEST(1, LEAST(COALESCE(p_days, 30), 365)));
+  v_since timestamptz := now() - make_interval(days => v_days);
   result jsonb;
 BEGIN
   IF auth.role() IS DISTINCT FROM 'service_role'
@@ -961,7 +962,8 @@ BEGIN
     WHERE qa.user_id = p_user_id
       AND qa.completed_at IS NOT NULL
       AND qa.completed_at >= v_since
-      AND qa.assignment_id IS NULL
+      -- Durable marker, not `assignment_id`: it becomes NULL when the assignment is deleted.
+      AND NOT qa.is_assignment_attempt
       AND q.type <> 'open'
     GROUP BY sa.attempt_id, sa.question_id
   ),

@@ -957,6 +957,9 @@ export class TeacherAssignmentService {
       .insert({
         user_id: ctx.userId,
         assignment_id: id,
+        // Durable provenance: `assignment_id` becomes NULL when the assignment is deleted, but
+        // the student's practice insights must keep excluding this attempt (#657).
+        is_assignment_attempt: true,
         score: 0,
         total_questions: orderedQuestions.length,
         total_points: totalPoints,

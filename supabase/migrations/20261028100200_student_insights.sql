@@ -8,8 +8,10 @@
 --     weekday (UTC dates, like the rest of the activity stats).
 --   * mastery: per topic, the accuracy of the student's quiz answers and flashcard reviews.
 --     Assignment attempts are left out on purpose: a teacher may withhold their results
---     (`show_results = false`) and a per-topic accuracy would leak them. Open questions are
---     left out too: an ungraded free-text answer is `is_correct = false`.
+--     (`show_results = false`) and a per-topic accuracy would leak them. The durable marker
+--     `quiz_attempts.is_assignment_attempt` is used, not `assignment_id`, which becomes NULL
+--     when the assignment is deleted. Open questions are left out too: an ungraded free-text
+--     answer is `is_correct = false`.
 --   * retention: how often a flashcard is answered correctly as a function of the time since
 --     it was last reviewed (0 days, 1, 2-3, 4-7, 8-14, 15-30, 31+).
 --
@@ -29,7 +31,7 @@ SET search_path = ''
 AS $$
 DECLARE
   v_days integer := GREATEST(1, LEAST(COALESCE(p_days, 30), 365));
-  v_since timestamptz := now() - make_interval(days => GREATEST(1, LEAST(COALESCE(p_days, 30), 365)));
+  v_since timestamptz := now() - make_interval(days => v_days);
   result jsonb;
 BEGIN
   IF auth.role() IS DISTINCT FROM 'service_role'
@@ -90,7 +92,8 @@ BEGIN
     WHERE qa.user_id = p_user_id
       AND qa.completed_at IS NOT NULL
       AND qa.completed_at >= v_since
-      AND qa.assignment_id IS NULL
+      -- Durable marker, not `assignment_id`: it becomes NULL when the assignment is deleted.
+      AND NOT qa.is_assignment_attempt
       AND q.type <> 'open'
     GROUP BY sa.attempt_id, sa.question_id
   ),
