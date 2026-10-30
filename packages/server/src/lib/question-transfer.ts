@@ -93,6 +93,9 @@ export function csvRecordsToQuestions(records: Array<Record<string, string | und
     );
     const correctColumns = new Set<number>();
     const correctText = cell('correct');
+    // One issue per row, not per bad token: `9;10` is one problem to fix, and a duplicate
+    // would also key the same row twice in the import dialog's problem list.
+    let invalidCorrect = false;
     for (const token of correctText.split(/[;,]/).map((t) => t.trim())) {
       if (token === '') continue;
       const n = Number(token);
@@ -102,11 +105,12 @@ export function csvRecordsToQuestions(records: Array<Record<string, string | und
         n > TRANSFER_MAX_ANSWERS ||
         answerColumns[n - 1] === ''
       ) {
-        issues.push({ row: index + 1, code: 'INVALID_CORRECT' });
+        invalidCorrect = true;
       } else {
         correctColumns.add(n);
       }
     }
+    if (invalidCorrect) issues.push({ row: index + 1, code: 'INVALID_CORRECT' });
 
     const explanation = cell('explanation');
     questions.push({

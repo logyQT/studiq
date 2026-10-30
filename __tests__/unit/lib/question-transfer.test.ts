@@ -128,6 +128,13 @@ describe('csvRecordsToQuestions', () => {
     expect(issues).toEqual([{ row: 1, code: 'INVALID_CORRECT' }]);
   });
 
+  it('reports one issue per row even when several `correct` tokens are wrong', () => {
+    const { issues } = csvRecordsToQuestions([
+      { type: 'mcq', content: 'Q', answer_1: 'A', answer_2: 'B', correct: '9;10' },
+    ]);
+    expect(issues).toEqual([{ row: 1, code: 'INVALID_CORRECT' }]);
+  });
+
   it('splits topics on ; and drops blanks and surrounding spaces', () => {
     const { questions } = csvRecordsToQuestions([
       { type: 'open', content: 'Q', topics: ' A ;; B;' },

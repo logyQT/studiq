@@ -27,11 +27,12 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowDownToLine, ArrowUpFromLine, FileUp, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useApiMutation } from '@/hooks/use-api';
+import { ApiError, apiPost } from '@/lib/api';
 import { questionKeys } from '@/lib/query-keys';
 
 const MAX_FILE_BYTES = 1_000_000;
@@ -148,12 +149,26 @@ interface ImportDialogProps {
  */
 function ImportDialog({ bankId, open, onOpenChange }: ImportDialogProps) {
   const t = useTranslations('QuestionTransfer');
-  const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [questions, setQuestions] = useState<TransferQuestion[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
-  const [sending, setSending] = useState(false);
+
+  const importMutation = useApiMutation<{ imported: number }, { questions: TransferQuestion[] }>({
+    mutationFn: ({ questions }) =>
+      apiPost<{ imported: number }>(`/api/v1/questions/banks/${bankId}/import`, { questions }),
+    invalidateKeys: [questionKeys.all],
+    onError: (error) => {
+      toast.error(
+        error instanceof ApiError && error.code === 'USAGE_LIMIT_EXCEEDED'
+          ? t('limit_exceeded')
+          : error instanceof ApiError && error.status === 403
+            ? t('forbidden')
+            : t('import_failed'),
+      );
+    },
+  });
+  const sending = importMutation.isPending;
 
   function reset() {
     setFileName(null);
@@ -193,34 +208,13 @@ function ImportDialog({ bankId, open, onOpenChange }: ImportDialogProps) {
   }
 
   async function handleImport() {
-    setSending(true);
     try {
-      const res = await fetch(`/api/v1/questions/banks/${bankId}/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions }),
-      });
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        const message =
-          json?.error === 'USAGE_LIMIT_EXCEEDED'
-            ? t('limit_exceeded')
-            : res.status === 403
-              ? t('forbidden')
-              : t('import_failed');
-        toast.error(message);
-        return;
-      }
-
-      toast.success(t('imported', { count: json?.data?.imported ?? questions.length }));
-      queryClient.invalidateQueries({ queryKey: questionKeys.all });
+      const result = await importMutation.mutateAsync({ questions });
+      toast.success(t('imported', { count: result.imported }));
       reset();
       onOpenChange(false);
     } catch {
-      toast.error(t('import_failed'));
-    } finally {
-      setSending(false);
+      // `onError` has already told the user what went wrong; the dialog stays open.
     }
   }
 
