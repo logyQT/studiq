@@ -54,22 +54,27 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       .order('sort_order', { ascending: true });
     if (error) throw new Error(`subscription_plans: ${error.message}`);
     plans = (data ?? []) as PaidPlan[];
+    expect(plans.length).toBeGreaterThan(0);
 
-    products = (await stripe.products.list({ limit: 100, active: true })).data;
-    monthlyPrices = (await stripe.prices.list({ limit: 100, active: true })).data.filter(
+    products = await stripe.products
+      .list({ limit: 100, active: true })
+      .autoPagingToArray({ limit: 10_000 });
+    monthlyPrices = (
+      await stripe.prices.list({ limit: 100, active: true }).autoPagingToArray({ limit: 10_000 })
+    ).filter(
       (price) =>
         price.type === 'recurring' &&
         price.recurring?.interval === 'month' &&
         price.lookup_key?.startsWith('studiq_'),
     );
 
-    const configurations = await stripe.billingPortal.configurations.list({ limit: 100 });
-    portal = configurations.data.find(
-      (configuration) =>
-        configuration.active &&
-        !configuration.livemode &&
-        (configuration.name === 'StudiQ' || configuration.metadata?.studiq_managed === 'true'),
-    );
+    const portalId = process.env.STRIPE_PORTAL_CONFIGURATION_ID;
+    if (!portalId) {
+      throw new Error(
+        'STRIPE_PORTAL_CONFIGURATION_ID is required to verify the portal; run scripts/stripe-bootstrap.ts',
+      );
+    }
+    portal = await stripe.billingPortal.configurations.retrieve(portalId);
   });
 
   it('runs against a PL account that presents PLN in test mode', async () => {
@@ -79,10 +84,14 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
   });
 
   it('has one Product per active paid plan, all in test mode', () => {
+    const planProducts = products.filter((product) => product.metadata?.studiq_plan_key);
+    const productKeys = planProducts.map((product) => product.metadata.studiq_plan_key as string);
+
+    expect(planProducts).toHaveLength(plans.length);
+    expect(new Set(productKeys).size).toBe(productKeys.length);
+
     const byPlan = new Map(
-      products
-        .filter((product) => product.metadata?.studiq_plan_key)
-        .map((product) => [product.metadata.studiq_plan_key, product]),
+      planProducts.map((product) => [product.metadata.studiq_plan_key as string, product]),
     );
 
     expect([...byPlan.keys()].sort()).toEqual(plans.map((plan) => plan.key).sort());
@@ -100,6 +109,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
     expect(new Set(lookupKeys).size).toBe(lookupKeys.length);
 
     for (const plan of plans) {
+      expect(plan.currency).toBe('PLN');
       const price = monthlyPrices.find(
         (candidate) => candidate.lookup_key === `studiq_${plan.key}_monthly`,
       );
@@ -121,9 +131,10 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       .eq('active', true);
     if (error) throw new Error(`stripe_prices: ${error.message}`);
 
-    expect(data).toHaveLength(plans.length);
+    const rows = data ?? [];
+    expect(rows.map((row) => row.plan_key).sort()).toEqual(plans.map((plan) => plan.key).sort());
 
-    for (const row of data ?? []) {
+    for (const row of rows) {
       const price = monthlyPrices.find((candidate) => candidate.id === row.stripe_price_id);
       expect(price, `stripe_prices points at an unknown price for ${row.plan_key}`).toBeDefined();
       expect(row.billing_cycle).toBe('monthly');
@@ -135,6 +146,8 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
 
   it('has a portal configuration for the supported actions only', () => {
     expect(portal).toBeDefined();
+    expect(portal!.active).toBe(true);
+    expect(portal!.livemode).toBe(false);
     expect(portal!.features.payment_method_update?.enabled).toBe(true);
     expect(portal!.features.invoice_history?.enabled).toBe(true);
     expect(portal!.features.subscription_cancel?.enabled).toBe(true);
