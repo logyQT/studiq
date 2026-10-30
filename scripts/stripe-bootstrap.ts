@@ -274,7 +274,10 @@ async function main(): Promise<void> {
     throw new BootstrapError(`${errors.length} catalog problem(s); nothing was written`);
   }
 
-  assert(prices.length > 0, 'no active paid plans found in subscription_plans');
+  // A populated catalog may contain only free/inactive plans: that must reach
+  // the stale-mapping cleanup so a plan that became free stops being sold.
+  // An empty catalog means the seed did not run, so stop before writing.
+  assert(plans.length > 0, 'no active paid plans found in subscription_plans');
 
   if (args.check) {
     printCheck(prices);
