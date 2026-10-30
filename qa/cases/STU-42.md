@@ -11,6 +11,33 @@
 
 Konto z historią nauki (po STU-05).
 
+## Prerequisite — tenant model (reconciled with the suite seeder)
+
+The legacy manual seed (`student1@dev.local`, password `pass`, `O1G1`,
+`fiszki_poprawne.csv`) is not used. The case runs on its own tenant, seeded before
+every independent run:
+
+```bash
+bun scripts/qa-tenant.ts STU-42 --fresh
+```
+
+- Profile: `content` (`__tests__/qa/profiles/STU-42.json`) — one organization, an
+  unused manager/org admin, an educator, and the `student` account the case logs in
+  as, plus the default group `G1`.
+- Tenant key: `tenantKey('qa/cases/STU-42.md', 'STU-42#<run>', 'qa-shared')`; every
+  org/user/group/deck/card id derives from it via `tenantId`.
+- Study history: the spec builds it itself (the profile seeds the graph only) — a
+  `STU-42 <run>` deck with four cards and the practice rows a study session writes:
+  Alfa 5 attempts / 4 correct, Bravo 2 / 1, Charlie 3 / 3, Echo never practiced.
+  That covers the STU-05 prerequisite (a student with learning history) without
+  depending on another case's data: „Wszystkie fiszki” 4, „Przećwiczone” 3,
+  „Śr. poprawność” 77 %, „Śr. łatwość” 2.03, „Nowe fiszki” 1.
+- Re-runs on a CI-seeded tenant delete their own `STU-42 …` decks first (cascading
+  cards, practice rows and review state) and rebuild the fixture, so a retry never
+  sees a previous pass's rows.
+
+Spec: `__tests__/qa/STU/STU-42.spec.ts` (Playwright, `__tests__/qa/STU/`).
+
 ## Prerequisite context
 
 ### STU-05 — Sesja nauki – ocena fiszek (ścieżka pełna)
@@ -42,3 +69,32 @@ Expected:
 - Karty: Wszystkie fiszki, Przećwiczone, Śr. poprawność, Śr. łatwość; podział na stany (Nowa, W nauce, Powtórka, Poprawa, Oporne).
 - Tabela: Stan, Przód, Próby, Poprawność, EF, Interwał; wiersz rozwija szczegóły (Pytanie/Odpowiedź/Powtórzenia/Krok nauki/Pomyłki/Ostatnia powtórka).
 - Sekcje „Najsłabsze talie” i „Najsłabsze tematy” (lub komunikaty „ćwicz dalej!”).
+
+## As-built notes (walked on the shared app, 2026-10-29)
+
+The stats module is three sibling sidebar pages, not tabs of one page:
+„Treści” (`/app/stats/content`, this case), „Wyniki” (`/app/stats/results`,
+STU-43) and „Aktywność” (`/app/stats/activity`, STU-44). Confirmed on the shared
+app:
+
+- `/app/stats` → `/app/stats/content`, heading „Treści”, „Treści” marked active in
+  the sidebar.
+- Cards: „Wszystkie fiszki”, „Przećwiczone”, „Śr. poprawność”, „Śr. łatwość” and
+  the page's own „Nowe fiszki” (never practiced). „Śr. poprawność” is the mean of
+  the per-card accuracy, „Śr. łatwość” the mean easiness factor of the practiced
+  cards.
+- The state vocabulary is this page's filter row („Wszystkie”, „Nowe”,
+  „Do nauczenia”, „Do utrwalenia”, „Do przypomnienia”, „Oporne”) and the state
+  badge of each table row („Nowa”, „W nauce”, „Powtórka”, „Poprawa”, „Oporne”);
+  filtering narrows the table by state.
+- Table columns „Stan / Przód / Próby / Poprawność / EF / Interwał”; a row expands
+  into „Pytanie / Odpowiedź / Powtórzenia / Krok nauki / Pomyłki /
+  Ostatnia powtórka” (plus the next-review line).
+- „Data dodania”, „Próby”, „Poprawność” and „Łatwość” re-sort the table
+  descending; the sort menu has no ascending option.
+- The „podział stanów” chart and the „Najsłabsze talie” / „Najsłabsze tematy”
+  sections of the Expected block are **not** on this page: they are the
+  „Aktywność” page (`/app/stats/activity`) and are covered by STU-44. The spec for
+  STU-42 asserts the content page plus the presence/active state of the three
+  stats entries, and asserts the state vocabulary through this page's filters and
+  badges.

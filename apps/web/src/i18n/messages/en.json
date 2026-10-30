@@ -129,6 +129,7 @@
     "register": "Register",
     "logout": "Logout",
     "mobile_menu": "Menu",
+    "user_menu": "User menu",
     "account": "Account",
     "billing": "Billing",
     "notifications": "Notifications",
@@ -352,7 +353,7 @@
     "manage_seats": "Seats",
     "manage_settings": "Settings",
     "app_overview": "Overview",
-    "app_quiz": "Quiz",
+    "app_quiz": "Test Yourself",
     "breadcrumb_quiz_session": "Quiz Session",
     "breadcrumb_quiz_review": "Quiz Review",
     "app_flashcards": "Flashcards",
@@ -380,7 +381,6 @@
     "edu_classroom": "Classroom",
     "classroom_invite": "Invite Students",
     "classroom_members": "Members",
-    "language": "Language",
     "theme": "Theme",
     "orgs_label": "Organizations",
     "sidebar_main": "Main",
@@ -391,9 +391,7 @@
     "sidebar_statistics": "Statistics",
     "app_learn": "Learn",
     "app_cram": "Cram",
-    "app_quiz": "Test Yourself",
     "app_live": "Live",
-    "edu_quizzes": "Quizzes",
     "edu_assignments": "Assignments",
     "app_assignments": "Assignments",
     "stats_data": "Content",
@@ -408,7 +406,8 @@
     "upgrade": "Upgrade",
     "question_banks": "Questions",
     "question_reports": "Reports",
-    "edu_groups": "Groups"
+    "edu_groups": "Groups",
+    "user_menu": "User menu"
   },
   "EduOverviewPage": {
     "feed_quiz_completed_plain": "Quiz completed: {name} ({score}%)",
@@ -2467,6 +2466,8 @@
     "groups_empty": "No groups found"
   },
   "QuestionBankDetail": {
+    "load_error": "Could not load the questions.",
+    "retry": "Try again",
     "title": "Questions",
     "create_question": "Create Question",
     "search_placeholder": "Search questions...",
@@ -2484,6 +2485,12 @@
     "mcq": "Multiple Choice",
     "true_false_label": "True / False",
     "open_label": "Open Answer",
+    "pagination": "Pagination",
+    "total_count": "{count, plural, one {# question} other {# questions}}",
+    "page_of": "Page {page} of {pages}",
+    "previous_page": "Previous page",
+    "next_page": "Next page",
+    "no_results": "No questions match the filters.",
     "create_flashcard_title": "Create a flashcard from this question"
   },
   "CreateFlashcardFromQuestion": {
@@ -2987,5 +2994,25 @@
     "problem": "Service issue",
     "unavailable": "Unable to check status",
     "last_checked": "Last checked"
+  },
+  "LanguageSwitcher": {
+    "label": "Language",
+    "search_label": "Search languages",
+    "search_placeholder": "Search by language or code…",
+    "empty_title": "No matching language",
+    "empty_hint": "Try a name (e.g. “English”) or a code (e.g. “en”).",
+    "empty_clear": "Clear",
+    "current": "current",
+    "changed": "Language changed to {language}.",
+    "back": "Back"
+  },
+  "ThemeSwitch": {
+    "label": "Theme",
+    "light": "Light",
+    "system": "System",
+    "dark": "Dark",
+    "system_resolved": "System ({theme})",
+    "resolved_light": "light",
+    "resolved_dark": "dark"
   }
 }

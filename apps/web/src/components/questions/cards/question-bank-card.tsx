@@ -321,7 +321,9 @@ export const QuestionBankCard = memo(
       prev.isSelected === next.isSelected &&
       prev.canUpdate === next.canUpdate &&
       prev.canDelete === next.canDelete &&
-      prev.groupNames?.join(',') === next.groupNames?.join(',')
+      prev.groupNames?.join(',') === next.groupNames?.join(',') &&
+      // A new translator means the locale changed: re-render the copy (#634).
+      prev.t === next.t
     );
   },
 );

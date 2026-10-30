@@ -37,15 +37,37 @@ Private edtech platform with quizzes, flashcards, AI-powered learning flows, and
 ## Quick Start
 
 ```bash
-bun install
-bunx supabase start
-docker compose up -d   # local observability stack (Grafana :3001)
-bun dev
+bun install            # once per checkout (dev:up never installs)
+cp .env.example .env   # root env — Git-ignored
+bun dev:up             # Supabase (if needed) + web dev server on :3000
 ```
 
-Then open Grafana at <http://localhost:3001> (`admin` / `admin`) — the app ships
-traces to Tempo, metrics to Prometheus and logs to Loki automatically. See
-[Agent-Driven Live Debugging](docs/observability-debugging.md) for the workflow.
+`bun dev:up` is idempotent and only starts what is missing: it reads the local
+Supabase keys, regenerates the Git-ignored `apps/web/.env`, starts Supabase if
+needed and runs the web dev server. It **never** installs dependencies, builds
+or resets the database, and runs no migrations/seeds of its own (a fresh
+`supabase start` still initialises the volume). Those are explicit commands:
+
+```bash
+bun dev:status          # health, PIDs, ports and URLs (--json for agents)
+bun dev:down            # stop the web server (--all also stops Supabase)
+bun dev:reset-db        # destructive: supabase db reset + re-render web env
+bun dev:build           # explicit production build (stop the dev server first)
+bun dev:logs            # follow the web log + recent Supabase container logs
+```
+
+The contract is fixed: web `:3000`, API `:54321`, database `:54322`, Mailpit
+`:54324`. The shared QA stack (`:3010` / `:54421`) is refused unless
+`DEV_ALLOW_SHARED=1`. `apps/admin` is **not** part of `dev:up` — run it with
+`bun dev:admin` and its own `apps/admin/.env`.
+
+Optionally start the local observability stack (Grafana `:3001`):
+
+```bash
+docker compose up -d
+```
+
+See [Agent-Driven Live Debugging](docs/observability-debugging.md) for the workflow.
 
 See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, env vars, seeding, Playwright).
 
@@ -67,42 +89,53 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 
 ## Available Scripts
 
-| Command                                  | Description                                                                                     |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `bun dev`                                | Start the web app dev server (`@studiq/web`, port 3000) — same as `bun dev:web`                 |
-| `bun dev:admin`                          | Start the admin app dev server (`@studiq/admin`, port 4000)                                     |
-| `bun build`                              | Build the web app for production — same as `bun build:web`                                      |
-| `bun build:admin`                        | Build the admin app for production                                                              |
-| `bun start`                              | Start the web app production server — same as `bun start:web`                                   |
-| `bun start:admin`                        | Start the admin app production server                                                           |
-| `bun lint`                               | Lint only: Bun native linter + import-path guard + migration-timestamp guard (**no typecheck**) |
-| `bun typecheck`                          | Typecheck the web app with `bun check` (`typecheck:all` = every workspace)                      |
-| `bun lint:all`                           | `typecheck:all` + `lint` in one run                                                             |
-| `bun lint:web` / `bun typecheck:web`     | Lint / typecheck the web app only                                                               |
-| `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                                             |
-| `bun format`                             | Format with **`bun fmt`** (writes, whole repo)                                                  |
-| `bun format:check`                       | Check formatting with `bun fmt --check` (no writes, whole repo)                                 |
-| `bun test`                               | Run all Vitest tests (unit + integration)                                                       |
-| `bun test:unit`                          | Run unit tests                                                                                  |
-| `bun test:integration`                   | Run integration tests (requires local Supabase)                                                 |
-| `bun test:watch`                         | Vitest watch mode                                                                               |
-| `bun test:coverage`                      | Run tests with coverage                                                                         |
-| `bun test:e2e`                           | Run Playwright E2E tests (`__tests__/e2e/`)                                                     |
-| `bun loadtest:seed`                      | Seed load-test accounts via the Supabase Admin API (`--count`, …)                               |
-| `bun loadtest:bots`                      | Drive concurrent bot traffic (`--users`, `--shards`, `--duration`)                              |
-| `bun loadtest:reset`                     | Delete the seeded load-test accounts                                                            |
-| `bun clean`                              | Remove root `.next`, `node_modules/.cache`, and `coverage`                                      |
-| `scripts/spin <branch>`                  | Create worktree + branch for isolated work                                                      |
-| `scripts/pr`                             | Create a PR from current branch via `gh`                                                        |
-| `scripts/switch-branch`                  | Stash, switch branch, pull, pop stash                                                           |
+| Command                                  | Description                                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `bun dev:up`                             | One-command local stack: Supabase (if needed) + web dev server; renders `apps/web/.env`                    |
+| `bun dev:status`                         | Web/Supabase health, PIDs, ports, URLs (`--json` for a stable machine shape)                               |
+| `bun dev:down` / `bun dev:down --all`    | Stop the web server / also stop Supabase (database volume kept)                                            |
+| `bun dev:reset-db`                       | Destructive `supabase db reset`, then re-render `apps/web/.env`                                            |
+| `bun dev:build`                          | Explicit production build of `@studiq/web` (stop the dev server first)                                     |
+| `bun dev:logs`                           | Follow `.dev/web.log` + recent Supabase container logs                                                     |
+| `bun dev:prepull`                        | Pull Supabase images without leaving the stack running (VM templates)                                      |
+| `bun dev`                                | Start the web app dev server (`@studiq/web`, port 3000) — same as `bun dev:web`                            |
+| `bun dev:admin`                          | Start the admin app dev server (`@studiq/admin`, port 4000)                                                |
+| `bun build`                              | Build the web app for production — same as `bun build:web`                                                 |
+| `bun build:admin`                        | Build the admin app for production                                                                         |
+| `bun start`                              | Start the web app production server — same as `bun start:web`                                              |
+| `bun start:admin`                        | Start the admin app production server                                                                      |
+| `bun lint`                               | Lint only: Bun native linter + import-path + migration-timestamp + hardcoded-URL guards (**no typecheck**) |
+| `bun typecheck`                          | Typecheck the web app with `bun check` (`typecheck:all` = every workspace)                                 |
+| `bun lint:all`                           | `typecheck:all` + `lint` in one run                                                                        |
+| `bun lint:web` / `bun typecheck:web`     | Lint / typecheck the web app only                                                                          |
+| `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                                                        |
+| `bun format`                             | Format with **`bun fmt`** (writes, whole repo)                                                             |
+| `bun format:check`                       | Check formatting with `bun fmt --check` (no writes, whole repo)                                            |
+| `bun test`                               | Run all Vitest tests (unit + integration)                                                                  |
+| `bun test:unit`                          | Run unit tests                                                                                             |
+| `bun test:integration`                   | Run integration tests (requires local Supabase)                                                            |
+| `bun test:watch`                         | Vitest watch mode                                                                                          |
+| `bun test:coverage`                      | Run tests with coverage                                                                                    |
+| `bun test:e2e`                           | Run Playwright E2E tests (`__tests__/e2e/`)                                                                |
+| `bun loadtest:seed`                      | Seed load-test accounts via the Supabase Admin API (`--count`, …)                                          |
+| `bun loadtest:bots`                      | Drive concurrent bot traffic (`--users`, `--shards`, `--duration`)                                         |
+| `bun loadtest:reset`                     | Delete the seeded load-test accounts                                                                       |
+| `bun clean`                              | Remove root `.next`, `node_modules/.cache`, and `coverage`                                                 |
+| `scripts/spin <branch>`                  | Create worktree + branch for isolated work                                                                 |
+| `scripts/pr`                             | Create a PR from current branch via `gh`                                                                   |
+| `scripts/switch-branch`                  | Stash, switch branch, pull, pop stash                                                                      |
 
 ## Environment Variables
 
-There is no root `.env.example` — this table is the source of truth. The web
-app reads its variables from `apps/web/.env`, the admin app from
-`apps/admin/.env` (committed template: [`apps/admin/.env.example`](apps/admin/.env.example)),
-and Vitest loads a root `.env` / `.env.local` when running tests. Everything
-here except that template is gitignored.
+The committed template is [`.env.example`](.env.example) at the repo root —
+`cp .env.example .env` once. `bun dev:up` reads that root `.env`, asks
+`supabase status -o env` for the local keys (anon + service role) and generates
+**`apps/web/.env`** (mode `600`, Git-ignored). Never edit or commit the generated
+file: change root `.env` and re-run `bun dev:up`. The admin app keeps its own
+`apps/admin/.env` (committed template:
+[`apps/admin/.env.example`](apps/admin/.env.example)) and is outside the
+`dev:up` contract. Vitest still loads a root `.env` / `.env.local` when running
+tests.
 
 ```env
 # ── Supabase (required) ───────────────────────────────────────────────
@@ -168,7 +201,7 @@ apps/
       types/                  # TS type definitions
       proxy.ts                # Next.js middleware: session + RBAC route rules
     public/                   # Static assets
-    .env                      # Local env (gitignored — see Environment Variables)
+    .env                      # Generated by `bun dev:up` (gitignored — see Environment Variables)
   admin/                      # Admin panel — @studiq/admin (port 4000, see apps/admin/README.md)
     src/
       app/(frontend)/         # Admin pages (orgs, feature-flags, subscription-plans, user-overrides)

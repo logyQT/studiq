@@ -1,5 +1,11 @@
 # STU-25 — Połączenie fiszki z inną talią (link)
 
+> **OUT OF SCOPE — spec drift (2026-10-29).** M:N flashcard linking (one card in several
+> decks) is marked **not planned** in the internal product discussion; it was never settled
+> into this document, so QA re-litigated it. Do **not** write a spec and do **not** re-file
+> it. A flashcard belongs to exactly one deck today, and that is intended. Issue #893 is
+> closed as not planned.
+
 - id: STU-25
 - priority: P2 ważny
 - module: STU – Panel studenta (/app)
