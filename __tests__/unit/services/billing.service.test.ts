@@ -1,16 +1,17 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import {
+  CHECKOUT_BUCKET_MS,
+  checkoutExpiresAt,
+  checkoutIdempotencyKey,
+} from '@studiq/server/lib/payment/checkout-timing';
 import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway';
 import type {
   CatalogPlan,
   ListedPrice,
   StripeBillingRepository,
 } from '@studiq/server/lib/payment/stripe-repository';
-import {
-  billingService,
-  BillingService,
-  checkoutIdempotencyKey,
-} from '@studiq/server/services/billing.service';
 import { success } from '@studiq/server/lib/service-result';
+import { BillingService, billingService } from '@studiq/server/services/billing.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const studentCtx: RequestContext = {
@@ -279,6 +280,21 @@ describe('checkoutIdempotencyKey', () => {
     const start = 1_800_000_000_000;
     expect(checkoutIdempotencyKey(owner, 'spark', start)).not.toBe(
       checkoutIdempotencyKey(owner, 'spark', start + 30 * 60 * 1000),
+    );
+  });
+});
+
+describe('checkoutExpiresAt', () => {
+  it('is stable for every retry inside one bucket and clears the 30-minute minimum', () => {
+    const start = 1_800_000_000_000;
+    const bucketEnd = start + CHECKOUT_BUCKET_MS - 1;
+
+    expect(checkoutExpiresAt(start)).toBe(checkoutExpiresAt(bucketEnd));
+    expect(checkoutExpiresAt(bucketEnd)).toBeGreaterThanOrEqual(
+      Math.floor(bucketEnd / 1000) + 30 * 60,
+    );
+    expect(checkoutExpiresAt(bucketEnd)).toBeLessThanOrEqual(
+      Math.floor(bucketEnd / 1000) + 24 * 60 * 60,
     );
   });
 });

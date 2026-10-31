@@ -1,6 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
+import { checkoutIdempotencyKey } from '@studiq/server/lib/payment/checkout-timing';
 import type {
   BillingLocale,
   CheckoutSessionResult,
@@ -15,24 +16,6 @@ import {
   validateListedPrice,
 } from '@studiq/server/lib/payment/stripe-repository';
 import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
-
-/** A double-click inside the same 30-minute bucket reuses the same session. */
-const CHECKOUT_BUCKET_MS = 30 * 60 * 1000;
-
-/**
- * Deterministic idempotency key for `checkout.sessions.create`: owner + plan +
- * a 30-minute time bucket. Retries and double-clicks collapse onto one session;
- * a new bucket produces a fresh session (the old one expires, §5.5).
- */
-export function checkoutIdempotencyKey(
-  owner: PaymentOwner,
-  planKey: string,
-  nowMs: number = Date.now(),
-): string {
-  const ownerKey = owner.type === 'org' ? owner.orgId : owner.userId;
-  const bucket = Math.floor(nowMs / CHECKOUT_BUCKET_MS);
-  return `checkout:${owner.type}:${ownerKey}:${planKey}:${bucket}`;
-}
 
 /**
  * Billing domain rules (#662 §5.2). The client never supplies an amount,

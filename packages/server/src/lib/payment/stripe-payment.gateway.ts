@@ -1,5 +1,6 @@
 import type Stripe from 'stripe';
 import { error as logError } from '@studiq/server/lib/log';
+import { checkoutExpiresAt } from '@studiq/server/lib/payment/checkout-timing';
 import type {
   CancelAtPeriodEndInput,
   ChangePlanInput,
@@ -36,7 +37,6 @@ export interface StripePaymentGatewayOptions {
   now?: () => Date;
 }
 
-const CHECKOUT_TTL_SECONDS = 30 * 60;
 const METADATA_PREFIX = 'studiq';
 
 function ownerId(owner: PaymentOwner): string {
@@ -168,7 +168,9 @@ export class StripePaymentGateway implements PaymentGateway {
           success_url: `${this.siteUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${this.siteUrl()}/checkout?plan_id=${input.planKey}&canceled=1`,
           locale: input.locale === 'en' ? 'en' : 'pl',
-          expires_at: Math.floor(this.now().getTime() / 1000) + CHECKOUT_TTL_SECONDS,
+          // Identical for every retry in one idempotency bucket; clears the
+          // 30-minute minimum with a safety margin.
+          expires_at: checkoutExpiresAt(this.now().getTime()),
           allow_promotion_codes: false,
           automatic_tax: { enabled: false },
           tax_id_collection: { enabled: false },
@@ -223,10 +225,12 @@ export class StripePaymentGateway implements PaymentGateway {
     if (isFailure(details)) return details;
 
     try {
-      const customer = await this.client.customers.create(
-        this.customerParams(owner, details.data),
-        { idempotencyKey: `customer:${owner.type}:${ownerId(owner)}:${this.livemode}` },
-      );
+      // No persistent idempotency key here: Stripe replays a key for at least
+      // 24 h *even if the customer was deleted*, which would break a re-checkout
+      // after a stale mapping is removed. `insertCustomer` already resolves
+      // concurrent creates through its unique index; the loser may leave an
+      // orphan customer, which is preferable to a poisoned key.
+      const customer = await this.client.customers.create(this.customerParams(owner, details.data));
       return this.repository.insertCustomer(owner, customer.id, this.livemode);
     } catch (error) {
       return stripeFailure(error);

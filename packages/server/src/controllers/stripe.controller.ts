@@ -7,6 +7,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway';
 import { getPaymentGateway } from '@studiq/server/lib/payment/payment-gateway.factory';
 import { isFailure } from '@studiq/server/lib/service-result';
+import { CreateCheckoutSessionSchema } from '@studiq/server/models/stripe.model';
 import { type BillingService, billingService } from '@studiq/server/services/billing.service';
 
 export class StripeController {
@@ -16,20 +17,16 @@ export class StripeController {
   ) {}
 
   async createCheckoutSession(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    const { planKey, orgId, locale } = body as Record<string, string | undefined>;
-
-    if (!planKey) {
-      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    const parsed = CreateCheckoutSessionSchema.safeParse(body);
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
+
+    const { planKey, orgId, locale } = parsed.data;
 
     // Domain validation, owner resolution and the Stripe price map live in
     // BillingService (#662 §5.2). The body never supplies an amount or id.
-    const result = await this.billing.startCheckout(
-      ctx,
-      planKey,
-      orgId,
-      locale === 'en' ? 'en' : 'pl',
-    );
+    const result = await this.billing.startCheckout(ctx, planKey, orgId, locale ?? 'pl');
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

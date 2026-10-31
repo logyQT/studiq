@@ -801,22 +801,19 @@ The client never sends an amount, currency, price id, customer id or subscriptio
 const existing = await repo.findCustomer(owner, livemode);
 if (existing) return existing;
 
-const customer = await stripe.customers.create(
-  {
-    email: user.email,
-    name: owner.type === 'org' ? org.name : profile.full_name,
-    metadata: {
-      studiq_owner_type: owner.type,
-      studiq_user_id: owner.type === 'user' ? owner.userId : owner.userId, // purchaser for orgs
-      ...(owner.type === 'org' ? { studiq_org_id: owner.orgId } : {}),
-    },
+const customer = await stripe.customers.create({
+  email: user.email,
+  name: owner.type === 'org' ? org.name : profile.full_name,
+  metadata: {
+    studiq_owner_type: owner.type,
+    studiq_user_id: owner.userId, // purchaser for orgs
+    studiq_org_id: owner.type === 'org' ? owner.orgId : '',
   },
-  { idempotencyKey: `customer:${owner.type}:${ownerId}:${livemode}` },
-);
+});
 await repo.insertCustomer(...); // unique index resolves races; on conflict re-select
 ```
 
-Both the idempotency key and the DB unique index are needed: the key covers retries, the index covers two concurrent requests with different keys.
+No persistent idempotency key on `customers.create`: Stripe replays a key for at least 24 h **even if the customer it created was deleted**, which would poison a re-checkout after a stale mapping is removed (§6.8). The DB unique index plus the conflict re-select covers concurrent creates; the losing request may leave an orphan Stripe customer, which is preferable to a deleted-customer replay.
 
 ### 5.4 Checkout Session parameters
 
@@ -842,7 +839,7 @@ await stripe.checkout.sessions.create(
     success_url: `${siteUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${siteUrl}/checkout?plan_id=${planKey}&canceled=1`,
     locale: locale === 'pl' ? 'pl' : 'en',
-    expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // min 30 min, max 24 h
+    expires_at: checkoutExpiresAt(Date.now()), // bucket-derived; ≥30 min, ≤24 h
     allow_promotion_codes: false, // D8
     automatic_tax: { enabled: false }, // D8
     tax_id_collection: { enabled: false },
@@ -855,7 +852,7 @@ Notes:
 
 - `client_reference_id` is capped at 200 chars; a UUID fits.
 - `metadata` is duplicated on the **Session** and the **Subscription**; the subscription copy survives after the session expires and is the fallback when a price is unknown.
-- `expires_at` 30 min + a 30-minute idempotency bucket means a double-click reuses the same session and a stale session cannot be paid after a new one is created.
+- `expires_at` is a pure function of the same 30-minute idempotency bucket (plus a 60 s margin), so every retry sends identical parameters and Stripe does not reject the reused key. The value is always comfortably above the 30-minute minimum and below the 24-hour maximum.
 - No `payment_method_types` allow-list: use Stripe's dynamic payment methods so SCA/3DS and local methods work.
 - `billing_mode.classic` is set explicitly. It is the one non-obvious parameter in the whole design; without it, D5 breaks (anchor never resets).
 

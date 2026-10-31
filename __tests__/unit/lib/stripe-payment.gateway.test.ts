@@ -1,4 +1,5 @@
 import { AccountType } from '@studiq/authz';
+import { CHECKOUT_BUCKET_MS } from '@studiq/server/lib/payment/checkout-timing';
 import type { StripeConfig } from '@studiq/server/lib/payment/payment-gateway.factory';
 import type { StripeClient } from '@studiq/server/lib/payment/stripe-client';
 import { StripePaymentGateway } from '@studiq/server/lib/payment/stripe-payment.gateway';
@@ -136,18 +137,15 @@ describe('StripePaymentGateway', () => {
     const result = await gateway.createCheckoutSession(personalInput());
 
     expect(result.success).toBe(true);
-    expect(client.customers.create).toHaveBeenCalledWith(
-      {
-        email: 'student@example.com',
-        name: 'Test Student',
-        metadata: {
-          studiq_owner_type: 'user',
-          studiq_user_id: 'u-1',
-          studiq_org_id: '',
-        },
+    expect(client.customers.create).toHaveBeenCalledWith({
+      email: 'student@example.com',
+      name: 'Test Student',
+      metadata: {
+        studiq_owner_type: 'user',
+        studiq_user_id: 'u-1',
+        studiq_org_id: '',
       },
-      { idempotencyKey: 'customer:user:u-1:false' },
-    );
+    });
     expect(repository.insertCustomer).toHaveBeenCalledWith(
       { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
       'cus_1',
@@ -171,7 +169,10 @@ describe('StripePaymentGateway', () => {
       locale: 'pl',
       success_url: 'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}',
       cancel_url: 'https://studiq.test/checkout?plan_id=spark&canceled=1',
-      expires_at: Math.floor(NOW.getTime() / 1000) + 30 * 60,
+      expires_at:
+        Math.floor(
+          ((Math.floor(NOW.getTime() / CHECKOUT_BUCKET_MS) + 2) * CHECKOUT_BUCKET_MS) / 1000,
+        ) + 60,
     });
     expect(params.subscription_data?.billing_mode).toEqual({ type: 'classic' });
     expect(params.metadata).toMatchObject({
@@ -228,7 +229,6 @@ describe('StripePaymentGateway', () => {
           studiq_org_id: 'org-1',
         },
       }),
-      { idempotencyKey: 'customer:org:org-1:false' },
     );
 
     const [params] = vi.mocked(client.checkout.sessions.create).mock.calls[0];

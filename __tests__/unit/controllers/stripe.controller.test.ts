@@ -50,10 +50,21 @@ describe('StripeController', () => {
   });
 
   describe('createCheckoutSession', () => {
-    it('returns 400 without a planKey', async () => {
+    it('returns 422 without a planKey', async () => {
       const response = await controller.createCheckoutSession(mockCtx, {});
       expect(response.success).toBe(false);
-      expect(response.statusCode).toBe(400);
+      expect(response.statusCode).toBe(422);
+      expect(billing.startCheckout).not.toHaveBeenCalled();
+    });
+
+    it('returns 422 for a null or malformed body instead of throwing', async () => {
+      await expect(controller.createCheckoutSession(mockCtx, null)).resolves.toMatchObject({
+        success: false,
+        statusCode: 422,
+      });
+      await expect(
+        controller.createCheckoutSession(mockCtx, { planKey: '', orgId: 'not-a-uuid' }),
+      ).resolves.toMatchObject({ success: false, statusCode: 422 });
       expect(billing.startCheckout).not.toHaveBeenCalled();
     });
 
@@ -74,14 +85,15 @@ describe('StripeController', () => {
     });
 
     it('passes the target organization through', async () => {
+      const orgId = '00000000-0000-4000-8000-000000000001';
       billing.startCheckout.mockResolvedValueOnce({
         success: true,
         data: { url: 'u', sessionId: 's' },
       });
 
-      await controller.createCheckoutSession(mockCtx, { planKey: 'hub', orgId: 'org-1' });
+      await controller.createCheckoutSession(mockCtx, { planKey: 'hub', orgId });
 
-      expect(billing.startCheckout).toHaveBeenCalledWith(mockCtx, 'hub', 'org-1', 'pl');
+      expect(billing.startCheckout).toHaveBeenCalledWith(mockCtx, 'hub', orgId, 'pl');
     });
 
     it('returns 403 when the plan does not match the account type', async () => {
