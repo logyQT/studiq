@@ -103,10 +103,12 @@ the template on every request.
    Pro inside a free `launch` org keeps `ai.chat`.
    Inside an org the personal layer only adds _personal-use_ features: the
    org-scoped keys (`org.manage`, `group.manage`, `member.manage`,
-   `role.builder`, `branding`) are dropped unless the org's own role rows
-   granted them, so a free `lite` educator plan cannot hand a `member` role
-   group management. Manager plans are organization plans mirrored onto the
-   buyer (#228), so a manager's `personal_plan_key` adds nothing in an org
+   `role.builder`, `branding`) are dropped unless the org layer above already
+   entitled them — the role's `org_role_features` rows, the seat plan, or, for a
+   role with no rows (custom role), the org plan. A free `lite` educator plan
+   therefore cannot hand a `member` role group management. Manager plans are
+   organization plans mirrored onto the buyer (#228), so a manager's
+   `personal_plan_key` adds nothing in an org
    (`personalPlanApplies()`, `packages/server/src/services/personal-plan.ts`).
 3. **User overrides** — active `user_feature_overrides` rows add/remove keys.
    Rows with `expires_at` in the past stay in the table for audit but are
