@@ -8,8 +8,9 @@ allowed. If a probe is not covered here, stop and ask; do not improvise against 
 The target is **this repository**, run **locally**, by the repository's owner. Testing is
 authorized for:
 
-- the web app (`apps/web`, `next start` on `:3010`)
-- the admin app (`apps/admin`, `next start` on `:4000`)
+- the web app (`apps/web`, production build started with `next start -p 3010`)
+- the admin app (`apps/admin`, built with `bun run build:admin` and started with
+  `bun run start:admin`, which runs `next start -p 4000`)
 - a **dedicated** Supabase instance started for the test (never the shared QA database)
 
 Testing is **not** authorized, ever, without a new explicit instruction:
@@ -25,14 +26,21 @@ as an action.
 
 ## 2. Environment
 
-1. **Production build, dedicated stack.** `bun run build` + `next start` — `next dev` behaves
-   differently (middleware, source maps, error surfaces) and findings do not transfer.
-2. **Own Supabase.** `bunx supabase start` for the run; seed with `scripts/qa-tenant.ts`. Never
-   point probes at `:54421` (the shared QA database) — a mass IDOR scan would write noise into
-   other people's tenants.
-3. **Seed your own tenants.** Two organizations, two users each, and a resource of every kind
-   (deck, card, bank, question, quiz, group, invite). Cross-tenant probes need a _foreign_ id,
-   so you must create one deliberately.
+1. **Production build, dedicated stack.** Build both apps from the repo root with
+   `bun run build` (web) and `bun run build:admin` (admin), then start them with
+   `cd apps/web && bunx next start -p 3010` and `bun run start:admin` (`next start -p 4000`
+   in `apps/admin`). `next dev` behaves differently (middleware, source maps, error
+   surfaces) and findings do not transfer.
+2. **Own Supabase.** `bunx supabase start` for the run; seed with
+   `bun scripts/qa-tenant.ts SEC-02 --profile two-org --fresh`. Never point probes at
+   `:54421` (the shared QA database) — a mass IDOR scan would write noise into other
+   people's tenants.
+3. **Seed your own tenants.** The `two-org` profile creates one manager who is admin of
+   both organizations: org A has that manager plus a teacher and a student, org B has the
+   manager plus a student, and each org has two groups and one pending invitation. It writes
+   the ids and credentials to `qa/.tenants/SEC-02.json`. Create decks, cards, banks,
+   questions and quizzes through the app as those users. Cross-tenant probes need a
+   _foreign_ id, so you must create one deliberately.
 4. Throw the stack away afterwards. Findings are the artifact, not the environment.
 
 ## 3. Technique boundaries

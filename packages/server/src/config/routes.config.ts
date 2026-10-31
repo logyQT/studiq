@@ -33,9 +33,9 @@ export const routeRules: RouteRule[] = [
     matcher: /^\/api\/v1\/stripe\/webhook(\/.*)?$/,
     isApi: true,
   },
-  // Catch-all for authenticated API routes (auth, health, avatar, stripe/webhook are unprotected by design)
+  // Catch-all for authenticated API routes (auth, health, avatar, subscription-plans, stripe/webhook are unprotected by design)
   {
-    matcher: /^\/api\/v\d+\/(?!auth|health|avatar|stripe\/webhook)(.*)$/,
+    matcher: /^\/api\/v\d+\/(?!auth|health|avatar|subscription-plans|stripe\/webhook)(.*)$/,
     requireAuth: true,
     isApi: true,
   },

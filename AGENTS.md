@@ -401,7 +401,7 @@ Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — e
 2. If `requireAuth` + no session → 401 (API) or redirect to `/login?next=…` (UI)
 3. If `allowedAccountTypes` + account type mismatch → 403 (API) or redirect to the account-type dashboard (UI)
 
-API catch-all rule (documents which API routes are public by design): `/api/v1/` requires auth except `auth`, `health`, `avatar`, `stripe/webhook`. `stripe/webhook` is excluded from the proxy rule only so a real Stripe webhook can stay unauthenticated; the mock webhook authenticates the caller itself (`withAuth`) and only acts on that caller's own account.
+API catch-all rule (documents which API routes are public by design): `/api/v1/` requires auth except `auth`, `health`, `avatar`, `subscription-plans`, `stripe/webhook`. `subscription-plans` is the public pricing catalogue (`listPublic`/`getByKey`, no session). `stripe/webhook` is excluded from the proxy rule only so a real Stripe webhook can stay unauthenticated; the mock webhook authenticates the caller itself (`withAuth`) and only acts on that caller's own account.
 
 UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/register redirect logged-in users by account type. The system admin panel is the **separate `apps/admin` app** (port 4000), not a route in `apps/web`.
 

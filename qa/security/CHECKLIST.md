@@ -68,11 +68,11 @@ the grep after any route change; a new one outside that set is a finding on its 
 
 ## G. Files and public buckets
 
-| #   | probe                                                            | expected                                                                                                    |
-| --- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| G1  | Upload a non-image / oversized / double-extension file           | rejected by type and size, not just by extension                                                            |
-| G2  | Fetch an object from a public bucket that belongs to another org | public read is a **declared** exposure (`flashcard_media`, org logos) — verify it contains no personal data |
-| G3  | Path traversal in any file path parameter                        | `4xx`                                                                                                       |
+| #   | probe                                                                                                                     | expected                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1  | Upload a file whose MIME type is outside the allowlist (e.g. `text/html`), an oversized file, and a double-extension file | rejected by declared type, sniffed content and size, not just by extension; valid audio (`audio/mpeg`, `audio/wav`, `audio/ogg`) is allowed |
+| G2  | Fetch an object from a public bucket that belongs to another org                                                          | public read is a **declared** exposure (`flashcard-media`, org logos) — verify it contains no personal data                                 |
+| G3  | Path traversal in any file path parameter                                                                                 | `4xx`                                                                                                                                       |
 
 ## H. Rate limiting and enumeration
 
@@ -84,12 +84,12 @@ the grep after any route change; a new one outside that set is a finding on its 
 
 ## I. Admin app
 
-| #   | probe                                                                   | expected                                                                         |
-| --- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| I1  | `/api/*` on `:4000` with no signature and a **non-empty** keyring       | `401`                                                                            |
-| I2  | `/api/*` in a production build with an **empty** keyring                | `401` (fail closed)                                                              |
-| I3  | A signed key with scope `feature-flags:read` calling an org/users route | `403`                                                                            |
-| I4  | Every id-taking admin route                                             | no reach beyond the route's own scope (see ADR-0009 grants for the target model) |
+| #   | probe                                                                   | expected                                                                                               |
+| --- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| I1  | `/api/*` on `:4000` with no signature and a **non-empty** keyring       | `401`                                                                                                  |
+| I2  | `/api/*` in a production build with an **empty** keyring                | `401` (fail closed)                                                                                    |
+| I3  | A signed key with scope `feature-flags:read` calling an org/users route | `403`                                                                                                  |
+| I4  | Every id-taking admin route                                             | no reach beyond the route's own scope (see ADR-0007 admin API auth for the target authorization model) |
 
 ## J. Direct database surface (PostgREST)
 
@@ -111,4 +111,4 @@ The anon key ships in the browser, so this is a real attack surface, not a theor
    usually are.
 3. **C + D** — mass assignment and invite flows.
 4. **E + F + G + H** — hardening, unless something in 1–3 already looks wrong.
-5. **I** — admin, once the grant model in ADR-0009 exists; before that, the gate is the whole story.
+5. **I** — admin, following the scoped-key model in ADR-0007 (admin API auth); before the DB-backed grants land, the gate is the whole story.
