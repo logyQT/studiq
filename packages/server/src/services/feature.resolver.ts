@@ -115,9 +115,11 @@ export class FeatureResolver {
    *   2. Personal plan    — always applied as an additive layer on top of the
    *      org entitlement: a plan the member pays for personally must not be
    *      shadowed by an org that never bought the feature (a student on StudiQ
-   *      Pro inside a `launch` org still gets `ai.chat`). Inside an org the
-   *      admin-only keys are stripped for non-admin roles, so a personal plan
-   *      can never escalate structure privileges.
+   *      Pro inside a `launch` org still gets `ai.chat`). Inside an org only
+   *      personal-use keys are added: an org-scoped key survives only when the
+   *      org layer above already entitled it (role rows, the seat plan, or the
+   *      org plan for a role with no rows), so a purchase cannot escalate
+   *      structure privileges.
    *   3. User override    — `user_feature_overrides` rows are the strongest
    *      layer: add/remove anything. Rows whose `expires_at` is in the past are
    *      ignored (they stay in the table for audit only).
@@ -146,8 +148,9 @@ export class FeatureResolver {
       }
 
       // `org.manage` marks an org admin. Only they may hold the structure
-      // privileges in ADMIN_ONLY_FEATURES; everyone else gets them stripped
-      // after any plan layer is applied (seat or personal).
+      // privileges in ADMIN_ONLY_FEATURES through a seat; everyone else gets
+      // them stripped once the seat plan is applied. (The personal layer is
+      // bounded separately by ORG_SCOPED_FEATURES — see step 2 below.)
       isOrgAdmin = orgRoleFeatures.some(
         (r) => r.feature_key === 'org.manage' && r.is_enabled !== false,
       );
