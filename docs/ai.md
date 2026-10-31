@@ -202,7 +202,7 @@ Configured via environment variables (`src/server/ai/model.ts`):
 | `LLM_API_KEY`          | —                                            | API key                    |
 | `LLM_MODEL_NAME`       | `mimo-v2.6-flash`                            | Model identifier           |
 | `LLM_BASE_URL`         | `https://opencode.ai/inference/go/openai/v1` | OpenAI-compatible endpoint |
-| `LLM_REASONING_EFFORT` | `medium`                                     | `low` / `medium` / `high`  |
+| `LLM_REASONING_EFFORT` | provider default (unset)                     | `low` / `medium` / `high`  |
 
 Every inference call also carries `x-opencode-session` (the chat conversation id
 when there is one, a process-scoped id otherwise) — OpenCode Go routes and

@@ -23,6 +23,27 @@ export const providerName = provider;
  */
 const processSessionId = `studiq-${crypto.randomUUID()}`;
 
+/** A plain header token: no control characters, no non-Latin-1, bounded length. */
+const SESSION_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
+/**
+ * `Headers.set` throws on control characters and non-ByteString values, so the
+ * conversation id cannot be trusted in a header: the chat route seeds it from
+ * `messages[0].id`, which the client controls. Anything that is not a plain
+ * token becomes a stable FNV-1a digest — still one id per conversation, but a
+ * newline (or a non-ASCII id) can no longer fail the request.
+ */
+function toSessionId(raw: string | undefined): string {
+  if (!raw) return processSessionId;
+  if (SESSION_ID_PATTERN.test(raw)) return raw;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < raw.length; i++) {
+    hash ^= raw.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `studiq-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
 /**
  * OpenCode Go rejects calls without `x-opencode-session` (`400 MissingSessionID`)
  * and asks clients to identify themselves instead of looking like a bare SDK.
@@ -33,10 +54,7 @@ const processSessionId = `studiq-${crypto.randomUUID()}`;
 const sessionFetch: typeof fetch = Object.assign(
   (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const headers = new Headers(init?.headers);
-    headers.set(
-      'x-opencode-session',
-      conversationStorage.getStore()?.conversationId ?? processSessionId,
-    );
+    headers.set('x-opencode-session', toSessionId(conversationStorage.getStore()?.conversationId));
     headers.set('user-agent', 'studiq/0.1');
     return fetch(input, { ...init, headers });
   },
