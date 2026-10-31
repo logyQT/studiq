@@ -97,8 +97,19 @@ the template on every request.
      authoritative (a missing key is off).
    - Not seated, role has no rows (custom role): `organizations.plan` →
      `plan_features`.
-2. **Personal fallback** — only if nothing above produced a feature:
-   `profiles.personal_plan_key` → `plan_features`.
+2. **Personal plan** — always applied on top of the entitlement above:
+   `profiles.personal_plan_key` → `plan_features`. A plan the member pays for
+   personally is never shadowed by an org on a lower tier — a student on StudiQ
+   Pro inside a free `launch` org keeps `ai.chat`.
+   Inside an org the personal layer only adds _personal-use_ features: the
+   org-scoped keys (`org.manage`, `group.manage`, `member.manage`,
+   `role.builder`, `branding`) are dropped unless the org layer above already
+   entitled them — the role's `org_role_features` rows, the seat plan, or, for a
+   role with no rows (custom role), the org plan. A free `lite` educator plan
+   therefore cannot hand a `member` role group management. Manager plans are
+   organization plans mirrored onto the buyer (#228), so a manager's
+   `personal_plan_key` adds nothing in an org
+   (`personalPlanApplies()`, `packages/server/src/services/personal-plan.ts`).
 3. **User overrides** — active `user_feature_overrides` rows add/remove keys.
    Rows with `expires_at` in the past stay in the table for audit but are
    ignored.
@@ -112,16 +123,20 @@ the template on every request.
 `LimitsResolver.getEffectiveLimit(ctx, limitKey)` —
 `packages/server/src/services/limits.resolver.ts`
 
-**Rule (#233):** in a verified org context the organization's plan governs
-every limit; a seat may raise only per-member (`scope: 'user'`) keys, never
-org-scope capacity; the personal plan applies only outside a verified org
-context; a missing `plan_limits` row is `0` (blocked) in every path.
+**Rule (#233):** org-scope capacity (`scope: 'org'`) always comes from the
+organization's plan — no seat and no personal plan can widen it. Per-member keys
+(`scope: 'user'`) take the most permissive layer: a seat governs for the seated
+member (Q3), otherwise the higher of the member's personal plan and the org plan
+wins, so an org on the free tier never undercuts a plan the member bought. A
+manager's personal plan is excluded inside an org — it mirrors an org purchase
+(#228). A missing `plan_limits` row is `0` (blocked) in every path.
 
 | Context                                          | `scope: 'user'` keys | `scope: 'org'` keys            |
 | ------------------------------------------------ | -------------------- | ------------------------------ |
 | No active org                                    | personal plan        | `0` (no org capacity to grant) |
 | Active org, seated                               | seat plan            | org plan                       |
-| Active org, unseated verified member             | org plan             | org plan                       |
+| Active org, unseated verified member             | personal ∪ org plan  | org plan                       |
+| Active org, manager (personal plan is a mirror)  | org plan             | org plan                       |
 | Active org id without membership (forged cookie) | personal plan        | `0`                            |
 | Plan lacks the key                               | `0` + `warn()`       | `0` + `warn()`                 |
 
@@ -131,7 +146,8 @@ row and falls back to the personal plan (user keys) or `0` (org keys).
 
 **Managers (#228):** a manager has no paid personal plan — their
 `profiles.personal_plan_key` is the free `launch` tier. In a verified org a
-manager therefore resolves limits from the org plan only (a seat still wins for
+manager therefore resolves limits from the org plan only — their personal key is
+a mirror of an org plan, never a second entitlement (#228; a seat still governs
 per-member keys); the free personal tier applies only when there is no active
 org. A manager carrying a paid org plan in `personal_plan_key` from an old
 purchase cannot widen any org's limits.

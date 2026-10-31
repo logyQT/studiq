@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,7 +32,7 @@ describe(`Limits resolve live from organizations.plan`, () => {
     return {
       traceId: `limits-${suiteId}`,
       userId: fixture.user.id,
-      accountType: 'MANAGER',
+      accountType: AccountType.MANAGER,
       activeOrgId: fixture.orgId,
       // withAuth sets this only for a real org_members row; the fixture user
       // is the org's admin, so that is exactly what a live request carries.
