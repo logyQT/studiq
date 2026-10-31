@@ -1,5 +1,7 @@
 import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway';
 import { mockPaymentGateway } from '@studiq/server/lib/payment/mock-payment.gateway';
+import { createStripeClient } from '@studiq/server/lib/payment/stripe-client';
+import { StripePaymentGateway } from '@studiq/server/lib/payment/stripe-payment.gateway';
 
 export class PaymentConfigError extends Error {
   constructor(message: string) {
@@ -65,9 +67,8 @@ export function parseStripeConfig(env: Env = process.env): StripeConfig {
  * driver (`MAIL_DRIVER`):
  *
  * - `PAYMENT_DRIVER` unset or `mock`: the simulation. No Stripe env is needed.
- * - `PAYMENT_DRIVER=stripe`: validates the full Stripe configuration; the
- *   adapter itself lands in phase 2, so this throws until then rather than
- *   silently falling back to the mock.
+ * - `PAYMENT_DRIVER=stripe`: validates the full Stripe configuration and
+ *   builds the real adapter.
  *
  * Anything else throws a `PaymentConfigError`, so a typo fails at boot.
  */
@@ -77,12 +78,11 @@ export function createPaymentGatewayFromEnv(env: Env = process.env): PaymentGate
   if (driver === '' || driver === 'mock') return mockPaymentGateway;
 
   if (driver === 'stripe') {
-    // Validate keys first so a missing secret is reported as such, then fail
-    // loudly on the missing adapter instead of charging through the mock.
-    parseStripeConfig(env);
-    throw new PaymentConfigError(
-      'PAYMENT_DRIVER=stripe is not wired yet; StripePaymentGateway lands in phase 2',
-    );
+    const config = parseStripeConfig(env);
+    return new StripePaymentGateway({
+      client: createStripeClient(config.secretKey),
+      config,
+    });
   }
 
   throw new PaymentConfigError(`unknown PAYMENT_DRIVER "${driver}" (expected mock or stripe)`);

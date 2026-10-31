@@ -38,6 +38,7 @@ describe('MockPaymentGateway', () => {
 
   it('reports the mock driver', () => {
     expect(gateway.driver).toBe('mock');
+    expect(gateway.livemode).toBe(false);
   });
 
   it('delegates checkout with the authenticated actor and target org', async () => {
@@ -46,10 +47,17 @@ describe('MockPaymentGateway', () => {
 
     await expect(
       gateway.createCheckoutSession({
-        userId: 'u-1',
-        accountType: AccountType.MANAGER,
+        owner: {
+          type: 'org',
+          orgId: 'org-1',
+          userId: 'u-1',
+          accountType: AccountType.MANAGER,
+        },
         planKey: 'hub',
-        orgId: 'org-1',
+        planName: 'StudiQ Hub',
+        amount: 4999,
+        currency: 'PLN',
+        billingCycle: 'monthly',
         idempotencyKey: 'checkout-key',
       }),
     ).resolves.toEqual(success(result));
@@ -68,9 +76,12 @@ describe('MockPaymentGateway', () => {
     );
 
     await gateway.createCheckoutSession({
-      userId: 'u-1',
-      accountType: AccountType.STUDENT,
+      owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
       planKey: 'spark',
+      planName: 'StudiQ Spark',
+      amount: 999,
+      currency: 'PLN',
+      billingCycle: 'monthly',
       idempotencyKey: 'checkout-key',
     });
 

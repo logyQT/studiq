@@ -140,7 +140,7 @@ describe('org checkout resolves the target organization (#225)', () => {
 
   it('creates a checkout session whose URL carries the resolved org', async () => {
     actAs(admin);
-    const res = await createCheckoutSession(checkoutRequest({ planId: 'hub', orgId }));
+    const res = await createCheckoutSession(checkoutRequest({ planKey: 'hub', orgId }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -150,14 +150,14 @@ describe('org checkout resolves the target organization (#225)', () => {
 
   it('rejects a manager who is not an org admin', async () => {
     actAs(teacher);
-    const res = await createCheckoutSession(checkoutRequest({ planId: 'hub', orgId }));
+    const res = await createCheckoutSession(checkoutRequest({ planKey: 'hub', orgId }));
 
     expect(res.status).toBe(403);
   });
 
   it('rejects an org plan purchase without an org id', async () => {
     actAs(admin);
-    const res = await createCheckoutSession(checkoutRequest({ planId: 'hub' }));
+    const res = await createCheckoutSession(checkoutRequest({ planKey: 'hub' }));
 
     expect(res.status).toBe(400);
   });

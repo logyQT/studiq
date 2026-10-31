@@ -40,10 +40,14 @@ describe('createPaymentGatewayFromEnv', () => {
     );
   });
 
-  it('fails fast while the Stripe adapter is not wired yet', () => {
-    expect(() =>
-      createPaymentGatewayFromEnv({ PAYMENT_DRIVER: 'stripe', ...validStripeEnv }),
-    ).toThrow(/not wired yet/);
+  it('builds the Stripe adapter from a complete test-mode configuration', () => {
+    const gateway = createPaymentGatewayFromEnv({
+      PAYMENT_DRIVER: 'stripe',
+      ...validStripeEnv,
+    });
+
+    expect(gateway.driver).toBe('stripe');
+    expect(gateway.livemode).toBe(false);
   });
 });
 

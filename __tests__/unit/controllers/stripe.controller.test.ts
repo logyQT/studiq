@@ -1,10 +1,12 @@
 import type { RequestContext } from '@studiq/authz';
 import { StripeController } from '@studiq/server/controllers/stripe.controller';
+import type { BillingService } from '@studiq/server/services/billing.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockGateway() {
   return {
     driver: 'mock' as const,
+    livemode: false,
     createCheckoutSession: vi.fn(),
     createPortalSession: vi.fn(),
     changePlan: vi.fn(),
@@ -13,7 +15,12 @@ function createMockGateway() {
   };
 }
 
+function createMockBilling() {
+  return { startCheckout: vi.fn() };
+}
+
 let gateway: ReturnType<typeof createMockGateway>;
+let billing: ReturnType<typeof createMockBilling>;
 let controller: StripeController;
 const mockCtx: RequestContext = {
   traceId: 'test',
@@ -38,51 +45,62 @@ describe('StripeController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     gateway = createMockGateway();
-    controller = new StripeController(gateway as any);
+    billing = createMockBilling();
+    controller = new StripeController(gateway as any, billing as unknown as BillingService);
   });
 
   describe('createCheckoutSession', () => {
-    it('returns 400 without a planId', async () => {
+    it('returns 422 without a planKey', async () => {
       const response = await controller.createCheckoutSession(mockCtx, {});
       expect(response.success).toBe(false);
-      expect(response.statusCode).toBe(400);
+      expect(response.statusCode).toBe(422);
+      expect(billing.startCheckout).not.toHaveBeenCalled();
+    });
+
+    it('returns 422 for a null or malformed body instead of throwing', async () => {
+      await expect(controller.createCheckoutSession(mockCtx, null)).resolves.toMatchObject({
+        success: false,
+        statusCode: 422,
+      });
+      await expect(
+        controller.createCheckoutSession(mockCtx, { planKey: '', orgId: 'not-a-uuid' }),
+      ).resolves.toMatchObject({ success: false, statusCode: 422 });
+      expect(billing.startCheckout).not.toHaveBeenCalled();
+    });
+
+    it('delegates plan, org and locale to BillingService', async () => {
+      billing.startCheckout.mockResolvedValueOnce({
+        success: true,
+        data: { url: 'u', sessionId: 's' },
+      });
+
+      const response = await controller.createCheckoutSession(mockCtx, {
+        planKey: 'spark',
+        locale: 'en',
+      });
+
+      expect(response.success).toBe(true);
+      expect(billing.startCheckout).toHaveBeenCalledWith(mockCtx, 'spark', undefined, 'en');
       expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
     });
 
-    it('passes the authenticated actor and plan to the gateway', async () => {
-      gateway.createCheckoutSession.mockResolvedValueOnce({
-        success: true,
-        data: { url: 'u', sessionId: 's' },
-      });
-      const response = await controller.createCheckoutSession(mockCtx, { planId: 'spark' });
-      expect(response.success).toBe(true);
-      expect(gateway.createCheckoutSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'u-1',
-          accountType: 'student',
-          planKey: 'spark',
-          idempotencyKey: expect.any(String),
-        }),
-      );
-    });
-
     it('passes the target organization through', async () => {
-      gateway.createCheckoutSession.mockResolvedValueOnce({
+      const orgId = '00000000-0000-4000-8000-000000000001';
+      billing.startCheckout.mockResolvedValueOnce({
         success: true,
         data: { url: 'u', sessionId: 's' },
       });
-      await controller.createCheckoutSession(mockCtx, { planId: 'hub', orgId: 'org-1' });
-      expect(gateway.createCheckoutSession).toHaveBeenCalledWith(
-        expect.objectContaining({ planKey: 'hub', orgId: 'org-1' }),
-      );
+
+      await controller.createCheckoutSession(mockCtx, { planKey: 'hub', orgId });
+
+      expect(billing.startCheckout).toHaveBeenCalledWith(mockCtx, 'hub', orgId, 'pl');
     });
 
     it('returns 403 when the plan does not match the account type', async () => {
-      gateway.createCheckoutSession.mockResolvedValueOnce({
-        success: false,
-        error: 'FORBIDDEN',
-      });
-      const response = await controller.createCheckoutSession(mockCtx, { planId: 'campus' });
+      billing.startCheckout.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
+
+      const response = await controller.createCheckoutSession(mockCtx, { planKey: 'campus' });
+
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
     });

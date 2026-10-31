@@ -1,7 +1,7 @@
 # Real Stripe integration behind the payment interface (#662)
 
 **Date:** 2026-10-30
-**Status:** Design — approved decisions. Phase 1 (gateway seam + `PAYMENT_DRIVER` boot validation) implemented; the mock is still the only adapter.
+**Status:** Design — approved decisions. Phase 1 (gateway seam + `PAYMENT_DRIVER` boot validation) implemented; phase 2A (Stripe customer + hosted Checkout + `BillingService` validation) is implemented behind `PAYMENT_DRIVER=stripe`, with the mock still the default. Webhooks, portal, plan changes and the billing UI remain phases 3–4.
 **Issue:** [#662](https://github.com/logyQT/studiq/issues/662) (ROADMAP Phase 6)
 **Scope owner:** SoCoCold (Alan) per the issue body; the issue currently has no GitHub assignee
 
@@ -801,22 +801,19 @@ The client never sends an amount, currency, price id, customer id or subscriptio
 const existing = await repo.findCustomer(owner, livemode);
 if (existing) return existing;
 
-const customer = await stripe.customers.create(
-  {
-    email: user.email,
-    name: owner.type === 'org' ? org.name : profile.full_name,
-    metadata: {
-      studiq_owner_type: owner.type,
-      studiq_user_id: owner.type === 'user' ? owner.userId : owner.userId, // purchaser for orgs
-      ...(owner.type === 'org' ? { studiq_org_id: owner.orgId } : {}),
-    },
+const customer = await stripe.customers.create({
+  email: user.email,
+  name: owner.type === 'org' ? org.name : profile.full_name,
+  metadata: {
+    studiq_owner_type: owner.type,
+    studiq_user_id: owner.userId, // purchaser for orgs
+    studiq_org_id: owner.type === 'org' ? owner.orgId : '',
   },
-  { idempotencyKey: `customer:${owner.type}:${ownerId}:${livemode}` },
-);
+});
 await repo.insertCustomer(...); // unique index resolves races; on conflict re-select
 ```
 
-Both the idempotency key and the DB unique index are needed: the key covers retries, the index covers two concurrent requests with different keys.
+No persistent idempotency key on `customers.create`: Stripe replays a key for at least 24 h **even if the customer it created was deleted**, which would poison a re-checkout after a stale mapping is removed (§6.8). The DB unique index plus the conflict re-select covers concurrent creates; the losing request may leave an orphan Stripe customer, which is preferable to a deleted-customer replay.
 
 ### 5.4 Checkout Session parameters
 
@@ -842,7 +839,7 @@ await stripe.checkout.sessions.create(
     success_url: `${siteUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${siteUrl}/checkout?plan_id=${planKey}&canceled=1`,
     locale: locale === 'pl' ? 'pl' : 'en',
-    expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // min 30 min, max 24 h
+    expires_at: checkoutExpiresAt(Date.now()), // bucket-derived; ≥30 min, ≤24 h
     allow_promotion_codes: false, // D8
     automatic_tax: { enabled: false }, // D8
     tax_id_collection: { enabled: false },
@@ -855,7 +852,7 @@ Notes:
 
 - `client_reference_id` is capped at 200 chars; a UUID fits.
 - `metadata` is duplicated on the **Session** and the **Subscription**; the subscription copy survives after the session expires and is the fallback when a price is unknown.
-- `expires_at` 30 min + a 30-minute idempotency bucket means a double-click reuses the same session and a stale session cannot be paid after a new one is created.
+- `expires_at` is a pure function of the same 30-minute idempotency bucket (plus a 60 s margin), so every retry sends identical parameters and Stripe does not reject the reused key. The value is always comfortably above the 30-minute minimum and below the 24-hour maximum.
 - No `payment_method_types` allow-list: use Stripe's dynamic payment methods so SCA/3DS and local methods work.
 - `billing_mode.classic` is set explicitly. It is the one non-obvious parameter in the whole design; without it, D5 breaks (anchor never resets).
 
@@ -864,7 +861,7 @@ Notes:
 Three layers:
 
 1. `CONFLICT` when an active subscription already exists for the owner.
-2. 30-minute idempotency bucket + 30-minute `expires_at` on the session.
+2. 30-minute idempotency bucket + bucket-derived `expires_at` (30–60 minutes plus a 60-second margin) on the session.
 3. Webhook guard: if an owner already has an active subscription with a different `stripe_subscription_id`, do **not** overwrite the active row or apply the second plan; mark the event `ignored`, log `billing.duplicate_subscription`, and leave a manual refund/cleanup note. (A DB partial unique index makes the race deterministic.)
 
 ### 5.6 UI behaviour
@@ -1000,7 +997,7 @@ Authorization is deliberately **not** re-checked on the webhook. If an admin is 
 | Dunning exhausted (`unpaid`)                         | Downgrade to free on `subscription.updated`                                                                              | Status-driven                                                                  |
 | 3DS at Checkout                                      | Hosted Checkout handles it; no session completion until paid                                                             | `payment_status=paid` gate                                                     |
 | 3DS on an upgrade invoice                            | `invoice.payment_action_required`; stay on the old plan; show the hosted invoice link                                    | `pending_if_incomplete`                                                        |
-| Checkout expires (`session.expired`)                 | No writes; the customer can start again                                                                                  | `expires_at` 30 min                                                            |
+| Checkout expires (`session.expired`)                 | No writes; the customer can start again                                                                                  | Bucket-derived `expires_at` (30–60 min + 60 s margin)                          |
 | Concurrent checkouts for two plans                   | Second payment may succeed; the webhook refuses to replace an active subscription, logs `billing.duplicate_subscription` | Partial unique index + webhook guard; manual refund                            |
 | Refund                                               | No automatic revocation                                                                                                  | Manual policy (Q3)                                                             |
 | Dispute / chargeback                                 | No automatic revocation; access stays until a human decides                                                              | Manual policy                                                                  |

@@ -1,6 +1,10 @@
+import { AccountType } from '@studiq/authz';
+import { StripePaymentGateway } from '@studiq/server/lib/payment/stripe-payment.gateway';
+import { SupabaseStripeBillingRepository } from '@studiq/server/lib/payment/stripe-repository';
+import { createStripeClient } from '@studiq/server/lib/payment/stripe-client';
 import Stripe from 'stripe';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createServiceClient } from '#test/integration/helpers';
+import { createServiceClient, TEST_USERS } from '#test/integration/helpers';
 
 /**
  * Opt-in verification of the real Stripe sandbox (#662).
@@ -11,9 +15,10 @@ import { createServiceClient } from '#test/integration/helpers';
  *   set -a; . ./.env; set +a
  *   RUN_STRIPE_TESTS=1 bunx vitest run __tests__/integration/stripe-sandbox.test.ts
  *
- * Read-only: it never creates or mutates Stripe objects, so it is safe to
- * re-run. The future subscription-lifecycle suite (test clocks, renewals,
- * dunning) will live next to it behind the same flag.
+ * The catalog/price/portal checks are read-only. The checkout check creates a
+ * hosted Checkout Session (never pays it), then expires the session and deletes
+ * the test customer/mapping again. The future subscription-lifecycle suite
+ * (test clocks, renewals, dunning) will live next to it behind the same flag.
  */
 const requested = process.env.RUN_STRIPE_TESTS === '1';
 if (requested && !process.env.STRIPE_SECRET_KEY) {
@@ -155,5 +160,82 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
     expect(portal!.features.customer_update?.allowed_updates).toContain('tax_id');
     // Plan switching is an app endpoint (#662 X5), not a portal action.
     expect(portal!.features.subscription_update?.enabled).not.toBe(true);
+  });
+
+  it('creates a real test-mode Checkout Session for a mapped Price', async () => {
+    const studentId = TEST_USERS.STUDENT.id;
+    const plan = plans[0];
+
+    // A crashed earlier run or a manual sandbox purchase must not turn this
+    // check into a CONFLICT or reuse a deleted customer.
+    await service.from('billing_subscriptions').delete().eq('user_id', studentId);
+    await service.from('billing_customers').delete().eq('user_id', studentId);
+
+    const { data: priceRow, error: priceError } = await service
+      .from('stripe_prices')
+      .select('stripe_price_id, unit_amount, currency')
+      .eq('plan_key', plan.key)
+      .eq('billing_cycle', 'monthly')
+      .eq('livemode', false)
+      .eq('active', true)
+      .single();
+    if (priceError || !priceRow) {
+      throw new Error(`stripe_prices for ${plan.key}: ${priceError?.message ?? 'missing row'}`);
+    }
+
+    const gateway = new StripePaymentGateway({
+      client: createStripeClient(process.env.STRIPE_SECRET_KEY!),
+      config: {
+        secretKey: process.env.STRIPE_SECRET_KEY!,
+        // Checkout never verifies a webhook, but the config shape is boot-validated.
+        webhookSecret: 'whsec_sandbox_checkout_only',
+        portalConfigurationId: process.env.STRIPE_PORTAL_CONFIGURATION_ID!,
+        livemode: false,
+      },
+      repository: new SupabaseStripeBillingRepository(() => service),
+      siteUrl: () => 'https://studiq.test',
+    });
+
+    let sessionId: string | undefined;
+    let customerId: string | undefined;
+
+    try {
+      const result = await gateway.createCheckoutSession({
+        owner: { type: 'user', userId: studentId, accountType: AccountType.STUDENT },
+        planKey: plan.key,
+        planName: plan.key,
+        amount: plan.price_monthly,
+        currency: plan.currency,
+        billingCycle: 'monthly',
+        priceId: priceRow.stripe_price_id,
+        locale: 'pl',
+        idempotencyKey: `sandbox-checkout-${Date.now()}`,
+      });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      if (!result.success) throw new Error('checkout session was not created');
+
+      sessionId = result.data.sessionId;
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      expect(session.mode).toBe('subscription');
+      expect(session.amount_total).toBe(plan.price_monthly);
+      expect(session.currency).toBe('pln');
+      expect(session.client_reference_id).toBe(studentId);
+      expect(session.metadata?.studiq_plan_key).toBe(plan.key);
+      expect(session.metadata?.studiq_owner_type).toBe('user');
+
+      customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
+      expect(customerId).toMatch(/^cus_/);
+    } finally {
+      if (sessionId) {
+        await stripe.checkout.sessions.expire(sessionId).catch(() => {});
+      }
+      if (customerId) {
+        await stripe.customers.del(customerId).catch(() => {});
+      }
+      await service.from('billing_subscriptions').delete().eq('user_id', studentId);
+      await service.from('billing_customers').delete().eq('user_id', studentId);
+    }
   });
 });
