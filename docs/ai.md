@@ -196,13 +196,17 @@ This means:
 
 Configured via environment variables (`src/server/ai/model.ts`):
 
-| Variable               | Default                         | Purpose                    |
-| ---------------------- | ------------------------------- | -------------------------- |
-| `LLM_PROVIDER`         | `opencode`                      | Provider name              |
-| `LLM_API_KEY`          | —                               | API key                    |
-| `LLM_MODEL_NAME`       | `mimo-v2.5`                     | Model identifier           |
-| `LLM_BASE_URL`         | `https://opencode.ai/zen/go/v1` | OpenAI-compatible endpoint |
-| `LLM_REASONING_EFFORT` | `medium`                        | `low` / `medium` / `high`  |
+| Variable               | Default                                      | Purpose                    |
+| ---------------------- | -------------------------------------------- | -------------------------- |
+| `LLM_PROVIDER`         | `opencode-go`                                | Provider name              |
+| `LLM_API_KEY`          | —                                            | API key                    |
+| `LLM_MODEL_NAME`       | `mimo-v2.6-flash`                            | Model identifier           |
+| `LLM_BASE_URL`         | `https://opencode.ai/inference/go/openai/v1` | OpenAI-compatible endpoint |
+| `LLM_REASONING_EFFORT` | `medium`                                     | `low` / `medium` / `high`  |
+
+Every inference call also carries `x-opencode-session` (the chat conversation id
+when there is one, a process-scoped id otherwise) — OpenCode Go routes and
+caches on it and rejects calls without it (`400 MissingSessionID`).
 
 ### Per-agent model overrides
 
@@ -210,8 +214,13 @@ Configured via environment variables (`src/server/ai/model.ts`):
 
 ```typescript
 export const agentModels = {
-  general: { provider: 'opencode', model: 'mimo-v2.5', reasoningEffort: 'medium' },
-  flashcard: { provider: 'opencode', model: 'mimo-v2.5', maxTokens: 8192, reasoningEffort: 'high' },
+  general: { provider: 'opencode-go', model: 'mimo-v2.6-flash', reasoningEffort: 'medium' },
+  flashcard: {
+    provider: 'opencode-go',
+    model: 'mimo-v2.6-flash',
+    maxTokens: 8192,
+    reasoningEffort: 'high',
+  },
 };
 ```
 
