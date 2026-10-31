@@ -158,7 +158,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
     });
 
     const session = await page.request.post('/api/v1/stripe/create-checkout-session', {
-      data: { planId: 'campus' },
+      data: { planKey: 'campus' },
     });
     expect(session.status(), 'POST /api/v1/stripe/create-checkout-session (campus)').toBe(403);
     expect(session.headers()['x-error-code'], 'the app error code').toBe('FORBIDDEN');

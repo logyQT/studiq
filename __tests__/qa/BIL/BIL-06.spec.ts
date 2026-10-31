@@ -162,7 +162,7 @@ test.describe('@case:BIL-06 @area:BIL @prio:P1 anonymous checkout and webhook', 
       // 2. No checkout session can be opened signed out (there is no button to
       //    press, and the API behind it refuses too).
       const sessionResponse = await page.request.post('/api/v1/stripe/create-checkout-session', {
-        data: { planId: TARGET_PLAN },
+        data: { planKey: TARGET_PLAN },
       });
       expect(sessionResponse.status(), 'anonymous create-checkout-session').toBe(401);
       const sessionBody = (await sessionResponse.json()) as ApiEnvelope<null>;
