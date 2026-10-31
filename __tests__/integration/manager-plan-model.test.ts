@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import type { NextRequest } from 'next/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -66,7 +66,7 @@ function managerCtx(activeOrgId: string | null): RequestContext {
   return {
     traceId: 'mgr-228',
     userId: manager.id,
-    accountType: 'MANAGER',
+    accountType: AccountType.MANAGER,
     activeOrgId,
     orgRoleId: null,
     url: '/api/v1/flashcards',
