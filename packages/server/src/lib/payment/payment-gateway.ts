@@ -45,6 +45,12 @@ export interface CreateCheckoutSessionInput {
   priceId?: string;
   locale?: BillingLocale;
   /**
+   * Expiry computed from the same snapshot as `idempotencyKey`, so a retried
+   * key always sends identical parameters. The gateway falls back to its own
+   * clock only for direct callers/tests.
+   */
+  expiresAt?: number;
+  /**
    * Provider idempotency key. The mock ignores it; the Stripe adapter forwards
    * it to `checkout.sessions.create`.
    */

@@ -209,8 +209,13 @@ describe('BillingService.startCheckout', () => {
       billingCycle: 'monthly',
       priceId: 'price_spark',
       locale: 'en',
-      idempotencyKey: expect.stringMatching(/^checkout:user:u-1:spark:\d+$/),
+      expiresAt: expect.any(Number),
+      idempotencyKey: expect.stringMatching(/^checkout:user:u-1::spark:en:\d+$/),
     });
+
+    const input = vi.mocked(gateway.createCheckoutSession).mock.calls[0][0];
+    const bucket = Number(input.idempotencyKey.split(':').pop());
+    expect(input.expiresAt).toBe(((bucket + 2) * CHECKOUT_BUCKET_MS) / 1000 + 60);
   });
 
   it('starts an organization checkout for an admin', async () => {
@@ -235,7 +240,8 @@ describe('BillingService.startCheckout', () => {
         },
         planKey: 'hub',
         priceId: 'price_hub',
-        idempotencyKey: expect.stringMatching(/^checkout:org:org-1:hub:\d+$/),
+        expiresAt: expect.any(Number),
+        idempotencyKey: expect.stringMatching(/^checkout:org:org-1:u-9:hub:pl:\d+$/),
       }),
     );
   });
@@ -271,15 +277,33 @@ describe('checkoutIdempotencyKey', () => {
 
   it('collapses retries inside the same 30-minute bucket', () => {
     const start = 1_800_000_000_000;
-    expect(checkoutIdempotencyKey(owner, 'spark', start)).toBe(
-      checkoutIdempotencyKey(owner, 'spark', start + 29 * 60 * 1000),
+    expect(checkoutIdempotencyKey(owner, 'spark', 'pl', start)).toBe(
+      checkoutIdempotencyKey(owner, 'spark', 'pl', start + 29 * 60 * 1000),
     );
   });
 
   it('uses a new key after the bucket rolls over', () => {
     const start = 1_800_000_000_000;
-    expect(checkoutIdempotencyKey(owner, 'spark', start)).not.toBe(
-      checkoutIdempotencyKey(owner, 'spark', start + 30 * 60 * 1000),
+    expect(checkoutIdempotencyKey(owner, 'spark', 'pl', start)).not.toBe(
+      checkoutIdempotencyKey(owner, 'spark', 'pl', start + 30 * 60 * 1000),
+    );
+  });
+
+  it('distinguishes the purchaser and locale for an organization', () => {
+    const start = 1_800_000_000_000;
+    const first = {
+      type: 'org' as const,
+      orgId: 'org-1',
+      userId: 'admin-1',
+      accountType: AccountType.MANAGER,
+    };
+    const second = { ...first, userId: 'admin-2' };
+
+    expect(checkoutIdempotencyKey(first, 'hub', 'pl', start)).not.toBe(
+      checkoutIdempotencyKey(second, 'hub', 'pl', start),
+    );
+    expect(checkoutIdempotencyKey(first, 'hub', 'pl', start)).not.toBe(
+      checkoutIdempotencyKey(first, 'hub', 'en', start),
     );
   });
 });

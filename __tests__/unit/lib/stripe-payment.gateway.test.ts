@@ -186,6 +186,13 @@ describe('StripePaymentGateway', () => {
     expect(options).toEqual({ idempotencyKey: 'checkout-key' });
   });
 
+  it('forwards the caller snapshot expiry so idempotent retries match', async () => {
+    await gateway.createCheckoutSession(personalInput({ expiresAt: 1_900_000_000 }));
+
+    const [params] = vi.mocked(client.checkout.sessions.create).mock.calls[0];
+    expect(params.expires_at).toBe(1_900_000_000);
+  });
+
   it('marks an organization customer and records the purchaser', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
       success({

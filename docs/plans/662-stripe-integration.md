@@ -861,7 +861,7 @@ Notes:
 Three layers:
 
 1. `CONFLICT` when an active subscription already exists for the owner.
-2. 30-minute idempotency bucket + 30-minute `expires_at` on the session.
+2. 30-minute idempotency bucket + bucket-derived `expires_at` (30–60 minutes plus a 60-second margin) on the session.
 3. Webhook guard: if an owner already has an active subscription with a different `stripe_subscription_id`, do **not** overwrite the active row or apply the second plan; mark the event `ignored`, log `billing.duplicate_subscription`, and leave a manual refund/cleanup note. (A DB partial unique index makes the race deterministic.)
 
 ### 5.6 UI behaviour
@@ -997,7 +997,7 @@ Authorization is deliberately **not** re-checked on the webhook. If an admin is 
 | Dunning exhausted (`unpaid`)                         | Downgrade to free on `subscription.updated`                                                                              | Status-driven                                                                  |
 | 3DS at Checkout                                      | Hosted Checkout handles it; no session completion until paid                                                             | `payment_status=paid` gate                                                     |
 | 3DS on an upgrade invoice                            | `invoice.payment_action_required`; stay on the old plan; show the hosted invoice link                                    | `pending_if_incomplete`                                                        |
-| Checkout expires (`session.expired`)                 | No writes; the customer can start again                                                                                  | `expires_at` 30 min                                                            |
+| Checkout expires (`session.expired`)                 | No writes; the customer can start again                                                                                  | Bucket-derived `expires_at` (30–60 min + 60 s margin)                          |
 | Concurrent checkouts for two plans                   | Second payment may succeed; the webhook refuses to replace an active subscription, logs `billing.duplicate_subscription` | Partial unique index + webhook guard; manual refund                            |
 | Refund                                               | No automatic revocation                                                                                                  | Manual policy (Q3)                                                             |
 | Dispute / chargeback                                 | No automatic revocation; access stays until a human decides                                                              | Manual policy                                                                  |

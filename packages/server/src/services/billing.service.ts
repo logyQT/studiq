@@ -1,7 +1,10 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
-import { checkoutIdempotencyKey } from '@studiq/server/lib/payment/checkout-timing';
+import {
+  checkoutExpiresAt,
+  checkoutIdempotencyKey,
+} from '@studiq/server/lib/payment/checkout-timing';
 import type {
   BillingLocale,
   CheckoutSessionResult,
@@ -69,6 +72,10 @@ export class BillingService {
       priceId = priceResult.data;
     }
 
+    // One clock snapshot for the key and expiry: Stripe rejects a reused key
+    // whose parameters differ, so these must never straddle a bucket boundary.
+    const nowMs = Date.now();
+
     return this.gateway.createCheckoutSession({
       owner,
       planKey: plan.key,
@@ -78,7 +85,8 @@ export class BillingService {
       billingCycle: 'monthly',
       priceId,
       locale,
-      idempotencyKey: checkoutIdempotencyKey(owner, plan.key),
+      expiresAt: checkoutExpiresAt(nowMs),
+      idempotencyKey: checkoutIdempotencyKey(owner, plan.key, locale, nowMs),
     });
   }
 

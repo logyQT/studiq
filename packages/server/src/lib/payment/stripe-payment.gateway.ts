@@ -168,9 +168,9 @@ export class StripePaymentGateway implements PaymentGateway {
           success_url: `${this.siteUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${this.siteUrl()}/checkout?plan_id=${input.planKey}&canceled=1`,
           locale: input.locale === 'en' ? 'en' : 'pl',
-          // Identical for every retry in one idempotency bucket; clears the
-          // 30-minute minimum with a safety margin.
-          expires_at: checkoutExpiresAt(this.now().getTime()),
+          // BillingService derives this from the same snapshot as the
+          // idempotency key, so a retry sends identical parameters.
+          expires_at: input.expiresAt ?? checkoutExpiresAt(this.now().getTime()),
           allow_promotion_codes: false,
           automatic_tax: { enabled: false },
           tax_id_collection: { enabled: false },
