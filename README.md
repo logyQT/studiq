@@ -157,10 +157,10 @@ MAIL_SMTP_PASS=
 
 # ── LLM provider (optional — powers AI flashcard generation) ──────────
 # Read by packages/server/src/ai/model.ts
-LLM_PROVIDER=                                    # default: opencode
+LLM_PROVIDER=                                    # default: opencode-go (OpenCode Go)
 LLM_API_KEY=                                     # API key for the provider above
-LLM_BASE_URL=https://opencode.ai/zen/go/v1       # OpenAI-compatible endpoint (default shown)
-LLM_MODEL_NAME=                                  # default: mimo-v2.5
+LLM_BASE_URL=https://opencode.ai/inference/go/openai/v1  # OpenAI-compatible endpoint (default shown)
+LLM_MODEL_NAME=                                  # default: mimo-v2.6-flash
 LLM_REASONING_EFFORT=                            # low | medium | high (unset = provider default)
 
 # ── OpenTelemetry (optional) ──────────────────────────────────────────
