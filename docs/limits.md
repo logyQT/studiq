@@ -100,11 +100,13 @@ the template on every request.
 2. **Personal plan** — always applied on top of the entitlement above:
    `profiles.personal_plan_key` → `plan_features`. A plan the member pays for
    personally is never shadowed by an org on a lower tier — a student on StudiQ
-   Pro inside a free `launch` org keeps `ai.chat`. Inside an org the admin-only
-   keys (`org.manage`, `member.manage`, `role.builder`) are stripped for
-   non-admin roles, so a purchase can never escalate structure privileges.
-   Manager plans are organization plans mirrored onto the buyer (#228), so a
-   manager's `personal_plan_key` adds nothing in an org
+   Pro inside a free `launch` org keeps `ai.chat`.
+   Inside an org the personal layer only adds _personal-use_ features: the
+   org-scoped keys (`org.manage`, `group.manage`, `member.manage`,
+   `role.builder`, `branding`) are dropped unless the org's own role rows
+   granted them, so a free `lite` educator plan cannot hand a `member` role
+   group management. Manager plans are organization plans mirrored onto the
+   buyer (#228), so a manager's `personal_plan_key` adds nothing in an org
    (`personalPlanApplies()`, `packages/server/src/services/personal-plan.ts`).
 3. **User overrides** — active `user_feature_overrides` rows add/remove keys.
    Rows with `expires_at` in the past stay in the table for audit but are

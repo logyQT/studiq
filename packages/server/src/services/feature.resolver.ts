@@ -42,6 +42,19 @@ const ADMIN_ONLY_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
   'role.builder',
 ]);
 
+/**
+ * Features describing control *over the organization* (structure, membership,
+ * roles, branding) rather than the member's own study surface. A personal plan
+ * never grants these inside an org: they are an org-role decision, so a free
+ * `lite` educator plan (which does include `group.manage`) cannot hand a
+ * `member` role group management just by being the member's personal plan.
+ */
+const ORG_SCOPED_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
+  ...ADMIN_ONLY_FEATURES,
+  'group.manage',
+  'branding',
+]);
+
 export interface FeatureResolution {
   /** Enabled feature keys, ordered by `FEATURES`. */
   features: FeatureKey[];
@@ -187,10 +200,14 @@ export class FeatureResolver {
       .maybeSingle();
 
     if (profile?.personal_plan_key && personalPlanApplies(ctx, Boolean(ctx.activeOrgId))) {
+      // Snapshot what the org itself entitled, so the personal layer can only
+      // add personal-use features inside an org.
+      const orgEntitled = new Set(enabled);
       await this.addPlanFeatures(enabled, profile.personal_plan_key, supabase);
-      // Inside an org a personal plan must not hand out structure privileges.
       if (ctx.activeOrgId) {
-        this.stripAdminOnlyForNonAdmin(enabled, isOrgAdmin);
+        for (const key of ORG_SCOPED_FEATURES) {
+          if (!orgEntitled.has(key)) enabled.delete(key);
+        }
       }
     }
 
