@@ -1,31 +1,35 @@
-import { randomUUID } from 'node:crypto';
 import type { RequestContext } from '@studiq/authz';
-import type { ControllerResponse } from '@studiq/server/lib/controller-response';
-import { controllerResponse } from '@studiq/server/lib/controller-response';
+import {
+  controllerResponse,
+  type ControllerResponse,
+} from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway';
 import { getPaymentGateway } from '@studiq/server/lib/payment/payment-gateway.factory';
 import { isFailure } from '@studiq/server/lib/service-result';
+import { type BillingService, billingService } from '@studiq/server/services/billing.service';
 
 export class StripeController {
-  constructor(private readonly gateway: PaymentGateway) {}
+  constructor(
+    private readonly gateway: PaymentGateway,
+    private readonly billing: BillingService,
+  ) {}
 
   async createCheckoutSession(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    const { planId, orgId } = body as Record<string, string | undefined>;
+    const { planKey, orgId, locale } = body as Record<string, string | undefined>;
 
-    if (!planId) {
+    if (!planKey) {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const result = await this.gateway.createCheckoutSession({
-      userId: ctx.userId,
-      accountType: ctx.accountType,
-      planKey: planId,
-      ...(orgId ? { orgId } : {}),
-      // Phase 1: the mock ignores it. Phase 2 replaces this with the
-      // deterministic owner+plan+time-bucket key that collapses double clicks.
-      idempotencyKey: randomUUID(),
-    });
+    // Domain validation, owner resolution and the Stripe price map live in
+    // BillingService (#662 §5.2). The body never supplies an amount or id.
+    const result = await this.billing.startCheckout(
+      ctx,
+      planKey,
+      orgId,
+      locale === 'en' ? 'en' : 'pl',
+    );
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -80,6 +84,6 @@ export class StripeController {
   }
 }
 export const stripeController = wrapService(
-  new StripeController(getPaymentGateway()),
+  new StripeController(getPaymentGateway(), billingService),
   'stripe.controller',
 );

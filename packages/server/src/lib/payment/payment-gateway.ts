@@ -7,27 +7,42 @@ import type { MockWebhookEvent } from '@studiq/server/services/mock-stripe.servi
  *
  * `mock` is the simulation that ships today; `stripe` is the real gateway.
  * Domain rules (is the plan purchasable, is the caller an org admin, may the
- * owner start a second subscription) live in the caller — the gateway only
- * performs provider operations and maps failures onto `ServiceResult`.
- *
- * Phase 1 keeps the input shapes identical to `MockStripeService`: the actor
- * is passed explicitly instead of a resolved owner, so routing the existing
- * controller through the gateway cannot change behaviour. Phase 2 introduces
- * `BillingService` and the resolved `PaymentOwner` used by the Stripe adapter.
+ * owner start a second subscription) live in `BillingService` — the gateway
+ * only performs provider operations and maps failures onto `ServiceResult`.
  */
 export type PaymentDriver = 'mock' | 'stripe';
+
+/** Monthly is the only cadence in the MVP (#662 D1). */
+export type BillingCycle = 'monthly';
 
 /** Locale that Checkout / the Billing Portal should render in. */
 export type BillingLocale = 'pl' | 'en';
 
+/**
+ * The billing owner resolved from the authenticated context, never from the
+ * request body. An organization plan belongs to the organization; the caller
+ * is recorded as the purchaser.
+ */
+export type PaymentOwner =
+  | { type: 'user'; userId: string; accountType: AccountType }
+  | { type: 'org'; orgId: string; userId: string; accountType: AccountType };
+
 export interface CreateCheckoutSessionInput {
-  /** Authenticated caller; never a value from the request body. */
-  userId: string;
-  accountType: AccountType;
+  /** Resolved by `BillingService` from `ctx` (and the verified org admin role). */
+  owner: PaymentOwner;
   /** Plan key (`spark`, `hub`, …), not the plan UUID. */
   planKey: string;
-  /** Target organization for an organization plan; ignored for personal plans. */
-  orgId?: string;
+  /** Catalog snapshot used to build the provider session. */
+  planName: string;
+  /** Minor units, from `subscription_plans`. */
+  amount: number;
+  currency: string;
+  billingCycle: BillingCycle;
+  /**
+   * Stripe Price resolved from `stripe_prices` by `BillingService`. The mock
+   * adapter has no provider price, so this is absent there.
+   */
+  priceId?: string;
   locale?: BillingLocale;
   /**
    * Provider idempotency key. The mock ignores it; the Stripe adapter forwards
@@ -96,6 +111,9 @@ export interface WebhookOutcome {
 
 export interface PaymentGateway {
   readonly driver: PaymentDriver;
+
+  /** Stripe mode derived from the secret key; the mock has no mode. */
+  readonly livemode: boolean;
 
   createCheckoutSession(
     input: CreateCheckoutSessionInput,

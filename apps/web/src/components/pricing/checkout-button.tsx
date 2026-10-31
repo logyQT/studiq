@@ -6,7 +6,8 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 interface CheckoutButtonProps {
-  planId: string;
+  /** Catalog plan key (`spark`, `hub`, …), never the plan UUID. */
+  planKey: string;
   /** Organization the plan is bought for; required for organization (manager) plans. */
   orgId?: string;
   children: React.ReactNode;
@@ -15,7 +16,7 @@ interface CheckoutButtonProps {
 }
 
 export function CheckoutButton({
-  planId,
+  planKey,
   orgId,
   children,
   variant = 'default',
@@ -29,7 +30,7 @@ export function CheckoutButton({
       const res = await fetch('/api/v1/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId, orgId }),
+        body: JSON.stringify({ planKey, orgId }),
       });
 
       if (!res.ok) throw new Error('Failed to create checkout session');

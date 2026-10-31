@@ -35,17 +35,20 @@ export type MockStripePort = Pick<
  */
 export class MockPaymentGateway implements PaymentGateway {
   readonly driver = 'mock' as const;
+  readonly livemode = false;
 
   constructor(private readonly stripe: MockStripePort = mockStripeService) {}
 
   createCheckoutSession(
     input: CreateCheckoutSessionInput,
   ): Promise<ServiceResult<{ url: string; sessionId: string }>> {
+    const orgId = input.owner.type === 'org' ? input.owner.orgId : undefined;
+
     return this.stripe.createCheckoutSession(
       input.planKey,
-      input.accountType,
-      input.userId,
-      input.orgId,
+      input.owner.accountType,
+      input.owner.userId,
+      orgId,
     );
   }
 
