@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -97,9 +98,13 @@ export class FeatureResolver {
    *   1. Plan entitlement  — seat plan (seated in org) → org role features
    *      (the role's plan-seeded entitlement; authoritative when present) →
    *      org plan (active org whose role has no feature rows, e.g. custom
-   *      roles) → personal plan (no org context / nothing org-derived).
-   *   2. Org role override — `org_role_features` rows for the user's role
-   *      win over the underlying plan for that key.
+   *      roles).
+   *   2. Personal plan    — always applied as an additive layer on top of the
+   *      org entitlement: a plan the member pays for personally must not be
+   *      shadowed by an org that never bought the feature (a student on StudiQ
+   *      Pro inside a `launch` org still gets `ai.chat`). Inside an org the
+   *      admin-only keys are stripped for non-admin roles, so a personal plan
+   *      can never escalate structure privileges.
    *   3. User override    — `user_feature_overrides` rows are the strongest
    *      layer: add/remove anything. Rows whose `expires_at` is in the past are
    *      ignored (they stay in the table for audit only).
@@ -113,7 +118,7 @@ export class FeatureResolver {
     const enabled = new Set<FeatureKey>();
 
     // ── 1. Plan entitlement (base set) ───────────────────────────────────
-    let isSeatedAdmin = false;
+    let isOrgAdmin = false;
 
     if (ctx.activeOrgId) {
       // Load org-role features first (the role-based entitlement).
@@ -127,24 +132,23 @@ export class FeatureResolver {
         orgRoleFeatures = roleFeatures ?? [];
       }
 
+      // `org.manage` marks an org admin. Only they may hold the structure
+      // privileges in ADMIN_ONLY_FEATURES; everyone else gets them stripped
+      // after any plan layer is applied (seat or personal).
+      isOrgAdmin = orgRoleFeatures.some(
+        (r) => r.feature_key === 'org.manage' && r.is_enabled !== false,
+      );
+
       const seatPlanKey = await getSeatPlanKey(ctx, supabase);
 
       if (seatPlanKey) {
         // Seated user: org-role features are the base, seat plan is an
-        // additive upgrade. Admin-only features are then stripped for
-        // non-admin roles to prevent privilege escalation through seats.
+        // additive upgrade.
         if (orgRoleFeatures.length > 0) {
           this.applyRows(enabled, orgRoleFeatures);
-          isSeatedAdmin = orgRoleFeatures.some(
-            (r) => r.feature_key === 'org.manage' && r.is_enabled !== false,
-          );
         }
         await this.addPlanFeatures(enabled, seatPlanKey, supabase);
-        if (!isSeatedAdmin) {
-          for (const key of ADMIN_ONLY_FEATURES) {
-            enabled.delete(key);
-          }
-        }
+        this.stripAdminOnlyForNonAdmin(enabled, isOrgAdmin);
       } else if (orgRoleFeatures.length > 0) {
         // Not seated: the org role's features are the entitlement. Rows are
         // seeded by the org trigger from the org's plan with role filtering,
@@ -171,16 +175,22 @@ export class FeatureResolver {
       }
     }
 
-    // Personal plan fallback (no org, or nothing derived in org context).
-    if (enabled.size === 0) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('personal_plan_key')
-        .eq('id', ctx.userId)
-        .maybeSingle();
+    // ── 2. Personal plan (additive) ──────────────────────────────────────
+    // Deliberately not a fallback: an org on the free `launch` tier grants no
+    // `ai.chat`, and that must not silently void a StudiQ Pro the member paid
+    // for. The union keeps the org's role rows authoritative for what the org
+    // bought, while the personal plan adds what the member bought.
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', ctx.userId)
+      .maybeSingle();
 
-      if (profile?.personal_plan_key) {
-        await this.addPlanFeatures(enabled, profile.personal_plan_key, supabase);
+    if (profile?.personal_plan_key && personalPlanApplies(ctx, Boolean(ctx.activeOrgId))) {
+      await this.addPlanFeatures(enabled, profile.personal_plan_key, supabase);
+      // Inside an org a personal plan must not hand out structure privileges.
+      if (ctx.activeOrgId) {
+        this.stripAdminOnlyForNonAdmin(enabled, isOrgAdmin);
       }
     }
 
@@ -270,6 +280,18 @@ export class FeatureResolver {
       } else {
         enabled.add(row.feature_key);
       }
+    }
+  }
+
+  /**
+   * Structure privileges belong to the org admin role only. Applied after every
+   * plan layer inside an org, so neither a seat nor a personal purchase can
+   * escalate a non-admin role.
+   */
+  private stripAdminOnlyForNonAdmin(enabled: Set<FeatureKey>, isOrgAdmin: boolean): void {
+    if (isOrgAdmin) return;
+    for (const key of ADMIN_ONLY_FEATURES) {
+      enabled.delete(key);
     }
   }
 }
