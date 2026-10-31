@@ -1,4 +1,4 @@
-import type { BillingLocale, PaymentOwner } from '@studiq/server/lib/payment/payment-gateway';
+import type { BillingLocale, PaymentOwner } from './payment-gateway';
 
 /** Checkout retries inside this window reuse one Stripe session. */
 export const CHECKOUT_BUCKET_MS = 30 * 60 * 1000;
