@@ -46,7 +46,9 @@ export function KeyboardShortcutsPanel({
       )
         return;
 
-      if (e.altKey && e.key.toLowerCase() === 'k') {
+      // `e.code` keeps the chord working on macOS, where Option+K types `˚` instead of `k`.
+      const isK = e.code === 'KeyK' || e.key.toLowerCase() === 'k';
+      if (e.altKey && isK) {
         e.preventDefault();
         setOpen((prev) => !prev);
       }

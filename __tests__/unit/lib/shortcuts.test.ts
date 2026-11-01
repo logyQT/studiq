@@ -257,14 +257,37 @@ describe('where the guards are wired (#665 QA)', () => {
   it('the study session ignores its keys while a layer is open', () => {
     const session = read('apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx');
     expect(session).toContain('if (overlayOpen()) return;');
+
+    // The guard must stay above everything that reacts to a key: moving it below the Space flip or
+    // the 1-4 ratings would silently write a review behind an open dialog.
+    const guard = session.indexOf('if (overlayOpen()) return;');
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(session.indexOf('setFlipped((prev) => !prev)'));
+    expect(guard).toBeLessThan(session.indexOf("case '1'"));
   });
 
-  it('the global handler drops repeats and resets the pending prefix on route, blur and hide', () => {
+  it('the global handler drops repeats and resets the pending prefix on route, blur, pointer and hide', () => {
     const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
     expect(global).toContain('if (e.repeat) return;');
     expect(global).toContain('isIgnorableKeyEvent(e)');
     expect(global).toContain("window.addEventListener('blur', reset)");
     expect(global).toContain("document.addEventListener('visibilitychange'");
     expect(global).toMatch(/\[matcher, pathname, open\]/);
+  });
+
+  it('the global handler resets the pending prefix on pointer input (PR #674 review)', () => {
+    const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
+    expect(global).toContain("window.addEventListener('pointerdown', reset)");
+    expect(global).toContain("window.removeEventListener('pointerdown', reset)");
+    // Same handler as `blur`, not a second ad-hoc one.
+    expect(global.match(/const reset = \(\) => matcher\.reset\(\);/g)).toHaveLength(1);
+  });
+
+  it('the dialog only advertises shortcuts that are live on the page', () => {
+    const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
+    // "Go to" chords do nothing inside a study session, so the group is hidden there.
+    expect(global).toContain('{area && !navDisabled && (');
+    // 1-4 is one keycap, not a chord rendered with a "/" separator.
+    expect(global).toContain("keys={['1–4']}");
   });
 });

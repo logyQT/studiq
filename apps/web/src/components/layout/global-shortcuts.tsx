@@ -95,15 +95,20 @@ export function GlobalShortcuts() {
     matcher.reset();
   }, [matcher, pathname, open]);
 
+  // The mouse swallows the keys a guard would see: `g`, click a menu open and closed, then `d`
+  // still lands inside the timeout while no keydown ever reached the overlay check. Any pointer
+  // press means the user moved on, so the pending prefix is dropped there too.
   useEffect(() => {
     const reset = () => matcher.reset();
     const onVisibility = () => {
       if (document.hidden) matcher.reset();
     };
     window.addEventListener('blur', reset);
+    window.addEventListener('pointerdown', reset);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.removeEventListener('blur', reset);
+      window.removeEventListener('pointerdown', reset);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [matcher]);
@@ -162,7 +167,9 @@ export function GlobalShortcuts() {
             <Row keys={['Esc']} label={t('close')} />
           </Group>
 
-          {area && (
+          {/* Hidden where sequences do nothing by design (the study session), so the dialog never
+              advertises a shortcut the handler refuses to run. */}
+          {area && !navDisabled && (
             <Group title={t('group_nav')}>
               {nav.map((shortcut) => (
                 <Row
@@ -177,7 +184,7 @@ export function GlobalShortcuts() {
 
           <Group title={t('group_study')}>
             <Row keys={['Space']} label={t('study_flip')} />
-            <Row keys={['1', '2', '3', '4']} label={t('study_rate')} then="/" />
+            <Row keys={['1–4']} label={t('study_rate')} />
             <Row keys={['P']} label={t('study_audio')} />
             <Row keys={[mod.alt, 'K']} label={t('study_panel')} then="+" />
           </Group>
