@@ -122,8 +122,11 @@ export function GlobalShortcuts() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       // Something closer to the focus (the flashcard's own flip handler, an input, a menu) already
-      // handled this key: it is not a shortcut.
-      if (e.defaultPrevented) return;
+      // handled this key: it is not a shortcut, and the half-typed prefix must not survive it.
+      if (e.defaultPrevented) {
+        matcher.reset();
+        return;
+      }
       // A long press also cancels a pending prefix: holding `g` must not leave a half-typed
       // sequence armed. Typing, chords and IME composition cancel it too.
       if (e.repeat) {

@@ -396,8 +396,10 @@ describe('the flashcard is keyboard operable (#674 review)', () => {
 
   it('the global handler never arms a sequence on an already-handled key', () => {
     const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
-    const handled = global.indexOf('if (e.defaultPrevented) return;');
+    const handled = global.indexOf('if (e.defaultPrevented) {');
     expect(handled).toBeGreaterThan(-1);
+    // A consumed key also clears a prefix instead of leaving it armed for the next letter.
+    expect(global.indexOf('matcher.reset();', handled)).toBeGreaterThan(handled);
     expect(handled).toBeLessThan(global.indexOf("if (e.key === '?')"));
     expect(handled).toBeLessThan(global.indexOf('matcher.press(e.key)'));
   });
