@@ -160,12 +160,13 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
   }
 
   async function stampOf(attemptId: string) {
-    const { data } = await service
+    const { data, error } = await service
       .from('quiz_attempts')
       .select('organization_id')
       .eq('id', attemptId)
       .single();
-    return data?.organization_id ?? null;
+    if (error) throw error;
+    return data.organization_id;
   }
 
   const signIn = async (email: string) => {
