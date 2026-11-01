@@ -7,6 +7,7 @@ import { useCallback, useMemo } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { parseAiChatErrorCode } from '@/lib/ai-chat-error';
+import { type ChatStatus, resetChat } from '@/lib/ai-chat-reset';
 import { aiKeys } from '@/lib/query-keys';
 
 interface ChatPart {
@@ -30,7 +31,7 @@ interface UseChatResultRaw {
   sendMessage: (data: { text: string }) => Promise<void>;
   setMessages: (updater: (prev: UiMessageRaw[]) => UiMessageRaw[]) => void;
   stop: () => void;
-  status: string;
+  status: ChatStatus;
   error: Error | undefined;
   clearError: () => void;
   regenerate: () => Promise<void>;
@@ -453,7 +454,10 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
     [setMessages],
   );
 
-  const clearChat = useCallback(() => {}, []);
+  const clearChat = useCallback(() => {
+    // Aborts an in-flight answer and drops the error state before greeting (#378).
+    resetChat({ status, stop, resetMessages: () => setMessages(() => []), clearError });
+  }, [status, stop, setMessages, clearError]);
 
   const retry = useCallback(() => {
     // `regenerate()` re-sends the last user message when the failed request

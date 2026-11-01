@@ -1,6 +1,6 @@
 'use client';
 
-import { AccountType } from '@studiq/authz';
+import type { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
 import { BadgeCheck, Bell, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -9,6 +9,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
 import { ThemeSwitch } from '@/components/shared/theme-switch/theme-switch';
+import { dashboardHomeFor } from '@/lib/dashboard-home';
 import { OPEN_NOTIFICATIONS_EVENT } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 
@@ -195,16 +196,7 @@ export function UserMenuItems(props: UserMenuItemsProps) {
     );
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
-  const dashboardPrefix = (() => {
-    switch (accountType) {
-      case AccountType.EDUCATOR:
-        return '/edu';
-      case AccountType.MANAGER:
-        return '/manage';
-      default:
-        return '/app';
-    }
-  })();
+  const dashboardPrefix = dashboardHomeFor(accountType);
 
   async function handleLogout() {
     try {

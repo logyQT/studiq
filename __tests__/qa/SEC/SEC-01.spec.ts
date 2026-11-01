@@ -1,4 +1,5 @@
 import type { Browser, Page } from '@playwright/test';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
 import {
   expect,
   loadTenant,
@@ -51,10 +52,11 @@ const TENANT: QaTenant = loadTenant(CASE);
 /** Run suffix the seeder folded into the tenant key (stable tenants have none). */
 const RUN = TENANT.runSuffix ?? 'stable';
 
-/** Polish copy from `EntityNotFound` (pl.json), the case's exact wording. */
+/** Polish copy from the app's message catalog (pl.json), the case's exact wording. */
 const COPY = {
   deckNotFound: 'Nie znaleziono talii',
   deckNotFoundDescription: 'Ta talia mogła zostać usunięta lub nie masz do niej dostępu.',
+  backToFlashcards: 'Wróć do fiszek',
 } as const;
 
 interface ApiEnvelope<T> {
@@ -114,8 +116,20 @@ function expectCreated(response: { status(): number }, label: string): void {
   expect(response.status(), label).toBe(201);
 }
 
-async function createGroup(page: Page, name: string): Promise<string> {
+async function createGroup(page: Page, name: string, orgId: string): Promise<string> {
   const response = await page.request.post('/api/v1/organization/groups', { data: { name } });
+  if (response.status() === 409) {
+    // A retry after a transport error finds the group the interrupted attempt already created.
+    // The API's list hides groups without a teacher, so look the exact name up in this tenant.
+    const { data, error } = await createQaSupabase()
+      .from('groups')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', name)
+      .single();
+    expect(error, `existing group ${name}`).toBeNull();
+    return data!.id;
+  }
   expectCreated(response, 'POST /api/v1/organization/groups');
   return ((await response.json()) as ApiEnvelope<{ id: string }>).data.id;
 }
@@ -170,7 +184,7 @@ async function seedCaseContent(browser: Browser, baseURL: string): Promise<Seede
   const manager = await apiSession(browser, baseURL, orgId, 'manager');
   let foreignGroupId: string;
   try {
-    foreignGroupId = await createGroup(manager.page, `G2 ${RUN}`);
+    foreignGroupId = await createGroup(manager.page, `G2 ${RUN}`, orgId);
     await setGroupMembers(manager.page, foreignGroupId, [
       { userId: account(TENANT, 'teacher').id, role: 'teacher' },
     ]);
@@ -238,6 +252,11 @@ test.describe('@case:SEC-01 @area:SEC @prio:P1 group content isolation', () => {
     await page.goto(`/app/flashcards/${content.foreignDeck.id}`);
     await expect(page.getByRole('heading', { name: COPY.deckNotFound, exact: true })).toBeVisible();
     await expect(page.getByText(COPY.deckNotFoundDescription, { exact: true })).toBeVisible();
+    //    The recovery link goes to the student's deck list, not the dashboard:
+    //    this screen owns the deck area, so "back" must stay inside it.
+    await expect(
+      page.getByRole('link', { name: COPY.backToFlashcards, exact: true }),
+    ).toHaveAttribute('href', '/app/flashcards');
     await expect(page.getByText(content.foreignDeck.name, { exact: true })).toHaveCount(0);
     await expect(page.getByText(content.foreignDeck.cardFront, { exact: true })).toHaveCount(0);
 

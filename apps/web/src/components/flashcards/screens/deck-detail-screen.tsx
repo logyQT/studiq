@@ -571,7 +571,11 @@ export function DeckDetailScreen({
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
       <div className="space-y-6">
-        <EntityNotFound titleKey="deck_not_found" descriptionKey="deck_not_found_desc" />
+        <EntityNotFound
+          titleKey="deck_not_found"
+          descriptionKey="deck_not_found_desc"
+          fallback={{ href: basePath, label: t('not_found_back') }}
+        />
       </div>
     );
   }

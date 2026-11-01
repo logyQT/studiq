@@ -1,3 +1,4 @@
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
 export const TeacherStatsQuerySchema = registry.register(
@@ -8,6 +9,13 @@ export const TeacherStatsQuerySchema = registry.register(
 );
 
 export type TeacherStatsQuery = z.infer<typeof TeacherStatsQuerySchema>;
+
+/**
+ * A question answered fewer times than this is not "a question to review": a single wrong answer
+ * would read as a red 0 %. Applied once, in the service, so the dashboard card and the results
+ * page agree.
+ */
+export const MIN_PROBLEM_QUESTION_ANSWERS = 3;
 
 /** Per-question accuracy behind the „Problematyczne pytania” card (#204). */
 export interface ProblematicQuestionStats {
@@ -82,6 +90,71 @@ export interface DailyActivityItem {
 export interface ActivityResponse {
   items: DailyActivityItem[];
   dailyReviewGoal: number;
+}
+
+/** Query of the teacher dashboard blocks (#654). */
+export const TeacherDashboardQuerySchema = registry.register(
+  'TeacherDashboardQuery',
+  z.object({
+    /** Window of the per-group results, in days. */
+    days: z.coerce
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .min(1, { error: ValidationErrorCode.TOO_SMALL })
+      .max(365, { error: ValidationErrorCode.TOO_BIG })
+      .default(30),
+    /** Length of the activity feed. */
+    limit: z.coerce
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .min(1, { error: ValidationErrorCode.TOO_SMALL })
+      .max(50, { error: ValidationErrorCode.TOO_BIG })
+      .default(10),
+  }),
+);
+
+export type TeacherDashboardQuery = z.infer<typeof TeacherDashboardQuerySchema>;
+
+/** One group of the teacher on the dashboard: learners, completed attempts, flashcard accuracy. */
+export interface TeacherGroupPerformanceItem {
+  groupId: string;
+  groupName: string;
+  /** Learners (`member` role) of the group, the teacher excluded. */
+  students: number;
+  /** Completed quiz / assignment attempts of those learners inside the window. */
+  completedAttempts: number;
+  /** Submitted assignment attempts still waiting for the teacher's grade; not in `avgScore`. */
+  awaitingGrade: number;
+  /** Mean score of the GRADED attempts, 0–100; `null` without any ("no data" is not 0 %). */
+  avgScore: number | null;
+  flashcardReviews: number;
+  /** Share of correct flashcard reviews, 0–100; `null` without reviews. */
+  flashcardAccuracy: number | null;
+}
+
+/**
+ * Per-group rows plus totals that count each learner and each attempt once. A learner in two
+ * groups is one learner, so the totals are never the sum of the rows.
+ */
+export interface TeacherGroupPerformance {
+  groups: TeacherGroupPerformanceItem[];
+  totals: { students: number; completedAttempts: number; awaitingGrade: number };
+}
+
+export type TeacherFeedKind = 'quiz_completed' | 'assignment_submitted' | 'report_opened';
+
+/** One line of the teacher dashboard's activity feed. */
+export interface TeacherFeedItem {
+  kind: TeacherFeedKind;
+  at: string;
+  personName: string | null;
+  /** Quiz / assignment title, or the beginning of the reported question. */
+  title: string | null;
+  scorePct: number | null;
+  /** A submitted assignment still waiting for a grade. */
+  needsGrading: boolean;
+  assignmentId: string | null;
+  questionId: string | null;
 }
 
 export interface TeacherQuizStatsItem {

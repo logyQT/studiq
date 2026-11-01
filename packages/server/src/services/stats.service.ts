@@ -5,12 +5,15 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  ProblematicQuestionStats,
-  StudentStatsResponse,
-  TeacherQuizStatsItem,
-  TeacherStatsQuery,
-  TeacherStatsResponse,
+import {
+  MIN_PROBLEM_QUESTION_ANSWERS,
+  type ProblematicQuestionStats,
+  type StudentStatsResponse,
+  type TeacherFeedItem,
+  type TeacherGroupPerformance,
+  type TeacherQuizStatsItem,
+  type TeacherStatsQuery,
+  type TeacherStatsResponse,
 } from '@studiq/server/models/stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -40,9 +43,20 @@ function attemptScorePercent(a: {
   return Math.min(100, Math.max(0, pct));
 }
 
+const EMPTY_GROUP_PERFORMANCE: TeacherGroupPerformance = {
+  groups: [],
+  totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 },
+};
+
 export class StatsService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
+  /**
+   * Returns the caller's content counts and question statistics, scoped to the active
+   * organization when present. `subjectId` narrows the type split and problematic questions;
+   * problematic questions with fewer than three answers are excluded.
+   * Database response errors become failure results; rejected client or query calls propagate.
+   */
   async getTeacherStats(
     ctx: RequestContext,
     filters?: TeacherStatsQuery,
@@ -129,7 +143,9 @@ export class StatsService {
       totalFlashcards: flashcards?.length ?? 0,
       subject: {
         byType,
-        problematicQuestions: (problematicQuestions as ProblematicQuestionStats[] | null) ?? [],
+        problematicQuestions: (
+          (problematicQuestions as ProblematicQuestionStats[] | null) ?? []
+        ).filter((question) => question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS),
       },
       bySubject,
     });
@@ -566,6 +582,54 @@ export class StatsService {
       .slice(0, 5);
 
     return success({ weakDecks: weakDecksResult, weakTopics: weakTopicsResult });
+  }
+
+  /**
+   * Per-group results of the learners in the caller's groups of the active organization
+   * (teacher dashboard, #654). Aggregated in SQL: the answer volume is per class and
+   * PostgREST would cut it at 1000 rows.
+   * `days` is the lookback in days (default 30, clamped by the RPC to 1–365).
+   * With no active organization or a null RPC result, returns empty groups and zero totals.
+   * Database response errors become failure results; rejected client or RPC calls propagate.
+   */
+  async getTeacherGroupPerformance(
+    ctx: RequestContext,
+    days = 30,
+  ): Promise<ServiceResult<TeacherGroupPerformance>> {
+    if (!ctx.activeOrgId) return success(EMPTY_GROUP_PERFORMANCE);
+
+    const supabase = await this.createClient();
+    const { data, error } = await supabase.rpc('get_teacher_group_performance', {
+      p_user_id: ctx.userId,
+      p_organization_id: ctx.activeOrgId,
+      p_days: days,
+    });
+
+    if (error) return toDbFailure(error);
+    return success((data as TeacherGroupPerformance | null) ?? EMPTY_GROUP_PERFORMANCE);
+  }
+
+  /**
+   * Returns the latest completed attempts of the caller's learners and open reports addressed
+   * to the caller in the active organization, newest first. `limit` defaults to 10 and is
+   * clamped by the RPC to 1–50. No active organization or a null RPC result yields an empty list.
+   * Database response errors become failure results; rejected client or RPC calls propagate.
+   */
+  async getTeacherActivityFeed(
+    ctx: RequestContext,
+    limit = 10,
+  ): Promise<ServiceResult<TeacherFeedItem[]>> {
+    if (!ctx.activeOrgId) return success([]);
+
+    const supabase = await this.createClient();
+    const { data, error } = await supabase.rpc('get_teacher_activity_feed', {
+      p_user_id: ctx.userId,
+      p_organization_id: ctx.activeOrgId,
+      p_limit: limit,
+    });
+
+    if (error) return toDbFailure(error);
+    return success((data as TeacherFeedItem[] | null) ?? []);
   }
 }
 export const statsService = wrapService(new StatsService(createClient), 'stats.service');

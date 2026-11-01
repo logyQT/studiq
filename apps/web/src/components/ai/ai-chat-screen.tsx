@@ -2,7 +2,7 @@
 
 import type { Deck } from '@studiq/server/models/flashcard-deck.model';
 import { Button, Skeleton } from '@studiq/ui';
-import { Layers } from 'lucide-react';
+import { Layers, SquarePen, Trash2 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -59,6 +59,7 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
     isStreaming,
     sendMessage,
     sendLocalResponse,
+    clearChat,
     abort,
     errorCode,
     hasError,
@@ -119,6 +120,12 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
     setActiveContext(contextMap[text] || null);
   };
 
+  const handleReset = useCallback(() => {
+    clearChat();
+    setActiveContext(null);
+    setFile(null);
+  }, [clearChat]);
+
   const handleAnswer = useCallback(
     (text: string) => {
       sendMessage(text);
@@ -155,6 +162,20 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
           </Button>
         </div>
       )}
+
+      {/* Always mounted, even while the greeting is showing: STU-47 step 3
+          clicks „Nowa rozmowa" and then „Wyczyść czat", so resetting must not
+          unmount the second control. */}
+      <div className="flex items-center justify-end gap-2 border-b border-border/60 px-4 py-2">
+        <Button type="button" variant="outline" size="sm" onClick={handleReset}>
+          <SquarePen className="h-4 w-4" />
+          {t('new_chat')}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={handleReset}>
+          <Trash2 className="h-4 w-4" />
+          {t('clear_chat')}
+        </Button>
+      </div>
 
       {isActive && (
         <div className="relative flex-1 min-h-0">

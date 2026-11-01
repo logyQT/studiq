@@ -26,6 +26,7 @@ import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { applyCramAction, cramActionForRating } from '@/lib/cram-queue';
 import { formatDateTime } from '@/lib/datetime';
 import { flashcardKeys } from '@/lib/query-keys';
+import { overlayOpen } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
 interface Flashcard {
@@ -578,14 +579,21 @@ export default function SessionClient(props: SessionClientProps) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // The card's own handler (Enter/Space on a focused card, or a focused link) already acted and
+      // consumed the key: never flip it back here.
+      if (e.defaultPrevented) return;
       if (terminalRef.current || noCardRef.current) return;
-      const tag = (document.activeElement as HTMLElement)?.tagName;
-      if (
-        tag === 'INPUT' ||
-        tag === 'TEXTAREA' ||
-        (document.activeElement as HTMLElement)?.isContentEditable
-      )
-        return;
+      // Space and 1-4 rate and flip cards: never while a dialog or menu is on top (the shortcuts
+      // list, a confirmation), where they would silently write a review.
+      if (overlayOpen()) return;
+      const active = document.activeElement as HTMLElement | null;
+      const tag = active?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable) return;
+
+      // A focused button owns Space (its native activation): the header's shortcuts button would
+      // flip the card instead of opening the dialog. The other session keys still work.
+      const onButton = tag === 'BUTTON' || active?.getAttribute('role') === 'button';
+      if (onButton && (e.key === ' ' || e.code === 'Space')) return;
 
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
@@ -821,7 +829,12 @@ export default function SessionClient(props: SessionClientProps) {
             >
               <FlashcardFlip
                 isFlipped={flipped}
-                onClick={() => setFlipped(!flipped)}
+                onClick={() => {
+                  // The card keeps focus when the shortcuts panel opens; never flip it behind a layer.
+                  if (overlayOpen()) return;
+                  setFlipped((prev) => !prev);
+                }}
+                ariaLabel={t('flashcard_aria')}
                 className="cursor-pointer max-h-[32rem]"
                 front={
                   <>

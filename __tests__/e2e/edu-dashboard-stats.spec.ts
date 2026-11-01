@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import en from '@/i18n/messages/en.json';
+import pl from '@/i18n/messages/pl.json';
 
 const email = 'teacher-classroom@dev.local';
 const password = 'pass';
@@ -24,31 +26,38 @@ function statCardValue(page: import('@playwright/test').Page, title: RegExp) {
     .locator('xpath=following-sibling::p[1]');
 }
 
-/** The big number rendered in the "Content Overview" row with the given title. */
-function overviewValue(page: import('@playwright/test').Page, rowTitle: RegExp) {
-  return page
-    .locator('div.flex.items-center.justify-between', { hasText: rowTitle })
-    .first()
-    .locator('span.text-3xl');
+/** The "Attempts ({days} days)" title in both locales, with the number left open. */
+function completedStatTitle() {
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = (message: string) => message.split('{days}').map(escape).join('\\d+');
+  return new RegExp(
+    `${pattern(en.EduOverviewPage.completed_stat)}|${pattern(pl.EduOverviewPage.completed_stat)}`,
+    'i',
+  );
 }
 
-test.describe('EDU dashboard stats (#133)', () => {
-  test('stat cards and content overview show the counts from the stats API', async ({ page }) => {
+test.describe('EDU dashboard stats (#133, #654)', () => {
+  test('the stat cards show the counts from the stats APIs', async ({ page }) => {
     await loginTeacher(page);
 
-    // Compare against the live API response instead of hard-coded seed numbers, so the
-    // assertion stays valid if the seed changes. The seeded Classroom org (this account)
-    // has content, hence the non-zero guards: with the envelope bug every card rendered 0.
-    const response = await page.request.get('/api/v1/stats/teacher');
-    expect(response.status()).toBe(200);
-    const body = await response.json();
-    const { totalQuestions, totalFlashcards } = body.data as {
+    // Compare against the live API responses instead of hard-coded seed numbers, so the
+    // assertions stay valid if the seed changes. The seeded Classroom org (this account) has
+    // content, hence the non-zero guards: with the envelope bug every card rendered 0.
+    const overview = await page.request.get('/api/v1/stats/teacher');
+    expect(overview.status()).toBe(200);
+    const { totalQuestions, totalFlashcards } = (await overview.json()).data as {
       totalQuestions: number;
       totalFlashcards: number;
     };
-
     expect(totalQuestions).toBeGreaterThan(0);
     expect(totalFlashcards).toBeGreaterThan(0);
+
+    // Learners and attempts come from the group aggregate: distinct totals, never a row sum.
+    const groups = await page.request.get('/api/v1/stats/teacher/groups?days=30');
+    expect(groups.status()).toBe(200);
+    const { totals } = (await groups.json()).data as {
+      totals: { students: number; completedAttempts: number };
+    };
 
     await expect(statCardValue(page, t('EduOverviewPage.total_questions'))).toHaveText(
       String(totalQuestions),
@@ -56,12 +65,11 @@ test.describe('EDU dashboard stats (#133)', () => {
     await expect(statCardValue(page, t('EduOverviewPage.flashcards'))).toHaveText(
       String(totalFlashcards),
     );
-
-    await expect(overviewValue(page, t('EduOverviewPage.questions_card_title'))).toHaveText(
-      String(totalQuestions),
+    await expect(statCardValue(page, t('EduOverviewPage.students_stat'))).toHaveText(
+      String(totals.students),
     );
-    await expect(overviewValue(page, t('EduOverviewPage.flashcards_card_title'))).toHaveText(
-      String(totalFlashcards),
+    await expect(statCardValue(page, completedStatTitle())).toHaveText(
+      String(totals.completedAttempts),
     );
   });
 });

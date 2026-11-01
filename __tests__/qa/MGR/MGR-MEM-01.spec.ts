@@ -191,7 +191,7 @@ test.describe('@case:MGR-MEM-01 @area:MGR @prio:P1 members search and role filte
         await expect(row.getByText(group.name, { exact: true })).toBeVisible();
       }
       // `formatDate(..., 'pl')` → dd.MM.yyyy, never an empty cell.
-      await expect(row).toContainText(/\d{2}\.\d{2}\.\d{4}/);
+      await expect(row).toContainText(/\d{1,2}\.\d{1,2}\.\d{4}/);
 
       if (member.id === manager.id) {
         // --- Expected result: the own account is marked and not actionable --

@@ -303,6 +303,7 @@ export type Database = {
           confidence_level: number | null;
           flashcard_id: string | null;
           id: string;
+          organization_id: string | null;
           practiced_at: string | null;
           response_time_ms: number | null;
           session_id: string | null;
@@ -314,6 +315,7 @@ export type Database = {
           confidence_level?: number | null;
           flashcard_id?: string | null;
           id?: string;
+          organization_id?: string | null;
           practiced_at?: string | null;
           response_time_ms?: number | null;
           session_id?: string | null;
@@ -324,6 +326,7 @@ export type Database = {
           confidence_level?: number | null;
           flashcard_id?: string | null;
           id?: string;
+          organization_id?: string | null;
           practiced_at?: string | null;
           response_time_ms?: number | null;
           session_id?: string | null;
@@ -336,6 +339,13 @@ export type Database = {
             columns: ['flashcard_id'];
             isOneToOne: false;
             referencedRelation: 'flashcards';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'flashcard_practice_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
             referencedColumns: ['id'];
           },
           {
@@ -1511,6 +1521,7 @@ export type Database = {
           graded_at: string | null;
           id: string;
           is_assignment_attempt: boolean;
+          organization_id: string | null;
           score: number;
           started_at: string | null;
           total_points: number | null;
@@ -1526,6 +1537,7 @@ export type Database = {
           graded_at?: string | null;
           id?: string;
           is_assignment_attempt?: boolean;
+          organization_id?: string | null;
           score?: number;
           started_at?: string | null;
           total_points?: number | null;
@@ -1540,6 +1552,7 @@ export type Database = {
           graded_at?: string | null;
           id?: string;
           is_assignment_attempt?: boolean;
+          organization_id?: string | null;
           score?: number;
           started_at?: string | null;
           total_points?: number | null;
@@ -1552,6 +1565,13 @@ export type Database = {
             columns: ['assignment_id'];
             isOneToOne: false;
             referencedRelation: 'teacher_assignments';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'quiz_attempts_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
             referencedColumns: ['id'];
           },
           {
@@ -2303,6 +2323,14 @@ export type Database = {
       };
       get_student_insights: {
         Args: { p_days?: number; p_user_id: string };
+        Returns: Json;
+      };
+      get_teacher_activity_feed: {
+        Args: { p_limit?: number; p_organization_id: string; p_user_id: string };
+        Returns: Json;
+      };
+      get_teacher_group_performance: {
+        Args: { p_days?: number; p_organization_id: string; p_user_id: string };
         Returns: Json;
       };
       get_teacher_problematic_questions: {
