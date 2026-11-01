@@ -2184,6 +2184,7 @@
     "click_hint": "Kliknij, aby {action}",
     "see_question": "zobaczyć pytanie",
     "reveal_answer": "odkryć odpowiedź",
+    "flashcard_aria": "Fiszka. Naciśnij Enter lub spację, aby ją odwrócić.",
     "rating_flip": "Odwróć fiszkę",
     "play_audio": "Odtwórz / Wstrzymaj audio",
     "rating_again": "Nie pamiętam",

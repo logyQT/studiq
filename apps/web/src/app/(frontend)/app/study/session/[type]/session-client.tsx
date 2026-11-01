@@ -579,6 +579,9 @@ export default function SessionClient(props: SessionClientProps) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // The card's own handler (Enter/Space on a focused card, or a focused link) already acted and
+      // consumed the key: never flip it back here.
+      if (e.defaultPrevented) return;
       if (terminalRef.current || noCardRef.current) return;
       // Space and 1-4 rate and flip cards: never while a dialog or menu is on top (the shortcuts
       // list, a confirmation), where they would silently write a review.
@@ -827,6 +830,7 @@ export default function SessionClient(props: SessionClientProps) {
               <FlashcardFlip
                 isFlipped={flipped}
                 onClick={() => setFlipped(!flipped)}
+                ariaLabel={t('flashcard_aria')}
                 className="cursor-pointer max-h-[32rem]"
                 front={
                   <>

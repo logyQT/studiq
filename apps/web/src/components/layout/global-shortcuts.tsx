@@ -121,6 +121,9 @@ export function GlobalShortcuts() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      // Something closer to the focus (the flashcard's own flip handler, an input, a menu) already
+      // handled this key: it is not a shortcut.
+      if (e.defaultPrevented) return;
       // Held keys are ignored without touching the pending prefix; typing, chords and IME
       // composition cancel it.
       if (e.repeat) return;

@@ -309,3 +309,55 @@ describe('where the guards are wired (#665 QA)', () => {
     expect(global).toContain("keys={['1–4']}");
   });
 });
+
+describe('the flashcard is keyboard operable (#674 review)', () => {
+  const read = (path: string) => readFileSync(path, 'utf8');
+  const flashcard = () => read('apps/web/src/components/flashcards/flashcard-flip.tsx');
+
+  it('is a focusable group, not a button: its faces contain markdown links', () => {
+    const card = flashcard();
+    expect(card).toContain('tabIndex={0}');
+    expect(card).toContain('role="group"');
+    // A button role would make every link inside the faces presentational.
+    expect(card).not.toContain('role="button"');
+    expect(card).toContain('aria-keyshortcuts="Enter Space"');
+  });
+
+  it('flips on Enter and Space for the card itself only, and consumes the key', () => {
+    const card = flashcard();
+    // A focused link keeps its own Enter: the wrapper only handles keys that landed on itself.
+    expect(card).toContain('if (e.target !== e.currentTarget) return;');
+    expect(card).toContain("e.key !== 'Enter'");
+    expect(card).toContain("e.code !== 'Space'");
+    expect(card).toContain('e.stopPropagation();');
+    expect(card.indexOf('e.stopPropagation();')).toBeLessThan(card.indexOf('onClick?.();'));
+  });
+
+  it('the session names the card and cannot flip it twice for one key', () => {
+    const session = read('apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx');
+    expect(session).toContain("ariaLabel={t('flashcard_aria')}");
+
+    // `defaultPrevented` sits above the overlay and focus guards: a key the card already consumed
+    // can never flip it back, whatever the propagation order turns out to be.
+    const handled = session.indexOf('if (e.defaultPrevented) return;');
+    expect(handled).toBeGreaterThan(-1);
+    expect(handled).toBeLessThan(session.indexOf('if (overlayOpen()) return;'));
+    expect(handled).toBeLessThan(session.indexOf('e.preventDefault()'));
+    expect(handled).toBeLessThan(session.indexOf('setFlipped((prev) => !prev)'));
+  });
+
+  it.each(['pl', 'en'])('%s: translate the card label', (locale) => {
+    const messages = JSON.parse(
+      readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
+    );
+    expect(messages.AppFlashcardSessionPage.flashcard_aria).toBeTruthy();
+  });
+
+  it('the global handler never arms a sequence on an already-handled key', () => {
+    const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
+    const handled = global.indexOf('if (e.defaultPrevented) return;');
+    expect(handled).toBeGreaterThan(-1);
+    expect(handled).toBeLessThan(global.indexOf("if (e.key === '?')"));
+    expect(handled).toBeLessThan(global.indexOf('matcher.press(e.key)'));
+  });
+});

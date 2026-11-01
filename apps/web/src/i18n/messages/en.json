@@ -2203,6 +2203,7 @@
     "click_hint": "Click to {action}",
     "see_question": "see question",
     "reveal_answer": "reveal answer",
+    "flashcard_aria": "Flashcard. Press Enter or Space to flip it.",
     "rating_flip": "Flip Card",
     "play_audio": "Play / Pause Audio",
     "rating_again": "Again",
