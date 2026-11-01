@@ -10,6 +10,10 @@
  *   bun scripts/qa-tenant.ts ONB-10 --profile org-limit --fresh
  *   bun scripts/qa-tenant.ts MGR-ROL-02 --plan hub --fresh
  *
+ * Security runs (see `qa/security/ROE.md`) must seed their own local stack:
+ *
+ *   bun scripts/qa-tenant.ts SEC-02 --profile two-org --fresh --dedicated
+ *
  * Every case in one process (CI, before the suite starts — the same shape as
  * `scripts/e2e-seed.ts`, so seeding never runs while the suite is loading the app):
  *
@@ -87,6 +91,11 @@ const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
 const fresh = args.includes('--fresh');
 const all = args.includes('--all');
+/**
+ * Security seeds (see `qa/security/ROE.md`) must never touch the shared QA
+ * database, which holds other agents' tenants.
+ */
+const dedicated = args.includes('--dedicated');
 const CASE_ID_PATTERN = /^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/;
 
 /** One account in a declarative tenant shape. */
@@ -121,7 +130,7 @@ interface ProfileShape {
 type ProfileEntry = string | ({ profile?: string; role?: string; plan?: string } & ProfileShape);
 
 const USAGE =
-  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--json] [--reset]';
+  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--dedicated] [--json] [--reset]';
 
 /**
  * The CI seed contract: `__tests__/qa/profiles/<CASE>.json` declares the tenant shape
@@ -196,6 +205,34 @@ function loadEnv(): void {
     } catch {
       // A malformed qa/env.json should not hide the real seeding error.
     }
+  }
+}
+
+/** Shared QA databases a security seed must never write to. */
+const SHARED_QA_PORTS = new Set(['54421']);
+
+/**
+ * `--dedicated` preflight, run just before `createSeedDb()`. It runs after
+ * `loadEnv()` so it sees the URL `qa/env.json` injected — that override is how
+ * a QA worktree would otherwise silently point the seeder at the shared stack.
+ */
+function assertDedicatedStack(): void {
+  if (!dedicated) return;
+
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  let url: URL | undefined;
+  try {
+    url = raw ? new URL(raw) : undefined;
+  } catch {
+    url = undefined;
+  }
+  const isLocal = url?.hostname === 'localhost' || url?.hostname === '127.0.0.1';
+
+  if (!url || !isLocal || SHARED_QA_PORTS.has(url.port)) {
+    throw new Error(
+      `--dedicated refuses to seed ${raw ?? '(unset NEXT_PUBLIC_SUPABASE_URL)'}: ` +
+        'security seeding needs your own local Supabase, not the shared QA stack (:54421)',
+    );
   }
 }
 
@@ -756,6 +793,7 @@ if (all) {
   // One suffix for the whole batch: a suite run is one tenant set, and every
   // spec still owns its own tenant inside it.
   const runSuffix = option('run') ?? `r${Date.now().toString(36)}${randomTag(4)}`;
+  assertDedicatedStack();
   const db = createSeedDb();
   for (const id of cases) {
     if (!CASE_ID_PATTERN.test(id)) {
@@ -778,6 +816,7 @@ if (!caseArg || !CASE_ID_PATTERN.test(caseArg)) {
 const runSuffix = option('run') ?? (fresh ? `r${Date.now().toString(36)}${randomTag(4)}` : '');
 
 try {
+  assertDedicatedStack();
   await seedCase(createSeedDb(), caseArg, {
     profile: option('profile'),
     role: option('role'),

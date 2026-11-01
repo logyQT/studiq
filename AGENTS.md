@@ -392,16 +392,16 @@ Use the right client for the context — there is **no browser-side Supabase cli
 
 Next.js 16 uses `proxy.ts` — **do NOT rename it to `middleware.ts`**:
 
-- `apps/web/src/proxy.ts` — main app: refreshes the Supabase session, then applies `routeRules`. It **skips `/api/*` entirely** — API auth is enforced per route by `withAuth()`.
+- `apps/web/src/proxy.ts` — main app: for non-API paths it refreshes the Supabase session, then applies `routeRules`. Every `/api/*` request returns early — before the session refresh and before any rule is evaluated — so `withAuth()` in the route file is the authoritative (and only) API authentication gate.
 - `apps/admin/src/proxy.ts` — admin app: Ed25519 PEM signature gate (`x-admin-signature` / `x-admin-timestamp` headers) for `/api/*`. `ADMIN_PEM_KEYS` is a JSON keyring (`[{ id, key, scopes, expiresAt? }]`) with per-key scopes and attribution; the signature covers method + path + canonical query + timestamp + `sha256(body)`. Empty `ADMIN_PEM_KEYS` = allow-all in dev, deny-all in production; a non-empty ring with no valid entries fails closed everywhere. The verified key id is forwarded as `x-admin-key-id`. See `docs/decisions/0007-admin-api-auth.md`.
 
-Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order:
+Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order. The `/api/*` entries are documentation only: the proxy returns for `/api/*` before `routeRules` is consulted, so they never run.
 
 1. If the user is logged in and `redirectIfAuthenticatedByAccountType` / `redirectIfAuthenticated` matches → redirect by account type
 2. If `requireAuth` + no session → 401 (API) or redirect to `/login?next=…` (UI)
 3. If `allowedAccountTypes` + account type mismatch → 403 (API) or redirect to the account-type dashboard (UI)
 
-API catch-all rule (documents which API routes are public by design): `/api/v1/` requires auth except `auth`, `health`, `avatar`, `stripe/webhook`. `stripe/webhook` is excluded from the proxy rule only so a real Stripe webhook can stay unauthenticated; the mock webhook authenticates the caller itself (`withAuth`) and only acts on that caller's own account.
+API catch-all rule (documents the intended public prefixes — it does **not** enforce API authentication, because `apps/web/src/proxy.ts` skips `/api/*` before evaluating `routeRules`): `/api/v1/` is intended to be `withAuth()`-protected except for `auth`, `health`, `avatar`, `subscription-plans`, `stripe/webhook`. `subscription-plans` is the public pricing catalogue (`listPublic`/`getByKey`, no session). `stripe/webhook` is excluded from the proxy rule only so a real Stripe webhook can stay unauthenticated; the mock webhook authenticates the caller itself (`withAuth`) and only acts on that caller's own account. A new route outside this set is public unless it calls `withAuth()`.
 
 UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/register redirect logged-in users by account type. The system admin panel is the **separate `apps/admin` app** (port 4000), not a route in `apps/web`.
 

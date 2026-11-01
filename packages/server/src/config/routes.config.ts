@@ -33,9 +33,12 @@ export const routeRules: RouteRule[] = [
     matcher: /^\/api\/v1\/stripe\/webhook(\/.*)?$/,
     isApi: true,
   },
-  // Catch-all for authenticated API routes (auth, health, avatar, stripe/webhook are unprotected by design)
+  // Documentation of the intended public API prefixes. The web proxy returns for
+  // `/api/*` before evaluating `routeRules`, so this rule never gates a request —
+  // `withAuth()` in each route is authoritative. Keep the list aligned with the
+  // public set in AGENTS.md.
   {
-    matcher: /^\/api\/v\d+\/(?!auth|health|avatar|stripe\/webhook)(.*)$/,
+    matcher: /^\/api\/v\d+\/(?!auth|health|avatar|subscription-plans|stripe\/webhook)(.*)$/,
     requireAuth: true,
     isApi: true,
   },
