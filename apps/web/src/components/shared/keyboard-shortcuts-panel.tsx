@@ -89,6 +89,10 @@ export function KeyboardShortcutsPanel({
           side="top"
           align="center"
           sideOffset={8}
+          // The global/session guards recognize an open layer by role + data-state; this panel is
+          // one, so its keys must not fall through to the card behind it.
+          role="dialog"
+          aria-label="Keyboard shortcuts"
           className="w-auto p-4 bg-background border shadow-md rounded-lg"
         >
           <div className="flex items-start gap-5">

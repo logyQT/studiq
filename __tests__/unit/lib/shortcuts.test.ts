@@ -311,6 +311,19 @@ describe('where the guards are wired (#665 QA)', () => {
     // 1-4 is one keycap, not a chord rendered with a "/" separator.
     expect(global).toContain("keys={['1–4']}");
   });
+
+  it('an ignored ? clears the prefix and the session panel counts as a layer', () => {
+    const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
+    const question = global.indexOf("if (e.key === '?')");
+    const ignored = global.indexOf('if (overlayOpen() && !open) {', question);
+    expect(ignored).toBeGreaterThan(question);
+    expect(global.indexOf('matcher.reset();', ignored)).toBeGreaterThan(ignored);
+
+    // overlayOpen() matches role + data-state; the shortcuts panel must opt in.
+    const panel = read('apps/web/src/components/shared/keyboard-shortcuts-panel.tsx');
+    expect(panel).toContain('role="dialog"');
+    expect(panel).toContain('aria-label="Keyboard shortcuts"');
+  });
 });
 
 describe('the flashcard is keyboard operable (#674 review)', () => {

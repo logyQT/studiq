@@ -136,7 +136,11 @@ export function GlobalShortcuts() {
       }
 
       if (e.key === '?') {
-        if (overlayOpen() && !open) return;
+        // Another layer owns the key: drop any pending prefix instead of leaving it armed.
+        if (overlayOpen() && !open) {
+          matcher.reset();
+          return;
+        }
         e.preventDefault();
         setOpen((value) => !value);
         return;
