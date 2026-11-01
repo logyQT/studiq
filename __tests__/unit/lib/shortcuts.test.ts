@@ -333,6 +333,14 @@ describe('the flashcard is keyboard operable (#674 review)', () => {
     expect(card.indexOf('e.stopPropagation();')).toBeLessThan(card.indexOf('onClick?.();'));
   });
 
+  it('holding the key does not flip the card over and over', () => {
+    const card = flashcard();
+    // Auto-repeat is consumed (preventDefault + stopPropagation) before it can reach any handler.
+    expect(card).toContain('if (e.repeat) {');
+    expect(card.indexOf('if (e.repeat) {')).toBeLessThan(card.indexOf('onClick?.();'));
+    expect(card.match(/e\.stopPropagation\(\);/g)).toHaveLength(2);
+  });
+
   it('the session names the card and cannot flip it twice for one key', () => {
     const session = read('apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx');
     expect(session).toContain("ariaLabel={t('flashcard_aria')}");

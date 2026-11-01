@@ -31,6 +31,13 @@ export function FlashcardFlip({
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.target !== e.currentTarget) return;
     if (e.key !== 'Enter' && e.key !== ' ' && e.code !== 'Space') return;
+    // Holding the key must not flip the card over and over; consume the repeats so the page-level
+    // Space handler cannot flip it either.
+    if (e.repeat) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     onClick?.();
