@@ -3,7 +3,10 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
-import { TeacherStatsQuerySchema } from '@studiq/server/models/stats.model';
+import {
+  TeacherDashboardQuerySchema,
+  TeacherStatsQuerySchema,
+} from '@studiq/server/models/stats.model';
 import { type StatsService, statsService } from '@studiq/server/services/stats.service';
 
 export class StatsController {
@@ -54,6 +57,37 @@ export class StatsController {
 
   async getWeakPoints(ctx: RequestContext): Promise<ControllerResponse> {
     const result = await this.statsService.getWeakPoints(ctx);
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
+  }
+
+  async getTeacherGroupPerformance(
+    query: unknown,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    const parsed = TeacherDashboardQuerySchema.safeParse(query ?? {});
+
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.statsService.getTeacherGroupPerformance(ctx, parsed.data.days);
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
+  }
+
+  async getTeacherActivityFeed(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = TeacherDashboardQuerySchema.safeParse(query ?? {});
+
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.statsService.getTeacherActivityFeed(ctx, parsed.data.limit);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

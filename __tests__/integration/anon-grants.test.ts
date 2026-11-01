@@ -72,6 +72,20 @@ describe('anon role grants (#191)', () => {
       },
     ],
     [
+      'get_teacher_group_performance',
+      {
+        p_user_id: '00000000-0000-4000-8001-000000000003',
+        p_organization_id: '00000000-0000-4000-8000-000000000001',
+      },
+    ],
+    [
+      'get_teacher_activity_feed',
+      {
+        p_user_id: '00000000-0000-4000-8001-000000000003',
+        p_organization_id: '00000000-0000-4000-8000-000000000001',
+      },
+    ],
+    [
       'get_accessible_questions',
       {
         p_user_id: '00000000-0000-4000-8001-000000000003',

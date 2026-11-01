@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import { assignmentKeys, flashcardKeys, questionKeys, topicKeys } from '@/lib/query-keys';
+import {
+  assignmentKeys,
+  flashcardKeys,
+  questionKeys,
+  teacherStatsKeys,
+  topicKeys,
+} from '@/lib/query-keys';
 
 /**
  * Org-scoped list queries resolve their rows from the `active_org_id` cookie on
@@ -201,5 +207,23 @@ describe('a finished study session refreshes the statistics (#365)', () => {
     );
     expect(afterComplete).toContain('flashcardKeys.afterStudySession');
     expect(afterComplete).toContain('invalidateQueries');
+  });
+});
+
+describe('teacher dashboard query keys', () => {
+  it('isolates overview, group results and feed by active organization', () => {
+    for (const key of [
+      (org: string | null) => teacherStatsKeys.overview(org),
+      (org: string | null) => teacherStatsKeys.groups(org, 30),
+      (org: string | null) => teacherStatsKeys.feed(org),
+    ]) {
+      expect(key('org-a')).not.toEqual(key('org-b'));
+      expect(key('org-a')).not.toEqual(key(null));
+      expect(key('org-a').slice(0, teacherStatsKeys.all.length)).toEqual(teacherStatsKeys.all);
+    }
+  });
+
+  it('separates group results for different windows', () => {
+    expect(teacherStatsKeys.groups('org-a', 30)).not.toEqual(teacherStatsKeys.groups('org-a', 7));
   });
 });
