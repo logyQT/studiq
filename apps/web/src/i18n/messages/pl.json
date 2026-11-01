@@ -782,6 +782,7 @@
   },
   "EduDeckViewPage": {
     "back": "Powrót",
+    "not_found_back": "Wróć do talii",
     "flashcards_count": "{count, plural, one {# fiszka} few {# fiszki} other {# fiszek}}",
     "flashcards_section": "Fiszki",
     "search_placeholder": "Szukaj fiszek...",
@@ -1401,6 +1402,7 @@
   },
   "AppFlashcardDeckViewPage": {
     "back": "Powrót",
+    "not_found_back": "Wróć do fiszek",
     "flashcards_count": "{count, plural, one {# fiszka} few {# fiszki} many {# fiszek} other {# fiszek}}",
     "flashcards_section": "Fiszki",
     "search_placeholder": "Szukaj fiszek...",

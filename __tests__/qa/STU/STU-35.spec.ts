@@ -555,6 +555,8 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     await expect(completedCard, 'the quiz is listed under „Ukończone”').toBeVisible();
     await expect(completedCard).toContainText(assignment.title);
     await expect(completedCard).toContainText('2/3');
+    // `toLocaleDateString('pl')` drops the leading zero on single-digit days
+    // and months (e.g. „Ukończono: 1.11.2026”), so allow one or two digits.
     await expect(completedCard).toContainText(/Ukończono: \d{1,2}\.\d{1,2}\.\d{4}/);
     await expect(
       page
