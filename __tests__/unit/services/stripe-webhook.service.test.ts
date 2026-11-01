@@ -791,6 +791,26 @@ describe('StripeWebhookService', () => {
       });
     });
 
+    it('still records the payment when the mirror write is stale', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror()),
+      );
+      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(success('stale'));
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      const event = makeEvent('invoice.paid', makeInvoice({ id: 'in_stale' }), {
+        created: 1_700_000_800,
+      });
+
+      await sign(harness, event);
+
+      // The newer subscription event owns the mirror/entitlement, but the money
+      // was still collected, so the history row must exist.
+      expect(harness.repository.payments).toHaveLength(1);
+      expect(harness.repository.payments[0].stripeInvoiceId).toBe('in_stale');
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+    });
+
     it('attributes an organization invoice to the recorded purchaser', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(

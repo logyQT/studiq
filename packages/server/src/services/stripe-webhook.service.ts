@@ -63,6 +63,12 @@ interface ResolvedPlan {
 
 interface DispatchResult {
   ignored: boolean;
+  /**
+   * A newer event already owns the subscription mirror. The mirror/entitlement
+   * writes were skipped, but non-mirror side effects (e.g. the `payments` row
+   * for `invoice.paid`) must still happen.
+   */
+  stale?: boolean;
 }
 
 function objectId(value: string | { id: string } | null | undefined): string | null {
@@ -471,7 +477,7 @@ export class StripeWebhookService {
         );
         if (isFailure(attached)) throw new Error('checkout session attach failed');
       }
-      return { ignored: true };
+      return { ignored: true, stale: true };
     }
 
     if (input.applyEntitlement) {
@@ -486,7 +492,7 @@ export class StripeWebhookService {
           eventCreated: input.event.created,
           lastEventCreated: latest.data.lastEventCreated,
         });
-        return { ignored: true };
+        return { ignored: true, stale: true };
       }
 
       const entitlement = await this.applyEntitlement(
@@ -558,7 +564,7 @@ export class StripeWebhookService {
       applyEntitlement: ENTITLED_STATUSES.has(subscription.status),
       claimToken,
     });
-    if (synced.ignored) return synced;
+    if (synced.ignored && !synced.stale) return synced;
 
     const planName = resolved.plan.name;
     let payerId: string | null;
