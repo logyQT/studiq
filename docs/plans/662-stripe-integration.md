@@ -1,7 +1,7 @@
 # Real Stripe integration behind the payment interface (#662)
 
 **Date:** 2026-10-30
-**Status:** Design — approved decisions. Phase 1 (gateway seam + `PAYMENT_DRIVER` boot validation), phase 2A (Stripe customer + hosted Checkout + `BillingService` validation) and phase 3 (signed webhook + idempotent entitlement sync) are implemented behind `PAYMENT_DRIVER=stripe`, with the mock still the default. The portal, plan changes and the billing UI remain phase 4.
+**Status:** Design — approved decisions. Phase 1 (gateway seam + `PAYMENT_DRIVER` boot validation), phase 2A (Stripe customer + hosted Checkout + `BillingService` validation) and phase 3 (signed webhook + idempotent entitlement sync) are implemented behind `PAYMENT_DRIVER=stripe`, with the mock still the default. The success-page reconcile endpoint, the portal, plan changes and the billing UI remain phase 4.
 **Issue:** [#662](https://github.com/logyQT/studiq/issues/662) (ROADMAP Phase 6)
 **Scope owner:** SoCoCold (Alan) per the issue body; the issue currently has no GitHub assignee
 
@@ -1405,7 +1405,6 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 - `entitlement.service.ts`, `stripe-webhook.service.ts`.
 - Route branch on driver; signature verification; event table.
 - Handle the 8 events in §6.3.
-- Success-page reconcile endpoint.
 - Unit + integration (fake) tests.
 
 **Exit:** end-to-end student/org purchase in the sandbox updates the plan exactly once; replay and out-of-order tests pass.
@@ -1413,6 +1412,8 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 ### Phase 4 — portal, cancel, change plan, UI
 
 - Portal session + shared billing read model.
+- Success-page reconcile endpoint (`POST /api/v1/billing/reconcile`) and the
+  polling `/billing/success` page.
 - `change-plan` (upgrade reset, downgrade schedule) and `cancel` endpoints.
 - `/app|/edu|/manage/billing` rebuilt on the shared model; `/edu` placeholder removed.
 - Invoice link in `PaymentHistoryContent`.

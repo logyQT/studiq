@@ -147,6 +147,14 @@ export interface StripeWebhookRepository {
 
 const ACTIVE_SUBSCRIPTION_STATUSES = ['active', 'trialing', 'past_due'];
 
+/**
+ * A `processing` claim older than this is treated as abandoned (the process
+ * crashed / was killed / could not even mark the row `failed`). Stripe retries
+ * for up to three days, so reclaiming the row is what stops an event from being
+ * lost forever. Every handler writes absolute values, so a re-run is safe.
+ */
+const PROCESSING_LEASE_MS = 5 * 60 * 1000;
+
 function mapCustomer(row: Record<string, unknown>): CustomerRow {
   return {
     id: row.id as string,
@@ -212,27 +220,42 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     if (error.code !== '23505') return toDbFailure(error);
 
     // The event id is the dedupe key. A `failed` row is retried (Stripe's own
-    // retry or a manual replay); anything else is a duplicate and must return
-    // 200 so Stripe stops retrying.
+    // retry or a manual replay); a `processing` row is retried only once its
+    // lease expired, so a crashed worker does not strand the event while two
+    // concurrent deliveries still cannot both run the handler. Anything else is
+    // a duplicate and must return 200 so Stripe stops retrying.
     const { data: existing, error: readError } = await supabase
       .from('stripe_webhook_events')
-      .select('status')
+      .select('status, received_at')
       .eq('id', input.id)
       .maybeSingle();
 
     if (readError) return toDbFailure(readError);
     if (!existing) return failure('INTERNAL_SERVER');
 
-    if (existing.status === 'failed') {
-      const { error: retryError } = await supabase
-        .from('stripe_webhook_events')
-        .update({ status: 'processing', error: null })
-        .eq('id', input.id);
-      if (retryError) return toDbFailure(retryError);
-      return success('retry');
-    }
+    const isFailed = existing.status === 'failed';
+    const isStaleProcessing =
+      existing.status === 'processing' &&
+      Date.now() - new Date(existing.received_at as string).getTime() >= PROCESSING_LEASE_MS;
+    if (!isFailed && !isStaleProcessing) return success('duplicate');
 
-    return success('duplicate');
+    // Conditional write = compare-and-swap: the loser of a concurrent retry
+    // sees 0 updated rows. Updating `received_at` renews the lease, so a second
+    // retry cannot pass the `.lt(staleBefore)` guard again.
+    let claim = supabase
+      .from('stripe_webhook_events')
+      .update({ status: 'processing', error: null, received_at: new Date().toISOString() })
+      .eq('id', input.id)
+      .eq('status', existing.status);
+
+    claim = isFailed
+      ? claim
+      : claim.lt('received_at', new Date(Date.now() - PROCESSING_LEASE_MS).toISOString());
+
+    const { data: reclaimed, error: retryError } = await claim.select('id');
+
+    if (retryError) return toDbFailure(retryError);
+    return success(reclaimed && reclaimed.length > 0 ? 'retry' : 'duplicate');
   }
 
   async finishEvent(

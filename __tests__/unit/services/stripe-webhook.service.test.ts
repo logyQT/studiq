@@ -542,6 +542,33 @@ describe('StripeWebhookService', () => {
       );
     });
 
+    it('does not downgrade when another subscription is still active', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror({ status: 'canceled' })),
+      );
+      vi.mocked(harness.repository.findActiveSubscription).mockResolvedValueOnce(
+        success({ stripeSubscriptionId: 'sub_main', planKey: 'spark' }),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
+        makeSubscription({ status: 'canceled', canceled_at: 1_700_000_600 }),
+      );
+      const event = makeEvent('customer.subscription.deleted', makeSubscription(), {
+        created: 1_700_000_700,
+      });
+
+      const result = await sign(harness, event);
+
+      // The cancelled subscription was the refused duplicate: the owner still
+      // pays through `sub_main`, so the plan must stay.
+      expect(result).toEqual({ success: true, data: { received: true } });
+      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+      expect(harness.repository.upsertSubscription).toHaveBeenCalled();
+      expect(consoleWarn).toHaveBeenCalledWith(
+        expect.stringContaining('billing.downgrade_skipped_active_subscription'),
+      );
+    });
+
     it('never regresses the plan for an older event', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(

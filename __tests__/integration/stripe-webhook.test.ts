@@ -523,6 +523,36 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     expect(await profilePlan(manager.id)).toBe('launch');
   });
 
+  it('reclaims a stale processing event instead of losing it', async () => {
+    const staleId = tagId('evt_stale_processing');
+    eventIds.push(staleId);
+    const created = nextCreated();
+
+    const { error: seedError } = await service.from('stripe_webhook_events').insert({
+      id: staleId,
+      type: 'checkout.session.expired',
+      livemode: false,
+      event_created: created,
+      status: 'processing',
+      received_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    });
+    if (seedError) throw new Error(seedError.message);
+
+    const result = await deliver(
+      event({
+        id: staleId,
+        type: 'checkout.session.expired',
+        created,
+        object: { id: tagId('cs_stale'), object: 'checkout.session' },
+      }),
+    );
+
+    // The claim lease expired, so the handler runs again; a recent
+    // `processing` row would have been answered as a duplicate.
+    expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
+    expect((await eventRow(staleId)).status).toBe('ignored');
+  });
+
   it('rejects a tampered signature before touching the database', async () => {
     const evt = event({
       id: tagId('evt_tampered'),

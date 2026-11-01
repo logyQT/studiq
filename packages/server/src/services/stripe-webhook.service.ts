@@ -437,6 +437,7 @@ export class StripeWebhookService {
         owner.owner,
         resolved,
         status,
+        subscription.id,
         input.forceDowngrade,
       );
       if (isFailure(entitlement)) throw new Error('entitlement write failed');
@@ -617,9 +618,25 @@ export class StripeWebhookService {
     owner: EntitlementOwner,
     resolved: ResolvedPlan,
     status: string,
+    subscriptionId: string,
     forceDowngrade?: boolean,
   ): Promise<ServiceResult<void>> {
     if (forceDowngrade || DOWNGRADE_STATUSES.has(status)) {
+      // A duplicate subscription that was refused at activation can be
+      // cancelled later (§5.5 manual refund). Its `deleted` event must not
+      // downgrade an owner who still pays for the *other*, active subscription.
+      const active = await this.repository.findActiveSubscription(owner, this.livemode);
+      if (isFailure(active)) return active;
+
+      if (active.data && active.data.stripeSubscriptionId !== subscriptionId) {
+        logWarn('billing.downgrade_skipped_active_subscription', {
+          subscriptionId,
+          activeSubscriptionId: active.data.stripeSubscriptionId,
+          ownerType: owner.type,
+        });
+        return success(undefined);
+      }
+
       return this.entitlements.downgradeToFree(owner, resolved.plan.key);
     }
     if (ENTITLED_STATUSES.has(status)) {
