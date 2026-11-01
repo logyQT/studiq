@@ -98,12 +98,16 @@ jobs:
               ).stdout.split()
               # Shared QA files, anything outside qa/, or a QA PR that touches no
               # spec at all can change every area -> run all shards. Only a PR
-              # that touches specific __tests__/qa/<AREA>/ specs narrows.
+              # that pins a *known* area narrows (see `area_of` below).
+              # `__tests__/` is deliberately absent: it holds both the specs
+              # (usable for narrowing) and the helpers the suite imports
+              # (`__tests__/helpers/tenant-seed`, `__tests__/e2e/fixtures/ids`),
+              # so the narrowing decision is per file instead of per prefix.
               shared = (
                   "qa/fixtures/", "qa/playwright.qa.config.ts",
                   "scripts/qa-tenant.ts", "scripts/qa-issue.ts",
                   ".github/workflows/verify.yml", "package.json", "bun.lock",
-                  "apps/", "packages/", "supabase/", "__tests__/",
+                  "apps/", "packages/", "supabase/",
               )
               # A docs-only PR (markdown, no case catalogue entry) cannot reach a
               # spec, a fixture or the app, so no shard has anything to prove:
@@ -116,18 +120,35 @@ jobs:
               docs_only = bool(changed) and all(
                   f.endswith(".md") and not f.startswith("qa/cases/") for f in changed
               )
-              force_all = any(f.startswith(shared) for f in changed)
-              # A case PR adds a spec under __tests__/qa/<AREA>/ and/or a profile at
-              # __tests__/qa/profiles/<CASE>.json; both map to the case's area, so a
-              # normal case PR runs exactly one shard.
-              areas = set()
-              for f in changed:
+
+              area_names = {a for s in shards for a in s["areas"]}
+
+              def area_of(f):
+                  """The single area a changed file pins, or None if it pins none."""
                   if f.startswith("__tests__/qa/profiles/") and f.endswith(".json"):
-                      areas.add(f.rsplit("/", 1)[-1].split("-")[0])
-                  elif f.startswith("qa/cases/") and f.endswith(".md"):
-                      areas.add(f.rsplit("/", 1)[-1].split("-")[0])
-                  elif f.startswith("__tests__/qa/") and len(f.split("/")) > 3:
-                      areas.add(f.split("/")[2])
+                      return f.rsplit("/", 1)[-1].split("-")[0]
+                  if f.startswith("qa/cases/") and f.endswith(".md"):
+                      return f.rsplit("/", 1)[-1].split("-")[0]
+                  parts = f.split("/")
+                  if len(parts) > 3 and parts[:2] == ["__tests__", "qa"]:
+                      return parts[2]
+                  return None
+
+              # A case PR adds a spec under __tests__/qa/<AREA>/ and/or a profile at
+              # __tests__/qa/profiles/<CASE>.json; both pin the case's area, so a
+              # normal case PR runs exactly one shard.
+              areas = {a for a in map(area_of, changed) if a}
+              # Anything else under __tests__/ (helpers, e2e fixtures, setup,
+              # mocks, KNOWN-FAILURES.json), an area the shard list does not know
+              # yet, or a shared file still means "run everything": a silent
+              # under-run is worse than four runners.
+              force_all = (
+                  any(f.startswith(shared) for f in changed)
+                  or any(a not in area_names for a in areas)
+                  or any(
+                      f.startswith("__tests__/") and area_of(f) is None for f in changed
+                  )
+              )
               touched = [s for s in shards if set(s["areas"]) & areas]
               if docs_only:
                   selected = []
