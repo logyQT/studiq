@@ -36,9 +36,11 @@ jobs:
   # A QA-suite PR only touches qa/** (plus, occasionally, __tests__ helpers).
   # The app, its unit/integration tests and the e2e matrix cannot change there,
   # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
-  # the `qa-suite` job still run. A docs-only PR (docs/**, any *.md) is treated
-  # the same way: no app code can change, so only `checks` does any real work
-  # (the e2e legs still report, but as no-ops — see the note on top).
+  # the `qa-suite` job still run. A docs-only PR (docs/**, any *.md outside
+  # qa/cases/) is treated the same way and then some: no app code and no spec can
+  # change, so `checks` is the only job that does any real work (the e2e legs
+  # still report, but as no-ops — see the note on top — and the QA suite starts no
+  # shard at all).
   # Schedule/dispatch runs everything.
   scope:
     runs-on: ubuntu-latest
@@ -103,6 +105,17 @@ jobs:
                   ".github/workflows/verify.yml", "package.json", "bun.lock",
                   "apps/", "packages/", "supabase/", "__tests__/",
               )
+              # A docs-only PR (markdown, no case catalogue entry) cannot reach a
+              # spec, a fixture or the app, so no shard has anything to prove:
+              # start none rather than four runners for ~6 min each. A case
+              # catalogue entry (qa/cases/<AREA>-*.md) is markdown too, but it
+              # does drive a shard's fixtures — it is excluded here and mapped to
+              # its area below. Anything else that touches no spec still runs
+              # every shard (see `not touched` below), because that is a QA PR
+              # changing shared behaviour we cannot attribute to one area.
+              docs_only = bool(changed) and all(
+                  f.endswith(".md") and not f.startswith("qa/cases/") for f in changed
+              )
               force_all = any(f.startswith(shared) for f in changed)
               # A case PR adds a spec under __tests__/qa/<AREA>/ and/or a profile at
               # __tests__/qa/profiles/<CASE>.json; both map to the case's area, so a
@@ -116,7 +129,10 @@ jobs:
                   elif f.startswith("__tests__/qa/") and len(f.split("/")) > 3:
                       areas.add(f.split("/")[2])
               touched = [s for s in shards if set(s["areas"]) & areas]
-              selected = shards if force_all or not touched else touched
+              if docs_only:
+                  selected = []
+              else:
+                  selected = shards if force_all or not touched else touched
           print("qa_shards=" + json.dumps(selected))
           PY
 
