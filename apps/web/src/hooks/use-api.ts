@@ -13,8 +13,8 @@ export function useApiQuery<T>(opts: {
   enabled?: boolean;
   staleTime?: number;
   gcTime?: number;
-  /** Overrides the global `retry: 2` for queries whose errors are terminal. */
-  retry?: boolean | number;
+  /** Overrides the global retry policy; a function sees the failure count and the error. */
+  retry?: boolean | number | ((failureCount: number, error: Error) => boolean);
 }): UseQueryResult<T> {
   return useQuery({
     queryKey: opts.queryKey,

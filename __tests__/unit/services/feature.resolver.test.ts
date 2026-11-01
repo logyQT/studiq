@@ -192,7 +192,9 @@ describe('FeatureResolver', () => {
       });
 
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual(['flashcards', 'quiz', 'group.manage']);
+      // The personal plan fills an empty org entitlement, but org-scoped
+      // capability (`group.manage`) is still an org-role decision.
+      expect(features).toEqual(['flashcards', 'quiz']);
     });
 
     it('returns personal plan features when not in org context', async () => {
@@ -236,8 +238,141 @@ describe('FeatureResolver', () => {
 
       const features = await resolver.getEnabledFeatures(ctx);
       expect(features).toEqual(['flashcards', 'quiz', 'branding']);
-      // Org plan yielded features, so the personal plan must not be consulted.
-      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+      // The personal plan is layered on top, but this profile has none set.
+      expect(mock.from).toHaveBeenCalledWith('profiles');
+    });
+
+    it('adds a student personal plan on top of the org entitlement (paid PRO in a free org)', async () => {
+      // `student1` in the seed: personal `pro`, org on free `launch` whose
+      // member role has no `ai.chat`. The purchase must still grant it.
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_role_features') {
+          return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
+        }
+        if (table === 'profiles') return chain({ personal_plan_key: 'pro' });
+        if (table === 'plan_features') {
+          return chain([
+            { feature_key: 'ai.chat' },
+            { feature_key: 'advanced.stats' },
+            { feature_key: 'documents' },
+            { feature_key: 'flashcards' },
+            { feature_key: 'quiz' },
+          ]);
+        }
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      expect(features).toEqual(['ai.chat', 'flashcards', 'quiz', 'documents', 'advanced.stats']);
+    });
+
+    it('does not let a personal plan escalate admin-only keys in an org', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_role_features') {
+          return chain([{ feature_key: 'flashcards', is_enabled: true }]);
+        }
+        if (table === 'profiles') return chain({ personal_plan_key: 'hub' });
+        if (table === 'plan_features') {
+          return chain([
+            { feature_key: 'ai.chat' },
+            { feature_key: 'member.manage' },
+            { feature_key: 'role.builder' },
+          ]);
+        }
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      // `member` is not an org admin: the structure privileges are stripped.
+      expect(features).toEqual(['ai.chat', 'flashcards']);
+    });
+
+    it('does not let a personal plan grant org-scoped capability inside an org', async () => {
+      // `lite` (the free educator plan) includes `group.manage`. A `member`
+      // role must not gain it just because it is the member's personal plan —
+      // that is an org-role decision (EDU-02 regression).
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_role_features') {
+          return chain([{ feature_key: 'flashcards', is_enabled: true }]);
+        }
+        if (table === 'profiles') return chain({ personal_plan_key: 'lite' });
+        if (table === 'plan_features') {
+          return chain([
+            { feature_key: 'flashcards' },
+            { feature_key: 'quiz' },
+            { feature_key: 'group.manage' },
+            { feature_key: 'member.manage' },
+          ]);
+        }
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      expect(features).toEqual(['flashcards', 'quiz']);
+    });
+
+    it('keeps an org-scoped feature the role itself grants', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-teacher' };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_role_features') {
+          return chain([
+            { feature_key: 'flashcards', is_enabled: true },
+            { feature_key: 'group.manage', is_enabled: true },
+          ]);
+        }
+        if (table === 'profiles') return chain({ personal_plan_key: 'lite' });
+        if (table === 'plan_features') {
+          return chain([{ feature_key: 'group.manage' }, { feature_key: 'quiz' }]);
+        }
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      // group.manage survives because the org role granted it.
+      expect(features).toEqual(['flashcards', 'quiz', 'group.manage']);
+    });
+
+    it('ignores a manager mirrored personal plan inside an org (#228)', async () => {
+      const ctx = {
+        ...baseCtx,
+        accountType: AccountType.MANAGER,
+        activeOrgId: 'org-1',
+        orgRoleId: 'role-member',
+      };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_role_features') {
+          return chain([{ feature_key: 'flashcards', is_enabled: true }]);
+        }
+        if (table === 'profiles') return chain({ personal_plan_key: 'campus' });
+        if (table === 'plan_features') return chain([{ feature_key: 'ai.chat' }]);
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      expect(features).toEqual(['flashcards']);
     });
 
     it('still applies the personal plan when there is no active org', async () => {

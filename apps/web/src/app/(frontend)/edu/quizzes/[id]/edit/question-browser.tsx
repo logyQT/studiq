@@ -2,16 +2,14 @@
 
 import { useDraggable } from '@dnd-kit/core';
 import { Badge, Input } from '@studiq/ui';
-import { GripVertical, Plus } from 'lucide-react';
+import { GripVertical, Plus, SearchX } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { type ChangeEvent, useState } from 'react';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { useApiQuery } from '@/hooks/use-api';
-
-interface BrowseQuestion {
-  id: string;
-  content: string;
-  type: string;
-}
+import { useDebounce } from '@/hooks/use-debounce';
+import { availableQuestions, type BrowseQuestion } from '@/lib/question-browser';
+import { questionKeys } from '@/lib/query-keys';
 
 interface QuestionBrowserProps {
   existingIds: Set<string>;
@@ -79,17 +77,33 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
   });
   const banks = banksData?.items;
 
-  const { data: questions } = useApiQuery<BrowseQuestion[]>({
-    queryKey: ['questions', selectedBankId ?? 'all'],
-    url: selectedBankId
-      ? `/api/v1/questions?bankId=${selectedBankId}${search ? `&search=${search}` : ''}`
-      : `/api/v1/questions${search ? `?search=${search}` : ''}`,
+  // The server filters by the search term, so the term is part of the cache key (otherwise a
+  // list filtered by one term is served for another) and of the URL through URLSearchParams
+  // (a raw `&`, `#`, `+` or `%` in the text would corrupt the query).
+  const debouncedSearch = useDebounce(search.trim(), 300);
+  const params = new URLSearchParams();
+  if (selectedBankId) params.set('bankId', selectedBankId);
+  if (debouncedSearch) params.set('search', debouncedSearch);
+  const queryString = params.toString();
+
+  // The shared key keeps the bank and the term distinct, and puts the picker under the same
+  // prefix the bank screen invalidates after a create or a delete.
+  const {
+    data: questions,
+    isPending: questionsPending,
+    isError: questionsError,
+    refetch: refetchQuestions,
+  } = useApiQuery<BrowseQuestion[]>({
+    queryKey: questionKeys.list({
+      bankId: selectedBankId,
+      search: debouncedSearch || undefined,
+    }),
+    url: `/api/v1/questions${queryString ? `?${queryString}` : ''}`,
   });
 
-  const allQuestions = (questions ?? []).filter((q) => !existingIds.has(q.id));
-  const filtered = search
-    ? allQuestions.filter((q) => q.content.toLowerCase().includes(search.toLowerCase()))
-    : allQuestions;
+  // The server is the only place that filters: a second pass over the returned rows with the
+  // raw input hid rows the API had matched (trimmed term, `*` as a wildcard).
+  const allQuestions = availableQuestions(questions, existingIds);
 
   return (
     <div className="space-y-4">
@@ -110,6 +124,7 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
         </select>
         <Input
           placeholder={t('search_questions_placeholder')}
+          maxLength={100}
           value={search}
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
             setSearch(e.target.value);
@@ -118,13 +133,27 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
       </div>
 
       <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-        {filtered.map((q) => (
-          <BrowserItem key={q.id} question={q} onAdd={(q) => onAdd([q])} draggable={draggable} />
-        ))}
-        {filtered.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            {t('no_questions_found')}
-          </p>
+        {questionsError ? (
+          // A failed request is not "no question matches": name the failure and offer a retry,
+          // like every other list on the app.
+          <ErrorState onRetry={() => refetchQuestions()} compact />
+        ) : (
+          <>
+            {allQuestions.map((q) => (
+              <BrowserItem
+                key={q.id}
+                question={q}
+                onAdd={(q) => onAdd([q])}
+                draggable={draggable}
+              />
+            ))}
+            {!questionsPending && allQuestions.length === 0 && (
+              // The same shape as the error state and the other lists: icon, text, no dead end.
+              // Not while the term/bank is still loading: an empty response and a pending one
+              // are not the same answer.
+              <EmptyState icon={SearchX} title={t('no_questions_found')} compact />
+            )}
+          </>
         )}
       </div>
     </div>

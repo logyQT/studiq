@@ -37,6 +37,9 @@ export const flashcardKeys = {
     ['flashcards', 'practice'] as const,
     ['flashcards', 'stats'] as const,
     ['flashcards', 'decks'] as const,
+    // The student statistics, including the insights (study time, mastery, retention) that a
+    // finished session changes (#365, #657).
+    ['stats', 'student'] as const,
   ] as const,
   stats: {
     teacher: ['flashcards', 'stats', 'teacher'] as const,
@@ -137,6 +140,7 @@ export const quizAttemptKeys = {
 export const studentStatsKeys = {
   all: ['stats', 'student'] as const,
   overview: ['stats', 'student', 'overview'] as const,
+  insights: (days: number) => ['stats', 'student', 'insights', days] as const,
 };
 
 export const searchKeys = {

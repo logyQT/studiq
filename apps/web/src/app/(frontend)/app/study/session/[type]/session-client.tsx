@@ -96,6 +96,8 @@ function getCardStateInfo(
 
 const BATCH_SIZE = 20;
 const REFILL_THRESHOLD = 5;
+/** Longest session the API accepts (CompleteSessionSchema). */
+const MAX_SESSION_MS = 7_200_000;
 
 function generateUUID(): string {
   return crypto.randomUUID();
@@ -346,7 +348,8 @@ export default function SessionClient(props: SessionClientProps) {
     if (hasFinalisedRef.current) return;
     hasFinalisedRef.current = true;
 
-    const durationMs = Date.now() - startedAt;
+    // A tab left open overnight is not a 20-hour session; the API refuses more than two hours.
+    const durationMs = Math.min(Date.now() - startedAt, MAX_SESSION_MS);
 
     const finalise = async () => {
       await sendBatchUpdate();

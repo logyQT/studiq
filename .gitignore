@@ -31,6 +31,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -62,3 +63,12 @@ __tests__/e2e/.seed/
 
 # scratch space for local runs (baseline reports, helpers)
 .tmp/
+
+# QA case tenants (generated)
+qa/.tenants/
+
+# QA run artefacts (never commit)
+.qa-app.log
+.qa-app.pid
+test-results/
+playwright-report/

@@ -1,0 +1,11 @@
+{
+  "profile": "content",
+  "plan": "hub",
+  "members": [
+    { "key": "manager", "accountType": "manager", "orgRole": "admin" },
+    { "key": "teacher", "accountType": "educator", "orgRole": "teacher" },
+    { "key": "teacher2", "accountType": "educator", "orgRole": "member" },
+    { "key": "student", "accountType": "student", "orgRole": "member" }
+  ],
+  "groups": ["G1"]
+}

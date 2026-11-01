@@ -1,0 +1,653 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# scripts/dev — one-command local development stack for @studiq/web + Supabase.
+#
+#   bun dev:up            start Supabase (if needed) + the web dev server
+#   bun dev:status        health / PIDs / URLs (`--json` for machines)
+#   bun dev:down          stop the web dev server
+#   bun dev:down --all    also stop Supabase (database volume is kept)
+#   bun dev:reset-db      destructive: `supabase db reset` (never run by dev:up)
+#   bun dev:build         explicit production build (never run by dev:up)
+#   bun dev:logs          follow the web log + recent Supabase container logs
+#   bun dev:prepull       pull Supabase images without leaving the stack running
+#
+# Contract:
+#   * root `.env` is the only hand-edited env file (copy `.env.example`)
+#   * `apps/web/.env` is generated from root `.env` + `supabase status -o env`
+#   * `dev:up` never installs, builds, or runs an explicit DB reset /
+#     migrations / seeds (only what `supabase start` does on a fresh volume)
+#   * fixed local ports: web 3000, API 54321, DB 54322, Mailpit 54324
+#   * the shared QA stack (:3010 / :54421) is refused unless DEV_ALLOW_SHARED=1
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+DEV_DIR="$REPO_ROOT/.dev"
+WEB_LOG="$DEV_DIR/web.log"
+WEB_PID_FILE="$DEV_DIR/web.pid"
+WEB_ENV_FILE="$REPO_ROOT/apps/web/.env"
+ROOT_ENV_FILE="$REPO_ROOT/.env"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+info() { printf "${GREEN}✔${NC} %s\n" "$*"; }
+warn() { printf "${YELLOW}⚠${NC} %s\n" "$*" >&2; }
+fail() {
+  printf "${RED}✘${NC} %s\n" "$*" >&2
+  exit 1
+}
+header() { printf "\n${CYAN}▸${NC} %s\n" "$*"; }
+
+# ── Env handling ─────────────────────────────────────────────────────────────
+# Values are parsed, never `source`d: the file is user data and must not be able
+# to execute shell code. Root `.env` wins over previously loaded fallbacks.
+declare -A ENV=()
+ENV_ORDER=()
+
+env_has() { [[ -n "${ENV[$1]+x}" ]]; }
+
+env_set() {
+  local key=$1 value=$2 mode=${3:-keep}
+  if [[ "$mode" != "force" ]] && env_has "$key" && [[ -n "${ENV[$key]}" ]]; then return 0; fi
+  if ! env_has "$key"; then ENV_ORDER+=("$key"); fi
+  ENV["$key"]="$value"
+  export "$key=$value"
+}
+
+trim() {
+  local value=$1
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+load_env_file() {
+  local file=$1 mode=${2:-keep}
+  [[ -f "$file" ]] || return 0
+
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    line=$(trim "$line")
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == export\ * ]] && line=$(trim "${line#export }")
+    [[ "$line" == *=* ]] || continue
+
+    key=$(trim "${line%%=*}")
+    value=$(trim "${line#*=}")
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+
+    if [[ "$value" == \"*\" && "$value" == *\" && ${#value} -ge 2 ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'*\' && "$value" == *\' && ${#value} -ge 2 ]]; then
+      value="${value:1:${#value}-2}"
+    else
+      # Unquoted values may carry an inline comment: `KEY=value # note`.
+      value="${value%%[[:space:]]#*}"
+      value=$(trim "$value")
+    fi
+
+    env_set "$key" "$value" "$mode"
+  done <"$file"
+}
+
+load_root_env() { load_env_file "$ROOT_ENV_FILE" force; }
+load_web_env_fallback() { load_env_file "$WEB_ENV_FILE" keep; }
+
+# Local defaults for the fixed dev contract. Never override root `.env` values.
+apply_basic_defaults() {
+  env_set APP_URL "http://localhost:3000"
+  env_set NEXT_PUBLIC_SITE_URL "$(env_url "${ENV[APP_URL]}")"
+  env_set SUPABASE_URL "http://localhost:54321"
+  env_set SUPABASE_DB_URL "postgresql://postgres:postgres@localhost:54322/postgres"
+  env_set SUPABASE_MAIL_URL "http://localhost:54324"
+}
+
+normalize_localhost() { printf '%s' "$1" | sed -E 's#//127\.0\.0\.1([:/]|$)#//localhost\1#g'; }
+
+env_url() { printf '%s' "${1%/}"; }
+
+# ── Supabase status ──────────────────────────────────────────────────────────
+declare -A SUPA=()
+SUPA_LOADED=0
+
+supabase_health_url() {
+  local base
+  base=$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")
+  printf '%s/auth/v1/health' "$base"
+}
+
+http_code() {
+  local url=$1 code
+  code=$(curl -s -o /dev/null --max-time 2 -w '%{http_code}' "$url" 2>/dev/null) || code=000
+  [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
+  printf '%s' "$code"
+}
+
+supabase_healthy() { [[ "$(http_code "$(supabase_health_url)")" == "200" ]]; }
+
+load_supabase_status() {
+  (( SUPA_LOADED == 0 )) || return 0
+  local output line key value
+  output=$(cd "$REPO_ROOT" && bunx supabase status -o env 2>/dev/null) || return 1
+
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+    [[ "$line" == *=* ]] || continue
+    key=$(trim "${line%%=*}")
+    value=$(trim "${line#*=}")
+    [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || continue
+    if [[ "$value" == \"*\" && "$value" == *\" && ${#value} -ge 2 ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'*\' && "$value" == *\' && ${#value} -ge 2 ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    SUPA["$key"]="$value"
+  done <<<"$output"
+
+  SUPA_LOADED=1
+}
+
+merge_supabase_env() {
+  local api_url=${SUPA[API_URL]:-http://localhost:54321}
+  local anon=${SUPA[ANON_KEY]:-${SUPA[PUBLISHABLE_KEY]:-}}
+  local service=${SUPA[SERVICE_ROLE_KEY]:-${SUPA[SECRET_KEY]:-}}
+
+  api_url=$(normalize_localhost "$(env_url "$api_url")")
+
+  # Root `.env` values always win — only fill the gaps.
+  env_set SUPABASE_URL "$api_url"
+  env_set NEXT_PUBLIC_SUPABASE_URL "${ENV[SUPABASE_URL]}"
+  [[ -n "$anon" ]] && env_set NEXT_PUBLIC_SUPABASE_ANON_KEY "$anon"
+  [[ -n "$service" ]] && env_set SUPABASE_SERVICE_ROLE_KEY "$service"
+
+  env_set SUPABASE_DB_URL "$(normalize_localhost "$(env_url "${SUPA[DB_URL]:-postgresql://postgres:postgres@localhost:54322/postgres}")")"
+  env_set SUPABASE_MAIL_URL "$(normalize_localhost "$(env_url "${SUPA[MAILPIT_URL]:-${SUPA[INBUCKET_URL]:-http://localhost:54324}}")")"
+}
+
+require_env_key() {
+  local key=$1
+  env_has "$key" && [[ -n "${ENV[$key]}" ]] && return 0
+  fail "Missing $key. Add it to $ROOT_ENV_FILE (copy .env.example) or start Supabase with 'bun dev:up'."
+}
+
+# ── Guards ───────────────────────────────────────────────────────────────────
+guard_shared_stack() {
+  [[ "${DEV_ALLOW_SHARED:-0}" == "1" ]] && return 0
+  local key value
+  for key in APP_URL NEXT_PUBLIC_SITE_URL SUPABASE_URL NEXT_PUBLIC_SUPABASE_URL; do
+    value=${ENV[$key]:-}
+    if [[ "$value" =~ :(3010|54421)(/|$) ]]; then
+      fail "$key=$value points at the shared QA stack (:3010 / :54421).
+  Use the dev defaults (:3000 / :54321) or set DEV_ALLOW_SHARED=1 to override."
+    fi
+  done
+}
+
+ensure_bun() {
+  command -v bun >/dev/null 2>&1 || fail "bun is not installed or not on PATH."
+}
+
+ensure_docker() {
+  command -v docker >/dev/null 2>&1 || fail "Docker is not installed (needed for Supabase)."
+  local ok=0
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 10 docker info >/dev/null 2>&1 && ok=1
+  else
+    docker info >/dev/null 2>&1 && ok=1
+  fi
+  (( ok == 1 )) || fail "Docker is not reachable. Start Docker (or the Docker daemon) and retry."
+}
+
+# ── apps/web/.env rendering ──────────────────────────────────────────────────
+format_env_value() {
+  local value=$1
+  # dotenv-expand runs over every value; `\$` is the one escape it honours in
+  # both bare and quoted values.
+  local escaped=${value//\$/\\\$}
+
+  # No quoting needed (matches the previous behaviour): bare values keep
+  # backslashes verbatim through @next/env.
+  if [[ "$value" != *[[:space:]\#\"\']* ]]; then
+    printf '%s' "$escaped"
+    return
+  fi
+
+  # Prefer single quotes: @next/env keeps backslashes verbatim inside them, so
+  # literal `\n` / `\r` survive (double quotes turn them into newline / CR).
+  if [[ "$value" != *"'"* ]]; then
+    printf "'%s'" "$escaped"
+    return
+  fi
+
+  # An apostrophe cannot be escaped in a single-quoted value; double quotes are
+  # the only remaining option (rare for the generated web env).
+  printf '"%s"' "$escaped"
+}
+
+render_web_env() {
+  require_env_key NEXT_PUBLIC_SUPABASE_URL
+  require_env_key NEXT_PUBLIC_SUPABASE_ANON_KEY
+  require_env_key SUPABASE_SERVICE_ROLE_KEY
+
+  mkdir -p "$DEV_DIR"
+  mkdir -p "$REPO_ROOT/apps/web"
+  local tmp key
+  tmp=$(mktemp "$DEV_DIR/web.env.XXXXXX")
+  {
+    printf '# Generated by `bun dev:up` — do not edit, do not commit.\n'
+    printf '# Source of truth: root .env + `supabase status -o env`.\n\n'
+    for key in "${ENV_ORDER[@]}"; do
+      printf '%s=%s\n' "$key" "$(format_env_value "${ENV[$key]}")"
+    done
+  } >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$WEB_ENV_FILE"
+  chmod 600 "$WEB_ENV_FILE"
+}
+
+# ── Web process management ───────────────────────────────────────────────────
+web_url() { normalize_localhost "$(env_url "${ENV[APP_URL]:-http://localhost:3000}")"; }
+
+web_code() { http_code "$(web_url)"; }
+
+pid_alive() {
+  local pid=$1
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+read_web_pid() {
+  [[ -f "$WEB_PID_FILE" ]] || return 1
+  local pid
+  pid=$(tr -d '[:space:]' <"$WEB_PID_FILE")
+  pid_alive "$pid" || return 1
+  # A PID can be reused after a crash. Only trust it when its command line is
+  # still the web dev server, so `status` never reports and `down` never kills
+  # an unrelated process.
+  local command
+  command=$(ps -o command= -p "$pid" 2>/dev/null) || return 1
+  if [[ "$command" == *"@studiq/web"* ]]; then
+    printf '%s' "$pid"
+    return 0
+  fi
+  # The child `next dev` belongs to this checkout; do not trust another repo's.
+  if [[ "$command" == *"$REPO_ROOT"* && "$command" == *next* ]]; then
+    printf '%s' "$pid"
+    return 0
+  fi
+  return 1
+}
+
+# Wait for the HTTP health check. When a PID is supplied, stop early as soon as
+# that process exits instead of burning the whole timeout.
+wait_for_web() {
+  local timeout=${1:-120} pid=${2:-} waited=0 code
+  while (( waited < timeout )); do
+    code=$(web_code)
+    if [[ "$code" == "200" ]]; then
+      return 0
+    fi
+    if [[ -n "$pid" ]] && ! pid_alive "$pid"; then
+      return 2
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+start_web() {
+  mkdir -p "$DEV_DIR"
+
+  local existing current_code
+  if existing=$(read_web_pid); then
+    if [[ "$(web_code)" == "200" ]]; then
+      info "Web already running (pid $existing)"
+      return 0
+    fi
+    warn "Web pid $existing is alive but not answering yet; waiting…"
+    if wait_for_web 60 "$existing"; then
+      info "Web is ready (pid $existing)"
+      return 0
+    fi
+    printf '\n──── last 40 lines of %s ────\n' "$WEB_LOG" >&2
+    tail -n 40 "$WEB_LOG" >&2 || true
+    fail "Web (pid $existing) did not become healthy. Check: bun dev:logs"
+  fi
+
+  # A stale pid file is removed below; an external server still counts as ready.
+  current_code=$(web_code)
+  if [[ "$current_code" == "200" ]]; then
+    rm -f "$WEB_PID_FILE"
+    info "Web already answers on $(web_url) (started outside dev:up)"
+    return 0
+  fi
+  if [[ "$current_code" != "000" ]]; then
+    fail "Something already answers on $(web_url) with HTTP $current_code.
+  Stop it first, then run 'bun dev:up' again."
+  fi
+
+  printf '\n===== %s dev:up =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$WEB_LOG"
+
+  # `set -m` makes the background job its own process group, so `dev:down` can
+  # take down next dev and every child it spawns with one signal.
+  set -m
+  (cd "$REPO_ROOT" && exec bun run --filter @studiq/web dev) >>"$WEB_LOG" 2>&1 </dev/null &
+  local pid=$!
+  set +m
+  printf '%s\n' "$pid" >"$WEB_PID_FILE"
+  info "Started web dev server (pid $pid) → $WEB_LOG"
+
+  if ! wait_for_web 120 "$pid"; then
+    printf '\n──── last 40 lines of %s ────\n' "$WEB_LOG" >&2
+    tail -n 40 "$WEB_LOG" >&2 || true
+    if ! pid_alive "$pid"; then
+      fail "Web dev server (pid $pid) exited during startup. See $WEB_LOG."
+    fi
+    fail "Web did not answer on $(web_url) within 120s."
+  fi
+  info "Web is ready (pid $pid)"
+}
+
+stop_web() {
+  local pid
+  if ! pid=$(read_web_pid); then
+    rm -f "$WEB_PID_FILE"
+    warn "Web dev server is not running."
+    return 0
+  fi
+
+  if kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null; then
+    local waited=0
+    while pid_alive "$pid" && (( waited < 15 )); do
+      sleep 1
+      waited=$((waited + 1))
+    done
+    if pid_alive "$pid"; then
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$WEB_PID_FILE"
+    info "Stopped web dev server (pid $pid)"
+  else
+    rm -f "$WEB_PID_FILE"
+    warn "Web process $pid was already gone."
+  fi
+}
+
+# ── Supabase lifecycle ───────────────────────────────────────────────────────
+ensure_supabase_running() {
+  if supabase_healthy; then
+    info "Supabase already running at $(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]}")")"
+    return 0
+  fi
+
+  header "Starting Supabase"
+  (cd "$REPO_ROOT" && bunx supabase start)
+
+  local waited=0
+  while (( waited < 60 )); do
+    supabase_healthy && {
+      info "Supabase is healthy"
+      return 0
+    }
+    sleep 1
+    waited=$((waited + 1))
+  done
+  fail "Supabase did not become healthy. Check: bunx supabase status"
+}
+
+stop_supabase() {
+  if ! supabase_healthy; then
+    warn "Supabase is not running."
+    return 0
+  fi
+  # Deliberately no `--no-backup`: on the pinned CLI that flag *deletes* the
+  # data volumes (`supabase stop --help` → "Deletes all data volumes after
+  # stopping"). The default stop keeps the database volume and data.
+  (cd "$REPO_ROOT" && bunx supabase stop)
+  info "Stopped Supabase (database volume kept)"
+}
+
+# ── Ready block ──────────────────────────────────────────────────────────────
+print_ready_block() {
+  printf '\n'
+  printf '%-9s %s\n' 'web' "$(web_url)"
+  printf '%-9s %s\n' 'supabase' "$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")"
+  printf '%-9s %s\n' 'db' "$(normalize_localhost "${ENV[SUPABASE_DB_URL]:-postgresql://postgres:postgres@localhost:54322/postgres}")"
+  printf '%-9s %s\n' 'mail' "$(normalize_localhost "${ENV[SUPABASE_MAIL_URL]:-http://localhost:54324}")"
+  printf '\n'
+}
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+cmd_up() {
+  load_root_env
+  apply_basic_defaults
+  guard_shared_stack
+  ensure_bun
+  ensure_docker
+
+  # `supabase start` reads `env()` values from this process.
+  ensure_supabase_running
+  load_supabase_status || fail "Could not read 'supabase status -o env'."
+  merge_supabase_env
+  render_web_env
+  info "Rendered apps/web/.env ($(printf '%s' "$WEB_ENV_FILE"))"
+
+  start_web
+  print_ready_block
+  info "Ready. Stop with 'bun dev:down' (add --all for Supabase)."
+}
+
+cmd_status() {
+  local json=0
+  [[ "${1:-}" == "--json" ]] && json=1
+
+  load_root_env
+  apply_basic_defaults
+
+  local web_http supa_http pid_json pid_text web_http_json supa_http_json
+  web_http=$(web_code)
+  supa_http=$(http_code "$(supabase_health_url)")
+  web_http_json=$web_http
+  supa_http_json=$supa_http
+  [[ "$web_http" == "000" ]] && web_http_json=0
+  [[ "$supa_http" == "000" ]] && supa_http_json=0
+
+  if pid_text=$(read_web_pid); then
+    pid_json=$pid_text
+  else
+    pid_json=null
+    pid_text=-
+  fi
+
+  local ready=false
+  if (( web_http >= 200 && web_http < 400 )) && [[ "$supa_http" == "200" ]]; then
+    ready=true
+  fi
+
+  local db_url mail_url
+  db_url=$(normalize_localhost "${ENV[SUPABASE_DB_URL]:-postgresql://postgres:postgres@localhost:54322/postgres}")
+  mail_url=$(normalize_localhost "${ENV[SUPABASE_MAIL_URL]:-http://localhost:54324}")
+
+  if (( json == 1 )); then
+    printf '{"ready":%s,"web":{"url":"%s","pid":%s,"http":%s},"supabase":{"url":"%s","http":%s},"dbUrl":"%s","mailUrl":"%s"}\n' \
+      "$ready" "$(web_url)" "$pid_json" "$web_http_json" \
+      "$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")" "$supa_http_json" \
+      "$db_url" "$mail_url"
+    return 0
+  fi
+
+  printf 'ready      %s\n' "$ready"
+  printf 'web        %s  http=%s  pid=%s\n' "$(web_url)" "$web_http" "$pid_text"
+  printf 'supabase   %s  http=%s\n' "$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")" "$supa_http"
+  printf 'db         %s\n' "$db_url"
+  printf 'mail       %s\n' "$mail_url"
+}
+
+cmd_down() {
+  local all=0
+  [[ "${1:-}" == "--all" ]] && all=1
+
+  load_root_env
+  apply_basic_defaults
+  stop_web
+
+  if (( all == 1 )); then
+    ensure_bun
+    ensure_docker
+    stop_supabase
+  fi
+}
+
+cmd_reset_db() {
+  load_root_env
+  apply_basic_defaults
+  guard_shared_stack
+  ensure_bun
+  ensure_docker
+
+  header "Resetting the local database (destructive)"
+  ensure_supabase_running
+  (cd "$REPO_ROOT" && bunx supabase db reset)
+
+  load_supabase_status || fail "Could not read 'supabase status -o env'."
+  merge_supabase_env
+  render_web_env
+  info "Database reset complete; apps/web/.env re-rendered."
+}
+
+cmd_build() {
+  load_root_env
+  apply_basic_defaults
+  ensure_bun
+
+  if web_pid=$(read_web_pid); then
+    fail "The dev server is running (pid $web_pid). Run 'bun dev:down' before 'bun dev:build'."
+  fi
+
+  # Prefer fresh keys when the stack is up and readable; only fall back to the
+  # existing generated env for an offline build. Loading that fallback first
+  # would let a rotated anon/service key silently win over the live one.
+  if supabase_healthy && load_supabase_status; then
+    merge_supabase_env
+  else
+    load_web_env_fallback
+  fi
+
+  # Run after fallback/merge so a QA URL from either source is still caught.
+  guard_shared_stack
+  render_web_env
+
+  header "Building @studiq/web"
+  (cd "$REPO_ROOT" && bun run --filter @studiq/web build)
+  info "Build complete."
+}
+
+cmd_logs() {
+  local follow=1
+  [[ "${1:-}" == "--no-follow" ]] && follow=0
+
+  load_root_env
+  apply_basic_defaults
+
+  printf 'web        %s  http=%s\n' "$(web_url)" "$(web_code)"
+  printf 'supabase   %s  http=%s\n' \
+    "$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")" \
+    "$(http_code "$(supabase_health_url)")"
+
+  ensure_bun
+  (cd "$REPO_ROOT" && bunx supabase status) || true
+
+  local project_id
+  project_id=$(sed -nE 's/^[[:space:]]*project_id[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+    "$REPO_ROOT/supabase/config.toml" | head -n 1)
+  project_id=${project_id:-studiq}
+
+  local svc container
+  for svc in db auth rest; do
+    container="supabase_${svc}_${project_id}"
+    if command -v docker >/dev/null 2>&1 && docker inspect "$container" >/dev/null 2>&1; then
+      printf '\n──── docker logs %s (last 20) ────\n' "$container"
+      docker logs --tail 20 "$container" 2>&1 || true
+    fi
+  done
+
+  if [[ ! -f "$WEB_LOG" ]]; then
+    warn "No web log yet ($WEB_LOG)."
+    return 0
+  fi
+
+  printf '\n──── %s ────\n' "$WEB_LOG"
+  if (( follow == 1 )); then
+    tail -n 50 -f "$WEB_LOG"
+  else
+    tail -n 100 "$WEB_LOG"
+  fi
+}
+
+cmd_prepull() {
+  load_root_env
+  apply_basic_defaults
+  guard_shared_stack
+  ensure_bun
+  ensure_docker
+
+  if supabase_healthy; then
+    info "Supabase is already running; its images are present. Nothing to pull."
+    return 0
+  fi
+
+  header "Pulling Supabase images (starts then stops the stack)"
+  (cd "$REPO_ROOT" && bunx supabase start)
+  (cd "$REPO_ROOT" && bunx supabase stop)
+  info "Images pulled; stack stopped. The database volume was initialised and kept."
+}
+
+usage() {
+  cat <<'EOF'
+Usage: bun dev:<command>
+
+  up            Start Supabase (if needed) + the web dev server (idempotent)
+  status        Print web/Supabase health, PIDs, ports and URLs
+                  --json    machine-readable, stable shape
+  down          Stop the web dev server
+                  --all     also stop Supabase (database volume is kept)
+  reset-db      Destructive: `supabase db reset`, then re-render apps/web/.env
+  build         Production build of @studiq/web (stop the dev server first)
+  logs          Follow .dev/web.log + recent Supabase container logs
+                  --no-follow
+  prepull       Pull Supabase images without leaving the stack running
+
+Run from anywhere inside the repository. Root .env is optional; copy
+.env.example to .env for stable values.
+EOF
+}
+
+main() {
+  local command=${1:-}
+  [[ $# -gt 0 ]] && shift
+
+  case "$command" in
+    up) cmd_up "$@" ;;
+    status) cmd_status "$@" ;;
+    down) cmd_down "$@" ;;
+    reset-db | reset) cmd_reset_db "$@" ;;
+    build) cmd_build "$@" ;;
+    logs) cmd_logs "$@" ;;
+    prepull) cmd_prepull "$@" ;;
+    help | --help | -h | '') usage ;;
+    *)
+      warn "Unknown command: $command"
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

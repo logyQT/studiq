@@ -1,0 +1,4 @@
+{
+  "profile": "two-org",
+  "solo": { "key": "teacherB", "accountType": "educator", "name": "QA teacher B" }
+}

@@ -1,0 +1,10 @@
+{
+  "profile": "content",
+  "orgs": [
+    { "owner": { "key": "managerA", "accountType": "manager" }, "members": [] },
+    {
+      "owner": { "key": "managerB", "accountType": "manager" },
+      "members": [{ "key": "studentB", "accountType": "student" }]
+    }
+  ]
+}

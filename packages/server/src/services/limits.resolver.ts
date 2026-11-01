@@ -4,6 +4,7 @@ import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { isLimitKey, LIMITS, type LimitKey } from '@studiq/server/services/limit.catalog';
+import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -24,10 +25,12 @@ export const AI_TOKENS_LIMIT_KEY: LimitKey = 'max_ai_tokens_per_day';
 /**
  * Resolves plan limits for the caller's current context.
  *
- * Rule (#233): in a verified org context the organization's plan governs every
- * limit; a seat may raise only per-member (`scope: 'user'`) keys, never
- * org-scope capacity; the personal plan applies only outside a verified org
- * context; a missing `plan_limits` row is `0` (blocked) in every path.
+ * Rule (#233): org-scope capacity (`scope: 'org'`) always belongs to the
+ * organization's plan — no seat and no personal plan can widen it. Per-member
+ * keys (`scope: 'user'`) are layered and take the **most permissive** value of
+ * the member's personal plan, their seat plan and the org plan, so a plan a
+ * member pays for personally is never undercut by an org on the free tier. A
+ * missing `plan_limits` row is `0` (blocked) in every path; `-1` is unlimited.
  */
 export class LimitsResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -50,18 +53,41 @@ export class LimitsResolver {
       return scope === 'org' ? 0 : this.personalLimit(supabase, ctx.userId, limitKey);
     }
 
-    // A seat only raises per-member keys; org-scope capacity always belongs to
-    // the org plan.
+    // Per-member keys: a seat and a personally purchased plan both raise them,
+    // and the org plan is the floor. Most permissive wins, so an org on the free
+    // tier cannot undercut a StudiQ Pro the member bought themselves.
     if (scope === 'user') {
+      // Q3 (#233): a seat governs the per-member keys for the seated member.
       const seatPlanKey = await getSeatPlanKey(ctx, supabase);
-      if (seatPlanKey) return this.planLimit(supabase, seatPlanKey, limitKey);
+      if (seatPlanKey) {
+        return this.planLimit(supabase, seatPlanKey, limitKey);
+      }
+
+      // `active_org_id` is a client cookie: only a real membership is an org
+      // context, both for the org floor and for excluding a manager's mirrored
+      // personal plan (#228).
+      const isOrgMember = await this.isMember(supabase, orgId, ctx.userId);
+      const candidates: number[] = personalPlanApplies(ctx, isOrgMember)
+        ? [await this.personalLimit(supabase, ctx.userId, limitKey)]
+        : [];
+
+      if (isOrgMember) {
+        const orgPlanKey = await this.orgPlanKey(supabase, orgId);
+        if (orgPlanKey) {
+          candidates.push(await this.planLimit(supabase, orgPlanKey, limitKey));
+        } else {
+          warn('limits.resolver: organization has no plan', { organizationId: orgId, limitKey });
+        }
+      }
+
+      if (candidates.length === 0) return 0;
+      return candidates.includes(-1) ? -1 : Math.max(...candidates);
     }
 
     // `active_org_id` is a client-controlled cookie: only a real `org_members`
-    // row makes it a tenant scope. A forged/stale id falls back to the
-    // personal plan for user keys and grants no org capacity for org keys.
+    // row makes it a tenant scope. A forged/stale id grants no org capacity.
     if (!(await this.isMember(supabase, orgId, ctx.userId))) {
-      return scope === 'org' ? 0 : this.personalLimit(supabase, ctx.userId, limitKey);
+      return 0;
     }
 
     const orgPlanKey = await this.orgPlanKey(supabase, orgId);
