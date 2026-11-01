@@ -68,6 +68,22 @@ export class StripeController {
     return controllerResponse.success(result.data);
   }
 
+  /**
+   * Real Stripe webhook (#662 §3.4). The route has already read the raw body
+   * and `stripe-signature`; verification happens in the gateway/service. This
+   * method never touches a Supabase session and never reads a body `user_id`.
+   */
+  async handleStripeWebhook(
+    rawBody: string,
+    signature: string | null,
+  ): Promise<ControllerResponse> {
+    const result = await this.gateway.handleWebhook({ kind: 'stripe', rawBody, signature });
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
+  }
+
   async createPortalSession(ctx: RequestContext): Promise<ControllerResponse> {
     const result = await this.gateway.createPortalSession({
       userId: ctx.userId,

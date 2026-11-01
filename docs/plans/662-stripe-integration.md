@@ -1,7 +1,7 @@
 # Real Stripe integration behind the payment interface (#662)
 
 **Date:** 2026-10-30
-**Status:** Design — approved decisions. Phase 1 (gateway seam + `PAYMENT_DRIVER` boot validation) implemented; phase 2A (Stripe customer + hosted Checkout + `BillingService` validation) is implemented behind `PAYMENT_DRIVER=stripe`, with the mock still the default. Webhooks, portal, plan changes and the billing UI remain phases 3–4.
+**Status:** Design — approved decisions. Phase 1 (gateway seam + `PAYMENT_DRIVER` boot validation), phase 2A (Stripe customer + hosted Checkout + `BillingService` validation) and phase 3 (signed webhook + idempotent entitlement sync) are implemented behind `PAYMENT_DRIVER=stripe`, with the mock still the default. The portal, plan changes and the billing UI remain phase 4.
 **Issue:** [#662](https://github.com/logyQT/studiq/issues/662) (ROADMAP Phase 6)
 **Scope owner:** SoCoCold (Alan) per the issue body; the issue currently has no GitHub assignee
 
