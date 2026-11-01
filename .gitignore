@@ -72,3 +72,6 @@ qa/.tenants/
 .qa-app.pid
 test-results/
 playwright-report/
+
+# role-authority conductor state
+.role-authority/

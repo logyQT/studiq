@@ -200,7 +200,11 @@ jobs:
   qa-suite:
     needs: [checks, scope]
     # Still runs when `unit` was skipped for a tests-only diff.
-    if: needs.checks.result == 'success' && needs.scope.outputs.qa_shards != '[]'
+    # The exp role-authority branch is a model in progress: its QA suite is
+    # expected to be red until the final slice. Phase QA runs explicitly via
+    # scripts/role-authority-conductor. The final exp -> main PR has base main,
+    # so the full suite runs there.
+    if: needs.checks.result == 'success' && needs.scope.outputs.qa_shards != '[]' && github.base_ref != 'exp/role-authority'
     # Sharded by area, one runner per shard. The suite is one long serial job
     # (~12 min at 140 specs, growing), so splitting is what buys wall-clock time
     # now — not more workers: the runner is 4 vCPU and raising QA_WORKERS only

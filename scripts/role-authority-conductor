@@ -1,0 +1,496 @@
+#!/usr/bin/env python3
+"""Role-authority conductor.
+
+Phase gates, no day gates. The conductor is the only process allowed to merge
+into exp/role-authority; phase agents work on feat/ra-* branches.
+
+State lives in .role-authority/state.json (gitignored). Shared exp infra is
+provided by scripts/exp (or $EXP_TOOL); the conductor does not start or reset it
+except through that contract.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+STATE = ROOT / ".role-authority" / "state.json"
+REPO = "logyQT/studiq"
+EXP = "exp/role-authority"
+PREFIX = "feat/ra-"
+EXP_TOOL = os.environ.get("EXP_TOOL", str(ROOT / "scripts" / "exp"))
+QA_CMD = os.environ.get("RA_QA_CMD", "bun run test:qa").split()
+REQUIRED_CHECKS = ["checks", "unit", "integration"]
+
+# Phase gates from docs/plans/role-authority-rollout.md. These are exit
+# criteria, not calendar gates. `qa` is the minimum phase subset.
+PHASES: dict[int, dict] = {
+    0: {
+        "name": "baseline",
+        "deps": [],
+        "qa": [],
+        "gate": "exp branch + protection + exp stack + QA baseline + coverage/inventory",
+    },
+    1: {
+        "name": "catalog",
+        "deps": [0],
+        "qa": ["PUB", "ADM", "LIM", "BIL"],
+        "gate": "ENTITLEMENTS/PERMISSIONS disjoint; management keys not plan entitlements; seeds/tests updated",
+    },
+    2: {
+        "name": "authority",
+        "deps": [1],
+        "qa": ["AUT", "MGR", "EDU-GRP", "SEC"],
+        "gate": "permission matrix; group teacher scope; no persona gates on org resources; 403/404",
+    },
+    3: {
+        "name": "entitlements-limits",
+        "deps": [2],
+        "qa": ["LIM", "STU", "EDU", "MGR-SEAT", "BIL"],
+        "gate": "one resolver; #971; custom-role zero rows fail closed; max(org, seat, personal); no feature-on/quota-0",
+    },
+    4: {
+        "name": "seats-personal",
+        "deps": [3],
+        "qa": ["MGR-SEAT", "BIL", "LIM"],
+        "gate": "seat grants bounded by org ceiling; solo; no arbitrary pool minting",
+    },
+    5: {
+        "name": "enforcement",
+        "deps": [2, 3],
+        "qa": ["STU", "EDU", "MGR", "PUB"],
+        "gate": "paid surfaces check entitlement; management surfaces check permission; no UI-only gates",
+    },
+    6: {
+        "name": "ui-cache",
+        "deps": [2, 3, 5],
+        "qa": ["PUB", "AUT", "MGR", "STU", "EDU"],
+        "gate": "/me/entitlements + /me/permissions; nav; active-org cache keys; #799",
+    },
+    7: {
+        "name": "rls",
+        "deps": [1, 2],
+        "qa": ["SEC", "MGR", "EDU"],
+        "gate": "control-plane RLS not wider than API; has_org_feature removed",
+    },
+    8: {
+        "name": "final",
+        "deps": list(range(0, 8)),
+        "qa": ["ALL"],
+        "gate": "full 215 QA + E2E green; legacy grep gate; final PR to main",
+    },
+}
+
+
+def run(*cmd: str, check: bool = True, cwd: Path | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        cmd,
+        cwd=cwd or ROOT,
+        text=True,
+        check=check,
+        capture_output=True,
+    )
+
+
+def gh(*args: str, check: bool = True) -> str:
+    return run("gh", *args, check=check).stdout.strip()
+
+
+def load() -> dict:
+    if not STATE.exists():
+        return {"current": 0, "phases": {}, "ambiguities": []}
+    return json.loads(STATE.read_text())
+
+
+def save(data: dict) -> None:
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def phase_state(data: dict, n: int) -> dict:
+    return data.setdefault("phases", {}).setdefault(
+        str(n),
+        {"status": "pending", "branch": None, "pr": None, "qa": "pending", "notes": ""},
+    )
+
+
+def open_prs() -> list[dict]:
+    raw = gh(
+        "pr",
+        "list",
+        "--repo",
+        REPO,
+        "--base",
+        EXP,
+        "--state",
+        "open",
+        "--json",
+        "number,title,headRefName,url",
+    )
+    return json.loads(raw or "[]")
+
+
+def blocking_ambiguities(data: dict) -> list[dict]:
+    return [a for a in data.get("ambiguities", []) if a.get("blocking") and not a.get("answer")]
+
+
+def exp_healthy() -> bool | None:
+    tool = Path(EXP_TOOL)
+    if not tool.exists():
+        return None
+    return run(str(tool), "status", "--json", check=False).returncode == 0
+
+
+def exp_protected() -> bool:
+    return run(
+        "gh",
+        "api",
+        f"repos/{REPO}/branches/{EXP.replace('/', '%2F')}/protection",
+        check=False,
+    ).returncode == 0
+
+
+def qa_disabled_on_exp() -> bool:
+    """True when verify.yml skips the full QA job for PRs into exp."""
+    try:
+        raw = gh("api", f"repos/{REPO}/contents/.github/workflows/verify.yml", "--jq", ".content")
+        text = base64.b64decode(raw).decode()
+    except Exception:
+        return False
+    return "exp/role-authority" in text and "base_ref" in text
+
+
+def next_phase(data: dict) -> int | None:
+    for n in sorted(PHASES):
+        if phase_state(data, n)["status"] == "merged":
+            continue
+        if all(phase_state(data, d)["status"] == "merged" for d in PHASES[n]["deps"]):
+            return n
+        return None
+    return None
+
+
+def cmd_status(_: argparse.Namespace) -> None:
+    data = load()
+    health = exp_healthy()
+    health_label = "missing" if health is None else ("up" if health else "down")
+    print(
+        f"exp={EXP} protected={exp_protected()} qa_disabled={qa_disabled_on_exp()} "
+        f"shared_infra={health_label}"
+    )
+    for n, meta in PHASES.items():
+        st = phase_state(data, n)
+        print(
+            f"{n} {meta['name']:<20} {st['status']:<10} "
+            f"branch={str(st['branch'] or '-'):<26} pr={st['pr'] or '-'} qa={st['qa']}"
+        )
+    amb = blocking_ambiguities(data)
+    print(f"blocking ambiguities: {len(amb)}")
+    for a in amb:
+        print(f"  [{a['id']}] phase={a.get('phase')} {a['question']}")
+
+
+def cmd_next(_: argparse.Namespace) -> None:
+    data = load()
+    amb = blocking_ambiguities(data)
+    if amb:
+        sys.exit(f"blocked: {len(amb)} unresolved ambiguity(ies); ask before dispatching")
+    n = next_phase(data)
+    if n is None:
+        print("all phases merged")
+        return
+    meta = PHASES[n]
+    print(f"next phase {n} — {meta['name']}")
+    print(f"gate: {meta['gate']}")
+    print(f"qa subset: {', '.join(meta['qa']) or 'none'}")
+    for d in meta["deps"]:
+        print(f"dep {d}: {phase_state(data, d)['status']}")
+    prs = open_prs()
+    if prs:
+        print("WARNING: open phase PRs exist; finish them before dispatching")
+        for pr in prs:
+            print(f"  #{pr['number']} {pr['headRefName']} {pr['url']}")
+    health = exp_healthy()
+    if health is None:
+        print("WARNING: scripts/exp is missing; agents cannot run the shared stack yet")
+    elif not health:
+        print("WARNING: shared exp stack is down; run scripts/exp up")
+
+
+def cmd_init(_: argparse.Namespace) -> None:
+    data = load()
+    save(data)
+    print("state:", STATE)
+    print("exp protected:", exp_protected())
+    print("qa disabled on exp:", qa_disabled_on_exp())
+    health = exp_healthy()
+    print("shared exp stack:", "missing" if health is None else ("up" if health else "down"))
+    if not exp_protected():
+        print("run: scripts/role-authority-conductor protect")
+    if not qa_disabled_on_exp():
+        print("add the exp base_ref condition to the qa-suite job in verify.yml")
+    if health is None:
+        print("add scripts/exp (shared Supabase + prod server) before phase agents test")
+    elif not health:
+        print("run: scripts/exp up")
+
+
+def cmd_dispatch(args: argparse.Namespace) -> None:
+    data = load()
+    n = args.phase
+    if n not in PHASES:
+        sys.exit(f"unknown phase {n}")
+    meta = PHASES[n]
+    if blocking_ambiguities(data):
+        sys.exit("blocked: resolve ambiguities before dispatching")
+    missing = [d for d in meta["deps"] if phase_state(data, d)["status"] != "merged"]
+    if missing:
+        sys.exit(f"blocked: phase {n} depends on unmerged phases {missing}")
+    if open_prs():
+        sys.exit("blocked: finish the open phase PR(s) first")
+    st = phase_state(data, n)
+    if st["status"] != "pending":
+        sys.exit(f"phase {n} is {st['status']}; resume it instead")
+
+    branch = f"{PREFIX}{n}-{meta['name']}"
+    wt = ROOT / ".worktrees" / f"ra-{n}-{meta['name']}"
+    run("git", "fetch", "origin")
+    if wt.exists():
+        sys.exit(f"worktree already exists: {wt}")
+    exists = run("git", "rev-parse", "--verify", f"refs/heads/{branch}", check=False).returncode == 0
+    if exists:
+        run("git", "worktree", "add", str(wt), branch)
+    else:
+        run("git", "worktree", "add", str(wt), "-b", branch, f"origin/{EXP}")
+
+    st.update(status="dispatched", branch=branch)
+    save(data)
+    print(f"phase: {n} — {meta['name']}")
+    print(f"branch: {branch}")
+    print(f"worktree: {wt}")
+    print(f"gate: {meta['gate']}")
+    print(f"qa subset: {', '.join(meta['qa']) or 'none'}")
+    health = exp_healthy()
+    if health is None:
+        print("WARNING: scripts/exp missing; shared infra not available")
+    elif not health:
+        print("WARNING: shared exp stack is down; run scripts/exp up")
+
+
+def cmd_qa(args: argparse.Namespace) -> None:
+    data = load()
+    n = args.phase
+    meta = PHASES.get(n)
+    if not meta:
+        sys.exit(f"unknown phase {n}")
+    env = {**os.environ, "QA_APP_URL": os.environ.get("EXP_APP_URL", "http://localhost:3100")}
+    cmd = list(QA_CMD)
+    if meta["qa"] and meta["qa"] != ["ALL"]:
+        cmd += ["--", *[f"__tests__/qa/{area}" for area in meta["qa"]]]
+    proc = subprocess.run(cmd, cwd=ROOT, env=env)
+    st = phase_state(data, n)
+    st["qa"] = "green" if proc.returncode == 0 else "red"
+    save(data)
+    sys.exit(proc.returncode)
+
+
+def cmd_gate(args: argparse.Namespace) -> None:
+    data = load()
+    n = args.phase
+    meta = PHASES.get(n)
+    if not meta:
+        sys.exit(f"unknown phase {n}")
+    st = phase_state(data, n)
+    if not st.get("branch"):
+        sys.exit("no branch dispatched for this phase")
+    raw = gh(
+        "pr",
+        "list",
+        "--repo",
+        REPO,
+        "--base",
+        EXP,
+        "--head",
+        st["branch"],
+        "--state",
+        "open",
+        "--json",
+        "number,url",
+    )
+    prs = json.loads(raw or "[]")
+    if len(prs) != 1:
+        sys.exit(f"expected one open PR for {st['branch']}, found {len(prs)}")
+    pr = prs[0]
+    checks = run(
+        "gh",
+        "pr",
+        "checks",
+        str(pr["number"]),
+        "--repo",
+        REPO,
+        "--required",
+        check=False,
+    )
+    if checks.returncode != 0:
+        print(checks.stdout)
+        print(checks.stderr, file=sys.stderr)
+        sys.exit(f"PR #{pr['number']} required checks are not green")
+    if meta["qa"] and st.get("qa") != "green":
+        sys.exit(f"QA subset not recorded green for phase {n}")
+    if blocking_ambiguities(data):
+        sys.exit("blocked: unresolved ambiguities")
+    st.update(status="gated", pr=pr["number"])
+    save(data)
+    print(f"phase {n} gated: PR #{pr['number']} {pr['url']}")
+
+
+def cmd_merge(args: argparse.Namespace) -> None:
+    data = load()
+    n = args.phase
+    st = phase_state(data, n)
+    if st.get("status") != "gated":
+        sys.exit("phase is not gated")
+    if not args.yes:
+        sys.exit("pass --yes to merge (the conductor is the only merger)")
+    if not exp_protected():
+        sys.exit("exp branch protection is not enabled")
+    if not qa_disabled_on_exp():
+        sys.exit("full QA is not disabled for exp; fix verify.yml first")
+    pr = st["pr"]
+    head = gh("pr", "view", str(pr), "--repo", REPO, "--json", "headRefOid", "--jq", ".headRefOid")
+    run(
+        "gh",
+        "pr",
+        "merge",
+        str(pr),
+        "--repo",
+        REPO,
+        "--squash",
+        "--delete-branch",
+        "--match-head-commit",
+        head,
+    )
+    st.update(status="merged")
+    save(data)
+    print(f"phase {n} merged into {EXP}")
+
+
+def cmd_ask(args: argparse.Namespace) -> None:
+    data = load()
+    aid = f"amb_{len(data['ambiguities']) + 1}"
+    data["ambiguities"].append(
+        {
+            "id": aid,
+            "phase": args.phase,
+            "question": args.question,
+            "blocking": not args.non_blocking,
+            "answer": None,
+        }
+    )
+    save(data)
+    print(f"recorded {aid}: {args.question}")
+
+
+def cmd_answer(args: argparse.Namespace) -> None:
+    data = load()
+    for item in data["ambiguities"]:
+        if item["id"] == args.id:
+            item["answer"] = args.answer
+            save(data)
+            print(f"answered {args.id}")
+            return
+    sys.exit("unknown ambiguity")
+
+
+def cmd_protect(_: argparse.Namespace) -> None:
+    body = {
+        "required_status_checks": {"strict": True, "contexts": REQUIRED_CHECKS},
+        "enforce_admins": False,
+        "required_pull_request_reviews": {"required_approving_review_count": 0},
+        "restrictions": None,
+        "allow_force_pushes": False,
+        "allow_deletions": False,
+        "required_conversation_resolution": True,
+        "required_linear_history": True,
+    }
+    proc = subprocess.run(
+        [
+            "gh",
+            "api",
+            "-X",
+            "PUT",
+            f"repos/{REPO}/branches/{EXP.replace('/', '%2F')}/protection",
+            "--input",
+            "-",
+        ],
+        cwd=ROOT,
+        input=json.dumps(body),
+        text=True,
+    )
+    sys.exit(proc.returncode)
+
+
+def cmd_check(_: argparse.Namespace) -> None:
+    ok = True
+    for label, value in [
+        ("exp protected", exp_protected()),
+        ("QA disabled on exp", qa_disabled_on_exp()),
+    ]:
+        print(f"{label}: {value}")
+        ok &= value
+    health = exp_healthy()
+    print("shared exp stack:", "missing" if health is None else ("up" if health else "down"))
+    if health is not True:
+        ok = False
+    sys.exit(0 if ok else 1)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("init").set_defaults(fn=cmd_init)
+    sub.add_parser("status").set_defaults(fn=cmd_status)
+    sub.add_parser("next").set_defaults(fn=cmd_next)
+    sub.add_parser("protect").set_defaults(fn=cmd_protect)
+    sub.add_parser("check").set_defaults(fn=cmd_check)
+
+    d = sub.add_parser("dispatch")
+    d.add_argument("phase", type=int)
+    d.set_defaults(fn=cmd_dispatch)
+
+    q = sub.add_parser("qa")
+    q.add_argument("phase", type=int)
+    q.set_defaults(fn=cmd_qa)
+
+    g = sub.add_parser("gate")
+    g.add_argument("phase", type=int)
+    g.set_defaults(fn=cmd_gate)
+
+    m = sub.add_parser("merge")
+    m.add_argument("phase", type=int)
+    m.add_argument("--yes", action="store_true")
+    m.set_defaults(fn=cmd_merge)
+
+    a = sub.add_parser("ask")
+    a.add_argument("question")
+    a.add_argument("--phase", type=int, default=0)
+    a.add_argument("--non-blocking", action="store_true")
+    a.set_defaults(fn=cmd_ask)
+
+    an = sub.add_parser("answer")
+    an.add_argument("id")
+    an.add_argument("answer")
+    an.set_defaults(fn=cmd_answer)
+
+    args = parser.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()
