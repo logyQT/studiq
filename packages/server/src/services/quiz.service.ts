@@ -31,7 +31,9 @@ export class QuizService {
       .from('quiz_attempts')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', ctx.userId)
-      .is('assignment_id', null)
+      // The durable marker: a finished attempt of a since-deleted assignment is not practice
+      // and must not consume the daily practice quota (#657).
+      .eq('is_assignment_attempt', false)
       .gte('started_at', dayStart.toISOString());
 
     await limitsResolver.checkLimit(ctx, 'max_quiz_attempts_per_day', attemptsToday ?? 0);

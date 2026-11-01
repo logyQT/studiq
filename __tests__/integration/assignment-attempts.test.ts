@@ -7,11 +7,13 @@ import {
 } from '#test/helpers/test-user';
 import {
   useRealSupabase,
+  cleanupOrganizationDeep,
   cleanupQuestions,
   cleanupQuizAttempts,
   cleanupTeacherAssignments,
   createServiceClient,
   mockUser,
+  seedOrgMembership,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 import { GET as assignmentGet } from '@/app/(backend)/api/v1/assignments/[id]/route';
@@ -31,6 +33,7 @@ describe(`Assignment Attempts Integration`, () => {
   let teacher!: BeforeResult;
   let student!: BeforeResult;
   let other!: TestUserFixture;
+  let nonTargeted!: TestUserFixture;
   let assignmentId: string;
 
   async function startAs(
@@ -46,13 +49,13 @@ describe(`Assignment Attempts Integration`, () => {
     return { status: response.status, body: await response.json() };
   }
 
-  async function openAttemptCount(): Promise<number> {
+  async function openAttemptCount(userId: string = student.user.id): Promise<number> {
     const supabase = createServiceClient();
     const { data, error } = await supabase
       .from('quiz_attempts')
       .select('id')
       .eq('assignment_id', assignmentId)
-      .eq('user_id', student.user.id)
+      .eq('user_id', userId)
       .is('completed_at', null);
     if (error) throw new Error(`Failed to count open attempts: ${error.message}`);
     return (data ?? []).length;
@@ -153,12 +156,36 @@ describe(`Assignment Attempts Integration`, () => {
   }
 
   beforeAll(async () => {
-    teacher = await before({ role: 'educator', questions: 2, assignment: true });
+    // The assignment belongs to the teacher's organisation, and only its members can be targeted
+    // (#235), so the student joins it; `other` stays outside.
+    teacher = await before({ role: 'educator', org: true, questions: 2, assignment: true });
     student = await before({ role: 'student' });
     other = await createTestUser({ role: 'student' });
+    // An organisation member who is not targeted: the path that must be refused for a missing
+    // target rather than for a missing organisation membership.
+    nonTargeted = await createTestUser({ role: 'student' });
 
     assignmentId = teacher.created.assignmentId as string;
     if (!assignmentId) throw new Error('Assignment was not seeded');
+    if (!teacher.orgId) throw new Error('Teacher organisation was not seeded');
+
+    const { data: memberRole } = await createServiceClient()
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', teacher.orgId)
+      .eq('name', 'member')
+      .single();
+    if (!memberRole) throw new Error('Member role not found for the teacher organisation');
+    await seedOrgMembership({
+      organizationId: teacher.orgId,
+      userId: student.user.id,
+      orgRoleId: memberRole.id,
+    });
+    await seedOrgMembership({
+      organizationId: teacher.orgId,
+      userId: nonTargeted.id,
+      orgRoleId: memberRole.id,
+    });
 
     mockUser(teacher.user);
 
@@ -216,13 +243,44 @@ describe(`Assignment Attempts Integration`, () => {
     await setShowResults(false);
     await cleanupQuizAttempts(student.user.id);
     await cleanupQuizAttempts(other.id);
+    await cleanupQuizAttempts(nonTargeted.id);
   });
 
   afterAll(async () => {
     await cleanupQuizAttempts(student.user.id);
     await cleanupQuizAttempts(other.id);
+    await cleanupQuizAttempts(nonTargeted.id);
     await cleanupTeacherAssignments(teacher.user.id);
     await cleanupQuestions(teacher.user.id, 'seed-question-');
+    if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
+    // `nonTargeted` is an account this file created; delete it after its rows are gone.
+    const { error: deleteError } = await createServiceClient().auth.admin.deleteUser(
+      nonTargeted.id,
+    );
+    if (deleteError) {
+      throw new Error(`Failed to delete the non-targeted test account: ${deleteError.message}`);
+    }
+  });
+
+  it('refuses a target outside the assignment organisation and keeps the existing ones (#235)', async () => {
+    mockUser(teacher.user);
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/teacher/assignments/${assignmentId}/targets`,
+      { id: assignmentId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: [student.user.id, other.id] }),
+      },
+    );
+    const response = await targetsPut(request, { params });
+
+    expect(response.status).toBe(400);
+    const { data: targets } = await createServiceClient()
+      .from('assignment_targets')
+      .select('student_id')
+      .eq('assignment_id', assignmentId);
+    expect((targets ?? []).map((t) => t.student_id)).toEqual([student.user.id]);
   });
 
   it('two rapid starts resume one unfinished attempt (#369)', async () => {
@@ -314,10 +372,16 @@ describe(`Assignment Attempts Integration`, () => {
     expect(await openAttemptCount()).toBe(0);
   });
 
-  it('returns 404 for a student who is not targeted (#369)', async () => {
+  it('returns 404 for an organisation member who is not targeted (#369)', async () => {
+    const result = await startAs(nonTargeted);
+    expect(result.status).toBe(404);
+    expect(await openAttemptCount(nonTargeted.id)).toBe(0);
+  });
+
+  it('returns 404 for a student outside the assignment organisation (#369, #235)', async () => {
     const result = await startAs(other);
     expect(result.status).toBe(404);
-    expect(await openAttemptCount()).toBe(0);
+    expect(await openAttemptCount(other.id)).toBe(0);
   });
 
   it('exposes the remaining budget after the first of two attempts (#372)', async () => {

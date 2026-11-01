@@ -11,6 +11,11 @@ import type {
   UpdateQuestionReportInput,
 } from '@studiq/server/models/question-report.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  type Notifier,
+  noopNotifier,
+  notificationService,
+} from '@studiq/server/services/notification.service';
 
 export type ReportTarget = { questionId: string } | { groupId: string };
 
@@ -53,7 +58,11 @@ function reportVisibilityFilter(ctx: RequestContext, orgScope: string | null): s
 }
 
 export class QuestionReportService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(
+    private createClient: () => Promise<SupabaseClient>,
+    /** Tells the other participant about a new message; none in unit tests. */
+    private notifier: Notifier = noopNotifier,
+  ) {}
 
   async createReport(
     target: ReportTarget,
@@ -132,6 +141,15 @@ export class QuestionReportService {
     });
 
     if (messageError) return toDbFailure(messageError);
+
+    // The recipient hears about the first message of a report like about every later one.
+    await this.notifier.reportMessage({
+      reportId: report.id,
+      recipientId,
+      senderId: ctx.userId,
+      organizationId,
+    });
+
     return success(report);
   }
 
@@ -327,6 +345,20 @@ export class QuestionReportService {
       .single();
 
     if (error) return toDbFailure(error);
+
+    // The other participant(s): the reporter or the recipient, whichever did not write it (an
+    // org admin replying notifies both).
+    const participants = new Set<string>([report.reported_by, report.teacher_id]);
+    participants.delete(ctx.userId);
+    for (const recipientId of participants) {
+      await this.notifier.reportMessage({
+        reportId: id,
+        recipientId,
+        senderId: ctx.userId,
+        organizationId: report.organization_id ?? null,
+      });
+    }
+
     return success(message);
   }
 
@@ -424,6 +456,6 @@ export class QuestionReportService {
   }
 }
 export const questionReportService = wrapService(
-  new QuestionReportService(createClient),
+  new QuestionReportService(createClient, notificationService),
   'question-report.service',
 );

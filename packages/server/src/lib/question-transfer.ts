@@ -1,0 +1,167 @@
+import { buildCsv, neutralizeCsvFormula } from '@studiq/server/lib/csv';
+import {
+  TRANSFER_MAX_ANSWERS,
+  type TransferQuestion,
+} from '@studiq/server/models/question-transfer.model';
+
+/**
+ * Question bank CSV layout (#652). One question per row:
+ *
+ * `type,content,explanation,topics,answer_1 … answer_10,correct`
+ *
+ * - `type`: `mcq`, `true_false` or `open`.
+ * - `topics`: names separated by `;`. A name that itself contains `;` or `\` escapes it with
+ *   `\` (`Geo\;grafia`), so a topic always round-trips as the same single topic.
+ * - `answer_N`: the options in order; empty cells are skipped.
+ * - `correct`: the 1-based numbers of the right answer columns, separated by `;`
+ *   (`2` or `1;3`).
+ *
+ * This module is pure so the server (export) and the browser (reading a file before it is
+ * sent) use the same mapping.
+ */
+export const TRANSFER_CSV_COLUMNS = [
+  'type',
+  'content',
+  'explanation',
+  'topics',
+  ...Array.from({ length: TRANSFER_MAX_ANSWERS }, (_, i) => `answer_${i + 1}`),
+  'correct',
+] as const;
+
+const FORMULA_ESCAPE = /^'+[=+\-@\t\r]/;
+
+/**
+ * One CSV cell holds every topic of a question, separated by `;`. A `;` or `\` inside a name is
+ * escaped with `\`, otherwise `Geo;grafia` would come back as two topics.
+ */
+function joinTopics(topics: string[]): string {
+  return topics.map((topic) => topic.replace(/\\/g, '\\\\').replace(/;/g, '\\;')).join(';');
+}
+
+function splitTopics(cell: string): string[] {
+  const topics: string[] = [];
+  let current = '';
+  for (let i = 0; i < cell.length; i += 1) {
+    const char = cell[i];
+    const next = cell[i + 1];
+    if (char === '\\' && (next === '\\' || next === ';')) {
+      current += next;
+      i += 1;
+    } else if (char === ';') {
+      topics.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  topics.push(current);
+  return topics.map((topic) => topic.trim()).filter(Boolean);
+}
+
+/**
+ * Undoes `neutralizeCsvFormula`/`textCell`, so an exported file imports back to the same text.
+ * Exactly one apostrophe is stripped: that is the one `textCell` added, whichever case it was.
+ */
+function restoreCsvFormula(value: string): string {
+  return FORMULA_ESCAPE.test(value) ? value.slice(1) : value;
+}
+
+/**
+ * Text cells carry user input, so a leading `=`, `+`, `-` or `@` must not become a formula.
+ * A value that already starts with literal apostrophes before such a character gets one more,
+ * otherwise the apostrophe the user typed would be eaten by `restoreCsvFormula` on the way back
+ * (`'=SUM(A1)` must stay `'=SUM(A1)`, not become `=SUM(A1)`).
+ */
+function textCell(value: string): string {
+  const neutralized = neutralizeCsvFormula(value);
+  if (neutralized !== value) return neutralized;
+  return FORMULA_ESCAPE.test(value) ? `'${value}` : value;
+}
+
+/** Serialises questions in the bank layout: the BOM and fixed header first, one row per question. */
+export function questionsToCsv(questions: TransferQuestion[]): string {
+  const rows: string[][] = [[...TRANSFER_CSV_COLUMNS]];
+
+  for (const question of questions) {
+    const answerCells = Array.from({ length: TRANSFER_MAX_ANSWERS }, (_, i) =>
+      question.answers[i] ? textCell(question.answers[i].content) : '',
+    );
+    const correct = question.answers
+      .map((answer, i) => (answer.isCorrect ? String(i + 1) : null))
+      .filter((n): n is string => n !== null)
+      .join(';');
+
+    rows.push([
+      question.type,
+      textCell(question.content),
+      textCell(question.explanation ?? ''),
+      textCell(joinTopics(question.topics)),
+      ...answerCells,
+      correct,
+    ]);
+  }
+
+  return buildCsv(rows);
+}
+
+export interface CsvReadIssue {
+  /** 1-based number of the data row (the header is not counted). */
+  row: number;
+  code: 'INVALID_CORRECT';
+}
+
+/**
+ * Turns parsed CSV records (header -> cell) into transfer questions. Mapping problems that
+ * cannot be expressed in the question itself are reported as issues; everything else is
+ * left to `TransferQuestionSchema`, which is the single place that validates a question.
+ */
+export function csvRecordsToQuestions(records: Array<Record<string, string | undefined>>): {
+  questions: TransferQuestion[];
+  issues: CsvReadIssue[];
+} {
+  const questions: TransferQuestion[] = [];
+  const issues: CsvReadIssue[] = [];
+
+  records.forEach((record, index) => {
+    const cell = (name: string) => restoreCsvFormula((record[name] ?? '').trim());
+
+    // Columns keep their position: `correct` refers to the answer column number, even when an
+    // earlier answer cell is empty.
+    const answerColumns = Array.from({ length: TRANSFER_MAX_ANSWERS }, (_, i) =>
+      cell(`answer_${i + 1}`),
+    );
+    const correctColumns = new Set<number>();
+    const correctText = cell('correct');
+    // One issue per row, not per bad token: `9;10` is one problem to fix, and a duplicate
+    // would also key the same row twice in the import dialog's problem list.
+    let invalidCorrect = false;
+    for (const token of correctText.split(/[;,]/).map((t) => t.trim())) {
+      if (token === '') continue;
+      const n = Number(token);
+      if (
+        !Number.isInteger(n) ||
+        n < 1 ||
+        n > TRANSFER_MAX_ANSWERS ||
+        answerColumns[n - 1] === ''
+      ) {
+        invalidCorrect = true;
+      } else {
+        correctColumns.add(n);
+      }
+    }
+    if (invalidCorrect) issues.push({ row: index + 1, code: 'INVALID_CORRECT' });
+
+    const explanation = cell('explanation');
+    questions.push({
+      type: cell('type').toLowerCase() as TransferQuestion['type'],
+      content: cell('content'),
+      ...(explanation ? { explanation } : {}),
+      topics: splitTopics(cell('topics')),
+      answers: answerColumns
+        .map((content, i) => ({ content, isCorrect: correctColumns.has(i + 1) }))
+        .filter((answer) => answer.content !== ''),
+    });
+  });
+
+  return { questions, issues };
+}

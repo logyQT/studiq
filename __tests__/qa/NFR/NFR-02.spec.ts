@@ -83,8 +83,8 @@ const CHROME: Record<
 
 /** User-menu actions. Language and theme are setting rows (a select / a switch), not items. */
 const MENU: Record<Locale, string[]> = {
-  pl: ['Wybierz plan', 'Konto', 'Płatności', 'Wyloguj się'],
-  en: ['Upgrade', 'Account', 'Billing', 'Logout'],
+  pl: ['Wybierz plan', 'Konto', 'Płatności', 'Powiadomienia', 'Wyloguj się'],
+  en: ['Upgrade', 'Account', 'Billing', 'Notifications', 'Logout'],
 };
 
 /** Accessible names of the setting rows: „<label>: <current endonym>” and the theme group. */

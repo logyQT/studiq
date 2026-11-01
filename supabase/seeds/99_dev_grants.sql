@@ -48,7 +48,8 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
      public.resource_permissions,
      public.user_feature_overrides,
      public.profiles,
-     public.payments
+     public.payments,
+     public.notifications
   FROM authenticated;
 
 -- Destructive maintenance privileges are never used through PostgREST.
@@ -90,6 +91,7 @@ GRANT EXECUTE ON FUNCTION public.count_new_cards(uuid, text, uuid) TO authentica
 GRANT EXECUTE ON FUNCTION public.get_due_breakdown(uuid, uuid, uuid, uuid[], uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_due_flashcards(uuid, text, uuid, integer, uuid[], uuid[], integer, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_practice_state_breakdown(uuid, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_student_insights(uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_teacher_problematic_questions(uuid, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_teacher_group_performance(uuid, uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_teacher_activity_feed(uuid, uuid, integer) TO authenticated;

@@ -1510,6 +1510,7 @@ export type Database = {
           draft_answers: NonNullable<Json>;
           graded_at: string | null;
           id: string;
+          is_assignment_attempt: boolean;
           score: number;
           started_at: string | null;
           total_points: number | null;
@@ -1524,6 +1525,7 @@ export type Database = {
           draft_answers?: NonNullable<Json>;
           graded_at?: string | null;
           id?: string;
+          is_assignment_attempt?: boolean;
           score?: number;
           started_at?: string | null;
           total_points?: number | null;
@@ -1537,6 +1539,7 @@ export type Database = {
           draft_answers?: NonNullable<Json>;
           graded_at?: string | null;
           id?: string;
+          is_assignment_attempt?: boolean;
           score?: number;
           started_at?: string | null;
           total_points?: number | null;
@@ -2296,6 +2299,10 @@ export type Database = {
       };
       get_practice_state_breakdown: {
         Args: { p_created_by?: string; p_organization_id?: string; p_user_id: string };
+        Returns: Json;
+      };
+      get_student_insights: {
+        Args: { p_days?: number; p_user_id: string };
         Returns: Json;
       };
       get_teacher_problematic_questions: {

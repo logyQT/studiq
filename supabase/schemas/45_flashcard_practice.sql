@@ -21,3 +21,6 @@ CREATE INDEX idx_flashcard_practice_flashcard ON public.flashcard_practice(flash
 CREATE INDEX idx_flashcard_practice_session ON public.flashcard_practice(session_id);
 CREATE INDEX idx_flashcard_practice_organization
   ON public.flashcard_practice(organization_id, practiced_at) WHERE organization_id IS NOT NULL;
+-- Retention curve of the student insights (#657): partitions by card and orders by time.
+CREATE INDEX idx_flashcard_practice_user_card_time
+  ON public.flashcard_practice(user_id, flashcard_id, practiced_at);

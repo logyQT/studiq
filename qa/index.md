@@ -94,7 +94,7 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | STU-50      | P2 ważny       | Zmiana nazwy                                                         | —           | STU – Panel studenta (/app)                         |
 | STU-51      | P2 ważny       | Zmiana hasła w koncie                                                | —           | STU – Panel studenta (/app)                         |
 | STU-52      | P3 kosmetyczny | Historia płatności                                                   | —           | STU – Panel studenta (/app)                         |
-| STU-53      | P3 kosmetyczny | Powiadomienia (funkcja niezaimplementowana)                          | —           | STU – Panel studenta (/app)                         |
+| STU-53      | P3 kosmetyczny | Powiadomienia (centrum powiadomień w nagłówku)                       | —           | STU – Panel studenta (/app)                         |
 | EDU-01      | P2 ważny       | Pulpit nauczyciela (/edu)                                            | —           | EDU – Panel nauczyciela (/edu)                      |
 | EDU-02      | P2 ważny       | Menu boczne nauczyciela                                              | —           | EDU – Panel nauczyciela (/edu)                      |
 | EDU-DECK-01 | P2 ważny       | Hub fiszek (/edu/flashcards)                                         | —           | EDU – Panel nauczyciela (/edu)                      |

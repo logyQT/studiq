@@ -88,7 +88,9 @@ test.describe('Student stats activity — state breakdown (#384)', () => {
     }
 
     for (const range of ['range_7d', 'range_30d', 'range_1y']) {
-      await page.getByRole('button', { name: t(`AppStatsPage.${range}`) }).click();
+      // whole name only: the study-time card has its own "Last 7 days" range buttons on this page
+      const whole = new RegExp('^(?:' + t(`AppStatsPage.${range}`).source + ')$', 'i');
+      await page.getByRole('button', { name: whole }).click();
       await expect(card).toBeVisible();
       await expectDonutSurface(card);
       await expect(card.locator('.recharts-pie')).toHaveCount(1);
