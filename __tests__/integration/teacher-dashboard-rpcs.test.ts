@@ -116,6 +116,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
   let positiveQuestionId: string;
   let positiveReportId: string;
   let mixedQuestionIds: string[] = [];
+  let stampQuestionIds: string[] = [];
 
   type Perf = {
     groups: Array<{
@@ -261,9 +262,12 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     if (reportIds.length > 0) {
       await service.from('question_reports').delete().in('id', reportIds);
     }
-    const questionIds = [foreignQuestionId, positiveQuestionId, ...mixedQuestionIds].filter(
-      Boolean,
-    );
+    const questionIds = [
+      foreignQuestionId,
+      positiveQuestionId,
+      ...mixedQuestionIds,
+      ...stampQuestionIds,
+    ].filter(Boolean);
     if (questionIds.length > 0) {
       await service.from('questions').delete().in('id', questionIds);
     }
@@ -749,5 +753,77 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     const row = (await feed()).find((item) => item.assignmentId === mixedAssignment!.id);
     expect(row?.kind).toBe('assignment_submitted');
     expect(row?.needsGrading).toBe(true);
+  });
+
+  it('clears the organization stamp when a practice snapshot becomes mixed', async () => {
+    const before = await perf();
+
+    const { data: questions, error: questionsError } = await service
+      .from('questions')
+      .insert([
+        {
+          organization_id: ORG,
+          created_by: TEACHER_ID,
+          bank_id: BANK,
+          type: 'mcq',
+          content: `${MARK}-stamp-org`,
+          visibility: 'group',
+        },
+        {
+          organization_id: null,
+          created_by: TEACHER_ID,
+          bank_id: BANK,
+          type: 'mcq',
+          content: `${MARK}-stamp-personal`,
+          visibility: 'personal',
+        },
+      ])
+      .select('id');
+    expect(questionsError).toBeNull();
+    stampQuestionIds = questions!.map((question) => question.id);
+
+    const { data: attempt, error: attemptError } = await service
+      .from('quiz_attempts')
+      .insert({
+        user_id: STUDENT_ID,
+        score: 0,
+        total_questions: 2,
+        config: { marker: MARK },
+        completed_at: new Date().toISOString(),
+      })
+      .select('id, organization_id')
+      .single();
+    expect(attemptError).toBeNull();
+    expect(attempt?.organization_id).toBeNull();
+
+    // The first snapshot is one group-visible question of this organization: it stamps the attempt.
+    const { error: firstError } = await service.from('quiz_attempt_questions').insert({
+      attempt_id: attempt!.id,
+      question_id: stampQuestionIds[0],
+    });
+    expect(firstError).toBeNull();
+    const { data: stamped } = await service
+      .from('quiz_attempts')
+      .select('organization_id')
+      .eq('id', attempt!.id)
+      .single();
+    expect(stamped?.organization_id).toBe(ORG);
+    const afterFirst = await perf();
+    expect(afterFirst.totals.completedAttempts - before.totals.completedAttempts).toBe(1);
+
+    // A later personal question makes the whole snapshot ineligible: the old stamp must go.
+    const { error: secondError } = await service.from('quiz_attempt_questions').insert({
+      attempt_id: attempt!.id,
+      question_id: stampQuestionIds[1],
+    });
+    expect(secondError).toBeNull();
+    const { data: cleared } = await service
+      .from('quiz_attempts')
+      .select('organization_id')
+      .eq('id', attempt!.id)
+      .single();
+    expect(cleared?.organization_id).toBeNull();
+    const afterMixed = await perf();
+    expect(afterMixed.totals.completedAttempts - before.totals.completedAttempts).toBe(0);
   });
 });

@@ -44,6 +44,13 @@ describe('organization stamp of learner activity', () => {
     }
   });
 
+  it('recomputes the practice stamp and clears it when the snapshot is mixed', () => {
+    for (const copy of [stamp, read('supabase/schemas/68_activity_organization.sql')]) {
+      expect(copy).toContain('THEN MIN(q.organization_id::text)::uuid');
+      expect(copy).toContain('ELSE NULL');
+    }
+  });
+
   it('the declarative schema has the columns and the stamping functions', () => {
     expect(read('supabase/schemas/39_quiz_attempts.sql')).toContain('organization_id');
     expect(read('supabase/schemas/45_flashcard_practice.sql')).toContain('organization_id');

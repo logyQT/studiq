@@ -131,20 +131,27 @@ SET search_path = ''
 AS $$
 BEGIN
   PERFORM set_config('studiq.stamping', 'on', true);
+  -- Recompute for every attempt that gained questions, including attempts stamped by an earlier
+  -- statement: a later personal or foreign question makes the whole snapshot ineligible, and the
+  -- old stamp must be cleared or the attempt would stay in the first organization's aggregates.
   UPDATE public.quiz_attempts qa
   SET organization_id = s.organization_id
   FROM (
-    SELECT aq.attempt_id, MIN(q.organization_id::text)::uuid AS organization_id
+    SELECT
+      aq.attempt_id,
+      CASE
+        WHEN COUNT(DISTINCT q.organization_id) = 1
+         AND COUNT(*) FILTER (WHERE q.organization_id IS NULL OR q.visibility <> 'group') = 0
+        THEN MIN(q.organization_id::text)::uuid
+        ELSE NULL
+      END AS organization_id
     FROM public.quiz_attempt_questions aq
     JOIN public.questions q ON q.id = aq.question_id
     WHERE aq.attempt_id IN (SELECT DISTINCT attempt_id FROM new_rows)
     GROUP BY aq.attempt_id
-    HAVING COUNT(DISTINCT q.organization_id) = 1
-       AND COUNT(*) FILTER (WHERE q.organization_id IS NULL OR q.visibility <> 'group') = 0
   ) s
   WHERE qa.id = s.attempt_id
-    AND qa.assignment_id IS NULL
-    AND qa.organization_id IS NULL;
+    AND qa.assignment_id IS NULL;
   PERFORM set_config('studiq.stamping', 'off', true);
   RETURN NULL;
 END;
