@@ -3,14 +3,18 @@ import type {
   TeacherFeedItem,
   TeacherGroupPerformance,
 } from '@studiq/server/models/stats.model';
-import { NextIntlClientProvider } from 'next-intl';
+import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { ActivityFeedCard } from '@/components/edu/dashboard/activity-feed-card';
 import { GroupPerformanceCard } from '@/components/edu/dashboard/group-performance-card';
 import { ProblemQuestionsCard } from '@/components/edu/dashboard/problem-questions-card';
-import en from '@/i18n/messages/en.json';
+import pl from '@/i18n/messages/pl.json';
+
+const locale = 'pl';
+/** The app's default locale (AGENTS.md), so the rendered copy and the assertions agree. */
+const t = createTranslator({ locale, messages: pl, namespace: 'EduOverviewPage' });
 
 // Recharts needs browser layout; expose the chart's input so the filtering can be checked in Node.
 vi.mock('recharts', async (importOriginal) => ({
@@ -36,7 +40,7 @@ vi.mock('@/lib/relative-time', () => ({ formatRelativeTime: () => 'relative time
 const idle = { isLoading: false, isError: false, onRetry: () => {} };
 function render(element: ReactNode) {
   return renderToStaticMarkup(
-    createElement(NextIntlClientProvider, { locale: 'en', messages: en, timeZone: 'UTC' }, element),
+    createElement(NextIntlClientProvider, { locale, messages: pl, timeZone: 'UTC' }, element),
   );
 }
 
@@ -70,9 +74,9 @@ describe('teacher dashboard cards', () => {
     const html = render(createElement(GroupPerformanceCard, { ...idle, data, days: 30 }));
 
     expect(html).toContain('data-chart="Zero scores"');
-    expect(html.match(/no data/g)).toHaveLength(2);
+    expect(html.split(t('no_data')).length - 1).toBe(2);
     expect(html.match(/0%/g)).toHaveLength(2);
-    expect(html).toContain('1 awaiting a grade');
+    expect(html).toContain(t('awaiting_grade', { count: 1 }));
     expect(html).toContain('No scores');
   });
 
@@ -81,7 +85,7 @@ describe('teacher dashboard cards', () => {
     const empty = render(
       createElement(GroupPerformanceCard, { ...idle, data: { groups: [], totals }, days: 30 }),
     );
-    expect(empty).toContain('You are not in any group');
+    expect(empty).toContain(t('no_groups'));
     const noScores = render(
       createElement(GroupPerformanceCard, {
         ...idle,
@@ -103,7 +107,7 @@ describe('teacher dashboard cards', () => {
         },
       }),
     );
-    expect(noScores).toContain('No completed attempts in the last 30 days.');
+    expect(noScores).toContain(t('no_group_data', { days: 30 }));
     expect(noScores).toContain('Class');
     expect(noScores).not.toContain('data-chart=');
   });
@@ -134,11 +138,11 @@ describe('teacher dashboard cards', () => {
     expect(html).toContain('href="/edu/assignments/a1/results"');
     expect(html).toContain('href="/edu/reports"');
     expect(html.match(/<a /g)).toHaveLength(2);
-    expect(html).toContain('Needs grading');
-    expect(html).toContain('Quiz completed: Student (0%)');
+    expect(html).toContain(t('feed_needs_grading'));
+    expect(html).toContain(t('feed_quiz_completed_plain', { name: t('unknown_person'), score: 0 }));
     expect(html).toContain('0%');
     expect(html).toContain('relative time');
-    expect(html).not.toContain('Untitled');
+    expect(html).not.toContain('„”');
   });
 
   it('filters low answer counts before selecting five questions and rounds their rates', () => {
@@ -160,7 +164,7 @@ describe('teacher dashboard cards', () => {
     expect(html).toContain('Question 5');
     expect(html).not.toContain('Question 6');
     expect(html).toContain('13%');
-    expect(html).toContain('3 answers');
+    expect(html).toContain(t('problem_answers', { count: 3 }));
     expect(html).toContain('href="/edu/stats/results"');
   });
 
@@ -175,8 +179,8 @@ describe('teacher dashboard cards', () => {
       }),
     );
 
-    expect(feed).toContain('Nothing has happened yet.');
-    expect(questions).toContain('No question needs attention right now.');
+    expect(feed).toContain(t('feed_empty'));
+    expect(questions).toContain(t('problem_empty'));
     expect(questions).not.toContain('Too few answers');
   });
 
@@ -193,9 +197,9 @@ describe('teacher dashboard cards', () => {
       const html = render(element);
       expect(html).toContain('animate-pulse');
       expect(html).not.toContain('role="alert"');
-      expect(html).not.toContain('Nothing has happened yet.');
-      expect(html).not.toContain('No question needs attention right now.');
-      expect(html).not.toContain('You are not in any group');
+      expect(html).not.toContain(t('feed_empty'));
+      expect(html).not.toContain(t('problem_empty'));
+      expect(html).not.toContain(t('no_groups'));
     },
   );
 
@@ -211,10 +215,10 @@ describe('teacher dashboard cards', () => {
             : createElement(ProblemQuestionsCard, { ...state, questions: [] });
       const html = render(element);
       expect(html).toContain('role="alert"');
-      expect(html).toContain('Try again');
-      expect(html).not.toContain('Nothing has happened yet.');
-      expect(html).not.toContain('No question needs attention right now.');
-      expect(html).not.toContain('You are not in any group');
+      expect(html).toContain(t('retry'));
+      expect(html).not.toContain(t('feed_empty'));
+      expect(html).not.toContain(t('problem_empty'));
+      expect(html).not.toContain(t('no_groups'));
     },
   );
 });

@@ -1,4 +1,5 @@
 import type { Browser, Page } from '@playwright/test';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
 import {
   expect,
   loadTenant,
@@ -115,8 +116,20 @@ function expectCreated(response: { status(): number }, label: string): void {
   expect(response.status(), label).toBe(201);
 }
 
-async function createGroup(page: Page, name: string): Promise<string> {
+async function createGroup(page: Page, name: string, orgId: string): Promise<string> {
   const response = await page.request.post('/api/v1/organization/groups', { data: { name } });
+  if (response.status() === 409) {
+    // A retry after a transport error finds the group the interrupted attempt already created.
+    // The API's list hides groups without a teacher, so look the exact name up in this tenant.
+    const { data, error } = await createQaSupabase()
+      .from('groups')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', name)
+      .single();
+    expect(error, `existing group ${name}`).toBeNull();
+    return data!.id;
+  }
   expectCreated(response, 'POST /api/v1/organization/groups');
   return ((await response.json()) as ApiEnvelope<{ id: string }>).data.id;
 }
@@ -171,7 +184,7 @@ async function seedCaseContent(browser: Browser, baseURL: string): Promise<Seede
   const manager = await apiSession(browser, baseURL, orgId, 'manager');
   let foreignGroupId: string;
   try {
-    foreignGroupId = await createGroup(manager.page, `G2 ${RUN}`);
+    foreignGroupId = await createGroup(manager.page, `G2 ${RUN}`, orgId);
     await setGroupMembers(manager.page, foreignGroupId, [
       { userId: account(TENANT, 'teacher').id, role: 'teacher' },
     ]);
