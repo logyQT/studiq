@@ -78,6 +78,23 @@ describe('dashboard aggregates', () => {
     expect(schema).not.toMatch(/^\$;$/m);
     expect(schema).not.toMatch(/^AS \$$/m);
   });
+
+  it('never excerpts a reported question outside the reader scope', () => {
+    // #654 review: `question_reports` RLS lets any member report a known question id, so the
+    // SECURITY DEFINER feed must not read the excerpt of a question the caller cannot read.
+    for (const copy of [rpcs, schema]) {
+      expect(copy).toContain(
+        'AND (q.created_by = p_user_id OR q.organization_id = p_organization_id)',
+      );
+      expect(copy).not.toContain('LEFT JOIN public.questions q ON q.id = qr.question_id');
+      // ... nor surface a client-chosen reporter id as a foreign user's name.
+      expect(copy).toContain("auth.role() = 'service_role'");
+      expect(copy).toContain(
+        'OR p.id IN (SELECT c.user_id FROM public.rls_caller_org_user_ids() c)',
+      );
+      expect(copy).not.toContain('LEFT JOIN public.profiles p ON p.id = n.person_id');
+    }
+  });
 });
 
 describe('dashboard screen', () => {

@@ -432,8 +432,8 @@
     "performance_overview": "Przegląd wyników",
     "performance_desc": "Średni wynik studentów w testach",
     "avg_score": "Średni wynik",
-    "questions_card_desc": "Łączna liczba pytań w puli",
-    "flashcards_card_desc": "Łączna liczba fiszek we wszystkich taliach",
+    "create_question_desc": "Dodaj pytanie do swojej puli",
+    "create_flashcard_desc": "Dodaj nową fiszkę do talii",
     "students_stat": "Studenci",
     "completed_stat": "Podejścia ({days} dni)",
     "group_performance_title": "Wyniki grup",
@@ -457,8 +457,7 @@
     "feed_assignment_submitted": "Praca „{title}” oddana: {name} ({score}%)",
     "feed_report_opened": "Zgłoszenie pytania „{title}” od {name}",
     "feed_needs_grading": "Do oceny",
-    "unknown_person": "Student",
-    "untitled": "Bez tytułu"
+    "unknown_person": "Student"
   },
   "NewClassroomPage": {
     "back": "Powrót do panelu",

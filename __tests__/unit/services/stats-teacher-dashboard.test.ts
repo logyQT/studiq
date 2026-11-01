@@ -1,6 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { StatsController } from '@studiq/server/controllers/stats.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { TeacherDashboardQuerySchema } from '@studiq/server/models/stats.model';
 import { StatsService } from '@studiq/server/services/stats.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -117,6 +118,17 @@ describe('TeacherDashboardQuerySchema', () => {
       expect(TeacherDashboardQuerySchema.safeParse(query).success).toBe(false);
     },
   );
+
+  it.each([
+    [{ days: '0' }, ValidationErrorCode.TOO_SMALL],
+    [{ days: '366' }, ValidationErrorCode.TOO_BIG],
+    [{ days: 'abc' }, ValidationErrorCode.NUMBER],
+  ])('reports the repo validation code for %j', (query, code) => {
+    const result = TeacherDashboardQuerySchema.safeParse(query);
+
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0]?.message).toBe(code);
+  });
 });
 
 describe('StatsController teacher dashboard', () => {

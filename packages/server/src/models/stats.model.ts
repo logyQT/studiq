@@ -1,3 +1,4 @@
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
 export const TeacherStatsQuerySchema = registry.register(
@@ -96,9 +97,19 @@ export const TeacherDashboardQuerySchema = registry.register(
   'TeacherDashboardQuery',
   z.object({
     /** Window of the per-group results, in days. */
-    days: z.coerce.number().int().min(1).max(365).default(30),
+    days: z.coerce
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .min(1, { error: ValidationErrorCode.TOO_SMALL })
+      .max(365, { error: ValidationErrorCode.TOO_BIG })
+      .default(30),
     /** Length of the activity feed. */
-    limit: z.coerce.number().int().min(1).max(50).default(10),
+    limit: z.coerce
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .min(1, { error: ValidationErrorCode.TOO_SMALL })
+      .max(50, { error: ValidationErrorCode.TOO_BIG })
+      .default(10),
   }),
 );
 

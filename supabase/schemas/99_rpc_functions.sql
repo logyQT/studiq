@@ -1227,7 +1227,9 @@ BEGIN
         COALESCE(qa.score, 0) * 100.0
           / GREATEST(COALESCE(qa.total_points, qa.total_questions, 0), 1)
       )) AS pct,
-      (qa.assignment_id IS NOT NULL AND qa.graded_at IS NULL) AS awaiting
+      -- `assignment_id` is ON DELETE SET NULL and a client can clear it; the durable marker
+      -- `is_assignment_attempt` (trigger-preserved, #657) is what says this was an assignment.
+      (qa.is_assignment_attempt AND qa.graded_at IS NULL) AS awaiting
     FROM learner_set ls
     JOIN public.quiz_attempts qa ON qa.user_id = ls.user_id
     WHERE qa.organization_id = p_organization_id
@@ -1343,7 +1345,9 @@ BEGIN
   events AS (
     (
       SELECT
-        CASE WHEN qa.assignment_id IS NOT NULL THEN 'assignment_submitted' ELSE 'quiz_completed' END AS kind,
+        -- The durable marker, not `assignment_id` (nullable, client-clearable) says what this was:
+        -- `is_assignment_attempt` is preserved by its trigger (#657).
+        CASE WHEN qa.is_assignment_attempt THEN 'assignment_submitted' ELSE 'quiz_completed' END AS kind,
         qa.completed_at AS at,
         qa.user_id AS person_id,
         -- The id and the title come from the assignment ONLY when it belongs to this organization:
@@ -1356,7 +1360,7 @@ BEGIN
           COALESCE(qa.score, 0) * 100.0
             / GREATEST(COALESCE(qa.total_points, qa.total_questions, 0), 1)
         ))::int AS score_pct,
-        (qa.assignment_id IS NOT NULL AND qa.graded_at IS NULL) AS needs_grading,
+        (qa.is_assignment_attempt AND qa.graded_at IS NULL) AS needs_grading,
         NULL::uuid AS question_id
       FROM learners l
       JOIN public.quiz_attempts qa ON qa.user_id = l.user_id
@@ -1385,7 +1389,12 @@ BEGIN
         false,
         qr.question_id
       FROM public.question_reports qr
-      LEFT JOIN public.questions q ON q.id = qr.question_id
+      -- Mirrors the questions read policy within the scoped organization: a member may report any
+      -- known question id, so the excerpt must not leak one outside their read scope. Group
+      -- reports (question_id IS NULL) still show, with title NULL.
+      LEFT JOIN public.questions q
+        ON q.id = qr.question_id
+       AND (q.created_by = p_user_id OR q.organization_id = p_organization_id)
       WHERE qr.teacher_id = p_user_id
         AND qr.organization_id = p_organization_id
         AND qr.status = 'open'
@@ -1414,7 +1423,15 @@ BEGIN
   )
   INTO result
   FROM newest n
-  LEFT JOIN public.profiles p ON p.id = n.person_id;
+  -- Mirrors the profiles read policy ("Own or same-org profile read"): SECURITY DEFINER bypasses
+  -- RLS, so a client-chosen reporter id must not surface a foreign user's name.
+  LEFT JOIN public.profiles p
+    ON p.id = n.person_id
+   AND (
+     auth.role() = 'service_role'
+     OR p.id = p_user_id
+     OR p.id IN (SELECT c.user_id FROM public.rls_caller_org_user_ids() c)
+   );
 
   RETURN result;
 END;

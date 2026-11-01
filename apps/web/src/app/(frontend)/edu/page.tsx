@@ -69,7 +69,12 @@ export default function EduOverviewPage() {
     enabled: !orgsPending,
   });
 
-  const loading = statsLoading || orgsPending;
+  // While the organizations are pending every query is disabled, so TanStack's `isLoading` is
+  // false even though there is nothing to show yet: treat "waiting for the org" as pending too.
+  const statsPending = statsLoading || orgsPending;
+  const groupsPending = groupsLoading || orgsPending;
+  const feedPending = feedLoading || orgsPending;
+
   // Distinct learners and attempts from the aggregate itself: a learner in two groups is one
   // learner, so the totals are never the sum of the group rows. A failed read shows a dash.
   const students = groups?.totals.students;
@@ -83,25 +88,25 @@ export default function EduOverviewPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title={t('total_questions')}
-          value={loading ? '...' : (stats?.totalQuestions ?? 0)}
+          value={statsPending ? '...' : statsError ? '—' : (stats?.totalQuestions ?? 0)}
           icon={FileText}
           variant="blue"
         />
         <StatCard
           title={t('flashcards')}
-          value={loading ? '...' : (stats?.totalFlashcards ?? 0)}
+          value={statsPending ? '...' : statsError ? '—' : (stats?.totalFlashcards ?? 0)}
           icon={Layers}
           variant="violet"
         />
         <StatCard
           title={t('students_stat')}
-          value={groupsLoading ? '...' : groupsError ? '—' : (students ?? 0)}
+          value={groupsPending ? '...' : groupsError ? '—' : (students ?? 0)}
           icon={Users}
           variant="emerald"
         />
         <StatCard
           title={t('completed_stat', { days: RESULT_DAYS })}
-          value={groupsLoading ? '...' : groupsError ? '—' : (completed ?? 0)}
+          value={groupsPending ? '...' : groupsError ? '—' : (completed ?? 0)}
           icon={ClipboardCheck}
           variant="amber"
         />
@@ -111,7 +116,7 @@ export default function EduOverviewPage() {
         <div className="lg:col-span-2">
           <GroupPerformanceCard
             data={groups}
-            isLoading={groupsLoading}
+            isLoading={groupsPending}
             isError={groupsError}
             onRetry={() => refetchGroups()}
             days={RESULT_DAYS}
@@ -119,7 +124,7 @@ export default function EduOverviewPage() {
         </div>
         <ActivityFeedCard
           items={feed}
-          isLoading={feedLoading}
+          isLoading={feedPending}
           isError={feedError}
           onRetry={() => refetchFeed()}
         />
@@ -128,7 +133,7 @@ export default function EduOverviewPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <ProblemQuestionsCard
           questions={stats?.subject?.problematicQuestions}
-          isLoading={statsLoading}
+          isLoading={statsPending}
           isError={statsError}
           onRetry={() => refetchStats()}
         />
@@ -152,7 +157,9 @@ export default function EduOverviewPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm text-foreground">{t('create_question')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('questions_card_desc')}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {t('create_question_desc')}
+                  </p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-blue-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
               </div>
@@ -166,7 +173,7 @@ export default function EduOverviewPage() {
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm text-foreground">{t('create_flashcard')}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {t('flashcards_card_desc')}
+                    {t('create_flashcard_desc')}
                   </p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-violet-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />

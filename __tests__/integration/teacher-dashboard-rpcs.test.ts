@@ -105,6 +105,16 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
   let foreignAssignmentId: string;
   let groupCardId: string;
   let baseline: Perf;
+  // `get_teacher_group_performance` counts every review of a learner in the organization for each
+  // of their groups, so the per-group number is only a delta on a shared database.
+  let secondGroupReviewBaseline = 0;
+  let foreignBankId: string;
+  let foreignQuestionId: string;
+  let foreignQuestionReportId: string;
+  let forgedReportId: string;
+  let groupReportId: string;
+  let positiveQuestionId: string;
+  let positiveReportId: string;
 
   type Perf = {
     groups: Array<{
@@ -133,7 +143,15 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       p_limit: 50,
     });
     expect(error).toBeNull();
-    return data as Array<{ title: string | null; assignmentId: string | null; kind: string }>;
+    return data as Array<{
+      at: string;
+      title: string | null;
+      personName: string | null;
+      assignmentId: string | null;
+      kind: string;
+      needsGrading: boolean;
+      questionId: string | null;
+    }>;
   }
 
   const signIn = async (email: string) => {
@@ -180,6 +198,11 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       { group_id: secondGroupId, user_id: STUDENT_ID, role: 'member' },
     ]);
     if (memberError) throw memberError;
+
+    // Before the reviews below are written: the number is asserted as a delta so a non-pristine
+    // database (other tests' practice rows) cannot fail the run.
+    secondGroupReviewBaseline =
+      (await perf()).groups.find((g) => g.groupId === secondGroupId)?.flashcardReviews ?? 0;
 
     const { data: assignments, error: assignmentError } = await service
       .from('teacher_assignments')
@@ -228,6 +251,22 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
   });
 
   afterAll(async () => {
+    const reportIds = [
+      foreignQuestionReportId,
+      forgedReportId,
+      groupReportId,
+      positiveReportId,
+    ].filter(Boolean);
+    if (reportIds.length > 0) {
+      await service.from('question_reports').delete().in('id', reportIds);
+    }
+    const questionIds = [foreignQuestionId, positiveQuestionId].filter(Boolean);
+    if (questionIds.length > 0) {
+      await service.from('questions').delete().in('id', questionIds);
+    }
+    if (foreignBankId) {
+      await service.from('question_banks').delete().eq('id', foreignBankId);
+    }
     await service.from('quiz_attempts').delete().eq('config->>marker', MARK);
     await service
       .from('flashcard_practice')
@@ -267,7 +306,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     const second = after.groups.find((g) => g.groupId === secondGroupId);
 
     // one review stayed in the organization, the other was moved to the foreign one
-    expect(second?.flashcardReviews).toBe(1);
+    expect((second?.flashcardReviews ?? 0) - secondGroupReviewBaseline).toBe(1);
   });
 
   it('keeps foreign and personal attempts out of the activity feed', async () => {
@@ -337,5 +376,223 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     const items = await feed();
     expect(items.map((i) => i.assignmentId)).not.toContain(foreignAssignmentId);
     expect(items.map((i) => i.title)).not.toContain(`${MARK}-foreign-asg`);
+  });
+
+  it('never excerpts or names a reported question outside the reader scope', async () => {
+    const foreignContent = `${MARK}-foreign-question-content`;
+    const ownContent = `${MARK}-own-question-content`;
+
+    // A question the teacher cannot read: another organization, created by someone else.
+    const { data: bank, error: bankError } = await service
+      .from('question_banks')
+      .insert({
+        organization_id: FOREIGN_ORG,
+        created_by: TEACHER_ID,
+        name: `${MARK}-foreign-bank`,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    expect(bankError).toBeNull();
+    foreignBankId = bank!.id;
+
+    const { data: question, error: questionError } = await service
+      .from('questions')
+      .insert({
+        organization_id: FOREIGN_ORG,
+        created_by: STUDENT_ID,
+        bank_id: foreignBankId,
+        type: 'mcq',
+        content: foreignContent,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    expect(questionError).toBeNull();
+    foreignQuestionId = question!.id;
+
+    // The positive control: a question of this organization the teacher can read.
+    const { data: ownQuestion, error: ownQuestionError } = await service
+      .from('questions')
+      .insert({
+        organization_id: ORG,
+        created_by: TEACHER_ID,
+        bank_id: BANK,
+        type: 'mcq',
+        content: ownContent,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    expect(ownQuestionError).toBeNull();
+    positiveQuestionId = ownQuestion!.id;
+
+    // A member of the foreign organization whose name the feed must never reveal.
+    const { data: foreignMember, error: foreignMemberError } = await service
+      .from('org_members')
+      .select('user_id')
+      .eq('organization_id', FOREIGN_ORG)
+      .limit(1)
+      .single();
+    expect(foreignMemberError).toBeNull();
+    // Precondition of the negative assertion below: that member shares no organization with the
+    // teacher, otherwise the guard would (correctly) name them somewhere else in the feed.
+    const { data: sharedOrgs } = await service
+      .from('org_members')
+      .select('organization_id')
+      .eq('user_id', foreignMember!.user_id)
+      .neq('organization_id', FOREIGN_ORG);
+    expect(sharedOrgs).toEqual([]);
+
+    const { data: foreignProfile, error: foreignProfileError } = await service
+      .from('profiles')
+      .select('full_name, email')
+      .eq('id', foreignMember!.user_id)
+      .single();
+    expect(foreignProfileError).toBeNull();
+
+    const { data: studentProfile, error: studentProfileError } = await service
+      .from('profiles')
+      .select('full_name, email')
+      .eq('id', STUDENT_ID)
+      .single();
+    expect(studentProfileError).toBeNull();
+
+    const studentName = studentProfile!.full_name?.trim() || studentProfile!.email.split('@')[0];
+    const foreignNames = [foreignProfile!.full_name, foreignProfile!.email.split('@')[0]].filter(
+      (name): name is string => Boolean(name),
+    );
+
+    // A member may report a known question id; the report is legitimate, the excerpt is not.
+    const { data: foreignReport, error: foreignReportError } = await student
+      .from('question_reports')
+      .insert({
+        question_id: foreignQuestionId,
+        organization_id: ORG,
+        reported_by: STUDENT_ID,
+        teacher_id: TEACHER_ID,
+      })
+      .select('id, created_at')
+      .single();
+    expect(foreignReportError).toBeNull();
+    foreignQuestionReportId = foreignReport!.id;
+
+    // The attack: a forged reporter id passes the report policy's org/teacher arm.
+    const { data: forgedReport, error: forgedReportError } = await student
+      .from('question_reports')
+      .insert({
+        question_id: foreignQuestionId,
+        organization_id: ORG,
+        reported_by: foreignMember!.user_id,
+        teacher_id: TEACHER_ID,
+      })
+      .select('id, created_at')
+      .single();
+    expect(forgedReportError).toBeNull();
+    forgedReportId = forgedReport!.id;
+
+    // A group report has no question at all: it still shows, without an excerpt.
+    const { data: groupReport, error: groupReportError } = await student
+      .from('question_reports')
+      .insert({
+        group_id: secondGroupId,
+        organization_id: ORG,
+        reported_by: STUDENT_ID,
+        teacher_id: TEACHER_ID,
+      })
+      .select('id, created_at')
+      .single();
+    expect(groupReportError).toBeNull();
+    groupReportId = groupReport!.id;
+
+    // A readable question reports normally, excerpt and all — an INNER JOIN / `AND false`
+    // "fix" would blank this row too.
+    const { data: ownReport, error: ownReportError } = await student
+      .from('question_reports')
+      .insert({
+        question_id: positiveQuestionId,
+        organization_id: ORG,
+        reported_by: STUDENT_ID,
+        teacher_id: TEACHER_ID,
+      })
+      .select('id, created_at')
+      .single();
+    expect(ownReportError).toBeNull();
+    positiveReportId = ownReport!.id;
+
+    const items = await feed();
+    const foreignRows = items.filter(
+      (item) => item.kind === 'report_opened' && item.questionId === foreignQuestionId,
+    );
+
+    // Both reports are still events, but neither carries the unreadable excerpt ...
+    expect(foreignRows.length).toBeGreaterThanOrEqual(2);
+    expect(foreignRows.every((item) => item.title === null)).toBe(true);
+    expect(items.every((item) => !(item.title ?? '').includes(foreignContent))).toBe(true);
+    // ... the legitimate reporter keeps their own name ...
+    expect(foreignRows.some((item) => item.personName === studentName)).toBe(true);
+    // ... and the forged foreign id names nobody.
+    for (const name of foreignNames) {
+      expect(items.some((item) => item.personName === name)).toBe(false);
+    }
+
+    const groupRow = items.find((item) => item.at === groupReport!.created_at);
+    expect(groupRow?.kind).toBe('report_opened');
+    expect(groupRow?.questionId).toBeNull();
+
+    const ownRow = items.find((item) => item.questionId === positiveQuestionId);
+    expect(ownRow?.kind).toBe('report_opened');
+    expect(ownRow?.title).toBe(ownContent.slice(0, 120));
+    expect(ownRow?.personName).toBe(studentName);
+  });
+
+  it('keeps an assignment attempt one after its assignment is deleted', async () => {
+    const { data: assignment, error: assignmentError } = await service
+      .from('teacher_assignments')
+      .insert({ created_by: TEACHER_ID, organization_id: ORG, title: `${MARK}-marker` })
+      .select('id')
+      .single();
+    expect(assignmentError).toBeNull();
+
+    const { data: attempt, error: attemptError } = await service
+      .from('quiz_attempts')
+      .insert(
+        finished(null, { title: `${MARK}-marker-attempt` }, { assignment_id: assignment!.id }),
+      )
+      .select('id, organization_id, is_assignment_attempt')
+      .single();
+    expect(attemptError).toBeNull();
+    // stamped by the assignment, and marked durable by the #657 trigger
+    expect(attempt?.organization_id).toBe(ORG);
+    expect(attempt?.is_assignment_attempt).toBe(true);
+
+    const awaitingBefore = (await perf()).totals.awaitingGrade;
+    // Before the delete the feed names the attempt after its assignment, not the config title.
+    const before = (await feed()).find((item) => item.assignmentId === assignment!.id);
+    expect(before?.kind).toBe('assignment_submitted');
+    expect(before?.title).toBe(`${MARK}-marker`);
+    expect(before?.needsGrading).toBe(true);
+
+    // Deleting the assignment is the legitimate path (`assignment_id` is ON DELETE SET NULL):
+    // the durable marker must keep the attempt an assignment without its link.
+    const { error: deleteError } = await service
+      .from('teacher_assignments')
+      .delete()
+      .eq('id', assignment!.id);
+    expect(deleteError).toBeNull();
+
+    const { data: orphaned, error: orphanError } = await service
+      .from('quiz_attempts')
+      .select('assignment_id, is_assignment_attempt')
+      .eq('id', attempt!.id)
+      .single();
+    expect(orphanError).toBeNull();
+    expect(orphaned?.assignment_id).toBeNull();
+    expect(orphaned?.is_assignment_attempt).toBe(true);
+
+    expect((await perf()).totals.awaitingGrade).toBe(awaitingBefore);
+    const after = (await feed()).find((item) => item.title === `${MARK}-marker-attempt`);
+    expect(after?.kind).toBe('assignment_submitted');
+    expect(after?.needsGrading).toBe(true);
   });
 });

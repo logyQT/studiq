@@ -450,8 +450,8 @@
     "performance_overview": "Performance Overview",
     "performance_desc": "Average student quiz score",
     "avg_score": "Average Score",
-    "questions_card_desc": "Total questions in your pool",
-    "flashcards_card_desc": "Total flashcards across decks",
+    "create_question_desc": "Add a question to your pool",
+    "create_flashcard_desc": "Add a new flashcard to a deck",
     "students_stat": "Students",
     "completed_stat": "Attempts ({days} days)",
     "group_performance_title": "Group results",
@@ -475,8 +475,7 @@
     "feed_assignment_submitted": "Assignment \"{title}\" submitted: {name} ({score}%)",
     "feed_report_opened": "Question \"{title}\" reported by {name}",
     "feed_needs_grading": "Needs grading",
-    "unknown_person": "Student",
-    "untitled": "Untitled"
+    "unknown_person": "Student"
   },
   "NewClassroomPage": {
     "back": "Back to dashboard",
