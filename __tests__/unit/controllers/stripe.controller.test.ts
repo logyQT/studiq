@@ -162,6 +162,41 @@ describe('StripeController', () => {
     });
   });
 
+  describe('handleStripeWebhook', () => {
+    it('forwards the raw body and signature as a stripe envelope, without a session', async () => {
+      gateway.handleWebhook.mockResolvedValueOnce({ success: true, data: { received: true } });
+
+      const response = await controller.handleStripeWebhook('raw-body', 'sig-header');
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: { received: true } });
+      expect(gateway.handleWebhook).toHaveBeenCalledWith({
+        kind: 'stripe',
+        rawBody: 'raw-body',
+        signature: 'sig-header',
+      });
+    });
+
+    it('maps an invalid signature to 400', async () => {
+      gateway.handleWebhook.mockResolvedValueOnce({ success: false, error: 'BAD_REQUEST' });
+
+      const response = await controller.handleStripeWebhook('raw-body', null);
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+      });
+    });
+
+    it('maps a transient failure to a retryable status', async () => {
+      gateway.handleWebhook.mockResolvedValueOnce({ success: false, error: 'INTERNAL_SERVER' });
+
+      const response = await controller.handleStripeWebhook('raw-body', 'sig');
+
+      expect(response).toMatchObject({ success: false, statusCode: 500 });
+    });
+  });
+
   describe('createPortalSession', () => {
     it('passes the authenticated identity and active org to the gateway', async () => {
       gateway.createPortalSession.mockResolvedValueOnce({

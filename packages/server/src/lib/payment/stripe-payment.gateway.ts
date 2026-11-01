@@ -1,5 +1,6 @@
 import type Stripe from 'stripe';
 import { error as logError } from '@studiq/server/lib/log';
+import { wrapService } from '@studiq/server/lib/observability';
 import { checkoutExpiresAt } from '@studiq/server/lib/payment/checkout-timing';
 import type {
   CancelAtPeriodEndInput,
@@ -25,6 +26,7 @@ import {
 } from '@studiq/server/lib/payment/stripe-repository';
 import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { getSiteUrl } from '@studiq/server/lib/site-url';
+import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface StripePaymentGatewayOptions {
@@ -32,6 +34,8 @@ export interface StripePaymentGatewayOptions {
   config: StripeConfig;
   /** Test seam; production resolves the service-role repository singleton. */
   repository?: StripeBillingRepository;
+  /** Test seam; production lazily builds the webhook service from `client`. */
+  webhooks?: StripeWebhookService;
   createAdminClient?: () => SupabaseClient;
   siteUrl?: () => string;
   now?: () => Date;
@@ -86,10 +90,14 @@ export class StripePaymentGateway implements PaymentGateway {
   private readonly repository: StripeBillingRepository;
   private readonly siteUrl: () => string;
   private readonly now: () => Date;
+  private readonly webhookSecret: string;
+  private webhooks: StripeWebhookService | undefined;
 
   constructor(options: StripePaymentGatewayOptions) {
     this.client = options.client;
     this.livemode = options.config.livemode;
+    this.webhookSecret = options.config.webhookSecret;
+    this.webhooks = options.webhooks;
     this.repository =
       options.repository ??
       (options.createAdminClient
@@ -211,8 +219,20 @@ export class StripePaymentGateway implements PaymentGateway {
     // builds it behind `withAuth`.
     if (envelope.kind !== 'stripe') return failure('BAD_REQUEST');
 
-    // Phase 3 (#662 §6): signature verification + idempotency + dispatch.
-    return failure('SERVICE_UNAVAILABLE');
+    // Lazily built so the process does not need the webhook repository until a
+    // real event arrives; `parseStripeConfig` already validated the secret at
+    // boot, so an empty secret here cannot be a misconfiguration.
+    this.webhooks ??= wrapService(
+      new StripeWebhookService({
+        client: this.client,
+        webhookSecret: this.webhookSecret,
+        livemode: this.livemode,
+        now: this.now,
+      }),
+      'stripe-webhook.service',
+    );
+
+    return this.webhooks.handle(envelope.rawBody, envelope.signature);
   }
 
   /** Reuse the owner's customer mapping or create one in Stripe. */

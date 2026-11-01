@@ -345,4 +345,24 @@ describe('StripePaymentGateway', () => {
       }),
     ).resolves.toEqual({ success: false, error: 'BAD_REQUEST' });
   });
+
+  it('delegates a stripe envelope to the webhook service', async () => {
+    const handle = vi.fn().mockResolvedValue(success({ received: true }));
+    const withWebhooks = new StripePaymentGateway({
+      client,
+      config,
+      repository,
+      webhooks: { handle } as never,
+    });
+
+    await expect(
+      withWebhooks.handleWebhook({
+        kind: 'stripe',
+        rawBody: '{"id":"evt_1"}',
+        signature: 't=1,v1=abc',
+      }),
+    ).resolves.toEqual({ success: true, data: { received: true } });
+
+    expect(handle).toHaveBeenCalledWith('{"id":"evt_1"}', 't=1,v1=abc');
+  });
 });
