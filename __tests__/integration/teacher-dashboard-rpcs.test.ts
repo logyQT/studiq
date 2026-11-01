@@ -115,6 +115,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
   let groupReportId: string;
   let positiveQuestionId: string;
   let positiveReportId: string;
+  let mixedQuestionIds: string[] = [];
 
   type Perf = {
     groups: Array<{
@@ -260,7 +261,9 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     if (reportIds.length > 0) {
       await service.from('question_reports').delete().in('id', reportIds);
     }
-    const questionIds = [foreignQuestionId, positiveQuestionId].filter(Boolean);
+    const questionIds = [foreignQuestionId, positiveQuestionId, ...mixedQuestionIds].filter(
+      Boolean,
+    );
     if (questionIds.length > 0) {
       await service.from('questions').delete().in('id', questionIds);
     }
@@ -594,5 +597,157 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     const after = (await feed()).find((item) => item.title === `${MARK}-marker-attempt`);
     expect(after?.kind).toBe('assignment_submitted');
     expect(after?.needsGrading).toBe(true);
+  });
+
+  it('an auto-scored assignment counts without waiting for a grade', async () => {
+    const before = await perf();
+
+    const { data: assignment, error: assignmentError } = await service
+      .from('teacher_assignments')
+      .insert({ created_by: TEACHER_ID, organization_id: ORG, title: `${MARK}-auto-asg` })
+      .select('id')
+      .single();
+    expect(assignmentError).toBeNull();
+
+    const { data: attempt, error: attemptError } = await service
+      .from('quiz_attempts')
+      .insert(
+        finished(
+          null,
+          { title: `${MARK}-autograded` },
+          { assignment_id: assignment!.id, score: 1, total_questions: 1 },
+        ),
+      )
+      .select('id, organization_id, is_assignment_attempt')
+      .single();
+    expect(attemptError).toBeNull();
+    expect(attempt?.organization_id).toBe(ORG);
+    expect(attempt?.is_assignment_attempt).toBe(true);
+
+    const { error: answerError } = await service.from('student_answers').insert({
+      attempt_id: attempt!.id,
+      question_type: 'mcq',
+      is_correct: true,
+    });
+    expect(answerError).toBeNull();
+
+    const after = await perf();
+    expect(after.totals.completedAttempts - before.totals.completedAttempts).toBe(1);
+    expect(after.totals.awaitingGrade - before.totals.awaitingGrade).toBe(0);
+
+    const row = (await feed()).find((item) => item.assignmentId === assignment!.id);
+    expect(row?.kind).toBe('assignment_submitted');
+    expect(row?.needsGrading).toBe(false);
+  });
+
+  it("an open answer waits for the teacher's mark", async () => {
+    const before = await perf();
+
+    const { data: assignment, error: assignmentError } = await service
+      .from('teacher_assignments')
+      .insert({ created_by: TEACHER_ID, organization_id: ORG, title: `${MARK}-open-asg` })
+      .select('id')
+      .single();
+    expect(assignmentError).toBeNull();
+
+    const { data: attempt, error: attemptError } = await service
+      .from('quiz_attempts')
+      .insert(finished(null, { title: `${MARK}-open-answer` }, { assignment_id: assignment!.id }))
+      .select('id')
+      .single();
+    expect(attemptError).toBeNull();
+
+    const { error: answerError } = await service.from('student_answers').insert({
+      attempt_id: attempt!.id,
+      question_type: 'open',
+      text_answer: 'x',
+    });
+    expect(answerError).toBeNull();
+
+    const awaiting = await perf();
+    expect(awaiting.totals.awaitingGrade - before.totals.awaitingGrade).toBe(1);
+    const waiting = (await feed()).find((item) => item.assignmentId === assignment!.id);
+    expect(waiting?.kind).toBe('assignment_submitted');
+    expect(waiting?.needsGrading).toBe(true);
+
+    const { error: gradeError } = await service
+      .from('quiz_attempts')
+      .update({ graded_at: new Date().toISOString() })
+      .eq('id', attempt!.id);
+    expect(gradeError).toBeNull();
+
+    const graded = await perf();
+    expect(graded.totals.awaitingGrade - before.totals.awaitingGrade).toBe(0);
+    const marked = (await feed()).find((item) => item.assignmentId === assignment!.id);
+    expect(marked?.kind).toBe('assignment_submitted');
+    expect(marked?.needsGrading).toBe(false);
+  });
+
+  it('a mixed assignment with only its MCQ answered still waits for a mark', async () => {
+    const before = await perf();
+
+    const { data: mixedAssignment, error: assignmentError } = await service
+      .from('teacher_assignments')
+      .insert({ created_by: TEACHER_ID, organization_id: ORG, title: `${MARK}-mixed-asg` })
+      .select('id')
+      .single();
+    expect(assignmentError).toBeNull();
+
+    const { data: questions, error: questionsError } = await service
+      .from('questions')
+      .insert([
+        {
+          organization_id: ORG,
+          created_by: TEACHER_ID,
+          bank_id: BANK,
+          type: 'open',
+          content: `${MARK}-mixed-open`,
+          visibility: 'group',
+        },
+        {
+          organization_id: ORG,
+          created_by: TEACHER_ID,
+          bank_id: BANK,
+          type: 'mcq',
+          content: `${MARK}-mixed-mcq`,
+          visibility: 'group',
+        },
+      ])
+      .select('id, type');
+    expect(questionsError).toBeNull();
+    mixedQuestionIds = questions!.map((question) => question.id);
+    const mcqQuestion = questions!.find((question) => question.type === 'mcq')!;
+
+    const { error: linkError } = await service.from('assignment_questions').insert(
+      questions!.map((question) => ({
+        assignment_id: mixedAssignment!.id,
+        question_id: question.id,
+      })),
+    );
+    expect(linkError).toBeNull();
+
+    const { data: attempt, error: attemptError } = await service
+      .from('quiz_attempts')
+      .insert(
+        finished(null, { title: `${MARK}-mixed-attempt` }, { assignment_id: mixedAssignment!.id }),
+      )
+      .select('id')
+      .single();
+    expect(attemptError).toBeNull();
+
+    // Only the MCQ is answered: no `open` answer row exists, but the assignment still asks one.
+    const { error: answerError } = await service.from('student_answers').insert({
+      attempt_id: attempt!.id,
+      question_id: mcqQuestion.id,
+      question_type: 'mcq',
+      is_correct: true,
+    });
+    expect(answerError).toBeNull();
+
+    const awaiting = await perf();
+    expect(awaiting.totals.awaitingGrade - before.totals.awaitingGrade).toBe(1);
+    const row = (await feed()).find((item) => item.assignmentId === mixedAssignment!.id);
+    expect(row?.kind).toBe('assignment_submitted');
+    expect(row?.needsGrading).toBe(true);
   });
 });

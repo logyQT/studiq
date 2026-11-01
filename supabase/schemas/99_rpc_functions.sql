@@ -1159,6 +1159,9 @@ $$;
 -- learners in the caller's groups, and the latest attempts and open reports. SECURITY DEFINER
 -- (teachers cannot read other users' flashcard_practice through RLS), so each function only
 -- serves the caller's own dashboard and returns nothing for an organization they are not in.
+-- An assignment submission waits for a mark when it has an `open` answer to mark, when its
+-- still-linked assignment contains an `open` question, or when it has no answers at all; an
+-- auto-scored MCQ submission is final and enters the average.
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION public.get_teacher_group_performance(
@@ -1229,7 +1232,33 @@ BEGIN
       )) AS pct,
       -- `assignment_id` is ON DELETE SET NULL and a client can clear it; the durable marker
       -- `is_assignment_attempt` (trigger-preserved, #657) is what says this was an assignment.
-      (qa.is_assignment_attempt AND qa.graded_at IS NULL) AS awaiting
+      (
+        qa.is_assignment_attempt
+        AND qa.graded_at IS NULL
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM public.student_answers sa WHERE sa.attempt_id = qa.id
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM public.student_answers sa
+            LEFT JOIN public.questions q ON q.id = sa.question_id
+            WHERE sa.attempt_id = qa.id
+              AND COALESCE(
+                sa.question_type::text,
+                q.type::text,
+                CASE WHEN sa.text_answer IS NOT NULL THEN 'open' END
+              ) = 'open'
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM public.assignment_questions aq
+            JOIN public.questions q ON q.id = aq.question_id
+            WHERE aq.assignment_id = qa.assignment_id
+              AND q.type = 'open'
+          )
+        )
+      ) AS awaiting
     FROM learner_set ls
     JOIN public.quiz_attempts qa ON qa.user_id = ls.user_id
     WHERE qa.organization_id = p_organization_id
@@ -1360,7 +1389,33 @@ BEGIN
           COALESCE(qa.score, 0) * 100.0
             / GREATEST(COALESCE(qa.total_points, qa.total_questions, 0), 1)
         ))::int AS score_pct,
-        (qa.is_assignment_attempt AND qa.graded_at IS NULL) AS needs_grading,
+        (
+          qa.is_assignment_attempt
+          AND qa.graded_at IS NULL
+          AND (
+            NOT EXISTS (
+              SELECT 1 FROM public.student_answers sa WHERE sa.attempt_id = qa.id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM public.student_answers sa
+              LEFT JOIN public.questions q ON q.id = sa.question_id
+              WHERE sa.attempt_id = qa.id
+                AND COALESCE(
+                  sa.question_type::text,
+                  q.type::text,
+                  CASE WHEN sa.text_answer IS NOT NULL THEN 'open' END
+                ) = 'open'
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM public.assignment_questions aq
+              JOIN public.questions q ON q.id = aq.question_id
+              WHERE aq.assignment_id = qa.assignment_id
+                AND q.type = 'open'
+            )
+          )
+        ) AS needs_grading,
         NULL::uuid AS question_id
       FROM learners l
       JOIN public.quiz_attempts qa ON qa.user_id = l.user_id

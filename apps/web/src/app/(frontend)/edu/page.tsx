@@ -15,6 +15,7 @@ import { ProblemQuestionsCard } from '@/components/edu/dashboard/problem-questio
 import { OnboardingChecklist } from '@/components/edu/onboarding-checklist';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
+import { teacherStatsKeys } from '@/lib/query-keys';
 
 interface TeacherStats {
   totalQuestions: number;
@@ -41,7 +42,7 @@ export default function EduOverviewPage() {
     isError: statsError,
     refetch: refetchStats,
   } = useApiQuery<TeacherStats>({
-    queryKey: ['stats', 'teacher', 'overview', orgId],
+    queryKey: teacherStatsKeys.overview(orgId),
     url: '/api/v1/stats/teacher',
     staleTime: STALE_MS,
     enabled: !orgsPending,
@@ -52,7 +53,7 @@ export default function EduOverviewPage() {
     isError: groupsError,
     refetch: refetchGroups,
   } = useApiQuery<TeacherGroupPerformance>({
-    queryKey: ['stats', 'teacher', 'groups', orgId, RESULT_DAYS],
+    queryKey: teacherStatsKeys.groups(orgId, RESULT_DAYS),
     url: `/api/v1/stats/teacher/groups?days=${RESULT_DAYS}`,
     staleTime: STALE_MS,
     enabled: !orgsPending,
@@ -63,7 +64,7 @@ export default function EduOverviewPage() {
     isError: feedError,
     refetch: refetchFeed,
   } = useApiQuery<TeacherFeedItem[]>({
-    queryKey: ['stats', 'teacher', 'feed', orgId],
+    queryKey: teacherStatsKeys.feed(orgId),
     url: '/api/v1/stats/teacher/feed?limit=10',
     staleTime: STALE_MS,
     enabled: !orgsPending,

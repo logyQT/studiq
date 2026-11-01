@@ -72,6 +72,14 @@ describe('dashboard aggregates', () => {
     expect(rpcs).toContain("'awaitingGrade'");
   });
 
+  it('wait for a mark when an open answer or an open assignment question does', () => {
+    for (const copy of [rpcs, schema]) {
+      expect(copy).toContain('FROM public.assignment_questions aq');
+      expect(copy).toContain("CASE WHEN sa.text_answer IS NOT NULL THEN 'open' END");
+      expect(copy).not.toContain('open_answers AS (');
+    }
+  });
+
   it('the declarative copy is the same function text', () => {
     expect(schema).toContain('AVG(ar.pct) FILTER (WHERE NOT ar.awaiting)');
     expect(schema).toContain('qa.organization_id = p_organization_id');
