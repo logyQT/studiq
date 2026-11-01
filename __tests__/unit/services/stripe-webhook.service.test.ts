@@ -12,6 +12,7 @@ import type Stripe from 'stripe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const WEBHOOK_SECRET = 'whsec_test';
+const CLAIM_TOKEN = '2026-11-01T09:00:00.000Z';
 const NOW = new Date('2026-11-01T10:00:00.000Z');
 
 const CATALOG: Record<string, CatalogPlan> = {
@@ -203,7 +204,7 @@ function createRepository(): FakeRepository {
   const payments: PaymentRowInput[] = [];
 
   return {
-    claimEvent: vi.fn().mockResolvedValue(success('claimed')),
+    claimEvent: vi.fn().mockResolvedValue(success({ outcome: 'claimed', receivedAt: CLAIM_TOKEN })),
     finishEvent: vi.fn().mockResolvedValue(success(undefined)),
     getSubscriptionByStripeId: vi.fn().mockResolvedValue(success(null)),
     findCustomerByStripeId: vi.fn().mockResolvedValue(success(null)),
@@ -331,7 +332,9 @@ describe('StripeWebhookService', () => {
 
     it('returns duplicate without re-running the handler', async () => {
       const harness = createHarness();
-      vi.mocked(harness.repository.claimEvent).mockResolvedValueOnce(success('duplicate'));
+      vi.mocked(harness.repository.claimEvent).mockResolvedValueOnce(
+        success({ outcome: 'duplicate', receivedAt: null }),
+      );
       const event = makeEvent('customer.subscription.updated', makeSubscription());
 
       const result = await sign(harness, event);
@@ -358,6 +361,7 @@ describe('StripeWebhookService', () => {
       expect(result).toEqual({ success: false, error: 'INTERNAL_SERVER' });
       expect(harness.repository.finishEvent).toHaveBeenCalledWith(
         event.id,
+        CLAIM_TOKEN,
         'failed',
         expect.any(String),
       );
@@ -378,7 +382,7 @@ describe('StripeWebhookService', () => {
       expect(consoleWarn).toHaveBeenCalledWith(
         expect.stringContaining('billing.webhook_api_version_mismatch'),
       );
-      expect(harness.repository.finishEvent).toHaveBeenCalledWith(event.id, 'ignored');
+      expect(harness.repository.finishEvent).toHaveBeenCalledWith(event.id, CLAIM_TOKEN, 'ignored');
     });
   });
 
@@ -406,7 +410,11 @@ describe('StripeWebhookService', () => {
           planKey: 'spark',
         }),
       );
-      expect(harness.repository.finishEvent).toHaveBeenCalledWith(event.id, 'processed');
+      expect(harness.repository.finishEvent).toHaveBeenCalledWith(
+        event.id,
+        CLAIM_TOKEN,
+        'processed',
+      );
     });
 
     it('applies an organization purchase through the org owner only', async () => {
@@ -851,7 +859,7 @@ describe('StripeWebhookService', () => {
       const result = await sign(harness, event);
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
-      expect(harness.repository.finishEvent).toHaveBeenCalledWith(event.id, 'ignored');
+      expect(harness.repository.finishEvent).toHaveBeenCalledWith(event.id, CLAIM_TOKEN, 'ignored');
       expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
     });
 

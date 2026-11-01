@@ -183,18 +183,22 @@ export class StripeWebhookService {
     });
     if (isFailure(claim)) return claim;
 
-    if (claim.data === 'duplicate') {
+    if (claim.data.outcome === 'duplicate') {
       log('billing.webhook_duplicate', { eventId: event.id, type: event.type });
       return success({ received: true, duplicate: true });
     }
 
+    // The claim token fences completion: if another delivery reclaimed this row
+    // (lease expired), the older attempt must not close it.
+    const claimToken = claim.data.receivedAt ?? '';
+
     try {
       const result = await this.dispatch(event);
-      await this.finish(event, result.ignored);
+      await this.finish(event, claimToken, result.ignored);
       return success({ received: true, ...(result.ignored ? { ignored: true } : {}) });
     } catch (error) {
       // A 5xx makes Stripe retry; `failed` lets the next attempt re-run.
-      await this.markFailed(event, errorMessage(error));
+      await this.markFailed(event, claimToken, errorMessage(error));
       logError('billing.webhook_failed', {
         eventId: event.id,
         type: event.type,
@@ -780,8 +784,12 @@ export class StripeWebhookService {
     }
   }
 
-  private async finish(event: Stripe.Event, ignored: boolean): Promise<void> {
-    const result = await this.repository.finishEvent(event.id, ignored ? 'ignored' : 'processed');
+  private async finish(event: Stripe.Event, claimToken: string, ignored: boolean): Promise<void> {
+    const result = await this.repository.finishEvent(
+      event.id,
+      claimToken,
+      ignored ? 'ignored' : 'processed',
+    );
     if (isFailure(result)) {
       // Side effects already happened. Leaving the row `processing` means a
       // Stripe retry is answered as a duplicate (200), which is safer than
@@ -790,9 +798,13 @@ export class StripeWebhookService {
     }
   }
 
-  private async markFailed(event: Stripe.Event, message: string): Promise<void> {
+  private async markFailed(
+    event: Stripe.Event,
+    claimToken: string,
+    message: string,
+  ): Promise<void> {
     try {
-      const result = await this.repository.finishEvent(event.id, 'failed', message);
+      const result = await this.repository.finishEvent(event.id, claimToken, 'failed', message);
       if (isFailure(result)) {
         logWarn('billing.webhook_mark_failed_failed', { eventId: event.id });
       }
