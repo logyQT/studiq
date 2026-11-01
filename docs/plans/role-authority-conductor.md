@@ -9,7 +9,9 @@ Phase agents work on `feat/ra-*` branches and open PRs into the exp branch.
 ## Files
 
 - `scripts/role-authority-conductor` — state machine and gate checks.
-- `.role-authority/state.json` — local state (gitignored).
+- `.role-authority/state.json` — local state (gitignored). Set `RA_STATE` to a
+  durable path (for example `/workspaces/studiq/.role-authority/state.json`) if
+  the conductor worktree may rotate.
 - `docs/plans/role-authority-rollout.md` — phase definitions and exit criteria.
 - `docs/plans/role-authority-conductor.md` — this file.
 

@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = ROOT / ".role-authority" / "state.json"
+STATE = Path(os.environ.get("RA_STATE", str(ROOT / ".role-authority" / "state.json")))
 REPO = "logyQT/studiq"
 EXP = "exp/role-authority"
 PREFIX = "feat/ra-"
