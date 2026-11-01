@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { signIn } from '#test/e2e/fixtures/tenant';
 import { t } from '#test/e2e/utils';
 
 const PASSWORD = 'pass';
@@ -24,12 +25,13 @@ async function aiChatEntitled(page: Page): Promise<boolean> {
 }
 
 /**
- * No seed account is entitled to `ai.chat` (personal `lite` / org `launch`, neither
- * grants it), so the reset cases below would take an entitlement early-return and
- * assert nothing. Fulfilling the feature query makes entitlement deterministic and
- * lets the real page render. Registered before the first navigation so the value is
- * fixed for the dashboard shell and the AI page alike; the locked branch is covered
- * by the #375 plan-gate suite.
+ * No seed account — shared or isolated tenant — is entitled to `ai.chat`
+ * (personal `lite` / org `launch`, neither grants it), so the reset cases below
+ * would take an entitlement early-return and assert nothing. Fulfilling the
+ * feature query makes entitlement deterministic and lets the real page render.
+ * Registered before the first navigation so the value is fixed for the dashboard
+ * shell and the AI page alike; the locked branch is covered by the #375
+ * plan-gate suite.
  */
 async function mockAiChatEntitled(page: Page) {
   await page.route('**/api/v1/features/me', (route) =>
@@ -75,7 +77,9 @@ test.describe('AI assistant routes (#134)', () => {
     page,
   }) => {
     await mockAiChatEntitled(page);
-    await login(page, TEACHER_EMAIL, /\/edu/);
+    // Each test owns a seeded tenant, so the reset flow cannot be disturbed by
+    // another spec mutating the shared dev account.
+    await signIn(page, 'teacher');
     await page.goto('/edu/ai');
 
     const fresh = page.getByRole('button', { name: t('AiChatPage.new_chat') });
@@ -143,7 +147,7 @@ test.describe('AI assistant routes (#134)', () => {
     const greeting = page.getByText(t('AiChatPage.greeting_suffix'));
 
     try {
-      await login(page, TEACHER_EMAIL, /\/edu/);
+      await signIn(page, 'teacher');
       await page.goto('/edu/ai');
 
       await page
