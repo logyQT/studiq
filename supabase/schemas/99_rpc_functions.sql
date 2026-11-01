@@ -1259,7 +1259,9 @@ BEGIN
             SELECT 1
             FROM public.assignment_questions aq
             JOIN public.questions q ON q.id = aq.question_id
+            JOIN public.teacher_assignments assignment_org ON assignment_org.id = aq.assignment_id
             WHERE aq.assignment_id = qa.assignment_id
+              AND assignment_org.organization_id = p_organization_id
               AND q.type = 'open'
           )
         )
@@ -1421,7 +1423,9 @@ BEGIN
               SELECT 1
               FROM public.assignment_questions aq
               JOIN public.questions q ON q.id = aq.question_id
+              JOIN public.teacher_assignments assignment_org ON assignment_org.id = aq.assignment_id
               WHERE aq.assignment_id = qa.assignment_id
+                AND assignment_org.organization_id = p_organization_id
                 AND q.type = 'open'
             )
           )

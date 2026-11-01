@@ -101,6 +101,11 @@ describe('dashboard aggregates', () => {
       expect(copy).toContain('FROM public.assignment_questions aq');
       expect(copy).toContain("CASE WHEN sa.text_answer IS NOT NULL THEN 'open' END");
       expect(copy).not.toContain('open_answers AS (');
+      // The assignment's open questions only count for THIS organization.
+      expect(copy.match(/JOIN public\.teacher_assignments assignment_org/g)).toHaveLength(2);
+      expect(copy.match(/AND assignment_org\.organization_id = p_organization_id/g)).toHaveLength(
+        2,
+      );
     }
   });
 

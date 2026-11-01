@@ -120,6 +120,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
   const restampPracticeIds: string[] = [];
   const restampCardIds: string[] = [];
   const restampDeckIds: string[] = [];
+  const scopeQuestionIds: string[] = [];
 
   type Perf = {
     groups: Array<{
@@ -280,6 +281,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       positiveQuestionId,
       ...mixedQuestionIds,
       ...stampQuestionIds,
+      ...scopeQuestionIds,
     ].filter(Boolean);
     if (questionIds.length > 0) {
       await service.from('questions').delete().in('id', questionIds);
@@ -1014,5 +1016,61 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       .single();
     expect(foreignError).toBeNull();
     expect(foreign?.organization_id).toBe(FOREIGN_ORG);
+  });
+
+  it("does not read a foreign assignment's open questions when judging a grade", async () => {
+    const before = await perf();
+
+    const { data: openQuestion, error: questionError } = await service
+      .from('questions')
+      .insert({
+        organization_id: FOREIGN_ORG,
+        created_by: TEACHER_ID,
+        bank_id: BANK,
+        type: 'open',
+        content: `${MARK}-scope-open`,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    expect(questionError).toBeNull();
+    scopeQuestionIds.push(openQuestion!.id);
+
+    const { error: linkError } = await service.from('assignment_questions').insert({
+      assignment_id: foreignAssignmentId,
+      question_id: openQuestion!.id,
+    });
+    expect(linkError).toBeNull();
+
+    const { data: attempt, error: attemptError } = await service
+      .from('quiz_attempts')
+      .insert(
+        finished(null, { title: `${MARK}-scope-attempt` }, { assignment_id: foreignAssignmentId }),
+      )
+      .select('id')
+      .single();
+    expect(attemptError).toBeNull();
+
+    // A non-open answer disables the "nothing answered" arm, so only the assignment-question
+    // lookup could mark this as waiting.
+    const { error: answerError } = await service.from('student_answers').insert({
+      attempt_id: attempt!.id,
+      question_type: 'mcq',
+      is_correct: false,
+    });
+    expect(answerError).toBeNull();
+
+    // Only a privileged write can pair an ORG stamp with a foreign assignment; the lookup must
+    // still stay inside p_organization_id.
+    await service.from('quiz_attempts').update({ organization_id: ORG }).eq('id', attempt!.id);
+    expect(await stampOf(attempt!.id)).toBe(ORG);
+
+    const after = await perf();
+    expect(after.totals.completedAttempts - before.totals.completedAttempts).toBe(1);
+    expect(after.totals.awaitingGrade - before.totals.awaitingGrade).toBe(0);
+
+    const row = (await feed()).find((item) => item.title === `${MARK}-scope-attempt`);
+    expect(row?.kind).toBe('assignment_submitted');
+    expect(row?.needsGrading).toBe(false);
   });
 });
