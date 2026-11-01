@@ -219,7 +219,8 @@ function createRepository(): FakeRepository {
         }),
       ),
     ),
-    upsertSubscription: vi.fn().mockResolvedValue(success(undefined)),
+    upsertSubscription: vi.fn().mockResolvedValue(success('applied')),
+    attachCheckoutSession: vi.fn().mockResolvedValue(success(undefined)),
     updateSubscriptionStatus: vi.fn().mockResolvedValue(success(undefined)),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
     isClaimOwner: vi.fn().mockResolvedValue(success(true)),
@@ -549,6 +550,42 @@ describe('StripeWebhookService', () => {
         { type: 'user', userId: 'u-1' },
         'spark',
       );
+    });
+
+    it('skips entitlement when a newer event already owns the subscription', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror()),
+      );
+      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(success('stale'));
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_600,
+      });
+
+      const result = await sign(harness, event);
+
+      expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      // The checkout session id is still recorded on the winner's row.
+      expect(harness.repository.attachCheckoutSession).toHaveBeenCalledWith('sub_1', 'cs_1');
+    });
+
+    it('skips entitlement when a newer snapshot lands before the write', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId)
+        .mockResolvedValueOnce(success(makeMirror()))
+        .mockResolvedValueOnce(success(makeMirror({ lastEventCreated: 1_700_000_900 })));
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_600,
+      });
+
+      const result = await sign(harness, event);
+
+      expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
+      expect(harness.repository.upsertSubscription).toHaveBeenCalled();
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
     });
 
     it('does not write when the claim lease was lost to a retry', async () => {

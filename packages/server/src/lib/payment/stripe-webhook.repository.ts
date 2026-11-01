@@ -92,9 +92,19 @@ export interface SubscriptionUpsert {
   cancelAtPeriodEnd: boolean;
   cancelAt: string | null;
   canceledAt: string | null;
+  /** Value written to the row (`max(existing, event.created)`). */
   lastEventCreated: number;
+  /**
+   * The event's own timestamp. The write is conditional on
+   * `last_event_created <= eventCreated`, so an older event can never overwrite
+   * a newer snapshot. Equal timestamps are allowed (Stripe has 1 s resolution).
+   */
+  eventCreated: number;
   livemode: boolean;
 }
+
+/** `stale` = a newer event already wrote this subscription; skip entitlement. */
+export type SubscriptionSyncOutcome = 'applied' | 'stale';
 
 export interface ActiveSubscriptionRef {
   stripeSubscriptionId: string;
@@ -135,7 +145,11 @@ export interface StripeWebhookRepository {
     livemode: boolean,
   ): Promise<ServiceResult<CustomerRow | null>>;
   ensureCustomer(input: EnsureCustomerInput): Promise<ServiceResult<CustomerRow>>;
-  upsertSubscription(input: SubscriptionUpsert): Promise<ServiceResult<void>>;
+  upsertSubscription(input: SubscriptionUpsert): Promise<ServiceResult<SubscriptionSyncOutcome>>;
+  attachCheckoutSession(
+    stripeSubscriptionId: string,
+    checkoutSessionId: string,
+  ): Promise<ServiceResult<void>>;
   updateSubscriptionStatus(
     stripeSubscriptionId: string,
     status: string,
@@ -372,31 +386,80 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     return failure('INTERNAL_SERVER');
   }
 
-  async upsertSubscription(input: SubscriptionUpsert): Promise<ServiceResult<void>> {
+  /**
+   * Freshness-conditional write. `last_event_created <= event.created` is
+   * evaluated by Postgres against the row at update time, so two events that
+   * both read the same old mirror cannot let the older one win.
+   */
+  async upsertSubscription(
+    input: SubscriptionUpsert,
+  ): Promise<ServiceResult<SubscriptionSyncOutcome>> {
     const supabase = this.createAdminClient();
-    const { error } = await supabase.from('billing_subscriptions').upsert(
-      {
-        stripe_subscription_id: input.stripeSubscriptionId,
-        billing_customer_id: input.billingCustomerId,
-        user_id: input.userId,
-        organization_id: input.organizationId,
-        purchaser_user_id: input.purchaserUserId,
-        checkout_session_id: input.checkoutSessionId,
-        plan_key: input.planKey,
-        price_id: input.priceId,
-        billing_cycle: 'monthly',
-        status: input.status,
-        current_period_start: input.currentPeriodStart,
-        current_period_end: input.currentPeriodEnd,
-        cancel_at_period_end: input.cancelAtPeriodEnd,
-        cancel_at: input.cancelAt,
-        canceled_at: input.canceledAt,
-        last_event_created: input.lastEventCreated,
-        livemode: input.livemode,
-      },
-      { onConflict: 'stripe_subscription_id' },
-    );
+    const payload = {
+      stripe_subscription_id: input.stripeSubscriptionId,
+      billing_customer_id: input.billingCustomerId,
+      user_id: input.userId,
+      organization_id: input.organizationId,
+      purchaser_user_id: input.purchaserUserId,
+      checkout_session_id: input.checkoutSessionId,
+      plan_key: input.planKey,
+      price_id: input.priceId,
+      billing_cycle: 'monthly',
+      status: input.status,
+      current_period_start: input.currentPeriodStart,
+      current_period_end: input.currentPeriodEnd,
+      cancel_at_period_end: input.cancelAtPeriodEnd,
+      cancel_at: input.cancelAt,
+      canceled_at: input.canceledAt,
+      last_event_created: input.lastEventCreated,
+      livemode: input.livemode,
+    };
 
+    const conditionalUpdate = () =>
+      supabase
+        .from('billing_subscriptions')
+        .update(payload)
+        .eq('stripe_subscription_id', input.stripeSubscriptionId)
+        .lte('last_event_created', input.eventCreated)
+        .select('id');
+
+    const existing = await conditionalUpdate();
+    if (existing.error) return toDbFailure(existing.error);
+    if (existing.data && existing.data.length > 0) return success('applied');
+
+    const inserted = await supabase.from('billing_subscriptions').insert(payload);
+    if (!inserted.error) return success('applied');
+
+    if (inserted.error.code !== '23505') return toDbFailure(inserted.error);
+
+    // The row appeared between the update and the insert. Retry the
+    // conditional update once; 0 rows now means the stored row is newer.
+    if (inserted.error.message.includes('billing_subscriptions_one_active')) {
+      return failure('CONFLICT');
+    }
+
+    const retried = await conditionalUpdate();
+    if (retried.error) return toDbFailure(retried.error);
+    return success(retried.data && retried.data.length > 0 ? 'applied' : 'stale');
+  }
+
+  /**
+   * Fill `checkout_session_id` on a row written by another event, without
+   * touching freshness-sensitive state. Used when a Checkout completion loses
+   * the race to a later subscription event.
+   */
+  async attachCheckoutSession(
+    stripeSubscriptionId: string,
+    checkoutSessionId: string,
+  ): Promise<ServiceResult<void>> {
+    const supabase = this.createAdminClient();
+    const { error } = await supabase
+      .from('billing_subscriptions')
+      .update({ checkout_session_id: checkoutSessionId })
+      .eq('stripe_subscription_id', stripeSubscriptionId)
+      .is('checkout_session_id', null);
+
+    if (error?.code === '23505') return success(undefined);
     if (error) return toDbFailure(error);
     return success(undefined);
   }

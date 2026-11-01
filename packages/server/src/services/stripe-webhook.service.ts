@@ -439,6 +439,7 @@ export class StripeWebhookService {
       cancelAt: secondsToIso(subscription.cancel_at),
       canceledAt: secondsToIso(subscription.canceled_at),
       lastEventCreated: Math.max(input.mirror?.lastEventCreated ?? 0, input.event.created),
+      eventCreated: input.event.created,
       livemode: this.livemode,
     });
 
@@ -455,7 +456,39 @@ export class StripeWebhookService {
       throw new Error('subscription mirror write failed');
     }
 
+    if (upsert.data === 'stale') {
+      // A newer event already wrote this subscription. Do not apply our older
+      // snapshot; still record the checkout session id if the winner lacked it.
+      log('billing.webhook_stale_subscription', {
+        eventId: input.event.id,
+        subscriptionId: subscription.id,
+        eventCreated: input.event.created,
+      });
+      if (input.checkoutSessionId) {
+        const attached = await this.repository.attachCheckoutSession(
+          subscription.id,
+          input.checkoutSessionId,
+        );
+        if (isFailure(attached)) throw new Error('checkout session attach failed');
+      }
+      return { ignored: true };
+    }
+
     if (input.applyEntitlement) {
+      // Re-read immediately before the entitlement write. If a newer event won
+      // while this attempt was parsing, its plan must stand.
+      const latest = await this.repository.getSubscriptionByStripeId(subscription.id);
+      if (isFailure(latest)) throw new Error('subscription mirror read failed');
+      if (latest.data && latest.data.lastEventCreated > input.event.created) {
+        log('billing.webhook_stale_subscription', {
+          eventId: input.event.id,
+          subscriptionId: subscription.id,
+          eventCreated: input.event.created,
+          lastEventCreated: latest.data.lastEventCreated,
+        });
+        return { ignored: true };
+      }
+
       const entitlement = await this.applyEntitlement(
         owner.owner,
         resolved,
