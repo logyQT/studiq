@@ -51,6 +51,23 @@ describe('organization stamp of learner activity', () => {
     }
   });
 
+  it('restamps when the owning resource changes and recomputes on every snapshot write', () => {
+    for (const copy of [stamp, read('supabase/schemas/68_activity_organization.sql')]) {
+      expect(copy).toContain('assignment_id IS DISTINCT FROM OLD.assignment_id');
+      expect(copy).toContain('flashcard_id IS DISTINCT FROM OLD.flashcard_id');
+      expect(copy).toContain('UPDATE OF organization_id, assignment_id');
+      expect(copy).toContain('UPDATE OF organization_id, flashcard_id');
+      for (const trigger of [
+        'quiz_attempt_questions_stamp_organization',
+        'quiz_attempt_questions_stamp_organization_update',
+        'quiz_attempt_questions_stamp_organization_delete',
+      ]) {
+        expect(copy).toContain(`CREATE TRIGGER ${trigger}`);
+      }
+      expect(copy).toContain('unnest(v_attempts)');
+    }
+  });
+
   it('the declarative schema has the columns and the stamping functions', () => {
     expect(read('supabase/schemas/39_quiz_attempts.sql')).toContain('organization_id');
     expect(read('supabase/schemas/45_flashcard_practice.sql')).toContain('organization_id');
@@ -84,6 +101,13 @@ describe('dashboard aggregates', () => {
       expect(copy).toContain('FROM public.assignment_questions aq');
       expect(copy).toContain("CASE WHEN sa.text_answer IS NOT NULL THEN 'open' END");
       expect(copy).not.toContain('open_answers AS (');
+    }
+  });
+
+  it('only answers for an educator or manager, never a student', () => {
+    for (const copy of [rpcs, schema]) {
+      expect(copy).toContain("auth.jwt() -> 'app_metadata' ->> 'account_type'");
+      expect(copy).toContain("'educator', 'manager'");
     }
   });
 
@@ -159,9 +183,11 @@ describe('dashboard screen', () => {
 
 describe('review round 2 (#654)', () => {
   it('the stamp is authoritative: recomputed on insert, a client cannot move it', () => {
-    expect(stamp).toContain('BEFORE INSERT OR UPDATE OF organization_id ON public.quiz_attempts');
     expect(stamp).toContain(
-      'BEFORE INSERT OR UPDATE OF organization_id ON public.flashcard_practice',
+      'BEFORE INSERT OR UPDATE OF organization_id, assignment_id ON public.quiz_attempts',
+    );
+    expect(stamp).toContain(
+      'BEFORE INSERT OR UPDATE OF organization_id, flashcard_id ON public.flashcard_practice',
     );
     expect(stamp).toContain('public.activity_stamp_client_write()');
     expect(stamp).toContain("COALESCE(auth.role(), '') IN ('authenticated', 'anon')");

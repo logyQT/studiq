@@ -117,6 +117,9 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
   let positiveReportId: string;
   let mixedQuestionIds: string[] = [];
   let stampQuestionIds: string[] = [];
+  let restampPracticeIds: string[] = [];
+  let restampCardIds: string[] = [];
+  let restampDeckIds: string[] = [];
 
   type Perf = {
     groups: Array<{
@@ -154,6 +157,15 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       needsGrading: boolean;
       questionId: string | null;
     }>;
+  }
+
+  async function stampOf(attemptId: string) {
+    const { data } = await service
+      .from('quiz_attempts')
+      .select('organization_id')
+      .eq('id', attemptId)
+      .single();
+    return data?.organization_id ?? null;
   }
 
   const signIn = async (email: string) => {
@@ -281,6 +293,18 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       .eq('flashcard_id', groupCardId)
       .eq('user_id', STUDENT_ID)
       .gte('practiced_at', new Date(Date.now() - 600_000).toISOString());
+    const practiceIds = restampPracticeIds.filter(Boolean);
+    if (practiceIds.length > 0) {
+      await service.from('flashcard_practice').delete().in('id', practiceIds);
+    }
+    const cardIds = restampCardIds.filter(Boolean);
+    if (cardIds.length > 0) {
+      await service.from('flashcards').delete().in('id', cardIds);
+    }
+    const deckIds = restampDeckIds.filter(Boolean);
+    if (deckIds.length > 0) {
+      await service.from('flashcard_decks').delete().in('id', deckIds);
+    }
     await service.from('teacher_assignments').delete().like('title', `${MARK}-%`);
     await service.from('groups').delete().eq('id', secondGroupId);
   });
@@ -825,5 +849,169 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     expect(cleared?.organization_id).toBeNull();
     const afterMixed = await perf();
     expect(afterMixed.totals.completedAttempts - before.totals.completedAttempts).toBe(0);
+
+    // Removing the personal row makes the snapshot eligible again (DELETE transition table).
+    const { error: deletePersonalError } = await service
+      .from('quiz_attempt_questions')
+      .delete()
+      .eq('attempt_id', attempt!.id)
+      .eq('question_id', stampQuestionIds[1]);
+    expect(deletePersonalError).toBeNull();
+    expect(await stampOf(attempt!.id)).toBe(ORG);
+
+    // Pointing the remaining row at the personal question clears it again (UPDATE).
+    const { error: toPersonalError } = await service
+      .from('quiz_attempt_questions')
+      .update({ question_id: stampQuestionIds[1] })
+      .eq('attempt_id', attempt!.id)
+      .eq('question_id', stampQuestionIds[0]);
+    expect(toPersonalError).toBeNull();
+    expect(await stampOf(attempt!.id)).toBeNull();
+
+    // Back to the organization's question: eligible again.
+    const { error: backError } = await service
+      .from('quiz_attempt_questions')
+      .update({ question_id: stampQuestionIds[0] })
+      .eq('attempt_id', attempt!.id)
+      .eq('question_id', stampQuestionIds[1]);
+    expect(backError).toBeNull();
+    expect(await stampOf(attempt!.id)).toBe(ORG);
+
+    // The last row gone leaves no snapshot at all: the stamp must clear (DELETE).
+    const { error: deleteLastError } = await service
+      .from('quiz_attempt_questions')
+      .delete()
+      .eq('attempt_id', attempt!.id);
+    expect(deleteLastError).toBeNull();
+    expect(await stampOf(attempt!.id)).toBeNull();
+  });
+
+  it('a student gets nothing from either dashboard RPC', async () => {
+    const { data: groups, error: groupsError } = await student.rpc(
+      'get_teacher_group_performance',
+      { p_user_id: STUDENT_ID, p_organization_id: ORG },
+    );
+    expect(groupsError).toBeNull();
+    expect(groups).toEqual({
+      groups: [],
+      totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 },
+    });
+
+    const { data: rows, error: feedError } = await student.rpc('get_teacher_activity_feed', {
+      p_user_id: STUDENT_ID,
+      p_organization_id: ORG,
+    });
+    expect(feedError).toBeNull();
+    expect(rows).toEqual([]);
+  });
+
+  it('restamps an attempt when its assignment changes and keeps the stamp when the link clears', async () => {
+    const { data: attempt, error: attemptError } = await service
+      .from('quiz_attempts')
+      .insert(
+        finished(ORG, { title: `${MARK}-restamp-attempt` }, { assignment_id: ownAssignmentId }),
+      )
+      .select('id, organization_id')
+      .single();
+    expect(attemptError).toBeNull();
+    expect(attempt?.organization_id).toBe(ORG);
+
+    const { data: moved, error: moveError } = await student
+      .from('quiz_attempts')
+      .update({ assignment_id: foreignAssignmentId })
+      .eq('id', attempt!.id)
+      .select('organization_id')
+      .single();
+    expect(moveError).toBeNull();
+    expect(moved?.organization_id).toBe(FOREIGN_ORG);
+
+    // ON DELETE SET NULL semantics, reached here by clearing the link directly.
+    const { data: cleared, error: clearError } = await student
+      .from('quiz_attempts')
+      .update({ assignment_id: null })
+      .eq('id', attempt!.id)
+      .select('organization_id')
+      .single();
+    expect(clearError).toBeNull();
+    expect(cleared?.organization_id).toBe(FOREIGN_ORG);
+  });
+
+  it('restamps a review when its card changes and clears it for a personal card', async () => {
+    const { data: practice, error: practiceError } = await service
+      .from('flashcard_practice')
+      .insert({ user_id: STUDENT_ID, flashcard_id: groupCardId, was_correct: true })
+      .select('id, organization_id')
+      .single();
+    expect(practiceError).toBeNull();
+    expect(practice?.organization_id).toBe(ORG);
+    restampPracticeIds.push(practice!.id);
+
+    const { data: personalDeck, error: personalDeckError } = await service
+      .from('flashcard_decks')
+      .insert({ created_by: STUDENT_ID, name: `${MARK}-personal-deck`, visibility: 'personal' })
+      .select('id')
+      .single();
+    expect(personalDeckError).toBeNull();
+    restampDeckIds.push(personalDeck!.id);
+
+    const { data: personalCard, error: personalCardError } = await service
+      .from('flashcards')
+      .insert({
+        deck_id: personalDeck!.id,
+        created_by: STUDENT_ID,
+        front: `${MARK}-personal-front`,
+        back: `${MARK}-personal-back`,
+        visibility: 'personal',
+      })
+      .select('id')
+      .single();
+    expect(personalCardError).toBeNull();
+    restampCardIds.push(personalCard!.id);
+
+    const { data: personal, error: personalError } = await student
+      .from('flashcard_practice')
+      .update({ flashcard_id: personalCard!.id })
+      .eq('id', practice!.id)
+      .select('organization_id')
+      .single();
+    expect(personalError).toBeNull();
+    expect(personal?.organization_id).toBeNull();
+
+    const { data: foreignDeck, error: foreignDeckError } = await service
+      .from('flashcard_decks')
+      .insert({
+        organization_id: FOREIGN_ORG,
+        created_by: TEACHER_ID,
+        name: `${MARK}-foreign-deck`,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    expect(foreignDeckError).toBeNull();
+    restampDeckIds.push(foreignDeck!.id);
+
+    const { data: foreignCard, error: foreignCardError } = await service
+      .from('flashcards')
+      .insert({
+        deck_id: foreignDeck!.id,
+        organization_id: FOREIGN_ORG,
+        created_by: TEACHER_ID,
+        front: `${MARK}-foreign-front`,
+        back: `${MARK}-foreign-back`,
+        visibility: 'group',
+      })
+      .select('id')
+      .single();
+    expect(foreignCardError).toBeNull();
+    restampCardIds.push(foreignCard!.id);
+
+    const { data: foreign, error: foreignError } = await student
+      .from('flashcard_practice')
+      .update({ flashcard_id: foreignCard!.id })
+      .eq('id', practice!.id)
+      .select('organization_id')
+      .single();
+    expect(foreignError).toBeNull();
+    expect(foreign?.organization_id).toBe(FOREIGN_ORG);
   });
 });

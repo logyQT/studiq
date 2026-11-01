@@ -56,6 +56,11 @@ BEGIN
        OR p_organization_id NOT IN (SELECT c.organization_id FROM public.rls_caller_org_ids() c) THEN
       RETURN '{"groups": [], "totals": {"students": 0, "completedAttempts": 0, "awaitingGrade": 0}}'::jsonb;
     END IF;
+
+    IF COALESCE(auth.jwt() -> 'app_metadata' ->> 'account_type', '')
+       NOT IN ('educator', 'manager') THEN
+      RETURN '{"groups": [], "totals": {"students": 0, "completedAttempts": 0, "awaitingGrade": 0}}'::jsonb;
+    END IF;
   END IF;
 
   IF p_organization_id IS NULL THEN
@@ -218,6 +223,11 @@ BEGIN
 
     IF p_organization_id IS NULL
        OR p_organization_id NOT IN (SELECT c.organization_id FROM public.rls_caller_org_ids() c) THEN
+      RETURN '[]'::jsonb;
+    END IF;
+
+    IF COALESCE(auth.jwt() -> 'app_metadata' ->> 'account_type', '')
+       NOT IN ('educator', 'manager') THEN
       RETURN '[]'::jsonb;
     END IF;
   END IF;
