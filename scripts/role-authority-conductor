@@ -158,7 +158,12 @@ def exp_protected() -> bool:
 def qa_disabled_on_exp() -> bool:
     """True when verify.yml skips the full QA job for PRs into exp."""
     try:
-        raw = gh("api", f"repos/{REPO}/contents/.github/workflows/verify.yml", "--jq", ".content")
+        raw = gh(
+            "api",
+            f"repos/{REPO}/contents/.github/workflows/verify.yml?ref={EXP}",
+            "--jq",
+            ".content",
+        )
         text = base64.b64decode(raw).decode()
     except Exception:
         return False
