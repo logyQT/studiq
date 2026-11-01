@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { signIn } from '#test/e2e/fixtures/tenant';
 import { t } from '#test/e2e/utils';
 
 const PASSWORD = 'pass';
@@ -21,6 +22,29 @@ async function aiChatEntitled(page: Page): Promise<boolean> {
   expect(res.status()).toBe(200);
   const { features } = (await res.json()).data as { features: string[] };
   return features.includes('ai.chat');
+}
+
+/**
+ * No seed account — shared or isolated tenant — is entitled to `ai.chat`
+ * (personal `lite` / org `launch`, neither grants it), so the reset cases below
+ * would take an entitlement early-return and assert nothing. Fulfilling the
+ * feature query makes entitlement deterministic and lets the real page render.
+ * Registered before the first navigation so the value is fixed for the dashboard
+ * shell and the AI page alike; the locked branch is covered by the #375
+ * plan-gate suite.
+ */
+async function mockAiChatEntitled(page: Page) {
+  await page.route('**/api/v1/features/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        statusCode: 200,
+        data: { features: ['ai.chat'], rollout: {} },
+      }),
+    }),
+  );
 }
 
 /**
@@ -46,6 +70,104 @@ test.describe('AI assistant routes (#134)', () => {
       await expect(page.getByRole('button', { name: t('AiChatPage.locked_cta') })).toBeVisible();
       await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toHaveCount(0);
       await expect(page.getByText(t('AiChatPage.suggestion_2'))).toHaveCount(0);
+    }
+  });
+
+  test('"Nowa rozmowa" / "Wyczyść czat" reset the conversation to the greeting (#378)', async ({
+    page,
+  }) => {
+    await mockAiChatEntitled(page);
+    // Each test owns a seeded tenant, so the reset flow cannot be disturbed by
+    // another spec mutating the shared dev account.
+    await signIn(page, 'teacher');
+    await page.goto('/edu/ai');
+
+    const fresh = page.getByRole('button', { name: t('AiChatPage.new_chat') });
+    const clear = page.getByRole('button', { name: t('AiChatPage.clear_chat') });
+    const chip = page.getByRole('button', { name: t('AiChatPage.suggestion_2') });
+    const greeting = page.getByText(t('AiChatPage.greeting_suffix'));
+
+    // Both controls live outside the `isActive` branch, so a new conversation
+    // already shows them — resetting must never unmount the next control.
+    await expect(fresh).toBeVisible();
+    await expect(clear).toBeVisible();
+
+    await chip.click();
+    await expect(chip).toHaveCount(0);
+    await expect(greeting).toHaveCount(0);
+
+    // STU-47 step 3, literally: „Nowa rozmowa”, then „Wyczyść czat”, in that order.
+    await fresh.click();
+    await expect(greeting).toBeVisible();
+    await expect(chip).toBeVisible();
+    await expect(fresh).toBeVisible();
+    await expect(clear).toBeVisible();
+
+    await clear.click();
+    await expect(greeting).toBeVisible();
+    await expect(chip).toBeVisible();
+
+    // The same reset from an active conversation, via the second control.
+    await chip.click();
+    await expect(chip).toHaveCount(0);
+    await clear.click();
+    await expect(greeting).toBeVisible();
+    await expect(chip).toBeVisible();
+  });
+
+  /**
+   * STU-47 step 3 also holds a response („Zatrzymaj”, then „Nowa rozmowa”). The SDK
+   * cannot stream an SSE body through Playwright, so the request is held before any
+   * byte arrives: the chat sits at `submitted`, the other half of the same abort
+   * branch that `stop()` („Zatrzymaj”) uses. Resetting must abort it, not leave an
+   * orphaned answer to land in the fresh transcript.
+   */
+  test('resetting while a response is in flight aborts the request (#378)', async ({ page }) => {
+    await mockAiChatEntitled(page);
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let chatRequested = false;
+    const failed: string[] = [];
+    page.on('requestfailed', (r) => {
+      if (r.url().endsWith('/api/v1/ai/chat')) failed.push(r.failure()?.errorText ?? 'unknown');
+    });
+    await page.route('**/api/v1/ai/chat', async (route) => {
+      chatRequested = true;
+      await gate;
+      // The browser may already have aborted this request via `stop()`.
+      await route.abort().catch(() => {});
+    });
+
+    const fresh = page.getByRole('button', { name: t('AiChatPage.new_chat') });
+    const clear = page.getByRole('button', { name: t('AiChatPage.clear_chat') });
+    const chip = page.getByRole('button', { name: t('AiChatPage.suggestion_2') });
+    const greeting = page.getByText(t('AiChatPage.greeting_suffix'));
+
+    try {
+      await signIn(page, 'teacher');
+      await page.goto('/edu/ai');
+
+      await page
+        .getByPlaceholder(t('AiChatPage.input_placeholder'))
+        .fill('Notatka do podsumowania');
+      await page.getByRole('button', { name: t('A11y.send_message') }).click();
+
+      // The request is in flight (status `submitted`) and never answered on purpose.
+      await expect.poll(() => chatRequested).toBe(true);
+
+      await fresh.click();
+
+      await expect.poll(() => failed.length).toBe(1);
+      await expect(greeting).toBeVisible();
+      await expect(chip).toBeVisible();
+      await expect(fresh).toBeVisible();
+      await expect(clear).toBeVisible();
+    } finally {
+      // Let the held route handler settle even if an assertion threw first.
+      release();
     }
   });
 

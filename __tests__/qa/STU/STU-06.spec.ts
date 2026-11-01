@@ -49,7 +49,7 @@ const COPY = {
   startLearning: 'Rozpocznij naukę',
   flipHint: 'Kliknij, aby odkryć odpowiedź',
   exitSession: 'Zakończ sesję',
-  shortcutsTrigger: 'Keyboard shortcuts',
+  shortcutsTrigger: 'Skróty klawiszowe',
   flipAction: 'Odwróć fiszkę',
 } as const;
 
