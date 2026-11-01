@@ -322,7 +322,24 @@ describe('where the guards are wired (#665 QA)', () => {
     // overlayOpen() matches role + data-state; the shortcuts panel must opt in.
     const panel = read('apps/web/src/components/shared/keyboard-shortcuts-panel.tsx');
     expect(panel).toContain('role="dialog"');
-    expect(panel).toContain('aria-label="Keyboard shortcuts"');
+    expect(panel).toContain("t('shortcuts_panel_label')");
+    expect(panel).not.toContain('aria-label="Keyboard shortcuts"');
+
+    // The card keeps focus behind the panel, so its own click handler must honor the layer too.
+    const session = read('apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx');
+    const cardLabel = session.indexOf("ariaLabel={t('flashcard_aria')}");
+    const flip = session.lastIndexOf('onClick={() => {', cardLabel);
+    expect(flip).toBeGreaterThan(-1);
+    const layerGuard = session.indexOf('if (overlayOpen()) return;', flip);
+    expect(layerGuard).toBeGreaterThan(flip);
+    expect(layerGuard).toBeLessThan(cardLabel);
+  });
+
+  it.each(['pl', 'en'])('%s: translate the session shortcuts panel label', (locale) => {
+    const messages = JSON.parse(
+      readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
+    );
+    expect(messages.AppFlashcardSessionPage.shortcuts_panel_label).toBeTruthy();
   });
 });
 

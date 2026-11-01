@@ -829,7 +829,11 @@ export default function SessionClient(props: SessionClientProps) {
             >
               <FlashcardFlip
                 isFlipped={flipped}
-                onClick={() => setFlipped(!flipped)}
+                onClick={() => {
+                  // The card keeps focus when the shortcuts panel opens; never flip it behind a layer.
+                  if (overlayOpen()) return;
+                  setFlipped((prev) => !prev);
+                }}
                 ariaLabel={t('flashcard_aria')}
                 className="cursor-pointer max-h-[32rem]"
                 front={
