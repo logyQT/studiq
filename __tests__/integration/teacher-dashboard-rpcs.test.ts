@@ -117,9 +117,9 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
   let positiveReportId: string;
   let mixedQuestionIds: string[] = [];
   let stampQuestionIds: string[] = [];
-  let restampPracticeIds: string[] = [];
-  let restampCardIds: string[] = [];
-  let restampDeckIds: string[] = [];
+  const restampPracticeIds: string[] = [];
+  const restampCardIds: string[] = [];
+  const restampDeckIds: string[] = [];
 
   type Perf = {
     groups: Array<{
