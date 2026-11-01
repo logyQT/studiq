@@ -8,6 +8,12 @@ name: verify
 # "Expected — waiting for status to be reported" and a docs-only PR could never
 # merge. The work is still scoped per job by the `scope` job below: a job skipped
 # with `if:` reports success and satisfies a required check.
+#
+# The e2e matrix is the exception, because `main` requires the *matrix-expanded*
+# names (`e2e (chromium)`, `e2e (firefox)`): a job skipped by `if:` never expands
+# its matrix, so those names are never created at all and stay pending forever.
+# That job therefore always runs and gates its steps on `scope` instead — a
+# skipped leg then reports success under its required name in a few seconds.
 on:
   workflow_dispatch:
   schedule:
@@ -31,7 +37,8 @@ jobs:
   # The app, its unit/integration tests and the e2e matrix cannot change there,
   # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
   # the `qa-suite` job still run. A docs-only PR (docs/**, any *.md) is treated
-  # the same way: no app code can change, so only `checks` runs.
+  # the same way: no app code can change, so only `checks` does any real work
+  # (the e2e legs still report, but as no-ops — see the note on top).
   # Schedule/dispatch runs everything.
   scope:
     runs-on: ubuntu-latest
@@ -299,9 +306,15 @@ jobs:
 
   # One leg per browser so a red platform re-runs alone. Each leg owns its
   # tenant set (keys include the project) and its own Supabase instance.
+  #
+  # No job-level `if:` on purpose: `main` requires `e2e (chromium)` and
+  # `e2e (firefox)`, and those names only exist once the matrix expands. Gating
+  # the job instead made a docs-only PR unmergeable — the legs were reported as a
+  # single skipped `e2e` check and the required names never appeared.
+  # `scope` still decides the work: when no app code changed every step below is
+  # skipped and the leg reports success immediately.
   e2e:
     needs: [checks, scope]
-    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -314,19 +327,28 @@ jobs:
       # ubuntu-latest is 4 vCPU; one project saturates at ~4 workers.
       E2E_WORKERS: '4'
     steps:
+      - name: No app code changed
+        if: needs.scope.outputs.app != 'true'
+        run: echo "scope says no app code changed — ${{ matrix.project }} leg not needed"
       - uses: actions/checkout@v7
+        if: needs.scope.outputs.app == 'true'
       - uses: actions/setup-node@v7
+        if: needs.scope.outputs.app == 'true'
         with:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
+        if: needs.scope.outputs.app == 'true'
       - name: Cache bun install
+        if: needs.scope.outputs.app == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
+        if: needs.scope.outputs.app == 'true'
 
       - name: Start Supabase
+        if: needs.scope.outputs.app == 'true'
         env:
           APP_URL: http://localhost:3000
           SUPABASE_URL: http://localhost:54321
@@ -335,6 +357,7 @@ jobs:
         run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
 
       - name: Write env files
+        if: needs.scope.outputs.app == 'true'
         # Local Supabase keys are deterministic, so nothing here is a secret.
         run: |
           eval "$(bunx supabase status -o env)"
@@ -347,6 +370,7 @@ jobs:
           } > apps/web/.env
 
       - name: Cache Playwright browsers
+        if: needs.scope.outputs.app == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
@@ -354,11 +378,12 @@ jobs:
 
       - name: Install browsers
         run: bunx playwright install --with-deps ${{ matrix.project }}
-        if: matrix.project != 'admin-api'
+        if: matrix.project != 'admin-api' && needs.scope.outputs.app == 'true'
 
       # Playwright's webServer builds and starts the app, so there is no
       # separate build step to keep in sync.
       - name: Run Playwright (${{ matrix.project }})
+        if: needs.scope.outputs.app == 'true'
         run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line
 
       - name: Upload report
@@ -373,7 +398,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Stop Supabase
-        if: always()
+        if: always() && needs.scope.outputs.app == 'true'
         run: bunx supabase stop --no-backup || true
 
   # admin-api only needs the admin app; the web server is skipped so this leg
