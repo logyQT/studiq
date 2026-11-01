@@ -51,6 +51,12 @@ const EMPTY_GROUP_PERFORMANCE: TeacherGroupPerformance = {
 export class StatsService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
+  /**
+   * Returns the caller's content counts and question statistics, scoped to the active
+   * organization when present. `subjectId` narrows the type split and problematic questions;
+   * problematic questions with fewer than three answers are excluded.
+   * Database response errors become failure results; rejected client or query calls propagate.
+   */
   async getTeacherStats(
     ctx: RequestContext,
     filters?: TeacherStatsQuery,
@@ -582,6 +588,9 @@ export class StatsService {
    * Per-group results of the learners in the caller's groups of the active organization
    * (teacher dashboard, #654). Aggregated in SQL: the answer volume is per class and
    * PostgREST would cut it at 1000 rows.
+   * `days` is the lookback in days (default 30, clamped by the RPC to 1–365).
+   * With no active organization or a null RPC result, returns empty groups and zero totals.
+   * Database response errors become failure results; rejected client or RPC calls propagate.
    */
   async getTeacherGroupPerformance(
     ctx: RequestContext,
@@ -600,7 +609,12 @@ export class StatsService {
     return success((data as TeacherGroupPerformance | null) ?? EMPTY_GROUP_PERFORMANCE);
   }
 
-  /** Latest completed attempts of the caller's learners and the open reports addressed to the caller. */
+  /**
+   * Returns the latest completed attempts of the caller's learners and open reports addressed
+   * to the caller in the active organization, newest first. `limit` defaults to 10 and is
+   * clamped by the RPC to 1–50. No active organization or a null RPC result yields an empty list.
+   * Database response errors become failure results; rejected client or RPC calls propagate.
+   */
   async getTeacherActivityFeed(
     ctx: RequestContext,
     limit = 10,

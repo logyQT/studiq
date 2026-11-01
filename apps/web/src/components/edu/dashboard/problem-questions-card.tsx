@@ -20,7 +20,7 @@ interface ProblemQuestionsCardProps {
   onRetry: () => void;
 }
 
-/** Questions most students get wrong; the full list lives on the results page. */
+/** Shows up to five supplied questions with at least three answers, in their supplied order. */
 export function ProblemQuestionsCard({
   questions,
   isLoading,
