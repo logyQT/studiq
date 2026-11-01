@@ -772,6 +772,7 @@
   },
   "EduDeckViewPage": {
     "back": "Back to Decks",
+    "not_found_back": "Back to Decks",
     "flashcards_count": "{count, plural, one {# flashcard} other {# flashcards}}",
     "flashcards_section": "Flashcards",
     "search_placeholder": "Search flashcards...",
@@ -1391,6 +1392,7 @@
   },
   "AppFlashcardDeckViewPage": {
     "back": "Back",
+    "not_found_back": "Back to Flashcards",
     "flashcards_count": "{count, plural, one {# flashcard} other {# flashcards}}",
     "flashcards_section": "Flashcards",
     "search_placeholder": "Search flashcards...",

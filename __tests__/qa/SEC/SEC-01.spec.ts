@@ -51,10 +51,11 @@ const TENANT: QaTenant = loadTenant(CASE);
 /** Run suffix the seeder folded into the tenant key (stable tenants have none). */
 const RUN = TENANT.runSuffix ?? 'stable';
 
-/** Polish copy from `EntityNotFound` (pl.json), the case's exact wording. */
+/** Polish copy from the app's message catalog (pl.json), the case's exact wording. */
 const COPY = {
   deckNotFound: 'Nie znaleziono talii',
   deckNotFoundDescription: 'Ta talia mogła zostać usunięta lub nie masz do niej dostępu.',
+  backToFlashcards: 'Wróć do fiszek',
 } as const;
 
 interface ApiEnvelope<T> {
@@ -238,6 +239,11 @@ test.describe('@case:SEC-01 @area:SEC @prio:P1 group content isolation', () => {
     await page.goto(`/app/flashcards/${content.foreignDeck.id}`);
     await expect(page.getByRole('heading', { name: COPY.deckNotFound, exact: true })).toBeVisible();
     await expect(page.getByText(COPY.deckNotFoundDescription, { exact: true })).toBeVisible();
+    //    The recovery link goes to the student's deck list, not the dashboard:
+    //    this screen owns the deck area, so "back" must stay inside it.
+    await expect(
+      page.getByRole('link', { name: COPY.backToFlashcards, exact: true }),
+    ).toHaveAttribute('href', '/app/flashcards');
     await expect(page.getByText(content.foreignDeck.name, { exact: true })).toHaveCount(0);
     await expect(page.getByText(content.foreignDeck.cardFront, { exact: true })).toHaveCount(0);
 
