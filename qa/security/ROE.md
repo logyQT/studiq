@@ -31,10 +31,14 @@ as an action.
    `cd apps/web && bunx next start -p 3010` and `bun run start:admin` (`next start -p 4000`
    in `apps/admin`). `next dev` behaves differently (middleware, source maps, error
    surfaces) and findings do not transfer.
-2. **Own Supabase.** `bunx supabase start` for the run; seed with
-   `bun scripts/qa-tenant.ts SEC-02 --profile two-org --fresh`. Never point probes at
-   `:54421` (the shared QA database) — a mass IDOR scan would write noise into other
-   people's tenants.
+2. **Own Supabase.** `bunx supabase start` for the run. Before seeding, check the
+   resolved URL: `NEXT_PUBLIC_SUPABASE_URL` must be your own local stack
+   (`http://127.0.0.1:54321`) — `qa/env.json` overrides the environment, so a QA worktree
+   silently points at `:54421`. Then seed with
+   `bun scripts/qa-tenant.ts SEC-02 --profile two-org --fresh --dedicated`; `--dedicated`
+   refuses any non-local URL and the shared port `:54421`. Never point probes at `:54421`
+   (the shared QA database) — a mass IDOR scan would write noise into other people's
+   tenants.
 3. **Seed your own tenants.** The `two-org` profile creates one manager who is admin of
    both organizations: org A has that manager plus a teacher and a student, org B has the
    manager plus a student, and each org has two groups and one pending invitation. It writes
@@ -82,9 +86,10 @@ Every finding carries:
 ## 7. Turning a finding into a regression test
 
 Only **after** the fix lands: add a QA spec that asserts the _deny_ — the request answers
-403/404, the other tenant's row is absent, the tampered field is ignored. The committed test
-must contain no payload that is useful against a live system. This mirrors the QA rule "assert
-intended behaviour, never encode the bug".
+the probe's own expected denial status (`401` for a missing session, `403`/`404` for a
+foreign object), the other tenant's row is absent, the tampered field is ignored. The
+committed test must contain no payload that is useful against a live system. This mirrors
+the QA rule "assert intended behaviour, never encode the bug".
 
 ## 8. Stop conditions
 
