@@ -67,7 +67,7 @@ const COPY = {
 
 /** How many cards/attempts the spec creates for one execution. */
 const CARDS = 4;
-const ATTEMPTS = 2;
+const ATTEMPTS = 3;
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -244,9 +244,10 @@ async function createContent(page: Page, tenant: QaTenant, tag: string): Promise
     questionIds: questions.map((question) => question.id),
   });
 
-  // Two attempts per student so „Próby testów” and „Średni wynik testu” cover a
-  // mean, and results stay visible to the student (the teacher page reads the
-  // attempts either way).
+  // Three attempts per student so „Próby testów” and „Średni wynik testu” cover a
+  // mean, and the below-half question clears the dashboard's minimum-answer floor
+  // (a question answered fewer than three times is not "problematic"); results stay
+  // visible to the student (the teacher page reads the attempts either way).
   const assignment = await api<{ id: string }>(page, 'POST', '/api/v1/teacher/assignments', {
     title: quizName,
     quizId: quiz.id,
@@ -266,7 +267,7 @@ async function createContent(page: Page, tenant: QaTenant, tag: string): Promise
 }
 
 /**
- * The student's side of the prerequisite: two completed attempts on the
+ * The student's side of the prerequisite: three completed attempts on the
  * assignment (two of three questions right, so the third stays below 50 %) and
  * four flashcard practices (three right, one wrong).
  */
@@ -423,7 +424,7 @@ test.describe('@case:EDU-ST-02 @area:EDU @prio:P2 teacher results statistics', (
 
     const quizRow = after.quizzes.find((quiz) => quiz.title === content.quizName);
     expect(quizRow, `the quiz „${content.quizName}” is reported`).toBeTruthy();
-    expect(quizRow!.totalAttempts, 'both attempts are counted').toBe(ATTEMPTS);
+    expect(quizRow!.totalAttempts, 'every attempt is counted').toBe(ATTEMPTS);
     expect(Math.round(quizRow!.avgScore), '2 of 3 answers right').toBe(67);
 
     const [, , belowHalf] = content.questions;
