@@ -583,11 +583,16 @@ export default function SessionClient(props: SessionClientProps) {
       // Space and 1-4 rate and flip cards: never while a dialog or menu is on top (the shortcuts
       // list, a confirmation), where they would silently write a review.
       if (overlayOpen()) return;
-      const tag = (document.activeElement as HTMLElement)?.tagName;
+      // A focused control owns Space and Enter: the header's shortcuts button would flip the card
+      // instead of opening the dialog, and a rating button would fight its own activation.
+      const active = document.activeElement as HTMLElement | null;
+      const tag = active?.tagName;
       if (
         tag === 'INPUT' ||
         tag === 'TEXTAREA' ||
-        (document.activeElement as HTMLElement)?.isContentEditable
+        tag === 'BUTTON' ||
+        active?.isContentEditable ||
+        active?.getAttribute('role') === 'button'
       )
         return;
 

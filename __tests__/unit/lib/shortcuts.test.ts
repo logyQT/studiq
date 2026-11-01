@@ -266,6 +266,22 @@ describe('where the guards are wired (#665 QA)', () => {
     expect(guard).toBeLessThan(session.indexOf("case '1'"));
   });
 
+  it('the study session leaves Space to a focused button (#674 review)', () => {
+    const session = read('apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx');
+    // The header's shortcuts button is focusable: pressing Space on it must activate the button,
+    // not flip the card behind it.
+    expect(session).toContain("tag === 'BUTTON'");
+    expect(session).toContain("getAttribute('role') === 'button'");
+
+    // The exclusion sits in the same early return as the typing guard, after `overlayOpen()` and
+    // before anything reacts to the key (the only preventDefault in the handler is the Space flip).
+    const guard = session.indexOf("tag === 'BUTTON'");
+    expect(guard).toBeGreaterThan(session.indexOf('if (overlayOpen()) return;'));
+    expect(guard).toBeLessThan(session.indexOf('e.preventDefault()'));
+    expect(guard).toBeLessThan(session.indexOf('setFlipped((prev) => !prev)'));
+    expect(guard).toBeLessThan(session.indexOf("case '1'"));
+  });
+
   it('the global handler drops repeats and resets the pending prefix on route, blur, pointer and hide', () => {
     const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
     expect(global).toContain('if (e.repeat) return;');
