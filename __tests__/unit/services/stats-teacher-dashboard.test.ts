@@ -95,6 +95,49 @@ describe('StatsService teacher dashboard', () => {
     expect(result.success && result.data).toEqual([]);
   });
 
+  it('forwards a custom feed limit and preserves the returned items', async () => {
+    const items = [
+      {
+        kind: 'report_opened',
+        at: '2026-10-28T10:00:00Z',
+        personName: null,
+        title: null,
+        scorePct: null,
+        needsGrading: false,
+        assignmentId: null,
+        questionId: 'q1',
+      },
+    ];
+    rpc.mockResolvedValue({ data: items, error: null });
+
+    const result = await service.getTeacherActivityFeed(ctx, 50);
+
+    expect(rpc).toHaveBeenCalledWith('get_teacher_activity_feed', {
+      p_user_id: 'teacher-1',
+      p_organization_id: 'org-1',
+      p_limit: 50,
+    });
+    expect(result.success && result.data).toEqual(items);
+  });
+
+  it('returns zero totals when the group RPC returns null', async () => {
+    rpc.mockResolvedValue({ data: null, error: null });
+
+    const result = await service.getTeacherGroupPerformance(ctx);
+
+    expect(result.success && result.data).toEqual({
+      groups: [],
+      totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 },
+    });
+  });
+
+  it('maps an RPC permission denial to forbidden for both dashboard reads', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'denied' } });
+
+    expect(await service.getTeacherGroupPerformance(ctx)).toEqual(failure('FORBIDDEN'));
+    expect(await service.getTeacherActivityFeed(ctx)).toEqual(failure('FORBIDDEN'));
+  });
+
   it('fails when the database does', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: 'XX000', message: 'boom' } });
 
@@ -111,6 +154,26 @@ describe('TeacherDashboardQuerySchema', () => {
       limit: 25,
     });
   });
+
+  it.each([
+    [
+      { days: '1', limit: '1' },
+      { days: 1, limit: 1 },
+    ],
+    [
+      { days: '365', limit: '50' },
+      { days: 365, limit: 50 },
+    ],
+  ])('accepts inclusive boundaries %j', (query, expected) => {
+    expect(TeacherDashboardQuerySchema.parse(query)).toEqual(expected);
+  });
+
+  it.each([{ days: '1.5' }, { limit: '2.5' }, { limit: 'abc' }, { days: '' }, { limit: '' }])(
+    'rejects non-integer or empty values %j',
+    (query) => {
+      expect(TeacherDashboardQuerySchema.safeParse(query).success).toBe(false);
+    },
+  );
 
   it.each([{ days: '0' }, { days: '366' }, { limit: '0' }, { limit: '51' }, { days: 'abc' }])(
     'rejects %j',
@@ -158,6 +221,26 @@ describe('StatsController teacher dashboard', () => {
 
     expect(response).toMatchObject({ success: false, statusCode: 422 });
     expect(statsService.getTeacherGroupPerformance).not.toHaveBeenCalled();
+  });
+
+  it('uses defaults for absent queries', async () => {
+    statsService.getTeacherGroupPerformance.mockResolvedValue(
+      success({ groups: [], totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 } }),
+    );
+    statsService.getTeacherActivityFeed.mockResolvedValue(success([]));
+
+    await controller.getTeacherGroupPerformance(undefined, ctx);
+    await controller.getTeacherActivityFeed(null, ctx);
+
+    expect(statsService.getTeacherGroupPerformance).toHaveBeenCalledWith(ctx, 30);
+    expect(statsService.getTeacherActivityFeed).toHaveBeenCalledWith(ctx, 10);
+  });
+
+  it('rejects an invalid feed limit before calling the service', async () => {
+    const response = await controller.getTeacherActivityFeed({ limit: '51' }, ctx);
+
+    expect(response).toMatchObject({ success: false, statusCode: 422 });
+    expect(statsService.getTeacherActivityFeed).not.toHaveBeenCalled();
   });
 
   it('maps a service failure to its HTTP error', async () => {
