@@ -222,6 +222,7 @@ function createRepository(): FakeRepository {
     upsertSubscription: vi.fn().mockResolvedValue(success(undefined)),
     updateSubscriptionStatus: vi.fn().mockResolvedValue(success(undefined)),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
+    isClaimOwner: vi.fn().mockResolvedValue(success(true)),
     getPlan: vi
       .fn()
       .mockImplementation((planKey: string) => Promise.resolve(success(CATALOG[planKey] ?? null))),
@@ -547,6 +548,26 @@ describe('StripeWebhookService', () => {
       expect(harness.entitlements.downgradeToFree).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
+      );
+    });
+
+    it('does not write when the claim lease was lost to a retry', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.isClaimOwner).mockResolvedValueOnce(success(false));
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_600,
+      });
+
+      const result = await sign(harness, event);
+
+      // A reclaimed event may already have applied a newer snapshot; this
+      // attempt must not overwrite it even though the handler ran.
+      expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
+      expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(consoleWarn).toHaveBeenCalledWith(
+        expect.stringContaining('billing.webhook_claim_lost'),
       );
     });
 

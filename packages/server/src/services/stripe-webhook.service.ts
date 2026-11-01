@@ -193,7 +193,7 @@ export class StripeWebhookService {
     const claimToken = claim.data.receivedAt ?? '';
 
     try {
-      const result = await this.dispatch(event);
+      const result = await this.dispatch(event, claimToken);
       await this.finish(event, claimToken, result.ignored);
       return success({ received: true, ...(result.ignored ? { ignored: true } : {}) });
     } catch (error) {
@@ -208,21 +208,21 @@ export class StripeWebhookService {
     }
   }
 
-  private async dispatch(event: Stripe.Event): Promise<DispatchResult> {
+  private async dispatch(event: Stripe.Event, claimToken: string): Promise<DispatchResult> {
     switch (event.type) {
       case 'checkout.session.completed':
-        return this.onCheckoutCompleted(event);
+        return this.onCheckoutCompleted(event, claimToken);
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-        return this.onSubscriptionChanged(event, false);
+        return this.onSubscriptionChanged(event, false, claimToken);
       case 'customer.subscription.deleted':
-        return this.onSubscriptionChanged(event, true);
+        return this.onSubscriptionChanged(event, true, claimToken);
       case 'invoice.paid':
-        return this.onInvoicePaid(event);
+        return this.onInvoicePaid(event, claimToken);
       case 'invoice.payment_failed':
-        return this.onInvoicePaymentProblem(event, false);
+        return this.onInvoicePaymentProblem(event, false, claimToken);
       case 'invoice.payment_action_required':
-        return this.onInvoicePaymentProblem(event, true);
+        return this.onInvoicePaymentProblem(event, true, claimToken);
       case 'checkout.session.expired': {
         const session = event.data.object as Stripe.Checkout.Session;
         log('billing.checkout_expired', { eventId: event.id, sessionId: session.id });
@@ -234,7 +234,10 @@ export class StripeWebhookService {
     }
   }
 
-  private async onCheckoutCompleted(event: Stripe.Event): Promise<DispatchResult> {
+  private async onCheckoutCompleted(
+    event: Stripe.Event,
+    claimToken: string,
+  ): Promise<DispatchResult> {
     const session = event.data.object as Stripe.Checkout.Session;
     const metadataOwner = this.ownerFromMetadata(session.metadata);
     if (!metadataOwner) {
@@ -280,6 +283,7 @@ export class StripeWebhookService {
       owner: metadataOwner,
       resolved,
       checkoutSessionId: session.id,
+      claimToken,
       // A Checkout Session can complete before the payment settles (delayed
       // methods, 3DS on the first invoice); only a paid session activates.
       applyEntitlement:
@@ -296,6 +300,7 @@ export class StripeWebhookService {
   private async onSubscriptionChanged(
     event: Stripe.Event,
     deleted: boolean,
+    claimToken: string,
   ): Promise<DispatchResult> {
     const payload = event.data.object as Stripe.Subscription;
     const subscription = await this.retrieveSubscription(payload.id, deleted ? payload : null);
@@ -353,6 +358,7 @@ export class StripeWebhookService {
       checkoutSessionId: mirror.data?.checkoutSessionId ?? null,
       applyEntitlement: true,
       forceDowngrade: deleted,
+      claimToken,
     });
   }
 
@@ -370,9 +376,22 @@ export class StripeWebhookService {
     checkoutSessionId: string | null;
     applyEntitlement: boolean;
     forceDowngrade?: boolean;
+    claimToken: string;
   }): Promise<DispatchResult> {
     const { subscription, owner, resolved } = input;
     const status = subscription.status;
+
+    // Fence the writes, not only the event completion: if this attempt lost the
+    // claim lease to a retry while it was stalled, its snapshot may be older
+    // than the one the retry already applied. Do not write it.
+    if (!(await this.ensureClaimOwner(input.event.id, input.claimToken))) {
+      logWarn('billing.webhook_claim_lost', {
+        eventId: input.event.id,
+        subscriptionId: subscription.id,
+        phase: 'subscription',
+      });
+      return { ignored: true };
+    }
 
     // §5.5 / §6.3: never replace an already-active subscription with a second
     // one. Two successful checkouts are a manual refund, not an entitlement.
@@ -450,7 +469,7 @@ export class StripeWebhookService {
     return { ignored: false };
   }
 
-  private async onInvoicePaid(event: Stripe.Event): Promise<DispatchResult> {
+  private async onInvoicePaid(event: Stripe.Event, claimToken: string): Promise<DispatchResult> {
     const invoice = event.data.object as Stripe.Invoice;
     const subscriptionId = invoiceSubscriptionId(invoice);
     if (!subscriptionId) {
@@ -504,6 +523,7 @@ export class StripeWebhookService {
       mirror,
       checkoutSessionId: mirror?.checkoutSessionId ?? null,
       applyEntitlement: ENTITLED_STATUSES.has(subscription.status),
+      claimToken,
     });
     if (synced.ignored) return synced;
 
@@ -569,6 +589,7 @@ export class StripeWebhookService {
   private async onInvoicePaymentProblem(
     event: Stripe.Event,
     actionRequired: boolean,
+    claimToken: string,
   ): Promise<DispatchResult> {
     const invoice = event.data.object as Stripe.Invoice;
     const subscriptionId = invoiceSubscriptionId(invoice);
@@ -608,6 +629,18 @@ export class StripeWebhookService {
     }
 
     const status = invoice.billing_reason === 'subscription_create' ? 'incomplete' : 'past_due';
+
+    // Same fence as `syncSubscription`: a stalled attempt whose lease was
+    // reclaimed must not overwrite the newer handler's status.
+    if (!(await this.ensureClaimOwner(event.id, claimToken))) {
+      logWarn('billing.webhook_claim_lost', {
+        eventId: event.id,
+        subscriptionId,
+        phase: 'invoice_status',
+      });
+      return { ignored: true };
+    }
+
     const update = await this.repository.updateSubscriptionStatus(
       subscriptionId,
       status,
@@ -782,6 +815,13 @@ export class StripeWebhookService {
       }
       throw error;
     }
+  }
+
+  /** Throws on a transient read failure so the event is retried. */
+  private async ensureClaimOwner(eventId: string, claimToken: string): Promise<boolean> {
+    const result = await this.repository.isClaimOwner(eventId, claimToken);
+    if (isFailure(result)) throw new Error('claim ownership check failed');
+    return result.data;
   }
 
   private async finish(event: Stripe.Event, claimToken: string, ignored: boolean): Promise<void> {

@@ -146,6 +146,9 @@ export interface StripeWebhookRepository {
     livemode: boolean,
   ): Promise<ServiceResult<ActiveSubscriptionRef | null>>;
 
+  /** True while `receivedAt` is still the current claim lease for the event. */
+  isClaimOwner(eventId: string, receivedAt: string): Promise<ServiceResult<boolean>>;
+
   getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>>;
   findPrice(priceId: string, livemode: boolean): Promise<ServiceResult<ListedPrice | null>>;
 
@@ -437,6 +440,20 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
       stripeSubscriptionId: data.stripe_subscription_id as string,
       planKey: data.plan_key as string,
     });
+  }
+
+  async isClaimOwner(eventId: string, receivedAt: string): Promise<ServiceResult<boolean>> {
+    const supabase = this.createAdminClient();
+    const { data, error } = await supabase
+      .from('stripe_webhook_events')
+      .select('id')
+      .eq('id', eventId)
+      .eq('received_at', receivedAt)
+      .eq('status', 'processing')
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    return success(Boolean(data));
   }
 
   async getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>> {
