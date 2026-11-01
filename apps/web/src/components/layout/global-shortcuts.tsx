@@ -124,9 +124,12 @@ export function GlobalShortcuts() {
       // Something closer to the focus (the flashcard's own flip handler, an input, a menu) already
       // handled this key: it is not a shortcut.
       if (e.defaultPrevented) return;
-      // Held keys are ignored without touching the pending prefix; typing, chords and IME
-      // composition cancel it.
-      if (e.repeat) return;
+      // A long press also cancels a pending prefix: holding `g` must not leave a half-typed
+      // sequence armed. Typing, chords and IME composition cancel it too.
+      if (e.repeat) {
+        matcher.reset();
+        return;
+      }
       if (isIgnorableKeyEvent(e) || isTypingTarget(document.activeElement)) {
         matcher.reset();
         return;

@@ -286,7 +286,10 @@ describe('where the guards are wired (#665 QA)', () => {
 
   it('the global handler drops repeats and resets the pending prefix on route, blur, pointer and hide', () => {
     const global = read('apps/web/src/components/layout/global-shortcuts.tsx');
-    expect(global).toContain('if (e.repeat) return;');
+    // A long press cancels the pending prefix instead of leaving it armed.
+    expect(global).toContain('if (e.repeat) {');
+    const repeat = global.indexOf('if (e.repeat) {');
+    expect(global.indexOf('matcher.reset();', repeat)).toBeGreaterThan(repeat);
     expect(global).toContain('isIgnorableKeyEvent(e)');
     expect(global).toContain("window.addEventListener('blur', reset)");
     expect(global).toContain("document.addEventListener('visibilitychange'");
