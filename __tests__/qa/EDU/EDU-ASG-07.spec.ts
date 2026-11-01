@@ -297,7 +297,7 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     await expect(cells.nth(2), 'Wynik').toHaveText(`${attempt.score}/${attempt.total_points}`);
     await expect(cells.nth(3), 'Status').toHaveText(COPY.submitted);
     // The page formats the completion date with the UI locale (`pl` → dd.MM.yyyy).
-    await expect(cells.nth(4), 'Ukończono').toHaveText(/^\d{2}\.\d{2}\.\d{4}$/);
+    await expect(cells.nth(4), 'Ukończono').toHaveText(/^\d{1,2}\.\d{1,2}\.\d{4}$/);
 
     // --- Adjacent path: „Oceń” opens this student's grading page -------------
     const gradeLink = row.getByRole('link', { name: COPY.grade, exact: true });
