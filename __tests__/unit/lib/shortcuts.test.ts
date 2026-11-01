@@ -272,10 +272,12 @@ describe('where the guards are wired (#665 QA)', () => {
     // not flip the card behind it.
     expect(session).toContain("tag === 'BUTTON'");
     expect(session).toContain("getAttribute('role') === 'button'");
+    // Only Space is given up; `p` and `1`-`4` keep working while a button has focus.
+    expect(session).toContain("onButton && (e.key === ' ' || e.code === 'Space')");
 
-    // The exclusion sits in the same early return as the typing guard, after `overlayOpen()` and
-    // before anything reacts to the key (the only preventDefault in the handler is the Space flip).
-    const guard = session.indexOf("tag === 'BUTTON'");
+    // The exclusion sits after `overlayOpen()` and before anything reacts to the key (the only
+    // preventDefault in the handler is the Space flip).
+    const guard = session.indexOf('onButton && (e.key');
     expect(guard).toBeGreaterThan(session.indexOf('if (overlayOpen()) return;'));
     expect(guard).toBeLessThan(session.indexOf('e.preventDefault()'));
     expect(guard).toBeLessThan(session.indexOf('setFlipped((prev) => !prev)'));
