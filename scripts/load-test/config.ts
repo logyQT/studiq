@@ -10,8 +10,8 @@
  * env var of the same name; otherwise the value recorded by `scripts/dev` in
  * `supabase/.env`, or the well-known local Supabase defaults, are used.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 
 export type AccountType = 'student' | 'educator' | 'manager';
 
@@ -69,11 +69,11 @@ const ROOT = join(import.meta.dir, '..', '..');
 const GENERATED_SUPABASE_ENV = join(ROOT, 'supabase', '.env');
 
 /**
- * Port recorded in the generated `supabase/.env` (written by `scripts/dev`).
- * Bun does not auto-load that file, so this is how a start-time port override
- * reaches the harness. Missing file/key (shared mode, never started) is fine.
+ * Raw value recorded in the generated `supabase/.env` (written by `scripts/dev`).
+ * Bun does not auto-load that file, so this is how start-time overrides reach
+ * the harness. Missing file/key (shared mode, never started) is fine.
  */
-function generatedPort(name: string): number | null {
+function generatedValue(name: string): string | null {
   try {
     const raw = readFileSync(GENERATED_SUPABASE_ENV, 'utf8');
     for (const line of raw.split('\n')) {
@@ -81,12 +81,103 @@ function generatedPort(name: string): number | null {
       if (!trimmed || trimmed.startsWith('#')) continue;
       const eq = trimmed.indexOf('=');
       if (eq <= 0 || trimmed.slice(0, eq).trim() !== name) continue;
-      return parsePort(trimmed.slice(eq + 1));
+      return trimmed.slice(eq + 1).trim();
     }
   } catch {
     /* no generated file yet */
   }
   return null;
+}
+
+function generatedPort(name: string): number | null {
+  return parsePort(generatedValue(name));
+}
+
+/** Same resolution as `scripts/dev` (registry lives outside the repo). */
+function registryDir(): string {
+  const configured = process.env.STUDIQ_DEV_REGISTRY?.trim();
+  if (configured) return isAbsolute(configured) ? configured : join(ROOT, configured);
+  const runtime = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || '/tmp';
+  return join(runtime, `studiq-dev-${process.getuid?.() ?? 0}`);
+}
+
+interface RegistryEntry {
+  projectId?: string;
+  worktree?: string;
+  apiPort?: number;
+}
+
+/**
+ * Read (and lightly validate) this checkout's registry entry for a project.
+ * Mirrors `scripts/dev`: ignore symlinks, foreign-owned dirs and entries whose
+ * file name disagrees with their project id. Missing data returns null.
+ */
+function registryEntry(projectId: string): RegistryEntry | null {
+  try {
+    const dir = registryDir();
+    const dirStat = lstatSync(dir);
+    if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) return null;
+    const uid = process.getuid?.();
+    if (uid !== undefined && dirStat.uid !== uid) return null;
+
+    const file = join(dir, `${projectId}.json`);
+    const fileStat = lstatSync(file);
+    if (fileStat.isSymbolicLink() || !fileStat.isFile()) return null;
+
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as RegistryEntry;
+    if (parsed.projectId !== projectId) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export type ImplicitTargetCheck = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Seeding writes accounts, so an implicit target taken from the generated
+ * `supabase/.env` must be proven to belong to this checkout. Explicit targets
+ * (`SUPABASE_URL`, `SUPABASE_API_PORT`, `--supabase-url`) skip the check.
+ */
+export function implicitTargetOwnership(): ImplicitTargetCheck {
+  if (env('SUPABASE_URL', '')) return { ok: true };
+  if (envPort('SUPABASE_API_PORT') !== null) return { ok: true };
+
+  const projectId = generatedValue('SUPABASE_PROJECT_ID');
+  const apiPort = generatedPort('SUPABASE_API_PORT');
+  if (!projectId || apiPort === null) {
+    return { ok: false, reason: 'supabase/.env has no generated project/API port' };
+  }
+
+  const entry = registryEntry(projectId);
+  if (!entry) {
+    return {
+      ok: false,
+      reason: `no private registry entry for project ${projectId} (run a bun dev:* command)`,
+    };
+  }
+  if (!entry.worktree) {
+    return { ok: false, reason: `registry entry for ${projectId} has no worktree` };
+  }
+
+  let entryRoot: string;
+  let repoRoot: string;
+  try {
+    entryRoot = realpathSync(entry.worktree);
+    repoRoot = realpathSync(ROOT);
+  } catch {
+    return { ok: false, reason: `registry entry for ${projectId} points at a missing worktree` };
+  }
+  if (entryRoot !== repoRoot) {
+    return { ok: false, reason: `project ${projectId} is owned by ${entry.worktree}` };
+  }
+  if (Number(entry.apiPort) !== apiPort) {
+    return {
+      ok: false,
+      reason: `registry records :${entry.apiPort} but supabase/.env records :${apiPort}`,
+    };
+  }
+  return { ok: true };
 }
 
 /**

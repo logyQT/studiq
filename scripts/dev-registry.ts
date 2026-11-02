@@ -252,9 +252,21 @@ function writeEntry(args: Args): void {
     fail(`registry directory ${dir} is not owned by the current user`);
   }
   const file = entryPath(dir, projectId);
-  const tmp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
-  renameSync(tmp, file);
+  const payload = `${JSON.stringify(entry, null, 2)}\n`;
+
+  if (args.values.exclusive === '1') {
+    // Atomic claim: O_EXCL fails when another checkout already owns the entry.
+    try {
+      writeFileSync(file, payload, { mode: 0o600, flag: 'wx' });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') process.exit(2);
+      fail(`cannot create ${file}: ${(error as Error).message}`);
+    }
+  } else {
+    const tmp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+    writeFileSync(tmp, payload, { mode: 0o600, flag: 'wx' });
+    renameSync(tmp, file);
+  }
   printEntry(entry, args.format);
 }
 
@@ -317,7 +329,7 @@ function main(): void {
           'write-only ports/PID flags: --app-port --api-port --db-port --studio-port',
           '  --mail-port --shadow-port --pooler-port --analytics-port',
           '  --edge-inspector-port --owner-pid --started-at --shared 0|1',
-          '  --shared-owner NAME --mode dev|prod',
+          '  --shared-owner NAME --mode dev|prod --exclusive 1',
         ].join('\n'),
       );
       break;

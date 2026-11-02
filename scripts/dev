@@ -48,6 +48,7 @@ WEB_LOG="$DEV_DIR/web.log"
 WEB_PID_FILE="$DEV_DIR/web.pid"
 WEB_ENV_FILE="$REPO_ROOT/apps/web/.env"
 SUPABASE_ENV_FILE="$REPO_ROOT/supabase/.env"
+BUILD_FINGERPRINT_FILE="$REPO_ROOT/apps/web/.next/studiq-build.env"
 ROOT_ENV_FILE="$REPO_ROOT/.env"
 REGISTRY_HELPER="$SCRIPT_DIR/dev-registry.ts"
 
@@ -215,6 +216,23 @@ url_port() {
   if [[ "$rest" =~ :([0-9]+)$ ]]; then printf '%s' "${BASH_REMATCH[1]}"; fi
 }
 
+# Effective port for the APP_URL comparison: an explicit port wins; a portless
+# URL uses its scheme default (http 80 / https 443), so it cannot bypass the
+# loopback mismatch check. Other/unknown schemes return empty (not checked).
+url_effective_port() {
+  local url=$1 port scheme
+  port=$(url_port "$url")
+  if [[ -n "$port" ]]; then
+    printf '%s' "$port"
+    return
+  fi
+  scheme=${url%%://*}
+  case "${scheme,,}" in
+    http) printf '80' ;;
+    https) printf '443' ;;
+  esac
+}
+
 json_escape() {
   local value=$1
   value=${value//\\/\\\\}
@@ -367,7 +385,7 @@ resolve_contract() {
   # leave the app pointing at another checkout's stack.
   APP_URL=$(env_url "${ENV[APP_URL]:-http://localhost:$APP_PORT}")
   local app_url_port
-  app_url_port=$(url_port "$APP_URL")
+  app_url_port=$(url_effective_port "$APP_URL")
   if [[ -n "$app_url_port" && "$app_url_port" != "$APP_PORT" ]]; then
     # A loopback APP_URL is served by this process, so a mismatched port only
     # makes the health check time out later; reject it up front. Non-loopback
@@ -446,6 +464,10 @@ BUILD_LOCK_HELD=0
 BUILD_LOCK_MODE=""
 BUILD_LOCK_DIR=""
 REGISTRY_WARNED=0
+STARTUP_CLAIM_ACTIVE=0
+STARTUP_INCOMPLETE=0
+STACK_START_ATTEMPTED=0
+STACK_ADOPTED=0
 
 # A registry directory is only trustworthy when it is a real directory owned by
 # the current effective user (mode is enforced separately on write). On shared
@@ -507,7 +529,7 @@ entry_field() {
 }
 
 registry_write_entry() {
-  local mode=$1
+  local mode=$1 exclusive=${2:-0}
   local api=$SUPABASE_API_PORT db=$SUPABASE_DB_PORT studio=$SUPABASE_STUDIO_PORT
   local mail=$SUPABASE_MAIL_PORT shadow=$SUPABASE_SHADOW_PORT pooler=$SUPABASE_POOLER_PORT
   local analytics=$SUPABASE_ANALYTICS_PORT edge=$SUPABASE_EDGE_INSPECTOR_PORT
@@ -518,25 +540,32 @@ registry_write_entry() {
   fi
   local pid=""
   pid=$(read_web_pid 2>/dev/null) || pid=""
+  # A claim is held while the startup runs; without a web pid yet, record this
+  # shell so concurrent checkouts see a live owner.
+  if (( exclusive == 1 )) && [[ -z "$pid" ]]; then pid=$$; fi
   ensure_registry_dir
-  bun "$REGISTRY_HELPER" write \
-    --dir "$REGISTRY_DIR" \
-    --project-id "$SUPABASE_PROJECT_ID" \
-    --worktree "$REPO_ROOT" \
-    --app-port "$APP_PORT" \
-    --api-port "$api" \
-    --db-port "$db" \
-    --studio-port "$studio" \
-    --mail-port "$mail" \
-    --shadow-port "$shadow" \
-    --pooler-port "$pooler" \
-    --analytics-port "$analytics" \
-    --edge-inspector-port "$edge" \
-    --owner-pid "${pid:-0}" \
-    --started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --shared "$SHARED" \
-    --shared-owner "$SHARED_OWNER" \
-    --mode "$mode" >/dev/null
+  local -a write_args=(
+    write
+    --dir "$REGISTRY_DIR"
+    --project-id "$SUPABASE_PROJECT_ID"
+    --worktree "$REPO_ROOT"
+    --app-port "$APP_PORT"
+    --api-port "$api"
+    --db-port "$db"
+    --studio-port "$studio"
+    --mail-port "$mail"
+    --shadow-port "$shadow"
+    --pooler-port "$pooler"
+    --analytics-port "$analytics"
+    --edge-inspector-port "$edge"
+    --owner-pid "${pid:-0}"
+    --started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    --shared "$SHARED"
+    --shared-owner "$SHARED_OWNER"
+    --mode "$mode"
+  )
+  if (( exclusive == 1 )); then write_args+=(--exclusive 1); fi
+  bun "$REGISTRY_HELPER" "${write_args[@]}" >/dev/null
 }
 
 registry_remove_entry() {
@@ -575,6 +604,39 @@ registry_entry_is_live() {
   [[ -n "$project" && -n "$(docker_running_for "$project")" ]] && return 0
   [[ -n "$app" && "$app" != "0" ]] && port_in_use "$app" && return 0
   return 1
+}
+
+# Atomically claim the project before starting anything. The registry entry is
+# created with O_EXCL (never a last-writer-wins rename), so two checkouts cannot
+# both adopt the same project id. An entry we already own is fine; a live
+# foreign entry is refused; a stale one is reclaimed.
+claim_project() {
+  local mode=$1 entry worktree
+  if entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null); then
+    worktree=$(entry_field "$entry" worktree)
+    if [[ -n "$worktree" && "$(canon_path "$worktree")" == "$REPO_ROOT" ]]; then
+      return 0
+    fi
+    if registry_entry_is_live "$entry"; then
+      fail "project id '$SUPABASE_PROJECT_ID' is owned by ${worktree:-another checkout} (registry: $REGISTRY_DIR)."
+    fi
+    warn "Reclaiming stale registry entry for '$SUPABASE_PROJECT_ID' (was ${worktree:-unknown})."
+    registry_remove_entry
+  fi
+
+  ensure_registry_dir
+  if registry_write_entry "$mode" 1; then
+    return 0
+  fi
+
+  # Lost the atomic claim: inspect the winner instead of overwriting it.
+  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
+  worktree=""
+  [[ -n "$entry" ]] && worktree=$(entry_field "$entry" worktree)
+  if [[ -n "$worktree" && "$(canon_path "$worktree")" == "$REPO_ROOT" ]]; then
+    return 0
+  fi
+  fail "project id '$SUPABASE_PROJECT_ID' was claimed by ${worktree:-another checkout} (registry: $REGISTRY_DIR)."
 }
 
 # ── Docker / ports ───────────────────────────────────────────────────────────
@@ -850,6 +912,7 @@ ensure_supabase_running() {
 
   if supabase_healthy; then
     if [[ -n "$ours" ]]; then
+      STACK_ADOPTED=1
       info "Supabase already running (project $SUPABASE_PROJECT_ID) at $SUPABASE_URL"
       return 0
     fi
@@ -859,6 +922,7 @@ ensure_supabase_running() {
     * set SUPABASE_SHARED=1 + SUPABASE_SHARED_OWNER and the stack's keys in $ROOT_ENV_FILE to reuse it deliberately."
   fi
 
+  STACK_START_ATTEMPTED=1
   header "Starting Supabase project '$SUPABASE_PROJECT_ID'${SUPABASE_START_EXCLUDE:+ (skipping: $SUPABASE_START_EXCLUDE)}"
   supabase_start
 
@@ -1052,7 +1116,9 @@ start_web() {
   fi
 
   if [[ "$mode" == "prod" ]]; then
-    [[ -f "$REPO_ROOT/apps/web/.next/BUILD_ID" ]] || fail "No production build for this checkout. Run 'bun dev:build' first."
+    # Shared boundary for `dev:up --prod` and `dev:serve`: reuse the build only
+    # when it was made with this checkout's current public URLs.
+    ensure_prod_build
     npm_script=start
     timeout=180
   else
@@ -1169,7 +1235,21 @@ release_build_lock() {
   BUILD_LOCK_HELD=0
 }
 
-cleanup() { release_build_lock; }
+cleanup() {
+  release_build_lock
+  # A failed `dev:up` must not leave a claim (or a freshly started stack)
+  # behind. An adopted stack keeps its entry: the containers still exist.
+  if (( STARTUP_CLAIM_ACTIVE == 1 && STARTUP_INCOMPLETE == 1 )); then
+    if (( STACK_START_ATTEMPTED == 1 )); then
+      stop_supabase_scoped || true
+      registry_remove_entry
+    elif (( STACK_ADOPTED == 1 )); then
+      : # adopted stack still running; keep ownership
+    else
+      registry_remove_entry
+    fi
+  fi
+}
 trap cleanup EXIT
 
 build_app() {
@@ -1186,16 +1266,44 @@ build_app() {
   acquire_build_lock
   header "Building @studiq/web (heap ${mem}MB, lock $REGISTRY_DIR)"
   (cd "$REPO_ROOT" && NODE_OPTIONS="$node_options" bun run --filter @studiq/web build)
+  write_build_fingerprint
   release_build_lock
   info "Build complete."
 }
 
+# Next inlines NEXT_PUBLIC_* at build time, so a build reused across port
+# blocks would keep the old Supabase/site URLs. Record the values next to the
+# build and rebuild when they change (or when the record is missing).
+build_fingerprint() {
+  printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SITE_URL=%s\n' \
+    "${NEXT_PUBLIC_SUPABASE_URL:-}" "${NEXT_PUBLIC_SITE_URL:-}"
+}
+
+build_is_current() {
+  [[ -f "$REPO_ROOT/apps/web/.next/BUILD_ID" ]] || return 1
+  [[ -f "$BUILD_FINGERPRINT_FILE" ]] || return 1
+  [[ "$(cat "$BUILD_FINGERPRINT_FILE")" == "$(build_fingerprint)" ]]
+}
+
+write_build_fingerprint() {
+  local tmp
+  mkdir -p "$(dirname "$BUILD_FINGERPRINT_FILE")"
+  tmp=$(mktemp "$BUILD_FINGERPRINT_FILE.XXXXXX")
+  build_fingerprint >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$BUILD_FINGERPRINT_FILE"
+}
+
 ensure_prod_build() {
-  if [[ -f "$REPO_ROOT/apps/web/.next/BUILD_ID" ]]; then
+  if build_is_current; then
     info "Production build present"
     return 0
   fi
-  header "No production build for this checkout — building once"
+  if [[ -f "$REPO_ROOT/apps/web/.next/BUILD_ID" ]]; then
+    warn "Production build was made with different NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SITE_URL; rebuilding."
+  else
+    header "No production build for this checkout — building once"
+  fi
   build_app
 }
 
@@ -1238,11 +1346,19 @@ cmd_up() {
     preflight_ports 0
     render_supabase_env
     render_web_env
+    claim_project "$mode"
+    STARTUP_CLAIM_ACTIVE=1
+    STARTUP_INCOMPLETE=1
     info "Shared mode (SUPABASE_SHARED=1)${SHARED_OWNER:+ — owner: $SHARED_OWNER}; not starting Supabase"
   else
     ensure_docker
     preflight_ports 1
     render_supabase_env
+    # Atomic claim before the stack starts; the claim entry is what a
+    # concurrent checkout sees instead of a free project id.
+    claim_project "$mode"
+    STARTUP_CLAIM_ACTIVE=1
+    STARTUP_INCOMPLETE=1
     ensure_supabase_running
     load_supabase_status || fail "Could not read 'supabase status -o env'."
     merge_supabase_env
@@ -1251,13 +1367,14 @@ cmd_up() {
   fi
 
   if (( prod == 1 )); then
-    ensure_prod_build
     start_web prod
   else
     start_web dev
   fi
 
   registry_write_entry "$mode"
+  STARTUP_INCOMPLETE=0
+  STARTUP_CLAIM_ACTIVE=0
   print_ready_block
   if (( SHARED == 1 )); then
     info "Ready (shared stack). Stop this checkout's web server with 'bun dev:down'; --all is refused in shared mode."
@@ -1468,6 +1585,7 @@ cmd_reset_db() {
 
   preflight_ports 1
   render_supabase_env
+  claim_project "dev"
   header "Resetting project '$SUPABASE_PROJECT_ID' (destructive, this checkout only)"
   ensure_supabase_running
   supa db reset

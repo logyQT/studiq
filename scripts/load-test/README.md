@@ -89,6 +89,10 @@ bun scripts/load-test/seed.ts --count 1000
 | `--reset`              | –                       | delete every account in the pool      |
 
 - **Idempotent** — re-running skips accounts that already exist.
+- **Ownership-checked** — when the target is implicit (no `--supabase-url`,
+  `SUPABASE_URL` or `SUPABASE_API_PORT`), seeding verifies that the generated
+  `supabase/.env` project is recorded in this checkout's registry. A stale or
+  foreign target is refused; pass `--supabase-url` to override deliberately.
 - Accounts are created with `email_confirm: true`, so they can log in
   immediately even though local GoTrue has `enable_confirmations = true`.
 - The `handle_new_user` DB trigger creates the matching `profiles` row and

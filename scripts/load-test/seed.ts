@@ -25,6 +25,7 @@ import {
   argBool,
   argNum,
   argStr,
+  implicitTargetOwnership,
   mapLimit,
   parseArgs,
   resolveConfig,
@@ -263,6 +264,7 @@ function printSummary(accounts: AccountRecord[], outcomes: CreateOutcome[]): voi
 
 async function main(): Promise<void> {
   const args = parseArgs();
+  const explicitUrl = argStr(args, 'supabase-url', '');
   const config = resolveConfig({
     password: argStr(args, 'password', resolveConfig().password),
     emailDomain: argStr(args, 'domain', resolveConfig().emailDomain),
@@ -296,7 +298,6 @@ async function main(): Promise<void> {
   };
 
   if (argBool(args, 'reset')) {
-    const explicitUrl = argStr(args, 'supabase-url', '');
     const stale = staleGeneratedTarget();
     if (stale && !explicitUrl) {
       console.error(
@@ -327,6 +328,17 @@ async function main(): Promise<void> {
     printSummary(accounts, []);
     console.log('\n  dry-run: no users created.');
     return;
+  }
+
+  if (!explicitUrl) {
+    const ownership = implicitTargetOwnership();
+    if (!ownership.ok) {
+      console.error(`  seeding: refusing to use ${config.supabaseUrl} — ${ownership.reason}.`);
+      console.error(
+        '  Run a bun dev:* command to refresh the generated state, or pass --supabase-url explicitly.',
+      );
+      process.exit(1);
+    }
   }
 
   console.log(
