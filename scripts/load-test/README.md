@@ -18,7 +18,8 @@ Both run directly with Bun (no build step) and are dependency-free.
 
 ## 1. Prerequisites
 
-- Local Supabase running (`supabase start`) and a working app:
+- This checkout's local stack via `bun dev:up` (it creates the runtime registry
+  entry that seeding and reset verify) and a working app:
   - app on `http://localhost:3000` (or pass `--app-url`), and
   - telemetry pointed at the OTel Collector — i.e. the app was started with
     `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and `OTEL_SDK_DISABLED`
@@ -93,8 +94,11 @@ bun scripts/load-test/seed.ts --count 1000
   `SUPABASE_URL` or `SUPABASE_API_PORT`), seeding verifies that the generated
   `supabase/.env` project is recorded in this checkout's registry **and** that
   a running container with that project label publishes the recorded API port.
-  A stale or foreign target is refused; pass `--supabase-url` to override
-  deliberately.
+  A foreign or unverifiable target is refused; pass `--supabase-url` to
+  override deliberately. Only `--reset` also compares the generated port with
+  the current `SUPABASE_PORT_BASE` (`staleGeneratedTarget`): ordinary seeding
+  reuses the generated port, which may be the old one if the base changed while
+  the previous stack is still running. Run `bun dev:up` after changing it.
 - Accounts are created with `email_confirm: true`, so they can log in
   immediately even though local GoTrue has `enable_confirmations = true`.
 - The `handle_new_user` DB trigger creates the matching `profiles` row and

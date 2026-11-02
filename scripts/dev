@@ -1356,12 +1356,14 @@ cmd_up() {
   else
     ensure_docker
     preflight_ports 1
-    render_supabase_env
     # Atomic claim before the stack starts; the claim entry is what a
-    # concurrent checkout sees instead of a free project id.
+    # concurrent checkout sees instead of a free project id. Render the CLI
+    # env only after the claim, so a failed claim cannot redirect bare
+    # `bunx supabase ...` commands in this checkout.
     claim_project "$mode"
     STARTUP_CLAIM_ACTIVE=1
     STARTUP_INCOMPLETE=1
+    render_supabase_env
     ensure_supabase_running
     load_supabase_status || fail "Could not read 'supabase status -o env'."
     merge_supabase_env

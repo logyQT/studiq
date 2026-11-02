@@ -26,8 +26,16 @@ This generates a SQL file in `supabase/migrations/` with the schema diff.
 
 ### Applying Migrations
 
-Migrations are applied automatically when running `bun dev:up` (or plain
-`bunx supabase start`) after a `git pull`.
+`bun dev:up` does **not** apply pending migrations when this checkout's stack is
+already running (a healthy stack is reused as-is). After a `git pull` that adds
+migrations:
+
+```bash
+bunx supabase db push --local
+```
+
+A fresh `supabase start` (new volume) applies them during initialization; use
+`bun dev:reset-db` to drop, recreate and re-seed this checkout's database.
 
 ### Resetting Database
 
