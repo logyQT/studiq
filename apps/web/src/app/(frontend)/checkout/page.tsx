@@ -224,7 +224,9 @@ function CheckoutContent() {
     blockedState = {
       title: ct('orgs_load_error'),
       description: ct('org_unavailable_desc'),
-      retry: () => orgsQuery.refetch(),
+      retry: () => {
+        void orgsQuery.refetch();
+      },
     };
   } else if (resolution.status === 'not-member') {
     blockedState = {

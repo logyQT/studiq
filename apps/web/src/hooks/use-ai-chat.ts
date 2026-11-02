@@ -164,7 +164,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
       // The chat route awaits `trackTokenUsage` before the stream closes, so
       // refetching here reads the post-message totals (#379). The SDK calls
       // `onFinish` from a `finally`, so a rejected send refetches too.
-      queryClient.invalidateQueries({ queryKey: aiKeys.usage });
+      void queryClient.invalidateQueries({ queryKey: aiKeys.usage });
     },
   }) as unknown as UseChatResultRaw;
   const {

@@ -5,7 +5,7 @@ import {
   INVITE_MAIL_LIMIT_PER_HOUR,
   InvitationService,
 } from '@studiq/server/services/invitation.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: {
@@ -52,7 +52,7 @@ function ctxFor(org: string): RequestContext {
 describe('InvitationService e-mail delivery', () => {
   let request: { from: ReturnType<typeof vi.fn> };
   let admin: { from: ReturnType<typeof vi.fn>; rpc: ReturnType<typeof vi.fn> };
-  let sendInvitation: ReturnType<typeof vi.fn>;
+  let sendInvitation: Mock<Mailer['sendInvitation']>;
   let mailer: Mailer;
   let getMailer: ReturnType<typeof vi.fn>;
   let service: InvitationService;
@@ -70,8 +70,8 @@ describe('InvitationService e-mail delivery', () => {
           : qb(table === 'profiles' ? { full_name: 'Jan Kowalski' } : null),
       ),
     };
-    sendInvitation = vi.fn().mockResolvedValue(undefined);
-    mailer = { sendInvitation } as Mailer;
+    sendInvitation = vi.fn<Mailer['sendInvitation']>().mockResolvedValue(undefined);
+    mailer = { sendInvitation };
     getMailer = vi.fn(() => mailer);
     service = new InvitationService(
       async () => request as any,

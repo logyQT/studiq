@@ -147,7 +147,9 @@ test.describe('STU-04 @area:STU @prio:P2 study page states', () => {
 
     const settings = await getJson<StudySettings>(page, '/api/v1/flashcards/practice/settings');
     expect(settings.remainingNewCards, 'new cards offered inside the daily budget').toBe(NEW_CARDS);
-    expect(newCard.getByText(String(settings.remainingNewCards), { exact: true })).toBeVisible();
+    await expect(
+      newCard.getByText(String(settings.remainingNewCards), { exact: true }),
+    ).toBeVisible();
     await expect(newCard.getByText(/nowych kart dostępnych do nauki/)).toBeVisible();
 
     // "0 z 20 nowych kart dzisiaj" and the matching (empty) progress bar.

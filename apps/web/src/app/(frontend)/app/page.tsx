@@ -169,8 +169,8 @@ export default function AppOverviewPage() {
           isLoading={isLoading || overviewLoading}
           isError={statsError || overviewError}
           onRetry={() => {
-            if (statsError) refetchStats();
-            if (overviewError) refetchOverview();
+            if (statsError) void refetchStats();
+            if (overviewError) void refetchOverview();
           }}
         />
         <UpcomingAssignmentsCard />

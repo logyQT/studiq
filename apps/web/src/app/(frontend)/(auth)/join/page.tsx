@@ -102,7 +102,7 @@ function JoinContent() {
       }
     }
 
-    verifyToken();
+    void verifyToken();
   }, [token, router, form, t, tErr]);
 
   async function onSubmit(values: RegisterInput) {

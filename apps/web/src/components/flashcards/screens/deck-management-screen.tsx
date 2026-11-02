@@ -299,7 +299,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     try {
       await apiPut(`/api/v1/flashcards/decks/${deck.id}`, { suspended: !deck.suspended });
       for (const queryKey of flashcardKeys.afterDeckSuspend) {
-        queryClient.invalidateQueries({ queryKey });
+        void queryClient.invalidateQueries({ queryKey });
       }
       toast.success(deck.suspended ? t('deck_unsuspended') : t('deck_suspended'));
     } catch (error) {

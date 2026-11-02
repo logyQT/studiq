@@ -103,7 +103,7 @@ export default function InvitationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetch('/api/v1/organization/roles')
+    void fetch('/api/v1/organization/roles')
       .then((r) => r.json())
       .then((res) => {
         if (res.success && Array.isArray(res.data)) {
@@ -395,7 +395,7 @@ export default function InvitationsPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        navigator.clipboard.writeText(result.data!.inviteCode!);
+                        void navigator.clipboard.writeText(result.data!.inviteCode!);
                         toast.success(t('link_copied'));
                       }}
                     >
@@ -412,7 +412,7 @@ export default function InvitationsPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        navigator.clipboard.writeText(result.data!.inviteLink!);
+                        void navigator.clipboard.writeText(result.data!.inviteLink!);
                         toast.success(t('link_copied'));
                       }}
                     >

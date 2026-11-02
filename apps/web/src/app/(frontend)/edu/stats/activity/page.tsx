@@ -120,7 +120,7 @@ export default function TeacherActivityPage() {
   }, [range]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [fetchData]);
 
   const summaryCards = data

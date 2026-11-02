@@ -104,7 +104,11 @@ export default function QuizTakingPage() {
     if (body === lastSavedRef.current) return;
 
     pendingRef.current = body;
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
+      void saveAnswers();
+    }, AUTOSAVE_DELAY_MS);
+
+    async function saveAnswers() {
       try {
         await apiPut(`/api/v1/quiz/${attemptId}/answers`, { answers: payload });
         lastSavedRef.current = body;
@@ -118,7 +122,7 @@ export default function QuizTakingPage() {
           toast.error(t('save_failed'));
         }
       }
-    }, AUTOSAVE_DELAY_MS);
+    }
 
     return () => clearTimeout(timer);
   }, [answers, attempt, attemptId, t]);

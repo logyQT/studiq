@@ -121,7 +121,7 @@ export default function MembersPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const filtered = members.filter((m) => {
@@ -205,7 +205,7 @@ export default function MembersPage() {
 
       toast.success(t('group_membership_updated'));
       setManagingMember(null);
-      load();
+      void load();
     } catch {
       toast.error(t('group_membership_failed'));
     }

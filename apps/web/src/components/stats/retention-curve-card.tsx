@@ -88,7 +88,7 @@ export function RetentionCurveCard() {
                   content={
                     // The shared tooltip renders no value when it is 0; a real 0 % bucket is
                     // drawn as a 4 px sliver and must still read "0 %".
-                    <ChartTooltipContent formatter={(value) => `${value}%`} />
+                    <ChartTooltipContent formatter={(value) => `${String(value)}%`} />
                   }
                 />
                 {/* A bucket without reviews is drawn as no bar at all; a real 0 % keeps a sliver. */}

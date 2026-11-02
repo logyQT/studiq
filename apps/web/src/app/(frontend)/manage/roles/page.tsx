@@ -111,7 +111,7 @@ export default function RolesPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   async function handleSave(role: { name: string; description?: string | null }, id?: string) {
@@ -129,7 +129,7 @@ export default function RolesPage() {
         toast.success(id ? t('role_updated') : t('role_created'));
         setEditing(null);
         setCreating(false);
-        load();
+        void load();
       } else {
         toast.error(t(id ? 'update_failed' : 'create_failed'));
       }
@@ -147,7 +147,7 @@ export default function RolesPage() {
       if (json.success) {
         toast.success(t('role_deleted'));
         setDeleting(null);
-        load();
+        void load();
       } else if (json.error === 'FORBIDDEN') {
         toast.error(t('cant_delete_system'));
         setDeleting(null);
@@ -190,7 +190,7 @@ export default function RolesPage() {
         toast.success(t('perms_saved'));
         setPermDialogOpen(false);
         setPermRole(null);
-        load();
+        void load();
       } else {
         toast.error(t('perms_save_failed'));
       }
@@ -500,7 +500,7 @@ function PermissionEditorDialog({
                   scope: radio.value,
                 });
               });
-              onSave(role.id, permissions);
+              void onSave(role.id, permissions);
             }}
           >
             {t('perms_save')}

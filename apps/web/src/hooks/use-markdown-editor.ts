@@ -111,7 +111,7 @@ export function useMarkdownEditor(
   const handlePickFile = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) handleUpload(file);
+      if (file) void handleUpload(file);
       e.target.value = '';
     },
     [handleUpload],
@@ -151,7 +151,7 @@ export function useMarkdownEditor(
       setIsDragOver(false);
       dragCounter.current = 0;
       const file = e.dataTransfer.files[0];
-      if (file) handleUpload(file);
+      if (file) void handleUpload(file);
     },
     [handleUpload],
   );

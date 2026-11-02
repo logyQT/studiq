@@ -99,7 +99,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     (entries: IntersectionObserverEntry[]) => {
       const [entry] = entries;
       if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
+        void fetchNextPage();
       }
     },
     [hasNextPage, isFetchingNextPage, fetchNextPage],

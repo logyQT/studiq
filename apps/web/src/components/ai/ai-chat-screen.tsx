@@ -128,7 +128,7 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
 
   const handleAnswer = useCallback(
     (text: string) => {
-      sendMessage(text);
+      void sendMessage(text);
     },
     [sendMessage],
   );

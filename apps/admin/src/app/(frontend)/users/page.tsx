@@ -156,7 +156,7 @@ export default function UsersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function invalidate() {
-    queryClient.invalidateQueries({ queryKey: ['users'] });
+    void queryClient.invalidateQueries({ queryKey: ['users'] });
   }
 
   const createMutation = useMutation({

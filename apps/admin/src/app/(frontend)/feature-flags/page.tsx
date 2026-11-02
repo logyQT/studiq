@@ -96,7 +96,7 @@ export default function FeatureFlagsPage() {
   const createMutation = useMutation({
     mutationFn: (data: FormData) => apiPost('/feature-flags', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDialogOpen(false);
       setForm(EMPTY_FORM);
       setFormError(null);
@@ -114,7 +114,7 @@ export default function FeatureFlagsPage() {
     }: FormData & { id: string }) =>
       apiPut(`/feature-flags/${id}`, { name, description, isEnabled, rolloutPercentage }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDialogOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
@@ -126,7 +126,7 @@ export default function FeatureFlagsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/feature-flags/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDeleteTarget(null);
     },
   });

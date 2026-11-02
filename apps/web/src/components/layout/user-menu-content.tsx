@@ -275,7 +275,7 @@ export function UserMenuItems(props: UserMenuItemsProps) {
       <MenuEntry
         variant={variant}
         onSelect={() => {
-          handleLogout();
+          void handleLogout();
           onItemClick?.();
         }}
         destructive

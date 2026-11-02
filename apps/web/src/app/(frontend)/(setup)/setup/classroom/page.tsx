@@ -95,8 +95,8 @@ export default function ClassroomPage() {
       // the server and cache for 5 minutes. No permission/feature observer here,
       // so they are only marked stale and refetch on mount in `/edu` (as in
       // `useOrgs.switchOrgMutation`).
-      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
 
       const filtered = values.invites.filter((i) => i.email.trim());
       if (filtered.length > 0) {

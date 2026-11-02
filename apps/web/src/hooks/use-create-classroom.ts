@@ -13,7 +13,7 @@ export function useCreateClassroom() {
       return apiPost<{ id: string; name: string }>('/api/v1/organization', data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orgs'] });
+      void queryClient.invalidateQueries({ queryKey: ['orgs'] });
       router.push('/edu');
     },
   });

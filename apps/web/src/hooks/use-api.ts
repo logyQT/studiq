@@ -62,7 +62,7 @@ export function useApiMutation<TData, TVars, TContext = unknown>(opts: {
       snapshot = undefined;
       if (opts.invalidateKeys?.length) {
         for (const key of opts.invalidateKeys) {
-          queryClient.invalidateQueries({ queryKey: key });
+          void queryClient.invalidateQueries({ queryKey: key });
         }
       }
       opts.onSettled?.();

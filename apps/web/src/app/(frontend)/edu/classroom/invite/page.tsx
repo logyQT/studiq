@@ -133,7 +133,7 @@ export default function ClassroomInvitePage() {
                   size="icon"
                   variant="outline"
                   onClick={() => {
-                    navigator.clipboard.writeText(inviteLink);
+                    void navigator.clipboard.writeText(inviteLink);
                     toast.success(t('copied'), { description: t('copied_desc') });
                   }}
                 >

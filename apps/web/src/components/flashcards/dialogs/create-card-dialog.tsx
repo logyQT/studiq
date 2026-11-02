@@ -80,9 +80,9 @@ export function CreateCardDialog({
         ? apiPut(`/api/v1/flashcards/${flashcard.id}`, data)
         : apiPost('/api/v1/flashcards', { ...data, deckId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.detail(deckId) });
+      void queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
+      void queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      void queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.detail(deckId) });
       toast.success(t(isEdit ? 'flashcard_updated' : 'flashcard_created'));
       onOpenChange(false);
       onSuccess?.();

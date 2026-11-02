@@ -257,7 +257,7 @@ export default function SessionClient(props: SessionClientProps) {
         if (!cancelled) setLoading(false);
       }
     };
-    fetchInitial();
+    void fetchInitial();
     return () => {
       cancelled = true;
     };
@@ -338,7 +338,7 @@ export default function SessionClient(props: SessionClientProps) {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      sendBatchUpdate();
+      void sendBatchUpdate();
     }, 30_000);
     return () => clearInterval(interval);
   }, [sendBatchUpdate]);
@@ -381,11 +381,11 @@ export default function SessionClient(props: SessionClientProps) {
       // The statistics and due counts were cached before this session; without this the student
       // lands back on /app/stats/content with the pre-session numbers (#365).
       for (const queryKey of flashcardKeys.afterStudySession) {
-        queryClient.invalidateQueries({ queryKey });
+        void queryClient.invalidateQueries({ queryKey });
       }
     };
 
-    finalise();
+    void finalise();
   }, [
     sessionComplete,
     allCaughtUp,
@@ -482,7 +482,7 @@ export default function SessionClient(props: SessionClientProps) {
 
         const remaining = visibleCards.filter((c) => !suspendedIds.has(c.id)).length;
         if (remaining <= REFILL_THRESHOLD) {
-          refillQueue();
+          void refillQueue();
         }
       } finally {
         processingRef.current = false;
@@ -510,10 +510,10 @@ export default function SessionClient(props: SessionClientProps) {
     if (!currentCard || leechDialogCardId) return;
     const id = currentCard.id;
     if (leechedCardIdsRef.current.has(id) || cardState.isLeech) {
-      showLeechDialog(id).then((action) => {
+      void showLeechDialog(id).then((action) => {
         if (action === 'suspend') {
           setSuspendedIds((prev) => new Set(prev).add(id));
-          advanceCard();
+          void advanceCard();
         }
       });
     }
@@ -605,7 +605,7 @@ export default function SessionClient(props: SessionClientProps) {
         const audio = document.querySelector('audio') as HTMLAudioElement | null;
         if (audio) {
           if (audio.paused) {
-            audio.play();
+            void audio.play();
           } else {
             audio.pause();
           }
@@ -617,16 +617,16 @@ export default function SessionClient(props: SessionClientProps) {
 
       switch (e.key) {
         case '1':
-          handleAnswerRef.current(false, 1);
+          void handleAnswerRef.current(false, 1);
           break;
         case '2':
-          handleAnswerRef.current(false, 2);
+          void handleAnswerRef.current(false, 2);
           break;
         case '3':
-          handleAnswerRef.current(true, 3);
+          void handleAnswerRef.current(true, 3);
           break;
         case '4':
-          handleAnswerRef.current(true, 4);
+          void handleAnswerRef.current(true, 4);
           break;
       }
     };

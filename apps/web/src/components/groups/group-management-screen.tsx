@@ -89,7 +89,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   async function handleSave(group: { name: string; description?: string | null }, id?: string) {
@@ -107,7 +107,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
         toast.success(id ? t('group_updated') : t('group_created'));
         setEditing(null);
         setCreating(false);
-        load();
+        void load();
       } else {
         toast.error(id ? t('update_failed') : t('create_failed'));
       }
@@ -123,7 +123,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
       if (json.success) {
         toast.success(t('group_deleted'));
         setDeleting(null);
-        load();
+        void load();
       } else {
         toast.error(t('delete_failed'));
       }
@@ -303,7 +303,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
               group={managingMembers}
               onDone={() => {
                 setManagingMembers(null);
-                load();
+                void load();
               }}
               t={t}
             />
@@ -357,7 +357,7 @@ function ManageMembersForm({
         if (!cancelled) setLoading(false);
       }
     }
-    run();
+    void run();
     return () => {
       cancelled = true;
     };

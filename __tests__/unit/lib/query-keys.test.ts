@@ -111,7 +111,7 @@ describe('assignment results grading invalidation (#168)', () => {
     queryClient.setQueryData(studentKey, { id: 'attempt-1', graded_at: null });
 
     for (const key of assignmentKeys.gradingInvalidations(assignmentId)) {
-      queryClient.invalidateQueries({ queryKey: key });
+      void queryClient.invalidateQueries({ queryKey: key });
     }
 
     expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
@@ -125,7 +125,7 @@ describe('assignment results grading invalidation (#168)', () => {
 
     // The pre-fix behaviour — this is the control that proves the test would
     // catch a regression back to the per-student-only key.
-    queryClient.invalidateQueries({ queryKey: studentKey });
+    void queryClient.invalidateQueries({ queryKey: studentKey });
 
     expect(queryClient.getQueryState(studentKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
@@ -151,7 +151,7 @@ describe('flashcardKeys.afterDeckSuspend (#365)', () => {
     const client = new QueryClient();
     for (const key of keys) client.setQueryData([...key], 'cached');
     for (const queryKey of flashcardKeys.afterDeckSuspend) {
-      client.invalidateQueries({ queryKey: [...queryKey] });
+      void client.invalidateQueries({ queryKey: [...queryKey] });
     }
     return keys.map((key) => client.getQueryState([...key])?.isInvalidated);
   }
@@ -187,7 +187,7 @@ describe('a finished study session refreshes the statistics (#365)', () => {
     const client = new QueryClient();
     for (const key of cached) client.setQueryData(key, 'cached');
     for (const queryKey of flashcardKeys.afterStudySession) {
-      client.invalidateQueries({ queryKey: [...queryKey] });
+      void client.invalidateQueries({ queryKey: [...queryKey] });
     }
     expect(cached.map((key) => client.getQueryState(key)?.isInvalidated)).toEqual([
       true,

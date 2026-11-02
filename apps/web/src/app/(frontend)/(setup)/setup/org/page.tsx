@@ -48,8 +48,8 @@ export default function OrgSetupPage() {
 
       // Permission scopes and plan features are resolved from the active org on the
       // server and both hooks cache for 5 minutes (same as useOrgs.switchOrgMutation).
-      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
 
       if (cachedOrgs && !cachedOrgs.some((o) => o.id === org.id)) {
         // The refresh failed while a stale list is cached. A full load drops the SPA

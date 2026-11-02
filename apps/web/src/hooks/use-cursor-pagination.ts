@@ -60,11 +60,15 @@ export function useCursorPagination<T>({
   return {
     items,
     total: result.data?.pages[0]?.total,
-    fetchNextPage: result.fetchNextPage,
+    fetchNextPage: () => {
+      void result.fetchNextPage();
+    },
     hasNextPage: result.hasNextPage,
     isFetchingNextPage: result.isFetchingNextPage,
     isLoading: result.isLoading,
     isError: result.isError,
-    refetch: result.refetch,
+    refetch: () => {
+      void result.refetch();
+    },
   };
 }

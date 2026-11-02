@@ -110,7 +110,7 @@ export default function SubscriptionPlansPage() {
   const createMutation = useMutation({
     mutationFn: (data: FormData) => apiPost('/subscription-plans', buildPayload(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDialogOpen(false);
       setForm(EMPTY_FORM);
       setFormError(null);
@@ -122,7 +122,7 @@ export default function SubscriptionPlansPage() {
     mutationFn: ({ id, ...data }: FormData & { id: string }) =>
       apiPut(`/subscription-plans/${id}`, buildPayload(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDialogOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
@@ -134,7 +134,7 @@ export default function SubscriptionPlansPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/subscription-plans/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDeleteTarget(null);
       setDeleteError(null);
     },

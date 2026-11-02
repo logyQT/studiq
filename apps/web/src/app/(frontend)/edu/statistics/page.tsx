@@ -32,7 +32,7 @@ export default function EduStatsPage() {
       selectedSubject !== '__all__'
         ? `/api/v1/stats/teacher?subjectId=${selectedSubject}`
         : '/api/v1/stats/teacher';
-    fetch(url)
+    void fetch(url)
       .then((r) => r.json())
       .then((r) => {
         setStats(r.data);

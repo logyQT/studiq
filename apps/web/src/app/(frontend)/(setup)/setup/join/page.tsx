@@ -35,7 +35,11 @@ export default function JoinPage() {
       return;
     }
 
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
+      void verify();
+    }, 500);
+
+    async function verify() {
       setVerifyState('verifying');
       try {
         const res = await fetch(`/api/v1/organization/invites?token=${encodeURIComponent(code)}`);
@@ -56,7 +60,7 @@ export default function JoinPage() {
         setVerifyState('invalid');
         setInviteData(null);
       }
-    }, 500);
+    }
 
     return () => clearTimeout(timer);
   }, [inviteCode]);
@@ -89,9 +93,9 @@ export default function JoinPage() {
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
       // Permission scopes, plan features and question reports are resolved from the
       // active org and cached. They are only marked stale here and refetch on mount.
-      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      queryClient.invalidateQueries({ queryKey: featureKeys.all });
-      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
       router.push('/edu');
     } catch {
       toast.error(t('join_failed'));

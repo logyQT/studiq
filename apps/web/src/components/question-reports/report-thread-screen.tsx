@@ -81,10 +81,10 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    apiPost(`/api/v1/question-reports/${reportId}/read`, {})
+    void apiPost(`/api/v1/question-reports/${reportId}/read`, {})
       .then(() => {
-        queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
-        queryClient.invalidateQueries({ queryKey: questionReportKeys.unreadCount });
+        void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+        void queryClient.invalidateQueries({ queryKey: questionReportKeys.unreadCount });
       })
       .catch(() => {});
   }, [reportId, queryClient]);

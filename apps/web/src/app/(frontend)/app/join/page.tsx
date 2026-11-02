@@ -56,9 +56,9 @@ export default function AppJoinPage() {
       toast.success(t('success'));
       setToken('');
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      queryClient.invalidateQueries({ queryKey: featureKeys.all });
-      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
       router.refresh();
     } catch {
       toast.error(t('invalid_token'));

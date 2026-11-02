@@ -221,7 +221,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
-    expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
     // ── Prerequisite: the bank „Fizyka”, in a state this execution owns ──────
     const bankId = await ensureBank(page);

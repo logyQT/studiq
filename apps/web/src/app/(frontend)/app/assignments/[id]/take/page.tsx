@@ -193,7 +193,7 @@ export default function TakeAssignmentPage() {
     if (remainingMs === 0 && attempt && !submitting && !autoSubmitted.current) {
       // Auto-submit on timeout only once: a failed attempt must not loop.
       autoSubmitted.current = true;
-      handleSubmit();
+      void handleSubmit();
     }
   }, [remainingMs, attempt, submitting, handleSubmit]);
 
