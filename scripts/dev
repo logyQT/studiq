@@ -286,6 +286,7 @@ validate_port() {
 }
 
 resolve_contract() {
+  local strict=${1:-1}
   local explicit runtime_dir
 
   # Runtime registry: portable default outside the repository.
@@ -368,7 +369,15 @@ resolve_contract() {
   local app_url_port
   app_url_port=$(url_port "$APP_URL")
   if [[ -n "$app_url_port" && "$app_url_port" != "$APP_PORT" ]]; then
-    warn "APP_URL port $app_url_port differs from APP_PORT $APP_PORT; the server listens on $APP_PORT."
+    # A loopback APP_URL is served by this process, so a mismatched port only
+    # makes the health check time out later; reject it up front. Non-loopback
+    # URLs may be a proxy front end and are left as configured. Teardown
+    # (strict=0) still warns instead of blocking on an invalid contract.
+    if is_loopback_url "$APP_URL"; then
+      (( strict == 1 )) && fail "APP_URL=$APP_URL points at loopback port $app_url_port, but this checkout serves on APP_PORT=$APP_PORT.
+  Set APP_PORT=$app_url_port, or fix APP_URL (non-loopback proxy URLs are exempt)."
+    fi
+    warn "APP_URL port $app_url_port differs from APP_PORT $APP_PORT."
   fi
   NEXT_PUBLIC_SITE_URL=$(env_url "${ENV[NEXT_PUBLIC_SITE_URL]:-$APP_URL}")
 
@@ -1402,7 +1411,9 @@ cmd_down() {
   [[ "${1:-}" == "--all" ]] && all=1
 
   load_root_env
-  resolve_contract
+  # Teardown must work even with an invalid contract (e.g. a loopback APP_URL
+  # pointing at the wrong port), so it warns instead of failing here.
+  resolve_contract 0
 
   if (( all == 1 )) && (( SHARED == 1 )); then
     fail "SUPABASE_SHARED=1: refusing to stop a stack this checkout does not own.
