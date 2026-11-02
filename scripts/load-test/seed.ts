@@ -29,6 +29,7 @@ import {
   parseArgs,
   resolveConfig,
   sleep,
+  staleGeneratedTarget,
 } from './config';
 
 const FIRST_NAMES = [
@@ -295,7 +296,20 @@ async function main(): Promise<void> {
   };
 
   if (argBool(args, 'reset')) {
-    console.log(`Resetting load-test pool (domain: @${config.emailDomain}) …`);
+    const explicitUrl = argStr(args, 'supabase-url', '');
+    const stale = staleGeneratedTarget();
+    if (stale && !explicitUrl) {
+      console.error(
+        `  reset: refusing to target http://127.0.0.1:${stale.generated} — supabase/.env records :${stale.generated}, but this checkout's contract is :${stale.expected}.`,
+      );
+      console.error(
+        '  The generated file is stale (another checkout may own that port). Re-run a bun dev:* command to re-render it, or pass --supabase-url explicitly.',
+      );
+      process.exit(1);
+    }
+    console.log(
+      `Resetting load-test pool (domain: @${config.emailDomain}, target: ${config.supabaseUrl}) …`,
+    );
     const deleted = await resetPool(config.supabaseUrl, config.serviceRoleKey, config.emailDomain);
     console.log(`Deleted ${deleted} account(s).`);
     return;

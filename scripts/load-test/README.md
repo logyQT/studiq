@@ -101,6 +101,11 @@ Reset the pool when you're done:
 bun scripts/load-test/seed.ts --reset
 ```
 
+`--reset` refuses to run when the implicit target comes from a stale generated
+`supabase/.env` (the recorded `SUPABASE_API_PORT` disagrees with the current
+`SUPABASE_PORT_BASE + 1`). Re-run a `bun dev:*` command to re-render it, or pass
+`--supabase-url <url>` explicitly.
+
 ### Convenience scripts
 
 ```bash

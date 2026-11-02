@@ -436,20 +436,52 @@ REGISTRY_FIELDS=(projectId worktree appPort apiPort dbPort studioPort mailPort s
 BUILD_LOCK_HELD=0
 BUILD_LOCK_MODE=""
 BUILD_LOCK_DIR=""
+REGISTRY_WARNED=0
+
+# A registry directory is only trustworthy when it is a real directory owned by
+# the current effective user (mode is enforced separately on write). On shared
+# hosts the predictable ${TMPDIR:-/tmp} fallback can be precreated by another
+# local user, so reads ignore untrusted dirs and writes refuse them.
+registry_dir_trusted() {
+  [[ -d "$REGISTRY_DIR" && ! -L "$REGISTRY_DIR" && -O "$REGISTRY_DIR" ]]
+}
+
+warn_registry_untrusted() {
+  (( REGISTRY_WARNED == 1 )) && return 0
+  REGISTRY_WARNED=1
+  warn "Ignoring registry directory $REGISTRY_DIR: not a private directory owned by $(id -un).
+  Another local user may have precreated it. Remove it (or set STUDIQ_DEV_REGISTRY to a private path) and retry."
+}
 
 ensure_registry_dir() {
-  mkdir -p "$REGISTRY_DIR"
-  chmod 700 "$REGISTRY_DIR" 2>/dev/null || true
+  if [[ -L "$REGISTRY_DIR" ]]; then
+    fail "Registry path $REGISTRY_DIR is a symlink; refusing to use it."
+  fi
+  if [[ -e "$REGISTRY_DIR" && ! -d "$REGISTRY_DIR" ]]; then
+    fail "Registry path $REGISTRY_DIR exists and is not a directory."
+  fi
+  if [[ -d "$REGISTRY_DIR" ]]; then
+    [[ -O "$REGISTRY_DIR" ]] || fail "Registry directory $REGISTRY_DIR is not owned by $(id -un); refusing to write to it (set STUDIQ_DEV_REGISTRY to a private path)."
+  else
+    (umask 077 && mkdir -p -- "$REGISTRY_DIR") || fail "Cannot create registry directory $REGISTRY_DIR."
+  fi
+  chmod 700 "$REGISTRY_DIR" || fail "Cannot restrict permissions on registry directory $REGISTRY_DIR."
 }
 
 registry_list() {
-  [[ -d "$REGISTRY_DIR" ]] || return 0
+  if ! registry_dir_trusted; then
+    if [[ -e "$REGISTRY_DIR" || -L "$REGISTRY_DIR" ]]; then warn_registry_untrusted; fi
+    return 0
+  fi
   bun "$REGISTRY_HELPER" list --dir "$REGISTRY_DIR" --format tsv 2>/dev/null || true
 }
 
 registry_get_entry() {
   local project_id=$1
-  [[ -d "$REGISTRY_DIR" ]] || return 1
+  if ! registry_dir_trusted; then
+    if [[ -e "$REGISTRY_DIR" || -L "$REGISTRY_DIR" ]]; then warn_registry_untrusted; fi
+    return 1
+  fi
   bun "$REGISTRY_HELPER" get --dir "$REGISTRY_DIR" --project-id "$project_id" --format tsv 2>/dev/null || return 1
 }
 
@@ -499,7 +531,7 @@ registry_write_entry() {
 }
 
 registry_remove_entry() {
-  [[ -d "$REGISTRY_DIR" ]] || return 0
+  registry_dir_trusted || return 0
   bun "$REGISTRY_HELPER" remove --dir "$REGISTRY_DIR" --project-id "$SUPABASE_PROJECT_ID" 2>/dev/null || true
 }
 
@@ -1071,8 +1103,17 @@ acquire_build_lock() {
   ensure_registry_dir
   local lock="$REGISTRY_DIR/build.lock"
 
+  if [[ -L "$lock" ]]; then
+    fail "Build lock $lock is a symlink; refusing to open it."
+  fi
+  if [[ -e "$lock" && ! -f "$lock" ]]; then
+    fail "Build lock $lock is not a regular file."
+  fi
+
   if command -v flock >/dev/null 2>&1; then
-    exec 9>"$lock"
+    # Append, never truncate: the lock file's content is unused, and `>` would
+    # follow a symlink and truncate its target before flock runs.
+    exec 9>>"$lock"
     if ! flock -n 9; then
       warn "Another checkout is building (lock $lock); waiting…"
       flock -w 1800 9 || fail "Timed out waiting for the build lock ($lock)."
@@ -1084,6 +1125,9 @@ acquire_build_lock() {
 
   # Portable fallback: atomic mkdir + PID file with stale-owner detection.
   local dir="$lock.d" owner waited=0
+  if [[ -L "$dir" ]]; then
+    fail "Build lock $dir is a symlink; refusing to use it."
+  fi
   while ! mkdir "$dir" 2>/dev/null; do
     owner=""
     if [[ -f "$dir/pid" ]]; then owner=$(tr -d '[:space:]' <"$dir/pid"); fi
@@ -1171,6 +1215,9 @@ cmd_up() {
   note_missing_env_file
   guard_qa_stack
   ensure_bun
+  # Fail before starting anything if the registry path is not ours (a foreign
+  # directory must not receive ownership/lock writes).
+  ensure_registry_dir
 
   if (( SHARED == 1 )); then
     require_env_key SUPABASE_URL
@@ -1239,6 +1286,7 @@ cmd_serve() {
   note_missing_env_file
   guard_qa_stack
   ensure_bun
+  ensure_registry_dir
 
   if (( SHARED == 1 )); then
     render_web_env
@@ -1395,6 +1443,7 @@ cmd_reset_db() {
   guard_qa_stack
   ensure_bun
   ensure_docker
+  ensure_registry_dir
 
   if ! assert_stack_ownership "reset"; then
     if supabase_healthy; then

@@ -89,6 +89,21 @@ function generatedPort(name: string): number | null {
   return null;
 }
 
+/**
+ * A stale generated API port that disagrees with this checkout's current
+ * contract. Teardown keeps `supabase/.env` (so plain `bunx supabase ...` keeps
+ * working), and the retired port can later be bound by another checkout. A
+ * destructive caller must fail closed instead of silently targeting it.
+ */
+export function staleGeneratedTarget(): { generated: number; expected: number } | null {
+  if (env('SUPABASE_URL', '')) return null; // explicit target
+  if (envPort('SUPABASE_API_PORT') !== null) return null; // explicit port
+  const generated = generatedPort('SUPABASE_API_PORT');
+  if (generated === null) return null; // nothing recorded
+  const expected = (envPort('SUPABASE_PORT_BASE') ?? 54320) + 1;
+  return generated === expected ? null : { generated, expected };
+}
+
 export function resolveConfig(overrides: Partial<LoadTestConfig> = {}): LoadTestConfig {
   const outDir = overrides.outDir ?? env('LOADTEST_DIR', '.dev/load-test');
   const emailDomain =

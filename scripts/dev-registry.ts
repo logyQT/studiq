@@ -22,14 +22,15 @@
  * bash never has to parse JSON. The field order is `FIELDS`, exported for the
  * shell side to mirror.
  */
+import { randomBytes } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -136,6 +137,12 @@ function entryPath(dir: string, projectId: string): string {
   return join(dir, `${projectId}.json`);
 }
 
+/** The project id encoded in the file name; entries must not disagree with it. */
+function entryIdFromPath(file: string): string {
+  const name = file.split(/[\\/]/).pop() ?? '';
+  return name.endsWith('.json') ? name.slice(0, -'.json'.length) : name;
+}
+
 function toNumber(name: string, raw: string | undefined, max = 65535): number {
   if (raw === undefined || raw === '') return 0;
   const value = Number(raw);
@@ -147,8 +154,12 @@ function toNumber(name: string, raw: string | undefined, max = 65535): number {
 
 function readEntry(file: string): Entry | null {
   try {
+    // Never read through a symlink: a precreated registry entry could otherwise
+    // point at any file the developer can read.
+    if (lstatSync(file).isSymbolicLink()) return null;
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<Entry>;
     if (typeof parsed.projectId !== 'string' || !PROJECT_ID_RE.test(parsed.projectId)) return null;
+    if (parsed.projectId !== entryIdFromPath(file)) return null;
     return {
       projectId: parsed.projectId,
       worktree: typeof parsed.worktree === 'string' ? parsed.worktree : '',
@@ -180,7 +191,7 @@ function listEntries(dir: string): Entry[] {
     if (!name.endsWith('.json')) continue;
     const file = join(dir, name);
     try {
-      if (!statSync(file).isFile()) continue;
+      if (!lstatSync(file).isFile()) continue;
     } catch {
       continue;
     }
@@ -229,9 +240,20 @@ function writeEntry(args: Args): void {
   };
 
   mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // Direct invocations bypass scripts/dev's shell guard, so re-check the
+  // directory here: a symlink or a directory owned by another local user must
+  // not receive registry writes (or a temp-file symlink write).
+  const dirStat = lstatSync(dir);
+  if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) {
+    fail(`registry directory ${dir} is not a real directory`);
+  }
+  const uid = process.getuid?.();
+  if (uid !== undefined && dirStat.uid !== uid) {
+    fail(`registry directory ${dir} is not owned by the current user`);
+  }
   const file = entryPath(dir, projectId);
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600 });
+  const tmp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
   renameSync(tmp, file);
   printEntry(entry, args.format);
 }
