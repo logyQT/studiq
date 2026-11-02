@@ -4,14 +4,19 @@
 # ── Per-checkout parametrization ──────────────────────────────────────────────
 # Every configurable value is read through `env()`. `scripts/dev` resolves the
 # contract from root `.env` (see `.env.example`), derives per-checkout defaults
-# from the checkout path, exports them to every Supabase call and renders
-# `supabase/.env` so plain `bunx supabase ...` commands in this checkout target
-# THIS checkout's stack.
+# from the checkout path, exports them to every Supabase call, and renders
+# `supabase/.env`.
 #
-# The pinned CLI (v2.x) accepts `env()` in numeric fields, but an UNSET numeric
-# variable makes the whole config fail to parse (`CliConfigParseError`), and an
-# unset string is left as the literal `env(NAME)`. Always run Supabase through
-# `bun dev:*` (or set the variables in root `.env` / the CI environment).
+# How direct CLI commands see these values (pinned CLI v2.x):
+#   * the CLI loads the project-root `.env` and `supabase/.env`; the process
+#     environment wins over both, and root `.env` wins over `supabase/.env`.
+#   * `supabase/.env` is generated and only exists after a `bun dev:*` run. In a
+#     fresh shell/checkout with neither file, export the required variables (or
+#     run `bun dev:up`, or `cp .env.example .env`) before a direct CLI command.
+#   * an unset numeric variable makes the whole config fail to parse
+#     (`CliConfigParseError`); an unset string is left as the literal
+#     `env(NAME)`.
+# Prefer `bun dev:*` (or set the variables in root `.env` / the CI environment).
 # ─────────────────────────────────────────────────────────────────────────────
 
 # A string used to distinguish different Supabase projects on the same host.

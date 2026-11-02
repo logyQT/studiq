@@ -536,7 +536,7 @@ entry_field() {
 }
 
 registry_write_entry() {
-  local mode=$1 exclusive=${2:-0}
+  local mode=$1 exclusive=${2:-0} claim=${3:-0}
   local api=$SUPABASE_API_PORT db=$SUPABASE_DB_PORT studio=$SUPABASE_STUDIO_PORT
   local mail=$SUPABASE_MAIL_PORT shadow=$SUPABASE_SHADOW_PORT pooler=$SUPABASE_POOLER_PORT
   local analytics=$SUPABASE_ANALYTICS_PORT edge=$SUPABASE_EDGE_INSPECTOR_PORT
@@ -547,18 +547,12 @@ registry_write_entry() {
   fi
   local pid=""
   pid=$(read_web_pid 2>/dev/null) || pid=""
-  # A claim is held while the startup runs; without a web pid yet, record this
-  # shell so concurrent checkouts see a live owner.
-  if (( exclusive == 1 )) && [[ -z "$pid" ]]; then pid=$$; fi
-  # Preserve the existing claim id on non-claim updates; only claim_project
-  # generates a new one (and cleanup removes only that id).
-  local claim_id=${CLAIM_ID:-} existing=""
-  if [[ -z "$claim_id" ]]; then
-    existing=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || existing=""
-    if [[ -n "$existing" ]]; then
-      claim_id=$(entry_field "$existing" claimId 2>/dev/null) || claim_id=""
-    fi
-  fi
+  # While a claim/startup is in flight, record this shell so concurrent
+  # checkouts see a live owner even before a web pid exists.
+  if (( exclusive == 1 || claim == 1 )) && [[ -z "$pid" ]]; then pid=$$; fi
+  # Always write this invocation's identity; claim_project generates it once
+  # per invocation (an overlapping invocation replaces it).
+  local claim_id=${CLAIM_ID:-}
   ensure_registry_dir
   local -a write_args=(
     write
@@ -645,10 +639,17 @@ registry_entry_is_live() {
 claim_project() {
   local mode=$1 entry worktree
   CLAIM_CREATED=0
+  # Every invocation gets a distinct identity, including overlapping runs that
+  # reuse an existing entry. Cleanup removes the entry only while it still
+  # carries this id.
+  CLAIM_ID="$$-$(date +%s)-$RANDOM"
   entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
   if [[ -n "$entry" ]]; then
     worktree=$(entry_field "$entry" worktree)
     if [[ -n "$worktree" && "$(canon_path "$worktree")" == "$REPO_ROOT" ]]; then
+      # Existing entry is ours: refresh its identity for this invocation so an
+      # overlapping run's failed cleanup cannot remove the current entry.
+      registry_write_entry "$mode" 0 1
       return 0
     fi
     if registry_entry_is_live "$entry"; then
@@ -666,11 +667,8 @@ claim_project() {
     registry_remove_entry
   fi
 
-  # Unique identity for this claim; cleanup removes the entry only while it
-  # still records this id.
-  CLAIM_ID="$$-$(date +%s)-$RANDOM"
   ensure_registry_dir
-  if registry_write_entry "$mode" 1; then
+  if registry_write_entry "$mode" 1 1; then
     CLAIM_CREATED=1
     return 0
   fi
