@@ -169,23 +169,24 @@ function liveStackPublishes(projectId: string, apiPort: number): ImplicitTargetC
   if (!ports.includes(`:${apiPort}->`)) {
     return {
       ok: false,
-      reason: `no running ${projectId} container publishes the recorded API port :${apiPort}`,
+      reason: `no running ${projectId} container publishes the target API port :${apiPort}`,
     };
   }
   return { ok: true };
 }
 
 /**
- * Seeding writes accounts, so an implicit target taken from the generated
- * `supabase/.env` must be proven to belong to this checkout. Explicit targets
- * (`SUPABASE_URL`, `SUPABASE_API_PORT`, `--supabase-url`) skip the check.
+ * Seeding writes accounts, so a target taken from the generated
+ * `supabase/.env` must be proven to belong to this checkout. Only an explicit
+ * URL (`SUPABASE_URL`, `--supabase-url`) skips the check; a
+ * `SUPABASE_API_PORT` override selects the effective port but must still match
+ * the registry entry and the live container.
  */
 export function implicitTargetOwnership(): ImplicitTargetCheck {
   if (env('SUPABASE_URL', '')) return { ok: true };
-  if (envPort('SUPABASE_API_PORT') !== null) return { ok: true };
 
   const projectId = generatedValue('SUPABASE_PROJECT_ID');
-  const apiPort = generatedPort('SUPABASE_API_PORT');
+  const apiPort = envPort('SUPABASE_API_PORT') ?? generatedPort('SUPABASE_API_PORT');
   if (!projectId || apiPort === null) {
     return { ok: false, reason: 'supabase/.env has no generated project/API port' };
   }
@@ -215,7 +216,7 @@ export function implicitTargetOwnership(): ImplicitTargetCheck {
   if (Number(entry.apiPort) !== apiPort) {
     return {
       ok: false,
-      reason: `registry records :${entry.apiPort} but supabase/.env records :${apiPort}`,
+      reason: `registry records :${entry.apiPort} but the target API port is :${apiPort}`,
     };
   }
   return liveStackPublishes(projectId, apiPort);

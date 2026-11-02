@@ -613,7 +613,8 @@ registry_entry_is_live() {
 # Atomically claim the project before starting anything. The registry entry is
 # created with O_EXCL (never a last-writer-wins rename), so two checkouts cannot
 # both adopt the same project id. An entry we already own is fine; a live
-# foreign entry is refused; a stale one is reclaimed.
+# foreign entry is refused; a stale one is reclaimed. Unregistered containers
+# are never adopted — explicit recovery is required.
 claim_project() {
   local mode=$1 entry worktree
   CLAIM_CREATED=0
@@ -629,6 +630,7 @@ claim_project() {
     registry_remove_entry
   fi
 
+  unregistered_containers_error "claim"
   ensure_registry_dir
   if registry_write_entry "$mode" 1; then
     CLAIM_CREATED=1
@@ -753,6 +755,18 @@ print_suggestion() {
 }
 
 # ── Ownership guards ─────────────────────────────────────────────────────────
+# Containers for this project without a registry entry are not ours to adopt or
+# stop: the registry may have been lost, or another checkout may have started
+# them manually with the same explicit id. Require explicit recovery.
+unregistered_containers_error() {
+  local action=$1 containers
+  containers=$(docker_containers_for "$SUPABASE_PROJECT_ID")
+  [[ -n "$containers" ]] || return 0
+  fail "Refusing to $action: containers exist for project '$SUPABASE_PROJECT_ID' but no registry entry proves this checkout owns them.
+  If you own them, stop them explicitly: bunx supabase stop --project-id '$SUPABASE_PROJECT_ID'
+  Then retry."
+}
+
 assert_stack_ownership() {
   local action=$1 entry worktree
   entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
@@ -763,13 +777,7 @@ assert_stack_ownership() {
     fi
     return 0
   fi
-  if [[ -n "$(docker_running_for "$SUPABASE_PROJECT_ID")" ]]; then
-    # The registry can be wiped (reboot, /tmp cleanup) while the stack survives.
-    # The project id is derived from this checkout by default, so adopting a
-    # running stack with that id is safe unless a foreign entry claims it (above).
-    warn "No registry entry for '$SUPABASE_PROJECT_ID'; adopting the running stack with that project id."
-    return 0
-  fi
+  unregistered_containers_error "$action"
   return 1
 }
 
@@ -954,7 +962,7 @@ stop_supabase_scoped() {
   # Deliberately no `--no-backup`: on the pinned CLI that flag *deletes* the
   # data volumes. The default stop keeps the database volume and data.
   supa stop --project-id "$SUPABASE_PROJECT_ID"
-  info "Stopped Supabase project '$SUPABASE_PROJECT_ID' (database volume kept)"
+  info "Stopped Supabase project '$SUPABASE_PROJECT_ID' (database volume and registry ownership kept)"
 }
 
 # Refuse to read keys/URLs from a stack another checkout owns.
@@ -1432,6 +1440,9 @@ cmd_serve() {
     render_web_env
   else
     assert_stack_is_ours_or_absent
+    if ! registry_get_entry "$SUPABASE_PROJECT_ID" >/dev/null 2>&1; then
+      unregistered_containers_error "serve"
+    fi
     if supabase_healthy && load_supabase_status; then
       merge_supabase_env
       render_web_env
@@ -1562,18 +1573,13 @@ cmd_down() {
 
   if assert_stack_ownership "stop"; then
     stop_supabase_scoped
-    registry_remove_entry
+    # Keep the registry entry: `supabase stop` retains the database volume, so
+    # ownership follows the retained state. Remove it only when that state is
+    # explicitly destroyed.
     return 0
   fi
 
-  if [[ -n "$(docker_containers_for "$SUPABASE_PROJECT_ID")" ]]; then
-    fail "Refusing to stop project '$SUPABASE_PROJECT_ID': containers exist but no registry entry proves this checkout owns them.
-  If you own them: bunx supabase stop --project-id '$SUPABASE_PROJECT_ID'
-  Otherwise leave them alone and check 'bun dev:doctor'."
-  fi
-
   warn "No Supabase stack for project '$SUPABASE_PROJECT_ID'."
-  registry_remove_entry
 }
 
 cmd_reset_db() {
@@ -1711,6 +1717,10 @@ cmd_doctor() {
     fi
   else
     printf '  project    no registry entry (nothing started by dev:up yet)\n'
+    if [[ -n "$(docker_containers_for "$SUPABASE_PROJECT_ID")" ]]; then
+      printf '  ✘ containers exist without a registry entry (explicit recovery required)\n'
+      problems=$((problems + 1))
+    fi
   fi
 
   printf '\n  registry entries:\n'
