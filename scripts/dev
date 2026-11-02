@@ -618,7 +618,8 @@ registry_entry_is_live() {
 claim_project() {
   local mode=$1 entry worktree
   CLAIM_CREATED=0
-  if entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null); then
+  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
+  if [[ -n "$entry" ]]; then
     worktree=$(entry_field "$entry" worktree)
     if [[ -n "$worktree" && "$(canon_path "$worktree")" == "$REPO_ROOT" ]]; then
       return 0
@@ -626,11 +627,18 @@ claim_project() {
     if registry_entry_is_live "$entry"; then
       fail "project id '$SUPABASE_PROJECT_ID' is owned by ${worktree:-another checkout} (registry: $REGISTRY_DIR)."
     fi
+  fi
+
+  # Check containers before a stale entry can be deleted (or a new one
+  # created). No registry entry proves ownership of them, so adopting them is
+  # forbidden even when the entry looked stale.
+  unregistered_containers_error "claim"
+
+  if [[ -n "$entry" ]]; then
     warn "Reclaiming stale registry entry for '$SUPABASE_PROJECT_ID' (was ${worktree:-unknown})."
     registry_remove_entry
   fi
 
-  unregistered_containers_error "claim"
   ensure_registry_dir
   if registry_write_entry "$mode" 1; then
     CLAIM_CREATED=1
@@ -1440,9 +1448,6 @@ cmd_serve() {
     render_web_env
   else
     assert_stack_is_ours_or_absent
-    if ! registry_get_entry "$SUPABASE_PROJECT_ID" >/dev/null 2>&1; then
-      unregistered_containers_error "serve"
-    fi
     if supabase_healthy && load_supabase_status; then
       merge_supabase_env
       render_web_env
@@ -1456,9 +1461,17 @@ cmd_serve() {
     fi
   fi
 
+  # Reserve the project before the web starts. The claim is atomic (O_EXCL)
+  # when new; an existing entry owned by this checkout is preserved.
+  claim_project "prod"
+  STARTUP_CLAIM_ACTIVE=1
+  STARTUP_INCOMPLETE=1
+
   preflight_ports 0
   start_web prod
   registry_write_entry prod
+  STARTUP_INCOMPLETE=0
+  STARTUP_CLAIM_ACTIVE=0
   print_ready_block
 }
 
