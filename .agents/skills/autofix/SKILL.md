@@ -98,6 +98,8 @@ gh pr create --title "$title" --body "${body:-Auto-created by CodeRabbit autofix
 
 After creating the PR, inform "Run skill again in ~5 min", EXIT.
 
+**If the user declines PR creation:** inform "No PR to process; stopping", EXIT before Step 3. Never continue with an unset `pr_number`.
+
 **If multiple PRs match:** show the PR numbers and ask the user which one to use. Set `pr_number` to that explicit choice and continue; never guess or take the first entry.
 
 **Otherwise:** Proceed to Step 3.
@@ -338,16 +340,28 @@ If a consolidated commit was created:
 
 If a consolidated commit was created:
 - Ask: "Push changes?"
-- If the user agrees, run `git push` and record the result:
-  - exit code 0 → `PUSHED=1`
+- If the user agrees, run `git push` and verify the result:
+  - exit code 0 → verify the selected PR head matches local `HEAD`
   - non-zero → `PUSHED=0`; report the push failure. The commit remains local and must not be described as pushed.
 - If the user declines → `PUSHED=0`.
+
+A successful `git push` alone is not enough: set `PUSHED=1` only when
+`gh pr view "$pr_number" --json headRefOid` succeeds and its `headRefOid`
+equals `git rev-parse HEAD`. If they differ, or the PR head cannot be
+verified, keep `PUSHED=0` and do not report the changes as pushed to that PR.
+Push to a fork or a different branch can leave the PR head behind local HEAD.
 
 ```bash
 PUSHED=0
 # after the user agrees:
 if git push; then
-  PUSHED=1
+  if local_head=$(git rev-parse HEAD) &&
+    pr_head=$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid') &&
+    [ -n "$pr_head" ] && [ "$pr_head" = "$local_head" ]; then
+    PUSHED=1
+  else
+    PUSHED=0
+  fi
 else
   PUSHED=0
 fi

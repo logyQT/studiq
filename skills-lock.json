@@ -5,7 +5,7 @@
       "source": "coderabbitai/skills",
       "sourceType": "github",
       "skillPath": "skills/autofix/SKILL.md",
-      "computedHash": "8afb7fefb92fc528eb36035d8c56c1b823e4619bfa687005ae238a1e23a2dd2a"
+      "computedHash": "2cd84a1eb489d550eeb570f50fd43392185ba458cf7ea66474cf6fe0d58fa4b4"
     },
     "code-review": {
       "source": "coderabbitai/skills",

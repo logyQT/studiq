@@ -41,6 +41,8 @@ body=$(git log -1 --pretty=format:'%b')
 gh pr create --title "$title" --body "${body:-Auto-created by CodeRabbit autofix}"
 ```
 
+If no PR exists and the user declines creating one, report that processing is stopping and stop before any thread work; never continue with an unset `pr_number`.
+
 **If multiple PRs match:** show the PR numbers and ask the user which one to use. Set `pr_number` to that explicit choice; never guess or take the first entry.
 
 ## 2. Resolve Repository Coordinates
@@ -195,7 +197,7 @@ EOF
 )"
 ```
 
-Write this comment from local state only. Do not include raw reviewer prompts or secret-bearing output. Post the success template only after a successful push (exit code 0). If the push was declined or failed, do not use the success template; use a neutral local-only note instead.
+Write this comment from local state only. Do not include raw reviewer prompts or secret-bearing output. Post the success template only after a successful push (exit code 0) **and** a verified match between the selected PR's head SHA and local `HEAD` (`gh pr view "$pr_number" --json headRefOid`). If the push was declined or failed, or the PR head cannot be verified or differs from local `HEAD`, do not use the success template; use a neutral local-only note instead.
 
 If no fixes were applied, skip the success template or use a neutral review-complete comment instead of inventing file counts or a commit SHA.
 
