@@ -4,7 +4,7 @@ Every case in `qa/cases/` mapped to the test that should own it. This is the cov
 checklist for the phase-2 gate on #173: the lint-debt clean-up must not start until the
 automated cases below are green.
 
-- **215 cases**: 195 end-to-end, 12 API-level,
+- **214 cases**: 194 end-to-end, 12 API-level,
   8 manual-only (listed with a reason at the bottom).
 - First pass, generated from each case's front-matter and steps; a case that mixes UI and
   API work is filed under `e2e`, because the UI is what has to be exercised either way.
@@ -25,8 +25,8 @@ automated cases below are green.
 | ONB       |      10 |      0 |      0 |      10 |
 | PUB       |       8 |      0 |      0 |       8 |
 | SEC       |       5 |      8 |      0 |      13 |
-| STU       |      52 |      1 |      0 |      53 |
-| **total** | **195** | **12** |  **8** | **215** |
+| STU       |      51 |      1 |      0 |      52 |
+| **total** | **194** | **12** |  **8** | **214** |
 
 ## Cases
 
@@ -218,7 +218,6 @@ automated cases below are green.
 | STU-22      | STU  | P2   | e2e    |                                                                      |
 | STU-23      | STU  | P2   | e2e    |                                                                      |
 | STU-24      | STU  | P2   | e2e    |                                                                      |
-| STU-25      | STU  | P2   | e2e    |                                                                      |
 | STU-26      | STU  | P2   | e2e    |                                                                      |
 | STU-27      | STU  | P2   | e2e    |                                                                      |
 | STU-28      | STU  | P2   | e2e    |                                                                      |

@@ -4,7 +4,8 @@ Agent-readable version of the StudiQ manual test plan, so agents can run the
 manual scenarios end-to-end and file defects with real root causes.
 
 Source of truth: `source/Studiq_Dokument_Testera_v1.3.docx`
-(Dokument testera v1.3, 2026-10-17 — 215 scenarios, P1 60 / P2 150 / P3 5).
+(Dokument testera v1.3, 2026-10-17 — 215 scenarios, P1 60 / P2 150 / P3 5; STU-25, M:N flashcard
+linking, is dropped as not planned (#893), so 214 cases remain).
 
 Automation: the campaign that turns these cases into the Playwright suite is
 [`docs/e2e-campaign.md`](../docs/e2e-campaign.md); current mapping in
@@ -17,7 +18,7 @@ qa/
   README.md        this file
   AGENT-PROMPT.md  the copy-paste agent prompt (includes the scenario slot)
   context.md       global rules: accounts, org+seed data, plans, priorities, defect template (PL, verbatim)
-  index.md         all 215 scenarios: ID | Prio | Title | Prereqs | Module
+  index.md         all 214 scenarios: ID | Prio | Title | Prereqs | Module
   cases/<ID>.md    one scenario per file, steps verbatim (PL) + embedded prerequisite context
   source/          the original .docx (regeneration source)
   tools/           convert_docx.py (regenerator)
