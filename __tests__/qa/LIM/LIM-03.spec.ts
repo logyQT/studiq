@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -89,13 +90,13 @@ interface DeckList {
 async function personalPlan(page: Page): Promise<PersonalPlan> {
   const res = await page.request.get('/api/v1/me/personal-plan');
   expect(res.status(), 'GET /api/v1/me/personal-plan').toBe(200);
-  return (await res.json()).data as PersonalPlan;
+  return (await json<{ data: PersonalPlan }>(res)).data;
 }
 
 async function decks(page: Page): Promise<DeckList> {
   const res = await page.request.get('/api/v1/flashcards/decks?owner=mine&limit=100');
   expect(res.status(), 'GET /api/v1/flashcards/decks').toBe(200);
-  return (await res.json()).data as DeckList;
+  return (await json<{ data: DeckList }>(res)).data;
 }
 
 async function deleteOwnDecks(page: Page): Promise<void> {
@@ -209,7 +210,9 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
       data: { name: blockedName },
     });
     expect(refused.status(), 'POST a deck past the Base cap').toBe(429);
-    expect((await refused.json()).error, 'the limit error code').toBe('USAGE_LIMIT_EXCEEDED');
+    expect((await json<{ error?: string }>(refused)).error, 'the limit error code').toBe(
+      'USAGE_LIMIT_EXCEEDED',
+    );
 
     const stillAtCap = await decks(page);
     expect(stillAtCap.total, 'no deck was created over the Base cap').toBe(baseCap);

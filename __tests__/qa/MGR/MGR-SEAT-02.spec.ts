@@ -1,4 +1,5 @@
 import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -169,7 +170,7 @@ function userId(tenant: QaTenant, role: QaRole): string {
  */
 async function ensureTeacherRole(page: Page, tenant: QaTenant): Promise<void> {
   const roles = (
-    await json<Array<{ id: string; name: string }>>(
+    await readEnvelope<Array<{ id: string; name: string }>>(
       await page.request.get('/api/v1/organization/roles'),
     )
   ).data;
@@ -188,7 +189,9 @@ async function ensureTeacherRole(page: Page, tenant: QaTenant): Promise<void> {
  */
 async function resetSeats(page: Page): Promise<void> {
   const assignments = (
-    await json<Assignment[]>(await page.request.get('/api/v1/organization/seats/assignments'))
+    await readEnvelope<Assignment[]>(
+      await page.request.get('/api/v1/organization/seats/assignments'),
+    )
   ).data;
   for (const assignment of assignments) {
     const response = await page.request.delete(
@@ -204,7 +207,7 @@ async function resetSeats(page: Page): Promise<void> {
  */
 async function ensurePool(page: Page, entry: (typeof POOLS)[number]): Promise<Pool> {
   const existing = (
-    await json<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
+    await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
   ).data.find((pool) => pool.planKey === entry.planKey);
   const response = existing
     ? await page.request.put(`/api/v1/organization/seats/pools/${existing.id}`, {
@@ -213,7 +216,7 @@ async function ensurePool(page: Page, entry: (typeof POOLS)[number]): Promise<Po
     : await page.request.post('/api/v1/organization/seats/pools', {
         data: { planKey: entry.planKey, quantity: entry.quantity },
       });
-  const body = await json<Pool>(response);
+  const body = await readEnvelope<Pool>(response);
   expect(body.data, `pool ${entry.planKey}`).toMatchObject({
     planKey: entry.planKey,
     total: entry.quantity,
@@ -234,8 +237,8 @@ async function watchToasts(page: Page): Promise<void> {
     const recorded: string[] = [];
     window.qaToasts = recorded;
     new MutationObserver(() => {
-      for (const node of document.querySelectorAll('[data-sonner-toast]')) {
-        const text = (node as HTMLElement).innerText.trim();
+      for (const node of document.querySelectorAll<HTMLElement>('[data-sonner-toast]')) {
+        const text = node.innerText.trim();
         if (text && !recorded.includes(text)) recorded.push(text);
       }
     }).observe(document.body, { childList: true, subtree: true, characterData: true });
@@ -257,9 +260,9 @@ async function poolRow(page: Page, planName: string): Promise<string[]> {
   return (await row.getByRole('cell').allInnerTexts()).map((cell) => cell.trim());
 }
 
-async function json<T>(response: APIResponse): Promise<ApiBody<T>> {
+async function readEnvelope<T>(response: APIResponse): Promise<ApiBody<T>> {
   expect(response.status(), `${response.url()} answered ${response.status()}`).toBeLessThan(400);
-  return (await response.json()) as ApiBody<T>;
+  return json<ApiBody<T>>(response);
 }
 
 /** Pick one member in the „Przydziel miejsce” dialog. */
@@ -298,7 +301,8 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     // The seat plans are shared catalog data: read them, never write them. The
     // spec derives the member's expected features/limits from the catalog instead
     // of hard-coding plan contents.
-    catalog = (await json<PlanInfo[]>(await request.get('/api/v1/subscription-plans'))).data;
+    catalog = (await readEnvelope<PlanInfo[]>(await request.get('/api/v1/subscription-plans')))
+      .data;
     const plan = (key: string): PlanInfo => {
       const found = catalog.find((entry) => entry.key === key);
       if (!found) throw new Error(`subscription-plans: no ${key} plan in the catalog`);
@@ -319,7 +323,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await ensureTeacherRole(page, tenant);
     // The case's tier matrix counts on one admin, one teacher and one member.
     const members = (
-      await json<Array<{ id: string; orgRoleName: string }>>(
+      await readEnvelope<Array<{ id: string; orgRoleName: string }>>(
         await page.request.get('/api/v1/organization/members'),
       )
     ).data;
@@ -339,13 +343,15 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await signIn(page, tenant, 'student', /\/app$/);
 
     const beforeResponse = await page.request.get('/api/v1/features/me');
-    const beforeFeatures = (await json<{ features: string[] }>(beforeResponse)).data.features;
+    const beforeFeatures = (await readEnvelope<{ features: string[] }>(beforeResponse)).data
+      .features;
     expect(
       beforeFeatures,
       'fixture: the unseated member has no AI entitlement before the seat',
     ).not.toContain('ai.chat');
-    const beforeUsage = (await json<{ limit: number }>(await page.request.get('/api/v1/ai/usage')))
-      .data;
+    const beforeUsage = (
+      await readEnvelope<{ limit: number }>(await page.request.get('/api/v1/ai/usage'))
+    ).data;
 
     // User-visible pre-state: no AI entry in the sidebar and the plan gate on /app/ai.
     await expect(page.getByRole('link', { name: COPY.aiNav })).toHaveCount(0);
@@ -458,7 +464,9 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
 
     // The same state through the API the page calls.
     const assignments = (
-      await json<Assignment[]>(await page.request.get('/api/v1/organization/seats/assignments'))
+      await readEnvelope<Assignment[]>(
+        await page.request.get('/api/v1/organization/seats/assignments'),
+      )
     ).data;
     expect(assignments).toHaveLength(1);
     expect(assignments[0]).toMatchObject({
@@ -468,7 +476,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       userEmail: tenant.users.student.email,
     });
     const poolsAfterAssign = (
-      await json<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
+      await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
     ).data;
     expect(poolsAfterAssign.find((pool) => pool.planKey === 'ace')).toMatchObject({
       total: pools.get('ace')!.total,
@@ -505,7 +513,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(await wrongTier.json()).toMatchObject({ success: false, error: 'BAD_REQUEST' });
 
     const poolsAfterGuards = (
-      await json<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
+      await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
     ).data;
     expect(poolsAfterGuards.map((pool) => [pool.planKey, pool.assigned])).toEqual([
       ['ace', 1],
@@ -513,8 +521,11 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       ['creator', 0],
     ]);
     expect(
-      (await json<Assignment[]>(await page.request.get('/api/v1/organization/seats/assignments')))
-        .data,
+      (
+        await readEnvelope<Assignment[]>(
+          await page.request.get('/api/v1/organization/seats/assignments'),
+        )
+      ).data,
       'the rejected requests created no assignment',
     ).toHaveLength(1);
 
@@ -524,7 +535,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
 
     // The seat plan's features are now live for the member.
     const afterFeatures = (
-      await json<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
+      await readEnvelope<{ features: string[] }>(await page.request.get('/api/v1/features/me'))
     ).data.features;
     for (const key of beforeFeatures) {
       expect(afterFeatures, `additive: the member keeps ${key}`).toContain(key);
@@ -541,10 +552,12 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     }
 
     // The seat plan is the member's effective plan, and its limits apply.
-    const memberPlan = (await json<PlanInfo>(await page.request.get('/api/v1/me/plan'))).data;
-    expect(memberPlan.key).toBe('ace');
-    const afterUsage = (await json<{ limit: number }>(await page.request.get('/api/v1/ai/usage')))
+    const memberPlan = (await readEnvelope<PlanInfo>(await page.request.get('/api/v1/me/plan')))
       .data;
+    expect(memberPlan.key).toBe('ace');
+    const afterUsage = (
+      await readEnvelope<{ limit: number }>(await page.request.get('/api/v1/ai/usage'))
+    ).data;
     expect(afterUsage.limit, 'the seat plan’s AI token limit applies').toBe(
       ace.limits.max_ai_tokens_per_day,
     );

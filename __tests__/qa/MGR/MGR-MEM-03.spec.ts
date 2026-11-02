@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -85,7 +86,7 @@ function account(role: QaRole): CaseAccount {
 async function apiData<T>(page: Page, path: string): Promise<T> {
   const response = await page.request.get(path);
   expect(response.status(), `GET ${path}`).toBe(200);
-  const body = (await response.json()) as { success: boolean; data: T };
+  const body = await json<{ success: boolean; data: T }>(response);
   expect(body.success, `GET ${path} success`).toBe(true);
   return body.data;
 }
@@ -127,7 +128,7 @@ async function rejoinAsStudent(
     invite.status(),
     `POST ${INVITES_API} (${student.email}) → ${invite.status()} ${await invite.text()}`,
   ).toBe(201);
-  const { data } = (await invite.json()) as { data: { inviteCode: string } };
+  const { data } = await json<{ data: { inviteCode: string } }>(invite);
   const { inviteCode } = data;
 
   await loginAs(page, TENANT, 'student', { locale: 'pl', waitFor: /\/app$/ });
@@ -261,10 +262,10 @@ test.describe('@case:MGR-MEM-03 @area:MGR @prio:P1 self role change and self rem
     // 3. The organization still has its admin and all of its members.
     const afterAttempts = await page.request.get(MEMBERS_API);
     expect(afterAttempts.status(), `GET ${MEMBERS_API}`).toBe(200);
-    const afterBody = (await afterAttempts.json()) as {
+    const afterBody = await json<{
       success: boolean;
       data: OrgMember[];
-    };
+    }>(afterAttempts);
     expect(afterBody.success).toBe(true);
     expect(afterBody.data).toHaveLength(3);
     const selfAfter = afterBody.data.find((member) => member.id === tenant.manager.id);
@@ -303,10 +304,10 @@ test.describe('@case:MGR-MEM-03 @area:MGR @prio:P1 self role change and self rem
 
     const finalList = await page.request.get(MEMBERS_API);
     expect(finalList.status()).toBe(200);
-    const finalBody = (await finalList.json()) as {
+    const finalBody = await json<{
       success: boolean;
       data: Array<{ id: string; orgRoleName: string }>;
-    };
+    }>(finalList);
     expect(finalBody.success).toBe(true);
     expect(finalBody.data.map((member) => member.id).toSorted()).toEqual(
       [tenant.manager.id, tenant.teacher.id].toSorted(),

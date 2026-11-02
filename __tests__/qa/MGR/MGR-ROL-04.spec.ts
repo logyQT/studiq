@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -80,7 +81,7 @@ interface OrgMember {
 async function readData<T>(page: Page, path: string): Promise<T> {
   const response = await page.request.get(path);
   expect(response.status(), `GET ${path}`).toBe(200);
-  const body = (await response.json()) as { success: boolean; data: T };
+  const body = await json<{ success: boolean; data: T }>(response);
   expect(body.success, `${path} response`).toBe(true);
   return body.data;
 }
@@ -97,7 +98,7 @@ async function listMembers(page: Page): Promise<OrgMember[]> {
 async function createRole(page: Page, name: string, description: string): Promise<string> {
   const response = await page.request.post(ROLES_URL, { data: { name, description } });
   expect(response.status(), `POST ${ROLES_URL} (${name})`).toBe(201);
-  const body = (await response.json()) as { success: boolean; data: { id: string } };
+  const body = await json<{ success: boolean; data: { id: string } }>(response);
   expect(body.success, `create ${name}`).toBe(true);
   return body.data.id;
 }
@@ -216,7 +217,7 @@ test('a system role offers no delete control and the API refuses to delete it', 
   for (const role of systemBefore) {
     const response = await page.request.delete(`${ROLES_URL}/${role.id}`);
     expect(response.status(), `DELETE system role ${role.name}`).toBe(403);
-    const body = (await response.json()) as { success: boolean; error: string };
+    const body = await json<{ success: boolean; error: string }>(response);
     expect(body, `DELETE system role ${role.name}`).toEqual({ success: false, error: 'FORBIDDEN' });
   }
 

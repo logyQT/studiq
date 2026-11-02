@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -133,7 +134,7 @@ async function switchUser(
 async function resetControlRows(page: Page): Promise<void> {
   const quizzesResponse = await page.request.get(TEACHER_QUIZZES);
   expect(quizzesResponse.status(), 'GET /api/v1/teacher/quizzes while resetting').toBe(200);
-  for (const quiz of ((await quizzesResponse.json()) as ApiBody<Quiz[]>).data ?? []) {
+  for (const quiz of (await json<ApiBody<Quiz[]>>(quizzesResponse)).data ?? []) {
     if (!quiz.name.startsWith(CONTROL_PREFIX)) continue;
     const deleted = await page.request.delete(`${TEACHER_QUIZZES}/${quiz.id}`);
     expect(deleted.status(), `DELETE /api/v1/teacher/quizzes/${quiz.id}`).toBe(200);
@@ -141,8 +142,8 @@ async function resetControlRows(page: Page): Promise<void> {
 
   const assignmentsResponse = await page.request.get(TEACHER_ASSIGNMENTS);
   expect(assignmentsResponse.status(), 'GET /api/v1/teacher/assignments while resetting').toBe(200);
-  for (const assignment of ((await assignmentsResponse.json()) as ApiBody<TeacherAssignment[]>)
-    .data ?? []) {
+  for (const assignment of (await json<ApiBody<TeacherAssignment[]>>(assignmentsResponse)).data ??
+    []) {
     if (!assignment.title.startsWith(CONTROL_PREFIX)) continue;
     const deleted = await page.request.delete(`${TEACHER_ASSIGNMENTS}/${assignment.id}`);
     expect(deleted.status(), `DELETE /api/v1/teacher/assignments/${assignment.id}`).toBe(200);
@@ -213,9 +214,9 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
 
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status(), 'GET /api/v1/auth/me as the student').toBe(200);
-    const meBody = (await me.json()) as {
+    const meBody = await json<{
       data?: { user?: { id?: string; app_metadata?: { account_type?: string } } };
-    };
+    }>(me);
     expect(meBody.data?.user?.id, 'the signed-in user is the case subject').toBe(student.id);
     expect(meBody.data?.user?.app_metadata?.account_type, 'the case subject is a student').toBe(
       'student',
@@ -223,7 +224,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
 
     const orgsResponse = await page.request.get('/api/v1/me/orgs');
     expect(orgsResponse.status(), 'GET /api/v1/me/orgs as the student').toBe(200);
-    const orgs = ((await orgsResponse.json()) as ApiBody<MyOrg[]>).data ?? [];
+    const orgs = (await json<ApiBody<MyOrg[]>>(orgsResponse)).data ?? [];
     expect(
       orgs.find((row) => row.id === org.id),
       'the student’s own organization is the active tenant scope',
@@ -276,7 +277,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     // Same session, same org cookie: the account type is the only discriminator.
     const studentStats = await page.request.get(STUDENT_STATS);
     expect(studentStats.status(), 'the student still reads their own stats').toBe(200);
-    const studentStatsBody = (await studentStats.json()) as ApiBody<Record<string, unknown>>;
+    const studentStatsBody = await json<ApiBody<Record<string, unknown>>>(studentStats);
     expect(studentStatsBody.success).toBe(true);
     expect(studentStatsBody.data, 'student stats payload').toHaveProperty('totalQuizzes');
 
@@ -324,7 +325,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
       quizResponse.status(),
       `POST /api/v1/teacher/quizzes as the educator → ${await quizResponse.text()}`,
     ).toBe(201);
-    const quiz = ((await quizResponse.json()) as ApiBody<Quiz>).data!;
+    const quiz = (await json<ApiBody<Quiz>>(quizResponse)).data!;
     expect(quiz).toMatchObject({
       name: `${CONTROL_PREFIX} quiz ${run}`,
       organization_id: org.id,
@@ -338,7 +339,7 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
       assignmentResponse.status(),
       `POST /api/v1/teacher/assignments as the educator → ${await assignmentResponse.text()}`,
     ).toBe(201);
-    const assignment = ((await assignmentResponse.json()) as ApiBody<TeacherAssignment>).data!;
+    const assignment = (await json<ApiBody<TeacherAssignment>>(assignmentResponse)).data!;
     expect(assignment).toMatchObject({
       title: `${CONTROL_PREFIX} assignment ${run}`,
       organization_id: org.id,
@@ -347,13 +348,13 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
 
     const teacherStats = await page.request.get(TEACHER_STATS);
     expect(teacherStats.status(), 'the educator reads the teacher stats').toBe(200);
-    const teacherStatsBody = (await teacherStats.json()) as ApiBody<Record<string, unknown>>;
+    const teacherStatsBody = await json<ApiBody<Record<string, unknown>>>(teacherStats);
     expect(teacherStatsBody.success).toBe(true);
     expect(teacherStatsBody.data, 'teacher stats payload').toHaveProperty('totalQuestions');
 
     const teacherQuizzes = await page.request.get(TEACHER_QUIZZES);
     expect(teacherQuizzes.status(), 'the educator lists the teacher quizzes').toBe(200);
-    expect(((await teacherQuizzes.json()) as ApiBody<Quiz[]>).data).toContainEqual(
+    expect((await json<ApiBody<Quiz[]>>(teacherQuizzes)).data).toContainEqual(
       expect.objectContaining({ id: quiz.id, created_by: teacher.id }),
     );
 

@@ -41,6 +41,7 @@ export type MockSupabaseClient = SupabaseClient & {
 export function mockSupabaseClient(): MockSupabaseClient {
   // The mock only implements the entrypoints the tests use; the rest of the real
   // client surface is never touched, so a single assertion at the boundary is enough.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- partial SupabaseClient test double; stubbing the full surface is impossible
   const mock = {
     from: vi.fn(),
     rpc: vi.fn(),

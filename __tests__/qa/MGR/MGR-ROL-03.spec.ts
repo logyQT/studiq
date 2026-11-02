@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -112,7 +113,7 @@ interface ApiEnvelope<T> {
 async function getJson<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.status(), `GET ${url}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success`).toBe(true);
   return body.data;
 }
@@ -120,7 +121,7 @@ async function getJson<T>(page: Page, url: string): Promise<T> {
 async function postJson<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
   expect(response.status(), `POST ${url} → ${await response.text()}`).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `POST ${url} success`).toBe(true);
   return body.data;
 }
@@ -128,7 +129,7 @@ async function postJson<T>(page: Page, url: string, data: unknown): Promise<T> {
 async function putJson<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.put(url, { data });
   expect(response.status(), `PUT ${url} → ${await response.text()}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `PUT ${url} success`).toBe(true);
   return body.data;
 }
@@ -151,7 +152,7 @@ async function resetContent(page: Page, tenant: QaTenant): Promise<void> {
   ]) {
     const ownedByMember: string[] = [];
     for (const row of await listRows(page, path)) {
-      const url = `${path}/${row.id as string}`;
+      const url = `${path}/${row.id}`;
       const response = await page.request.delete(url);
       if (response.status() === 403) {
         ownedByMember.push(url);
@@ -348,22 +349,27 @@ async function signInAs(
   await loginAs(page, tenant, role, { locale: 'pl', waitFor });
 }
 
+interface ListRow {
+  id: string;
+  [key: string]: unknown;
+}
+
 interface ListBody {
   success: boolean;
-  data: { items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>;
+  data: { items?: ListRow[] } | ListRow[];
 }
 
 /** Fetch a list endpoint as the signed-in user and return its rows. */
-async function listRows(page: Page, path: string): Promise<Array<Record<string, unknown>>> {
+async function listRows(page: Page, path: string): Promise<ListRow[]> {
   const response = await page.request.get(path);
   expect(response.status(), `GET ${path}`).toBe(200);
-  const body = (await response.json()) as ListBody;
+  const body = await json<ListBody>(response);
   expect(body.success, `GET ${path} success`).toBe(true);
   return Array.isArray(body.data) ? body.data : (body.data.items ?? []);
 }
 
 async function listIds(page: Page, path: string): Promise<string[]> {
-  return (await listRows(page, path)).map((row) => row.id as string).toSorted();
+  return (await listRows(page, path)).map((row) => row.id).toSorted();
 }
 
 interface RolePermission {
@@ -374,10 +380,10 @@ interface RolePermission {
 async function readRolePermissions(page: Page, roleId: string): Promise<RolePermission[]> {
   const response = await page.request.get(`/api/v1/organization/roles/${roleId}`);
   expect(response.status(), `GET /api/v1/organization/roles/${roleId}`).toBe(200);
-  const body = (await response.json()) as {
+  const body = await json<{
     success: boolean;
     data: { permissions: RolePermission[] };
-  };
+  }>(response);
   expect(body.success, 'role detail success').toBe(true);
   return body.data.permissions;
 }

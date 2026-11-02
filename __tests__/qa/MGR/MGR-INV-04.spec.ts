@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -158,8 +159,8 @@ async function watchToasts(page: Page): Promise<void> {
     const recorded: string[] = [];
     window.qaToasts = recorded;
     new MutationObserver(() => {
-      for (const node of document.querySelectorAll('[data-sonner-toast]')) {
-        const text = (node as HTMLElement).innerText.trim();
+      for (const node of document.querySelectorAll<HTMLElement>('[data-sonner-toast]')) {
+        const text = node.innerText.trim();
         if (text && !recorded.includes(text)) recorded.push(text);
       }
     }).observe(document.body, { childList: true, subtree: true, characterData: true });
@@ -180,7 +181,7 @@ async function logout(page: Page): Promise<void> {
 async function getData<T>(page: Page, path: string): Promise<T> {
   const response = await page.request.get(path);
   expect(response.status(), `GET ${path}`).toBe(200);
-  const body = (await response.json()) as { success: boolean; data: T };
+  const body = await json<{ success: boolean; data: T }>(response);
   expect(body.success, `GET ${path} success`).toBe(true);
   return body.data;
 }
@@ -271,10 +272,10 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
 
     const bulk = await bulkResponse;
     expect(bulk.status(), 'POST /api/v1/organization/invites/bulk').toBe(200);
-    const bulkBody = (await bulk.json()) as {
+    const bulkBody = await json<{
       success: boolean;
       data: { results: CreatedInvitation[] };
-    };
+    }>(bulk);
     expect(bulkBody.success).toBe(true);
     expect(bulkBody.data.results).toHaveLength(1);
 
@@ -325,7 +326,7 @@ test.describe('MGR-INV-04 — accepting an invite as an existing user', () => {
 
     const accepted = await acceptResponse;
     expect(accepted.status(), 'POST /api/v1/organization/invites/accept').toBe(200);
-    expect(((await accepted.json()) as { success: boolean }).success).toBe(true);
+    expect((await json<{ success: boolean }>(accepted)).success).toBe(true);
 
     await expectToast(page, COPY.joinedToast);
     await expect(tokenInput).toHaveValue('');

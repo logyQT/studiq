@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -161,7 +162,7 @@ async function upload(
     await input.setInputFiles(file);
   }
   const response = await pending;
-  const body = (await response.json().catch(() => null)) as ApiEnvelope<{ url: string }> | null;
+  const body = await json<ApiEnvelope<{ url: string }>>(response).catch(() => null);
   return { status: response.status(), url: body?.data?.url };
 }
 
@@ -194,7 +195,7 @@ test.describe.skip('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
       deckResponse.status(),
       `POST ${DECKS_URL} → ${deckResponse.status()} ${await deckResponse.text()}`,
     ).toBe(201);
-    const deck = ((await deckResponse.json()) as ApiEnvelope<DeckResponse>).data;
+    const deck = (await json<ApiEnvelope<DeckResponse>>(deckResponse)).data;
     expect(deck.id, 'deck id').toBeTruthy();
     expect(deck.flashcard_count, 'a new deck has no cards').toBe(0);
 
@@ -243,7 +244,7 @@ test.describe.skip('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
     const deckImage = page.locator(`main img[src="${imageUrl}"]:visible`);
     await expect(deckImage, 'the saved card shows the image').toHaveCount(1);
     expect(
-      await deckImage.evaluate((element) => (element as HTMLImageElement).naturalWidth),
+      await deckImage.evaluate((element: HTMLImageElement) => element.naturalWidth),
       'the image really loads from storage',
     ).toBe(1);
     const deckAudio = page.locator(`main audio[src="${audioUrl}"]:visible`);
@@ -252,8 +253,7 @@ test.describe.skip('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
     // The content is persisted, not only rendered from the editor state.
     const listResponse = await page.request.get(`${CARDS_URL}?deckIds=${deck.id}&limit=50`);
     expect(listResponse.status(), `GET ${CARDS_URL}?deckIds=…`).toBe(200);
-    const cards = ((await listResponse.json()) as ApiEnvelope<ListResponse<CardResponse>>).data
-      .items;
+    const cards = (await json<ApiEnvelope<ListResponse<CardResponse>>>(listResponse)).data.items;
     expect(cards, 'the deck holds exactly the card created here').toHaveLength(1);
     expect(cards[0].front, 'stored question keeps the image').toContain(`![komorka](${imageUrl})`);
     expect(cards[0].back, 'stored answer keeps the audio').toContain(
@@ -351,8 +351,8 @@ test.describe.skip('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
     await rejectDialog.getByRole('button', { name: COPY.cancel, exact: true }).click();
     await expect(rejectDialog).toHaveCount(0);
     const afterResponse = await page.request.get(`${CARDS_URL}?deckIds=${deck.id}&limit=50`);
-    const afterCards = ((await afterResponse.json()) as ApiEnvelope<ListResponse<CardResponse>>)
-      .data.items;
+    const afterCards = (await json<ApiEnvelope<ListResponse<CardResponse>>>(afterResponse)).data
+      .items;
     expect(afterCards, 'the cancelled editor wrote no card').toHaveLength(1);
     expect(afterCards[0].id, 'the saved card is untouched').toBe(cards[0].id);
 

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 const email = 'student1@dev.local';
 const password = 'pass';
@@ -65,7 +66,7 @@ test.describe('Student stats activity — state breakdown (#384)', () => {
     // assertions stay valid when the seed changes.
     const statesResponse = await page.request.get(STATES_URL);
     expect(statesResponse.status()).toBe(200);
-    const states = ((await statesResponse.json()) as { data: StateBreakdown }).data;
+    const states = (await json<{ data: StateBreakdown }>(statesResponse)).data;
 
     const nonZeroStates = [
       { count: states.neverPracticed, label: 'state_new' },

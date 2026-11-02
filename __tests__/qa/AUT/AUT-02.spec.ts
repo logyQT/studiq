@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { asJson, json } from '#test/helpers/json';
 import { waitForMailLink } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
@@ -150,21 +151,21 @@ async function tokenClaims(context: BrowserContext): Promise<{
     .map((cookie) => cookie.value)
     .join('')
     .replace(/^base64-/, '');
-  const session = JSON.parse(Buffer.from(raw, 'base64').toString('utf8')) as {
-    access_token?: string;
-  };
+  const session = asJson<{ access_token?: string }>(
+    JSON.parse(Buffer.from(raw, 'base64').toString('utf8')),
+  );
   expect(session.access_token, 'access token in the session cookie').toBeTruthy();
 
-  const payload = JSON.parse(
-    Buffer.from(session.access_token!.split('.')[1], 'base64url').toString('utf8'),
-  ) as { email?: string; app_metadata?: { account_type?: string } };
+  const payload = asJson<{ email?: string; app_metadata?: { account_type?: string } }>(
+    JSON.parse(Buffer.from(session.access_token!.split('.')[1], 'base64url').toString('utf8')),
+  );
   return { email: payload.email, accountType: payload.app_metadata?.account_type };
 }
 
 async function organizationsOf(page: Page): Promise<unknown[]> {
   const response = await page.request.get('/api/v1/me/orgs');
   expect(response.status(), 'GET /api/v1/me/orgs').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: unknown[] };
+  const body = await json<{ success: boolean; data: unknown[] }>(response);
   expect(body.success).toBe(true);
   return body.data;
 }
@@ -192,9 +193,9 @@ test('an educator registers, activates and lands on /setup with account_type edu
 
     // The session belongs to the new address and the account is standalone, so
     // `/setup` is the first-run gate, not an empty-list accident.
-    const me = (await (await userPage.request.get('/api/v1/auth/me')).json()) as {
-      data?: { user?: { email?: string } | null };
-    };
+    const me = await json<{ data?: { user?: { email?: string } | null } }>(
+      await userPage.request.get('/api/v1/auth/me'),
+    );
     expect(me.data?.user?.email).toBe(email);
     expect(await organizationsOf(userPage), 'a registered educator joins no organization').toEqual(
       [],
@@ -241,9 +242,9 @@ test('a manager registers, activates and lands on /setup/org with account_type m
     await userPage.goto(await confirmationPath(email));
     await expect(userPage).toHaveURL(/\/setup\/org$/, { timeout: 20_000 });
 
-    const me = (await (await userPage.request.get('/api/v1/auth/me')).json()) as {
-      data?: { user?: { email?: string } | null };
-    };
+    const me = await json<{ data?: { user?: { email?: string } | null } }>(
+      await userPage.request.get('/api/v1/auth/me'),
+    );
     expect(me.data?.user?.email).toBe(email);
     expect(
       await organizationsOf(userPage),

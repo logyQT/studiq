@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -97,6 +98,16 @@ const TOPICS = {
 type BankKey = keyof typeof BANKS;
 type DeckKey = keyof typeof DECKS;
 type TopicKey = keyof typeof TOPICS;
+
+/**
+ * `Object.keys` typed with the object's literal keys. The maps above are `as const`,
+ * so their keys are fixed at compile time even though `Object.keys` only promises
+ * `string`.
+ */
+function keysOf<T extends object>(value: T): (keyof T)[] {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Object.keys widens known literal keys to string
+  return Object.keys(value) as (keyof T)[];
+}
 
 interface QuestionSpec {
   bank: BankKey;
@@ -295,7 +306,7 @@ interface PreparedContent {
 async function getData<T>(request: APIRequestContext, url: string): Promise<T> {
   const response = await request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -306,7 +317,7 @@ async function postData<T>(request: APIRequestContext, url: string, data: unknow
   expect(response.status(), `POST ${url} → ${response.status()} ${await response.text()}`).toBe(
     201,
   );
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -395,22 +406,21 @@ async function prepareContent(page: Page, tenant: QaTenant): Promise<PreparedCon
     waitFor: /\/edu(\/|$)/,
   });
 
-  const banks = {} as Record<BankKey, string>;
-  const decks = {} as Record<DeckKey, string>;
-  const topics = {} as Record<TopicKey, string>;
-
-  for (const key of Object.keys(BANKS) as BankKey[]) {
-    banks[key] = await ensureNamed(page, BANKS_URL, BANKS[key], groupId);
-  }
-  for (const key of Object.keys(DECKS) as DeckKey[]) {
-    decks[key] = await ensureNamed(page, DECKS_URL, DECKS[key], groupId);
-  }
-  for (const key of Object.keys(TOPICS) as TopicKey[]) {
-    topics[key] = await ensureNamed(page, TOPICS_URL, TOPICS[key], groupId);
-  }
+  const banks: Record<BankKey, string> = {
+    historia: await ensureNamed(page, BANKS_URL, BANKS.historia, groupId),
+    geografia: await ensureNamed(page, BANKS_URL, BANKS.geografia, groupId),
+  };
+  const decks: Record<DeckKey, string> = {
+    historia: await ensureNamed(page, DECKS_URL, DECKS.historia, groupId),
+    geografia: await ensureNamed(page, DECKS_URL, DECKS.geografia, groupId),
+  };
+  const topics: Record<TopicKey, string> = {
+    historia: await ensureNamed(page, TOPICS_URL, TOPICS.historia, groupId),
+    geografia: await ensureNamed(page, TOPICS_URL, TOPICS.geografia, groupId),
+  };
 
   // Questions are matched by their content inside the bank they belong to.
-  for (const bankKey of Object.keys(BANKS) as BankKey[]) {
+  for (const bankKey of keysOf(BANKS)) {
     const existing = await getData<QuestionItem[]>(
       page.request,
       `${QUESTIONS_URL}?bankId=${banks[bankKey]}`,
@@ -431,7 +441,7 @@ async function prepareContent(page: Page, tenant: QaTenant): Promise<PreparedCon
   }
 
   // Flashcards are matched by their front inside the deck they belong to.
-  for (const deckKey of Object.keys(DECKS) as DeckKey[]) {
+  for (const deckKey of keysOf(DECKS)) {
     const existing = await getData<ListResult<FlashcardItem>>(
       page.request,
       `${FLASHCARDS_URL}?deckIds=${decks[deckKey]}&limit=100`,
@@ -582,7 +592,7 @@ test.describe('@case:EDU-ST-01 @area:EDU @prio:P2 educator content statistics', 
     // ── The deck and topic tables ──────────────────────────────────────────
     const deckCard = statCard(page, /^liczby talii$/i);
     await expect(deckCard.locator('tbody tr')).toHaveCount(2);
-    for (const key of Object.keys(DECKS) as DeckKey[]) {
+    for (const key of keysOf(DECKS)) {
       const row = deckCard.locator('tbody tr').filter({ hasText: DECKS[key] });
       await expect(row, `deck row "${DECKS[key]}"`).toHaveCount(1);
       await expect(row).toContainText('4');
@@ -594,7 +604,7 @@ test.describe('@case:EDU-ST-01 @area:EDU @prio:P2 educator content statistics', 
 
     const topicCard = statCard(page, /^liczby tematów$/i);
     await expect(topicCard.locator('tbody tr')).toHaveCount(2);
-    for (const key of Object.keys(TOPICS) as TopicKey[]) {
+    for (const key of keysOf(TOPICS)) {
       const row = topicCard.locator('tbody tr').filter({ hasText: TOPICS[key] });
       await expect(row, `topic row "${TOPICS[key]}"`).toHaveCount(1);
       await expect(row).toContainText('4');

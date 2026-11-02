@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -62,7 +63,7 @@ const ASSIGNMENTS_URL = '/api/v1/teacher/assignments';
 async function createDraft(page: Page, title: string): Promise<string> {
   const response = await page.request.post(ASSIGNMENTS_URL, { data: { title } });
   expect(response.status(), `POST ${ASSIGNMENTS_URL} (${title})`).toBe(201);
-  const body = (await response.json()) as { data: { id: string; status: string } };
+  const body = await json<{ data: { id: string; status: string } }>(response);
   expect(body.data.status, `a freshly created assignment is a draft (${title})`).toBe('draft');
   return body.data.id;
 }
@@ -149,9 +150,9 @@ test.describe('@case:EDU-ASG-06 @area:EDU @prio:P2 delete a draft assignment', (
 
     const deleted = await page.request.get(`${ASSIGNMENTS_URL}/${targetId}`);
     expect(deleted.status(), 'GET the deleted draft').toBe(404);
-    const list = (await (await page.request.get(ASSIGNMENTS_URL)).json()) as {
-      data: Array<{ id: string }>;
-    };
+    const list = await json<{ data: Array<{ id: string }> }>(
+      await page.request.get(ASSIGNMENTS_URL),
+    );
     const ids = list.data.map((assignment) => assignment.id);
     expect(ids, 'the deleted draft is not served any more').not.toContain(targetId);
 

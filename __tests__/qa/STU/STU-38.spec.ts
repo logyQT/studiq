@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -85,7 +86,7 @@ interface AssignmentDetail {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -106,7 +107,7 @@ async function ensureForeignGroup(page: Page, teacherId: string, name: string): 
       created.status(),
       `POST /api/v1/organization/groups (${name}) → ${created.status()} ${await created.text()}`,
     ).toBe(201);
-    id = ((await created.json()) as ApiEnvelope<GroupRow>).data.id;
+    id = (await json<ApiEnvelope<GroupRow>>(created)).data.id;
   }
 
   const members = await page.request.put(`/api/v1/organization/groups/${id}/members`, {
@@ -130,7 +131,7 @@ async function ensureBank(page: Page, name: string): Promise<string> {
 
   const created = await page.request.post('/api/v1/questions/banks', { data: { name } });
   expect(created.status(), 'POST /api/v1/questions/banks').toBe(201);
-  return ((await created.json()) as ApiEnvelope<{ id: string }>).data.id;
+  return (await json<ApiEnvelope<{ id: string }>>(created)).data.id;
 }
 
 /** One multiple-choice question inside the bank, keyed by content. */
@@ -154,7 +155,7 @@ async function ensureQuestion(page: Page, bankId: string, content: string): Prom
     created.status(),
     `POST /api/v1/questions (${content}) → ${created.status()} ${await created.text()}`,
   ).toBe(201);
-  return ((await created.json()) as ApiEnvelope<QuestionRow>).data.id;
+  return (await json<ApiEnvelope<QuestionRow>>(created)).data.id;
 }
 
 /** Create, fill and publish an assignment addressed to exactly one group. */
@@ -170,7 +171,7 @@ async function publishAssignment(
     created.status(),
     `POST /api/v1/teacher/assignments (${title}) → ${created.status()} ${await created.text()}`,
   ).toBe(201);
-  const id = ((await created.json()) as ApiEnvelope<AssignmentDetail>).data.id;
+  const id = (await json<ApiEnvelope<AssignmentDetail>>(created)).data.id;
 
   const added = await page.request.post(`/api/v1/teacher/assignments/${id}/questions`, {
     data: { questionIds: [questionId] },
@@ -193,7 +194,7 @@ async function publishAssignment(
     `POST /api/v1/teacher/assignments/${id}/publish → ${published.status()} ${await published.text()}`,
   ).toBe(200);
   expect(
-    ((await published.json()) as ApiEnvelope<AssignmentDetail>).data.status,
+    (await json<ApiEnvelope<AssignmentDetail>>(published)).data.status,
     'the prerequisite is a published assignment',
   ).toBe('published');
 
@@ -310,11 +311,11 @@ test.describe('@case:STU-38 @area:STU @prio:P2 assignment of another group', () 
       // The API is closed too — not only the rendered page.
       const detail = await studentPage.request.get(`/api/v1/assignments/${foreignId}`);
       expect(detail.status(), 'GET the foreign assignment as the student').toBe(404);
-      expect(((await detail.json()) as { error: string }).error).toBe('NOT_FOUND');
+      expect((await json<{ error: string }>(detail)).error).toBe('NOT_FOUND');
 
       const start = await studentPage.request.post(`/api/v1/assignments/${foreignId}/start`);
       expect(start.status(), 'starting the foreign assignment as the student').toBe(404);
-      expect(((await start.json()) as { error: string }).error).toBe('NOT_FOUND');
+      expect((await json<{ error: string }>(start)).error).toBe('NOT_FOUND');
 
       const after = await getData<{ id: string }[]>(studentPage, '/api/v1/assignments');
       expect(

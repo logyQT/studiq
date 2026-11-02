@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 
@@ -48,19 +49,18 @@ test.describe('EDU dashboard stats (#133, #654)', () => {
     // content, hence the non-zero guards: with the envelope bug every card rendered 0.
     const overview = await page.request.get('/api/v1/stats/teacher');
     expect(overview.status()).toBe(200);
-    const { totalQuestions, totalFlashcards } = (await overview.json()).data as {
-      totalQuestions: number;
-      totalFlashcards: number;
-    };
+    const { totalQuestions, totalFlashcards } = (
+      await json<{ data: { totalQuestions: number; totalFlashcards: number } }>(overview)
+    ).data;
     expect(totalQuestions).toBeGreaterThan(0);
     expect(totalFlashcards).toBeGreaterThan(0);
 
     // Learners and attempts come from the group aggregate: distinct totals, never a row sum.
     const groups = await page.request.get('/api/v1/stats/teacher/groups?days=30');
     expect(groups.status()).toBe(200);
-    const { totals } = (await groups.json()).data as {
-      totals: { students: number; completedAttempts: number };
-    };
+    const { totals } = (
+      await json<{ data: { totals: { students: number; completedAttempts: number } } }>(groups)
+    ).data;
 
     await expect(statCardValue(page, t('EduOverviewPage.total_questions'))).toHaveText(
       String(totalQuestions),

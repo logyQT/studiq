@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -129,7 +130,7 @@ interface FlashcardRow {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -161,7 +162,7 @@ async function createTopic(
     response.status(),
     `POST ${TOPICS_URL} (${data.name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<TopicRow>;
+  const body = await json<ApiEnvelope<TopicRow>>(response);
   expect(body.success, `POST ${TOPICS_URL} (${data.name}) success flag`).toBe(true);
   return body.data;
 }
@@ -181,7 +182,7 @@ async function ensureDeck(page: Page, name: string): Promise<DeckRow> {
     response.status(),
     `POST ${DECKS_URL} (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<DeckRow>;
+  const body = await json<ApiEnvelope<DeckRow>>(response);
   expect(body.success, `POST ${DECKS_URL} (${name}) success flag`).toBe(true);
   return body.data;
 }

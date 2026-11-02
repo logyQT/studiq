@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -109,7 +110,7 @@ interface GroupMemberRow {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -193,7 +194,7 @@ async function ensureTopic(page: Page): Promise<TopicRow> {
     response.status(),
     `POST /api/v1/flashcards/topics → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<TopicRow>).data;
+  return (await json<ApiEnvelope<TopicRow>>(response)).data;
 }
 
 /** The deck screen's card element (`<Card id="fc-<flashcard id>">`). */
@@ -253,7 +254,7 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
       deckResponse.status(),
       `POST /api/v1/flashcards/decks → ${deckResponse.status()} ${await deckResponse.text()}`,
     ).toBe(201);
-    const deck = ((await deckResponse.json()) as ApiEnvelope<DeckRow>).data;
+    const deck = (await json<ApiEnvelope<DeckRow>>(deckResponse)).data;
     expect(deck.visibility, 'the prerequisite deck is shared with the group').toBe('group');
     expect(deck.groupIds).toEqual([groupId]);
 

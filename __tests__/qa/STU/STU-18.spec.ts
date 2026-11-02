@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -101,7 +102,7 @@ test.describe('STU-18 @area:STU @prio:P2 delete deck', () => {
       data: { name: deckName },
     });
     expect(created.status(), `POST /api/v1/flashcards/decks (${deckName})`).toBe(201);
-    const deck = ((await created.json()) as ApiEnvelope<CreatedDeck>).data;
+    const deck = (await json<ApiEnvelope<CreatedDeck>>(created)).data;
     expect(deck.name).toBe(deckName);
     // The deck lands in the student's active organization, which is the scope the
     // list endpoint reads; a deck outside it would never be rendered here.
@@ -155,7 +156,7 @@ test.describe('STU-18 @area:STU @prio:P2 delete deck', () => {
     const list = await page.request.get('/api/v1/flashcards/decks');
     expect(list.status(), 'GET /api/v1/flashcards/decks').toBe(200);
     expect(
-      ((await list.json()) as ApiEnvelope<{ items: { id: string }[] }>).data.items,
+      (await json<ApiEnvelope<{ items: { id: string }[] }>>(list)).data.items,
       'the list endpoint no longer returns the deck',
     ).toHaveLength(0);
   });

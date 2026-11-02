@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -76,13 +77,13 @@ interface PaymentHistoryItem {
 async function personalPlan(page: Page): Promise<PersonalPlan> {
   const res = await page.request.get('/api/v1/me/personal-plan');
   expect(res.status(), 'GET /api/v1/me/personal-plan').toBe(200);
-  return (await res.json()).data as PersonalPlan;
+  return (await json<{ data: PersonalPlan }>(res)).data;
 }
 
 async function paymentHistory(page: Page): Promise<PaymentHistoryItem[]> {
   const res = await page.request.get('/api/v1/me/payments');
   expect(res.status(), 'GET /api/v1/me/payments').toBe(200);
-  return (await res.json()).data as PaymentHistoryItem[];
+  return (await json<{ data: PaymentHistoryItem[] }>(res)).data;
 }
 
 test.describe('BIL-05 — plan must match the account type', () => {

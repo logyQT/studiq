@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -67,7 +68,7 @@ interface OrgMember {
 async function fetchRoles(page: Page): Promise<OrgRole[]> {
   const res = await page.request.get('/api/v1/organization/roles');
   expect(res.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const body = (await res.json()) as { success: boolean; data: OrgRole[] };
+  const body = await json<{ success: boolean; data: OrgRole[] }>(res);
   expect(body.success).toBe(true);
   return body.data;
 }
@@ -75,7 +76,7 @@ async function fetchRoles(page: Page): Promise<OrgRole[]> {
 async function fetchMember(page: Page, email: string): Promise<OrgMember> {
   const res = await page.request.get(MEMBERS_API);
   expect(res.status(), `GET ${MEMBERS_API}`).toBe(200);
-  const body = (await res.json()) as { success: boolean; data: OrgMember[] };
+  const body = await json<{ success: boolean; data: OrgMember[] }>(res);
   expect(body.success).toBe(true);
   const member = body.data.find((row) => row.email === email);
   if (!member) throw new Error(`member ${email} is not in the tenant's organization`);

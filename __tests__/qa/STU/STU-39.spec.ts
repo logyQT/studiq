@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -146,7 +147,7 @@ interface ReportThread {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -199,7 +200,7 @@ async function ensureBank(page: Page, groupId: string): Promise<BankRow> {
     response.status(),
     `POST ${BANKS_URL} (${BANK_NAME}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<BankRow>).data;
+  return (await json<ApiEnvelope<BankRow>>(response)).data;
 }
 
 /** The bank's question, keyed by its content so retries are idempotent. */
@@ -224,7 +225,7 @@ async function ensureQuestion(page: Page, bankId: string): Promise<QuestionRow> 
     response.status(),
     `POST ${QUESTIONS_URL} (${QUESTION_CONTENT}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<QuestionRow>).data;
+  return (await json<ApiEnvelope<QuestionRow>>(response)).data;
 }
 
 /** The case's deck shared to the student's group (the `O1G1T1` analogue). */
@@ -240,7 +241,7 @@ async function ensureDeck(page: Page, groupId: string): Promise<DeckRow> {
     response.status(),
     `POST ${DECKS_URL} (${DECK_NAME}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<DeckRow>).data;
+  return (await json<ApiEnvelope<DeckRow>>(response)).data;
 }
 
 /** One card in the deck, linked to the bank question — the report's target. */
@@ -266,7 +267,7 @@ async function ensureCard(
     response.status(),
     `POST ${CARDS_URL} → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<FlashcardRow>).data;
+  return (await json<ApiEnvelope<FlashcardRow>>(response)).data;
 }
 
 /** The report list as the signed-in student sees it. */
@@ -378,7 +379,7 @@ test.describe('@case:STU-39 @area:STU @prio:P2 report a wrong flashcard', () => 
     await send.click();
     const created = await createResponse;
     expect(created.status(), `POST ${QUESTIONS_URL}/${question.id}/reports`).toBe(201);
-    const report = ((await created.json()) as ApiEnvelope<{ id: string }>).data;
+    const report = (await json<ApiEnvelope<{ id: string }>>(created)).data;
     expect(report.id, 'the API returned the created report').toBeTruthy();
 
     await expect(page.getByText(COPY.sent, { exact: true }), 'the sent toast').toBeVisible();

@@ -1,3 +1,4 @@
+import { json } from '#test/helpers/json';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -55,7 +56,7 @@ async function expectNotFoundPage(page: Page): Promise<void> {
 async function expectNoSession(page: Page): Promise<void> {
   const me = await page.request.get('/api/v1/auth/me');
   expect(me.status(), 'session probe').toBe(200);
-  const body = (await me.json()) as { data?: { user?: unknown } };
+  const body = await json<{ data?: { user?: unknown } }>(me);
   expect(body.data?.user ?? null).toBeNull();
 }
 

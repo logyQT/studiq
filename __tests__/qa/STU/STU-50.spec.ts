@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -85,7 +86,7 @@ interface ApiEnvelope<T> {
 async function storedName(page: Page): Promise<string | undefined> {
   const response = await page.request.get(ME_URL);
   expect(response.ok(), `GET ${ME_URL} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<{ user: ApiUser }>;
+  const body = await json<ApiEnvelope<{ user: ApiUser }>>(response);
   expect(body.success, `GET ${ME_URL} success flag`).toBe(true);
   return body.data.user.user_metadata?.name;
 }
@@ -141,7 +142,10 @@ async function submitName(
     ),
     saveButton(page).click(),
   ]);
-  return { status: response.status(), body: await response.json() };
+  return {
+    status: response.status(),
+    body: await json<{ issues?: { properties?: Record<string, { errors?: string[] }> } }>(response),
+  };
 }
 
 /** The first validation code reported for the `name` field. */

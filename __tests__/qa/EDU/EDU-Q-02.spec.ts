@@ -1,4 +1,5 @@
 import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -131,7 +132,7 @@ function account(tenant: QaTenant) {
 
 async function expectApi<T>(response: APIResponse, label: string): Promise<T> {
   expect(response.status(), label).toBeLessThan(300);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `${label} response`).toBe(true);
   return body.data;
 }

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -100,7 +101,7 @@ interface Fixture {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -109,7 +110,7 @@ async function getData<T>(page: Page, url: string): Promise<T> {
 async function postData<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
   expect(response.ok(), `POST ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -118,7 +119,7 @@ async function postData<T>(page: Page, url: string, data: unknown): Promise<T> {
 async function putData<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.put(url, { data });
   expect(response.ok(), `PUT ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `PUT ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -303,7 +304,7 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
     // --- Step 2b: try to start again through the start endpoint directly --------
     const startResponse = await page.request.post(`/api/v1/assignments/${assignment.id}/start`);
     expect(startResponse.status(), 'POST start after the limit').toBe(429);
-    const startBody = (await startResponse.json()) as { success: boolean; error: string };
+    const startBody = await json<{ success: boolean; error: string }>(startResponse);
     expect(startBody.success).toBe(false);
     expect(startBody.error).toBe('RATE_LIMITED');
 

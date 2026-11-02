@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -49,7 +50,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  */
 
 const CASE = 'SEC-04';
-const TENANT = loadTenant(CASE) as CaseTenant;
+const TENANT = asJson<CaseTenant>(loadTenant(CASE));
 
 /** Polish copy from `ManageMembersPage`. */
 const COPY = { title: 'Członkowie', membersSuffix: 'łącznie' } as const;
@@ -102,9 +103,9 @@ interface ApiBody<T> {
 async function getData<T>(page: Page, path: string): Promise<T> {
   const response = await page.request.get(path);
   expect(response.status(), `GET ${path}`).toBe(200);
-  const body = (await response.json()) as ApiBody<T>;
+  const body = await json<ApiBody<T>>(response);
   expect(body.success, `GET ${path} success`).toBe(true);
-  return body.data as T;
+  return asJson<T>(body.data);
 }
 
 /**
@@ -151,7 +152,7 @@ async function attemptRoleChange(
   const response = await page.request.put('/api/v1/organization/members', {
     data: { targetUserId, newOrgRoleId },
   });
-  const body = (await response.json()) as ApiBody<unknown>;
+  const body = await json<ApiBody<unknown>>(response);
   return { status: response.status(), error: body.error };
 }
 
@@ -258,7 +259,7 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     // Adjacent write path: removal cannot cross organizations either.
     const removal = await page.request.delete(`/api/v1/organization/members?userId=${studentB.id}`);
     expect([403, 404], 'cross-organization delete is rejected').toContain(removal.status());
-    const removalBody = (await removal.json()) as ApiBody<unknown>;
+    const removalBody = await json<ApiBody<unknown>>(removal);
     expect(removalBody.success).toBe(false);
     expect(removalBody.error).toBe(removal.status() === 403 ? 'FORBIDDEN' : 'NOT_FOUND');
 
@@ -274,7 +275,7 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     // so the rejection above is about the id and not a broken route.
     const ownOrg = await page.request.get(`/api/v1/organization/${orgA.id}`);
     expect(ownOrg.status(), 'own organization stays readable').toBe(200);
-    const ownBody = (await ownOrg.json()) as ApiBody<{ id: string; name: string }>;
+    const ownBody = await json<ApiBody<{ id: string; name: string }>>(ownOrg);
     expect(ownBody.data).toMatchObject({ id: orgA.id, name: orgA.name });
 
     // --- Adjacent: a forged active-org cookie grants nothing --------------

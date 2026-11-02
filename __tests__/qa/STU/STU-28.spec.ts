@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -114,7 +115,7 @@ async function postApi<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
   const text = await response.text();
   expect(response.ok(), `POST ${url} → ${response.status()} ${text}`).toBe(true);
-  const body = JSON.parse(text) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -123,7 +124,7 @@ async function getDeck(page: Page, deckId: string): Promise<DeckResponse> {
   const response = await page.request.get(`${DECKS_URL}/${deckId}`);
   const text = await response.text();
   expect(response.ok(), `GET ${DECKS_URL}/${deckId} → ${response.status()} ${text}`).toBe(true);
-  const body = JSON.parse(text) as ApiEnvelope<DeckResponse>;
+  const body = await json<ApiEnvelope<DeckResponse>>(response);
   expect(body.success, `GET ${DECKS_URL}/${deckId} success flag`).toBe(true);
   return body.data;
 }
@@ -134,7 +135,7 @@ async function getDeckCards(page: Page, deckId: string): Promise<FlashcardRespon
   const response = await page.request.get(url);
   const text = await response.text();
   expect(response.ok(), `GET ${url} → ${response.status()} ${text}`).toBe(true);
-  const body = JSON.parse(text) as ApiEnvelope<{ items: FlashcardResponse[] }>;
+  const body = await json<ApiEnvelope<{ items: FlashcardResponse[] }>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data.items;
 }

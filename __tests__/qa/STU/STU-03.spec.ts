@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -162,8 +163,7 @@ test.describe('@case:STU-03 @area:STU @prio:P2 student sidebar', () => {
     //    „Asystent Q”; the assertion below is about the gate, not about copy.
     const featuresResponse = await page.request.get('/api/v1/features/me');
     expect(featuresResponse.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = ((await featuresResponse.json()) as { data: { features: string[] } }).data
-      .features;
+    const enabled = (await json<{ data: { features: string[] } }>(featuresResponse)).data.features;
     expect(enabled, 'the Base-plan student is not entitled to ai.chat').not.toContain('ai.chat');
 
     // 1. Sections and items, in the case's order.
@@ -201,7 +201,7 @@ test.describe('@case:STU-03 @area:STU @prio:P2 student sidebar', () => {
       data: { name: `Talia STU-03 ${tenant.runSuffix ?? ''}`.trim() },
     });
     expect(deckResponse.status(), 'POST /api/v1/flashcards/decks').toBe(201);
-    const deckId = ((await deckResponse.json()) as { data: { id: string } }).data.id;
+    const deckId = (await json<{ data: { id: string } }>(deckResponse)).data.id;
     expect(deckId, 'created deck id').toBeTruthy();
 
     await page.goto(`/app/flashcards/${deckId}`);

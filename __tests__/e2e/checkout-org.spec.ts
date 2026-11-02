@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 const PASSWORD = 'pass';
 const WSB_MERITO = 'WSB Merito';
@@ -20,11 +21,8 @@ async function login(page: Page, email: string, landing: RegExp) {
  * the same endpoint the page uses, after the dashboard settled the active org.
  */
 async function myOrgs(page: Page): Promise<MeOrg[]> {
-  return page.evaluate(async () => {
-    const res = await fetch('/api/v1/me/orgs');
-    const json = await res.json();
-    return json.data as MeOrg[];
-  });
+  const res = await page.request.get('/api/v1/me/orgs');
+  return (await json<{ data: MeOrg[] }>(res)).data;
 }
 
 function checkoutUrl(planId: string, orgId?: string) {

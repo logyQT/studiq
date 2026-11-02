@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -56,9 +57,7 @@ function currentPath(page: Page): string {
  */
 async function openAnonymous(page: Page, path: string): Promise<void> {
   await page.context().addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: HOST, path: '/' }]);
-  const body = (await (await page.request.get('/api/v1/auth/me')).json()) as {
-    data?: { user?: unknown };
-  };
+  const body = await json<{ data?: { user?: unknown } }>(await page.request.get('/api/v1/auth/me'));
   expect(body.data?.user ?? null, `${CASE} prerequisite: no session`).toBeNull();
   await page.goto(path);
 }
@@ -103,9 +102,9 @@ test.describe('AUT-09 — login next parameter', () => {
     await expectFlashcardsPage(page);
 
     // The session is the tenant's student, not a leftover from another case.
-    const me = (await (await page.request.get('/api/v1/auth/me')).json()) as {
-      data?: { user?: { email?: string } | null };
-    };
+    const me = await json<{ data?: { user?: { email?: string } | null } }>(
+      await page.request.get('/api/v1/auth/me'),
+    );
     expect(me.data?.user?.email).toBe(student.email);
   });
 

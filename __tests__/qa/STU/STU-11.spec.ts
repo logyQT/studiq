@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -105,11 +106,11 @@ const MCQ_WITHOUT_EXPLANATION = {
 /** `POST` and require the created (201) envelope, returning its `data`. */
 async function postData<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
-  const body = (await response.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(response);
   expect(response.status(), `POST ${url} → ${response.status()} ${JSON.stringify(body)}`).toBe(201);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   expect(body.data, `POST ${url} payload`).toBeTruthy();
-  return body.data as T;
+  return body.data!;
 }
 
 /** The id of one option by its visible text; a missing option is a fixture bug. */
@@ -210,7 +211,7 @@ test.describe('@case:STU-11 @area:STU @prio:P1 quiz review', () => {
       },
     });
     expect(submitted.status(), 'POST /api/v1/quiz/<attemptId>').toBe(200);
-    expect((await submitted.json()) as { data: unknown }).toMatchObject({
+    expect(await json<{ data: unknown }>(submitted)).toMatchObject({
       data: { score: 1, totalQuestions: 3 },
     });
 

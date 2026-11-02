@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 const email = 'teacher-classroom@dev.local';
 const password = 'pass';
@@ -19,8 +20,8 @@ async function createEmptyQuiz(page: Page): Promise<string> {
     data: { name, description: 'e2e drag & drop' },
   });
   expect(response.status()).toBe(201);
-  const body = await response.json();
-  return body.data.id as string;
+  const body = await json<{ data: { id: string } }>(response);
+  return body.data.id;
 }
 
 /**
@@ -101,7 +102,7 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
 
     const questionsResponse = await page.request.get('/api/v1/questions');
     expect(questionsResponse.status()).toBe(200);
-    const bank = (await questionsResponse.json()).data as Array<{ id: string }>;
+    const bank = (await json<{ data: Array<{ id: string }> }>(questionsResponse)).data;
     expect(bank.length).toBeGreaterThan(1);
 
     const quizId = await createEmptyQuiz(page);

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -80,7 +81,7 @@ function recentRows(page: Page) {
 async function listMembers(page: Page): Promise<OrgMember[]> {
   const response = await page.request.get('/api/v1/organization/members');
   expect(response.status(), 'GET /api/v1/organization/members').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: OrgMember[] };
+  const body = await json<{ success: boolean; data: OrgMember[] }>(response);
   expect(body.success, 'members response').toBe(true);
   return body.data;
 }
@@ -102,10 +103,10 @@ async function ensureEducatorIsTeacher(page: Page, tenant: QaTenant): Promise<vo
 
   const rolesResponse = await page.request.get('/api/v1/organization/roles');
   expect(rolesResponse.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const rolesBody = (await rolesResponse.json()) as {
+  const rolesBody = await json<{
     success: boolean;
     data: Array<{ id: string; name: string }>;
-  };
+  }>(rolesResponse);
   const teacherRole = rolesBody.data.find((role) => role.name === 'teacher');
   expect(teacherRole, 'the organization has the system teacher role').toBeTruthy();
 

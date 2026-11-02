@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -108,9 +109,9 @@ interface CallResult {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.status(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(200);
-  const body = (await response.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
-  return body.data as T;
+  return asJson<T>(body.data);
 }
 
 async function call(
@@ -264,9 +265,9 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
 
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status(), 'GET /api/v1/auth/me as the student').toBe(200);
-    const meBody = (await me.json()) as {
+    const meBody = await json<{
       data?: { user?: { id?: string; app_metadata?: { account_type?: string } } };
-    };
+    }>(me);
     expect(meBody.data?.user?.id, 'the signed-in user is the case subject').toBe(student.id);
     expect(meBody.data?.user?.app_metadata?.account_type, 'the case subject is a student').toBe(
       'student',
@@ -319,9 +320,9 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
 
     const teacherMe = await page.request.get('/api/v1/auth/me');
     expect(teacherMe.status(), 'GET /api/v1/auth/me as the teacher').toBe(200);
-    const teacherMeBody = (await teacherMe.json()) as {
+    const teacherMeBody = await json<{
       data?: { user?: { id?: string; app_metadata?: { account_type?: string } } };
-    };
+    }>(teacherMe);
     expect(teacherMeBody.data?.user?.id, 'the signed-in user is the case teacher').toBe(teacher.id);
     expect(
       teacherMeBody.data?.user?.app_metadata?.account_type,
@@ -411,7 +412,9 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       teacherInvite.status,
       `teacher bulk invite with the member role → ${teacherInvite.body}`,
     ).toBe(200);
-    const teacherInviteBody = JSON.parse(teacherInvite.body) as Envelope<{ results: BulkResult[] }>;
+    const teacherInviteBody = asJson<Envelope<{ results: BulkResult[] }>>(
+      JSON.parse(teacherInvite.body),
+    );
     expect(teacherInviteBody.success).toBe(true);
     expect(teacherInviteBody.data?.results).toHaveLength(1);
     expect(teacherInviteBody.data?.results[0]).toMatchObject({
@@ -435,9 +438,11 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       invitations: [{ email: managerInviteEmail, targetOrgRoleId: memberRoleId }],
     });
     expect(managerInvite.status, `manager bulk invite → ${managerInvite.body}`).toBe(200);
-    const managerInviteBody = JSON.parse(managerInvite.body) as Envelope<{
-      results: BulkResult[];
-    }>;
+    const managerInviteBody = asJson<
+      Envelope<{
+        results: BulkResult[];
+      }>
+    >(JSON.parse(managerInvite.body));
     expect(managerInviteBody.success).toBe(true);
 
     const promote = await call(page, 'PUT', MEMBERS_URL, {
@@ -467,7 +472,7 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
     expect(roleResponse.status, `manager POST /organization/roles → ${roleResponse.body}`).toBe(
       201,
     );
-    const createdRole = (JSON.parse(roleResponse.body) as Envelope<OrgRole>).data!;
+    const createdRole = asJson<Envelope<OrgRole>>(JSON.parse(roleResponse.body)).data!;
     expect(createdRole).toMatchObject({ name: managerRoleName, isSystem: false });
 
     const rolesAfter = await listRoles(page);

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
@@ -84,10 +85,10 @@ async function sessionCookieNames(page: Page): Promise<string[]> {
 async function expectNoSession(page: Page): Promise<void> {
   const response = await page.request.get('/api/v1/auth/me');
   expect(response.status(), 'GET /api/v1/auth/me').toBe(200);
-  const body = (await response.json()) as {
+  const body = await json<{
     success: boolean;
     data: { user: unknown; session: unknown };
-  };
+  }>(response);
   expect(body.success).toBe(true);
   expect(body.data.user, 'no authenticated user').toBeNull();
   expect(body.data.session, 'no authenticated session').toBeNull();
@@ -237,7 +238,7 @@ test.describe('AUT-06 — an unconfirmed account cannot log in', () => {
 
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status(), 'GET /api/v1/auth/me after login').toBe(200);
-    const body = (await me.json()) as { data?: { user?: { email?: string } | null } };
+    const body = await json<{ data?: { user?: { email?: string } | null } }>(me);
     expect(body.data?.user?.email, 'the session belongs to the confirmed account').toBe(
       student.email,
     );

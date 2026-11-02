@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -125,9 +126,9 @@ interface QuestionSummary {
   topics?: TopicSummary[];
 }
 
-/** The `data` of a successful `{ success, data }` envelope; the caller types the result. */
-function unwrap(body: unknown, what: string): unknown {
-  const envelope = body as ApiEnvelope<unknown>;
+/** The `data` of a successful `{ success, data }` envelope, parsed as `T`. */
+async function unwrap<T>(response: { json(): Promise<ApiEnvelope<T>> }, what: string): Promise<T> {
+  const envelope = await json<ApiEnvelope<T>>(response);
   expect(envelope.success, `${what} success flag`).toBe(true);
   return envelope.data;
 }
@@ -135,7 +136,8 @@ function unwrap(body: unknown, what: string): unknown {
 async function listBanks(api: APIRequestContext): Promise<BankSummary[]> {
   const res = await api.get(`${BANKS_URL}?limit=100`);
   expect(res.status(), `GET ${BANKS_URL} → ${await res.text()}`).toBe(200);
-  return (unwrap(await res.json(), `GET ${BANKS_URL}`) as { items: BankSummary[] }).items;
+  const { items } = await unwrap<{ items: BankSummary[] }>(res, `GET ${BANKS_URL}`);
+  return items;
 }
 
 /** The case's „Bank Fizyka”, created through the same endpoint the „Nowy bank” dialog calls. */
@@ -147,13 +149,14 @@ async function ensureBank(api: APIRequestContext): Promise<BankSummary> {
     data: { name: BANK.name, description: BANK.description },
   });
   expect(res.status(), `POST ${BANKS_URL} → ${await res.text()}`).toBe(201);
-  return unwrap(await res.json(), `POST ${BANKS_URL}`) as BankSummary;
+  return unwrap<BankSummary>(res, `POST ${BANKS_URL}`);
 }
 
 async function listTopics(api: APIRequestContext): Promise<TopicSummary[]> {
   const res = await api.get(`${TOPICS_URL}?limit=200`);
   expect(res.status(), `GET ${TOPICS_URL} → ${await res.text()}`).toBe(200);
-  return (unwrap(await res.json(), `GET ${TOPICS_URL}`) as { items: TopicSummary[] }).items;
+  const { items } = await unwrap<{ items: TopicSummary[] }>(res, `GET ${TOPICS_URL}`);
+  return items;
 }
 
 /** The question's topic; the question dialog has no create-topic action, so it is seeded first. */
@@ -163,14 +166,14 @@ async function ensureTopic(api: APIRequestContext): Promise<TopicSummary> {
 
   const res = await api.post(TOPICS_URL, { data: { name: TOPIC } });
   expect(res.status(), `POST ${TOPICS_URL} → ${await res.text()}`).toBe(201);
-  return unwrap(await res.json(), `POST ${TOPICS_URL}`) as TopicSummary;
+  return unwrap<TopicSummary>(res, `POST ${TOPICS_URL}`);
 }
 
 async function listQuestions(api: APIRequestContext, bankId: string): Promise<QuestionSummary[]> {
   const url = `${QUESTIONS_URL}?bankId=${bankId}`;
   const res = await api.get(url);
   expect(res.status(), `GET ${url} → ${await res.text()}`).toBe(200);
-  return unwrap(await res.json(), `GET ${url}`) as QuestionSummary[];
+  return unwrap<QuestionSummary[]>(res, `GET ${url}`);
 }
 
 /**
@@ -210,13 +213,13 @@ async function createQuestion(
     },
   });
   expect(res.status(), `POST ${QUESTIONS_URL} → ${await res.text()}`).toBe(201);
-  return unwrap(await res.json(), `POST ${QUESTIONS_URL}`) as QuestionSummary;
+  return unwrap<QuestionSummary>(res, `POST ${QUESTIONS_URL}`);
 }
 
 async function getQuestion(api: APIRequestContext, id: string): Promise<QuestionSummary> {
   const res = await api.get(`${QUESTIONS_URL}/${id}`);
   expect(res.status(), `GET ${QUESTIONS_URL}/${id} → ${await res.text()}`).toBe(200);
-  return unwrap(await res.json(), `GET ${QUESTIONS_URL}/${id}`) as QuestionSummary;
+  return unwrap<QuestionSummary>(res, `GET ${QUESTIONS_URL}/${id}`);
 }
 
 /** The table row whose question cell is exactly `content`. */

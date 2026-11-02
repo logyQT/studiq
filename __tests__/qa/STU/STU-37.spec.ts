@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -87,7 +88,7 @@ async function api<T>(
   data?: unknown,
 ): Promise<T> {
   const response = await page.request.fetch(url, { method, data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(response.ok(), `${method} ${url} → ${response.status()} ${JSON.stringify(body)}`).toBe(
     true,
   );

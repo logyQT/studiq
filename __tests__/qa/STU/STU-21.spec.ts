@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -145,7 +146,7 @@ async function createDeck(page: Page, tenant: QaTenant): Promise<DeckRow> {
     response.status(),
     `POST ${DECKS_URL} → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<DeckRow>;
+  const body = await json<ApiEnvelope<DeckRow>>(response);
   expect(body.success, 'POST deck success flag').toBe(true);
   expect(body.data.visibility ?? 'personal', 'a new deck is personal').toBe('personal');
   return body.data;
@@ -155,7 +156,7 @@ async function createDeck(page: Page, tenant: QaTenant): Promise<DeckRow> {
 async function listCards(page: Page, deckId: string): Promise<CardRow[]> {
   const response = await page.request.get(`${FLASHCARDS_URL}?deckIds=${deckId}&limit=50`);
   expect(response.status(), `GET ${FLASHCARDS_URL}?deckIds=${deckId}`).toBe(200);
-  return ((await response.json()) as ApiEnvelope<CardList>).data.items;
+  return (await json<ApiEnvelope<CardList>>(response)).data.items;
 }
 
 /** The deck's own card in the grid, addressed by the id the API assigned. */

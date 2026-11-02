@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 const MANAGER_EMAIL = 'manager@dev.local';
 const MANAGER_PASSWORD = 'pass';
@@ -22,13 +23,17 @@ async function loginAsManager(page: Page) {
 }
 
 async function getMemberRoleId(page: Page) {
-  const body = await page.evaluate(async () => {
-    const res = await fetch('/api/v1/organization/roles');
-    return res.json();
-  });
-  const member = (body.data as { id: string; name: string }[]).find((r) => r.name === 'member');
+  const res = await page.request.get('/api/v1/organization/roles');
+  const body = await json<{ data: { id: string; name: string }[] }>(res);
+  const member = body.data.find((r) => r.name === 'member');
   expect(member, 'role "member" missing from /api/v1/organization/roles').toBeDefined();
   return member!.id;
+}
+
+/** The bulk-invite envelope fields this spec reads back. */
+interface BulkInviteResponse {
+  success?: boolean;
+  data?: { results?: { data?: { inviteLink?: string } }[] };
 }
 
 /**
@@ -39,32 +44,23 @@ async function getMemberRoleId(page: Page) {
 async function createInviteToken(page: Page, email: string) {
   const roleId = await getMemberRoleId(page);
 
-  const body = await page.evaluate(
-    async ({ url, email: inviteEmail, roleId: targetRoleId }) => {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          invitations: [{ email: inviteEmail, targetOrgRoleId: targetRoleId }],
-        }),
-      });
-      return { status: res.status, body: await res.json() };
-    },
-    { url: BULK_INVITES_URL, email, roleId },
-  );
+  const res = await page.request.post(BULK_INVITES_URL, {
+    data: { invitations: [{ email, targetOrgRoleId: roleId }] },
+  });
+  const body = await json<BulkInviteResponse>(res);
 
-  expect(body.status, JSON.stringify(body.body)).toBeLessThan(300);
-  expect(body.body.success, JSON.stringify(body.body)).toBe(true);
+  expect(res.status(), JSON.stringify(body)).toBeLessThan(300);
+  expect(body.success, JSON.stringify(body)).toBe(true);
 
-  const inviteLink = body.body.data?.results?.[0]?.data?.inviteLink as string | undefined;
+  const inviteLink = body.data?.results?.[0]?.data?.inviteLink;
   expect(
     inviteLink,
     'bulk invite did not return inviteLink (#313: the link must be returned in every environment)',
   ).toBeTruthy();
 
-  const token = new URL(inviteLink as string).searchParams.get('token');
+  const token = new URL(inviteLink!).searchParams.get('token');
   expect(token).toMatch(/^[0-9a-f]{32}$/);
-  return token as string;
+  return token!;
 }
 
 test.describe('Join an organization — invitee supplies their name (#309)', () => {

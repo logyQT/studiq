@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 import { tenantId } from '#test/helpers/tenant-seed';
 
@@ -164,7 +165,7 @@ function groupBadge(card: Locator, groupName: string): Locator {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -209,7 +210,7 @@ async function ensureBank(
     response.status(),
     `POST ${BANKS_URL} (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<BankListItem>;
+  const body = await json<ApiEnvelope<BankListItem>>(response);
   expect(body.success, `POST ${BANKS_URL} (${name}) success flag`).toBe(true);
   return body.data;
 }

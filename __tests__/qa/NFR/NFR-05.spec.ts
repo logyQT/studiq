@@ -89,8 +89,8 @@ async function tabTo(
     if (await target.evaluate((element) => element === document.activeElement)) return pressed;
   }
   const active = await page.evaluate(() => {
-    const element = document.activeElement as HTMLElement | null;
-    return element
+    const element = document.activeElement;
+    return element instanceof HTMLElement
       ? `${element.tagName}${element.id ? `#${element.id}` : ''} „${(element.innerText ?? '').trim().slice(0, 30)}”`
       : 'none';
   });
@@ -99,9 +99,9 @@ async function tabTo(
 
 /** The computed focus styles of whatever currently owns the focus. */
 async function focusStyle(page: Page): Promise<FocusStyle | null> {
-  return page.evaluate(() => {
-    const element = document.activeElement as HTMLElement | null;
-    if (!element || element === document.body) return null;
+  return page.evaluate<FocusStyle | null>(() => {
+    const element = document.activeElement;
+    if (!(element instanceof HTMLElement) || element === document.body) return null;
     const style = getComputedStyle(element);
     return {
       tag: element.tagName,

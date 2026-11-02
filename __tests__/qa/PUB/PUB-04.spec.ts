@@ -1,3 +1,4 @@
+import { json } from '#test/helpers/json';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -163,7 +164,7 @@ function watchForErrors(page: Page) {
 async function fetchStudentPlans(page: Page): Promise<PlanInfo[]> {
   const response = await page.request.get('/api/v1/subscription-plans?for=student');
   expect(response.status(), 'student plan catalogue').toBe(200);
-  const { data } = (await response.json()) as { data: PlanInfo[] };
+  const { data } = await json<{ data: PlanInfo[] }>(response);
   return data;
 }
 
@@ -191,7 +192,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
     // Prerequisite "Brak sesji": no user, so no "Obecny Plan" and no checkout CTA.
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status()).toBe(200);
-    const meBody = (await me.json()) as { data?: { user?: unknown } };
+    const meBody = await json<{ data?: { user?: unknown } }>(me);
     expect(meBody.data?.user ?? null).toBeNull();
 
     await expect(

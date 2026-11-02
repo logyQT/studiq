@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -68,7 +69,23 @@ interface TwoOrgTenant extends QaTenant {
   };
 }
 
-const tenant = loadTenant(CASE) as TwoOrgTenant;
+function isTwoOrgTenant(value: QaTenant): value is TwoOrgTenant {
+  return (
+    'orgA' in value &&
+    'orgB' in value &&
+    !!value.users &&
+    'teacherA' in value.users &&
+    'studentA' in value.users &&
+    'studentB' in value.users &&
+    'standalone' in value.users
+  );
+}
+
+const loadedTenant = loadTenant(CASE);
+if (!isTwoOrgTenant(loadedTenant)) {
+  throw new Error(`${CASE} needs the two-org tenant profile`);
+}
+const tenant = loadedTenant;
 
 const DECK_NAME = 'Matematyka – klasa 1';
 
@@ -161,9 +178,9 @@ test.describe('@case:EDU-DECK-02 @area:EDU @prio:P1 group deck', () => {
     // The stored deck is group-visible and shared with exactly this group.
     const listResponse = await page.request.get('/api/v1/flashcards/decks');
     expect(listResponse.status(), 'GET /api/v1/flashcards/decks').toBe(200);
-    const list = (await listResponse.json()) as {
+    const list = await json<{
       data: { items: { id: string; name: string; visibility?: string; groupIds?: string[] }[] };
-    };
+    }>(listResponse);
     const created = list.data.items.find((deck) => deck.name === DECK_NAME);
     expect(created, 'the new deck is listed for its creator').toBeTruthy();
     expect(created!.visibility, 'deck visibility').toBe('group');
@@ -219,7 +236,7 @@ test.describe('@case:EDU-DECK-02 @area:EDU @prio:P1 group deck', () => {
 
         const response = await outsider.request.get('/api/v1/flashcards/decks');
         expect(response.status(), `deck list for ${candidate.label}`).toBe(200);
-        const body = (await response.json()) as { data: { items: { id: string }[] } };
+        const body = await json<{ data: { items: { id: string }[] } }>(response);
         expect(
           body.data.items.map((deck) => deck.id),
           `the deck id must not leak to a student with ${candidate.label}`,

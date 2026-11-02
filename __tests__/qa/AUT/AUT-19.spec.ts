@@ -1,4 +1,6 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
+import { asJson } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -44,21 +46,26 @@ const DECKS = '/api/v1/flashcards/decks';
 const TEACHER_QUIZZES = '/api/v1/teacher/quizzes';
 const MEMBERS = '/api/v1/organization/members';
 
-interface ApiResult {
+interface ApiResult<T = unknown> {
   status: number;
-  body: unknown;
+  body: T;
   raw: string;
   contentType: string | null;
   errorCode: string | null;
 }
 
+interface MemberListBody {
+  success: boolean;
+  data: Array<{ email?: string; organization_id?: string }>;
+}
+
 /** One API call through the page's session, keeping the raw body for leak checks. */
-async function call(page: Page, path: string): Promise<ApiResult> {
+async function call<T = unknown>(page: Page, path: string): Promise<ApiResult<T>> {
   const response: APIResponse = await page.request.get(path);
   const raw = await response.text();
   return {
     status: response.status(),
-    body: JSON.parse(raw) as unknown,
+    body: asJson<T>(JSON.parse(raw)),
     raw,
     contentType: response.headers()['content-type'] ?? null,
     errorCode: response.headers()['x-error-code'] ?? null,
@@ -75,9 +82,7 @@ function expectError(result: ApiResult, status: number, error: string): void {
 
 /** Session guard: the caller really is anonymous before the 401 assertions. */
 async function expectAnonymous(page: Page): Promise<void> {
-  const me = (await (await page.request.get('/api/v1/auth/me')).json()) as {
-    data?: { user?: unknown };
-  };
+  const me = await json<{ data?: { user?: unknown } }>(await page.request.get('/api/v1/auth/me'));
   expect(me.data?.user ?? null, `${CASE} prerequisite: no session`).toBeNull();
 }
 
@@ -115,9 +120,9 @@ test.describe('AUT-19 — API route protection matrix', () => {
     await loginAs(page, tenant, 'student');
 
     // The session is the tenant's student, not a leftover from another case.
-    const me = (await (await page.request.get('/api/v1/auth/me')).json()) as {
-      data?: { user?: { email?: string } | null };
-    };
+    const me = await json<{ data?: { user?: { email?: string } | null } }>(
+      await page.request.get('/api/v1/auth/me'),
+    );
     expect(me.data?.user?.email).toBe(student.email);
 
     // --- Case step 2: teacher-only endpoint ------------------------------
@@ -162,12 +167,9 @@ test.describe('AUT-19 — API route protection matrix', () => {
 
     // The organization member list is readable for an authorized staff account
     // and returns this tenant's own members.
-    const members = await call(page, MEMBERS);
+    const members = await call<MemberListBody>(page, MEMBERS);
     expect(members.status, `${MEMBERS} for an educator`).toBe(200);
-    const memberList = members.body as {
-      success: boolean;
-      data: Array<{ email?: string; organization_id?: string }>;
-    };
+    const memberList = members.body;
     expect(memberList.success).toBe(true);
     expect(Array.isArray(memberList.data), 'member list payload').toBe(true);
     expect(

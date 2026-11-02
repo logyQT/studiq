@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -132,7 +133,7 @@ async function apiSession(
 async function apiData<T>(page: Page, path: string): Promise<T> {
   const response = await page.request.get(path);
   expect(response.status(), `GET ${path}`).toBe(200);
-  const body = (await response.json()) as { success: boolean; data: T };
+  const body = await json<{ success: boolean; data: T }>(response);
   expect(body.success, `GET ${path} success`).toBe(true);
   return body.data;
 }
@@ -164,7 +165,7 @@ async function ensureGroup(page: Page, name: string): Promise<NamedRow> {
     created.status(),
     `POST /api/v1/organization/groups (${name}) → ${created.status()} ${await created.text()}`,
   ).toBe(201);
-  const body = (await created.json()) as { success: boolean; data: NamedRow };
+  const body = await json<{ success: boolean; data: NamedRow }>(created);
   return body.data;
 }
 
@@ -196,7 +197,7 @@ async function ensureDeck(page: Page, name: string, groupId: string): Promise<Na
     created.status(),
     `POST /api/v1/flashcards/decks (${name}) → ${created.status()} ${await created.text()}`,
   ).toBe(201);
-  const body = (await created.json()) as { success: boolean; data: NamedRow };
+  const body = await json<{ success: boolean; data: NamedRow }>(created);
   return body.data;
 }
 

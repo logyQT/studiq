@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -79,7 +80,7 @@ interface GroupMemberRow {
 async function getJson<T>(page: Page, url: string): Promise<T> {
   const res = await page.request.get(url);
   expect(res.ok(), `GET ${url} → ${res.status()} ${await res.text()}`).toBe(true);
-  const body = (await res.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(res);
   expect(body.success, `GET ${url} success`).toBe(true);
   return body.data;
 }
@@ -103,9 +104,10 @@ async function ensureEmptyGroup(page: Page, name: string): Promise<GroupSummary>
       data: { name, description: GROUP_DESCRIPTION },
     });
     expect(res.status(), `POST ${GROUPS_URL}`).toBe(201);
-    const body = (await res.json()) as ApiEnvelope<
-      Omit<GroupSummary, 'memberCount' | 'teacherCount' | 'canManage'>
-    >;
+    const body =
+      await json<ApiEnvelope<Omit<GroupSummary, 'memberCount' | 'teacherCount' | 'canManage'>>>(
+        res,
+      );
     expect(body.success, `POST ${GROUPS_URL} success`).toBe(true);
     group = { ...body.data, memberCount: 0, teacherCount: 0, canManage: true };
   }

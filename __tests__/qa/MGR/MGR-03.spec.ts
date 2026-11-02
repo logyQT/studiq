@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { asJson } from '#test/helpers/json';
 import { loadTenant, type QaTenant } from '@qa/fixtures/qa-tenant';
 import type { SeedAccount } from '#test/helpers/tenant-seed';
 
@@ -62,7 +63,7 @@ interface TwoOrgTenant extends QaTenant {
  *   bun scripts/qa-tenant.ts MGR-03 --fresh
  */
 function twoOrgTenant(): TwoOrgTenant {
-  const tenant = loadTenant(CASE) as unknown as TwoOrgTenant;
+  const tenant = asJson<TwoOrgTenant>(loadTenant(CASE));
   expect(
     tenant.runSuffix,
     'seed with --fresh: every independent run owns a new tenant',

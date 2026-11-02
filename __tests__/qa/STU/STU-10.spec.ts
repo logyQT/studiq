@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -112,13 +113,13 @@ function answersPutFor(attemptId: string) {
 async function getAttempt(page: Page, attemptId: string): Promise<AttemptPayload> {
   const response = await page.request.get(`/api/v1/quiz/${attemptId}`);
   expect(response.status(), `GET /api/v1/quiz/${attemptId}`).toBe(200);
-  return ((await response.json()) as { data: AttemptPayload }).data;
+  return (await json<{ data: AttemptPayload }>(response)).data;
 }
 
 async function listAttempts(page: Page): Promise<AttemptSummary[]> {
   const response = await page.request.get('/api/v1/quiz/attempts');
   expect(response.status(), 'GET /api/v1/quiz/attempts').toBe(200);
-  return ((await response.json()) as { data: AttemptSummary[] }).data;
+  return (await json<{ data: AttemptSummary[] }>(response)).data;
 }
 
 /**
@@ -164,7 +165,7 @@ async function seedQuestionBank(page: Page): Promise<void> {
     data: { name: `${CASE} bank`, description: 'Pytania dla quizu STU-10' },
   });
   expect(bank.status(), 'POST /api/v1/questions/banks').toBe(201);
-  const bankId = ((await bank.json()) as { data: { id: string } }).data.id;
+  const bankId = (await json<{ data: { id: string } }>(bank)).data.id;
 
   for (const question of SEED_QUESTIONS) {
     const created = await page.request.post('/api/v1/questions', {

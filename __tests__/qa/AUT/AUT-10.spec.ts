@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -75,7 +76,7 @@ async function signInThroughForm(page: Page, next: string, email: string, passwo
 async function expectSignedInAs(page: Page, email: string): Promise<void> {
   const response = await page.request.get('/api/v1/auth/me');
   expect(response.status(), 'GET /api/v1/auth/me').toBe(200);
-  const body = (await response.json()) as { data?: { user?: { email?: string } | null } };
+  const body = await json<{ data?: { user?: { email?: string } | null } }>(response);
   expect(body.data?.user?.email).toBe(email);
 }
 

@@ -1,5 +1,12 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+
+declare global {
+  interface Window {
+    qaLocaleMarker?: string;
+  }
+}
 
 /**
  * NFR-02 — language switch PL ⇄ EN.
@@ -314,7 +321,7 @@ async function expectDeckCounts(page: Page, locale: Locale): Promise<void> {
 async function resetDeck(page: Page, name: string, count: number): Promise<void> {
   const listResponse = await page.request.get(`${DECKS_URL}?limit=100`);
   expect(listResponse.ok(), `GET ${DECKS_URL} → ${listResponse.status()}`).toBe(true);
-  const list = (await listResponse.json()) as ApiEnvelope<{ items: Deck[] }>;
+  const list = await json<ApiEnvelope<{ items: Deck[] }>>(listResponse);
   const existing = list.data.items.find((deck) => deck.name === name);
   if (existing) {
     const deleted = await page.request.delete(`${DECKS_URL}/${existing.id}`);
@@ -325,7 +332,7 @@ async function resetDeck(page: Page, name: string, count: number): Promise<void>
     data: { name, visibility: 'personal' },
   });
   expect(created.status(), `POST ${DECKS_URL} (${name})`).toBe(201);
-  const deck = ((await created.json()) as ApiEnvelope<Deck>).data;
+  const deck = (await json<ApiEnvelope<Deck>>(created)).data;
 
   const cards = Array.from({ length: count }, (_, index) => ({
     front: `${name} front ${index + 1}`,
@@ -365,12 +372,12 @@ test.describe('NFR-02 — language switch PL ⇄ EN', () => {
     await expectMenuLocale(page, 'pl');
 
     await page.evaluate(() => {
-      (window as unknown as { qaLocaleMarker?: string }).qaLocaleMarker = 'alive';
+      window.qaLocaleMarker = 'alive';
     });
     await switchLanguage(page, student.email, 'English');
     // The switch is in place (`router.refresh()`), not a document reload.
     expect(
-      await page.evaluate(() => (window as unknown as { qaLocaleMarker?: string }).qaLocaleMarker),
+      await page.evaluate<string | undefined>(() => window.qaLocaleMarker),
       'the user-menu switch keeps the document (no reload)',
     ).toBe('alive');
 

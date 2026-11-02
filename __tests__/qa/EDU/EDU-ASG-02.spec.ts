@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -99,7 +100,7 @@ interface AssignmentDetail {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -118,7 +119,7 @@ async function ensureBank(page: Page, name: string): Promise<BankRow> {
     response.status(),
     `POST /api/v1/questions/banks (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<BankRow>).data;
+  return (await json<ApiEnvelope<BankRow>>(response)).data;
 }
 
 /** Create the case's topic, or reuse the one an earlier attempt left behind. */
@@ -132,7 +133,7 @@ async function ensureTopic(page: Page, name: string): Promise<TopicRow> {
     response.status(),
     `POST /api/v1/topics (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<TopicRow>).data;
+  return (await json<ApiEnvelope<TopicRow>>(response)).data;
 }
 
 /** Create a question inside the bank, keyed by its content so retries are idempotent. */
@@ -157,7 +158,7 @@ async function ensureQuestion(
     response.status(),
     `POST /api/v1/questions (${content}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<QuestionRow>).data;
+  return (await json<ApiEnvelope<QuestionRow>>(response)).data;
 }
 
 /** A fresh draft per run, so the empty-state assertions never see a previous run. */
@@ -168,7 +169,7 @@ async function createDraft(page: Page): Promise<string> {
     response.status(),
     `POST /api/v1/teacher/assignments → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<AssignmentDetail>).data.id;
+  return (await json<ApiEnvelope<AssignmentDetail>>(response)).data.id;
 }
 
 /** One of the three counters above the question list („Pytania”, „Suma punktów”, …). */

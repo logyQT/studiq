@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -193,7 +194,7 @@ async function exerciseUserMenu(page: Page, tenant: QaTenant, role: QaRole): Pro
 async function resetDeck(page: Page): Promise<string> {
   const listResponse = await page.request.get(`${DECKS_URL}?limit=100`);
   expect(listResponse.ok(), `GET ${DECKS_URL} → ${listResponse.status()}`).toBe(true);
-  const list = (await listResponse.json()) as ApiEnvelope<{ items: Deck[] }>;
+  const list = await json<ApiEnvelope<{ items: Deck[] }>>(listResponse);
   const existing = list.data.items.find((deck) => deck.name === DECK_NAME);
   if (existing) {
     const deleted = await page.request.delete(`${DECKS_URL}/${existing.id}`);
@@ -204,7 +205,7 @@ async function resetDeck(page: Page): Promise<string> {
     data: { name: DECK_NAME, visibility: 'personal' },
   });
   expect(created.status(), `POST ${DECKS_URL} (${DECK_NAME})`).toBe(201);
-  const deck = ((await created.json()) as ApiEnvelope<Deck>).data;
+  const deck = (await json<ApiEnvelope<Deck>>(created)).data;
 
   const cards = Array.from({ length: DECK_CARDS }, (_, index) => ({
     front: `${DECK_NAME} front ${index + 1}`,

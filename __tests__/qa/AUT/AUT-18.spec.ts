@@ -1,4 +1,5 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -110,11 +111,11 @@ test.describe('AUT-18 — a manager on the routes of the other roles', () => {
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.ok(), 'GET /api/v1/auth/me').toBe(true);
     const signedIn = (
-      (await me.json()) as {
+      await json<{
         data?: {
           user?: { email?: string; app_metadata?: { account_type?: string } } | null;
         };
-      }
+      }>(me)
     ).data?.user;
     expect(signedIn?.email, 'the session belongs to the tenant manager').toBe(manager.email);
     expect(signedIn?.app_metadata?.account_type, 'account type of the signed-in user').toBe(

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 // The Markdown editor lives in CreateCardDialog (opened from the deck view), not on a
 // dedicated /new page. There is deliberately no Edit/Preview toggle: the textareas and a
@@ -181,7 +182,7 @@ test.describe('Flashcard Editor', () => {
     );
     await dialog.getByRole('button', { name: t('AppFlashcardDeckViewPage.create') }).click();
     const response = await created;
-    const payload = (await response.json()) as { data?: { id?: string } } | null;
+    const payload = await json<{ data?: { id?: string } } | null>(response);
     const id = payload?.data?.id;
 
     try {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { asJson, json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -81,7 +82,7 @@ function switcherImage(page: Page) {
 async function getOrg(page: Page, orgId: string): Promise<OrgDetail> {
   const response = await page.request.get(`/api/v1/organization/${orgId}`);
   expect(response.status(), 'GET /api/v1/organization/:id').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: OrgDetail };
+  const body = await json<{ success: boolean; data: OrgDetail }>(response);
   expect(body.success, 'organization response').toBe(true);
   return body.data;
 }
@@ -119,7 +120,7 @@ async function prepareBrandingTenant(tenant: QaTenant): Promise<void> {
     .maybeSingle();
   expect(readError, 'read the tenant logo').toBeNull();
 
-  const previous = current?.logo_url as string | null | undefined;
+  const previous = asJson<string | null | undefined>(current?.logo_url);
   if (previous) {
     // Only a URL under this org's own storage prefix is removed; an arbitrary
     // persisted URL is left alone (the spec never deletes outside its tenant).
@@ -232,7 +233,7 @@ test('uploads a logo, shows it in the org switcher without a reload, and keeps i
   // Same data contract the switcher renders from.
   const orgsResponse = await page.request.get('/api/v1/me/orgs');
   expect(orgsResponse.status(), 'GET /api/v1/me/orgs').toBe(200);
-  const orgsBody = (await orgsResponse.json()) as { success: boolean; data: OrgMembership[] };
+  const orgsBody = await json<{ success: boolean; data: OrgMembership[] }>(orgsResponse);
   const activeOrg = orgsBody.data.find((org) => org.id === orgId);
   expect(activeOrg, 'the tenant org is one of the manager’s memberships').toBeTruthy();
   expect(activeOrg!.isActive, 'the tenant org is active').toBe(true);

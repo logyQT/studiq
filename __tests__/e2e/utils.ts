@@ -3,9 +3,10 @@ import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 
 const getNested = (obj: Record<string, unknown>, keyPath: string): unknown =>
-  keyPath
-    .split('.')
-    .reduce<unknown>((prev, curr) => (prev as Record<string, unknown>)?.[curr], obj);
+  keyPath.split('.').reduce<unknown>((prev, curr) => {
+    if (typeof prev !== 'object' || prev === null || !(curr in prev)) return undefined;
+    return prev[curr];
+  }, obj);
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -13,11 +14,11 @@ export const t = (path: string) => {
   const enVal = getNested(en, path);
   const plVal = getNested(pl, path);
 
-  if (!enVal || !plVal) {
+  if (typeof enVal !== 'string' || typeof plVal !== 'string') {
     throw new Error(`Translation key "${path}" missing in en or pl json`);
   }
 
-  return new RegExp(`${escapeRegExp(enVal as string)}|${escapeRegExp(plVal as string)}`, 'i');
+  return new RegExp(`${escapeRegExp(enVal)}|${escapeRegExp(plVal)}`, 'i');
 };
 
 /**

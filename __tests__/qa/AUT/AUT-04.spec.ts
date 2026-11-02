@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test';
 import { shortHash, tenantKey } from '#test/e2e/fixtures/ids';
+import { asJson, json } from '#test/helpers/json';
 import { randomTag } from '#test/helpers/tenant-seed';
 
 /**
@@ -73,8 +74,8 @@ async function openRegister(page: Page): Promise<void> {
   await page.goto('/register');
 
   expect(
-    ((await (await page.request.get('/api/v1/auth/me')).json()) as { data?: { user?: unknown } })
-      .data?.user ?? null,
+    (await json<{ data?: { user?: unknown } }>(await page.request.get('/api/v1/auth/me'))).data
+      ?.user ?? null,
     'AUT-04 prerequisite: no session',
   ).toBeNull();
   await expect(page.getByText(COPY.header, { exact: true })).toBeVisible();
@@ -117,7 +118,7 @@ async function submitAndWait(page: Page, name: string) {
   await page.getByRole('button', { name: COPY.submit }).click();
   const response = await responsePromise;
   expect(response.status(), `POST /api/v1/auth/register for „${name}”`).toBe(202);
-  expect((response.request().postDataJSON() as { name?: string }).name).toBe(name);
+  expect(asJson<{ name?: string }>(response.request().postDataJSON()).name).toBe(name);
   await expect(page.getByText(COPY.successHeader, { exact: true })).toBeVisible();
   await expect(page.getByText(COPY.activationSent, { exact: true })).toBeVisible();
   await expect(page.getByLabel(COPY.nameLabel)).not.toBeVisible();

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
@@ -96,7 +97,7 @@ function normalise(text: string): string {
 async function paymentHistory(page: Page): Promise<PaymentHistoryItem[]> {
   const response = await page.request.get('/api/v1/me/payments');
   expect(response.status(), 'GET /api/v1/me/payments').toBe(200);
-  const body = (await response.json()) as ApiEnvelope<PaymentHistoryItem[]>;
+  const body = await json<ApiEnvelope<PaymentHistoryItem[]>>(response);
   expect(body.success, 'GET /api/v1/me/payments success flag').toBe(true);
   return body.data;
 }

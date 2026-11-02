@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -77,9 +78,7 @@ function loginUrlFor(path: string): string {
  */
 async function expectAnonymous(page: Page): Promise<void> {
   await page.context().addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: HOST, path: '/' }]);
-  const body = (await (await page.request.get('/api/v1/auth/me')).json()) as {
-    data?: { user?: unknown };
-  };
+  const body = await json<{ data?: { user?: unknown } }>(await page.request.get('/api/v1/auth/me'));
   expect(body.data?.user ?? null, `${CASE} prerequisite: no session`).toBeNull();
 }
 

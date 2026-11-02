@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -141,7 +142,9 @@ function expectAnonGetsNothing(response: RestResponse, label: string): void {
     return;
   }
   expect([401, 403], `${label}: anon status (body: ${response.body})`).toContain(response.status);
-  const parsed = JSON.parse(response.body) as { code?: string; message?: string; data?: unknown };
+  const parsed = asJson<{ code?: string; message?: string; data?: unknown }>(
+    JSON.parse(response.body),
+  );
   expect(parsed.code, `${label}: PostgREST refuses the read`).toBe('42501');
   expect(parsed.data, `${label}: an error must not carry rows`).toBeUndefined();
 }
@@ -158,7 +161,7 @@ async function signIn(
     headers: { apikey: anonKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  const body = (await response.json()) as { access_token?: string };
+  const body = await json<{ access_token?: string }>(response);
   if (!response.ok || !body.access_token) {
     throw new Error(`sign-in ${email} failed: ${response.status} ${JSON.stringify(body)}`);
   }
@@ -167,7 +170,7 @@ async function signIn(
 
 /** Unwrap the app's `{ success, data }` envelope and fail the step on a refusal. */
 function getData(body: string, label: string): unknown {
-  const parsed = JSON.parse(body) as Envelope<unknown>;
+  const parsed = asJson<Envelope<unknown>>(JSON.parse(body));
   expect(parsed.success, `${label}: ${body}`).toBe(true);
   return parsed.data;
 }
@@ -176,14 +179,14 @@ async function listDecks(page: Page, label: string): Promise<Deck[]> {
   const response = await page.request.get('/api/v1/flashcards/decks?limit=200');
   const body = await response.text();
   expect(response.status(), `${label} GET /api/v1/flashcards/decks: ${body}`).toBe(200);
-  return (getData(body, label) as { items: Deck[] }).items;
+  return asJson<{ items: Deck[] }>(getData(body, label)).items;
 }
 
 async function listCards(page: Page, deckId: string, label: string): Promise<Flashcard[]> {
   const response = await page.request.get(`/api/v1/flashcards?deckIds=${deckId}&limit=100`);
   const body = await response.text();
   expect(response.status(), `${label} GET /api/v1/flashcards?deckIds=: ${body}`).toBe(200);
-  return (getData(body, label) as { items: Flashcard[] }).items;
+  return asJson<{ items: Flashcard[] }>(getData(body, label)).items;
 }
 
 /**
@@ -199,7 +202,7 @@ async function ensureDeck(page: Page): Promise<Deck> {
   });
   const body = await response.text();
   expect(response.status(), `POST /api/v1/flashcards/decks: ${body}`).toBe(201);
-  return getData(body, 'deck create') as Deck;
+  return asJson<Deck>(getData(body, 'deck create'));
 }
 
 /** One card in the deck — the flashcard row an anonymous caller must not read. */
@@ -214,7 +217,7 @@ async function ensureCard(page: Page, deckId: string): Promise<Flashcard> {
   });
   const body = await response.text();
   expect(response.status(), `POST /api/v1/flashcards: ${body}`).toBe(201);
-  return getData(body, 'card create') as Flashcard;
+  return asJson<Flashcard>(getData(body, 'card create'));
 }
 
 test.describe('@case:SEC-13 @area:SEC @prio:P2 anonymous REST access', () => {
@@ -281,7 +284,7 @@ test.describe('@case:SEC-13 @area:SEC @prio:P2 anonymous REST access', () => {
       { headers: { apikey: anonKey, Authorization: `Bearer ${token}` } },
     );
     expect(authedCardResponse.status, 'the student reads their own card').toBe(200);
-    const authedCards = (await authedCardResponse.json()) as Array<{ id: string; front: string }>;
+    const authedCards = await json<Array<{ id: string; front: string }>>(authedCardResponse);
     expect(
       authedCards.map((row) => row.id),
       'the card exists and is visible to its owner',
@@ -293,10 +296,12 @@ test.describe('@case:SEC-13 @area:SEC @prio:P2 anonymous REST access', () => {
       { headers: { apikey: anonKey, Authorization: `Bearer ${token}` } },
     );
     expect(authedProfileResponse.status, 'the student reads their own profile').toBe(200);
-    const authedProfiles = (await authedProfileResponse.json()) as Array<{
-      id: string;
-      email: string;
-    }>;
+    const authedProfiles = await json<
+      Array<{
+        id: string;
+        email: string;
+      }>
+    >(authedProfileResponse);
     expect(
       authedProfiles.map((row) => row.id),
       'the profile row exists',
@@ -309,12 +314,14 @@ test.describe('@case:SEC-13 @area:SEC @prio:P2 anonymous REST access', () => {
     const audit = await createQaSupabase().rpc('rls_audit');
     expect(audit.error, `rls_audit: ${audit.error?.message ?? ''}`).toBeNull();
 
-    const rows = (audit.data ?? []) as Array<{
-      table_name: string;
-      rls_enabled: boolean;
-      anon_select: boolean;
-      anon_insert: boolean;
-    }>;
+    const rows = asJson<
+      Array<{
+        table_name: string;
+        rls_enabled: boolean;
+        anon_select: boolean;
+        anon_insert: boolean;
+      }>
+    >(audit.data ?? []);
     for (const table of USER_DATA_TABLES) {
       const row = rows.find((entry) => entry.table_name === table);
       if (!row) throw new Error(`rls_audit returned no row for ${table}`);

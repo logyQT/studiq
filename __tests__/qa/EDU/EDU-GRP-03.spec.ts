@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -69,7 +70,7 @@ interface GroupSummary {
 async function listGroups(api: APIRequestContext): Promise<GroupSummary[]> {
   const res = await api.get(GROUPS_URL);
   expect(res.status(), `GET ${GROUPS_URL} → ${await res.text()}`).toBe(200);
-  const body = (await res.json()) as ApiEnvelope<GroupSummary[]>;
+  const body = await json<ApiEnvelope<GroupSummary[]>>(res);
   expect(body.success, `GET ${GROUPS_URL} success`).toBe(true);
   return body.data;
 }
@@ -98,9 +99,8 @@ async function createGroup(
     data: { name, ...(description ? { description } : {}) },
   });
   expect(res.status(), `POST ${GROUPS_URL} (${name}) → ${await res.text()}`).toBe(201);
-  const body = (await res.json()) as ApiEnvelope<
-    Omit<GroupSummary, 'memberCount' | 'teacherCount' | 'canManage'>
-  >;
+  const body =
+    await json<ApiEnvelope<Omit<GroupSummary, 'memberCount' | 'teacherCount' | 'canManage'>>>(res);
   expect(body.success, `POST ${GROUPS_URL} success`).toBe(true);
   return { ...body.data, memberCount: 0, teacherCount: 0, canManage: true };
 }

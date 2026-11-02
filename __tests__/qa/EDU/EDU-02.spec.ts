@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -143,7 +144,7 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
 
     const features = await page.request.get('/api/v1/features/me');
     expect(features.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = ((await features.json()) as { data: { features: string[] } }).data.features;
+    const enabled = (await json<{ data: { features: string[] } }>(features)).data.features;
     expect(enabled, 'the teacher is entitled to the menu items under test').toEqual(
       expect.arrayContaining(['ai.chat', 'group.manage']),
     );
@@ -219,7 +220,7 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
 
     const features = await page.request.get('/api/v1/features/me');
     expect(features.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = ((await features.json()) as { data: { features: string[] } }).data.features;
+    const enabled = (await json<{ data: { features: string[] } }>(features)).data.features;
     expect(enabled, 'ai.chat is entitled').toContain('ai.chat');
     expect(enabled, 'group.manage is not entitled').not.toContain('group.manage');
 

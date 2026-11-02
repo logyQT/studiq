@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -51,7 +52,7 @@ test('a manager without an organization creates it from /setup/org and lands on 
 
   const beforeResponse = await page.request.get('/api/v1/me/orgs');
   expect(beforeResponse.status(), 'GET /api/v1/me/orgs').toBe(200);
-  const before = (await beforeResponse.json()) as { data: unknown[] };
+  const before = await json<{ data: unknown[] }>(beforeResponse);
   expect(before.data, 'the fixture manager must belong to no organization').toEqual([]);
 
   // Adjacent regression: the dashboard itself is gated, not just `/login`.
@@ -85,7 +86,7 @@ test('a manager without an organization creates it from /setup/org and lands on 
 
   const created = await createResponse;
   expect(created.status(), 'POST /api/v1/organization').toBe(201);
-  const createdBody = (await created.json()) as { data?: { id?: string; name?: string } };
+  const createdBody = await json<{ data?: { id?: string; name?: string } }>(created);
   expect(createdBody.data?.name).toBe(ORG_NAME);
   const orgId = createdBody.data?.id;
   expect(orgId, 'created organization id').toBeTruthy();
@@ -115,9 +116,9 @@ test('a manager without an organization creates it from /setup/org and lands on 
   // owned through the `admin` role.
   const afterResponse = await page.request.get('/api/v1/me/orgs');
   expect(afterResponse.status(), 'GET /api/v1/me/orgs').toBe(200);
-  const after = (await afterResponse.json()) as {
+  const after = await json<{
     data: Array<{ id: string; name: string; orgRoleName: string; isActive: boolean }>;
-  };
+  }>(afterResponse);
   expect(after.data).toHaveLength(1);
   expect(after.data[0]).toMatchObject({
     id: orgId,
@@ -131,9 +132,9 @@ test('a manager without an organization creates it from /setup/org and lands on 
   // this asserts the rows the trigger created, not just UI copy.
   const rolesResponse = await page.request.get('/api/v1/organization/roles');
   expect(rolesResponse.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const rolesBody = (await rolesResponse.json()) as {
+  const rolesBody = await json<{
     data: Array<{ name: string; isSystem: boolean; memberCount: number }>;
-  };
+  }>(rolesResponse);
   expect(rolesBody.data.map((role) => role.name).toSorted()).toEqual([
     'admin',
     'member',

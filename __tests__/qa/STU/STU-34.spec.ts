@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -135,7 +136,7 @@ async function call<T>(
   expect([expected].flat(), `${method} ${url} → ${response.status()} ${text}`).toContain(
     response.status(),
   );
-  const body = JSON.parse(text) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `${method} ${url} success flag`).toBe(true);
   return body.data;
 }

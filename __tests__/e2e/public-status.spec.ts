@@ -131,7 +131,7 @@ test.describe('Public status page', () => {
 
     await expect(status).toContainText(problem);
     await expect(status).not.toContainText(operational);
-    await expect(checkedLine).not.toHaveText(firstChecked as string);
+    await expect(checkedLine).not.toHaveText(firstChecked!);
   });
 
   test('a broken background refetch replaces the stale operational state', async ({ page }) => {
@@ -160,7 +160,7 @@ test.describe('Public status page', () => {
 
     await expect(statusRegion(page)).toContainText(unavailable);
     await expect(statusRegion(page)).not.toContainText(operational);
-    await expect(checkedLine).not.toHaveText(firstChecked as string);
+    await expect(checkedLine).not.toHaveText(firstChecked!);
   });
 
   test('the 404 page status button opens the readable status page', async ({ page }) => {

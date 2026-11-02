@@ -31,12 +31,15 @@ async function login(page: Page) {
 /** A marker that only survives a client-side refresh, not a document reload. */
 async function markPage(page: Page) {
   await page.evaluate(() => {
-    (window as unknown as { localeMarker?: string }).localeMarker = 'alive';
+    Object.assign(window, { localeMarker: 'alive' });
   });
 }
 
-async function pageMarker(page: Page) {
-  return page.evaluate(() => (window as unknown as { localeMarker?: string }).localeMarker);
+async function pageMarker(page: Page): Promise<string | undefined> {
+  return page.evaluate(() => {
+    const marker: unknown = Reflect.get(window, 'localeMarker');
+    return typeof marker === 'string' ? marker : undefined;
+  });
 }
 
 test.describe('language switcher — desktop select', () => {

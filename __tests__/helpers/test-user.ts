@@ -9,6 +9,7 @@ import {
   seedTenantGraph,
   tenantId,
 } from '#test/helpers/tenant-seed';
+import { json } from '#test/helpers/json';
 import { POST as createDeckPost } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { POST as createFlashcardPost } from '@/app/(backend)/api/v1/flashcards/route';
 import { POST as createTopicPost } from '@/app/(backend)/api/v1/flashcards/topics/route';
@@ -87,7 +88,7 @@ class SeedApiError extends Error {
   constructor(
     readonly label: string,
     readonly status: number,
-    readonly body: { error?: string },
+    readonly body: unknown,
   ) {
     super(`[seed] ${label} failed (${status}): ${JSON.stringify(body)}`);
   }
@@ -112,11 +113,11 @@ async function api<T>(
     cookies,
   );
   const res = await route(req);
-  const body = await res.json();
+  const body = await json<{ success?: boolean; data: T }>(res);
   if (!res.ok || body.success === false) {
     throw new SeedApiError(label, res.status, body);
   }
-  return body.data as T;
+  return body.data;
 }
 
 // ============================================================
@@ -247,7 +248,7 @@ export async function seedViaApi(
   const flashcardCount = profile.flashcards ?? 0;
   for (let i = 0; i < flashcardCount; i++) {
     const deckId = created.decks[i % Math.max(created.decks.length, 1)] ?? undefined;
-    await api(
+    const card = await api<{ id?: string }>(
       'create-flashcard',
       createFlashcardPost,
       '/api/v1/flashcards',
@@ -260,10 +261,8 @@ export async function seedViaApi(
         },
       },
       cookie,
-    ).then((card: { id?: string }) => {
-      if (card.id) created.flashcards.push(card.id);
-      return undefined;
-    });
+    );
+    if (card.id) created.flashcards.push(card.id);
   }
 
   // Questions via API (bank created via the question-banks API).

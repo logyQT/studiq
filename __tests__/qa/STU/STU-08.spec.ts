@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -108,7 +109,7 @@ interface StateBreakdown {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -143,7 +144,7 @@ async function ensureDeck(page: Page, name: string): Promise<DeckListItem> {
     response.status(),
     `POST ${DECKS_URL} (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<DeckListItem>;
+  const body = await json<ApiEnvelope<DeckListItem>>(response);
   expect(body.success, `POST ${DECKS_URL} (${name}) success flag`).toBe(true);
   return body.data;
 }
@@ -165,7 +166,7 @@ async function ensureCard(
     response.status(),
     `POST ${CARDS_URL} (${front}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<FlashcardRow>;
+  const body = await json<ApiEnvelope<FlashcardRow>>(response);
   expect(body.success, `POST ${CARDS_URL} (${front}) success flag`).toBe(true);
 }
 
@@ -237,7 +238,7 @@ async function readQuestion(card: Locator): Promise<string | null> {
 async function currentQuestion(card: Locator): Promise<string> {
   const question = await readQuestion(card);
   expect(question, 'exactly one cram card is on screen').not.toBeNull();
-  return question as string;
+  return question!;
 }
 
 /**

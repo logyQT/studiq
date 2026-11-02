@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -102,7 +103,7 @@ interface QuestionItem {
 
 async function getJson<T>(page: Page, url: string): Promise<T> {
   const res = await page.request.get(url);
-  const body = (await res.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(res);
   expect(res.status(), `GET ${url} → ${res.status()} ${JSON.stringify(body)}`).toBe(200);
   expect(body.success, `GET ${url}`).toBe(true);
   return body.data;
@@ -138,7 +139,7 @@ async function expectRefused(
   label: string,
 ): Promise<void> {
   const res = await page.request.post(url, { data });
-  const body = (await res.json()) as Envelope<unknown>;
+  const body = await json<Envelope<unknown>>(res);
   expect(res.status(), `${label}: POST ${url} is refused`).toBe(429);
   expect(body.success, `${label}: POST ${url} is not a success`).toBe(false);
   expect(body.error, `${label}: the limit error code`).toMatch(/USAGE_LIMIT_EXCEEDED/);
@@ -165,7 +166,7 @@ async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankI
       data: { name: CARD_DECK },
     });
     expect(created.status(), `POST /api/v1/flashcards/decks (${CARD_DECK})`).toBe(201);
-    cardDeck = (await created.json()).data as DeckItem;
+    cardDeck = (await json<{ data: DeckItem }>(created)).data;
   }
 
   // The bank that will hold the 50 questions, for the same reason.
@@ -177,7 +178,7 @@ async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankI
       data: { name: QUESTION_BANK },
     });
     expect(created.status(), `POST /api/v1/questions/banks (${QUESTION_BANK})`).toBe(201);
-    questionBank = (await created.json()).data as BankItem;
+    questionBank = (await json<{ data: BankItem }>(created)).data;
   }
 
   // Decks: one at a time, through the route the UI uses, so the last allowed

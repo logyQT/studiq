@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -61,7 +62,7 @@ interface Pool {
 async function listPools(page: Page): Promise<Pool[]> {
   const res = await page.request.get(POOLS_API);
   expect(res.status(), `GET ${POOLS_API}`).toBe(200);
-  const body = (await res.json()) as { success: boolean; data: Pool[] };
+  const body = await json<{ success: boolean; data: Pool[] }>(res);
   expect(body.success).toBe(true);
   return body.data;
 }

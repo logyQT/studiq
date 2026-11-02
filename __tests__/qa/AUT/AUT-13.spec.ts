@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
@@ -85,7 +86,7 @@ const isPost = (path: string) => (response: Response) =>
 async function expectAnonymous(page: Page): Promise<void> {
   const response = await page.request.get('/api/v1/auth/me');
   expect(response.status(), 'GET /api/v1/auth/me').toBe(200);
-  const body = (await response.json()) as { data: { user: unknown; session: unknown } };
+  const body = await json<{ data: { user: unknown; session: unknown } }>(response);
   expect(body.data.user, 'no authenticated user').toBeNull();
   expect(body.data.session, 'no authenticated session').toBeNull();
 }
@@ -258,7 +259,7 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status(), 'GET /api/v1/auth/me after the password change').toBe(200);
     expect(
-      ((await me.json()) as { data?: { user?: { email?: string } | null } }).data?.user?.email,
+      (await json<{ data?: { user?: { email?: string } | null } }>(me)).data?.user?.email,
     ).toBe(email);
 
     // --- Step 4a: the new password logs in -------------------------------
