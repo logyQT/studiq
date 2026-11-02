@@ -80,7 +80,7 @@ Generated, never hand-edited: `@case:` tags plus the last run produce
 `untriaged` · `drafted` · `red · bug #n` · `red · case` (the case doc is wrong) · `flaky` ·
 `green` · `semantic`.
 
-Triage today: **195 e2e · 12 API-level · 8 semantic** (of 215 cases).
+Triage today: **194 e2e · 12 API-level · 8 semantic** (of 214 cases).
 
 ## CI
 
@@ -99,7 +99,7 @@ One spec per case, in batches of 8, area order: **STU** (52) → **EDU** (39) �
 
 ## Done
 
-- 195 e2e + 12 API-level cases green on `main`;
+- 194 e2e + 12 API-level cases green on `main`;
 - the 8 semantic cases acknowledged as the only agentic coverage;
 - `--shuffle` at 1 and N workers gives identical results;
 - the coverage map shows 0 untriaged / 0 failing.
