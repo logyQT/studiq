@@ -202,7 +202,7 @@ test.describe('AUT-07 — login for every account type', () => {
         };
       };
       const signedIn = me.data?.user;
-      expect(signedIn?.email, 'the session belongs to the tenant user').toBe(user!.email);
+      expect(signedIn?.email, 'the session belongs to the tenant user').toBe(user.email);
       expect(signedIn?.app_metadata?.account_type, 'account type of the signed-in user').toBe(
         role.accountType,
       );
@@ -238,7 +238,7 @@ test.describe('AUT-07 — login for every account type', () => {
       const userMenu = page.locator(USER_MENU);
       await expect(userMenu, 'user menu at the bottom of the sidebar').toBeVisible();
       await expect(userMenu, 'user menu shows the display name').toContainText(displayName!);
-      await expect(userMenu, 'user menu shows the e-mail').toContainText(user!.email);
+      await expect(userMenu, 'user menu shows the e-mail').toContainText(user.email);
       await expect(page.getByText(/ERROR_/)).toHaveCount(0);
 
       // --- Step „Wyloguj”: the user menu ends the session ------------------

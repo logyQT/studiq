@@ -103,7 +103,7 @@ test.describe('AUT-15 — anonymous visitor on protected routes', () => {
 
       const location = response.headers().location;
       expect(location, `Location header for GET ${path}`).toBeTruthy();
-      const target = new URL(location!, APP_URL);
+      const target = new URL(location, APP_URL);
       expect(target.origin, `GET ${path} must stay on this origin`).toBe(new URL(APP_URL).origin);
       expect(target.pathname, `GET ${path} must target the login page`).toBe('/login');
       expect(target.searchParams.get('next'), `?next= of GET ${path}`).toBe(path);

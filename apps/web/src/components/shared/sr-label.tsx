@@ -18,5 +18,5 @@ type SrLabelProps = {
  */
 export function SrLabel({ k, values }: SrLabelProps) {
   const t = useTranslations('A11y');
-  return <span className="sr-only">{t(k as Parameters<typeof t>[0], values)}</span>;
+  return <span className="sr-only">{t(k, values)}</span>;
 }

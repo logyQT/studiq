@@ -221,8 +221,8 @@ test.describe('AUT-06 — an unconfirmed account cannot log in', () => {
     await expect(page.getByText(COPY.loginTitle, { exact: true })).toBeVisible();
 
     const responsePromise = page.waitForResponse(isLoginPost);
-    await page.getByLabel(COPY.emailLabel, { exact: true }).fill(student!.email);
-    await page.getByLabel(COPY.passwordLabel, { exact: true }).fill(student!.password);
+    await page.getByLabel(COPY.emailLabel, { exact: true }).fill(student.email);
+    await page.getByLabel(COPY.passwordLabel, { exact: true }).fill(student.password);
     await page.getByRole('button', { name: COPY.loginButton, exact: true }).click();
     const response = await responsePromise;
     expect(response.status(), 'POST /api/v1/auth/login for a confirmed account').toBe(200);
@@ -239,7 +239,7 @@ test.describe('AUT-06 — an unconfirmed account cannot log in', () => {
     expect(me.status(), 'GET /api/v1/auth/me after login').toBe(200);
     const body = (await me.json()) as { data?: { user?: { email?: string } | null } };
     expect(body.data?.user?.email, 'the session belongs to the confirmed account').toBe(
-      student!.email,
+      student.email,
     );
   });
 });

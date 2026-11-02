@@ -466,7 +466,7 @@ describe('RLS tenant isolation (#191)', () => {
     const { data: orgReport, error: orgReportError } = await studentSession
       .from('question_reports')
       .select('id')
-      .eq('id', orgA.peerReportId as string);
+      .eq('id', orgA.peerReportId);
     expect(orgReportError, 'question_reports read failed').toBeNull();
     expect(
       orgReport?.map((r) => r.id),

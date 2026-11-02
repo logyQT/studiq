@@ -80,7 +80,7 @@ describe('teacher stats routes — allowed account types (#189)', () => {
           new Request('http://localhost/api/v1/flashcards/stats/teacher/difficulty/easy') as never,
           {
             params: Promise.resolve({ bucket: 'easy' }),
-          } as never,
+          },
         ),
     ],
   ])('%s allows educators and managers only', async (_name, call) => {

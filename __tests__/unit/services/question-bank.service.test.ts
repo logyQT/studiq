@@ -353,7 +353,7 @@ describe('QuestionBankService', () => {
       mock.from.mockReturnValueOnce(pageQb); // question_banks query builder
       mock.from.mockReturnValueOnce(qb([{ bank_id: 'b-1' }])); // bank_groups
 
-      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+      const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('bank_groups');
@@ -365,7 +365,7 @@ describe('QuestionBankService', () => {
       mock.from.mockReturnValueOnce(pageQb); // question_banks query builder
       mock.from.mockReturnValueOnce(qb([])); // bank_groups → no linked banks
 
-      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+      const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });

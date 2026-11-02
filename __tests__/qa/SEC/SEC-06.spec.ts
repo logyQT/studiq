@@ -190,8 +190,8 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
 
     const tenant = loadCaseTenant();
     const org = tenant.org!;
-    const teacher = tenant.users.teacher!;
-    const student = tenant.users.student!;
+    const teacher = tenant.users.teacher;
+    const student = tenant.users.student;
     const run = tenant.runSuffix ?? tenant.key.slice(-8);
 
     const pageErrors: string[] = [];
@@ -223,7 +223,7 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
         .eq('organization_id', org.id)
         .order('user_id');
       expect(error, 'reading the tenant org_members rows').toBeNull();
-      return (data ?? []) as MemberRow[];
+      return data ?? [];
     }
 
     /** Invitation rows of this tenant for the addresses the case uses. */
@@ -234,7 +234,7 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
         .eq('organization_id', org.id)
         .in('email', emails);
       expect(error, 'reading the tenant invitation rows').toBeNull();
-      return (data ?? []) as InvitationRow[];
+      return data ?? [];
     }
 
     // --- Step 0: the manager resolves the tenant's own roles and baseline ----

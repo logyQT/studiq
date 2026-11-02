@@ -44,7 +44,7 @@ export function NewQuizClient() {
       name: trimmedName,
       description: description || undefined,
     });
-    router.push(`/edu/quizzes/${(data as { id: string }).id}/edit`);
+    router.push(`/edu/quizzes/${data.id}/edit`);
   };
 
   return (

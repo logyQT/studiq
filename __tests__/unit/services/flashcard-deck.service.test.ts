@@ -325,7 +325,7 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb(decks));
       mock.from.mockReturnValueOnce(qb(null, null, 57));
 
-      const result = await service.list(ctx, { limit: 2 } as any);
+      const result = await service.list(ctx, { limit: 2 });
 
       expect(result.success).toBe(true);
       const data = result.data as { items: unknown[]; hasMore: boolean; total: number };
@@ -386,7 +386,7 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(pageQb);
       mock.from.mockReturnValueOnce(countQb);
 
-      await service.list(ctx, { groups: [] } as any);
+      await service.list(ctx, { groups: [] });
 
       expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
         'suspended_decks',
@@ -405,9 +405,12 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(pageQb);
       mock.from.mockReturnValueOnce(countQb);
 
-      const result = await service.list({ ...ctx, groupIds: ['g-1'] }, {
-        groups: ['g-1'],
-      } as any);
+      const result = await service.list(
+        { ...ctx, groupIds: ['g-1'] },
+        {
+          groups: ['g-1'],
+        },
+      );
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
@@ -420,9 +423,12 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
       mock.from.mockReturnValueOnce(qb([], null)); // deck_groups → no linked decks
 
-      const result = await service.list({ ...ctx, groupIds: ['g-1'] }, {
-        groups: ['g-1'],
-      } as any);
+      const result = await service.list(
+        { ...ctx, groupIds: ['g-1'] },
+        {
+          groups: ['g-1'],
+        },
+      );
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({

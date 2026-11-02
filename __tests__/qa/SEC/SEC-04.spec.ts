@@ -210,7 +210,7 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
       orgRoleName: 'admin',
       organization_id: orgA.id,
     });
-    const managerAName = members[0]!.full_name;
+    const managerAName = members[0].full_name;
     expect(managerAName, 'the seeded manager has a display name').toBeTruthy();
     // The other organization's student appears under no shape: id, e-mail, name.
     expect(
@@ -265,7 +265,7 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     // --- Step 3: GET /api/v1/organization/<id> ----------------------------
     const foreignOrg = await page.request.get(`/api/v1/organization/${orgB.id}`);
     expect([403, 404], 'the other organization is not readable').toContain(foreignOrg.status());
-    const foreignBody = (await foreignOrg.text()) as string;
+    const foreignBody = await foreignOrg.text();
     expect(foreignBody, 'the response must not disclose the other organization').not.toContain(
       orgB.name,
     );

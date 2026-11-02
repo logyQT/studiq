@@ -151,7 +151,7 @@ export class QuestionBankService {
       items: items as unknown as QuestionBank[],
       nextCursor,
       hasMore,
-    } as { items: QuestionBank[]; nextCursor: string | null; hasMore: boolean });
+    });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -180,7 +180,7 @@ export class QuestionBankService {
       ...bank,
       question_count: countArr?.[0]?.count ?? 0,
       groupIds: groups?.map((g) => g.group_id) ?? [],
-    } as unknown as QuestionBank);
+    });
   }
 
   async update(

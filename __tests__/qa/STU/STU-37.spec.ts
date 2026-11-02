@@ -280,7 +280,7 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
       ).toBeNull();
 
       // ── Teacher grades the open answer of the visible quiz ─────────────────
-      const student = tenant.users.student!;
+      const student = tenant.users.student;
       await api<unknown>(
         page,
         'PUT',

@@ -118,7 +118,7 @@ test.describe('AUT-19 — API route protection matrix', () => {
     const me = (await (await page.request.get('/api/v1/auth/me')).json()) as {
       data?: { user?: { email?: string } | null };
     };
-    expect(me.data?.user?.email).toBe(student!.email);
+    expect(me.data?.user?.email).toBe(student.email);
 
     // --- Case step 2: teacher-only endpoint ------------------------------
     expectError(await call(page, TEACHER_QUIZZES), 403, 'FORBIDDEN');
@@ -134,7 +134,7 @@ test.describe('AUT-19 — API route protection matrix', () => {
       expect(members.body).toEqual({ success: true, data: [] });
     }
     // No other user's member data may leak in either allowed shape.
-    for (const account of [manager!, teacher!, student!]) {
+    for (const account of [manager, teacher, student]) {
       expect(members.raw, `${MEMBERS} leaks no member data`).not.toContain(account.email);
       expect(members.raw, `${MEMBERS} leaks no user id`).not.toContain(account.id);
     }
@@ -173,7 +173,7 @@ test.describe('AUT-19 — API route protection matrix', () => {
     expect(
       memberList.data.map((member) => member.email),
       'the tenant student is part of the list the student was denied',
-    ).toContain(student!.email);
+    ).toContain(student.email);
     for (const member of memberList.data) {
       expect(member.organization_id, 'members are scoped to the tenant organization').toBe(
         tenant.org!.id,

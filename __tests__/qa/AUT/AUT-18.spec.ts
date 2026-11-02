@@ -116,7 +116,7 @@ test.describe('AUT-18 — a manager on the routes of the other roles', () => {
         };
       }
     ).data?.user;
-    expect(signedIn?.email, 'the session belongs to the tenant manager').toBe(manager!.email);
+    expect(signedIn?.email, 'the session belongs to the tenant manager').toBe(manager.email);
     expect(signedIn?.app_metadata?.account_type, 'account type of the signed-in user').toBe(
       'manager',
     );

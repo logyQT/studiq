@@ -130,8 +130,8 @@ async function removeInviteesIfJoined(page: Page, tenant: QaTenant): Promise<voi
   for (const role of ['invitee1', 'invitee2'] as const) {
     const invitee = tenant.users[role];
     expect(invitee, `${CASE} needs the seeded ${role} account`).toBeTruthy();
-    if (!members.some((member) => member.id === invitee!.id)) continue;
-    const res = await page.request.delete(`${MEMBERS_URL}?userId=${invitee!.id}`);
+    if (!members.some((member) => member.id === invitee.id)) continue;
+    const res = await page.request.delete(`${MEMBERS_URL}?userId=${invitee.id}`);
     expect(res.status(), `cleanup DELETE ${role}`).toBe(200);
   }
 }

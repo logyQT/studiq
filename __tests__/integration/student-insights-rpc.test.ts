@@ -154,8 +154,8 @@ describe('get_student_insights rules (#657 review)', () => {
       ])
       .select('id, name');
     if (topicError) throw topicError;
-    quizTopic = topics!.find((topic) => topic.name === `${MARK} quiz`)!.id;
-    cardTopic = topics!.find((topic) => topic.name === `${MARK} cards`)!.id;
+    quizTopic = topics.find((topic) => topic.name === `${MARK} quiz`)!.id;
+    cardTopic = topics.find((topic) => topic.name === `${MARK} cards`)!.id;
 
     const question = (type: 'mcq' | 'open') => ({
       type,
@@ -177,8 +177,8 @@ describe('get_student_insights rules (#657 review)', () => {
       ])
       .select('id, type');
     if (qError) throw qError;
-    const mcq = questions!.find((q) => q.type === 'mcq')!.id;
-    const open = questions!.find((q) => q.type === 'open')!.id;
+    const mcq = questions.find((q) => q.type === 'mcq')!.id;
+    const open = questions.find((q) => q.type === 'open')!.id;
     await service
       .from('question_topic_assignments')
       .insert([mcq, open].map((question_id) => ({ question_id, topic_id: quizTopic })));
@@ -201,9 +201,9 @@ describe('get_student_insights rules (#657 review)', () => {
       .insert([card(1), card(2), card(3)])
       .select('id, front');
     if (cardError) throw cardError;
-    const cardA = cards!.find((c) => c.front === `${MARK} 1`)!.id;
-    const cardB = cards!.find((c) => c.front === `${MARK} 2`)!.id;
-    const cardC = cards!.find((c) => c.front === `${MARK} 3`)!.id;
+    const cardA = cards.find((c) => c.front === `${MARK} 1`)!.id;
+    const cardB = cards.find((c) => c.front === `${MARK} 2`)!.id;
+    const cardC = cards.find((c) => c.front === `${MARK} 3`)!.id;
     await service.from('flashcard_topic_assignments').insert([
       { flashcard_id: cardA, topic_id: quizTopic },
       { flashcard_id: cardB, topic_id: cardTopic },
@@ -241,9 +241,9 @@ describe('get_student_insights rules (#657 review)', () => {
       ])
       .select('id, assignment_id, is_assignment_attempt');
     if (tError) throw tError;
-    const practice = attempts!.find((a) => !a.is_assignment_attempt)!.id;
-    const assignmentAttempt = attempts!.find((a) => a.assignment_id === assignment)!.id;
-    const orphan = attempts!.find((a) => a.assignment_id === deletedAssignment)!.id;
+    const practice = attempts.find((a) => !a.is_assignment_attempt)!.id;
+    const assignmentAttempt = attempts.find((a) => a.assignment_id === assignment)!.id;
+    const orphan = attempts.find((a) => a.assignment_id === deletedAssignment)!.id;
     const { error: sError } = await service.from('student_answers').insert([
       { attempt_id: practice, question_id: mcq, is_correct: true },
       { attempt_id: practice, question_id: open, is_correct: true }, // open answers never count
@@ -360,8 +360,8 @@ describe('get_student_insights rules (#657 review)', () => {
         .eq('config->>marker', MARK);
     const { data: rows, error } = await select();
     if (error) throw error;
-    const practice = rows!.find((row) => !row.assignment_id && !row.is_assignment_attempt)!;
-    const assignmentAttempt = rows!.find((row) => row.is_assignment_attempt)!;
+    const practice = rows.find((row) => !row.assignment_id && !row.is_assignment_attempt)!;
+    const assignmentAttempt = rows.find((row) => row.is_assignment_attempt)!;
 
     // The student can update their own attempt through PostgREST (RLS FOR ALL); the trigger
     // keeps the stored provenance. `.select()` proves the write reached the row instead of

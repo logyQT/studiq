@@ -392,7 +392,7 @@ test.describe('@case:SEC-08 @area:SEC @prio:P1 foreign flashcard and deck writes
       isActive: true,
     });
 
-    const ownCard = (await getData<Card>(page, `${CARDS_URL}/${card.id}`)) as Card;
+    const ownCard = await getData<Card>(page, `${CARDS_URL}/${card.id}`);
     expect(ownCard, 'S1 reads their own card before the attack').toMatchObject({
       id: card.id,
       front: card.front,

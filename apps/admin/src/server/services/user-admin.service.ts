@@ -239,7 +239,7 @@ export class UserAdminService {
     if (error) return toDbFailure(error);
     if (!profile) return failure('NOT_FOUND');
 
-    const [user] = await this.enrich([profile as ProfileRow], supabase);
+    const [user] = await this.enrich([profile], supabase);
 
     const { data: memberships } = await supabase
       .from('org_members')

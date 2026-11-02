@@ -108,7 +108,7 @@ test('a student is redirected from every teacher, manager and onboarding route t
 
   const me = await page.request.get('/api/v1/auth/me');
   expect(me.status(), 'GET /api/v1/auth/me').toBe(200);
-  expect((await me.json()).data?.user?.email).toBe(student!.email);
+  expect((await me.json()).data?.user?.email).toBe(student.email);
 
   // Every document response of this test, so a protected page served as HTML
   // (200) would stand out from the proxy's redirect (3xx).
@@ -180,7 +180,7 @@ test('the role gate still lets a teacher into the teacher routes', async ({ page
   await expect(page.locator('a[href="/edu/questions"]').first()).toBeVisible();
 
   const me = await page.request.get('/api/v1/auth/me');
-  expect((await me.json()).data?.user?.email).toBe(teacher!.email);
+  expect((await me.json()).data?.user?.email).toBe(teacher.email);
 });
 
 test('the role gate still lets a manager into the manager routes', async ({ page }) => {
@@ -203,5 +203,5 @@ test('the role gate still lets a manager into the manager routes', async ({ page
   expect(new URL(page.url()).pathname).toBe('/manage/members');
   await expect(page.locator('a[href="/manage/roles"]').first()).toBeVisible();
   // The manager sees this tenant's own members, not another worker's.
-  await expect(page.getByText(teacher!.email).first()).toBeVisible();
+  await expect(page.getByText(teacher.email).first()).toBeVisible();
 });

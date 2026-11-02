@@ -552,7 +552,7 @@ export class StatsService {
       const topics = cardToTopics.get(a.flashcard_id) ?? [];
       const topicRaw = a.topics as unknown;
       const topicName =
-        topicRaw && typeof topicRaw === 'object' && 'name' in (topicRaw as object)
+        topicRaw && typeof topicRaw === 'object' && 'name' in topicRaw
           ? (topicRaw as { name: string }).name
           : ((topicRaw as Array<{ name: string }> | null)?.[0]?.name ?? 'Unknown');
       topics.push({ topicId: a.topic_id, name: topicName });

@@ -22,7 +22,7 @@ function translate(messages: Messages) {
   };
 }
 
-const t = translate(pl as Messages);
+const t = translate(pl);
 
 function crumbs(pathname: string, names: Record<string, string> = {}) {
   return buildBreadcrumbs({ pathname, names, t });
@@ -127,7 +127,7 @@ describe('buildBreadcrumbs', () => {
 
   it('resolves every route-map key in both locales', () => {
     for (const [locale, messages] of Object.entries({ pl, en })) {
-      const localeT = translate(messages as Messages);
+      const localeT = translate(messages);
 
       for (const [route, entry] of Object.entries(PATH_LABELS)) {
         expect(localeT(entry.labelKey), `${locale}: ${route} -> ${entry.labelKey}`).not.toBe('');

@@ -465,7 +465,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       userId: userId(tenant, 'student'),
       poolId: pools.get('ace')!.id,
       planKey: 'ace',
-      userEmail: tenant.users.student!.email,
+      userEmail: tenant.users.student.email,
     });
     const poolsAfterAssign = (
       await json<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))

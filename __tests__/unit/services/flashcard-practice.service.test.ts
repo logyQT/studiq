@@ -671,7 +671,7 @@ describe('FlashcardPracticeService', () => {
       vi.mocked(buildQueryFilter).mockReturnValueOnce({
         created_by: 'test-user-id',
         organization_id: 'org-1',
-      } as any);
+      });
 
       const breakdown = {
         totalCards: 8,
@@ -737,7 +737,7 @@ describe('FlashcardPracticeService', () => {
   describe('getAllCardStats (#343)', () => {
     async function mockAccessibleFilter(filter: Record<string, unknown>) {
       const { accessibleFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(accessibleFilter).mockResolvedValueOnce(filter as any);
+      vi.mocked(accessibleFilter).mockResolvedValueOnce(filter);
     }
 
     it('applies the resolved group filter so other groups/users are excluded', async () => {
@@ -884,7 +884,7 @@ describe('FlashcardPracticeService', () => {
       vi.mocked(accessibleFilter).mockResolvedValueOnce({
         organization_id: 'org-1',
         or: 'created_by.eq.test-user-id,id.in.(fc-1)',
-      } as any);
+      });
 
       const matching = chain({ data: [{ id: 'fc-1' }], error: null });
       const reviewStates = chain({ data: [], error: null });

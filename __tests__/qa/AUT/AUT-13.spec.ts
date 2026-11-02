@@ -234,9 +234,9 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
 
     const student = tenant.users.student;
     expect(student, `${CASE} must seed the bare student`).toBeTruthy();
-    expect(student!.password, 'the seeded password under test').toBe(SEEDED_PASSWORD);
+    expect(student.password, 'the seeded password under test').toBe(SEEDED_PASSWORD);
 
-    const email = student!.email;
+    const email = student.email;
     const suffix = shortHash(tenant.key).slice(0, 4);
     const newPassword = `Nowe1234${suffix}`;
     const mismatch = `Inne1234${suffix}`;

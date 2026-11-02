@@ -315,7 +315,7 @@ test.describe('@case:EDU-ASG-04 @area:EDU @prio:P1 assignment publishing', () =>
     // The picker labels members by profile name; resolve the seeded student's own
     // label instead of hard-coding it.
     const members = await getData<OrgMember[]>(page, '/api/v1/organization/members?role=member');
-    const studentMember = members.find((member) => member.email === student!.email);
+    const studentMember = members.find((member) => member.email === student.email);
     expect(studentMember, 'the tenant student is an org member').toBeTruthy();
     const studentLabel = studentMember!.full_name ?? studentMember!.email;
 

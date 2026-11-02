@@ -134,7 +134,7 @@ describe('shortcutArea', () => {
     [null, null],
     [undefined, null],
   ])('%s -> %s', (path, area) => {
-    expect(shortcutArea(path as string | null | undefined)).toBe(area);
+    expect(shortcutArea(path)).toBe(area);
   });
 });
 

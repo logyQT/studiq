@@ -102,12 +102,12 @@ test('an absolute external ?next is ignored and the user lands on their dashboar
   await signInThroughForm(
     page,
     encodeURIComponent(`https://${EXTERNAL}`),
-    student!.email,
-    student!.password,
+    student.email,
+    student.password,
   );
 
   await expectOwnDashboard(page);
-  await expectSignedInAs(page, student!.email);
+  await expectSignedInAs(page, student.email);
 
   expect(foreign, 'no request may leave the app origin').toEqual([]);
 });
@@ -124,10 +124,10 @@ test('a protocol-relative ?next is ignored and the user lands on their dashboard
   const foreign = trackForeignRequests(page);
 
   // Step 2 of the case: /login?next=//example.com
-  await signInThroughForm(page, `//${EXTERNAL}`, student!.email, student!.password);
+  await signInThroughForm(page, `//${EXTERNAL}`, student.email, student.password);
 
   await expectOwnDashboard(page);
-  await expectSignedInAs(page, student!.email);
+  await expectSignedInAs(page, student.email);
 
   expect(foreign, 'no request may leave the app origin').toEqual([]);
 });

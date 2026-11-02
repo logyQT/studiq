@@ -108,8 +108,8 @@ async function expectOverviewShows(page: Page, org: QaOrg, other: QaOrg): Promis
   await expect(statValue(page, 'Studenci')).toHaveText(String(org.counts.students));
 
   await expect(page.getByText('Ostatni członkowie')).toBeVisible();
-  await expect(page.getByText(org.student.name!, { exact: true })).toBeVisible();
-  await expect(page.getByText(other.student.name!, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(org.student.name, { exact: true })).toBeVisible();
+  await expect(page.getByText(other.student.name, { exact: true })).toHaveCount(0);
 }
 
 /** Step 2 of the case: the three admin lists only carry the active org's rows. */
@@ -121,7 +121,7 @@ async function expectOrgListsShow(page: Page, org: QaOrg, other: QaOrg): Promise
 
   const membersTable = page.getByRole('table');
   await expect(membersTable.getByText(org.student.email)).toBeVisible();
-  await expect(membersTable.getByText(org.student.name!, { exact: true })).toBeVisible();
+  await expect(membersTable.getByText(org.student.name, { exact: true })).toBeVisible();
   for (const group of org.groups) {
     await expect(
       membersTable.getByText(group, { exact: true }).first(),
@@ -129,7 +129,7 @@ async function expectOrgListsShow(page: Page, org: QaOrg, other: QaOrg): Promise
     ).toBeVisible();
   }
   await expect(page.getByText(other.student.email)).toHaveCount(0);
-  await expect(page.getByText(other.student.name!, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(other.student.name, { exact: true })).toHaveCount(0);
 
   // Groups: exactly this org's two groups, none of the other org's.
   await page.goto('/manage/groups');

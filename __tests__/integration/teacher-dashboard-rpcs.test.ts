@@ -228,8 +228,8 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       ])
       .select('id, organization_id');
     if (assignmentError) throw assignmentError;
-    ownAssignmentId = assignments!.find((a) => a.organization_id === ORG)!.id;
-    foreignAssignmentId = assignments!.find((a) => a.organization_id === FOREIGN_ORG)!.id;
+    ownAssignmentId = assignments.find((a) => a.organization_id === ORG)!.id;
+    foreignAssignmentId = assignments.find((a) => a.organization_id === FOREIGN_ORG)!.id;
 
     const { error: attemptError } = await service.from('quiz_attempts').insert([
       finished(ORG, { title: `${MARK}-own` }),
@@ -263,7 +263,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     await service
       .from('flashcard_practice')
       .update({ organization_id: FOREIGN_ORG })
-      .eq('id', reviews![0].id);
+      .eq('id', reviews[0].id);
   });
 
   afterAll(async () => {

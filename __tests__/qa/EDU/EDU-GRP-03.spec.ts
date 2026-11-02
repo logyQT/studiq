@@ -163,8 +163,8 @@ test.describe('@case:EDU-GRP-03 @area:EDU @prio:P2 teacher edits and deletes own
     const colleagueApi = await signInColleague(
       playwright,
       origin,
-      colleague!.email,
-      colleague!.password,
+      colleague.email,
+      colleague.password,
       tenant.org!.id,
     );
 

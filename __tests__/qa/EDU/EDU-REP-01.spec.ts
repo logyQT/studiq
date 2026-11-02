@@ -265,8 +265,8 @@ test.describe('@case:EDU-REP-01 @area:EDU @prio:P2 educator report inbox', () =>
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     const question = await prepareTenant(page, tenant);
-    const teacher = tenant.users.teacher!;
-    const student = tenant.users.student!;
+    const teacher = tenant.users.teacher;
+    const student = tenant.users.student;
 
     // --- The data behind the screen -----------------------------------------
     const reports = await getData<ReportListResult>(page, `${REPORTS_URL}?limit=100`);

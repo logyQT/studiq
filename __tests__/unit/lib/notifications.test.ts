@@ -22,7 +22,7 @@ describe('notificationArea', () => {
     [null, null],
     [undefined, null],
   ])('%s -> %s', (path, area) => {
-    expect(notificationArea(path as string | null | undefined)).toBe(area);
+    expect(notificationArea(path)).toBe(area);
   });
 });
 

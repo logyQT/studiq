@@ -213,7 +213,7 @@ test('counts members by org role and links the quick actions and the recent list
 
   // The admin appears in the list (and in the total) with the admin role, but
   // never inflates the teacher/student counters asserted above.
-  const adminRow = rows.filter({ hasText: tenant.users.manager!.email });
+  const adminRow = rows.filter({ hasText: tenant.users.manager.email });
   await expect(adminRow).toHaveCount(1);
   await expect(adminRow.locator('span')).toHaveText('admin');
 

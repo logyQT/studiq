@@ -51,8 +51,7 @@ export async function POST(req: NextRequest) {
         throw new AppError('USAGE_LIMIT_EXCEEDED');
       }
 
-      const conversationId =
-        ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
+      const conversationId = (messages[0]?.id as string) || crypto.randomUUID();
 
       return runAgentChat(ctx, conversationId, messages);
     },

@@ -222,8 +222,8 @@ test('removes a member and the removed user loses access to the organization', a
     after.map((member) => member.id),
     'members after removal',
   ).not.toContain(student.id);
-  expect(after.map((member) => member.id)).toContain(tenant.users.manager!.id);
-  expect(after.map((member) => member.id)).toContain(tenant.users.teacher!.id);
+  expect(after.map((member) => member.id)).toContain(tenant.users.manager.id);
+  expect(after.map((member) => member.id)).toContain(tenant.users.teacher.id);
 
   // --- Step 3: the removed user no longer reaches the organization's data --
   await page.context().clearCookies();

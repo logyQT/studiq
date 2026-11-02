@@ -84,7 +84,7 @@ describe('FlashcardStatsService', () => {
       vi.mocked(accessibleFilter).mockResolvedValueOnce({
         organization_id: 'org-1',
         or: 'created_by.eq.teacher-1,id.in.(fc-1)',
-      } as any);
+      });
       const flashcardQuery = qb([{ id: 'fc-1' }]);
       mock.from.mockReturnValueOnce(flashcardQuery);
       mock.rpc.mockResolvedValueOnce({
@@ -207,7 +207,7 @@ describe('FlashcardStatsService', () => {
       vi.mocked(accessibleFilter).mockResolvedValueOnce({
         organization_id: 'org-1',
         or: 'created_by.eq.teacher-1,id.in.(fc-1)',
-      } as any);
+      });
       const flashcardQuery = qb([{ id: 'fc-1', front: 'F', back: 'B' }]);
       mock.from
         .mockReturnValueOnce(flashcardQuery)

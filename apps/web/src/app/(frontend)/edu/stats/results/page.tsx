@@ -151,10 +151,7 @@ export default function StatsResultsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {difficultyConfig.map(({ key, labelKey, color }) => {
-              const count =
-                flashStats.summary.difficultyBreakdown[
-                  key as keyof typeof flashStats.summary.difficultyBreakdown
-                ];
+              const count = flashStats.summary.difficultyBreakdown[key];
               return (
                 <div key={key} className="flex items-center gap-3">
                   <span className="w-16 text-sm font-medium text-right">{t(labelKey)}</span>

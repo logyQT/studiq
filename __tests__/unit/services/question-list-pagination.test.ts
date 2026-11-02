@@ -45,7 +45,7 @@ describe('QuestionService.list pagination', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    vi.mocked(accessibleFilter).mockResolvedValue({} as any);
+    vi.mocked(accessibleFilter).mockResolvedValue({});
   });
 
   it('keeps answering with a plain array, unordered, when no page is requested', async () => {

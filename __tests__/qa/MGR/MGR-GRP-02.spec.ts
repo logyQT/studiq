@@ -148,8 +148,8 @@ test('assigns a student and a teacher to Grupa C and shows the group’s own cou
   // The group-role default is derived from the org role, so S1 must be a
   // member and T2 a teacher — otherwise the teacher counter cannot move.
   const orgMembers = await getJson<OrgMember[]>(page, '/api/v1/organization/members');
-  const t2 = orgMembers.find((member) => member.email === teacher!.email);
-  const s1 = orgMembers.find((member) => member.email === student!.email);
+  const t2 = orgMembers.find((member) => member.email === teacher.email);
+  const s1 = orgMembers.find((member) => member.email === student.email);
   expect(t2?.orgRoleName, 'T2 holds the org teacher role').toBe('teacher');
   expect(s1?.orgRoleName, 'S1 holds the org member role').toBe('member');
 
@@ -167,8 +167,8 @@ test('assigns a student and a teacher to Grupa C and shows the group’s own cou
 
   // Both people are offered by the same endpoint the dialog uses.
   const addable = await getJson<AddableMember[]>(page, `${GROUPS_URL}/${group.id}/addable-members`);
-  const teacherOption = addable.find((member) => member.id === teacher!.id);
-  const studentOption = addable.find((member) => member.id === student!.id);
+  const teacherOption = addable.find((member) => member.id === teacher.id);
+  const studentOption = addable.find((member) => member.id === student.id);
   expect(teacherOption?.orgRoleName, 'T2 is offered as an org teacher').toBe('teacher');
   expect(studentOption?.orgRoleName, 'S1 is offered as an org member').toBe('member');
 
@@ -283,8 +283,8 @@ test('assigns a student and a teacher to Grupa C and shows the group’s own cou
   expect(rosterAfter, 'the saved roster').toHaveLength(2);
   expect(rosterAfter).toEqual(
     expect.arrayContaining([
-      { userId: teacher!.id, role: 'teacher' },
-      { userId: student!.id, role: 'member' },
+      { userId: teacher.id, role: 'teacher' },
+      { userId: student.id, role: 'member' },
     ]),
   );
 

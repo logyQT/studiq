@@ -80,7 +80,7 @@ describe('QuestionTransferService.exportBank', () => {
   });
 
   it('maps the questions of a readable bank, answers in their stored order', async () => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'Fizyka' }) as any);
+    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'Fizyka' }));
     vi.mocked(questionService.listBankQuestions).mockResolvedValue(
       success({
         total: 2,
@@ -97,7 +97,7 @@ describe('QuestionTransferService.exportBank', () => {
           },
           { type: 'open', content: 'Q2', explanation: null, topics: [], question_answers: [] },
         ],
-      }) as any,
+      }),
     );
 
     const result = await service.exportBank(ctx, 'bank-1');
@@ -124,9 +124,9 @@ describe('QuestionTransferService.exportBank', () => {
 
   /** `total` is the query's exact count; it can exceed the rows PostgREST returned. */
   const listed = (rows: unknown[], total = rows.length) => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }) as any);
+    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }));
     vi.mocked(questionService.listBankQuestions).mockResolvedValue(
-      success({ questions: rows, total }) as any,
+      success({ questions: rows, total }),
     );
   };
   const row = (over: Record<string, unknown> = {}) => ({
@@ -187,7 +187,7 @@ describe('QuestionTransferService.exportBank', () => {
   });
 
   it('answers NOT_FOUND for a bank the caller cannot read, without listing questions', async () => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(failure('NOT_FOUND') as any);
+    vi.mocked(questionBankService.getById).mockResolvedValue(failure('NOT_FOUND'));
 
     const result = await service.exportBank(ctx, 'foreign');
 
@@ -250,7 +250,7 @@ describe('QuestionTransferService.importQuestions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(can).mockResolvedValue(true);
-    vi.mocked(check).mockResolvedValue(undefined as any);
+    vi.mocked(check).mockResolvedValue(undefined);
     vi.mocked(limitsResolver.checkLimit).mockResolvedValue(undefined);
   });
 

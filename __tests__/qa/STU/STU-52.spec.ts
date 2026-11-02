@@ -141,7 +141,7 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     // --- Precondition: the case's own student, no purchases, Base plan -----
-    await resetPurchaseState(student!.id);
+    await resetPurchaseState(student.id);
 
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
@@ -188,7 +188,7 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
         type: 'checkout.session.completed',
         session_id: sessionId,
         plan_id: PURCHASE.planId,
-        user_id: student!.id,
+        user_id: student.id,
       },
     });
     expect(webhook.status(), 'POST /api/v1/stripe/webhook (spark)').toBe(200);

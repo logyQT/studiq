@@ -235,7 +235,7 @@ export class FlashcardDeckService {
       nextCursor,
       hasMore,
       total: count ?? 0,
-    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean; total: number });
+    });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -267,7 +267,7 @@ export class FlashcardDeckService {
       flashcard_count: countArr?.[0]?.count ?? 0,
       groupIds: groups?.map((g) => g.group_id) ?? [],
       suspended: suspendedIds.has(id),
-    } as unknown as Deck);
+    });
   }
 
   async update(

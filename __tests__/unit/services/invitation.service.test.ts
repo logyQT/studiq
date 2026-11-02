@@ -812,8 +812,8 @@ describe('InvitationService', () => {
       email: 'new@example.com',
       organization_id: 'org-1',
       target_org_role_id: 'role-member',
-      organizations: { name: 'Test Org' } as any,
-      org_roles: { name: 'member', organization_id: 'org-1' } as any,
+      organizations: { name: 'Test Org' },
+      org_roles: { name: 'member', organization_id: 'org-1' },
     });
     const joiningCtx: RequestContext = { ...managerCtx, userId: 'joining-user' };
 

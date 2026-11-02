@@ -143,7 +143,7 @@ describe(`Org-context limit count scope`, () => {
 
   it('does not count personal-space cards against the org plan capacity', async () => {
     expect(await countFor(null)).toBe(1);
-    expect(await countFor(fixture.orgId!)).toBe(0);
+    expect(await countFor(fixture.orgId)).toBe(0);
 
     // CARD_LIMIT = 1: the personal card must not consume the slot.
     const first = await postCard(`org-a-${suiteId}`, fixture.orgId!, orgDeckId);
@@ -155,7 +155,7 @@ describe(`Org-context limit count scope`, () => {
     expect(second.body.success).toBe(false);
     expect(second.body.error).toBe('USAGE_LIMIT_EXCEEDED');
 
-    expect(await countFor(fixture.orgId!)).toBe(CARD_LIMIT);
+    expect(await countFor(fixture.orgId)).toBe(CARD_LIMIT);
     expect(await countFor(null)).toBe(1);
   });
 });

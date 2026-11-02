@@ -77,7 +77,7 @@ export function withSupervision<Args extends unknown[], T>(
       // Surface the application error code on the span so failures aren't bare
       // 500s in Tempo (e.g. AppError → `BAD_REQUEST`, DatabaseError → `23502`).
       if (error && typeof error === 'object' && 'code' in error) {
-        span.setAttribute('error.code', String((error as { code: unknown }).code));
+        span.setAttribute('error.code', String(error.code));
       }
       throw error;
     } finally {

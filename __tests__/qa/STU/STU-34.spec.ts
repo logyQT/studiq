@@ -350,7 +350,7 @@ test.describe('@case:STU-34 @area:STU @prio:P2 student quiz list', () => {
     expect(tenant.users.teacher, 'the tenant seeds the teacher').toBeTruthy();
     expect(tenant.users.manager, 'the tenant seeds the manager').toBeTruthy();
     expect(tenant.users.student, 'the tenant seeds the student').toBeTruthy();
-    const studentId = tenant.users.student!.id;
+    const studentId = tenant.users.student.id;
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));

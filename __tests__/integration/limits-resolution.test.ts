@@ -274,7 +274,7 @@ describe(`Limits resolve live from organizations.plan`, () => {
     const { data: personalLimit } = await service
       .from('plan_limits')
       .select('limit_value')
-      .eq('plan_key', profile!.personal_plan_key!)
+      .eq('plan_key', profile!.personal_plan_key)
       .eq('limit_key', 'max_flashcards')
       .single();
 

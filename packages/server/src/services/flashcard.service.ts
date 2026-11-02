@@ -146,27 +146,27 @@ export class FlashcardService {
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     if (hasTopicFilter) {
-      if (filters!.topicIds!.length === 1) {
-        query = query.filter('flashcard_topic_assignments.topic_id', 'eq', filters!.topicIds![0]);
+      if (filters.topicIds!.length === 1) {
+        query = query.filter('flashcard_topic_assignments.topic_id', 'eq', filters.topicIds![0]);
       } else {
         query = query.filter(
           'flashcard_topic_assignments.topic_id',
           'in',
-          `(${filters!.topicIds!.join(',')})`,
+          `(${filters.topicIds!.join(',')})`,
         );
       }
     }
 
     if (hasDeckFilter) {
-      if (filters!.deckIds!.length === 1) {
-        query = query.filter('deck_id', 'eq', filters!.deckIds![0]);
+      if (filters.deckIds!.length === 1) {
+        query = query.filter('deck_id', 'eq', filters.deckIds![0]);
       } else {
-        query = query.filter('deck_id', 'in', `(${filters!.deckIds!.join(',')})`);
+        query = query.filter('deck_id', 'in', `(${filters.deckIds!.join(',')})`);
       }
     }
 
     if (hasSearch) {
-      const searchTerm = `%${filters!.q}%`;
+      const searchTerm = `%${filters.q}%`;
       query = query.or(`front.ilike.${searchTerm},back.ilike.${searchTerm}`);
     }
 
@@ -187,7 +187,7 @@ export class FlashcardService {
 
     const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
     const hasMore = (rows?.length ?? 0) > pageSize;
-    const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+    const items = hasMore ? rows.slice(0, pageSize) : (rows ?? []);
     const nextCursor = hasMore
       ? encodeCursor(items[items.length - 1][sortCol], items[items.length - 1].id)
       : null;

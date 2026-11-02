@@ -185,8 +185,8 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
 
     const tenant = loadCaseTenant();
     const org = tenant.org!;
-    const teacher = tenant.users.teacher!;
-    const student = tenant.users.student!;
+    const teacher = tenant.users.teacher;
+    const student = tenant.users.student;
     const run = tenant.runSuffix ?? tenant.key.slice(-8);
     const db = createQaSupabase();
 

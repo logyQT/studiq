@@ -152,7 +152,7 @@ test.describe('@case:STU-53 @area:STU @prio:P3 user menu notifications entry', (
       const pageErrors: string[] = [];
       page.on('pageerror', (error) => pageErrors.push(error.message));
 
-      await loginAs(page, tenant, role as QaRole, {
+      await loginAs(page, tenant, role, {
         locale: 'pl',
         waitFor: new RegExp(`${prefix}$`),
       });

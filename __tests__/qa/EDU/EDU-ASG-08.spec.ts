@@ -339,7 +339,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await page.goto(`/edu/assignments/${assignment.id}/results`);
     await expect(page).toHaveURL(new RegExp(`/edu/assignments/${assignment.id}/results$`));
 
-    const row = resultRow(page, student!.email);
+    const row = resultRow(page, student.email);
     await expect(row, 'the submitted attempt is listed').toBeVisible();
     // One point for the correctly answered closed question, three in total.
     await expect(row.locator('td').nth(2), 'the score before grading').toHaveText('1/3');
@@ -348,7 +348,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
     await row.getByRole('link', { name: COPY.grade, exact: true }).click();
     await expect(page).toHaveURL(
-      new RegExp(`/edu/assignments/${assignment.id}/results/${student!.id}$`),
+      new RegExp(`/edu/assignments/${assignment.id}/results/${student.id}$`),
     );
 
     // ── Step 2: „Oceń ucznia” shows the answers and the uploaded photo ───────
@@ -403,7 +403,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await expect(saveButton, '„Zapisz ocenę” is inactive without points').toBeDisabled();
 
     // ── Step 3: points outside 0…max are rejected, never sent ────────────────
-    const gradingPath = `/api/v1/teacher/assignments/${assignment.id}/results/${student!.id}`;
+    const gradingPath = `/api/v1/teacher/assignments/${assignment.id}/results/${student.id}`;
     let gradeRequests = 0;
     page.on('request', (request) => {
       if (request.method() === 'PUT' && new URL(request.url()).pathname === gradingPath) {
@@ -448,7 +448,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await page.getByRole('link', { name: COPY.backToResults }).click();
     await expect(page).toHaveURL(new RegExp(`/edu/assignments/${assignment.id}/results$`));
 
-    const gradedRow = resultRow(page, student!.email);
+    const gradedRow = resultRow(page, student.email);
     await expect(gradedRow.getByText(COPY.graded, { exact: true })).toBeVisible();
     await expect(gradedRow.getByText(COPY.submitted, { exact: true })).toHaveCount(0);
     await expect(gradedRow.locator('td').nth(2), 'the score after grading').toHaveText('2/3');

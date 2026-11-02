@@ -135,7 +135,7 @@ export class TopicService {
       items: items as unknown as Topic[],
       nextCursor,
       hasMore,
-    } as { items: Topic[]; nextCursor: string | null; hasMore: boolean });
+    });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {

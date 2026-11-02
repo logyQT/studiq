@@ -261,7 +261,7 @@ describe('TopicService', () => {
       mock.from.mockReturnValueOnce(pageQb); // topics query builder
       mock.from.mockReturnValueOnce(qb([{ topic_id: 't-1' }])); // topic_groups
 
-      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+      const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('topic_groups');
@@ -273,7 +273,7 @@ describe('TopicService', () => {
       mock.from.mockReturnValueOnce(pageQb); // topics query builder
       mock.from.mockReturnValueOnce(qb([])); // topic_groups → no linked topics
 
-      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+      const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });

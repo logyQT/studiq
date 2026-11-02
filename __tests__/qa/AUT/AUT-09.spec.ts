@@ -97,7 +97,7 @@ test.describe('AUT-09 — login next parameter', () => {
     await expect(page.getByRole('button', { name: COPY.submit, exact: true })).toBeVisible();
 
     // Step 2: log in through the form and land exactly on the requested page.
-    await signInThroughForm(page, student!.email, student!.password);
+    await signInThroughForm(page, student.email, student.password);
     await expect(page).toHaveURL(/\/app\/flashcards$/, { timeout: 15_000 });
     expect(currentPath(page), 'post-login destination').toBe(DEEP_LINK);
     await expectFlashcardsPage(page);
@@ -106,7 +106,7 @@ test.describe('AUT-09 — login next parameter', () => {
     const me = (await (await page.request.get('/api/v1/auth/me')).json()) as {
       data?: { user?: { email?: string } | null };
     };
-    expect(me.data?.user?.email).toBe(student!.email);
+    expect(me.data?.user?.email).toBe(student.email);
   });
 
   test('a signed-in user opening /login?next=… still lands on the deep link', async ({ page }) => {
@@ -132,7 +132,7 @@ test.describe('AUT-09 — login next parameter', () => {
     await openAnonymous(page, `/login?next=${encodeURIComponent(external)}`);
     expect(currentPath(page)).toBe(`/login?next=${encodeURIComponent(external)}`);
 
-    await signInThroughForm(page, student!.email, student!.password);
+    await signInThroughForm(page, student.email, student.password);
 
     // Only the same-origin dashboard is allowed — never the attacker's origin.
     await expect(page).toHaveURL(/\/app$/, { timeout: 15_000 });

@@ -375,7 +375,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
         type: 'checkout.session.completed',
         session_id: `${CASE}-teacher-${crypto.randomUUID()}`,
         plan_id: 'hub',
-        user_id: teacher!.id,
+        user_id: teacher.id,
         org_id: orgId,
       },
     });

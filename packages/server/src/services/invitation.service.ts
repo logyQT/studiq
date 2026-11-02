@@ -284,7 +284,7 @@ export class InvitationService {
     for (const orgRoleId of new Set(orgRoleIds)) {
       const authority = await this.canAssignRole(ctx.userId, orgRoleId);
       if (!authority.success) return authority;
-      if (authority.data !== true) return failure('FORBIDDEN');
+      if (!authority.data) return failure('FORBIDDEN');
     }
     return success(undefined);
   }
@@ -299,7 +299,7 @@ export class InvitationService {
 
     const authority = await this.canAssignRole(invite.inviterId, invite.targetOrgRoleId);
     // An RPC error means the invitation cannot be proven valid, as before.
-    return authority.success && authority.data === true;
+    return authority.success && authority.data;
   }
 
   async createInvitation(

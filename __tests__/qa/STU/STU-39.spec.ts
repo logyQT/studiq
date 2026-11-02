@@ -316,8 +316,8 @@ test.describe('@case:STU-39 @area:STU @prio:P2 report a wrong flashcard', () => 
       tenant.runSuffix,
       'seed with --fresh: every independent run owns a new tenant',
     ).toBeTruthy();
-    const student = tenant.users.student!;
-    const teacher = tenant.users.teacher!;
+    const student = tenant.users.student;
+    const teacher = tenant.users.teacher;
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));

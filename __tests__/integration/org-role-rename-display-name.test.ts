@@ -46,7 +46,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
       .eq('id', roleId)
       .single();
     if (error || !data) throw new Error(`role read failed: ${error?.message}`);
-    return data as { name: string; display_name: string };
+    return data;
   }
 
   beforeAll(async () => {

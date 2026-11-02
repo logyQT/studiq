@@ -296,7 +296,7 @@
   },
   "__tests__/unit/services/flashcard-deck.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 10
+      "count": 6
     },
     "@typescript-eslint/unbound-method": {
       "count": 21
@@ -317,12 +317,12 @@
   },
   "__tests__/unit/services/flashcard-practice.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 29
+      "count": 26
     }
   },
   "__tests__/unit/services/flashcard-stats.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 9
+      "count": 7
     }
   },
   "__tests__/unit/services/flashcard.service.test.ts": {
@@ -350,7 +350,7 @@
   },
   "__tests__/unit/services/invitation.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 51
+      "count": 49
     },
     "@typescript-eslint/unbound-method": {
       "count": 9
@@ -413,7 +413,7 @@
   },
   "__tests__/unit/services/question-bank.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 7
+      "count": 5
     },
     "@typescript-eslint/unbound-method": {
       "count": 18
@@ -421,7 +421,7 @@
   },
   "__tests__/unit/services/question-list-pagination.test.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 6
+      "count": 5
     }
   },
   "__tests__/unit/services/question-report.service.test.ts": {
@@ -431,7 +431,7 @@
   },
   "__tests__/unit/services/question-transfer.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 19
+      "count": 13
     },
     "@typescript-eslint/unbound-method": {
       "count": 10
@@ -502,7 +502,7 @@
   },
   "__tests__/unit/services/topic.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 7
+      "count": 5
     },
     "@typescript-eslint/unbound-method": {
       "count": 12
