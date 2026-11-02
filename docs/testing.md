@@ -59,7 +59,7 @@ management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/covera
 ## Running Tests
 
 ```bash
-bun run test          # Reset DB + run all tests
+bun run test          # Run the full Vitest unit/integration suite
 bun test:unit         # Run unit tests only
 bun test:integration  # Run integration tests only
 bun test:watch        # Watch mode (re-runs on file changes)
