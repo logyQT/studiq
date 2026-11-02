@@ -68,7 +68,7 @@ bun test:coverage     # Run with coverage report
 
 ## Manual QA (agent-driven)
 
-The manual test plan lives in [`qa/`](../qa/README.md) — 215 scenarios with
+The manual test plan lives in [`qa/`](../qa/README.md) — 214 scenarios with
 steps, expected results and prerequisite chains. Agents run them in a real
 browser against the observability stack (Tempo + Loki + Prometheus) so failures
 are reported with the underlying span/log evidence instead of a bare status code.

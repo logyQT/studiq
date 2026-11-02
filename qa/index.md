@@ -1,4 +1,4 @@
-# Scenario index — 215 cases
+# Scenario index — 214 cases
 
 Prerequisite ids are greppable: `grep -n "EDU-DECK-03" index.md`.
 Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** every id in its Prereqs column.
@@ -66,7 +66,6 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | STU-22      | P2 ważny       | Multimedia na fiszce (obraz/audio)                                   | —           | STU – Panel studenta (/app)                         |
 | STU-23      | P2 ważny       | Edycja fiszki                                                        | —           | STU – Panel studenta (/app)                         |
 | STU-24      | P2 ważny       | Tematy fiszki – dodawanie i usuwanie                                 | —           | STU – Panel studenta (/app)                         |
-| STU-25      | P2 ważny       | Połączenie fiszki z inną talią (link)                                | —           | STU – Panel studenta (/app)                         |
 | STU-26      | P2 ważny       | Kopiowanie fiszki do innej talii                                     | —           | STU – Panel studenta (/app)                         |
 | STU-27      | P2 ważny       | Usuwanie fiszki                                                      | —           | STU – Panel studenta (/app)                         |
 | STU-28      | P2 ważny       | Operacje zbiorcze na fiszkach                                        | —           | STU – Panel studenta (/app)                         |
@@ -226,7 +225,7 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 - PUB – Strony publiczne i nawigacja ogólna — 8 cases
 - AUT – Uwierzytelnianie i sesja — 19 cases
 - ONB – Onboarding, organizacje i zaproszenia — 10 cases
-- STU – Panel studenta (/app) — 53 cases
+- STU – Panel studenta (/app) — 52 cases
 - EDU – Panel nauczyciela (/edu) — 41 cases
 - MGR – Panel managera organizacji (/manage) — 28 cases
 - BIL – Plany, rozliczenia i płatność (symulowana) — 7 cases

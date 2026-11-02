@@ -21,15 +21,6 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * setting, feature flag, plan, platform stat, singleton row or other tenant is
  * read or written.
  *
- * Reconciliation (walk on the shared app, 2026-10-29): the case's step 2 lists a
- * „Linkuj” action with the toast „Fiszki powiązano z taliami”. That action was
- * deliberately removed in #448 (commit d56c9448): a flashcard now has a single
- * `deck_id`, so multiple deck assignment — and the bulk link button, its dialog
- * and its endpoint — were replaced by the existing move action („Fiszki
- * przeniesiono do nowej talii”). The intended surface is the bulk bar with
- * Kopiuj / Eksportuj / Tematy / Przenieś / Usuń, which is what this spec asserts;
- * it does not encode the retired link labels.
- *
  * CI seeds that tenant once for the whole case and Playwright retries reuse it, so
  * the test first clears the student's own decks and topics: every attempt creates
  * the same content, and a retry must never find leftovers next to the new cards.

@@ -80,7 +80,7 @@ Generated, never hand-edited: `@case:` tags plus the last run produce
 `untriaged` · `drafted` · `red · bug #n` · `red · case` (the case doc is wrong) · `flaky` ·
 `green` · `semantic`.
 
-Triage today: **195 e2e · 12 API-level · 8 semantic** (of 215 cases).
+Triage today: **194 e2e · 12 API-level · 8 semantic** (of 214 cases).
 
 ## CI
 
