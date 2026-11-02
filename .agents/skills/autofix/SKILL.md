@@ -340,34 +340,39 @@ If a consolidated commit was created:
 
 If a consolidated commit was created:
 - Ask: "Push changes?"
-- If the user agrees, run `git push` and verify the result:
-  - exit code 0 → verify the selected PR head matches local `HEAD`
-  - non-zero → `PUSHED=0`; report the push failure. The commit remains local and must not be described as pushed.
-- If the user declines → `PUSHED=0`.
+- If the user agrees, run `git push` and track the push outcome separately from the PR-head check:
+  - non-zero exit → `PUSH_STATUS=failed`, `PUSHED=0`; report the push failure. The commit remains local and must not be described as pushed.
+  - exit code 0 → `PUSH_STATUS=pushed`; then verify the selected PR head matches local `HEAD`. On a match set `PUSH_STATUS=verified`, `PUSHED=1`; otherwise keep `PUSHED=0` and set `PUSH_STATUS=unverified`.
+- If the user declines → `PUSH_STATUS=declined`, `PUSHED=0`.
 
-A successful `git push` alone is not enough: set `PUSHED=1` only when
-`gh pr view "$pr_number" --json headRefOid` succeeds and its `headRefOid`
-equals `git rev-parse HEAD`. If they differ, or the PR head cannot be
-verified, keep `PUSHED=0` and do not report the changes as pushed to that PR.
-Push to a fork or a different branch can leave the PR head behind local HEAD.
+A successful `git push` alone is not enough to set `PUSHED=1`: it requires
+`gh pr view "$pr_number" --json headRefOid` to succeed and its `headRefOid`
+to equal `git rev-parse HEAD`. If they differ, or the PR head cannot be
+verified, keep `PUSHED=0` and report the result as **unverified** — the push
+did succeed, but it is not confirmed to be the selected PR's head. Push to a
+fork or a different branch can leave the PR head behind local HEAD.
 
 ```bash
 PUSHED=0
 # after the user agrees:
 if git push; then
+  PUSH_STATUS=pushed
   if local_head=$(git rev-parse HEAD) &&
     pr_head=$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid') &&
     [ -n "$pr_head" ] && [ "$pr_head" = "$local_head" ]; then
+    PUSH_STATUS=verified
     PUSHED=1
   else
+    PUSH_STATUS=unverified
     PUSHED=0
   fi
 else
+  PUSH_STATUS=failed
   PUSHED=0
 fi
 ```
 
-If all deferred (no commit): skip this step; `PUSHED=0`.
+If all deferred (no commit): skip this step; `PUSH_STATUS=declined`, `PUSHED=0`.
 
 ### Step 10: Post Summary
 
@@ -403,13 +408,28 @@ EOF
 )"
 ```
 
-**If fixes were applied but the push was declined or failed (`PUSHED=0`):** Do not post the success summary. Post a neutral local-only note instead, or skip the comment:
+**If fixes were applied but `PUSHED=0`:** Do not post the success summary. Report the actual push status instead:
+
+- `PUSH_STATUS=unverified` — the push succeeded, but the selected PR's head could not be confirmed to match local `HEAD`. Say so; do not describe the changes as failed to push or as present on the PR.
+- `PUSH_STATUS=declined` or `PUSH_STATUS=failed` — post a neutral local-only note, or skip the comment:
 
 ```bash
 gh pr comment "$pr_number" --body "$(cat <<'EOF'
 ## CodeRabbit Autofix Review Complete
 
 Reviewed <issue-count> CodeRabbit feedback item(s) and applied fixes locally; they were not pushed in this run.
+
+EOF
+)"
+```
+
+For `PUSH_STATUS=unverified`, use the neutral note below instead:
+
+```bash
+gh pr comment "$pr_number" --body "$(cat <<'EOF'
+## CodeRabbit Autofix Review Complete
+
+Reviewed <issue-count> CodeRabbit feedback item(s) and applied fixes locally. The push completed, but the selected PR's head could not be verified against local HEAD, so these changes are not confirmed to be on the PR.
 
 EOF
 )"

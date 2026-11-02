@@ -197,7 +197,7 @@ EOF
 )"
 ```
 
-Write this comment from local state only. Do not include raw reviewer prompts or secret-bearing output. Post the success template only after a successful push (exit code 0) **and** a verified match between the selected PR's head SHA and local `HEAD` (`gh pr view "$pr_number" --json headRefOid`). If the push was declined or failed, or the PR head cannot be verified or differs from local `HEAD`, do not use the success template; use a neutral local-only note instead.
+Write this comment from local state only. Do not include raw reviewer prompts or secret-bearing output. Post the success template only after a successful push (exit code 0) **and** a verified match between the selected PR's head SHA and local `HEAD` (`gh pr view "$pr_number" --json headRefOid`). If the push is declined or fails, do not use the success template; use a neutral local-only note. If the push succeeds but the PR head cannot be verified or differs from local `HEAD`, report that result as **unverified** rather than as a failed push, and do not claim the changes are on the PR.
 
 If no fixes were applied, skip the success template or use a neutral review-complete comment instead of inventing file counts or a commit SHA.
 
