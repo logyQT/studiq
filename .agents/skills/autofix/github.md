@@ -149,7 +149,7 @@ Keep each selected thread as one issue unit. Do not collapse top-level PR commen
 To detect CodeRabbit's "Come back again in a few minutes" status message, use top-level PR comments/reviews separately:
 
 ```bash
-gh pr view "$pr_number" --json comments,reviews --jq '
+if ! status_count=$(gh pr view "$pr_number" --json comments,reviews --jq '
   [
     (.comments[]?
       | select(.author.login == "coderabbitai" or .author.login == "coderabbit[bot]" or .author.login == "coderabbitai[bot]")
@@ -160,8 +160,18 @@ gh pr view "$pr_number" --json comments,reviews --jq '
   ]
   | map(select(test("Come back again in a few minutes")))
   | length
-'
+'); then
+  echo "Failed to read PR review status from GitHub" >&2
+  exit 1
+fi
+
+if ! [[ "$status_count" =~ ^[0-9]+$ ]]; then
+  echo "Unexpected PR review-status response from GitHub" >&2
+  exit 1
+fi
 ```
+
+If `status_count` is greater than 0, report the CodeRabbit in-progress status and stop before thread processing.
 
 ## 4. Post Summary Comment
 

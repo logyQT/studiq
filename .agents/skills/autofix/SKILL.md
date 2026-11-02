@@ -200,7 +200,7 @@ done
 Check top-level PR comments and review bodies for the CodeRabbit in-progress message:
 
 ```bash
-gh pr view "$pr_number" --json comments,reviews --jq '
+if ! status_count=$(gh pr view "$pr_number" --json comments,reviews --jq '
   [
     (.comments[]?
       | select(.author.login == "coderabbitai" or .author.login == "coderabbit[bot]" or .author.login == "coderabbitai[bot]")
@@ -211,10 +211,18 @@ gh pr view "$pr_number" --json comments,reviews --jq '
   ]
   | map(select(test("Come back again in a few minutes")))
   | length
-'
+'); then
+  echo "Failed to read PR review status from GitHub" >&2
+  exit 1
+fi
+
+if ! [[ "$status_count" =~ ^[0-9]+$ ]]; then
+  echo "Unexpected PR review-status response from GitHub" >&2
+  exit 1
+fi
 ```
 
-**If the count is greater than 0:** Inform "⏳ Review in progress, try again in a few minutes", EXIT
+**If `status_count` is greater than 0:** Inform "⏳ Review in progress, try again in a few minutes", EXIT
 
 **If no actionable CodeRabbit threads are found:** Inform "No unresolved current CodeRabbit review threads found", EXIT
 
