@@ -4,7 +4,7 @@ import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
 
 export function GET(req: NextRequest) {
-  return withAuth(req, (ctx) =>
-    Promise.resolve(toNextResponse(permissionsController.listMyPermissions(ctx))),
+  return withAuth(req, async (ctx) =>
+    toNextResponse(await permissionsController.listMyPermissions(ctx)),
   );
 }

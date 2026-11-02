@@ -4,7 +4,10 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { wrapService } from '@studiq/server/lib/observability';
 
 export class PermissionsController {
-  listMyPermissions(ctx: RequestContext): ControllerResponse {
+  // wrapService always exposes methods as Promise-returning; keep the async
+  // contract even though this handler only reads from ctx.
+  // eslint-disable-next-line @typescript-eslint/require-await -- no I/O to await
+  async listMyPermissions(ctx: RequestContext): Promise<ControllerResponse> {
     const permissions = { ...ctx.permissionScopes };
 
     for (const perm of Object.values(Permission)) {

@@ -49,33 +49,34 @@ describe('PermissionsController', () => {
   });
 
   describe('listMyPermissions', () => {
-    it('returns the resolved permissions map', () => {
-      const response = controller.listMyPermissions(mockCtx);
+    it('returns the resolved permissions map', async () => {
+      const response = await controller.listMyPermissions(mockCtx);
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
       expect(body(response).permissions).toBeDefined();
     });
 
-    it('returns only the permissions map (features live on /features/me)', () => {
-      const response = controller.listMyPermissions(mockCtx);
+    it('returns only the permissions map (features live on /features/me)', async () => {
+      const response = await controller.listMyPermissions(mockCtx);
 
       expect(body(response).features).toBeUndefined();
     });
 
-    it('adds default own permissions for student', () => {
-      const response = controller.listMyPermissions(mockCtx);
+    it('adds default own permissions for student', async () => {
+      const response = await controller.listMyPermissions(mockCtx);
 
       expect(response.success).toBe(true);
       const perms = body(response).permissions;
       expect(perms['flashcard.read']).toBe('own');
     });
 
-    it('adds own permissions for educator', () => {
+    it('adds own permissions for educator', async () => {
       const educatorCtx = { ...mockCtx, accountType: AccountType.EDUCATOR };
-      const response = controller.listMyPermissions(educatorCtx);
+      const response = await controller.listMyPermissions(educatorCtx);
 
       expect(response.success).toBe(true);
+      expect(body(response).permissions['question_bank.update']).toBe('own');
     });
   });
 });
