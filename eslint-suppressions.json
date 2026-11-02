@@ -244,11 +244,6 @@
       "count": 4
     }
   },
-  "__tests__/unit/lib/restore-focus.test.ts": {
-    "@typescript-eslint/unbound-method": {
-      "count": 3
-    }
-  },
   "__tests__/unit/lib/study-insights.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 2
@@ -282,17 +277,11 @@
   "__tests__/unit/services/flashcard-deck.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 6
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 21
     }
   },
   "__tests__/unit/services/flashcard-export.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 12
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 7
     }
   },
   "__tests__/unit/services/flashcard-import.service.test.ts": {
@@ -333,9 +322,6 @@
   "__tests__/unit/services/invitation.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 49
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 9
     }
   },
   "__tests__/unit/services/limits.resolver.test.ts": {
@@ -396,9 +382,6 @@
   "__tests__/unit/services/question-bank.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 5
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 18
     }
   },
   "__tests__/unit/services/question-list-pagination.test.ts": {
@@ -414,9 +397,6 @@
   "__tests__/unit/services/question-transfer.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 13
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 10
     }
   },
   "__tests__/unit/services/question.service.test.ts": {
@@ -437,9 +417,6 @@
   "__tests__/unit/services/quiz.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 5
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 2
     }
   },
   "__tests__/unit/services/search.service.test.ts": {
@@ -485,9 +462,6 @@
   "__tests__/unit/services/topic.service.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 5
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 12
     }
   },
   "__tests__/unit/services/university-members.service.test.ts": {
