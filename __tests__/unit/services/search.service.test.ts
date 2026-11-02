@@ -1,6 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { SearchService } from '@studiq/server/services/search.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => ({
@@ -8,13 +8,22 @@ vi.mock('@studiq/server/lib/authz', () => ({
   Permission: { FLASHCARD_READ: 'flashcard.read' },
 }));
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.rpc = vi.fn(() => b);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+type QueryResult = { data: unknown; error: unknown };
+type QueryChain = {
+  rpc: Mock<(...args: unknown[]) => QueryChain>;
+  then: Promise<QueryResult>['then'];
+  catch: Promise<QueryResult>['catch'];
+  finally: Promise<QueryResult>['finally'];
+};
+
+function qb(data: unknown, error: unknown = null) {
+  const promise = Promise.resolve<QueryResult>({ data: data ?? null, error });
+  const b: QueryChain = {
+    rpc: vi.fn(() => b),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -23,7 +32,7 @@ describe('SearchService', () => {
   let service: SearchService;
   const ctx: RequestContext = {
     userId: 'user-1',
-    accountType: 'student' as any,
+    accountType: AccountType.STUDENT,
     traceId: 'test',
     url: '',
     method: 'POST',
@@ -36,13 +45,13 @@ describe('SearchService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new SearchService(async () => mock as any);
+    service = new SearchService(async () => mock);
   });
 
   describe('search', () => {
     it('returns empty when filter is impossible', async () => {
       const { accessibleFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true } as any);
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true });
 
       const result = await service.search('test', ctx);
       expect(result.success).toBe(true);
@@ -118,7 +127,7 @@ describe('SearchService', () => {
     });
 
     it('uses /edu path for educators', async () => {
-      const educatorCtx = { ...ctx, accountType: 'educator' as any };
+      const educatorCtx = { ...ctx, accountType: AccountType.EDUCATOR };
       const rows = [
         { id: 'fc-1', front: 'Hello', back: 'Cześć', rank: 0.9, deck_id: 'd-1', deck_name: 'Deck' },
       ];

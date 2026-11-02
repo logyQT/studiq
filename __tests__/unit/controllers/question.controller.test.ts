@@ -1,8 +1,34 @@
-import type { RequestContext } from '@studiq/authz';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { QuestionController } from '@studiq/server/controllers/question.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import type { QuestionService } from '@studiq/server/services/question.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+type FailureResponse = Extract<ControllerResponse, { success: false }>;
+
+/** The slice of the PostgREST chain `mockBankLookup` walks. */
+interface QueryChain {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  single: ReturnType<typeof vi.fn>;
+}
+
+/**
+ * The controller answers with a union. Tests assert the branch themselves first,
+ * then read the payload through this view instead of casting the response to `any`.
+ */
+function envelope(response: ControllerResponse) {
+  return response as {
+    success: boolean;
+    statusCode: number;
+    data?: unknown;
+    error?: FailureResponse['error'];
+    details?: FailureResponse['details'];
+  };
+}
 
 function createMockQuestionService() {
   return {
@@ -17,7 +43,7 @@ function createMockQuestionService() {
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student',
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '/test',
@@ -33,11 +59,11 @@ describe('QuestionController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockQuestionService();
-    controller = new QuestionController(mockService as any);
+    controller = new QuestionController(mockService as unknown as QuestionService);
   });
 
   function mockBankLookup(bankId: string) {
-    const queryChain: any = {
+    const queryChain: QueryChain = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({
@@ -50,8 +76,8 @@ describe('QuestionController', () => {
         error: null,
       }),
     };
-    const mockSupabase: any = { from: vi.fn().mockReturnValue(queryChain) };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    const mockSupabase = { from: vi.fn().mockReturnValue(queryChain) };
+    vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as SupabaseClient);
   }
 
   describe('create', () => {
@@ -78,7 +104,7 @@ describe('QuestionController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -109,7 +135,7 @@ describe('QuestionController', () => {
       const created = { id: 'q-1', content: 'Q', bank_id: bankId };
       mockService.create.mockResolvedValueOnce(success(created));
 
-      const queryChain: any = {
+      const queryChain: QueryChain = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
         single: vi.fn().mockResolvedValue({
@@ -122,8 +148,8 @@ describe('QuestionController', () => {
           error: null,
         }),
       };
-      const mockSupabase: any = { from: vi.fn().mockReturnValue(queryChain) };
-      vi.mocked(createClient).mockResolvedValue(mockSupabase);
+      const mockSupabase = { from: vi.fn().mockReturnValue(queryChain) };
+      vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as SupabaseClient);
 
       const response = await controller.create(body, mockCtx);
 
@@ -236,7 +262,7 @@ describe('QuestionController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns FORBIDDEN when service returns failure', async () => {

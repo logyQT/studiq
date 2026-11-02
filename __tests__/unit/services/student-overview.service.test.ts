@@ -5,7 +5,8 @@ import {
   countDraftAnswers,
   StudentOverviewService,
 } from '@studiq/server/services/student-overview.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 // #655: the data behind "continue where you left off", today's progress and the recent activity
 // timeline. Everything is the caller's own, read through the request client.
@@ -24,13 +25,38 @@ const ctx: RequestContext = {
 
 const NOW = new Date('2026-10-27T12:00:00Z');
 
+type QueryResult = { data?: unknown; error?: unknown };
+
 /** A thenable query builder that resolves to `result` whatever is chained on it. */
-function builder(result: { data: unknown; error?: unknown }) {
-  const b: any = {};
-  for (const m of ['select', 'eq', 'is', 'not', 'gte', 'order', 'limit', 'in', 'range'])
-    b[m] = vi.fn(() => b);
-  b.maybeSingle = vi.fn().mockResolvedValue({ error: null, ...result });
-  b.then = (onfulfilled: any) => Promise.resolve({ error: null, ...result }).then(onfulfilled);
+type QueryBuilder = {
+  select: Mock;
+  eq: Mock;
+  is: Mock;
+  not: Mock;
+  gte: Mock;
+  order: Mock;
+  limit: Mock;
+  in: Mock;
+  range: Mock;
+  maybeSingle: Mock;
+} & Pick<Promise<QueryResult>, 'then'>;
+
+function builder(result: { data: unknown; error?: unknown }): QueryBuilder {
+  const resolved: QueryResult = { error: null, ...result };
+  const promise = Promise.resolve(resolved);
+  const b: QueryBuilder = {
+    select: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    is: vi.fn(() => b),
+    not: vi.fn(() => b),
+    gte: vi.fn(() => b),
+    order: vi.fn(() => b),
+    limit: vi.fn(() => b),
+    in: vi.fn(() => b),
+    range: vi.fn(() => b),
+    maybeSingle: vi.fn().mockResolvedValue(resolved),
+    then: promise.then.bind(promise),
+  };
   return b;
 }
 
@@ -51,12 +77,12 @@ function service(tables: Tables) {
     builder({ data: tables.open ?? [] }),
     builder({ data: tables.completed ?? [] }),
   ];
-  const builders: Record<string, any> = {};
+  const builders: Record<string, QueryBuilder> = {};
   const from = vi.fn((table: string) => {
     if (tables.errorOn === table)
       return builder({ data: null, error: { code: 'XX000', message: 'boom' } });
     if (table === 'quiz_attempts') return attemptQueue.shift();
-    const b = {
+    const tableBuilders: Record<string, () => QueryBuilder> = {
       flashcard_study_sessions: () => builder({ data: tables.sessions ?? [] }),
       user_daily_activity: () => builder({ data: tables.daily ?? null }),
       flashcard_decks: () => builder({ data: tables.deck ?? null }),
@@ -66,12 +92,15 @@ function service(tables: Tables) {
             Array.from({ length: n }, () => ({ attempt_id, questions: { type: 'mcq' } })),
           ),
         }),
-    }[table]?.();
+    };
+    const b = tableBuilders[table]();
     builders[table] = b;
     return b;
   });
+  const client = mockSupabaseClient();
+  client.from.mockImplementation(from);
   return {
-    service: new StudentOverviewService(async () => ({ from }) as any),
+    service: new StudentOverviewService(async () => client),
     from,
     attemptQueue,
     builders,
@@ -310,7 +339,7 @@ describe('StudentOverviewService.getOverview', () => {
 
 describe('StudentOverviewController', () => {
   const overview = { getOverview: vi.fn() };
-  const controller = new StudentOverviewController(overview as any);
+  const controller = new StudentOverviewController(overview as unknown as StudentOverviewService);
 
   it('answers 200 with the overview', async () => {
     const data = { resume: { quiz: null, deck: null }, reviewedToday: 0, activity: [] };

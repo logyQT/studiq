@@ -2,7 +2,9 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { InvitationService } from '@studiq/server/services/invitation.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Notifier } from '@studiq/server/services/notification.service';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
@@ -12,28 +14,76 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   },
 }));
 
-function qb(data: any, error: any = null) {
-  const result = { data: data ?? null, error };
+type DbError = { message?: string; code?: string };
+type QueryResult<T> = { data: T | null; error: DbError | null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  insert: Mock;
+  upsert: Mock;
+  update: Mock;
+  delete: Mock;
+  eq: Mock;
+  in: Mock;
+  order: Mock;
+  limit: Mock;
+  or: Mock;
+  not: Mock;
+  neq: Mock;
+  rpc: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  then: Promise<QueryResult<T>>['then'];
+  catch: Promise<QueryResult<T>>['catch'];
+  finally: Promise<QueryResult<T>>['finally'];
+}
+
+interface FakeCountBuilder {
+  select: Mock;
+  eq: Mock;
+  neq: Mock;
+}
+
+function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
+  const result: QueryResult<T> = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.upsert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.or = vi.fn(() => b);
-  b.not = vi.fn(() => b);
-  b.neq = vi.fn(() => b);
-  b.rpc = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: FakeQueryBuilder<T> = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    upsert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    or: vi.fn(),
+    not: vi.fn(),
+    neq: vi.fn(),
+    rpc: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
+  for (const method of [
+    b.select,
+    b.insert,
+    b.upsert,
+    b.update,
+    b.delete,
+    b.eq,
+    b.in,
+    b.order,
+    b.limit,
+    b.or,
+    b.not,
+    b.neq,
+    b.rpc,
+  ]) {
+    method.mockImplementation(() => b);
+  }
   return b;
 }
 
@@ -84,8 +134,8 @@ describe('InvitationService', () => {
     // insert; happy-path tests are allowed to grant by default.
     mock.rpc.mockResolvedValue({ data: true, error: null });
     service = new InvitationService(
-      async () => mock as any,
-      () => mock as any,
+      async () => mock,
+      () => mock,
     );
   });
 
@@ -96,10 +146,15 @@ describe('InvitationService', () => {
      * scoping and payload of each step.
      */
     function createBuilders({
-      membership = { organization_id: 'uni-1' } as any,
-      role = { id: 'member' } as any,
-      insert = { id: 'inv-1', token: 'abc123' } as any,
-      insertError = null as any,
+      membership = { organization_id: 'uni-1' },
+      role = { id: 'member' },
+      insert = { id: 'inv-1', token: 'abc123' },
+      insertError = null,
+    }: {
+      membership?: unknown;
+      role?: unknown;
+      insert?: unknown;
+      insertError?: DbError | null;
     } = {}) {
       const membershipQb = qb(membership);
       const roleQb = qb(role);
@@ -132,7 +187,7 @@ describe('InvitationService', () => {
         inviteLink: 'http://localhost:3000/join?token=abc123',
         inviteCode: 'abc123',
       });
-      expect((result.data as any).invitationId).toBe('inv-1');
+      expect(result).toHaveProperty('data.invitationId', 'inv-1');
 
       // The membership probe is scoped to the caller AND the target org.
       expect(membershipQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
@@ -287,7 +342,7 @@ describe('InvitationService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect((result.data as any).success).toBe(true);
+      expect(result).toHaveProperty('data.success', true);
       expect(insertQb.insert).toHaveBeenCalledWith(
         expect.objectContaining({ organization_id: 'uni-1' }),
       );
@@ -350,14 +405,20 @@ describe('InvitationService', () => {
     const adminRole = '550e8400-e29b-41d4-a716-446655440002';
 
     function bulkBuilders({
-      membership = { organization_id: 'uni-1' } as any,
-      roles = [{ id: memberRole }, { id: adminRole }] as any,
-      rolesError = null as any,
+      membership = { organization_id: 'uni-1' },
+      roles = [{ id: memberRole }, { id: adminRole }],
+      rolesError = null,
       created = [
         { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
         { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
-      ] as any,
-      insertError = null as any,
+      ],
+      insertError = null,
+    }: {
+      membership?: unknown;
+      roles?: unknown;
+      rolesError?: DbError | null;
+      created?: unknown;
+      insertError?: DbError | null;
     } = {}) {
       const membershipQb = qb(membership);
       const rolesQb = qb(roles, rolesError);
@@ -387,11 +448,7 @@ describe('InvitationService', () => {
       );
 
       expect(result.success).toBe(true);
-      const results = (result as any).data as Array<{
-        email: string;
-        success: boolean;
-        data: { invitationId: string; inviteLink: string; inviteCode: string };
-      }>;
+      const results = 'data' in result ? result.data : [];
       // The DB returned the rows in a different order: mapping must follow the
       // request order, not the insert response order.
       expect(results.map((r) => r.data.invitationId)).toEqual(['inv-1', 'inv-2']);
@@ -429,7 +486,7 @@ describe('InvitationService', () => {
           { id: 'inv-3', token: 'token-3', email: 'john@example.com' },
           { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
           { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
-        ] as any,
+        ],
       });
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
@@ -441,10 +498,7 @@ describe('InvitationService', () => {
       ]);
 
       expect(result.success).toBe(true);
-      const results = (result as any).data as Array<{
-        email: string;
-        data: { invitationId: string };
-      }>;
+      const results = 'data' in result ? result.data : [];
       expect(results.map((r) => r.email)).toEqual([
         'john@example.com',
         'jane@example.com',
@@ -468,7 +522,7 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');
-      expect((result as any).details).toEqual([
+      expect(result).toHaveProperty('details', [
         expect.objectContaining({
           message: 'VALIDATION_INVALID_ROLE',
           path: ['invitations', 1, 'targetOrgRoleId'],
@@ -518,7 +572,7 @@ describe('InvitationService', () => {
           { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
           { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
           { id: 'inv-3', token: 'token-3', email: 'john@example.com' },
-        ] as any,
+        ],
       });
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
@@ -547,7 +601,7 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('UNPROCESSABLE_ENTITY');
-      expect((result as any).details).toEqual([
+      expect(result).toHaveProperty('details', [
         expect.objectContaining({
           message: 'VALIDATION_INVALID_INPUT',
           path: ['invitations', 1, 'organizationId'],
@@ -671,8 +725,8 @@ describe('InvitationService', () => {
       organization_id: 'uni-1',
       target_org_role_id: 'role-member',
       expires_at: new Date(Date.now() + 86400000).toISOString(),
-      organizations: { name: 'Test Uni' } as any,
-      org_roles: { name: 'Member', organization_id: 'uni-1' } as any,
+      organizations: { name: 'Test Uni' },
+      org_roles: { name: 'Member', organization_id: 'uni-1' },
       ...overrides,
     };
   }
@@ -688,9 +742,9 @@ describe('InvitationService', () => {
       const result = await service.getInvitationByToken('valid-token');
 
       expect(result.success).toBe(true);
-      expect((result.data as any).email).toBe('john@example.com');
+      expect(result).toHaveProperty('data.email', 'john@example.com');
       // The inviter identity is never exposed to the public preview.
-      expect((result.data as any).inviterId).toBeUndefined();
+      expect(result).not.toHaveProperty('data.inviterId');
       expect(mock.rpc).toHaveBeenCalledWith('can_assign_org_role', {
         p_actor: 'manager-1',
         p_role_id: 'role-member',
@@ -741,12 +795,12 @@ describe('InvitationService', () => {
         from: vi.fn(() => qb(inviteRow())),
         rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
       };
-      service = new InvitationService(requestClient as any, () => admin as any);
+      service = new InvitationService(requestClient, () => admin as unknown as SupabaseClient);
 
       const result = await service.getInvitationByToken('public-token');
 
       expect(result.success).toBe(true);
-      expect((result.data as any).email).toBe('john@example.com');
+      expect(result).toHaveProperty('data.email', 'john@example.com');
       expect(requestClient).not.toHaveBeenCalled();
       expect(admin.from).toHaveBeenCalledWith('invitations');
       expect(admin.rpc).toHaveBeenCalledWith('can_assign_org_role', {
@@ -820,15 +874,19 @@ describe('InvitationService', () => {
     function adminClient() {
       const from = vi.fn();
       const rpc = vi.fn().mockResolvedValue({ data: true, error: null });
-      return { client: { from, rpc } as any, from, rpc };
+      // Only `from`/`rpc` are stubbed; the rest of the client is never reached.
+      return { client: { from, rpc } as unknown as SupabaseClient, from, rpc };
     }
 
     /** Chain that answers the `org_members` seat count (`.neq(...)`). */
     function countQb(count: number | null, error: unknown = null) {
-      const c: any = {};
-      c.select = vi.fn(() => c);
-      c.eq = vi.fn(() => c);
-      c.neq = vi.fn().mockResolvedValue({ count, error });
+      const c: FakeCountBuilder = {
+        select: vi.fn(),
+        eq: vi.fn(),
+        neq: vi.fn().mockResolvedValue({ count, error }),
+      };
+      c.select.mockImplementation(() => c);
+      c.eq.mockImplementation(() => c);
       return c;
     }
 
@@ -838,7 +896,7 @@ describe('InvitationService', () => {
         .mockReturnValueOnce(qb(invitation)) // invitation token lookup
         .mockReturnValueOnce(countQb(5)); // seat count
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
       vi.mocked(limitsResolver.checkOrgLimit).mockRejectedValueOnce(
@@ -866,7 +924,7 @@ describe('InvitationService', () => {
     it('adds the member when the organization is below its limit', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
       admin.from
@@ -894,10 +952,10 @@ describe('InvitationService', () => {
       const admin = adminClient();
       const notifier = { invitationAccepted: vi.fn().mockResolvedValue(undefined) };
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
         () => null,
-        notifier as any,
+        notifier as unknown as Notifier,
       );
       admin.from
         .mockReturnValueOnce(qb(invitation))
@@ -923,10 +981,10 @@ describe('InvitationService', () => {
       const admin = adminClient();
       const notifier = { invitationAccepted: vi.fn().mockResolvedValue(undefined) };
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
         () => null,
-        notifier as any,
+        notifier as unknown as Notifier,
       );
       admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(5));
       vi.mocked(limitsResolver.checkOrgLimit).mockRejectedValueOnce(
@@ -952,7 +1010,7 @@ describe('InvitationService', () => {
         .mockReturnValueOnce(qb({ id: 'group-1' }))
         .mockReturnValue(qb(null));
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
 
@@ -981,7 +1039,7 @@ describe('InvitationService', () => {
         .mockReturnValueOnce(qb(invitation))
         .mockReturnValueOnce(countQb(null, { message: 'boom', code: 'XX000' }));
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
 
@@ -996,7 +1054,7 @@ describe('InvitationService', () => {
       // Org is full with the caller already inside: 4 other members + the caller = 5/5.
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
       const memberQb = qb({ organization_id: 'org-1' });
@@ -1038,7 +1096,7 @@ describe('InvitationService', () => {
       admin.rpc.mockResolvedValue({ data: false, error: null });
       admin.from.mockReturnValueOnce(qb(invitation));
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
 
@@ -1060,7 +1118,7 @@ describe('InvitationService', () => {
       admin.rpc.mockResolvedValue({ data: null, error: { message: 'boom', code: 'XX000' } });
       admin.from.mockReturnValueOnce(qb(invitation));
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
 
@@ -1075,7 +1133,7 @@ describe('InvitationService', () => {
       const admin = adminClient();
       admin.from.mockReturnValueOnce(qb(inviteRow({ ...invitation, is_accepted: true })));
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
 
@@ -1093,7 +1151,7 @@ describe('InvitationService', () => {
         qb(inviteRow({ ...invitation, org_roles: { name: 'admin', organization_id: 'org-2' } })),
       );
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
 
@@ -1107,7 +1165,7 @@ describe('InvitationService', () => {
     it('claims the token before writing membership and never re-updates it afterwards', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
       const claimQb = qb({ id: 'inv-1' });
@@ -1153,7 +1211,7 @@ describe('InvitationService', () => {
       const code = 'c8a0b04e7082116c09a28ce717f83d5f';
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
       const lookupQb = qb(invitation);
@@ -1180,7 +1238,7 @@ describe('InvitationService', () => {
     it('returns NOT_FOUND without touching the DB for a link with no token', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
 
@@ -1194,7 +1252,7 @@ describe('InvitationService', () => {
     it('rejects the accept when the token was already claimed concurrently (GONE)', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
       // `.maybeSingle()` yields null when the conditional PATCH matched no row.
@@ -1218,7 +1276,7 @@ describe('InvitationService', () => {
     it('reports a DB failure when the claim itself fails', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock as any,
+        async () => mock,
         () => admin.client,
       );
       const memberQb = qb({ organization_id: 'org-1' });

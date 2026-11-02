@@ -6,7 +6,8 @@ import {
   UpdateStudySettingsSchema,
 } from '@studiq/server/models/study-settings.model';
 import { FlashcardPracticeService } from '@studiq/server/services/flashcard-practice.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { GOAL_PRESETS, goalProgress, MAX_GOAL, parseGoalInput } from '@/lib/goal-progress';
 
 // #656: the daily review goal. The column and the chart line existed; nothing could set the
@@ -54,19 +55,39 @@ describe('UpdateStudySettingsSchema', () => {
   });
 });
 
+type QueryResult = Record<string, unknown>;
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  limit: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  then: Promise<QueryResult>['then'];
+};
+
 /** A thenable query builder that resolves to `result` whatever is chained on it. */
-function builder(result: Record<string, unknown>) {
-  const b: any = {};
-  for (const m of ['select', 'eq', 'update', 'insert', 'order', 'limit']) b[m] = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = (onfulfilled: any) => Promise.resolve(result).then(onfulfilled);
+function builder(result: QueryResult) {
+  const promise = Promise.resolve(result);
+  const b: QueryChain = {
+    select: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    update: vi.fn(() => b),
+    insert: vi.fn(() => b),
+    order: vi.fn(() => b),
+    limit: vi.fn(() => b),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+  };
   return b;
 }
 
 describe('FlashcardPracticeService settings', () => {
   const today = new Date().toISOString().split('T')[0];
-  let tables: Record<string, any>;
+  let tables: Record<string, QueryChain>;
   let service: FlashcardPracticeService;
   const rpc = vi.fn();
 
@@ -88,7 +109,8 @@ describe('FlashcardPracticeService settings', () => {
       user_daily_activity: builder({ data: { reviews_count: 12 }, error: null }),
     };
     service = new FlashcardPracticeService(
-      async () => ({ from: vi.fn((table: string) => tables[table]), rpc }) as any,
+      async () =>
+        ({ from: vi.fn((table: string) => tables[table]), rpc }) as unknown as SupabaseClient,
     );
   });
 
@@ -113,7 +135,7 @@ describe('FlashcardPracticeService settings', () => {
 
     const result = await service.getSettings(ctx);
 
-    expect(result.success && (result.data as any).reviewedToday).toBe(0);
+    expect(result.success && (result.data as { reviewedToday: number }).reviewedToday).toBe(0);
   });
 
   it('stores the goal for the caller only and answers the fresh settings', async () => {
@@ -141,7 +163,9 @@ describe('FlashcardPracticeService settings', () => {
 
 describe('FlashcardPracticeController.updateSettings', () => {
   const practice = { updateSettings: vi.fn() };
-  const controller = new FlashcardPracticeController(practice as any);
+  const controller = new FlashcardPracticeController(
+    practice as unknown as FlashcardPracticeService,
+  );
 
   beforeEach(() => vi.clearAllMocks());
 

@@ -9,6 +9,7 @@ import {
 } from '@studiq/server/models/student-insights.model';
 import { StudentInsightsService } from '@studiq/server/services/student-insights.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import {
   busiestWeekday,
   hiddenMasteryCount,
@@ -175,8 +176,9 @@ const insights: StudentInsights = {
 };
 
 describe('StudentInsightsService', () => {
-  const rpc = vi.fn();
-  const service = new StudentInsightsService(async () => ({ rpc }) as any);
+  const client = mockSupabaseClient();
+  const rpc = client.rpc;
+  const service = new StudentInsightsService(async () => client);
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -212,7 +214,9 @@ describe('StudentInsightsService', () => {
 
 describe('StudentInsightsController', () => {
   const insightsService = { getInsights: vi.fn() };
-  const controller = new StudentInsightsController(insightsService as any);
+  const controller = new StudentInsightsController(
+    insightsService as unknown as StudentInsightsService,
+  );
 
   beforeEach(() => vi.clearAllMocks());
 

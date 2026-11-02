@@ -1,31 +1,75 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { QuizAttemptService } from '@studiq/server/services/quiz-attempt.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null) {
-  const result = { data: data ?? null, error };
+type QueryResult = { data: unknown; error: unknown };
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  delete: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  in: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  limit: Mock<(...args: unknown[]) => QueryChain>;
+  range: Mock<(...args: unknown[]) => QueryChain>;
+  or: Mock<(...args: unknown[]) => QueryChain>;
+  not: Mock<(...args: unknown[]) => QueryChain>;
+  neq: Mock<(...args: unknown[]) => QueryChain>;
+  is: Mock<(...args: unknown[]) => QueryChain>;
+  rpc: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  then: Promise<QueryResult>['then'];
+  catch: Promise<QueryResult>['catch'];
+  finally: Promise<QueryResult>['finally'];
+};
+
+/** The serialised attempt detail (`getById` types its payload as `Record<string, unknown>`). */
+type AttemptAnswers = Record<
+  string,
+  {
+    selected_answer_id: string | null;
+    text_answer: string | null;
+    is_correct?: boolean;
+    teacher_points?: number;
+    teacher_feedback?: string;
+  }
+>;
+type AttemptDetailView = { answers: AttemptAnswers };
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
+
+function qb(data: unknown, error: unknown = null) {
+  const result: QueryResult = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.range = vi.fn(() => b);
-  b.or = vi.fn(() => b);
-  b.not = vi.fn(() => b);
-  b.neq = vi.fn(() => b);
-  b.is = vi.fn(() => b);
-  b.rpc = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: QueryChain = {
+    select: vi.fn(() => b),
+    insert: vi.fn(() => b),
+    update: vi.fn(() => b),
+    delete: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    in: vi.fn(() => b),
+    order: vi.fn(() => b),
+    limit: vi.fn(() => b),
+    range: vi.fn(() => b),
+    or: vi.fn(() => b),
+    not: vi.fn(() => b),
+    neq: vi.fn(() => b),
+    is: vi.fn(() => b),
+    rpc: vi.fn(() => b),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -47,7 +91,7 @@ describe('QuizAttemptService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new QuizAttemptService(async () => mock as any);
+    service = new QuizAttemptService(async () => mock);
   });
 
   describe('list', () => {
@@ -216,8 +260,8 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect((result.data as any).questions).toBeDefined();
-      expect((result.data as any).answers).toBeDefined();
+      expect(expectSuccess(result).questions).toBeDefined();
+      expect(expectSuccess(result).answers).toBeDefined();
     });
 
     it('returns NOT_FOUND when attempt does not exist', async () => {
@@ -292,7 +336,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect((result.data as any).answers).toEqual({});
+      expect(expectSuccess(result).answers).toEqual({});
     });
 
     it('serves the saved draft as `answers` for an in-progress attempt (#349)', async () => {
@@ -313,7 +357,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      const data = result.data as any;
+      const data = expectSuccess(result) as AttemptDetailView;
       expect(data.answers).toEqual({
         'q-1': { selected_answer_id: 'ans-1', text_answer: null },
         'q-2': { selected_answer_id: null, text_answer: 'Wisła' },
@@ -342,7 +386,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      const data = result.data as any;
+      const data = expectSuccess(result) as AttemptDetailView;
       expect(data.answers).toEqual({
         'q-1': { selected_answer_id: 'ans-1', text_answer: null },
       });
@@ -373,7 +417,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect((result.data as any).answers).toEqual({
+      expect(expectSuccess(result).answers).toEqual({
         'q-1': { selected_answer_id: 'ans-1', text_answer: null, is_correct: true },
       });
     });
@@ -401,7 +445,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect((result.data as any).answers['q-1'].is_correct).toBe(true);
+      expect((expectSuccess(result) as AttemptDetailView).answers['q-1'].is_correct).toBe(true);
     });
 
     it('includes teacher grading in the answers map for a completed attempt (#175)', async () => {
@@ -431,7 +475,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect((result.data as any).answers['q-open']).toEqual({
+      expect((expectSuccess(result) as AttemptDetailView).answers['q-open']).toEqual({
         selected_answer_id: null,
         text_answer: 'Rozbiory',
         is_correct: false,
@@ -495,7 +539,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect((result.data as any).answers).toEqual({
+      expect(expectSuccess(result).answers).toEqual({
         'q-1': { selected_answer_id: 'ans-1', text_answer: null },
       });
       expect(mock.from).not.toHaveBeenCalledWith('teacher_assignments');
@@ -524,7 +568,7 @@ describe('QuizAttemptService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect((result.data as any).score).toBe(1);
+      expect(expectSuccess(result).score).toBe(1);
       // Practice quizzes must not look up assignment points.
       expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
       expect(insertQb.insert).toHaveBeenCalledWith([
@@ -560,7 +604,7 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect((result.data as any).score).toBe(1);
+      expect(expectSuccess(result).score).toBe(1);
       expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
     });
 
@@ -587,7 +631,7 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect((result.data as any).score).toBe(0);
+      expect(expectSuccess(result).score).toBe(0);
       expect(insertQb.insert).toHaveBeenCalledWith([
         {
           attempt_id: 'a-1',
@@ -627,7 +671,7 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect((result.data as any).score).toBe(2);
+      expect(expectSuccess(result).score).toBe(2);
     });
 
     it('withholds the score of a hidden assignment after submission (#374)', async () => {
@@ -652,9 +696,9 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect((result.data as any).score).toBeNull();
+      expect(expectSuccess(result).score).toBeNull();
       // The attempt itself is still scored and stored.
-      expect((result.data as any).totalQuestions).toBe(1);
+      expect(expectSuccess(result).totalQuestions).toBe(1);
     });
 
     it('withholds the score when the assignment row is missing (#374)', async () => {
@@ -679,7 +723,7 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect((result.data as any).score).toBeNull();
+      expect(expectSuccess(result).score).toBeNull();
     });
 
     it('awards a question once even when it produced several answer rows', async () => {
@@ -711,7 +755,7 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect((result.data as any).score).toBe(2);
+      expect(expectSuccess(result).score).toBe(2);
     });
 
     it('returns INTERNAL_SERVER when assignment points cannot be loaded', async () => {
@@ -801,7 +845,7 @@ describe('QuizAttemptService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect((result.data as any).saved).toBe(2);
+      expect(expectSuccess(result).saved).toBe(2);
       expect(updateQb.update).toHaveBeenCalledWith({
         draft_answers: {
           'q-1': { selected_answer_id: 'ans-1', text_answer: null },

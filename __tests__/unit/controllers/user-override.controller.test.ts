@@ -1,4 +1,5 @@
 import { UserOverrideController } from '@admin/server/controllers/user-override.controller';
+import type { UserOverrideService } from '@admin/server/services/user-override.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -18,7 +19,7 @@ describe('UserOverrideController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new UserOverrideController(mockService as any);
+    controller = new UserOverrideController(mockService as unknown as UserOverrideService);
   });
 
   describe('getAll', () => {

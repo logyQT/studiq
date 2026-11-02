@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { SubscriptionPlanController } from '@studiq/server/controllers/subscription-plan.controller';
+import type { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -16,7 +17,7 @@ let controller: SubscriptionPlanController;
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '',
@@ -29,7 +30,8 @@ describe('SubscriptionPlanController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new SubscriptionPlanController(mockService as any);
+    // Only the read paths are exercised; the rest of the service is unreached.
+    controller = new SubscriptionPlanController(mockService as unknown as SubscriptionPlanService);
   });
 
   describe('listPublic', () => {

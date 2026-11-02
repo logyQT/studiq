@@ -1,4 +1,5 @@
 import { SubscriptionPlanAdminController } from '@admin/server/controllers/subscription-plan-admin.controller';
+import type { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -18,7 +19,10 @@ describe('SubscriptionPlanAdminController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new SubscriptionPlanAdminController(mockService as any);
+    // Only the admin handlers are exercised; the rest of the service is unreached.
+    controller = new SubscriptionPlanAdminController(
+      mockService as unknown as SubscriptionPlanService,
+    );
   });
 
   describe('getAll', () => {

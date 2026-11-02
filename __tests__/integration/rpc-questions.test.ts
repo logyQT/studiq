@@ -12,6 +12,25 @@ import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
+/** The `id` an RPC row carries, if it has one. */
+function readId(row: object): unknown {
+  return (row as { id?: unknown }).id;
+}
+
+/** Ids of the rows an RPC returned, in a stable order. */
+function sortedIds(rows: unknown): string[] {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => (typeof row === 'object' && row !== null ? readId(row) : undefined))
+    .filter((id): id is string => typeof id === 'string')
+    .sort();
+}
+
+/** How many rows an RPC returned. */
+function rowCount(rows: unknown): number {
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
 describe(`get_accessible_questions RPC`, () => {
   const ORG_PREFIX = `rpc-q-test-${suiteId}-`;
 
@@ -189,7 +208,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_scope: 'own',
       });
 
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q1Id, q2Id].sort());
     });
 
@@ -200,7 +219,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_scope: 'group',
       });
 
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q1Id, q2Id, q3Id].sort());
     });
 
@@ -211,7 +230,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_scope: 'organization',
       });
 
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q1Id, q2Id, q3Id, q4Id].sort());
     });
 
@@ -222,7 +241,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_scope: 'any',
       });
 
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q1Id, q2Id, q3Id, q4Id].sort());
     });
   });
@@ -238,7 +257,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_scope: 'own',
       });
 
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q3Id, q4Id].sort());
     });
 
@@ -250,7 +269,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       // Student B has no group membership, so only own questions are returned
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q3Id, q4Id].sort());
     });
 
@@ -261,7 +280,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_scope: 'organization',
       });
 
-      expect((data as any[]).length).toBe(4);
+      expect(rowCount(data)).toBe(4);
     });
   });
 
@@ -322,7 +341,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_bank_ids: [bank1Id],
       });
 
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q1Id, q3Id].sort()); // Q1 and Q3 are in Bank1
     });
 
@@ -334,7 +353,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_type: 'mcq',
       });
 
-      expect((data as any[]).length).toBe(4); // All questions are mcq
+      expect(rowCount(data)).toBe(4); // All questions are mcq
     });
 
     it('p_type returns empty for non-matching type', async () => {
@@ -372,7 +391,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       // No org filter — returns Student A's own questions from any org
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q1Id, q2Id].sort());
     });
   });
@@ -388,7 +407,7 @@ describe(`get_accessible_questions RPC`, () => {
         p_scope: 'own',
       });
 
-      const ids = (data as any[]).map((d: any) => d.id).sort();
+      const ids = sortedIds(data);
       expect(ids).toEqual([q1Id, q2Id].sort());
     });
   });

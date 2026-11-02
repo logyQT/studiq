@@ -1,6 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { SeatController } from '@studiq/server/controllers/seat.controller';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import type { SeatService } from '@studiq/server/services/seat.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -19,7 +20,7 @@ let controller: SeatController;
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'educator' as any,
+  accountType: AccountType.EDUCATOR,
   orgRoleId: null,
   activeOrgId: 'org-1',
   url: '',
@@ -32,7 +33,7 @@ describe('SeatController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new SeatController(mockService as any);
+    controller = new SeatController(mockService as unknown as SeatService);
   });
 
   describe('listPools', () => {

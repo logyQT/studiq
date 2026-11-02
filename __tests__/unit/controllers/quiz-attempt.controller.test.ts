@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { QuizAttemptController } from '@studiq/server/controllers/quiz-attempt.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { QuizAttemptService } from '@studiq/server/services/quiz-attempt.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockQuizAttemptService() {
@@ -31,7 +32,8 @@ describe('QuizAttemptController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockQuizAttemptService();
-    controller = new QuizAttemptController(mockService as any);
+    // Only the four handlers under test are exercised; the rest is unreached.
+    controller = new QuizAttemptController(mockService as unknown as QuizAttemptService);
   });
 
   describe('list', () => {
@@ -103,7 +105,7 @@ describe('QuizAttemptController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect('error' in response && response.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -164,7 +166,7 @@ describe('QuizAttemptController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect('error' in response && response.error).toBe('UNPROCESSABLE_ENTITY');
       expect(mockService.saveDraft).not.toHaveBeenCalled();
     });
 

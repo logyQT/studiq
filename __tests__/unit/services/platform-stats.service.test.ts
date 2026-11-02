@@ -6,6 +6,7 @@ import {
 } from '@admin/server/models/platform-stats.model';
 import { PlatformStatsService } from '@admin/server/services/platform-stats.service';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { barHeights, formatBytes, formatCount, total } from '@admin/lib/stats-format';
 
@@ -31,7 +32,8 @@ const stats: PlatformStats = {
 
 describe('PlatformStatsService', () => {
   const rpc = vi.fn();
-  const service = new PlatformStatsService(async () => ({ rpc }) as any);
+  // Only `rpc` is stubbed; the rest of the client is never reached.
+  const service = new PlatformStatsService(async () => ({ rpc }) as unknown as SupabaseClient);
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -82,7 +84,7 @@ describe('DailyStatsQuerySchema', () => {
 
 describe('PlatformStatsController', () => {
   const platform = { getPlatformStats: vi.fn(), getDailyStats: vi.fn() };
-  const controller = new PlatformStatsController(platform as any);
+  const controller = new PlatformStatsController(platform as unknown as PlatformStatsService);
 
   beforeEach(() => vi.clearAllMocks());
 

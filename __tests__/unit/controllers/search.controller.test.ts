@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { SearchController } from '@studiq/server/controllers/search.controller';
+import type { SearchService } from '@studiq/server/services/search.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -12,7 +13,7 @@ let controller: SearchController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -25,7 +26,7 @@ describe('SearchController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new SearchController(mockService as any);
+    controller = new SearchController(mockService as unknown as SearchService);
   });
 
   describe('search', () => {

@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { QuestionBankController } from '@studiq/server/controllers/question-bank.controller';
+import type { QuestionBankService } from '@studiq/server/services/question-bank.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/authz', () => ({
@@ -24,7 +25,7 @@ let controller: QuestionBankController;
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'educator' as any,
+  accountType: AccountType.EDUCATOR,
   orgRoleId: null,
   activeOrgId: 'org-1',
   url: '',
@@ -37,7 +38,7 @@ describe('QuestionBankController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new QuestionBankController(mockService as any);
+    controller = new QuestionBankController(mockService as unknown as QuestionBankService);
   });
 
   describe('create', () => {

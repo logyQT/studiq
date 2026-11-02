@@ -1,6 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import type { LimitKey } from '@studiq/server/services/limit.catalog';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
@@ -76,7 +77,7 @@ describe('LimitsResolver', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    resolver = new LimitsResolver(async () => mock as any);
+    resolver = new LimitsResolver(async () => mock);
   });
 
   // #230 acceptance: the dropped snapshot table must never be queried again,
@@ -448,7 +449,7 @@ describe('LimitsResolver', () => {
         if (table === 'plan_limits') return chain({ limit_value: 40 });
         return chain(null);
       });
-      const admin = { from: adminFrom } as any;
+      const admin = { from: adminFrom } as unknown as SupabaseClient;
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 10, 1, admin),
@@ -468,7 +469,7 @@ describe('LimitsResolver', () => {
           if (table === 'plan_limits') return chain({ limit_value: 40 });
           return chain(null);
         }),
-      } as any;
+      } as unknown as SupabaseClient;
 
       await expect(resolver.checkOrgLimit('org-1', 'max_students', 40, 1, admin)).rejects.toThrow(
         'USAGE_LIMIT_EXCEEDED',
@@ -482,7 +483,7 @@ describe('LimitsResolver', () => {
           if (table === 'plan_limits') return chain({ limit_value: 40 });
           return chain(null);
         }),
-      } as any;
+      } as unknown as SupabaseClient;
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 39, 1, admin),
@@ -496,7 +497,7 @@ describe('LimitsResolver', () => {
           if (table === 'plan_limits') return chain(null);
           return chain(null);
         }),
-      } as any;
+      } as unknown as SupabaseClient;
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 999_999, 1, admin),
@@ -509,7 +510,7 @@ describe('LimitsResolver', () => {
           if (table === 'organizations') return chain(null);
           return chain(null);
         }),
-      } as any;
+      } as unknown as SupabaseClient;
 
       await expect(
         resolver.checkOrgLimit('org-missing', 'max_students', 999_999, 1, admin),
@@ -524,7 +525,7 @@ describe('LimitsResolver', () => {
           if (table === 'plan_limits') return chain({ limit_value: 20 });
           return chain(null);
         }),
-      } as any;
+      } as unknown as SupabaseClient;
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_groups', 19, 1, admin),

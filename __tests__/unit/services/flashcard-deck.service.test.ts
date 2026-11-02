@@ -19,30 +19,60 @@ vi.mock('@studiq/server/services/group.service', () => ({
   groupService: { canShareContentToGroups: vi.fn() },
 }));
 
-function qb(data: any, error: any = null, count?: number) {
+type ChainMock = ReturnType<typeof vi.fn>;
+
+/** A thenable PostgREST builder stand-in: every chain method returns itself. */
+interface QueryBuilder {
+  select: ChainMock;
+  insert: ChainMock;
+  upsert: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  eq: ChainMock;
+  in: ChainMock;
+  order: ChainMock;
+  limit: ChainMock;
+  or: ChainMock;
+  not: ChainMock;
+  neq: ChainMock;
+  rpc: ChainMock;
+  single: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
+const CHAIN_METHODS = [
+  'select',
+  'insert',
+  'upsert',
+  'update',
+  'delete',
+  'eq',
+  'in',
+  'order',
+  'limit',
+  'or',
+  'not',
+  'neq',
+  'rpc',
+] as const;
+
+function qb(data: unknown, error: unknown = null, count?: number): QueryBuilder {
   const result =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.upsert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.or = vi.fn(() => b);
-  b.not = vi.fn(() => b);
-  b.neq = vi.fn(() => b);
-  b.rpc = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
-  return b;
+  const builder = {} as QueryBuilder;
+  for (const method of CHAIN_METHODS) {
+    builder[method] = vi.fn(() => builder);
+  }
+  builder.single = vi.fn().mockResolvedValue(result);
+  builder.maybeSingle = vi.fn().mockResolvedValue(result);
+  builder.then = vi.fn(promise.then.bind(promise));
+  builder.catch = vi.fn(promise.catch.bind(promise));
+  builder.finally = vi.fn(promise.finally.bind(promise));
+  return builder;
 }
 
 describe('FlashcardDeckService', () => {
@@ -63,7 +93,7 @@ describe('FlashcardDeckService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new FlashcardDeckService(async () => mock as any);
+    service = new FlashcardDeckService(async () => mock);
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,
       data: true,
@@ -349,7 +379,7 @@ describe('FlashcardDeckService', () => {
         q: 'bio',
         cursor,
         limit: 10,
-      } as any);
+      });
 
       expect((result.data as { total: number }).total).toBe(4);
       expect(countQb.select).toHaveBeenCalledWith('id', { count: 'exact', head: true });
@@ -450,7 +480,7 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(pageQb);
       mock.from.mockReturnValueOnce(countQb);
 
-      await service.list({ ...ctx, groupIds: ['g-1'] }, { owner: 'mine', groups: ['g-1'] } as any);
+      await service.list({ ...ctx, groupIds: ['g-1'] }, { owner: 'mine', groups: ['g-1'] });
 
       expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
       expect(pageQb.in).toHaveBeenCalledWith('id', ['d-1']);

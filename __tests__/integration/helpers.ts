@@ -1,6 +1,6 @@
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type User } from '@supabase/supabase-js';
 import { vi } from 'vitest';
 
 // ============================================================
@@ -88,7 +88,7 @@ export function useRealSupabase() {
 // Combines mocked getUser() with real Supabase DB operations (app_metadata uses account_type)
 // ============================================================
 export function mockUser(user: { id: string; role: string } | null) {
-  const mockUserObj = user
+  const mockUserObj: User | null = user
     ? {
         id: user.id,
         email: 'test@test.com',
@@ -107,7 +107,12 @@ export function mockUser(user: { id: string; role: string } | null) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { persistSession: false } },
     );
-    serviceClient.auth.getUser = async () => ({ data: { user: mockUserObj as any }, error: null });
+    // `UserResponse` types `data.user` as non-null; an unauthenticated mock
+    // still returns `null` here, which is the case services treat as "no user".
+    serviceClient.auth.getUser = async () => ({
+      data: { user: mockUserObj as User },
+      error: null,
+    });
     return serviceClient;
   });
 }

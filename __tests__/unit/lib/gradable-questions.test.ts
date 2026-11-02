@@ -2,29 +2,45 @@ import {
   gradableQuestionCounts,
   isGradableQuestionType,
 } from '@studiq/server/lib/gradable-questions';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+type Page = { data: unknown[]; error: unknown };
 
 /**
  * A `quiz_attempt_questions` builder that serves one page per `.range()` call,
  * so the helper's paging loop can be exercised (a flat mock would loop forever).
  */
-function pagedBuilder(pages: unknown[][], error: unknown = null) {
-  let current: { data: unknown[]; error: unknown } = { data: pages[0] ?? [], error };
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.range = vi.fn((from: number) => {
-    current = { data: pages[from / 1000] ?? [], error };
-    return b;
-  });
-  b.then = (onFulfilled: any, onRejected: any) =>
-    Promise.resolve(current).then(onFulfilled, onRejected);
+type PagedBuilder = {
+  select: Mock;
+  order: Mock;
+  in: Mock;
+  range: Mock;
+  then: (
+    onFulfilled: (value: Page) => unknown,
+    onRejected?: (reason: unknown) => unknown,
+  ) => Promise<unknown>;
+};
+
+function pagedBuilder(pages: unknown[][], error: unknown = null): PagedBuilder {
+  let current: Page = { data: pages[0] ?? [], error };
+  const b: PagedBuilder = {
+    select: vi.fn(() => b),
+    order: vi.fn(() => b),
+    in: vi.fn(() => b),
+    range: vi.fn((from: number) => {
+      current = { data: pages[from / 1000] ?? [], error };
+      return b;
+    }),
+    then: (onFulfilled, onRejected) => Promise.resolve(current).then(onFulfilled, onRejected),
+  };
   return b;
 }
 
-function mockClient(builder: unknown) {
-  return { from: vi.fn(() => builder) } as any;
+function mockClient(builder: PagedBuilder) {
+  const client = mockSupabaseClient();
+  client.from.mockReturnValue(builder);
+  return client;
 }
 
 const row = (attemptId: string, type: string | null) => ({

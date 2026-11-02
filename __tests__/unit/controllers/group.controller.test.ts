@@ -1,6 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { GroupController } from '@studiq/server/controllers/group.controller';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import type { GroupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/features', () => ({
@@ -26,7 +27,7 @@ let controller: GroupController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'educator' as any,
+  accountType: AccountType.EDUCATOR,
   orgRoleId: null,
   activeOrgId: 'org-1',
   url: 'http://localhost',
@@ -39,7 +40,7 @@ describe('GroupController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new GroupController(mockService as any);
+    controller = new GroupController(mockService as unknown as GroupService);
   });
 
   describe('listGroups', () => {
@@ -71,7 +72,7 @@ describe('GroupController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
-      expect((response as any).data).toEqual(group);
+      expect(response).toHaveProperty('data', group);
     });
 
     it('returns 422 on invalid body', async () => {

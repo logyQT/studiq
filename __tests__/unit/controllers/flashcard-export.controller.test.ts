@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardExportController } from '@studiq/server/controllers/flashcard-export.controller';
+import type { FlashcardExportService } from '@studiq/server/services/flashcard-export.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -12,7 +13,7 @@ let controller: FlashcardExportController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -25,7 +26,7 @@ describe('FlashcardExportController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardExportController(mockService as any);
+    controller = new FlashcardExportController(mockService as unknown as FlashcardExportService);
   });
 
   describe('exportCsv', () => {

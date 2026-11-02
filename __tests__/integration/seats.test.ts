@@ -92,7 +92,7 @@ describe(`Seats Integration`, () => {
       expect(body.data).toBeInstanceOf(Array);
       expect(body.data.length).toBeGreaterThanOrEqual(1);
 
-      const pool = body.data.find((p: any) => p.planKey === 'guide');
+      const pool = body.data.find((p: { planKey: string }) => p.planKey === 'guide');
       expect(pool).toBeDefined();
       expect(pool.total).toBe(10);
       expect(pool.assigned).toBe(0);
@@ -390,7 +390,7 @@ describe(`Seats Integration`, () => {
       const listBody = await listRes.json();
 
       expect(listBody.data.length).toBeGreaterThanOrEqual(1);
-      const match = listBody.data.find((a: any) => a.userId === assigneeB.id);
+      const match = listBody.data.find((a: { userId: string }) => a.userId === assigneeB.id);
       expect(match).toBeDefined();
       expect(match.poolId).toBe(poolId);
     });
@@ -460,7 +460,7 @@ describe(`Seats Integration`, () => {
       const listRes = await getAssignments(listReq);
       const listBody = await listRes.json();
 
-      const match = listBody.data.find((a: any) => a.id === assignmentId);
+      const match = listBody.data.find((a: { id: string }) => a.id === assignmentId);
       expect(match).toBeUndefined();
     });
   });

@@ -1,24 +1,40 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null, count?: number) {
-  const result =
+type QueryResult = { data: unknown; error: unknown; count?: number };
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  delete: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  then: Promise<QueryResult>['then'];
+  catch: Promise<QueryResult>['catch'];
+  finally: Promise<QueryResult>['finally'];
+};
+
+function qb(data: unknown, error: unknown = null, count?: number) {
+  const result: QueryResult =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: QueryChain = {
+    select: vi.fn(() => b),
+    insert: vi.fn(() => b),
+    update: vi.fn(() => b),
+    delete: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    order: vi.fn(() => b),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -27,7 +43,7 @@ describe('OrgRoleService', () => {
   let service: OrgRoleService;
   const ctx: RequestContext = {
     userId: 'test-user-id',
-    accountType: 'educator' as any,
+    accountType: AccountType.EDUCATOR,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -40,7 +56,7 @@ describe('OrgRoleService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new OrgRoleService(async () => mock as any);
+    service = new OrgRoleService(async () => mock);
   });
 
   describe('listRoles', () => {

@@ -1,7 +1,25 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardController } from '@studiq/server/controllers/flashcard.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { FlashcardService } from '@studiq/server/services/flashcard.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+type FailureResponse = Extract<ControllerResponse, { success: false }>;
+
+/**
+ * The controller answers with a union. Tests assert the branch themselves first,
+ * then read the payload through this view instead of casting the response to `any`.
+ */
+function envelope(response: ControllerResponse) {
+  return response as {
+    success: boolean;
+    statusCode: number;
+    data?: unknown;
+    error?: FailureResponse['error'];
+    details?: FailureResponse['details'];
+  };
+}
 
 function createMockService() {
   return {
@@ -22,7 +40,7 @@ let controller: FlashcardController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -35,7 +53,7 @@ describe('FlashcardController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardController(mockService as any);
+    controller = new FlashcardController(mockService as unknown as FlashcardService);
   });
 
   describe('create', () => {
@@ -50,7 +68,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
-      expect((response as any).data).toEqual(created);
+      expect(envelope(response).data).toEqual(created);
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
@@ -61,7 +79,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -74,7 +92,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(envelope(response).error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -89,7 +107,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(flashcards);
+      expect(envelope(response).data).toEqual(flashcards);
       expect(mockService.list).toHaveBeenCalledWith(
         mockCtx,
         expect.objectContaining({ topicIds: ['550e8400-e29b-41d4-a716-446655440001'] }),
@@ -137,7 +155,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
-      expect((response as any).data).toEqual(created);
+      expect(envelope(response).data).toEqual(created);
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
@@ -145,7 +163,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -158,7 +176,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(envelope(response).error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -171,7 +189,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(flashcard);
+      expect(envelope(response).data).toEqual(flashcard);
       expect(mockService.getById).toHaveBeenCalledWith('fc-1', mockCtx);
     });
 
@@ -182,7 +200,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(404);
-      expect((response as any).error).toBe('NOT_FOUND');
+      expect(envelope(response).error).toBe('NOT_FOUND');
     });
 
     it('returns error when service returns failure', async () => {
@@ -192,7 +210,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(envelope(response).error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -205,7 +223,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(updated);
+      expect(envelope(response).data).toEqual(updated);
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
@@ -213,7 +231,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns FORBIDDEN when service returns failure', async () => {
@@ -223,7 +241,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect((response as any).error).toBe('FORBIDDEN');
+      expect(envelope(response).error).toBe('FORBIDDEN');
     });
 
     it('returns error when service returns failure', async () => {
@@ -233,7 +251,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(envelope(response).error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -247,7 +265,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ deleted: 1 });
+      expect(envelope(response).data).toEqual({ deleted: 1 });
       expect(mockService.batchDelete).toHaveBeenCalledWith({ ids: [validId] }, mockCtx);
     });
 
@@ -256,7 +274,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
       expect(mockService.batchDelete).not.toHaveBeenCalled();
     });
 
@@ -267,7 +285,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect((response as any).error).toBe('FORBIDDEN');
+      expect(envelope(response).error).toBe('FORBIDDEN');
     });
   });
 
@@ -284,7 +302,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ moved: 1 });
+      expect(envelope(response).data).toEqual({ moved: 1 });
       expect(mockService.batchMove).toHaveBeenCalledWith(body, mockCtx);
     });
 
@@ -293,8 +311,8 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
-      expect((response as any).details?.length).toBeGreaterThan(0);
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).details?.length).toBeGreaterThan(0);
       expect(mockService.batchMove).not.toHaveBeenCalled();
     });
 
@@ -303,8 +321,8 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
-      expect((response as any).details?.length).toBeGreaterThan(0);
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).details?.length).toBeGreaterThan(0);
       expect(mockService.batchMove).not.toHaveBeenCalled();
     });
 
@@ -318,7 +336,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect((response as any).error).toBe('FORBIDDEN');
+      expect(envelope(response).error).toBe('FORBIDDEN');
     });
   });
 
@@ -330,7 +348,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ success: true });
+      expect(envelope(response).data).toEqual({ success: true });
     });
 
     it('returns error when service returns failure', async () => {
@@ -340,7 +358,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect((response as any).error).toBe('FORBIDDEN');
+      expect(envelope(response).error).toBe('FORBIDDEN');
     });
 
     it('returns error when service returns failure', async () => {
@@ -350,7 +368,7 @@ describe('FlashcardController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(envelope(response).error).toBe('INTERNAL_SERVER');
     });
   });
 });

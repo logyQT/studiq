@@ -1,4 +1,5 @@
 import { PlanLimitController } from '@admin/server/controllers/plan-limit.controller';
+import type { PlanLimitService } from '@admin/server/services/plan-limit.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -18,7 +19,7 @@ describe('PlanLimitController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new PlanLimitController(mockService as any);
+    controller = new PlanLimitController(mockService as unknown as PlanLimitService);
   });
 
   describe('getAll', () => {

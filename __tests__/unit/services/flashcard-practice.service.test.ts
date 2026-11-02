@@ -1,6 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardPracticeService } from '@studiq/server/services/flashcard-practice.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => ({
@@ -31,38 +32,76 @@ const defaultSettings = {
 
 const defaultSettingsRow = { data: defaultSettings, error: null };
 
+type QueryResult = { data: unknown; error: unknown };
+
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  in: Mock<(...args: unknown[]) => QueryChain>;
+  or: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  limit: Mock<(...args: unknown[]) => QueryChain>;
+  gt: Mock<(...args: unknown[]) => QueryChain>;
+  filter: Mock<(...args: unknown[]) => QueryChain>;
+  not: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  upsert: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  then: Promise<QueryResult>['then'];
+};
+
+/** The narrow chain the load-balancing lookup uses: `eq`/`gte` chain, `lt` resolves. */
+type LookupChain = {
+  eq: Mock<(...args: unknown[]) => LookupChain>;
+  gte: Mock<(...args: unknown[]) => LookupChain>;
+  lt: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+};
+
 /** Creates a mock Supabase chain where all intermediate methods return the chain,
  *  terminal methods (single, maybeSingle) resolve with `terminal`,
  *  and the chain itself is thenable for `await query` patterns. */
-function chain(terminal: any = { data: null, error: null }) {
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.gt = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.not = vi.fn(() => c);
-  c.single = vi.fn().mockResolvedValue(terminal);
-  c.maybeSingle = vi.fn().mockResolvedValue(terminal);
-  c.insert = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(terminal).then(onfulfilled);
+function chain(terminal: QueryResult = { data: null, error: null }) {
+  const promise = Promise.resolve(terminal);
+  const c: QueryChain = {
+    select: vi.fn(() => c),
+    eq: vi.fn(() => c),
+    in: vi.fn(() => c),
+    or: vi.fn(() => c),
+    order: vi.fn(() => c),
+    limit: vi.fn(() => c),
+    gt: vi.fn(() => c),
+    filter: vi.fn(() => c),
+    not: vi.fn(() => c),
+    single: vi.fn().mockResolvedValue(terminal),
+    maybeSingle: vi.fn().mockResolvedValue(terminal),
+    insert: vi.fn(() => c),
+    upsert: vi.fn(() => c),
+    update: vi.fn(() => c),
+    then: promise.then.bind(promise),
+  };
   return c;
 }
 
-function settingsChain(settings: any = defaultSettings) {
+function settingsChain(settings: unknown = defaultSettings) {
   const c = chain({ data: settings, error: null });
   c.update = vi.fn(() => c);
   return c;
 }
 
+/** The card page `getAllCardStats`/`getCardsForPractice` return (typed as `unknown`). */
+type CardIdPage = { items: Array<{ id: string }> };
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
+
 describe('FlashcardPracticeService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
-  const service = new FlashcardPracticeService(async () => mock as any);
+  const service = new FlashcardPracticeService(async () => mock);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,7 +109,7 @@ describe('FlashcardPracticeService', () => {
   });
 
   describe('log', () => {
-    function setupMocks(practiceResult: any, existingState: any, upsertResult: any) {
+    function setupMocks(practiceResult: unknown, existingState: unknown, upsertResult: unknown) {
       const maybeSingleMock = vi.fn().mockResolvedValue({ data: existingState, error: null });
       const getStateEq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
       const getStateEq1Mock = vi.fn().mockReturnValue({ eq: getStateEq2Mock });
@@ -284,10 +323,11 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValue({ select: vi.fn().mockReturnValue({ single: upsertSingleMock }) });
 
       // Load-balancing reads `next_review_at`; the review-state lookup uses `select('*')`.
-      const loadBalanceChain: any = {};
-      loadBalanceChain.eq = vi.fn(() => loadBalanceChain);
-      loadBalanceChain.gte = vi.fn(() => loadBalanceChain);
-      loadBalanceChain.lt = vi.fn().mockResolvedValue({ data: [], error: null });
+      const loadBalanceChain: LookupChain = {
+        eq: vi.fn(() => loadBalanceChain),
+        gte: vi.fn(() => loadBalanceChain),
+        lt: vi.fn().mockResolvedValue({ data: [], error: null }),
+      };
       const lookupChain = chain({ data: existingState, error: null });
 
       mock.from.mockImplementation((table: string) => {
@@ -345,8 +385,8 @@ describe('FlashcardPracticeService', () => {
 
   describe('batch', () => {
     function setupBatchMocks(
-      insertResults: Array<{ error: any }>,
-      upsertResults: Array<{ data: any; error: any }>,
+      insertResults: Array<{ error: unknown }>,
+      upsertResults: Array<{ data: unknown; error: unknown }>,
     ) {
       let insertCall = 0;
       const practiceInsert = vi.fn().mockImplementation(() => {
@@ -617,7 +657,7 @@ describe('FlashcardPracticeService', () => {
       vi.mocked(buildQueryFilter).mockReturnValueOnce({
         _useRpc: true,
         organization_id: 'org-1',
-      } as any);
+      });
 
       const c = settingsChain();
       mock.from.mockReturnValue({ select: vi.fn(() => c), update: vi.fn(() => c) });
@@ -632,7 +672,7 @@ describe('FlashcardPracticeService', () => {
         p_organization_id: 'org-1',
       });
       expect(result.success).toBe(true);
-      expect((result.data as any).totalNewCards).toBe(3);
+      expect(result).toHaveProperty('data.totalNewCards', 3);
     });
   });
 
@@ -695,7 +735,7 @@ describe('FlashcardPracticeService', () => {
         p_organization_id: 'org-1',
       });
       expect(result.success).toBe(true);
-      expect(result.data as any).toEqual(breakdown);
+      expect(result).toHaveProperty('data', breakdown);
     });
 
     it('returns the full zero envelope when the RPC fails', async () => {
@@ -704,7 +744,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getStateBreakdown(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data as any).toEqual({
+      expect(result).toHaveProperty('data', {
         totalCards: 0,
         neverPracticed: 0,
         learning: 0,
@@ -719,17 +759,19 @@ describe('FlashcardPracticeService', () => {
 
     it('returns the zero envelope without querying when the filter is impossible', async () => {
       const { buildQueryFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
+      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true });
 
       const result = await service.getStateBreakdown(ctx);
 
       expect(mock.rpc).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
-      expect(result.data as any).toMatchObject({
-        totalCards: 0,
-        practicedCards: 0,
-        averageAccuracy: 0,
-        averageEasinessFactor: 0,
+      expect(result).toMatchObject({
+        data: expect.objectContaining({
+          totalCards: 0,
+          practicedCards: 0,
+          averageAccuracy: 0,
+          averageEasinessFactor: 0,
+        }),
       });
     });
   });
@@ -764,7 +806,7 @@ describe('FlashcardPracticeService', () => {
       expect(result.success).toBe(true);
       expect(cardQuery.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
       expect(cardQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
-      expect((result.data as any).items.map((i: any) => i.id)).toEqual(['fc-1']);
+      expect((expectSuccess(result) as CardIdPage).items.map((i) => i.id)).toEqual(['fc-1']);
     });
 
     it('returns an empty page when the filter is impossible', async () => {
@@ -851,7 +893,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getAllCardStats(ctx, { limit: 100 });
 
       expect(result.success).toBe(true);
-      const items = (result.data as any).items as any[];
+      const items = (expectSuccess(result) as CardIdPage).items;
       const byId = new Map(items.map((i) => [i.id, i]));
 
       expect(byId.get('fc-review')).toMatchObject({
@@ -902,26 +944,39 @@ describe('FlashcardPracticeService', () => {
       expect(result.success).toBe(true);
       expect(matching.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
       expect(matching.in).toHaveBeenCalledWith('deck_id', ['deck-1']);
-      const ids = (result.data as any[]).map((c) => c.id);
+      const ids = (expectSuccess(result) as Array<{ id: string }>).map((c) => c.id);
       expect(ids).toEqual(['fc-1']);
       expect(ids).not.toContain('fc-2');
     });
   });
 
   describe('pickLoadBalancedDate (SRS load balancing)', () => {
-    function lbChain(rows: Array<{ next_review_at: string }>) {
-      const c: any = {};
-      c.eq = vi.fn(() => c);
-      c.gte = vi.fn(() => c);
-      c.lt = vi.fn().mockResolvedValue({ data: rows, error: null });
+    function lbChain(rows: Array<{ next_review_at: string }>): LookupChain {
+      const c: LookupChain = {
+        eq: vi.fn(() => c),
+        gte: vi.fn(() => c),
+        lt: vi.fn().mockResolvedValue({ data: rows, error: null }),
+      };
       return c;
+    }
+
+    /** `pickLoadBalancedDate` is private; the load-balancing tests exercise it directly. */
+    function pickLoadBalancedDate(baseDate: Date, fuzzRangeDays: number): Promise<Date> {
+      const target = service as unknown as {
+        pickLoadBalancedDate(
+          ctx: RequestContext,
+          baseDate: Date,
+          fuzzRangeDays: number,
+        ): Promise<Date>;
+      };
+      return target.pickLoadBalancedDate(ctx, baseDate, fuzzRangeDays);
     }
 
     it('keeps the base date when nothing else is scheduled nearby', async () => {
       mock.from.mockReturnValue({ select: vi.fn(() => lbChain([])) });
 
       const base = new Date('2026-01-10T00:00:00.000Z');
-      const result = await (service as any).pickLoadBalancedDate(ctx, base, 2);
+      const result = await pickLoadBalancedDate(base, 2);
 
       expect(result.toISOString()).toBe(base.toISOString());
     });
@@ -935,7 +990,7 @@ describe('FlashcardPracticeService', () => {
       ];
       mock.from.mockReturnValue({ select: vi.fn(() => lbChain(rows)) });
 
-      const result = await (service as any).pickLoadBalancedDate(ctx, base, 2);
+      const result = await pickLoadBalancedDate(base, 2);
 
       expect(result.toISOString()).toBe(new Date('2026-01-09T00:00:00.000Z').toISOString());
     });

@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { TeacherAssignmentController } from '@studiq/server/controllers/teacher-assignment.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -45,7 +46,10 @@ describe('TeacherAssignmentController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new TeacherAssignmentController(mockService as any);
+    // Only the handler under test is exercised; the rest of the service is unreached.
+    controller = new TeacherAssignmentController(
+      mockService as unknown as TeacherAssignmentService,
+    );
   });
 
   describe('create', () => {
@@ -65,7 +69,7 @@ describe('TeacherAssignmentController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect('error' in response && response.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -130,7 +134,7 @@ describe('TeacherAssignmentController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect('error' in response && response.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns NOT_FOUND when service returns failure', async () => {
@@ -221,7 +225,7 @@ describe('TeacherAssignmentController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect('error' in response && response.error).toBe('UNPROCESSABLE_ENTITY');
     });
   });
 

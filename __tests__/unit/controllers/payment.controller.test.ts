@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { PaymentController } from '@studiq/server/controllers/payment.controller';
+import type { PaymentService } from '@studiq/server/services/payment.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -34,7 +35,7 @@ describe('PaymentController.listMine (#392)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new PaymentController(mockService as any);
+    controller = new PaymentController(mockService as unknown as PaymentService);
   });
 
   it('returns 200 and the caller payment history', async () => {

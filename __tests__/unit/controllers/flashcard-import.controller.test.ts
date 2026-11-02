@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardImportController } from '@studiq/server/controllers/flashcard-import.controller';
+import type { FlashcardImportService } from '@studiq/server/services/flashcard-import.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -12,7 +13,7 @@ let controller: FlashcardImportController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -25,7 +26,7 @@ describe('FlashcardImportController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardImportController(mockService as any);
+    controller = new FlashcardImportController(mockService as unknown as FlashcardImportService);
   });
 
   describe('importCsv', () => {

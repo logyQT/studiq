@@ -16,7 +16,11 @@ import type {
   PracticeSummary,
   StateBreakdown,
 } from '@studiq/server/models/flashcard-practice.model';
-import type { IntervalUnit, Rating } from '@studiq/server/models/flashcard-spaced-repetition.model';
+import type {
+  IntervalUnit,
+  LearningState,
+  Rating,
+} from '@studiq/server/models/flashcard-spaced-repetition.model';
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import type { UpdateStudySettingsInput } from '@studiq/server/models/study-settings.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -32,6 +36,27 @@ const EMPTY_STATE_BREAKDOWN: StateBreakdown = {
   practicedCards: 0,
   averageAccuracy: 0,
   averageEasinessFactor: 0,
+};
+
+/** The columns of `user_study_settings` this service reads. */
+type StudySettingsRow = {
+  learning_steps: number[];
+  new_cards_per_day: number;
+  new_cards_introduced: number;
+  daily_review_goal: number;
+  leech_threshold: number;
+  daily_reset_date: string;
+};
+
+/** The columns of `flashcard_review_state` this service reads. */
+type ReviewStateRow = {
+  learning_state: LearningState;
+  learning_step: number;
+  easiness_factor: number;
+  interval_days: number;
+  repetitions: number;
+  lapse_count: number;
+  is_leech: boolean;
 };
 
 export class FlashcardPracticeService {
@@ -79,7 +104,7 @@ export class FlashcardPracticeService {
 
     return success({
       practice,
-      reviewState: reviewStateResult.data as any,
+      reviewState: reviewStateResult.data,
     });
   }
 
@@ -112,7 +137,7 @@ export class FlashcardPracticeService {
       if (!reviewStateResult.success) return reviewStateResult;
       results.push({
         flashcardId: item.flashcardId,
-        isLeech: (reviewStateResult.data as any).is_leech,
+        isLeech: reviewStateResult.data.is_leech,
       });
     }
 
@@ -122,7 +147,7 @@ export class FlashcardPracticeService {
   private async getReviewState(
     flashcardId: string,
     ctx: RequestContext,
-  ): Promise<ServiceResult<unknown>> {
+  ): Promise<ServiceResult<ReviewStateRow | null>> {
     const supabase = await this.createClient();
 
     const { data } = await supabase
@@ -135,7 +160,7 @@ export class FlashcardPracticeService {
     return success(data);
   }
 
-  private async ensureStudySettings(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+  private async ensureStudySettings(ctx: RequestContext): Promise<ServiceResult<StudySettingsRow>> {
     const supabase = await this.createClient();
 
     const { data: existing } = await supabase
@@ -156,11 +181,11 @@ export class FlashcardPracticeService {
     return success(created);
   }
 
-  private async resetDailyIfNeeded(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+  private async resetDailyIfNeeded(ctx: RequestContext): Promise<ServiceResult<StudySettingsRow>> {
     const supabase = await this.createClient();
     const settingsResult = await this.ensureStudySettings(ctx);
     if (!settingsResult.success) return settingsResult;
-    const settings = settingsResult.data as any;
+    const settings = settingsResult.data;
 
     const today = new Date().toISOString().split('T')[0];
     if (settings.daily_reset_date < today) {
@@ -181,7 +206,7 @@ export class FlashcardPracticeService {
   async getSettings(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const settingsResult = await this.resetDailyIfNeeded(ctx);
     if (!settingsResult.success) return settingsResult;
-    const settings = settingsResult.data as any;
+    const settings = settingsResult.data;
     const budget = Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced);
     const actualNew = await this.countNewCards(ctx);
 
@@ -247,15 +272,15 @@ export class FlashcardPracticeService {
     _wasCorrect: boolean,
     confidenceLevel: number | undefined,
     ctx: RequestContext,
-  ): Promise<ServiceResult<unknown>> {
+  ): Promise<ServiceResult<ReviewStateRow>> {
     const supabase = await this.createClient();
 
     const existingResult = await this.getReviewState(flashcardId, ctx);
     if (!existingResult.success) return existingResult;
-    const existing = existingResult.data as any;
+    const existing = existingResult.data;
     const settingsResult = await this.resetDailyIfNeeded(ctx);
     if (!settingsResult.success) return settingsResult;
-    const settings = settingsResult.data as any;
+    const settings = settingsResult.data;
 
     const rating = Math.min(Math.max(confidenceLevel ?? 3, 1), 4) as Rating;
 
@@ -389,7 +414,7 @@ export class FlashcardPracticeService {
 
     const settingsResult = await this.resetDailyIfNeeded(ctx);
     if (!settingsResult.success) return settingsResult;
-    const settings = settingsResult.data as any;
+    const settings = settingsResult.data;
     const newCardLimit = Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced);
 
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_due_flashcards', {

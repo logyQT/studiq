@@ -2,37 +2,56 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import type { Notifier } from '@studiq/server/services/notification.service';
 import { QuestionReportService } from '@studiq/server/services/question-report.service';
 import { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 // #664: the services that cause a notification hand the facts to a Notifier. These tests pin
 // when they do (and when they must not), with a fake notifier instead of a database.
 
-function chain(result: any, count?: number) {
-  const resolved =
+type QueryResult = { data: unknown; error: unknown; count?: number };
+
+/** A chainable Supabase query builder stub that is also awaitable. */
+type QueryBuilder = {
+  select: Mock;
+  eq: Mock;
+  in: Mock;
+  or: Mock;
+  order: Mock;
+  filter: Mock;
+  is: Mock;
+  limit: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  upsert: Mock;
+  neq: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+} & Pick<Promise<QueryResult>, 'then'>;
+
+function chain(result: unknown, count?: number): QueryBuilder {
+  const resolved: QueryResult =
     count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
   const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: any = {};
-  for (const m of [
-    'select',
-    'eq',
-    'in',
-    'or',
-    'order',
-    'filter',
-    'is',
-    'limit',
-    'insert',
-    'update',
-    'delete',
-    'upsert',
-    'neq',
-  ]) {
-    c[m] = vi.fn(() => c);
-  }
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  const promise = Promise.resolve(resolved);
+  const c: QueryBuilder = {
+    select: vi.fn(() => c),
+    eq: vi.fn(() => c),
+    in: vi.fn(() => c),
+    or: vi.fn(() => c),
+    order: vi.fn(() => c),
+    filter: vi.fn(() => c),
+    is: vi.fn(() => c),
+    limit: vi.fn(() => c),
+    insert: vi.fn(() => c),
+    update: vi.fn(() => c),
+    delete: vi.fn(() => c),
+    upsert: vi.fn(() => c),
+    neq: vi.fn(() => c),
+    single: terminal,
+    maybeSingle: terminal,
+    then: promise.then.bind(promise),
+  };
   return c;
 }
 
@@ -69,10 +88,7 @@ describe('TeacherAssignmentService notifies students', () => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
     notifier = fakeNotifier();
-    service = new TeacherAssignmentService(
-      async () => mock as any,
-      notifier as unknown as Notifier,
-    );
+    service = new TeacherAssignmentService(async () => mock, notifier as unknown as Notifier);
   });
 
   const owned = () => chain({ id: 'a1', created_by: teacherId, organization_id: orgId });
@@ -109,8 +125,9 @@ describe('TeacherAssignmentService notifies students', () => {
   it('tells nobody when the previous status cannot be read', async () => {
     const statusRead = chain(null);
     const failure = { data: null, error: { code: 'PGRST116', message: 'no rows' } };
+    const failedRead = Promise.resolve(failure);
     statusRead.single = vi.fn().mockResolvedValue(failure);
-    statusRead.then = (onfulfilled: any) => Promise.resolve(failure).then(onfulfilled);
+    statusRead.then = failedRead.then.bind(failedRead);
     mock.from
       .mockReturnValueOnce(owned())
       .mockReturnValueOnce(chain(null, 1)) // targets
@@ -210,7 +227,7 @@ describe('QuestionReportService notifies the owner of a new report', () => {
       .mockReturnValueOnce(chain({ id: 'r-1' }))
       .mockReturnValueOnce(chain(undefined));
     const service = new QuestionReportService(
-      async () => supabase as any,
+      async () => supabase,
       notifier as unknown as Notifier,
     );
 
@@ -236,7 +253,7 @@ describe('QuestionReportService notifies the owner of a new report', () => {
       chain({ id: 'q-1', created_by: 'student-1', organization_id: orgId }),
     );
     const service = new QuestionReportService(
-      async () => supabase as any,
+      async () => supabase,
       notifier as unknown as Notifier,
     );
 
@@ -261,15 +278,18 @@ describe('QuestionReportService notifies the other participant', () => {
   };
 
   function serviceFor(sender: string, notifier: ReturnType<typeof fakeNotifier>) {
+    const supabase = mockSupabaseClient();
+    supabase.from.mockReturnValue(chain({ id: 'm1', body: 'hi', sender_id: sender }));
     const service = new QuestionReportService(
-      async () => mockSupabaseClient() as any,
+      async () => supabase,
       notifier as unknown as Notifier,
     );
     // The access check has its own tests; here the report is simply readable by the sender.
-    vi.spyOn(service as any, 'fetchAccessibleReport').mockResolvedValue(report);
-    const supabase = mockSupabaseClient();
-    supabase.from.mockReturnValue(chain({ id: 'm1', body: 'hi', sender_id: sender }));
-    (service as any).createClient = async () => supabase;
+    // It's private because callers never need it — the test seam exposes it for this stub.
+    vi.spyOn(
+      service as unknown as { fetchAccessibleReport: () => Promise<unknown> },
+      'fetchAccessibleReport',
+    ).mockResolvedValue(report);
     return service;
   }
 

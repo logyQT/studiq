@@ -2,7 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { check } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { FlashcardService } from '@studiq/server/services/flashcard.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => {
@@ -24,25 +24,61 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
-function chain(result: any, count?: number) {
-  const resolved =
+type ChainResult = { data: unknown; count?: number; error: null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  eq: Mock;
+  in: Mock;
+  or: Mock;
+  order: Mock;
+  filter: Mock;
+  limit: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  upsert: Mock;
+  then: Promise<T>['then'];
+}
+
+function chain(result: unknown, count?: number): FakeQueryBuilder<ChainResult> {
+  const resolved: ChainResult =
     count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
+  const promise = Promise.resolve(resolved);
   const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  const c: FakeQueryBuilder<ChainResult> = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    or: vi.fn(),
+    order: vi.fn(),
+    filter: vi.fn(),
+    limit: vi.fn(),
+    single: terminal,
+    maybeSingle: terminal,
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    upsert: vi.fn(),
+    then: promise.then.bind(promise),
+  };
+  for (const method of [
+    c.select,
+    c.eq,
+    c.in,
+    c.or,
+    c.order,
+    c.filter,
+    c.limit,
+    c.insert,
+    c.update,
+    c.delete,
+    c.upsert,
+  ]) {
+    method.mockImplementation(() => c);
+  }
   return c;
 }
 
@@ -59,7 +95,7 @@ describe('FlashcardService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new FlashcardService(async () => mock as any);
+  const service = new FlashcardService(async () => mock);
 
   beforeEach(() => {
     vi.clearAllMocks();

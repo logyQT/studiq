@@ -1,26 +1,45 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { decodeCursor } from '@studiq/server/lib/query-list';
 import { QuestionReportService } from '@studiq/server/services/question-report.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.or = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.ilike = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+type QueryResult = { data: unknown; error: unknown };
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  delete: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  or: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  limit: Mock<(...args: unknown[]) => QueryChain>;
+  ilike: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  then: Promise<QueryResult>['then'];
+  catch: Promise<QueryResult>['catch'];
+  finally: Promise<QueryResult>['finally'];
+};
+
+function qb(data: unknown, error: unknown = null) {
+  const promise = Promise.resolve<QueryResult>({ data: data ?? null, error });
+  const b: QueryChain = {
+    select: vi.fn(() => b),
+    insert: vi.fn(() => b),
+    update: vi.fn(() => b),
+    delete: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    or: vi.fn(() => b),
+    order: vi.fn(() => b),
+    limit: vi.fn(() => b),
+    ilike: vi.fn(() => b),
+    single: vi.fn().mockResolvedValue({ data: data ?? null, error }),
+    maybeSingle: vi.fn().mockResolvedValue({ data: data ?? null, error }),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -29,7 +48,7 @@ describe('QuestionReportService', () => {
   let service: QuestionReportService;
   const ctx: RequestContext = {
     userId: 'student-1',
-    accountType: 'student' as any,
+    accountType: AccountType.STUDENT,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -42,7 +61,7 @@ describe('QuestionReportService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new QuestionReportService(async () => mock as any);
+    service = new QuestionReportService(async () => mock);
   });
 
   describe('createReport', () => {
@@ -299,7 +318,7 @@ describe('QuestionReportService', () => {
     const managerCtx: RequestContext = {
       ...ctx,
       userId: 'manager-1',
-      accountType: 'manager' as any,
+      accountType: AccountType.MANAGER,
       activeOrgId: 'org-1',
       orgRoleId: 'role-admin',
     };
@@ -311,7 +330,7 @@ describe('QuestionReportService', () => {
       const result = await service.setStatus('r-1', { status: 'resolved' }, teacherCtx);
 
       expect(result.success).toBe(true);
-      const patch = updateQuery.update.mock.calls[0][0];
+      const patch = updateQuery.update.mock.calls[0][0] as Record<string, unknown>;
       expect(patch).toEqual(
         expect.objectContaining({ status: 'resolved', resolved_by: 'teacher-1' }),
       );
@@ -366,7 +385,7 @@ describe('QuestionReportService', () => {
       const result = await service.setStatus('r-1', { status: 'resolved' }, managerCtx);
 
       expect(result.success).toBe(true);
-      const patch = updateQuery.update.mock.calls[0][0];
+      const patch = updateQuery.update.mock.calls[0][0] as Record<string, unknown>;
       expect(patch).toEqual(
         expect.objectContaining({ status: 'resolved', resolved_by: 'manager-1' }),
       );
@@ -476,7 +495,7 @@ describe('QuestionReportService', () => {
       const result = await service.getById('r-1', {
         ...ctx,
         userId: 'manager-1',
-        accountType: 'manager' as any,
+        accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
         orgRoleId: 'role-admin',
       });
@@ -620,7 +639,7 @@ describe('QuestionReportService', () => {
     const managerCtx: RequestContext = {
       ...ctx,
       userId: 'manager-1',
-      accountType: 'manager' as any,
+      accountType: AccountType.MANAGER,
       activeOrgId: 'org-1',
       orgRoleId: 'role-admin',
     };
@@ -734,7 +753,7 @@ describe('QuestionReportService', () => {
       const listQuery = qb([]);
       mock.from.mockReturnValueOnce(listQuery);
 
-      await service.list({ ...managerCtx, accountType: 'educator' as any });
+      await service.list({ ...managerCtx, accountType: AccountType.EDUCATOR });
 
       expect(mock.from).toHaveBeenCalledTimes(1);
       expect(listQuery.eq).not.toHaveBeenCalled();

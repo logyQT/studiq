@@ -1,6 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { StatsController } from '@studiq/server/controllers/stats.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { StatsService } from '@studiq/server/services/stats.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockStatsService() {
@@ -14,7 +15,7 @@ function createMockStatsService() {
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student',
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '/test',
@@ -30,7 +31,7 @@ describe('StatsController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockStatsService();
-    controller = new StatsController(mockService as any);
+    controller = new StatsController(mockService as unknown as StatsService);
   });
 
   describe('getTeacherStats', () => {

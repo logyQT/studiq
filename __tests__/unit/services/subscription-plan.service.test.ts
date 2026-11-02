@@ -1,25 +1,60 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.neq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+type DbError = { message?: string; code?: string };
+type QueryResult<T> = { data: T | null; error: DbError | null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  eq: Mock;
+  neq: Mock;
+  in: Mock;
+  order: Mock;
+  limit: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  then: Promise<QueryResult<T>>['then'];
+  catch: Promise<QueryResult<T>>['catch'];
+  finally: Promise<QueryResult<T>>['finally'];
+}
+
+function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
+  const result: QueryResult<T> = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const b: FakeQueryBuilder<T> = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    neq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
+  for (const method of [
+    b.select,
+    b.insert,
+    b.update,
+    b.delete,
+    b.eq,
+    b.neq,
+    b.in,
+    b.order,
+    b.limit,
+  ]) {
+    method.mockImplementation(() => b);
+  }
   return b;
 }
 
@@ -28,7 +63,7 @@ describe('SubscriptionPlanService', () => {
   let service: SubscriptionPlanService;
   const ctx: RequestContext = {
     userId: 'test-user-id',
-    accountType: 'student' as any,
+    accountType: AccountType.STUDENT,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -41,7 +76,7 @@ describe('SubscriptionPlanService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new SubscriptionPlanService(async () => mock as any);
+    service = new SubscriptionPlanService(async () => mock);
   });
 
   describe('listActive', () => {
@@ -174,7 +209,7 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'educator' as any,
+        accountType: AccountType.EDUCATOR,
         activeOrgId: 'org-1',
       });
 
@@ -194,7 +229,7 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'manager' as any,
+        accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
       });
 
@@ -227,7 +262,7 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'educator' as any,
+        accountType: AccountType.EDUCATOR,
         activeOrgId: 'org-1',
       });
 
@@ -243,7 +278,7 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'manager' as any,
+        accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
       });
 
@@ -257,7 +292,7 @@ describe('SubscriptionPlanService', () => {
         subscription_plans: planRow('launch', 'manager'),
       });
 
-      const result = await service.getMyPlan({ ...ctx, accountType: 'manager' as any });
+      const result = await service.getMyPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
       expect(result.data.key).toBe('launch');
@@ -312,7 +347,7 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'manager' as any,
+        accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
       });
 
@@ -378,7 +413,7 @@ describe('SubscriptionPlanService', () => {
         .mockReturnValueOnce(qb([]))
         .mockReturnValueOnce(qb([]));
 
-      const result = await service.getPersonalPlan({ ...ctx, accountType: 'manager' as any });
+      const result = await service.getPersonalPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
       expect(result.data?.key).toBe('launch');
@@ -403,7 +438,7 @@ describe('SubscriptionPlanService', () => {
         .mockReturnValueOnce(qb([]))
         .mockReturnValueOnce(qb([]));
 
-      const result = await service.getPersonalPlan({ ...ctx, accountType: 'manager' as any });
+      const result = await service.getPersonalPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
       expect(result.data?.key).toBe('launch');

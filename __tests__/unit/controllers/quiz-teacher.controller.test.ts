@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { QuizTeacherController } from '@studiq/server/controllers/quiz-teacher.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import type { QuizTeacherService } from '@studiq/server/services/quiz-teacher.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -38,7 +39,7 @@ describe('QuizTeacherController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new QuizTeacherController(mockService as any);
+    controller = new QuizTeacherController(mockService as unknown as QuizTeacherService);
   });
 
   describe('create', () => {

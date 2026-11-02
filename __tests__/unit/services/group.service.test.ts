@@ -1,6 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { GroupService } from '@studiq/server/services/group.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
@@ -10,25 +10,43 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   },
 }));
 
-function qb(data: any, error: any = null, count?: number) {
-  const result =
+type QueryResult = { data: unknown; error: unknown; count?: number };
+
+/** A chainable Supabase query builder stub that is also awaitable. */
+type QueryBuilder = {
+  select: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  eq: Mock;
+  in: Mock;
+  order: Mock;
+  limit: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  rpc: Mock;
+} & Pick<Promise<QueryResult>, 'then' | 'catch' | 'finally'>;
+
+function qb(data: unknown, error: unknown = null, count?: number): QueryBuilder {
+  const result: QueryResult =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.rpc = vi.fn(() => b);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: QueryBuilder = {
+    select: vi.fn(() => b),
+    insert: vi.fn(() => b),
+    update: vi.fn(() => b),
+    delete: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    in: vi.fn(() => b),
+    order: vi.fn(() => b),
+    limit: vi.fn(() => b),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    rpc: vi.fn(() => b),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -37,7 +55,7 @@ describe('GroupService', () => {
   let service: GroupService;
   const ctx: RequestContext = {
     userId: 'test-user-id',
-    accountType: 'manager' as any,
+    accountType: AccountType.MANAGER,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -50,7 +68,7 @@ describe('GroupService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new GroupService(async () => mock as any);
+    service = new GroupService(async () => mock);
   });
 
   describe('listGroups', () => {
@@ -151,7 +169,7 @@ describe('GroupService', () => {
       ];
       mock.from.mockReturnValueOnce(qb(data));
 
-      const result = await service.listGroups({ ...ctx, accountType: 'educator' as any });
+      const result = await service.listGroups({ ...ctx, accountType: AccountType.EDUCATOR });
 
       expect(result.success).toBe(true);
       expect(result.data.find((g) => g.id === 'g-1')?.canManage).toBe(true);
@@ -302,7 +320,7 @@ describe('GroupService', () => {
   });
 
   describe('ownership authorization (non-manager)', () => {
-    const educatorCtx: RequestContext = { ...ctx, accountType: 'educator' as any };
+    const educatorCtx: RequestContext = { ...ctx, accountType: AccountType.EDUCATOR };
 
     it('lets an educator update a group they created', async () => {
       mock.from.mockReturnValueOnce(qb({ created_by: 'test-user-id' })); // ownership check
@@ -470,7 +488,7 @@ describe('GroupService', () => {
     });
 
     it('returns FORBIDDEN when the caller cannot manage the group', async () => {
-      const educatorCtx: RequestContext = { ...ctx, accountType: 'educator' as any };
+      const educatorCtx: RequestContext = { ...ctx, accountType: AccountType.EDUCATOR };
       mock.from.mockReturnValueOnce(qb({ created_by: 'someone-else' })); // ownership check
 
       const result = await service.listAddableMembers(educatorCtx, 'g-1');
@@ -504,7 +522,7 @@ describe('GroupService', () => {
     });
 
     it('allows an educator who created the group', async () => {
-      const educatorCtx: RequestContext = { ...ctx, accountType: 'educator' as any };
+      const educatorCtx: RequestContext = { ...ctx, accountType: AccountType.EDUCATOR };
       mock.from.mockReturnValueOnce(qb({ created_by: 'test-user-id' })); // ownership check
       mock.from.mockReturnValueOnce(qb([]));
 
@@ -515,7 +533,7 @@ describe('GroupService', () => {
     });
 
     it('returns NOT_FOUND when the group to authorize does not exist', async () => {
-      const educatorCtx: RequestContext = { ...ctx, accountType: 'educator' as any };
+      const educatorCtx: RequestContext = { ...ctx, accountType: AccountType.EDUCATOR };
       mock.from.mockReturnValueOnce(qb(null, null));
 
       const result = await service.listAddableMembers(educatorCtx, 'nonexistent');

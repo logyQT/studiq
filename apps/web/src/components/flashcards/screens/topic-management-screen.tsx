@@ -219,7 +219,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     setEditing(topic);
     setFormData({
       name: topic.name,
-      visibility: (topic as any).visibility ?? 'personal',
+      visibility: topic.visibility ?? 'personal',
       groupIds: [],
     });
     setDialogOpen(true);

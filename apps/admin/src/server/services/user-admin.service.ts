@@ -54,6 +54,15 @@ function sanitizeSearchTerm(term: string): string {
     .trim();
 }
 
+/** The slice of the PostgREST filter builder the list filters touch. Every
+ * method returns the same builder, so the caller keeps its concrete response
+ * type (`count` for the head query, the selected rows for the paged one). */
+interface FilterableQuery<T> {
+  is(column: string, value: boolean | null): T;
+  not(column: string, operator: string, value: unknown): T;
+  or(filters: string): T;
+}
+
 export class UserAdminService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -163,7 +172,7 @@ export class UserAdminService {
 
   /** Applies the list filters shared by the paged query and the count-only
    * fallback, so the two can never disagree about what "total" means. */
-  private applyListFilters(dbQuery: any, query: ListUsersQuery): any {
+  private applyListFilters<T extends FilterableQuery<T>>(dbQuery: T, query: ListUsersQuery): T {
     let filtered =
       query.status === 'deleted'
         ? dbQuery.not('deleted_at', 'is', null)
@@ -223,7 +232,7 @@ export class UserAdminService {
       return toDbFailure(error);
     }
 
-    const users = await this.enrich((profiles ?? []) as ProfileRow[], supabase);
+    const users = await this.enrich(profiles ?? [], supabase);
 
     return success({ users, total: count ?? 0, page: query.page, perPage: query.perPage });
   }

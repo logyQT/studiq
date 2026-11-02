@@ -29,6 +29,53 @@ import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
 import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/targets/route';
 
+/** One attempt as the assignment/quiz payloads summarise it. */
+type AttemptSummary = { id: string; completed_at: string | null; score: number | null };
+
+/** `POST /api/v1/assignments/:id/start` — the opened (or resumed) attempt. */
+type StartBody = {
+  data: {
+    id: string;
+    questions: Array<{ id: string; question_answers?: Array<{ id: string }> }>;
+  };
+};
+
+/** `POST /api/v1/quiz/:attemptId` — the graded attempt. */
+type SubmitBody = { data: { score: number | null } };
+
+/** `GET /api/v1/assignments/:id` — the student-facing assignment detail. */
+type DetailBody = {
+  data: {
+    show_results: boolean;
+    max_attempts: number;
+    attempts_used: number;
+    attempt: AttemptSummary;
+    last_completed_attempt: AttemptSummary;
+  };
+};
+
+/** A row of `GET /api/v1/assignments`. */
+type AssignmentRow = {
+  id: string;
+  max_attempts: number;
+  attempts_used: number;
+  last_completed_attempt: AttemptSummary;
+};
+
+/** A row of `GET /api/v1/quiz/attempts` (`QuizzesTab`). */
+type AttemptListRow = { id: string; completed_at: string | null; score: number | null };
+
+/** `GET /api/v1/quiz/:attemptId` — the review payload. */
+type ReviewBody = { data: { assignment_id: string; completed_at: string | null } };
+
+/** `GET /api/v1/stats/student`. */
+type StudentStats = {
+  totalQuizzes: number;
+  avgScore: number | null;
+  bestScore: number | null;
+  attemptsOverTime: Array<Record<string, unknown>>;
+};
+
 describe(`Assignment Attempts Integration`, () => {
   let teacher!: BeforeResult;
   let student!: BeforeResult;
@@ -38,7 +85,7 @@ describe(`Assignment Attempts Integration`, () => {
 
   async function startAs(
     user: { id: string; role: string } | null,
-  ): Promise<{ status: number; body: any }> {
+  ): Promise<{ status: number; body: StartBody }> {
     mockUser(user);
     const { request, params } = createNextRequestWithParams(
       `http://localhost/api/v1/assignments/${assignmentId}/start`,
@@ -79,12 +126,9 @@ describe(`Assignment Attempts Integration`, () => {
     if (error) throw new Error(`Failed to update show_results: ${error.message}`);
   }
 
-  async function submitAttempt(attemptBody: any): Promise<any> {
-    const attemptId = attemptBody.data.id as string;
-    const [firstQuestion] = attemptBody.data.questions as Array<{
-      id: string;
-      question_answers?: Array<{ id: string }>;
-    }>;
+  async function submitAttempt(attemptBody: StartBody): Promise<SubmitBody> {
+    const attemptId = attemptBody.data.id;
+    const [firstQuestion] = attemptBody.data.questions;
 
     mockUser(student.user);
     const { request, params } = createNextRequestWithParams(
@@ -109,7 +153,7 @@ describe(`Assignment Attempts Integration`, () => {
     return submitRes.json();
   }
 
-  async function detail(): Promise<{ status: number; body: any }> {
+  async function detail(): Promise<{ status: number; body: DetailBody }> {
     mockUser(student.user);
     const { request, params } = createNextRequestWithParams(
       `http://localhost/api/v1/assignments/${assignmentId}`,
@@ -119,16 +163,16 @@ describe(`Assignment Attempts Integration`, () => {
     return { status: response.status, body: await response.json() };
   }
 
-  async function listRow(): Promise<any> {
+  async function listRow(): Promise<AssignmentRow> {
     mockUser(student.user);
     const request = createNextRequest('http://localhost/api/v1/assignments');
     const response = await assignmentsList(request);
     const body = await response.json();
     expect(response.status).toBe(200);
-    return (body.data as any[]).find((row) => row.id === assignmentId);
+    return (body.data as AssignmentRow[]).find((row) => row.id === assignmentId)!;
   }
 
-  async function review(attemptId: string): Promise<{ status: number; body: any }> {
+  async function review(attemptId: string): Promise<{ status: number; body: ReviewBody }> {
     mockUser(student.user);
     const { request, params } = createNextRequestWithParams(
       `http://localhost/api/v1/quiz/${attemptId}`,
@@ -138,7 +182,7 @@ describe(`Assignment Attempts Integration`, () => {
     return { status: response.status, body: await response.json() };
   }
 
-  async function studentStats(): Promise<any> {
+  async function studentStats(): Promise<StudentStats> {
     mockUser(student.user);
     const response = await studentStatsGet(
       createNextRequest('http://localhost/api/v1/stats/student'),
@@ -148,11 +192,11 @@ describe(`Assignment Attempts Integration`, () => {
   }
 
   /** The rows behind `/app/stats/results` (`QuizzesTab`). */
-  async function attemptList(): Promise<any[]> {
+  async function attemptList(): Promise<AttemptListRow[]> {
     mockUser(student.user);
     const response = await attemptsGet(createNextRequest('http://localhost/api/v1/quiz/attempts'));
     expect(response.status).toBe(200);
-    return (await response.json()).data;
+    return (await response.json()).data as AttemptListRow[];
   }
 
   beforeAll(async () => {
@@ -340,11 +384,8 @@ describe(`Assignment Attempts Integration`, () => {
 
   it('a submitted attempt cannot start again when max_attempts is 1 (#369)', async () => {
     const started = await startAs(student.user);
-    const attemptId = started.body.data.id as string;
-    const [firstQuestion] = started.body.data.questions as Array<{
-      id: string;
-      question_answers?: Array<{ id: string }>;
-    }>;
+    const attemptId = started.body.data.id;
+    const [firstQuestion] = started.body.data.questions;
 
     mockUser(student.user);
     const { request, params } = createNextRequestWithParams(
@@ -390,7 +431,7 @@ describe(`Assignment Attempts Integration`, () => {
 
     const started = await startAs(student.user);
     expect(started.status).toBe(200);
-    const attempt1 = started.body.data.id as string;
+    const attempt1 = started.body.data.id;
 
     await submitAttempt(started.body);
 
@@ -418,7 +459,7 @@ describe(`Assignment Attempts Integration`, () => {
 
     const started = await startAs(student.user);
     expect(started.status).toBe(200);
-    const submittedAttemptId = started.body.data.id as string;
+    const submittedAttemptId = started.body.data.id;
     await submitAttempt(started.body);
 
     // The review page without ?attemptId falls back to this row.
@@ -452,12 +493,12 @@ describe(`Assignment Attempts Integration`, () => {
     mockUser(student.user);
 
     const started1 = await startAs(student.user);
-    const attempt1 = started1.body.data.id as string;
+    const attempt1 = started1.body.data.id;
     await submitAttempt(started1.body);
 
     const started2 = await startAs(student.user);
     expect(started2.status).toBe(200);
-    const attempt2 = started2.body.data.id as string;
+    const attempt2 = started2.body.data.id;
     expect(attempt2).not.toBe(attempt1);
     expect(await openAttemptCount()).toBe(1);
 
@@ -502,7 +543,7 @@ describe(`Assignment Attempts Integration`, () => {
 
     const started = await startAs(student.user);
     expect(started.status).toBe(200);
-    const attemptId = started.body.data.id as string;
+    const attemptId = started.body.data.id;
 
     const submitted = await submitAttempt(started.body);
     expect(submitted.data.score).toBeNull();
@@ -521,8 +562,8 @@ describe(`Assignment Attempts Integration`, () => {
     // `/app/stats/results` keeps the attempt in the history but withholds its result.
     const historyRow = (await attemptList()).find((attempt) => attempt.id === attemptId);
     expect(historyRow).toBeDefined();
-    expect(historyRow.completed_at).not.toBeNull();
-    expect(historyRow.score).toBeNull();
+    expect(historyRow?.completed_at).not.toBeNull();
+    expect(historyRow?.score).toBeNull();
 
     const hiddenReview = await review(attemptId);
     expect(hiddenReview.status).toBe(403);
@@ -540,7 +581,7 @@ describe(`Assignment Attempts Integration`, () => {
     mockUser(student.user);
 
     const started = await startAs(student.user);
-    const attemptId = started.body.data.id as string;
+    const attemptId = started.body.data.id;
     await submitAttempt(started.body);
 
     await setShowResults(true);
@@ -553,7 +594,7 @@ describe(`Assignment Attempts Integration`, () => {
     // The same history row now carries the real score.
     const historyRow = (await attemptList()).find((attempt) => attempt.id === attemptId);
     expect(historyRow).toBeDefined();
-    expect(typeof historyRow.score).toBe('number');
+    expect(typeof historyRow?.score).toBe('number');
 
     const visibleReview = await review(attemptId);
     expect(visibleReview.status).toBe(200);

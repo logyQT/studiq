@@ -1,5 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrgController } from '@studiq/server/controllers/org.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
+import type { OrgService } from '@studiq/server/services/org.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -11,7 +13,7 @@ let controller: OrgController;
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '',
@@ -20,11 +22,15 @@ const mockCtx: RequestContext = {
   permissionScopes: {},
 };
 
+function dataOf<T>(response: ControllerResponse<T>): T | undefined {
+  return response.success ? response.data : undefined;
+}
+
 describe('OrgController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new OrgController(mockService as any);
+    controller = new OrgController(mockService as unknown as OrgService);
   });
 
   describe('listOrgs', () => {
@@ -50,7 +56,7 @@ describe('OrgController', () => {
         orgId: '550e8400-e29b-41d4-a716-446655440000',
       });
       expect(response.success).toBe(true);
-      expect((response as any).data.orgId).toBe('550e8400-e29b-41d4-a716-446655440000');
+      expect(dataOf(response)).toEqual({ orgId: '550e8400-e29b-41d4-a716-446655440000' });
     });
     it('returns 422 on invalid body', async () => {
       const response = await controller.switchOrg(mockCtx, { orgId: 'not-a-uuid' });

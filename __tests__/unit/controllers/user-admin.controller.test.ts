@@ -1,4 +1,5 @@
 import { UserAdminController } from '@admin/server/controllers/user-admin.controller';
+import type { UserAdminService } from '@admin/server/services/user-admin.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -23,7 +24,7 @@ describe('UserAdminController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new UserAdminController(mockService as any);
+    controller = new UserAdminController(mockService as unknown as UserAdminService);
   });
 
   describe('list', () => {

@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { StripeController } from '@studiq/server/controllers/stripe.controller';
+import type { MockStripeService } from '@studiq/server/services/mock-stripe.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -15,7 +16,7 @@ let controller: StripeController;
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '',
@@ -35,7 +36,7 @@ describe('StripeController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new StripeController(mockService as any);
+    controller = new StripeController(mockService as unknown as MockStripeService);
   });
 
   describe('createCheckoutSession', () => {

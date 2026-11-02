@@ -19,7 +19,7 @@ describe('AuthService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new AuthService(async () => mock as any);
+    service = new AuthService(async () => mock);
   });
 
   describe('register', () => {
@@ -137,7 +137,7 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       invites = stubInvitationService();
-      service = new AuthService(async () => mock as any, invites as unknown as InvitationService);
+      service = new AuthService(async () => mock, invites as unknown as InvitationService);
     });
 
     it('leaves a plain registration untouched', async () => {
@@ -214,7 +214,7 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       invites = stubInvitationService();
-      service = new AuthService(async () => mock as any, invites as unknown as InvitationService);
+      service = new AuthService(async () => mock, invites as unknown as InvitationService);
     });
 
     it('returns null without calling the invitation service when no token was carried', async () => {

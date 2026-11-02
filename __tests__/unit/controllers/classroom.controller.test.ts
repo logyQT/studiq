@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { ClassroomController } from '@studiq/server/controllers/classroom.controller';
+import type { ClassroomService } from '@studiq/server/services/classroom.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -12,7 +13,7 @@ let controller: ClassroomController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -25,7 +26,8 @@ describe('ClassroomController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new ClassroomController(mockService as any);
+    // Only `create` is exercised; the rest of the service is never reached.
+    controller = new ClassroomController(mockService as unknown as ClassroomService);
   });
 
   describe('create', () => {

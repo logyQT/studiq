@@ -1,4 +1,5 @@
 import { HealthController } from '@studiq/server/controllers/health.controller';
+import type { HealthService } from '@studiq/server/services/health.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockHealthService() {
@@ -14,7 +15,7 @@ describe('HealthController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockHealthService();
-    controller = new HealthController(mockService as any);
+    controller = new HealthController(mockService as unknown as HealthService);
   });
 
   describe('getStatus', () => {
@@ -80,7 +81,7 @@ describe('HealthController', () => {
 
     it('returns 500 for unknown status', async () => {
       const healthStatus = {
-        status: 'unknown' as any,
+        status: 'unknown',
         timestamp: '2024-01-01T00:00:00.000Z',
         uptime: 100,
         environment: 'test',

@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardStatsController } from '@studiq/server/controllers/flashcard-stats.controller';
+import type { FlashcardStatsService } from '@studiq/server/services/flashcard-stats.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -15,7 +16,7 @@ let controller: FlashcardStatsController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'educator' as any,
+  accountType: AccountType.EDUCATOR,
   orgRoleId: null,
   activeOrgId: 'org-1',
   url: 'http://localhost',
@@ -28,7 +29,8 @@ describe('FlashcardStatsController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardStatsController(mockService as any);
+    // Only the two stats methods are exercised; nothing else is reached.
+    controller = new FlashcardStatsController(mockService as unknown as FlashcardStatsService);
   });
 
   describe('getTeacherStats', () => {

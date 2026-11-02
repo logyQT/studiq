@@ -13,6 +13,7 @@ import type {
   SaveQuizAnswersInput,
   SubmitQuizAttemptInput,
 } from '@studiq/server/models/quiz-attempt.model';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 interface DraftAnswer {
@@ -41,10 +42,30 @@ function readDraftAnswers(value: unknown): Record<string, DraftAnswer> {
   return draft;
 }
 
+/** One row of the attempt history: the list columns plus the gradable-question
+ * denominator derived from the attempt snapshot (score is withheld — `null` —
+ * for assignments whose results are hidden). */
+export type QuizAttemptListItem = Omit<
+  Pick<
+    Database['public']['Tables']['quiz_attempts']['Row'],
+    | 'id'
+    | 'user_id'
+    | 'score'
+    | 'total_questions'
+    | 'total_points'
+    | 'config'
+    | 'started_at'
+    | 'completed_at'
+    | 'assignment_id'
+    | 'graded_at'
+  >,
+  'score'
+> & { score: number | null; gradable_questions: number };
+
 export class QuizAttemptService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-  async list(ctx: RequestContext): Promise<ServiceResult<any[]>> {
+  async list(ctx: RequestContext): Promise<ServiceResult<QuizAttemptListItem[]>> {
     const supabase = await this.createClient();
 
     const { data, error } = await supabase

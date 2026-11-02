@@ -1,25 +1,46 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { StatsService } from '@studiq/server/services/stats.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null, count?: number) {
-  const result =
+type DbError = { message?: string; code?: string };
+type QueryResult<T> = { data: T | null; count?: number; error: DbError | null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  eq: Mock;
+  in: Mock;
+  is: Mock;
+  not: Mock;
+  order: Mock;
+  lte: Mock;
+  range: Mock;
+  then: Promise<QueryResult<T>>['then'];
+  catch: Promise<QueryResult<T>>['catch'];
+  finally: Promise<QueryResult<T>>['finally'];
+}
+
+function qb<T>(data: T, error: DbError | null = null, count?: number): FakeQueryBuilder<T> {
+  const result: QueryResult<T> =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.is = vi.fn(() => b);
-  b.not = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.lte = vi.fn(() => b);
-  // The gradable-question helper pages its query (PostgREST caps at 1000 rows).
-  b.range = vi.fn(() => b);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: FakeQueryBuilder<T> = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    is: vi.fn(),
+    not: vi.fn(),
+    order: vi.fn(),
+    lte: vi.fn(),
+    // The gradable-question helper pages its query (PostgREST caps at 1000 rows).
+    range: vi.fn(),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
+  for (const method of [b.select, b.eq, b.in, b.is, b.not, b.order, b.lte, b.range]) {
+    method.mockImplementation(() => b);
+  }
   return b;
 }
 
@@ -41,7 +62,7 @@ describe('StatsService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new StatsService(async () => mock as any);
+  const service = new StatsService(async () => mock);
 
   beforeEach(() => {
     vi.clearAllMocks();

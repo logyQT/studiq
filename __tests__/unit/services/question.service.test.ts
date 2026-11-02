@@ -1,6 +1,6 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { QuestionService } from '@studiq/server/services/question.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => ({
@@ -15,25 +15,45 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
-function chain(result: any, count?: number) {
-  const resolved =
+type QueryResult = { data: unknown; error: unknown; count?: number };
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  in: Mock<(...args: unknown[]) => QueryChain>;
+  or: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  filter: Mock<(...args: unknown[]) => QueryChain>;
+  limit: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  delete: Mock<(...args: unknown[]) => QueryChain>;
+  upsert: Mock<(...args: unknown[]) => QueryChain>;
+  then: Promise<QueryResult>['then'];
+};
+
+function chain(result: unknown, count?: number) {
+  const resolved: QueryResult =
     count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
+  const promise = Promise.resolve(resolved);
   const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  const c: QueryChain = {
+    select: vi.fn(() => c),
+    eq: vi.fn(() => c),
+    in: vi.fn(() => c),
+    or: vi.fn(() => c),
+    order: vi.fn(() => c),
+    filter: vi.fn(() => c),
+    limit: vi.fn(() => c),
+    single: terminal,
+    maybeSingle: terminal,
+    insert: vi.fn(() => c),
+    update: vi.fn(() => c),
+    delete: vi.fn(() => c),
+    upsert: vi.fn(() => c),
+    then: promise.then.bind(promise),
+  };
   return c;
 }
 
@@ -50,7 +70,7 @@ describe('QuestionService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new QuestionService(async () => mock as any);
+  const service = new QuestionService(async () => mock);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -216,10 +236,11 @@ describe('QuestionService', () => {
 
     it('reports a database error instead of an empty bank', async () => {
       const query = chain(null);
-      query.then = (onfulfilled: any) =>
-        Promise.resolve({ data: null, error: { code: 'XX000', message: 'boom' } }).then(
-          onfulfilled,
-        );
+      const failure = Promise.resolve<QueryResult>({
+        data: null,
+        error: { code: 'XX000', message: 'boom' },
+      });
+      query.then = failure.then.bind(failure);
       mock.from.mockReturnValue(query);
 
       const result = await service.listBankQuestions('bank-1');
@@ -429,7 +450,7 @@ describe('QuestionService', () => {
       // `.eq('organization_id', null)` would serialise to `eq.null` → 22P02 → 500, so the
       // tenant filter must be absent entirely (not merely "not null").
       expect(
-        updateChain.eq.mock.calls.filter(([column]: [string]) => column === 'organization_id'),
+        updateChain.eq.mock.calls.filter(([column]: unknown[]) => column === 'organization_id'),
       ).toEqual([]);
     });
 

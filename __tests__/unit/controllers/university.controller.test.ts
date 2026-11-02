@@ -1,8 +1,10 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrganizationController } from '@studiq/server/controllers/organization.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { AppError } from '@studiq/server/lib/errors';
 import { requireFeature } from '@studiq/server/lib/features';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { OrganizationService } from '@studiq/server/services/organization.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/features', () => ({
@@ -21,7 +23,7 @@ let controller: OrganizationController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -30,11 +32,20 @@ const mockCtx: RequestContext = {
   permissionScopes: {},
 };
 
+function dataOf<T>(response: ControllerResponse<T>): T | undefined {
+  return response.success ? response.data : undefined;
+}
+
+/** The failure branch of a controller response, so `error` / `details` are typed. */
+function failureOf(response: ControllerResponse) {
+  return response.success ? undefined : response;
+}
+
 describe('OrganizationController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new OrganizationController(mockService as any);
+    controller = new OrganizationController(mockService as unknown as OrganizationService);
   });
 
   describe('create', () => {
@@ -52,7 +63,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
-      expect((response as any).data).toEqual(university);
+      expect(dataOf(response)).toEqual(university);
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
@@ -60,7 +71,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns CONFLICT when slug already exists', async () => {
@@ -70,7 +81,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(409);
-      expect((response as any).error).toBe('CONFLICT');
+      expect(failureOf(response)?.error).toBe('CONFLICT');
     });
 
     it('returns error when service returns failure', async () => {
@@ -80,7 +91,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -96,7 +107,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(universities);
+      expect(dataOf(response)).toEqual(universities);
     });
 
     it('returns error when service returns failure', async () => {
@@ -106,7 +117,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -121,7 +132,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(university);
+      expect(dataOf(response)).toEqual(university);
     });
 
     it('returns BAD_REQUEST for invalid UUID', async () => {
@@ -129,7 +140,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
-      expect((response as any).error).toBe('BAD_REQUEST');
+      expect(failureOf(response)?.error).toBe('BAD_REQUEST');
     });
 
     it('returns NOT_FOUND when university does not exist', async () => {
@@ -139,7 +150,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(404);
-      expect((response as any).error).toBe('NOT_FOUND');
+      expect(failureOf(response)?.error).toBe('NOT_FOUND');
     });
 
     it('returns error when service returns failure', async () => {
@@ -149,7 +160,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -164,7 +175,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(updated);
+      expect(dataOf(response)).toEqual(updated);
     });
 
     it('returns BAD_REQUEST for invalid UUID', async () => {
@@ -172,7 +183,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
-      expect((response as any).error).toBe('BAD_REQUEST');
+      expect(failureOf(response)?.error).toBe('BAD_REQUEST');
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid body', async () => {
@@ -180,7 +191,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns CONFLICT when slug already exists', async () => {
@@ -190,7 +201,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(409);
-      expect((response as any).error).toBe('CONFLICT');
+      expect(failureOf(response)?.error).toBe('CONFLICT');
     });
 
     it('returns NOT_FOUND when university does not exist', async () => {
@@ -200,7 +211,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(404);
-      expect((response as any).error).toBe('NOT_FOUND');
+      expect(failureOf(response)?.error).toBe('NOT_FOUND');
     });
 
     it('returns error when service returns failure', async () => {
@@ -210,7 +221,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -288,7 +299,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ success: true });
+      expect(dataOf(response)).toEqual({ success: true });
       expect(mockService.delete).toHaveBeenCalledWith(mockCtx, validId);
     });
 
@@ -297,7 +308,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
-      expect((response as any).error).toBe('BAD_REQUEST');
+      expect(failureOf(response)?.error).toBe('BAD_REQUEST');
     });
 
     it('returns NOT_FOUND when university does not exist', async () => {
@@ -307,7 +318,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(404);
-      expect((response as any).error).toBe('NOT_FOUND');
+      expect(failureOf(response)?.error).toBe('NOT_FOUND');
     });
 
     it('returns error when service returns failure', async () => {
@@ -317,7 +328,7 @@ describe('OrganizationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 });

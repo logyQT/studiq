@@ -5,6 +5,7 @@ import {
   INVITE_MAIL_LIMIT_PER_HOUR,
   InvitationService,
 } from '@studiq/server/services/invitation.service';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
@@ -19,16 +20,42 @@ vi.mock('@studiq/server/lib/log', () => ({ log: vi.fn(), warn: vi.fn(), error: v
 // the message carries the exact link the API returns, and nothing about delivery can
 // change the row, the link or the response.
 
-function qb(data: any, error: any = null) {
-  const result = { data: data ?? null, error };
+type DbError = { message?: string; code?: string };
+type QueryResult<T> = { data: T | null; error: DbError | null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  insert: Mock;
+  eq: Mock;
+  in: Mock;
+  order: Mock;
+  limit: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  then: Promise<QueryResult<T>>['then'];
+  catch: Promise<QueryResult<T>>['catch'];
+  finally: Promise<QueryResult<T>>['finally'];
+}
+
+function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
+  const result: QueryResult<T> = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  for (const m of ['select', 'insert', 'eq', 'in', 'order', 'limit']) b[m] = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: FakeQueryBuilder<T> = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
+  for (const method of [b.select, b.insert, b.eq, b.in, b.order, b.limit]) {
+    method.mockImplementation(() => b);
+  }
   return b;
 }
 
@@ -74,8 +101,8 @@ describe('InvitationService e-mail delivery', () => {
     mailer = { sendInvitation };
     getMailer = vi.fn(() => mailer);
     service = new InvitationService(
-      async () => request as any,
-      () => admin as any,
+      async () => request as unknown as SupabaseClient,
+      () => admin as unknown as SupabaseClient,
       getMailer,
     );
   });

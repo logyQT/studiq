@@ -12,40 +12,63 @@ interface QbResult {
   count?: number | null;
 }
 
+type ChainMock = ReturnType<typeof vi.fn>;
+
+const CHAIN_METHODS = [
+  'select',
+  'order',
+  'range',
+  'not',
+  'is',
+  'lt',
+  'limit',
+  'eq',
+  'or',
+  'update',
+  'delete',
+] as const;
+
+/** The chain surface the service walks on a fake builder. */
+interface QueryBuilder {
+  select: ChainMock;
+  order: ChainMock;
+  range: ChainMock;
+  not: ChainMock;
+  is: ChainMock;
+  lt: ChainMock;
+  limit: ChainMock;
+  eq: ChainMock;
+  or: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
 /**
  * Chainable PostgREST builder stand-in. Every method returns the builder and
  * awaiting the builder resolves `{ data, error, count }`, so both
  * `.select().maybeSingle()` and `await .update().eq().select('id')` work.
  */
-function qb(result: QbResult = {}) {
+function qb(result: QbResult = {}): QueryBuilder {
   const resolved = {
     data: result.data ?? null,
     error: result.error ?? null,
     count: result.count ?? null,
   };
 
-  const builder: any = {};
-  for (const method of [
-    'select',
-    'order',
-    'range',
-    'not',
-    'is',
-    'lt',
-    'limit',
-    'eq',
-    'or',
-    'update',
-    'delete',
-  ]) {
+  const builder = {} as QueryBuilder;
+  for (const method of CHAIN_METHODS) {
     builder[method] = vi.fn(() => builder);
   }
   builder.maybeSingle = vi.fn(async () => ({ data: resolved.data, error: resolved.error }));
 
   const promise = Promise.resolve(resolved);
-  builder.then = promise.then.bind(promise);
-  builder.catch = promise.catch.bind(promise);
-  builder.finally = promise.finally.bind(promise);
+  builder.then = vi.fn(promise.then.bind(promise));
+  builder.catch = vi.fn(promise.catch.bind(promise));
+  builder.finally = vi.fn(promise.finally.bind(promise));
 
   return builder;
 }
@@ -87,7 +110,7 @@ describe('UserAdminService', () => {
     adminMock.createUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     mock.from.mockReturnValue(qb({ data: [] }));
 
-    service = new UserAdminService(async () => mock as any);
+    service = new UserAdminService(async () => mock);
   });
 
   afterEach(() => {

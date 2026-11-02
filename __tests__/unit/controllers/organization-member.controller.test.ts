@@ -1,5 +1,6 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrganizationMemberController } from '@studiq/server/controllers/organization-member.controller';
+import type { OrganizationMemberService } from '@studiq/server/services/organization-member.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/features', () => ({
@@ -19,7 +20,7 @@ let controller: OrganizationMemberController;
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'educator' as any,
+  accountType: AccountType.EDUCATOR,
   orgRoleId: null,
   activeOrgId: 'org-1',
   url: '',
@@ -32,7 +33,9 @@ describe('OrganizationMemberController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new OrganizationMemberController(mockService as any);
+    controller = new OrganizationMemberController(
+      mockService as unknown as OrganizationMemberService,
+    );
   });
 
   describe('listMembers', () => {

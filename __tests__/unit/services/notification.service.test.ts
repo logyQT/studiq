@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { NotificationController } from '@studiq/server/controllers/notification.controller';
 import { error as logError } from '@studiq/server/lib/log';
@@ -28,16 +29,49 @@ const ctx: RequestContext = {
   permissionScopes: {},
 };
 
+type ChainMock = ReturnType<typeof vi.fn>;
+
+const CHAIN_METHODS = [
+  'select',
+  'eq',
+  'in',
+  'is',
+  'order',
+  'limit',
+  'range',
+  'update',
+  'insert',
+] as const;
+
+/** The chain surface the service walks on a fake builder. */
+interface Builder {
+  select: ChainMock;
+  eq: ChainMock;
+  in: ChainMock;
+  is: ChainMock;
+  order: ChainMock;
+  limit: ChainMock;
+  range: ChainMock;
+  update: ChainMock;
+  insert: ChainMock;
+  maybeSingle: ChainMock;
+  single: ChainMock;
+  then: (onfulfilled?: (value: unknown) => unknown) => Promise<unknown>;
+}
+
+/** The service only touches `from()`; these fakes stand in for the real client. */
+const asClient = (fake: object) => fake as unknown as SupabaseClient;
+
 /** A thenable query builder that records what was chained and resolves to `result`. */
-function builder(result: Record<string, unknown> = { data: null, error: null }) {
-  const b: any = {};
-  for (const m of ['select', 'eq', 'in', 'is', 'order', 'limit', 'range', 'update', 'insert']) {
-    b[m] = vi.fn(() => b);
+function builder(result: Record<string, unknown> = { data: null, error: null }): Builder {
+  const fake = {} as Builder;
+  for (const method of CHAIN_METHODS) {
+    fake[method] = vi.fn(() => fake);
   }
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.single = b.maybeSingle;
-  b.then = (onfulfilled: any) => Promise.resolve(result).then(onfulfilled);
-  return b;
+  fake.maybeSingle = vi.fn().mockResolvedValue(result);
+  fake.single = fake.maybeSingle;
+  fake.then = (onfulfilled) => Promise.resolve(result).then(onfulfilled);
+  return fake;
 }
 
 /** A client whose `from(table)` hands out the next queued builder for that table. */
@@ -72,8 +106,8 @@ describe('NotificationService: reading', () => {
     const unread = builder({ data: null, count: 7, error: null });
     const user = client({ notifications: [list, unread] });
     const service = new NotificationService(
-      async () => user as any,
-      () => ({}) as any,
+      async () => asClient(user),
+      () => asClient({}),
     );
 
     const result = await service.list(ctx, { limit: 15, unread: false });
@@ -101,8 +135,8 @@ describe('NotificationService: reading', () => {
     const list = builder({ data: [], error: null });
     const user = client({ notifications: [list, builder({ count: 0, error: null })] });
     const service = new NotificationService(
-      async () => user as any,
-      () => ({}) as any,
+      async () => asClient(user),
+      () => asClient({}),
     );
 
     await service.list(ctx, { limit: 5, unread: true });
@@ -118,8 +152,8 @@ describe('NotificationService: reading', () => {
       ],
     });
     const service = new NotificationService(
-      async () => user as any,
-      () => ({}) as any,
+      async () => asClient(user),
+      () => asClient({}),
     );
 
     expect((await service.list(ctx, { limit: 15, unread: false })).success).toBe(false);
@@ -133,8 +167,8 @@ describe('NotificationService: marking read', () => {
     const update = builder({ data: null, error: null });
     const admin = client({ notifications: [update] });
     const service = new NotificationService(
-      async () => user as any,
-      () => admin as any,
+      async () => asClient(user),
+      () => asClient(admin),
     );
 
     const result = await service.markRead(ctx, 'n1');
@@ -151,8 +185,8 @@ describe('NotificationService: marking read', () => {
     const user = client({ notifications: [builder({ data: null, error: null })] });
     const admin = client({});
     const service = new NotificationService(
-      async () => user as any,
-      () => admin as any,
+      async () => asClient(user),
+      () => asClient(admin),
     );
 
     const result = await service.markRead(ctx, 'not-mine');
@@ -165,8 +199,8 @@ describe('NotificationService: marking read', () => {
     const update = builder({ data: null, error: null });
     const admin = client({ notifications: [update] });
     const service = new NotificationService(
-      async () => ({}) as any,
-      () => admin as any,
+      async () => asClient({}),
+      () => asClient(admin),
     );
 
     const result = await service.markAllRead(ctx);
@@ -188,8 +222,8 @@ describe('NotificationService: producers', () => {
     return {
       admin,
       service: new NotificationService(
-        async () => ({}) as any,
-        () => admin as any,
+        async () => asClient({}),
+        () => asClient(admin),
       ),
     };
   }
@@ -535,7 +569,7 @@ describe('notification schemas', () => {
 
 describe('NotificationController', () => {
   const notifications = { list: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn() };
-  const controller = new NotificationController(notifications as any);
+  const controller = new NotificationController(notifications as unknown as NotificationService);
 
   beforeEach(() => vi.clearAllMocks());
 

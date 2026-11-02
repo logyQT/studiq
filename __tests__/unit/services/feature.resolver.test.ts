@@ -55,7 +55,7 @@ describe('FeatureResolver', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    resolver = new FeatureResolver(async () => mock as any);
+    resolver = new FeatureResolver(async () => mock);
   });
 
   describe('precedence chain', () => {

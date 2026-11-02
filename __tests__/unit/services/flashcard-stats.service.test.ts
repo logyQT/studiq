@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardStatsService } from '@studiq/server/services/flashcard-stats.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -8,25 +8,53 @@ vi.mock('@studiq/server/lib/authz', () => ({
   Permission: { FLASHCARD_READ: 'flashcard.read' },
 }));
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.or = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.not = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.rpc = vi.fn(() => b);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
-  return b;
+type ChainMock = ReturnType<typeof vi.fn>;
+
+/** A thenable PostgREST builder stand-in: every chain method returns itself. */
+interface QueryBuilder {
+  select: ChainMock;
+  insert: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  eq: ChainMock;
+  or: ChainMock;
+  in: ChainMock;
+  not: ChainMock;
+  order: ChainMock;
+  rpc: ChainMock;
+  single: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
+const CHAIN_METHODS = [
+  'select',
+  'insert',
+  'update',
+  'delete',
+  'eq',
+  'or',
+  'in',
+  'not',
+  'order',
+  'rpc',
+] as const;
+
+function qb(data: unknown, error: unknown = null): QueryBuilder {
+  const result = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const builder = {} as QueryBuilder;
+  for (const method of CHAIN_METHODS) {
+    builder[method] = vi.fn(() => builder);
+  }
+  builder.single = vi.fn().mockResolvedValue(result);
+  builder.maybeSingle = vi.fn().mockResolvedValue(result);
+  builder.then = vi.fn(promise.then.bind(promise));
+  builder.catch = vi.fn(promise.catch.bind(promise));
+  builder.finally = vi.fn(promise.finally.bind(promise));
+  return builder;
 }
 
 const emptyRpcResult = {
@@ -49,7 +77,7 @@ describe('FlashcardStatsService', () => {
   let service: FlashcardStatsService;
   const ctx: RequestContext = {
     userId: 'teacher-1',
-    accountType: 'educator' as any,
+    accountType: AccountType.EDUCATOR,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -62,13 +90,13 @@ describe('FlashcardStatsService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new FlashcardStatsService(async () => mock as any);
+    service = new FlashcardStatsService(async () => mock);
   });
 
   describe('getTeacherStats', () => {
     it('returns empty without calling the RPC when filter is impossible', async () => {
       const { accessibleFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true } as any);
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true });
 
       const result = await service.getTeacherStats(ctx);
 
@@ -194,7 +222,7 @@ describe('FlashcardStatsService', () => {
   describe('getDifficultyCards', () => {
     it('returns empty when filter is impossible', async () => {
       const { accessibleFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true } as any);
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true });
 
       const result = await service.getDifficultyCards(ctx, 'easy');
 
