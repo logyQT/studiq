@@ -29,9 +29,12 @@ ignorePatterns = ["**/*.jsonc", ".agents/skills/**", "eslint-suppressions.json"]
 # Type-aware rules use Bun's built-in type checker (`bun check`) — no
 # `typescript` package needed. Each file is checked with its nearest tsconfig.
 typeAware = true
-# While the baseline in `eslint-suppressions.json` is being burned down, a
-# suppression that no longer matches (because the bug was fixed) must not fail
-# the run. Run `bun lint --prune-suppressions` to drop the stale entries.
+# The baseline is empty and every warning has been fixed; a new warning now
+# fails the run just like an error.
+maxWarnings = 0
+# While `eslint-suppressions.json` is being burned down, a suppression that no
+# longer matches (because the bug was fixed) must not fail the run. Run
+# `bun lint --prune-suppressions` to drop stale entries.
 passOnUnprunedSuppressions = true
 
 [lint.categories]
