@@ -1,21 +1,27 @@
 import { AppError } from '@studiq/server/lib/errors';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { AuthService } from '@studiq/server/services/auth.service';
-import type { InvitationService } from '@studiq/server/services/invitation.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { InvitationService } from '@studiq/server/services/invitation.service';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
+/** Only these two invitation methods are reached; the client factory stays unused. */
 function stubInvitationService() {
-  return {
+  return Object.assign(new InvitationService(() => Promise.reject(new Error('unused'))), {
     getInvitationByToken: vi.fn(),
     acceptInvitationForUser: vi.fn(),
-  };
+  });
 }
 
 const now = () => Math.floor(Date.now() / 1000);
 
 describe('AuthService', () => {
-  let mock: ReturnType<typeof mockSupabaseClient>;
+  // `signUp` carries its argument type so the metadata assertions stay typed.
+  let mock: ReturnType<typeof mockSupabaseClient> & {
+    auth: ReturnType<typeof mockSupabaseClient>['auth'] & {
+      signUp: Mock<(args: { options: { data: Record<string, unknown> } }) => Promise<unknown>>;
+    };
+  };
   let service: AuthService;
 
   beforeEach(() => {
@@ -139,10 +145,7 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       invites = stubInvitationService();
-      service = new AuthService(
-        () => Promise.resolve(mock),
-        invites as unknown as InvitationService,
-      );
+      service = new AuthService(() => Promise.resolve(mock), invites);
     });
 
     it('leaves a plain registration untouched', async () => {
@@ -219,10 +222,7 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       invites = stubInvitationService();
-      service = new AuthService(
-        () => Promise.resolve(mock),
-        invites as unknown as InvitationService,
-      );
+      service = new AuthService(() => Promise.resolve(mock), invites);
     });
 
     it('returns null without calling the invitation service when no token was carried', async () => {

@@ -33,7 +33,10 @@ vi.mock('@opentelemetry/api', async (importOriginal) => {
   };
 });
 
-const { logWarn, logError } = vi.hoisted(() => ({ logWarn: vi.fn(), logError: vi.fn() }));
+const { logWarn, logError } = vi.hoisted(() => ({
+  logWarn: vi.fn<(message: string, attributes?: Record<string, unknown>) => void>(),
+  logError: vi.fn<(message: string, attributes?: Record<string, unknown>) => void>(),
+}));
 
 vi.mock('@studiq/server/lib/log', () => ({ log: vi.fn(), warn: logWarn, error: logError }));
 
@@ -157,8 +160,8 @@ describe('withPublicTracing — public request observability (#301)', () => {
       expect(JSON.stringify(call)).not.toContain('SUPERSECRET');
     }
 
-    const [, loggedAttributes] = logWarn.mock.calls[0] as [string, Record<string, unknown>];
-    expect(loggedAttributes['http.url']).toContain('token_hash=%5BREDACTED%5D');
+    const [, loggedAttributes] = logWarn.mock.calls[0];
+    expect(loggedAttributes?.['http.url']).toContain('token_hash=%5BREDACTED%5D');
     expect(JSON.stringify(logWarn.mock.calls)).not.toContain('SUPERSECRET');
 
     expect(spanSpy.setAttribute).toHaveBeenCalledWith('http.status_code', 401);

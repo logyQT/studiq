@@ -1,12 +1,9 @@
 import type { RequestContext } from '@studiq/authz';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  useRealSupabase,
-  cleanupOrganizationDeep,
-  createServiceClient,
-} from '#test/integration/helpers';
+import { useRealSupabase, cleanupOrganizationDeep } from '#test/integration/helpers';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -23,7 +20,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 describe(`OrgRoleService.setPermissions org scope`, () => {
   const tag = `${suiteId}-${Date.now()}`;
 
-  let service: SupabaseClient;
+  let service: SupabaseClient<Database>;
   let orgA: string;
   let orgB: string;
   let orgARoleId: string; // caller's role in org A (verified membership)
@@ -77,7 +74,12 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   }
 
   beforeAll(async () => {
-    service = createServiceClient();
+    // Database-typed: `OrgRoleService` takes a factory that hands back the typed client.
+    service = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } },
+    );
 
     orgA = await createOrg(`orgscope-a-${tag}`);
     orgB = await createOrg(`orgscope-b-${tag}`);

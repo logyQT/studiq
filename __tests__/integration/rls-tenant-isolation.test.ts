@@ -1,13 +1,15 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { invitationService } from '@studiq/server/services/invitation.service';
+import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { asJson } from '#test/helpers/json';
 import {
   cleanupOrganizationDeep,
-  createServiceClient,
   seedOrganization,
   seedOrgMembership,
 } from '#test/integration/helpers';
+import { createTypedServiceClient } from '#test/integration/test-utils';
 
 // Regression tests for issue #191 / SEC-13.
 //
@@ -30,17 +32,38 @@ const PUBLIC_TABLES = ['plan_features', 'plan_limits', 'subscription_plans'];
 
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-function newClient(): SupabaseClient {
-  return createClient(url, anonKey, {
+function newClient(): SupabaseClient<Database> {
+  return createClient<Database>(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
 
-async function signIn(email: string): Promise<SupabaseClient> {
+/**
+ * The table × column probe loops below pass table/column names as variables,
+ * while the schema-typed client only accepts literal table names. This keeps
+ * the same (signed-in) client and erases the schema: those loops only assert
+ * the error and the row count, never individual columns.
+ */
+function dynamicTableClient(
+  client: SupabaseClient<Database>,
+): SupabaseClient<never, 'public', 'public'> {
+  return client;
+}
+
+async function signIn(email: string): Promise<SupabaseClient<Database>> {
   const client = newClient();
   const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
   if (error) throw new Error(`signIn failed for ${email}: ${error.message}`);
   return client;
+}
+
+/** `seedOrganization()` result, whose rows are untyped in helpers.ts. */
+interface SeededOrg {
+  org: { id: string; name: string };
+  adminRoleId: string;
+  teacherRoleId: string;
+  memberRoleId: string;
+  defaultGroupId: string;
 }
 
 interface OrgBundle {
@@ -78,7 +101,7 @@ function acceptCtx(userId: string): RequestContext {
 }
 
 describe('RLS tenant isolation (#191)', () => {
-  const service = createServiceClient();
+  const service = createTypedServiceClient();
 
   let orgA: OrgBundle;
   let orgB: OrgBundle;
@@ -92,11 +115,11 @@ describe('RLS tenant isolation (#191)', () => {
   let invitee2Id: string;
   let lonerId: string;
 
-  let adminSession: SupabaseClient;
-  let teacherSession: SupabaseClient;
-  let studentSession: SupabaseClient;
-  let outsiderSession: SupabaseClient;
-  let lonerSession: SupabaseClient;
+  let adminSession: SupabaseClient<Database>;
+  let teacherSession: SupabaseClient<Database>;
+  let studentSession: SupabaseClient<Database>;
+  let outsiderSession: SupabaseClient<Database>;
+  let lonerSession: SupabaseClient<Database>;
 
   async function createUser(email: string, accountType: string, label: string): Promise<string> {
     const { data, error } = await service.auth.admin.createUser({
@@ -117,7 +140,7 @@ describe('RLS tenant isolation (#191)', () => {
     /** When set, also seed a report between this third party and the teacher. */
     peerId?: string;
   }): Promise<OrgBundle> {
-    const seeded = await seedOrganization(`${data.name}-${tag}`);
+    const seeded = asJson<SeededOrg>(await seedOrganization(`${data.name}-${tag}`));
 
     const { data: bank, error: bankError } = await service
       .from('question_banks')
@@ -415,14 +438,7 @@ describe('RLS tenant isolation (#191)', () => {
     const { data, error } = await rlsAudit();
     expect(error).toBeNull();
 
-    const rows = (data ?? []) as Array<{
-      table_name: string;
-      rls_enabled: boolean;
-      anon_select: boolean;
-      anon_insert: boolean;
-      authenticated_update: boolean;
-      authenticated_truncate: boolean;
-    }>;
+    const rows = data ?? [];
 
     expect(rows.length).toBeGreaterThan(40);
     expect(rows.filter((r) => !r.rls_enabled).map((r) => r.table_name)).toEqual([]);
@@ -445,7 +461,7 @@ describe('RLS tenant isolation (#191)', () => {
       'teacher_assignments',
       'organizations',
     ]) {
-      const { data, error } = await studentSession.from(table).select('id');
+      const { data, error } = await dynamicTableClient(studentSession).from(table).select('id');
       expect(error, `${table} read failed`).toBeNull();
       expect(data?.length, `${table} returned no rows for a member`).toBeGreaterThan(0);
     }
@@ -466,7 +482,7 @@ describe('RLS tenant isolation (#191)', () => {
     const { data: orgReport, error: orgReportError } = await studentSession
       .from('question_reports')
       .select('id')
-      .eq('id', orgA.peerReportId);
+      .eq('id', orgA.peerReportId!);
     expect(orgReportError, 'question_reports read failed').toBeNull();
     expect(
       orgReport?.map((r) => r.id),
@@ -490,7 +506,10 @@ describe('RLS tenant isolation (#191)', () => {
     ];
 
     for (const [table, column, value] of checks) {
-      const { data, error } = await teacherSession.from(table).select('*').eq(column, value);
+      const { data, error } = await dynamicTableClient(teacherSession)
+        .from(table)
+        .select('*')
+        .eq(column, value);
       expect(error, `${table} read failed`).toBeNull();
       expect(data?.length, `teacher cannot read ${table} of a same-org student`).toBeGreaterThan(0);
     }
@@ -551,7 +570,7 @@ describe('RLS tenant isolation (#191)', () => {
     ];
 
     for (const [table, filter] of reads) {
-      let query = studentSession.from(table).select('*');
+      let query = dynamicTableClient(studentSession).from(table).select('*');
       for (const [column, value] of Object.entries(filter)) {
         query = query.eq(column, value);
       }
@@ -766,7 +785,7 @@ describe('RLS tenant isolation (#191)', () => {
     const { data: retargeted, error: retargetError } = await studentSession
       .from('invitations')
       .update({ target_org_role_id: orgA.adminRoleId })
-      .eq('id', teacherInvite?.id as string)
+      .eq('id', teacherInvite!.id)
       .select('id');
     expect(retargetError).toBeNull();
     expect(retargeted).toEqual([]);
@@ -775,7 +794,7 @@ describe('RLS tenant isolation (#191)', () => {
     const { data: deleted, error: deleteError } = await studentSession
       .from('invitations')
       .delete()
-      .eq('id', managerInvite?.id as string)
+      .eq('id', managerInvite!.id)
       .select('id');
     expect(deleteError).toBeNull();
     expect(deleted).toEqual([]);
@@ -796,10 +815,7 @@ describe('RLS tenant isolation (#191)', () => {
       .single();
     expect(error).toBeNull();
 
-    const accepted = await invitationService.acceptInvitation(
-      acceptCtx(invitee1Id),
-      invite?.token as string,
-    );
+    const accepted = await invitationService.acceptInvitation(acceptCtx(invitee1Id), invite!.token);
     expect(accepted.success).toBe(true);
 
     let { data: membership } = await service
@@ -820,7 +836,7 @@ describe('RLS tenant isolation (#191)', () => {
 
     const reaccepted = await invitationService.acceptInvitation(
       acceptCtx(invitee1Id),
-      invite?.token as string,
+      invite!.token,
     );
     expect(reaccepted.success).toBe(false);
     expect(reaccepted.error).toBe('GONE');
@@ -855,10 +871,7 @@ describe('RLS tenant isolation (#191)', () => {
       .eq('organization_id', orgA.orgId)
       .eq('user_id', adminId);
 
-    const result = await invitationService.acceptInvitation(
-      acceptCtx(invitee2Id),
-      invite?.token as string,
-    );
+    const result = await invitationService.acceptInvitation(acceptCtx(invitee2Id), invite!.token);
     expect(result.success).toBe(false);
     expect(result.error).toBe('GONE');
 
@@ -923,7 +936,7 @@ describe('RLS tenant isolation (#191)', () => {
     // Self-service premium seat through PostgREST is impossible.
     const { error: assignError } = await studentSession.from('org_seat_assignments').insert({
       organization_id: orgA.orgId,
-      pool_id: pool?.id as string,
+      pool_id: pool!.id,
       user_id: studentId,
     });
     expect(assignError?.code).toBe('42501');
@@ -940,7 +953,7 @@ describe('RLS tenant isolation (#191)', () => {
     // (getSeatPlanKey runs on the user session for every feature/limit check).
     await service.from('org_seat_assignments').insert({
       organization_id: orgA.orgId,
-      pool_id: pool?.id as string,
+      pool_id: pool!.id,
       user_id: studentId,
     });
 
@@ -1007,7 +1020,7 @@ describe('RLS tenant isolation (#191)', () => {
       .single();
 
     const { error: selfJoinError } = await studentSession.from('group_members').insert({
-      group_id: group?.id as string,
+      group_id: group!.id,
       user_id: studentId,
       role: 'member',
     });
@@ -1015,7 +1028,7 @@ describe('RLS tenant isolation (#191)', () => {
 
     // Teachers hold group.manage and still manage rosters.
     const { error: teacherGroupError } = await teacherSession.from('group_members').insert({
-      group_id: group?.id as string,
+      group_id: group!.id,
       user_id: studentId,
       role: 'member',
     });
@@ -1064,7 +1077,7 @@ describe('RLS tenant isolation (#191)', () => {
     const { count: roleFeatureCount } = await service
       .from('org_role_features')
       .select('id', { count: 'exact', head: true })
-      .eq('org_role_id', customRole?.id as string);
+      .eq('org_role_id', customRole!.id);
     expect(roleFeatureCount).toBe(0);
 
     const seatedCustomId = await createUser(seatedEmail, 'student', 'seated-custom');
@@ -1075,7 +1088,7 @@ describe('RLS tenant isolation (#191)', () => {
         await seedOrgMembership({
           organizationId: orgA.orgId,
           userId,
-          orgRoleId: customRole?.id as string,
+          orgRoleId: customRole!.id,
         });
       }
 
@@ -1088,7 +1101,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { error: seatError } = await service.from('org_seat_assignments').insert({
         organization_id: orgA.orgId,
-        pool_id: pool?.id as string,
+        pool_id: pool!.id,
         user_id: seatedCustomId,
       });
       expect(seatError).toBeNull();
@@ -1145,7 +1158,7 @@ describe('RLS tenant isolation (#191)', () => {
       // ...and so does writing a seat assignment.
       const { error: selfSeatError } = await seatedSession.from('org_seat_assignments').insert({
         organization_id: orgA.orgId,
-        pool_id: pool?.id as string,
+        pool_id: pool!.id,
         user_id: seatedCustomId,
       });
       expect(selfSeatError?.code).toBe('42501');
@@ -1159,10 +1172,7 @@ describe('RLS tenant isolation (#191)', () => {
       await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
       await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
       await service.from('org_members').delete().in('user_id', [seatedCustomId, unseatedCustomId]);
-      await service
-        .from('org_roles')
-        .delete()
-        .eq('id', customRole?.id as string);
+      await service.from('org_roles').delete().eq('id', customRole!.id);
       for (const userId of [seatedCustomId, unseatedCustomId]) {
         await service.auth.admin.deleteUser(userId).catch(() => {});
       }
@@ -1205,7 +1215,7 @@ describe('RLS tenant isolation (#191)', () => {
         await seedOrgMembership({
           organizationId: orgA.orgId,
           userId,
-          orgRoleId: customRole?.id as string,
+          orgRoleId: customRole!.id,
         });
       }
 
@@ -1218,7 +1228,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { error: assignmentError } = await service.from('org_seat_assignments').insert({
         organization_id: orgA.orgId,
-        pool_id: pool?.id as string,
+        pool_id: pool!.id,
         user_id: seatedId,
       });
       expect(assignmentError).toBeNull();
@@ -1258,7 +1268,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       // Same policy: no self-join into an existing org group.
       const { error: groupMemberError } = await seatedSession.from('group_members').insert({
-        group_id: group?.id as string,
+        group_id: group!.id,
         user_id: seatedId,
         role: 'member',
       });
@@ -1302,10 +1312,7 @@ describe('RLS tenant isolation (#191)', () => {
       await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
       await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
       await service.from('org_members').delete().in('user_id', [seatedId, controlId]);
-      await service
-        .from('org_roles')
-        .delete()
-        .eq('id', customRole?.id as string);
+      await service.from('org_roles').delete().eq('id', customRole!.id);
       for (const userId of [seatedId, controlId]) {
         await service.auth.admin.deleteUser(userId).catch(() => {});
       }
@@ -1330,7 +1337,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { error: assignmentError } = await service.from('org_seat_assignments').insert({
         organization_id: orgA.orgId,
-        pool_id: pool?.id as string,
+        pool_id: pool!.id,
         user_id: orphanId,
       });
       expect(assignmentError).toBeNull();
@@ -1381,7 +1388,7 @@ describe('RLS tenant isolation (#191)', () => {
       const { data: poolAfter } = await service
         .from('org_seat_pools')
         .select('assigned')
-        .eq('id', pool?.id as string)
+        .eq('id', pool!.id)
         .single();
       expect(poolAfter?.assigned).toBe(0);
     } finally {
@@ -1416,15 +1423,34 @@ describe('RLS tenant isolation (#191)', () => {
   });
 
   it('internal role-authority RPCs are service-role only, RLS wrappers work (function ACL)', async () => {
-    for (const [fn, args] of [
+    for (const [fn, invoke] of [
       [
         'has_org_feature',
-        { p_actor: studentId, p_organization_id: orgA.orgId, p_feature: 'member.manage' },
+        () =>
+          studentSession.rpc('has_org_feature', {
+            p_actor: studentId,
+            p_organization_id: orgA.orgId,
+            p_feature: 'member.manage',
+          }),
       ],
-      ['is_org_manager', { p_actor: studentId, p_organization_id: orgA.orgId }],
-      ['can_assign_org_role', { p_actor: studentId, p_role_id: orgA.adminRoleId }],
+      [
+        'is_org_manager',
+        () =>
+          studentSession.rpc('is_org_manager', {
+            p_actor: studentId,
+            p_organization_id: orgA.orgId,
+          }),
+      ],
+      [
+        'can_assign_org_role',
+        () =>
+          studentSession.rpc('can_assign_org_role', {
+            p_actor: studentId,
+            p_role_id: orgA.adminRoleId,
+          }),
+      ],
     ] as const) {
-      const { data, error } = await studentSession.rpc(fn as never, args as never);
+      const { data, error } = await invoke();
       expect(error?.code, `${fn} must not be executable by authenticated`).toBe('42501');
       expect(data).toBeNull();
     }
@@ -1478,7 +1504,7 @@ describe('RLS tenant isolation (#191)', () => {
       .from('flashcards')
       .insert({
         created_by: lonerId,
-        deck_id: deck?.id as string,
+        deck_id: deck!.id,
         front: `rls191-loner-front-${tag}`,
         back: `rls191-loner-back-${tag}`,
         visibility: 'personal',
@@ -1489,7 +1515,7 @@ describe('RLS tenant isolation (#191)', () => {
 
     const { error: reviewError } = await lonerSession
       .from('flashcard_review_state')
-      .insert({ user_id: lonerId, flashcard_id: card?.id as string });
+      .insert({ user_id: lonerId, flashcard_id: card!.id });
     expect(reviewError).toBeNull();
 
     const { error: settingsError } = await lonerSession
@@ -1527,8 +1553,9 @@ describe('RLS tenant isolation (#191)', () => {
       p_user_id: studentId,
     });
     expect(statsError).toBeNull();
-    const summary = (stats as { summary?: { totalPractices?: number; totalFlashcards?: number } })
-      .summary;
+    const summary = asJson<{ summary?: { totalPractices?: number; totalFlashcards?: number } }>(
+      stats,
+    ).summary;
     expect(summary?.totalFlashcards).toBe(0);
     expect(summary?.totalPractices).toBe(0);
   });

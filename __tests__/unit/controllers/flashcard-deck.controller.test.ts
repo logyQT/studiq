@@ -2,18 +2,20 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardDeckController } from '@studiq/server/controllers/flashcard-deck.controller';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
-import type { FlashcardDeckService } from '@studiq/server/services/flashcard-deck.service';
+import { FlashcardDeckService } from '@studiq/server/services/flashcard-deck.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new FlashcardDeckService(() => Promise.reject(new Error('unused'))), {
     create: vi.fn(),
     list: vi.fn(),
     getById: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
     bulkCreate: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -44,7 +46,7 @@ describe('FlashcardDeckController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardDeckController(mockService as unknown as FlashcardDeckService);
+    controller = new FlashcardDeckController(mockService);
   });
 
   describe('create', () => {

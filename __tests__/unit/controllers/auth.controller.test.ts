@@ -4,6 +4,7 @@ import { failure, success } from '@studiq/server/lib/service-result';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type { AuthService } from '@studiq/server/services/auth.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 type FailureResponse = Extract<ControllerResponse, { success: false }>;
 
@@ -39,7 +40,7 @@ describe('AuthController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockAuthService();
-    controller = new AuthController(mockService as unknown as AuthService);
+    controller = new AuthController(asService<AuthService>(mockService));
   });
 
   describe('register', () => {

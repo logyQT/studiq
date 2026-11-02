@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardExportController } from '@studiq/server/controllers/flashcard-export.controller';
 import type { FlashcardExportService } from '@studiq/server/services/flashcard-export.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return { exportCsv: vi.fn() };
@@ -26,7 +27,7 @@ describe('FlashcardExportController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardExportController(mockService as unknown as FlashcardExportService);
+    controller = new FlashcardExportController(asService<FlashcardExportService>(mockService));
   });
 
   describe('exportCsv', () => {

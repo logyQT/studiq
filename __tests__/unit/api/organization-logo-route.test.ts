@@ -1,18 +1,18 @@
 import { AppError } from '@studiq/server/lib/errors';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ORG_ID = '00000000-0000-4000-8000-000000000001';
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const LOGO_URL = `https://storage.test/org-logos/${ORG_ID}/logo.png`;
 
-const uploadToBucketMock = vi.fn();
+const uploadToBucketMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/services/storage.service', () => ({
   storageService: { uploadToBucket: (...args: unknown[]) => uploadToBucketMock(...args) },
 }));
 
-const updateMock = vi.fn();
-const getByIdMock = vi.fn();
+const updateMock = vi.fn<(...args: unknown[]) => unknown>();
+const getByIdMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/controllers/organization.controller', () => ({
   organizationController: {
     update: (...args: unknown[]) => updateMock(...args),
@@ -20,7 +20,7 @@ vi.mock('@studiq/server/controllers/organization.controller', () => ({
   },
 }));
 
-const requireFeatureMock = vi.fn();
+const requireFeatureMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/lib/features', () => ({
   requireFeature: (...args: unknown[]) => requireFeatureMock(...args),
 }));
@@ -38,7 +38,13 @@ const { POST } = await import('@/app/(backend)/api/v1/organization/[id]/logo/rou
 // client/validation error (422/413/400) with `x-error-code`, never a bare
 // 500 INTERNAL_SERVER. The 500 is reserved for real server faults.
 function fakeRequest(formData: () => Promise<FormData>): NextRequest {
-  return { formData } as unknown as NextRequest;
+  // The route only reads `formData()`; the rest of the request is a real one.
+  return Object.assign(
+    new NextRequest('http://localhost/api/v1/organization/logo', { method: 'POST' }),
+    {
+      formData,
+    },
+  );
 }
 
 function context(id = ORG_ID) {

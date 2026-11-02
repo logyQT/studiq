@@ -2,11 +2,13 @@ import type { RequestContext } from '@studiq/authz';
 import { QuizTeacherController } from '@studiq/server/controllers/quiz-teacher.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
-import type { QuizTeacherService } from '@studiq/server/services/quiz-teacher.service';
+import { QuizTeacherService } from '@studiq/server/services/quiz-teacher.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new QuizTeacherService(() => Promise.reject(new Error('unused'))), {
     create: vi.fn(),
     list: vi.fn(),
     getById: vi.fn(),
@@ -17,7 +19,7 @@ function createMockService() {
     removeQuestion: vi.fn(),
     reorderQuestions: vi.fn(),
     createAssignment: vi.fn(),
-  };
+  });
 }
 
 const mockCtx: RequestContext = {
@@ -39,7 +41,7 @@ describe('QuizTeacherController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new QuizTeacherController(mockService as unknown as QuizTeacherService);
+    controller = new QuizTeacherController(mockService);
   });
 
   describe('create', () => {

@@ -59,16 +59,27 @@ function qb(result: QbResult = {}): QueryBuilder {
     count: result.count ?? null,
   };
 
-  const builder = {} as QueryBuilder;
-  for (const method of CHAIN_METHODS) {
-    builder[method] = vi.fn(() => builder);
-  }
-  builder.maybeSingle = vi.fn(() => ({ data: resolved.data, error: resolved.error }));
-
   const promise = Promise.resolve(resolved);
-  builder.then = vi.fn(promise.then.bind(promise));
-  builder.catch = vi.fn(promise.catch.bind(promise));
-  builder.finally = vi.fn(promise.finally.bind(promise));
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    order: vi.fn(),
+    range: vi.fn(),
+    not: vi.fn(),
+    is: vi.fn(),
+    lt: vi.fn(),
+    limit: vi.fn(),
+    eq: vi.fn(),
+    or: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    maybeSingle: vi.fn(() => ({ data: resolved.data, error: resolved.error })),
+    then: vi.fn(promise.then.bind(promise)),
+    catch: vi.fn(promise.catch.bind(promise)),
+    finally: vi.fn(promise.finally.bind(promise)),
+  };
+  for (const method of CHAIN_METHODS) {
+    builder[method].mockReturnValue(builder);
+  }
 
   return builder;
 }
@@ -286,7 +297,7 @@ describe('UserAdminService', () => {
       expect(purgeAt).toBeGreaterThan(before + 29 * DAY_MS);
       expect(purgeAt).toBeLessThan(before + 31 * DAY_MS);
       expect(update.update).toHaveBeenCalledWith({
-        deleted_at: expect.any(String),
+        deleted_at: expect.any(String) as unknown,
         purge_at: result.data.purgeAt,
       });
     });

@@ -1,9 +1,15 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import type { LimitKey } from '@studiq/server/services/limit.catalog';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
+
+/** A key outside the catalogue: the resolver must fail closed instead of trusting it. */
+function unlistedLimitKey(key: string): LimitKey {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the runtime contract is wider than LimitKey; feeding it an unlisted key is the point of the test
+  return key as LimitKey;
+}
 
 function chain(result: unknown) {
   const resolved = { data: result, error: null };
@@ -425,7 +431,10 @@ describe('LimitsResolver', () => {
     });
 
     it('returns 0 for an unknown limit key (fail closed)', async () => {
-      const limit = await resolver.getEffectiveLimit(baseCtx, 'nonexistent_limit' as LimitKey);
+      const limit = await resolver.getEffectiveLimit(
+        baseCtx,
+        unlistedLimitKey('nonexistent_limit'),
+      );
       expect(limit).toBe(0);
       expect(mock.from).not.toHaveBeenCalled();
     });
@@ -449,7 +458,7 @@ describe('LimitsResolver', () => {
         if (table === 'plan_limits') return chain({ limit_value: 40 });
         return chain(null);
       });
-      const admin = { from: adminFrom } as unknown as SupabaseClient;
+      const admin = asSupabaseClient({ from: adminFrom });
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 10, 1, admin),
@@ -463,13 +472,13 @@ describe('LimitsResolver', () => {
     });
 
     it('throws when the injected client reports the org is at capacity', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain({ plan: 'launch' });
           if (table === 'plan_limits') return chain({ limit_value: 40 });
           return chain(null);
         }),
-      } as unknown as SupabaseClient;
+      });
 
       await expect(resolver.checkOrgLimit('org-1', 'max_students', 40, 1, admin)).rejects.toThrow(
         'USAGE_LIMIT_EXCEEDED',
@@ -477,13 +486,13 @@ describe('LimitsResolver', () => {
     });
 
     it('keeps the slot when the org is one below capacity', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain({ plan: 'launch' });
           if (table === 'plan_limits') return chain({ limit_value: 40 });
           return chain(null);
         }),
-      } as unknown as SupabaseClient;
+      });
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 39, 1, admin),
@@ -491,13 +500,13 @@ describe('LimitsResolver', () => {
     });
 
     it('blocks (0) when the org plan defines no such limit — fail closed', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain({ plan: 'launch' });
           if (table === 'plan_limits') return chain(null);
           return chain(null);
         }),
-      } as unknown as SupabaseClient;
+      });
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 999_999, 1, admin),
@@ -505,12 +514,12 @@ describe('LimitsResolver', () => {
     });
 
     it('treats an unknown organization as NOT_FOUND', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain(null);
           return chain(null);
         }),
-      } as unknown as SupabaseClient;
+      });
 
       await expect(
         resolver.checkOrgLimit('org-missing', 'max_students', 999_999, 1, admin),
@@ -519,13 +528,13 @@ describe('LimitsResolver', () => {
     });
 
     it('enforces max_groups from the org plan boundaries', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain({ plan: 'hub' });
           if (table === 'plan_limits') return chain({ limit_value: 20 });
           return chain(null);
         }),
-      } as unknown as SupabaseClient;
+      });
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_groups', 19, 1, admin),

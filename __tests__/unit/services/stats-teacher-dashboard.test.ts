@@ -4,8 +4,9 @@ import { failure, success } from '@studiq/server/lib/service-result';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { TeacherDashboardQuerySchema } from '@studiq/server/models/stats.model';
 import { StatsService } from '@studiq/server/services/stats.service';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
 
 // #654: the teacher dashboard reads two SQL aggregates (per-group results, activity feed). The
 // service only forwards the caller's identity and organization; the scoping lives in the RPCs.
@@ -25,7 +26,7 @@ const ctx: RequestContext = {
 describe('StatsService teacher dashboard', () => {
   const rpc = vi.fn();
   // Only `rpc` is stubbed; the rest of the client is never reached.
-  const service = new StatsService(() => Promise.resolve({ rpc } as unknown as SupabaseClient));
+  const service = new StatsService(() => Promise.resolve(asSupabaseClient({ rpc })));
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -201,7 +202,7 @@ describe('StatsController teacher dashboard', () => {
     getTeacherGroupPerformance: vi.fn(),
     getTeacherActivityFeed: vi.fn(),
   };
-  const controller = new StatsController(statsService as unknown as StatsService);
+  const controller = new StatsController(asService<StatsService>(statsService));
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -276,7 +277,7 @@ describe('problem questions floor (#654 review)', () => {
         error: null,
       }),
     };
-    const service = new StatsService(() => Promise.resolve(supabase as unknown as SupabaseClient));
+    const service = new StatsService(() => Promise.resolve(asSupabaseClient(supabase)));
 
     const result = await service.getTeacherStats(ctx);
 

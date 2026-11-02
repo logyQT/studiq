@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -20,6 +21,35 @@ import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
 import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** Fields of the question payloads these tests read. */
+interface QuestionPayload {
+  id: string;
+  content: string;
+  type: string;
+  question_answers: unknown[];
+  topics?: { id: string; name: string }[];
+  question_topic_assignments?: unknown;
+}
+
+interface QuestionEnvelope {
+  success: boolean;
+  data: QuestionPayload;
+}
+
+interface QuestionListEnvelope {
+  data: QuestionPayload[];
+}
+
+/** Create endpoints return the new row id under the standard envelope. */
+interface CreatedIdEnvelope {
+  data: { id: string };
+}
+
+/** Bodies where only the success flag is asserted. */
+interface ApiEnvelope {
+  success: boolean;
+}
 
 describe(`Questions Integration`, () => {
   let educator!: BeforeResult;
@@ -68,9 +98,9 @@ describe(`Questions Integration`, () => {
       orgCookies(),
     );
     const res = await createBankPost(req);
-    const body = await res.json();
+    const body = await json<CreatedIdEnvelope>(res);
     if (res.status !== 201) throw new Error(`bank create failed: ${JSON.stringify(body)}`);
-    return body.data.id as string;
+    return body.data.id;
   }
 
   async function createQuestion(
@@ -96,9 +126,9 @@ describe(`Questions Integration`, () => {
       orgCookies(),
     );
     const res = await POST(req);
-    const body = await res.json();
+    const body = await json<QuestionEnvelope>(res);
     if (res.status !== 201) throw new Error(`question create failed: ${JSON.stringify(body)}`);
-    return { id: body.data.id as string, bankId };
+    return { id: body.data.id, bankId };
   }
 
   async function createTopic(name: string): Promise<string> {
@@ -113,9 +143,9 @@ describe(`Questions Integration`, () => {
       orgCookies(),
     );
     const res = await createTopicPost(req);
-    const body = await res.json();
+    const body = await json<CreatedIdEnvelope>(res);
     if (res.status !== 201) throw new Error(`topic create failed: ${JSON.stringify(body)}`);
-    return body.data.id as string;
+    return body.data.id;
   }
 
   describe('POST /api/v1/questions', () => {
@@ -132,7 +162,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const bankRes = await createBankPost(bankReq);
-      const bankBody = await bankRes.json();
+      const bankBody = await json<CreatedIdEnvelope>(bankRes);
       expect(bankRes.status).toBe(201);
       expect(bankBody.data.id).toBeDefined();
 
@@ -155,7 +185,7 @@ describe(`Questions Integration`, () => {
       );
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<QuestionEnvelope>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -182,7 +212,7 @@ describe(`Questions Integration`, () => {
       );
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -207,7 +237,7 @@ describe(`Questions Integration`, () => {
       );
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -234,7 +264,7 @@ describe(`Questions Integration`, () => {
       );
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<QuestionEnvelope>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -248,7 +278,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const getResponse = await GET(request, { params });
-      const getBody = await getResponse.json();
+      const getBody = await json<QuestionEnvelope>(getResponse);
 
       expect(getResponse.status).toBe(200);
       expect(getBody.data.id).toBe(body.data.id);
@@ -277,7 +307,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const createRes = await POST(createReq);
-      const createBody = await createRes.json();
+      const createBody = await json<QuestionEnvelope>(createRes);
 
       expect(createRes.status).toBe(201);
       expect(createBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
@@ -289,7 +319,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const listRes = await GET_LIST(listReq);
-      const listBody = await listRes.json();
+      const listBody = await json<QuestionListEnvelope>(listRes);
 
       expect(listRes.status).toBe(200);
       expect(listBody.data).toHaveLength(1);
@@ -308,7 +338,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const keepRes = await PUT(keep.request, { params: keep.params });
-      const keepBody = await keepRes.json();
+      const keepBody = await json<QuestionEnvelope>(keepRes);
 
       expect(keepRes.status).toBe(200);
       expect(keepBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
@@ -324,7 +354,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const putRes = await PUT(request, { params });
-      const putBody = await putRes.json();
+      const putBody = await json<QuestionEnvelope>(putRes);
 
       expect(putRes.status).toBe(200);
       expect(putBody.data.topics).toEqual([]);
@@ -345,7 +375,7 @@ describe(`Questions Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -373,7 +403,7 @@ describe(`Questions Integration`, () => {
       );
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -398,7 +428,7 @@ describe(`Questions Integration`, () => {
       );
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -411,7 +441,7 @@ describe(`Questions Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/questions', undefined, orgCookies());
       const response = await GET_LIST(req);
-      const body = await response.json();
+      const body = await json<QuestionListEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data)).toBe(true);
@@ -428,7 +458,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await GET_LIST(req);
-      const body = await response.json();
+      const body = await json<QuestionListEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(1);
@@ -448,7 +478,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await GET_LIST(req);
-      const body = await response.json();
+      const body = await json<QuestionListEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.map((q: { id: string }) => q.id)).toEqual([tagged.id]);
@@ -467,7 +497,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await GET(request, { params });
-      const body = await response.json();
+      const body = await json<QuestionEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.content).toBe(`copy-${suiteId}-Get Me`);
@@ -484,7 +514,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await GET(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -507,7 +537,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await PUT(request, { params });
-      const body = await response.json();
+      const body = await json<QuestionEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.content).toBe('Updated');
@@ -528,7 +558,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await PUT(request, { params });
-      const body = await response.json();
+      const body = await json<QuestionEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.type).toBe('open');
@@ -551,7 +581,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await PUT(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -570,7 +600,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await DELETE(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -587,7 +617,7 @@ describe(`Questions Integration`, () => {
         orgCookies(),
       );
       const response = await DELETE(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);

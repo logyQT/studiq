@@ -46,6 +46,60 @@ function expectSuccess<T>(result: ServiceResult<T>): T {
   return result.data;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** The `list` payload: one row per attempt, with the gradable count the service adds. */
+function attemptRows(result: ServiceResult<unknown>): Array<{ gradable_questions: number }> {
+  const data = expectSuccess(result);
+  if (!Array.isArray(data)) throw new Error('expected an attempt list');
+  return data.map((row: unknown) => {
+    if (!isRecord(row) || !('gradable_questions' in row)) {
+      throw new Error('expected gradable_questions on every attempt row');
+    }
+    if (typeof row.gradable_questions !== 'number') {
+      throw new Error('expected gradable_questions to be a number');
+    }
+    return { gradable_questions: row.gradable_questions };
+  });
+}
+
+function isAnswerRow(value: unknown): value is AttemptAnswers[string] {
+  return (
+    isRecord(value) &&
+    'selected_answer_id' in value &&
+    (value.selected_answer_id === null || typeof value.selected_answer_id === 'string') &&
+    'text_answer' in value &&
+    (value.text_answer === null || typeof value.text_answer === 'string')
+  );
+}
+
+function attemptAnswers(value: unknown): AttemptAnswers {
+  if (!isRecord(value)) throw new Error('expected an answers map');
+  const answers: AttemptAnswers = {};
+  for (const [key, row] of Object.entries(value)) {
+    if (!isAnswerRow(row)) throw new Error(`expected an answer row for ${key}`);
+    answers[key] = row;
+  }
+  return answers;
+}
+
+/** The `getById` payload, narrowed to the answers map the tests read. */
+function attemptDetail(result: ServiceResult<unknown>): AttemptDetailView {
+  const data = expectSuccess(result);
+  if (!isRecord(data) || !('answers' in data)) {
+    throw new Error('expected an answers map on the attempt detail');
+  }
+  return { answers: attemptAnswers(data.answers) };
+}
+
+/** A recorded mock argument, narrowed to the projection string the test asserts on. */
+function stringArg(value: unknown): string {
+  if (typeof value !== 'string') throw new Error('expected a string argument');
+  return value;
+}
+
 function qb(data: unknown, error: unknown = null) {
   const result: QueryResult = { data: data ?? null, error };
   const promise = Promise.resolve(result);
@@ -125,7 +179,9 @@ describe('QuizAttemptService', () => {
 
       expect(result.success).toBe(true);
       // Fail closed would be pointless here: there is no assignment flag to read.
-      expect(mock.from.mock.calls.map((call) => call[0])).not.toContain('teacher_assignments');
+      expect(mock.from.mock.calls.map((call: unknown[]) => call[0])).not.toContain(
+        'teacher_assignments',
+      );
     });
 
     it('withholds the score of a hidden assignment attempt (#374)', async () => {
@@ -213,10 +269,11 @@ describe('QuizAttemptService', () => {
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledTimes(3);
-      expect(result.data).toHaveLength(101);
-      expect(result.data[0].gradable_questions).toBe(1);
-      expect(result.data[100].gradable_questions).toBe(1);
-      expect(result.data[1].gradable_questions).toBe(0);
+      const rows = attemptRows(result);
+      expect(rows).toHaveLength(101);
+      expect(rows[0].gradable_questions).toBe(1);
+      expect(rows[100].gradable_questions).toBe(1);
+      expect(rows[1].gradable_questions).toBe(0);
     });
 
     it('returns INTERNAL_SERVER when the gradable lookup fails', async () => {
@@ -288,7 +345,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      const projection = questionsBuilder.select.mock.calls[0][0] as string;
+      const projection = stringArg(questionsBuilder.select.mock.calls[0][0]);
       expect(projection).not.toContain('*');
       expect(projection).not.toContain('is_correct');
       expect(projection).not.toContain('explanation');
@@ -313,7 +370,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      const projection = questionsBuilder.select.mock.calls[0][0] as string;
+      const projection = stringArg(questionsBuilder.select.mock.calls[0][0]);
       expect(projection).toContain('explanation');
       expect(projection).toContain('is_correct');
     });
@@ -359,7 +416,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      const data = expectSuccess(result) as AttemptDetailView;
+      const data = attemptDetail(result);
       expect(data.answers).toEqual({
         'q-1': { selected_answer_id: 'ans-1', text_answer: null },
         'q-2': { selected_answer_id: null, text_answer: 'Wisła' },
@@ -388,7 +445,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      const data = expectSuccess(result) as AttemptDetailView;
+      const data = attemptDetail(result);
       expect(data.answers).toEqual({
         'q-1': { selected_answer_id: 'ans-1', text_answer: null },
       });
@@ -447,7 +504,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect((expectSuccess(result) as AttemptDetailView).answers['q-1'].is_correct).toBe(true);
+      expect(attemptDetail(result).answers['q-1'].is_correct).toBe(true);
     });
 
     it('includes teacher grading in the answers map for a completed attempt (#175)', async () => {
@@ -477,7 +534,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect((expectSuccess(result) as AttemptDetailView).answers['q-open']).toEqual({
+      expect(attemptDetail(result).answers['q-open']).toEqual({
         selected_answer_id: null,
         text_answer: 'Rozbiory',
         is_correct: false,
@@ -502,7 +559,7 @@ describe('QuizAttemptService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
       // No answer key / graded rows may even be loaded.
-      expect(mock.from.mock.calls.map((call) => call[0])).toEqual([
+      expect(mock.from.mock.calls.map((call: unknown[]) => call[0])).toEqual([
         'quiz_attempts',
         'teacher_assignments',
       ]);

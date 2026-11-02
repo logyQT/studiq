@@ -1,7 +1,14 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardStatsService } from '@studiq/server/services/flashcard-stats.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
 
 vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({ created_by: 'user-1' }),
@@ -45,7 +52,23 @@ const CHAIN_METHODS = [
 function qb(data: unknown, error: unknown = null): QueryBuilder {
   const result = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const builder = {} as QueryBuilder;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    or: vi.fn(),
+    in: vi.fn(),
+    not: vi.fn(),
+    order: vi.fn(),
+    rpc: vi.fn(),
+    single: vi.fn(),
+    maybeSingle: vi.fn(),
+    then: vi.fn(),
+    catch: vi.fn(),
+    finally: vi.fn(),
+  };
   for (const method of CHAIN_METHODS) {
     builder[method] = vi.fn(() => builder);
   }
@@ -102,9 +125,9 @@ describe('FlashcardStatsService', () => {
 
       expect(result.success).toBe(true);
       expect(mock.rpc).not.toHaveBeenCalled();
-      expect(result.data.summary.totalFlashcards).toBe(0);
-      expect(result.data.summary.practicingStudents).toBe(0);
-      expect(result.data.summary.rosterStudents).toBeNull();
+      expect(expectSuccess(result).summary.totalFlashcards).toBe(0);
+      expect(expectSuccess(result).summary.practicingStudents).toBe(0);
+      expect(expectSuccess(result).summary.rosterStudents).toBeNull();
     });
 
     it('applies the resolved filter and passes the active org to the RPC', async () => {
@@ -170,8 +193,8 @@ describe('FlashcardStatsService', () => {
         p_deck_id: null,
         p_organization_id: 'org-1',
       });
-      expect(result.data.summary.totalFlashcards).toBe(0);
-      expect(result.data.summary.rosterStudents).toBe(2);
+      expect(expectSuccess(result).summary.totalFlashcards).toBe(0);
+      expect(expectSuccess(result).summary.rosterStudents).toBe(2);
     });
 
     it('returns stats when flashcards exist', async () => {
@@ -196,9 +219,9 @@ describe('FlashcardStatsService', () => {
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.summary.totalFlashcards).toBe(2);
-      expect(result.data.summary.practicingStudents).toBe(5);
-      expect(result.data.summary.rosterStudents).toBe(6);
+      expect(expectSuccess(result).summary.totalFlashcards).toBe(2);
+      expect(expectSuccess(result).summary.practicingStudents).toBe(5);
+      expect(expectSuccess(result).summary.rosterStudents).toBe(6);
     });
 
     it('returns error on flashcard query failure', async () => {
@@ -227,7 +250,7 @@ describe('FlashcardStatsService', () => {
       const result = await service.getDifficultyCards(ctx, 'easy');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
     });
 
     it('applies the resolved group filter before querying cards', async () => {
@@ -257,7 +280,7 @@ describe('FlashcardStatsService', () => {
       const result = await service.getDifficultyCards(ctx, 'easy');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
     });
 
     it('returns new cards for new bucket', async () => {
@@ -281,7 +304,7 @@ describe('FlashcardStatsService', () => {
       const result = await service.getDifficultyCards(ctx, 'new');
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1); // fc-2 has no practice, so it's "new"
+      expect(expectSuccess(result)).toHaveLength(1); // fc-2 has no practice, so it's "new"
     });
 
     it('returns error on flashcard query failure', async () => {

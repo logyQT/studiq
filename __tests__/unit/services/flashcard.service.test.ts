@@ -1,9 +1,16 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { check } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardService } from '@studiq/server/services/flashcard.service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
 
 vi.mock('@studiq/server/lib/authz', () => {
   const checkMock = vi.fn().mockResolvedValue(undefined);
@@ -112,7 +119,7 @@ describe('FlashcardService', () => {
       const result = await service.create({ front: 'Q', back: 'A' }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(mockFlashcard);
+      expect(expectSuccess(result)).toEqual(mockFlashcard);
       expect(mock.from).toHaveBeenCalledWith('flashcards');
     });
 
@@ -126,7 +133,7 @@ describe('FlashcardService', () => {
       const result = await service.create({ front: 'Q', back: 'A' }, orgCtx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(mockFlashcard);
+      expect(expectSuccess(result)).toEqual(mockFlashcard);
     });
 
     it('counts only the caller content in the active org (#233)', async () => {
@@ -189,7 +196,7 @@ describe('FlashcardService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(flashcards);
+      expect(expectSuccess(result)).toEqual(flashcards);
     });
 
     it('counts only the caller content in the active org on the bulk path (#233)', async () => {
@@ -238,7 +245,7 @@ describe('FlashcardService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(flashcards);
+      expect(expectSuccess(result)).toEqual(flashcards);
       expect(mock.rpc).toHaveBeenCalledWith(
         'bulk_create_flashcards',
         expect.objectContaining({ p_topic_ids: ['t-1'] }),
@@ -255,7 +262,7 @@ describe('FlashcardService', () => {
       const result = await service.list(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.items).toEqual(flashcards);
+      expect(expectSuccess(result).items).toEqual(flashcards);
     });
 
     it('filters by topicIds when provided', async () => {
@@ -266,7 +273,7 @@ describe('FlashcardService', () => {
       const result = await service.list(ctx, { topicIds: ['t-1'] });
 
       expect(result.success).toBe(true);
-      expect(result.data.items).toEqual(flashcards);
+      expect(expectSuccess(result).items).toEqual(flashcards);
     });
 
     it('filters by deckIds when provided', async () => {
@@ -277,7 +284,7 @@ describe('FlashcardService', () => {
       const result = await service.list(ctx, { deckIds: ['d-1'] });
 
       expect(result.success).toBe(true);
-      expect(result.data.items).toEqual(flashcards);
+      expect(expectSuccess(result).items).toEqual(flashcards);
     });
   });
 
@@ -290,7 +297,7 @@ describe('FlashcardService', () => {
       const result = await service.getById('fc-1', ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(flashcard);
+      expect(expectSuccess(result)).toEqual(flashcard);
     });
 
     it('returns NOT_FOUND when flashcard does not exist', async () => {
@@ -314,7 +321,7 @@ describe('FlashcardService', () => {
       const result = await service.update('fc-1', { front: 'Updated' }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(expectSuccess(result)).toBeDefined();
     });
 
     it('returns NOT_FOUND when flashcard does not exist', async () => {
@@ -338,7 +345,7 @@ describe('FlashcardService', () => {
       const result = await service.update('fc-1', { front: 'Updated', topicIds: ['t-1'] }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(expectSuccess(result)).toBeDefined();
     });
 
     it('updates deck_id when deckId provided', async () => {
@@ -352,7 +359,7 @@ describe('FlashcardService', () => {
       const result = await service.update('fc-1', { front: 'Updated', deckId: 'd-1' }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(expectSuccess(result)).toBeDefined();
     });
 
     it('clears topic assignments when topicIds is empty array', async () => {
@@ -366,7 +373,7 @@ describe('FlashcardService', () => {
       const result = await service.update('fc-1', { topicIds: [] }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(expectSuccess(result)).toBeDefined();
     });
   });
 
@@ -390,7 +397,7 @@ describe('FlashcardService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ moved: 2 });
+      expect(expectSuccess(result)).toEqual({ moved: 2 });
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', ownCard);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', teacherCard);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'deck.update', targetDeck);
@@ -445,7 +452,7 @@ describe('FlashcardService', () => {
       const result = await service.batchDelete({ ids: ['fc-own', 'fc-other'] }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ deleted: 2 });
+      expect(expectSuccess(result)).toEqual({ deleted: 2 });
       expect(vi.mocked(check)).toHaveBeenCalledTimes(2);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.delete', ownCard);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.delete', otherCard);

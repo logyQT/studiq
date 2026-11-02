@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { OrgService } from '@studiq/server/services/org.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -26,16 +27,30 @@ const CHAIN_METHODS = ['select', 'insert', 'update', 'delete', 'eq', 'in', 'orde
 function qb(data: unknown, error: unknown = null): QueryBuilder {
   const result = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const builder = {} as QueryBuilder;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: vi.fn(promise.then.bind(promise)),
+    catch: vi.fn(promise.catch.bind(promise)),
+    finally: vi.fn(promise.finally.bind(promise)),
+  };
   for (const method of CHAIN_METHODS) {
-    builder[method] = vi.fn(() => builder);
+    builder[method].mockReturnValue(builder);
   }
-  builder.single = vi.fn().mockResolvedValue(result);
-  builder.maybeSingle = vi.fn().mockResolvedValue(result);
-  builder.then = vi.fn(promise.then.bind(promise));
-  builder.catch = vi.fn(promise.catch.bind(promise));
-  builder.finally = vi.fn(promise.finally.bind(promise));
   return builder;
+}
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
 }
 
 describe('OrgService', () => {
@@ -75,8 +90,8 @@ describe('OrgService', () => {
       const result = await service.listOrgs(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].name).toBe('Test Org');
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].name).toBe('Test Org');
     });
 
     it('surfaces org branding fields for the navbar (issue #108)', async () => {
@@ -101,8 +116,8 @@ describe('OrgService', () => {
       const result = await service.listOrgs(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data[0].logo_url).toBe('https://cdn.example.com/logo.png');
-      expect(result.data[0].brand_color).toBe('#FF6600');
+      expect(expectSuccess(result)[0].logo_url).toBe('https://cdn.example.com/logo.png');
+      expect(expectSuccess(result)[0].brand_color).toBe('#FF6600');
     });
 
     it('defaults branding fields to null when the org has none set', async () => {
@@ -120,8 +135,8 @@ describe('OrgService', () => {
       const result = await service.listOrgs(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data[0].logo_url).toBeNull();
-      expect(result.data[0].brand_color).toBeNull();
+      expect(expectSuccess(result)[0].logo_url).toBeNull();
+      expect(expectSuccess(result)[0].brand_color).toBeNull();
     });
 
     it('returns empty when no memberships', async () => {

@@ -1,11 +1,13 @@
 import type { RequestContext } from '@studiq/authz';
 import { TeacherAssignmentController } from '@studiq/server/controllers/teacher-assignment.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
-import type { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
+import { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new TeacherAssignmentService(() => Promise.reject(new Error('unused'))), {
     create: vi.fn(),
     list: vi.fn(),
     getById: vi.fn(),
@@ -24,7 +26,7 @@ function createMockService() {
     getForStudent: vi.fn(),
     startAttempt: vi.fn(),
     uploadImage: vi.fn(),
-  };
+  });
 }
 
 const mockCtx: RequestContext = {
@@ -47,9 +49,7 @@ describe('TeacherAssignmentController', () => {
     vi.clearAllMocks();
     mockService = createMockService();
     // Only the handler under test is exercised; the rest of the service is unreached.
-    controller = new TeacherAssignmentController(
-      mockService as unknown as TeacherAssignmentService,
-    );
+    controller = new TeacherAssignmentController(mockService);
   });
 
   describe('create', () => {

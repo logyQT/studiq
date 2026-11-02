@@ -1,26 +1,30 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { PaymentController } from '@studiq/server/controllers/payment.controller';
-import type { PaymentService } from '@studiq/server/services/payment.service';
+import { PaymentService } from '@studiq/server/services/payment.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return { listMine: vi.fn() };
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new PaymentService(() => Promise.reject(new Error('unused'))), {
+    listMine: vi.fn(),
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
 let controller: PaymentController;
 
-const mockCtx = {
+const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'student',
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '',
   method: 'GET',
   groupIds: [],
   permissionScopes: {},
-} as unknown as RequestContext;
+};
 
 const payment = {
   id: 'p-1',
@@ -35,7 +39,7 @@ describe('PaymentController.listMine (#392)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new PaymentController(mockService as unknown as PaymentService);
+    controller = new PaymentController(mockService);
   });
 
   it('returns 200 and the caller payment history', async () => {

@@ -31,7 +31,16 @@ function qb(data: unknown, error: unknown = null, count?: number): QueryBuilder 
   const result =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const builder = {} as QueryBuilder;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    single: vi.fn(),
+    maybeSingle: vi.fn(),
+    then: vi.fn(),
+    catch: vi.fn(),
+    finally: vi.fn(),
+  };
   for (const method of CHAIN_METHODS) {
     builder[method] = vi.fn(() => builder);
   }
@@ -184,7 +193,13 @@ describe('authz (unified lib)', () => {
           resource: { createdBy: 'u-2', orgId: null, activeOrgId: null },
         }),
       ).toBe(false);
-      expect(evaluate({ scope: null, userId: 'u-1', resource: {} as never })).toBe(false);
+      expect(
+        evaluate({
+          scope: null,
+          userId: 'u-1',
+          resource: { createdBy: 'u-1', orgId: null, activeOrgId: null },
+        }),
+      ).toBe(false);
     });
   });
 

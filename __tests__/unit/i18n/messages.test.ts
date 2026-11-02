@@ -32,11 +32,15 @@ const MESSAGE_FILES = {
   'admin:pl': adminPl,
 } as const;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function flattenMessages(value: unknown, prefix = ''): Array<[string, string]> {
   if (typeof value === 'string') return [[prefix, value]];
 
-  if (value && typeof value === 'object') {
-    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+  if (isRecord(value)) {
+    return Object.entries(value).flatMap(([key, child]) =>
       flattenMessages(child, prefix ? `${prefix}.${key}` : key),
     );
   }

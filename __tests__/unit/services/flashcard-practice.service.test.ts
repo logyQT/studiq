@@ -90,8 +90,36 @@ function settingsChain(settings: unknown = defaultSettings) {
   return c;
 }
 
-/** The card page `getAllCardStats`/`getCardsForPractice` return (typed as `unknown`). */
-type CardIdPage = { items: Array<{ id: string }> };
+/**
+ * The service answers `ServiceResult<unknown>`; these helpers narrow the payload
+ * the test reads, failing loudly when the real shape drifts.
+ */
+type CardPage = { items: Array<{ id: string } & Record<string, unknown>> };
+
+type PracticeLogPayload = {
+  practice: Record<string, unknown> | null;
+  reviewState: (Record<string, unknown> & { repetitions: number; interval_days: number }) | null;
+};
+
+type BatchPayload = {
+  success: boolean;
+  results: Array<{ flashcardId: string; isLeech: boolean }>;
+};
+
+/** What `log`/`batch` write into `flashcard_review_state`. */
+type PracticeUpsertPayload = {
+  learning_state?: string;
+  learning_step?: number;
+  interval_days?: number;
+  interval_unit?: string;
+  easiness_factor?: number;
+};
+
+type DueBreakdown = {
+  total: number;
+  byTopic: Record<string, number>;
+  byDeck: Record<string, number>;
+};
 
 /** Narrows a service result to its data, failing the test when the call failed. */
 function expectSuccess<T>(result: ServiceResult<T>): T {
@@ -99,9 +127,91 @@ function expectSuccess<T>(result: ServiceResult<T>): T {
   return result.data;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isPracticeLogPayload(value: unknown): value is PracticeLogPayload {
+  return isRecord(value) && 'practice' in value && 'reviewState' in value;
+}
+
+function logPayload(result: ServiceResult<unknown>): PracticeLogPayload {
+  const data = expectSuccess(result);
+  if (!isPracticeLogPayload(data)) throw new Error('expected the practice log payload');
+  return data;
+}
+
+function isBatchPayload(value: unknown): value is BatchPayload {
+  return isRecord(value) && 'results' in value && Array.isArray(value.results);
+}
+
+function batchPayload(result: ServiceResult<unknown>): BatchPayload {
+  const data = expectSuccess(result);
+  if (!isBatchPayload(data)) throw new Error('expected the batch payload');
+  return data;
+}
+
+function isDueBreakdown(value: unknown): value is DueBreakdown {
+  return (
+    isRecord(value) &&
+    'total' in value &&
+    typeof value.total === 'number' &&
+    'byTopic' in value &&
+    isRecord(value.byTopic) &&
+    'byDeck' in value &&
+    isRecord(value.byDeck)
+  );
+}
+
+function breakdownOf(result: ServiceResult<unknown>): DueBreakdown {
+  const data = expectSuccess(result);
+  if (!isDueBreakdown(data)) throw new Error('expected the due breakdown payload');
+  return data;
+}
+
+function dueCount(result: ServiceResult<unknown>): number {
+  const data = expectSuccess(result);
+  if (!isRecord(data) || !('count' in data) || typeof data.count !== 'number') {
+    throw new Error('expected a due count payload');
+  }
+  return data.count;
+}
+
+function isCardPage(value: unknown): value is CardPage {
+  return isRecord(value) && 'items' in value && Array.isArray(value.items);
+}
+
+function cardPage(result: ServiceResult<unknown>): CardPage {
+  const data = expectSuccess(result);
+  if (!isCardPage(data)) throw new Error('expected a card page payload');
+  return data;
+}
+
+function isCardId(value: unknown): value is { id: string } {
+  return isRecord(value) && 'id' in value && typeof value.id === 'string';
+}
+
+function cardIdList(result: ServiceResult<unknown>): string[] {
+  const data = expectSuccess(result);
+  if (!Array.isArray(data)) throw new Error('expected a card list payload');
+  return data.map((card: unknown) => {
+    if (!isCardId(card)) throw new Error('expected a card with an id');
+    return card.id;
+  });
+}
+
 async function mockAccessibleFilter(filter: Record<string, unknown>) {
   const { accessibleFilter } = await import('@studiq/server/lib/authz');
   vi.mocked(accessibleFilter).mockResolvedValueOnce(filter);
+}
+
+/** `pickLoadBalancedDate` is private; the load-balancing tests exercise it directly. */
+interface PickLoadBalancedDate {
+  pickLoadBalancedDate(ctx: RequestContext, baseDate: Date, fuzzRangeDays: number): Promise<Date>;
+}
+
+function hasPickLoadBalancedDate(target: object): target is PickLoadBalancedDate {
+  return 'pickLoadBalancedDate' in target && typeof target.pickLoadBalancedDate === 'function';
 }
 
 function lbChain(rows: Array<{ next_review_at: string }>): LookupChain {
@@ -119,13 +229,8 @@ describe('FlashcardPracticeService', () => {
 
   /** `pickLoadBalancedDate` is private; the load-balancing tests exercise it directly. */
   function pickLoadBalancedDate(baseDate: Date, fuzzRangeDays: number): Promise<Date> {
-    const target = service as unknown as {
-      pickLoadBalancedDate(
-        ctx: RequestContext,
-        baseDate: Date,
-        fuzzRangeDays: number,
-      ): Promise<Date>;
-    };
+    const target: object = service;
+    if (!hasPickLoadBalancedDate(target)) throw new Error('pickLoadBalancedDate is missing');
     return target.pickLoadBalancedDate(ctx, baseDate, fuzzRangeDays);
   }
 
@@ -142,7 +247,9 @@ describe('FlashcardPracticeService', () => {
 
     const upsertSingleMock = vi.fn().mockResolvedValue(upsertResult);
     const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
-    const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
+    const upsertMock = vi
+      .fn<(payload: PracticeUpsertPayload) => unknown>()
+      .mockReturnValue({ select: upsertSelectMock });
 
     const practiceSingleMock = vi.fn().mockResolvedValue(practiceResult);
     const practiceSelectMock = vi.fn().mockReturnValue({ single: practiceSingleMock });
@@ -186,7 +293,9 @@ describe('FlashcardPracticeService', () => {
       return Promise.resolve(res);
     });
     const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
-    const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
+    const upsertMock = vi
+      .fn<(payload: PracticeUpsertPayload) => unknown>()
+      .mockReturnValue({ select: upsertSelectMock });
 
     const maybeSingleMock = vi.fn().mockResolvedValue({ data: null, error: null });
     const eq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
@@ -229,8 +338,8 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.practice).toEqual(mockPractice);
-      expect(result.data.reviewState).toEqual(mockReviewState);
+      expect(logPayload(result).practice).toEqual(mockPractice);
+      expect(logPayload(result).reviewState).toEqual(mockReviewState);
     });
 
     it('inserts practice record with optional fields', async () => {
@@ -256,8 +365,8 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx, 1500, 4, 'session-1');
 
       expect(result.success).toBe(true);
-      expect(result.data.practice).toEqual(mockPractice);
-      expect(result.data.reviewState).toEqual(mockReviewState);
+      expect(logPayload(result).practice).toEqual(mockPractice);
+      expect(logPayload(result).reviewState).toEqual(mockReviewState);
     });
 
     it('returns error on insert failure', async () => {
@@ -304,9 +413,9 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx, undefined, 4);
 
       expect(result.success).toBe(true);
-      expect(result.data.practice).toEqual(mockPractice);
-      expect(result.data.reviewState.repetitions).toBe(2);
-      expect(result.data.reviewState.interval_days).toBeGreaterThan(6);
+      expect(logPayload(result).practice).toEqual(mockPractice);
+      expect(logPayload(result).reviewState?.repetitions).toBe(2);
+      expect(logPayload(result).reviewState?.interval_days).toBeGreaterThan(6);
     });
 
     it('maps confidenceLevel 3 (Good) on a new card to step 1, 10 min and EF 2.36', async () => {
@@ -382,7 +491,7 @@ describe('FlashcardPracticeService', () => {
         error: null,
       });
       const upsertMock = vi
-        .fn()
+        .fn<(payload: PracticeUpsertPayload) => unknown>()
         .mockReturnValue({ select: vi.fn().mockReturnValue({ single: upsertSingleMock }) });
 
       // Load-balancing reads `next_review_at`; the review-state lookup uses `select('*')`.
@@ -468,10 +577,11 @@ describe('FlashcardPracticeService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data.success).toBe(true);
-      expect(result.data.results).toHaveLength(2);
-      expect(result.data.results[0]).toEqual({ flashcardId: 'fc-1', isLeech: false });
-      expect(result.data.results[1]).toEqual({ flashcardId: 'fc-2', isLeech: true });
+      const data = batchPayload(result);
+      expect(data.success).toBe(true);
+      expect(data.results).toHaveLength(2);
+      expect(data.results[0]).toEqual({ flashcardId: 'fc-1', isLeech: false });
+      expect(data.results[1]).toEqual({ flashcardId: 'fc-2', isLeech: true });
     });
 
     it('returns error on failed insert', async () => {
@@ -662,7 +772,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getDueCount(ctx, {});
 
       expect(result.success).toBe(true);
-      expect(result.data.count).toBe(5);
+      expect(dueCount(result)).toBe(5);
     });
 
     it('returns 0 when RPC returns no data', async () => {
@@ -673,7 +783,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getDueCount(ctx, {});
 
       expect(result.success).toBe(true);
-      expect(result.data.count).toBe(0);
+      expect(dueCount(result)).toBe(0);
     });
   });
 
@@ -725,9 +835,10 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getDueBreakdown(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.total).toBe(2);
-      expect(result.data.byTopic).toEqual({ 'topic-1': 1, 'topic-2': 1 });
-      expect(result.data.byDeck).toEqual({ 'deck-1': 1, 'deck-2': 1 });
+      const data = breakdownOf(result);
+      expect(data.total).toBe(2);
+      expect(data.byTopic).toEqual({ 'topic-1': 1, 'topic-2': 1 });
+      expect(data.byDeck).toEqual({ 'deck-1': 1, 'deck-2': 1 });
     });
   });
 
@@ -792,12 +903,12 @@ describe('FlashcardPracticeService', () => {
       expect(mock.rpc).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result).toMatchObject({
-        data: expect.objectContaining({
+        data: {
           totalCards: 0,
           practicedCards: 0,
           averageAccuracy: 0,
           averageEasinessFactor: 0,
-        }),
+        },
       });
     });
   });
@@ -827,7 +938,7 @@ describe('FlashcardPracticeService', () => {
       expect(result.success).toBe(true);
       expect(cardQuery.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
       expect(cardQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
-      expect((expectSuccess(result) as CardIdPage).items.map((i) => i.id)).toEqual(['fc-1']);
+      expect(cardPage(result).items.map((i) => i.id)).toEqual(['fc-1']);
     });
 
     it('returns an empty page when the filter is impossible', async () => {
@@ -914,7 +1025,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getAllCardStats(ctx, { limit: 100 });
 
       expect(result.success).toBe(true);
-      const items = (expectSuccess(result) as CardIdPage).items;
+      const items = cardPage(result).items;
       const byId = new Map(items.map((i) => [i.id, i]));
 
       expect(byId.get('fc-review')).toMatchObject({
@@ -965,7 +1076,7 @@ describe('FlashcardPracticeService', () => {
       expect(result.success).toBe(true);
       expect(matching.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
       expect(matching.in).toHaveBeenCalledWith('deck_id', ['deck-1']);
-      const ids = (expectSuccess(result) as Array<{ id: string }>).map((c) => c.id);
+      const ids = cardIdList(result);
       expect(ids).toEqual(['fc-1']);
       expect(ids).not.toContain('fc-2');
     });

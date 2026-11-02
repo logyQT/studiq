@@ -1,7 +1,14 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { StatsService } from '@studiq/server/services/stats.service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
 
 type DbError = { message?: string; code?: string };
 type QueryResult<T> = { data: T | null; count?: number; error: DbError | null };
@@ -82,7 +89,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({
+      expect(expectSuccess(result)).toEqual({
         totalQuestions: 1,
         totalFlashcards: 1,
         subject: { byType: { mcq: 1 }, problematicQuestions: [] },
@@ -127,10 +134,10 @@ describe('StatsService', () => {
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.subject.byType).toEqual({ mcq: 3, true_false: 1, open: 1 });
+      expect(expectSuccess(result).subject.byType).toEqual({ mcq: 3, true_false: 1, open: 1 });
       // localeCompare('pl'): Geografia before Historia; the bank missing from the
       // lookup (RLS / left-org edge case) keeps a null name and sorts last.
-      expect(result.data.bySubject).toEqual([
+      expect(expectSuccess(result).bySubject).toEqual([
         { subjectId: 'bank-geo', subjectName: 'Geografia i Nauka', questionCount: 1 },
         { subjectId: 'bank-his', subjectName: 'Historia', questionCount: 3 },
         { subjectId: 'bank-gone', subjectName: null, questionCount: 1 },
@@ -158,10 +165,10 @@ describe('StatsService', () => {
       const result = await service.getTeacherStats(ctx, { subjectId: 'bank-his' });
 
       expect(result.success).toBe(true);
-      expect(result.data.subject.byType).toEqual({ mcq: 2, true_false: 1 });
+      expect(expectSuccess(result).subject.byType).toEqual({ mcq: 2, true_false: 1 });
       // Totals and the by-subject overview stay global.
-      expect(result.data.totalQuestions).toBe(5);
-      expect(result.data.bySubject).toEqual([
+      expect(expectSuccess(result).totalQuestions).toBe(5);
+      expect(expectSuccess(result).bySubject).toEqual([
         { subjectId: 'bank-geo', subjectName: 'Geografia i Nauka', questionCount: 2 },
         { subjectId: 'bank-his', subjectName: 'Historia', questionCount: 3 },
       ]);
@@ -188,9 +195,9 @@ describe('StatsService', () => {
       const result = await service.getTeacherStats(ctx, { subjectId: 'BANK-HIS' });
 
       expect(result.success).toBe(true);
-      expect(result.data.subject.byType).toEqual({ mcq: 2, true_false: 1 });
-      expect(result.data.totalQuestions).toBe(5);
-      expect(result.data.bySubject).toHaveLength(2);
+      expect(expectSuccess(result).subject.byType).toEqual({ mcq: 2, true_false: 1 });
+      expect(expectSuccess(result).totalQuestions).toBe(5);
+      expect(expectSuccess(result).bySubject).toHaveLength(2);
     });
 
     it('yields an empty type split for a foreign subject id without widening the query', async () => {
@@ -204,8 +211,8 @@ describe('StatsService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.subject.byType).toEqual({});
-      expect(result.data.totalQuestions).toBe(1);
+      expect(expectSuccess(result).subject.byType).toEqual({});
+      expect(expectSuccess(result).totalQuestions).toBe(1);
       expect(questionsBuilder.eq).toHaveBeenCalledWith('created_by', 'test-user-id');
     });
 
@@ -216,7 +223,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({
+      expect(expectSuccess(result)).toEqual({
         totalQuestions: 0,
         totalFlashcards: 1,
         subject: { byType: {}, problematicQuestions: [] },
@@ -244,7 +251,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.subject.problematicQuestions).toEqual(problematic);
+      expect(expectSuccess(result).subject.problematicQuestions).toEqual(problematic);
       // No active org: the RPC scopes learners to every org the caller shares.
       expect(mock.rpc).toHaveBeenCalledWith('get_teacher_problematic_questions', {
         p_user_id: 'test-user-id',
@@ -288,7 +295,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.subject.problematicQuestions).toEqual([]);
+      expect(expectSuccess(result).subject.problematicQuestions).toEqual([]);
     });
   });
 
@@ -330,13 +337,13 @@ describe('StatsService', () => {
       const result = await service.getStudentStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.totalQuizzes).toBe(2);
-      expect(result.data.avgScore).toBe(70);
-      expect(result.data.bestScore).toBe(80);
-      expect(result.data.totalQuestionsCreated).toBe(1);
-      expect(result.data.flashcardsPracticed).toBe(2);
-      expect(result.data.flashcardAccuracy).toBe(50);
-      expect(result.data.attemptsOverTime).toEqual([
+      expect(expectSuccess(result).totalQuizzes).toBe(2);
+      expect(expectSuccess(result).avgScore).toBe(70);
+      expect(expectSuccess(result).bestScore).toBe(80);
+      expect(expectSuccess(result).totalQuestionsCreated).toBe(1);
+      expect(expectSuccess(result).flashcardsPracticed).toBe(2);
+      expect(expectSuccess(result).flashcardAccuracy).toBe(50);
+      expect(expectSuccess(result).attemptsOverTime).toEqual([
         { date: '2024-01-01', score: 8, total: 10, percentage: 80 },
         { date: '2024-01-02', score: 6, total: 10, percentage: 60 },
       ]);
@@ -370,9 +377,9 @@ describe('StatsService', () => {
 
       expect(result.success).toBe(true);
       expect(gradable.in).toHaveBeenCalledWith('attempt_id', ['a-1']);
-      expect(result.data.avgScore).toBe(100);
-      expect(result.data.bestScore).toBe(100);
-      expect(result.data.attemptsOverTime).toEqual([
+      expect(expectSuccess(result).avgScore).toBe(100);
+      expect(expectSuccess(result).bestScore).toBe(100);
+      expect(expectSuccess(result).attemptsOverTime).toEqual([
         { date: '2024-01-01', score: 2, total: 2, percentage: 100 },
       ]);
     });
@@ -412,10 +419,10 @@ describe('StatsService', () => {
       expect(result.success).toBe(true);
       // The open attempt is still a taken quiz (a count is not a result), but it
       // has no denominator, so it never contributes a fabricated 0 %.
-      expect(result.data.totalQuizzes).toBe(2);
-      expect(result.data.avgScore).toBe(100);
-      expect(result.data.bestScore).toBe(100);
-      expect(result.data.attemptsOverTime).toEqual([
+      expect(expectSuccess(result).totalQuizzes).toBe(2);
+      expect(expectSuccess(result).avgScore).toBe(100);
+      expect(expectSuccess(result).bestScore).toBe(100);
+      expect(expectSuccess(result).attemptsOverTime).toEqual([
         { date: '2024-01-02', score: 2, total: 2, percentage: 100 },
       ]);
     });
@@ -444,10 +451,10 @@ describe('StatsService', () => {
       const result = await service.getStudentStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.totalQuizzes).toBe(1);
-      expect(result.data.avgScore).toBeNull();
-      expect(result.data.bestScore).toBeNull();
-      expect(result.data.attemptsOverTime).toEqual([]);
+      expect(expectSuccess(result).totalQuizzes).toBe(1);
+      expect(expectSuccess(result).avgScore).toBeNull();
+      expect(expectSuccess(result).bestScore).toBeNull();
+      expect(expectSuccess(result).attemptsOverTime).toEqual([]);
     });
 
     it('fails closed when the gradable-question lookup fails (#619)', async () => {
@@ -497,9 +504,9 @@ describe('StatsService', () => {
       const result = await service.getStudentStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.avgScore).toBe(60);
-      expect(result.data.bestScore).toBe(60);
-      expect(result.data.attemptsOverTime[0]).toEqual({
+      expect(expectSuccess(result).avgScore).toBe(60);
+      expect(expectSuccess(result).bestScore).toBe(60);
+      expect(expectSuccess(result).attemptsOverTime[0]).toEqual({
         date: '2024-01-01',
         score: 3,
         total: 5,
@@ -559,11 +566,13 @@ describe('StatsService', () => {
         'assignment-hidden',
       ]);
       // Practice (80 %) + visible assignment (75 %) — the hidden attempt is gone.
-      expect(result.data.avgScore).toBe(78);
-      expect(result.data.bestScore).toBe(80);
-      expect(result.data.attemptsOverTime.map((a: { score: number }) => a.score)).toEqual([8, 3]);
+      expect(expectSuccess(result).avgScore).toBe(78);
+      expect(expectSuccess(result).bestScore).toBe(80);
+      expect(expectSuccess(result).attemptsOverTime.map((a: { score: number }) => a.score)).toEqual(
+        [8, 3],
+      );
       // A count is not a result, so the hidden attempt still counts as taken.
-      expect(result.data.totalQuizzes).toBe(3);
+      expect(expectSuccess(result).totalQuizzes).toBe(3);
     });
 
     it('fails closed when the hidden-assignment lookup fails (#374)', async () => {
@@ -583,14 +592,14 @@ describe('StatsService', () => {
       const result = await service.getStudentStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.totalQuizzes).toBe(0);
+      expect(expectSuccess(result).totalQuizzes).toBe(0);
       // No attempt has a gradable denominator, so there is no result to show
       // (#619) — `—` in the UI, never a fabricated 0 %.
-      expect(result.data.avgScore).toBeNull();
-      expect(result.data.bestScore).toBeNull();
-      expect(result.data.attemptsOverTime).toEqual([]);
-      expect(result.data.flashcardsPracticed).toBe(0);
-      expect(result.data.flashcardAccuracy).toBe(0);
+      expect(expectSuccess(result).avgScore).toBeNull();
+      expect(expectSuccess(result).bestScore).toBeNull();
+      expect(expectSuccess(result).attemptsOverTime).toEqual([]);
+      expect(expectSuccess(result).flashcardsPracticed).toBe(0);
+      expect(expectSuccess(result).flashcardAccuracy).toBe(0);
       // Nothing to look up: the gradable query only runs for practice attempts.
       expect(mock.from).not.toHaveBeenCalledWith('quiz_attempt_questions');
     });
@@ -638,7 +647,7 @@ describe('StatsService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
       expect(mock.from).not.toHaveBeenCalled();
     });
 
@@ -648,7 +657,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherQuizStats({ ...orgCtx, orgRoleId: null });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
       expect(mock.from).not.toHaveBeenCalled();
     });
 
@@ -663,7 +672,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherQuizStats(orgCtx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
       expect(mock.from).toHaveBeenCalledTimes(1);
       expect(mock.from).toHaveBeenCalledWith('org_members');
     });
@@ -730,7 +739,7 @@ describe('StatsService', () => {
       expect(attemptsBuilder.is).not.toHaveBeenCalled();
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([
+      expect(expectSuccess(result)).toEqual([
         {
           id: 'Quiz A',
           title: 'Quiz A',
@@ -795,7 +804,7 @@ describe('StatsService', () => {
       expect(quizzesBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([
+      expect(expectSuccess(result)).toEqual([
         {
           id: 'Historia — Średniowiecze',
           title: 'Historia — Średniowiecze',
@@ -830,7 +839,7 @@ describe('StatsService', () => {
       expect(mock.from).toHaveBeenCalledTimes(3);
       expect(mock.from).not.toHaveBeenCalledWith('quizzes');
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([
+      expect(expectSuccess(result)).toEqual([
         {
           id: 'Ad-hoc assignment',
           title: 'Ad-hoc assignment',
@@ -863,7 +872,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherQuizStats(orgCtx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([
+      expect(expectSuccess(result)).toEqual([
         {
           id: '',
           title: null,
@@ -896,7 +905,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherQuizStats(orgCtx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([
+      expect(expectSuccess(result)).toEqual([
         {
           id: 'Practice title',
           title: 'Practice title',
@@ -928,7 +937,7 @@ describe('StatsService', () => {
       expect(mock.from).not.toHaveBeenCalledWith('teacher_assignments');
       expect(mock.from).not.toHaveBeenCalledWith('quizzes');
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
+      expect(expectSuccess(result)).toHaveLength(1);
     });
 
     it('returns a failure when the assignment lookup fails (#207)', async () => {
@@ -992,7 +1001,7 @@ describe('StatsService', () => {
       const result = await service.getTeacherQuizStats(orgCtx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([
+      expect(expectSuccess(result)).toEqual([
         {
           id: '',
           title: null,
@@ -1001,7 +1010,7 @@ describe('StatsService', () => {
           avgCompletionRate: 0,
         },
       ]);
-      expect(Number.isNaN(result.data?.[0]?.avgScore)).toBe(false);
+      expect(Number.isNaN(expectSuccess(result)?.[0]?.avgScore)).toBe(false);
     });
 
     it('returns a failure when the org members query fails', async () => {

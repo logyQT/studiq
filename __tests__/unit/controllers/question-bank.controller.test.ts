@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { QuestionBankController } from '@studiq/server/controllers/question-bank.controller';
 import type { QuestionBankService } from '@studiq/server/services/question-bank.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
@@ -38,7 +39,7 @@ describe('QuestionBankController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new QuestionBankController(mockService as unknown as QuestionBankService);
+    controller = new QuestionBankController(asService<QuestionBankService>(mockService));
   });
 
   describe('create', () => {

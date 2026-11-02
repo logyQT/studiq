@@ -4,6 +4,7 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { failure, success } from '@studiq/server/lib/service-result';
 import type { InvitationService } from '@studiq/server/services/invitation.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 type FailureResponse = Extract<ControllerResponse, { success: false }>;
 
@@ -31,8 +32,20 @@ function envelope(response: ControllerResponse) {
 }
 
 /** `createBulk` answers with one result per invitation. */
+function isBulkInviteResponse(value: unknown): value is BulkInviteResponse {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'results' in value &&
+    Array.isArray(value.results)
+  );
+}
+
+/** `createBulk` answers with one result per invitation. */
 function bulkData(response: ControllerResponse): BulkInviteResponse {
-  return envelope(response).data as BulkInviteResponse;
+  const data = envelope(response).data;
+  if (!isBulkInviteResponse(data)) throw new Error('expected the bulk invitation payload');
+  return data;
 }
 
 function createMockInvitationService() {
@@ -63,7 +76,7 @@ describe('InvitationController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockInvitationService();
-    controller = new InvitationController(mockService as unknown as InvitationService);
+    controller = new InvitationController(asService<InvitationService>(mockService));
   });
 
   describe('create', () => {

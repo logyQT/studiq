@@ -3,6 +3,7 @@ import { SeatController } from '@studiq/server/controllers/seat.controller';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type { SeatService } from '@studiq/server/services/seat.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return {
@@ -33,7 +34,7 @@ describe('SeatController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new SeatController(mockService as unknown as SeatService);
+    controller = new SeatController(asService<SeatService>(mockService));
   });
 
   describe('listPools', () => {

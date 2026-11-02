@@ -6,6 +6,7 @@ import {
   type TestUserFixture,
 } from '#test/helpers/test-user';
 import { useRealSupabase, cleanupFlashcardTopics, mockUser } from '#test/integration/helpers';
+import { json } from '#test/helpers/json';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 import {
   DELETE as deleteFn,
@@ -13,6 +14,31 @@ import {
   PUT as update,
 } from '@/app/(backend)/api/v1/flashcards/topics/[id]/route';
 import { GET, POST } from '@/app/(backend)/api/v1/flashcards/topics/route';
+
+/** Fields of the topic payloads these tests read. */
+interface TopicPayload {
+  id: string;
+  name: string;
+}
+
+interface TopicEnvelope {
+  success: boolean;
+  data: TopicPayload;
+}
+
+interface TopicListPayload {
+  data: { items: TopicPayload[] };
+}
+
+/** Bodies where only the envelope is asserted. */
+interface ApiEnvelope {
+  success: boolean;
+}
+
+/** 422 body with the per-field validation error codes. */
+interface ValidationErrorEnvelope extends ApiEnvelope {
+  issues: { properties: { name: { errors: string[] } } };
+}
 
 describe(`Flashcard Topics Integration`, () => {
   let teacher!: BeforeResult;
@@ -46,7 +72,7 @@ describe(`Flashcard Topics Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<TopicEnvelope>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -63,7 +89,7 @@ describe(`Flashcard Topics Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -80,7 +106,7 @@ describe(`Flashcard Topics Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ValidationErrorEnvelope>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -100,7 +126,7 @@ describe(`Flashcard Topics Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -113,7 +139,7 @@ describe(`Flashcard Topics Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/topics');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<TopicListPayload>(response);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data?.items)).toBe(true);
@@ -125,7 +151,7 @@ describe(`Flashcard Topics Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/topics');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -142,7 +168,7 @@ describe(`Flashcard Topics Integration`, () => {
         { id: topicId },
       );
       const response = await getById(request, { params });
-      const body = await response.json();
+      const body = await json<TopicEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.id).toBe(topicId);
@@ -158,7 +184,7 @@ describe(`Flashcard Topics Integration`, () => {
         { id: fakeId },
       );
       const response = await getById(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -180,7 +206,7 @@ describe(`Flashcard Topics Integration`, () => {
         },
       );
       const response = await update(request, { params });
-      const body = await response.json();
+      const body = await json<TopicEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.name).toBe('Updated');
@@ -201,7 +227,7 @@ describe(`Flashcard Topics Integration`, () => {
         },
       );
       const response = await update(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -221,7 +247,7 @@ describe(`Flashcard Topics Integration`, () => {
         },
       );
       const response = await update(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -239,7 +265,7 @@ describe(`Flashcard Topics Integration`, () => {
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -255,7 +281,7 @@ describe(`Flashcard Topics Integration`, () => {
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);

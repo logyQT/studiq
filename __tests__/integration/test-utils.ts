@@ -1,4 +1,22 @@
-import type { NextRequest } from 'next/server';
+import type { Database } from '@studiq/server/types/database';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { NextRequest } from 'next/server';
+
+/**
+ * Service-role client typed against the generated schema.
+ *
+ * `createServiceClient()` (helpers.ts) returns an untyped `SupabaseClient`, so
+ * every row a test reads through it is `any`. This is the same client (same
+ * env vars, same session settings) with the schema generic applied, so rows
+ * come back as their `Database['public']['Tables'][…]['Row']` type.
+ */
+export function createTypedServiceClient(): SupabaseClient<Database> {
+  return createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } },
+  );
+}
 
 function mockCookies(cookieMap?: Record<string, string>) {
   const entries = Object.entries(cookieMap ?? {});
@@ -18,16 +36,14 @@ function mockCookies(cookieMap?: Record<string, string>) {
 }
 
 function toNextRequest(req: Request, cookies?: Record<string, string>): NextRequest {
-  Object.defineProperty(req, 'cookies', {
+  // Wrap the plain `Request` in a real `NextRequest` so the route handler sees
+  // the real `nextUrl` implementation instead of a hand-rolled stand-in.
+  const nextRequest = new NextRequest(req);
+  Object.defineProperty(nextRequest, 'cookies', {
     value: mockCookies(cookies),
     writable: false,
   });
-  Object.defineProperty(req, 'nextUrl', {
-    value: new URL(req.url),
-    writable: false,
-  });
-  Object.defineProperty(req, 'page', { value: {}, writable: false });
-  return req as unknown as NextRequest;
+  return nextRequest;
 }
 
 export function createNextRequest(

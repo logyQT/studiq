@@ -1,10 +1,10 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { QuestionController } from '@studiq/server/controllers/question.controller';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import type { QuestionService } from '@studiq/server/services/question.service';
+import { QuestionService } from '@studiq/server/services/question.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type FailureResponse = Extract<ControllerResponse, { success: false }>;
@@ -31,13 +31,15 @@ function envelope(response: ControllerResponse) {
 }
 
 function createMockQuestionService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new QuestionService(() => Promise.reject(new Error('unused'))), {
     create: vi.fn(),
     list: vi.fn(),
     getById: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  };
+  });
 }
 
 const mockCtx: RequestContext = {
@@ -66,8 +68,9 @@ function mockBankLookup(bankId: string) {
       error: null,
     }),
   };
-  const mockSupabase = { from: vi.fn().mockReturnValue(queryChain) };
-  vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as SupabaseClient);
+  const mockSupabase = mockSupabaseClient();
+  mockSupabase.from.mockReturnValue(queryChain);
+  vi.mocked(createClient).mockResolvedValue(mockSupabase);
 }
 
 describe('QuestionController', () => {
@@ -77,7 +80,7 @@ describe('QuestionController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockQuestionService();
-    controller = new QuestionController(mockService as unknown as QuestionService);
+    controller = new QuestionController(mockService);
   });
 
   describe('create', () => {
@@ -148,8 +151,9 @@ describe('QuestionController', () => {
           error: null,
         }),
       };
-      const mockSupabase = { from: vi.fn().mockReturnValue(queryChain) };
-      vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as SupabaseClient);
+      const mockSupabase = mockSupabaseClient();
+      mockSupabase.from.mockReturnValue(queryChain);
+      vi.mocked(createClient).mockResolvedValue(mockSupabase);
 
       const response = await controller.create(body, mockCtx);
 

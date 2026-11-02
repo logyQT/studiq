@@ -1,6 +1,6 @@
 import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it, type Mock, vi } from 'vitest';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
 
 interface AssignmentRow {
   id: string;
@@ -34,10 +34,10 @@ function qb(data: AssignmentRow[] | null, error: DbError | null = null): FakeQue
   return b;
 }
 
-function client(builder: FakeQueryBuilder): SupabaseClient {
+function client(builder: FakeQueryBuilder) {
   // The lookup only touches `from().select().in()`; the rest of the client is
   // never reached, so a partial double is enough.
-  return { from: vi.fn(() => builder) } as unknown as SupabaseClient;
+  return asSupabaseClient({ from: vi.fn(() => builder) });
 }
 
 describe('resultsHidden (#374)', () => {

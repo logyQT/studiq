@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const lookupMock = vi.fn();
+const lookupMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('node:dns/promises', () => ({
   lookup: (...args: unknown[]) => lookupMock(...args),
 }));

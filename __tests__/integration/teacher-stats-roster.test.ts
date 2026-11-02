@@ -1,5 +1,7 @@
+import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { asJson, json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -13,10 +15,13 @@ import {
   cleanupFlashcardPractice,
   cleanupFlashcards,
   cleanupOrganizationDeep,
-  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  createTypedServiceClient,
+} from '#test/integration/test-utils';
 import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
 import { GET as getTeacherStats } from '@/app/(backend)/api/v1/flashcards/stats/teacher/route';
 
@@ -52,8 +57,8 @@ interface StatsPayload {
   };
 }
 
-function newClient(): SupabaseClient {
-  return createClient(url, anonKey, {
+function newClient(): SupabaseClient<Database> {
+  return createClient<Database>(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -67,14 +72,14 @@ async function fetchStats(owner: BeforeResult, orgId: string | null): Promise<St
       orgId ? { active_org_id: orgId } : {},
     ),
   );
-  const body = await res.json();
+  const body = await json<{ data: StatsPayload }>(res);
   expect(res.status).toBe(200);
-  return body.data as StatsPayload;
+  return body.data;
 }
 
 describe('Teacher stats roster (#460)', () => {
   const tag = randomTag(6);
-  const service = createServiceClient();
+  const service = createTypedServiceClient();
 
   let teacher!: BeforeResult;
   let orgB!: BeforeResult;
@@ -204,13 +209,13 @@ describe('Teacher stats roster (#460)', () => {
   it('counts a student who belongs to two groups once', async () => {
     const { data: secondGroup, error } = await service
       .from('groups')
-      .insert({ organization_id: teacher.orgId, name: `st460-second-${tag}` })
+      .insert({ organization_id: teacher.orgId!, name: `st460-second-${tag}` })
       .select('id')
       .single();
     expect(error).toBeNull();
 
     const { error: memberError } = await service.from('group_members').insert({
-      group_id: secondGroup?.id as string,
+      group_id: secondGroup!.id,
       user_id: learners.teacher[1].id,
       role: 'member',
     });
@@ -233,7 +238,7 @@ describe('Teacher stats roster (#460)', () => {
     const { error } = await service
       .from('org_members')
       .delete()
-      .eq('organization_id', removal.orgId as string)
+      .eq('organization_id', removal.orgId!)
       .eq('user_id', student.id);
     expect(error).toBeNull();
 
@@ -301,7 +306,7 @@ describe('Teacher stats roster (#460)', () => {
       p_organization_id: orgB.orgId,
     });
     expect(crossTenant.error).toBeNull();
-    expect((crossTenant.data as StatsPayload).summary.rosterStudents).toBeNull();
+    expect(asJson<StatsPayload>(crossTenant.data).summary.rosterStudents).toBeNull();
 
     // ...while the caller's own org is allowed (2 learners minus the caller).
     const ownOrg = await session.rpc('get_teacher_stats', {
@@ -310,7 +315,7 @@ describe('Teacher stats roster (#460)', () => {
       p_organization_id: teacher.orgId,
     });
     expect(ownOrg.error).toBeNull();
-    expect((ownOrg.data as StatsPayload).summary.rosterStudents).toBe(1);
+    expect(asJson<StatsPayload>(ownOrg.data).summary.rosterStudents).toBe(1);
 
     // Asking for another user's dashboard still fails.
     const foreignUser = await session.rpc('get_teacher_stats', {

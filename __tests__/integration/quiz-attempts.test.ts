@@ -1,4 +1,6 @@
+import type { Database } from '@studiq/server/types/database';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -21,6 +23,69 @@ import {
 import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
 import { POST as quizPost } from '@/app/(backend)/api/v1/quiz/new/route';
 import { toSaveAnswersPayload } from '@/lib/quiz-draft';
+
+type QuizAttemptQuestionRow = Database['public']['Tables']['quiz_attempt_questions']['Row'];
+/** Selected columns of `question_options` — rows these flows seed always carry a question. */
+interface AttemptOptionRow {
+  id: string;
+  question_id: string;
+}
+type OpenQuestionRow = Pick<Database['public']['Tables']['questions']['Row'], 'id'>;
+
+/** Fields of `GET /api/v1/quiz/[attemptId]` the assertions below read. */
+interface QuizAnswerPayload {
+  is_correct?: boolean;
+  selected_answer_id?: string | null;
+  text_answer?: string | null;
+  teacher_points?: number | null;
+  teacher_feedback?: string | null;
+}
+
+interface QuizQuestionPayload {
+  explanation?: string | null;
+  question_answers: { content?: string | null; is_correct?: boolean }[];
+}
+
+interface QuizAttemptPayload {
+  id: string;
+  completed_at: string | null;
+  questions: QuizQuestionPayload[];
+  answers: Record<string, QuizAnswerPayload>;
+}
+
+/** `GET /api/v1/quiz/[attemptId]` wraps the attempt in the API envelope. */
+interface QuizAttemptDetailPayload {
+  data: QuizAttemptPayload;
+}
+
+interface AttemptListPayload {
+  data: {
+    id: string;
+    completed_at: string | null;
+    score: number | null;
+    total_questions: number;
+    gradable_questions: number;
+    assignment_id: string | null;
+  }[];
+}
+
+/** Error bodies only assert the envelope. */
+interface ApiErrorPayload {
+  success: boolean;
+}
+
+interface QuizCreatePayload {
+  data?: { id?: string };
+}
+
+interface SaveDraftPayload {
+  success: boolean;
+  data: { saved: number };
+}
+
+interface SubmitPayload extends ApiErrorPayload {
+  data: { score: number };
+}
 
 describe(`Quiz Attempts Integration`, () => {
   let student!: BeforeResult;
@@ -49,7 +114,7 @@ describe(`Quiz Attempts Integration`, () => {
       }),
     });
     const quizRes = await quizPost(quizReq);
-    const quizBody = await quizRes.json();
+    const quizBody = await json<QuizCreatePayload>(quizRes);
     if (!quizBody.data?.id) throw new Error(`Failed to create quiz: ${JSON.stringify(quizBody)}`);
     attemptId = quizBody.data.id;
   });
@@ -65,7 +130,7 @@ describe(`Quiz Attempts Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/quiz/attempts');
       const response = await attemptsGet(req);
-      const body = await response.json();
+      const body = await json<AttemptListPayload>(response);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data)).toBe(true);
@@ -84,17 +149,17 @@ describe(`Quiz Attempts Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/quiz/attempts');
       const response = await attemptsGet(req);
-      const body = await response.json();
+      const body = await json<AttemptListPayload>(response);
 
       const row = body.data.find((a: { id: string }) => a.id === attemptId);
 
       expect(row).toBeTruthy();
-      expect(row.completed_at).toBeTruthy();
-      expect(row.score).toBe(2);
-      expect(row.total_questions).toBe(3);
+      expect(row!.completed_at).toBeTruthy();
+      expect(row!.score).toBe(2);
+      expect(row!.total_questions).toBe(3);
       // #329 — the history badge divides by the auto-gradable questions only.
-      expect(row.gradable_questions).toBe(3);
-      expect(row.assignment_id).toBeNull();
+      expect(row!.gradable_questions).toBe(3);
+      expect(row!.assignment_id).toBeNull();
     });
 
     it('returns 401 when not authenticated', async () => {
@@ -102,7 +167,7 @@ describe(`Quiz Attempts Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/quiz/attempts');
       const response = await attemptsGet(req);
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -118,7 +183,7 @@ describe(`Quiz Attempts Integration`, () => {
         { attemptId },
       );
       const response = await attemptGet(request, { params });
-      const body = await response.json();
+      const body = await json<QuizAttemptDetailPayload>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.id).toBe(attemptId);
@@ -133,7 +198,7 @@ describe(`Quiz Attempts Integration`, () => {
         { attemptId },
       );
       const response = await attemptGet(request, { params });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -147,7 +212,7 @@ describe(`Quiz Attempts Integration`, () => {
         { attemptId },
       );
       const response = await attemptGet(request, { params });
-      const body = await response.json();
+      const body = await json<QuizAttemptDetailPayload>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.completed_at).toBeNull();
@@ -172,7 +237,8 @@ describe(`Quiz Attempts Integration`, () => {
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')
-        .eq('attempt_id', attemptId);
+        .eq('attempt_id', attemptId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
 
       const { data: answers } = await supabase
         .from('question_options')
@@ -180,7 +246,8 @@ describe(`Quiz Attempts Integration`, () => {
         .in(
           'question_id',
           attemptQuestions!.map((q) => q.question_id),
-        );
+        )
+        .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
       const submittedAnswers = answers!.map((a) => ({
         questionId: a.question_id,
@@ -204,7 +271,7 @@ describe(`Quiz Attempts Integration`, () => {
         { attemptId },
       );
       const response = await attemptGet(request, { params });
-      const body = await response.json();
+      const body = await json<QuizAttemptDetailPayload>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.completed_at).not.toBeNull();
@@ -214,7 +281,7 @@ describe(`Quiz Attempts Integration`, () => {
           expect(typeof option.is_correct).toBe('boolean');
         }
       }
-      for (const answer of Object.values<Record<string, unknown>>(body.data.answers)) {
+      for (const answer of Object.values(body.data.answers)) {
         expect(typeof answer.is_correct).toBe('boolean');
       }
     });
@@ -226,14 +293,16 @@ describe(`Quiz Attempts Integration`, () => {
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')
-        .eq('attempt_id', attemptId);
+        .eq('attempt_id', attemptId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
 
       const questionIds = (attemptQuestions ?? []).map((q) => q.question_id);
 
       const { data: options } = await supabase
         .from('question_options')
         .select('id, question_id')
-        .in('question_id', questionIds);
+        .in('question_id', questionIds)
+        .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
       const submitReq = createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
         method: 'POST',
@@ -262,7 +331,7 @@ describe(`Quiz Attempts Integration`, () => {
         { attemptId },
       );
       const response = await attemptGet(request, { params });
-      const body = await response.json();
+      const body = await json<QuizAttemptDetailPayload>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.completed_at).not.toBeNull();
@@ -287,7 +356,8 @@ describe(`Quiz Attempts Integration`, () => {
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')
-        .eq('attempt_id', attemptId);
+        .eq('attempt_id', attemptId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
 
       const { data: answers } = await supabase
         .from('question_options')
@@ -295,7 +365,8 @@ describe(`Quiz Attempts Integration`, () => {
         .in(
           'question_id',
           attemptQuestions!.map((q) => q.question_id),
-        );
+        )
+        .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
       const submittedAnswers = answers!.map((a) => ({
         questionId: a.question_id,
@@ -312,7 +383,7 @@ describe(`Quiz Attempts Integration`, () => {
         },
       );
       const response = await attemptPost(request, { params });
-      const body = await response.json();
+      const body = await json<SubmitPayload>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -329,7 +400,13 @@ describe(`Quiz Attempts Integration`, () => {
         .eq('created_by', student.user.id)
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()
+        .overrideTypes<
+          Pick<Database['public']['Tables']['question_banks']['Row'], 'id'>,
+          {
+            merge: false;
+          }
+        >();
       if (!bank) throw new Error('seed question bank not found');
 
       const { data: openQuestion, error: openQuestionError } = await supabase
@@ -342,7 +419,8 @@ describe(`Quiz Attempts Integration`, () => {
           explanation: 'Rozbiory, słaba władza centralna, liberum veto.',
         })
         .select('id')
-        .single();
+        .single()
+        .overrideTypes<OpenQuestionRow, { merge: false }>();
       if (openQuestionError || !openQuestion) {
         throw new Error(`Failed to seed open question: ${openQuestionError?.message}`);
       }
@@ -357,7 +435,8 @@ describe(`Quiz Attempts Integration`, () => {
         .from('quiz_attempt_questions')
         .select('question_id')
         .eq('attempt_id', attemptId)
-        .neq('question_id', openQuestion.id);
+        .neq('question_id', openQuestion.id)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
 
       const { data: options } = await supabase
         .from('question_options')
@@ -365,13 +444,20 @@ describe(`Quiz Attempts Integration`, () => {
         .in(
           'question_id',
           attemptQuestions!.map((q) => q.question_id),
-        );
+        )
+        .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
       const attemptQuestionIds = attemptQuestions!.map((q) => q.question_id);
       const { data: attemptQuestionRows, error: typesError } = await supabase
         .from('questions')
         .select('id, type')
-        .in('id', attemptQuestionIds);
+        .in('id', attemptQuestionIds)
+        .overrideTypes<
+          Pick<Database['public']['Tables']['questions']['Row'], 'id' | 'type'>[],
+          {
+            merge: false;
+          }
+        >();
       if (typesError) throw new Error(`Failed to load question types: ${typesError.message}`);
 
       const typeById = new Map((attemptQuestionRows ?? []).map((q) => [q.id, q.type] as const));
@@ -407,7 +493,7 @@ describe(`Quiz Attempts Integration`, () => {
         },
       );
       const response = await attemptPost(request, { params });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -417,7 +503,14 @@ describe(`Quiz Attempts Integration`, () => {
         .select('text_answer, selected_option_id, question_type, is_correct')
         .eq('attempt_id', attemptId)
         .eq('question_id', openQuestion.id)
-        .single();
+        .single()
+        .overrideTypes<
+          Pick<
+            Database['public']['Tables']['student_answers']['Row'],
+            'text_answer' | 'selected_option_id' | 'question_type' | 'is_correct'
+          >,
+          { merge: false }
+        >();
 
       expect(storedAnswer?.text_answer).toBe(textAnswer);
       expect(storedAnswer?.selected_option_id).toBeNull();
@@ -428,7 +521,8 @@ describe(`Quiz Attempts Integration`, () => {
         .from('quiz_attempts')
         .select('completed_at')
         .eq('id', attemptId)
-        .single();
+        .single()
+        .overrideTypes<{ completed_at: string | null }, { merge: false }>();
       expect(attempt?.completed_at).not.toBeNull();
     });
 
@@ -439,7 +533,8 @@ describe(`Quiz Attempts Integration`, () => {
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')
-        .eq('attempt_id', attemptId);
+        .eq('attempt_id', attemptId)
+        .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
 
       const { data: answers } = await supabase
         .from('question_options')
@@ -447,7 +542,8 @@ describe(`Quiz Attempts Integration`, () => {
         .in(
           'question_id',
           attemptQuestions!.map((q) => q.question_id),
-        );
+        )
+        .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
       const submittedAnswers = answers!.map((a) => ({
         questionId: a.question_id,
@@ -467,7 +563,7 @@ describe(`Quiz Attempts Integration`, () => {
         body: JSON.stringify({ answers: submittedAnswers }),
       });
       const response = await attemptPost(resubmitReq, { params: Promise.resolve({ attemptId }) });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(400);
       expect(body.success).toBe(false);
@@ -487,7 +583,7 @@ describe(`Quiz Attempts Integration`, () => {
         },
       );
       const response = await attemptPost(request, { params });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -506,7 +602,7 @@ describe(`Quiz Attempts Integration`, () => {
         },
       );
       const response = await attemptPost(request, { params });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -525,7 +621,7 @@ describe(`Quiz Attempts Integration`, () => {
         },
       );
       const response = await attemptPost(request, { params });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -537,13 +633,15 @@ describe(`Quiz Attempts Integration`, () => {
     const { data: attemptQuestions } = await supabase
       .from('quiz_attempt_questions')
       .select('question_id')
-      .eq('attempt_id', attemptId);
+      .eq('attempt_id', attemptId)
+      .overrideTypes<QuizAttemptQuestionRow[], { merge: false }>();
     const questionIds = (attemptQuestions ?? []).map((q) => q.question_id);
 
     const { data: options } = await supabase
       .from('question_options')
       .select('id, question_id')
-      .in('question_id', questionIds);
+      .in('question_id', questionIds)
+      .overrideTypes<AttemptOptionRow[], { merge: false }>();
 
     return { questionIds, options: options ?? [] };
   }
@@ -566,7 +664,7 @@ describe(`Quiz Attempts Integration`, () => {
       { attemptId },
     );
     const response = await attemptGet(request, { params });
-    return { response, body: await response.json() };
+    return { response, body: await json<QuizAttemptDetailPayload>(response) };
   }
 
   async function countStudentAnswers() {
@@ -588,7 +686,7 @@ describe(`Quiz Attempts Integration`, () => {
         { questionId: first.question_id, selectedAnswerId: first.id },
       ]);
       const response = await attemptAnswersPut(request, { params });
-      const body = await response.json();
+      const body = await json<SaveDraftPayload>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -610,7 +708,7 @@ describe(`Quiz Attempts Integration`, () => {
 
       const { request, params } = draftRequest([]);
       const response = await attemptAnswersPut(request, { params });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -641,7 +739,7 @@ describe(`Quiz Attempts Integration`, () => {
 
       const { request, params } = draftRequest([]);
       const response = await attemptAnswersPut(request, { params });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(400);
       expect(body.success).toBe(false);
@@ -657,7 +755,7 @@ describe(`Quiz Attempts Integration`, () => {
         },
       ]);
       const response = await attemptAnswersPut(request, { params });
-      const body = await response.json();
+      const body = await json<ApiErrorPayload>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -727,7 +825,8 @@ describe(`Quiz Attempts Integration`, () => {
         .from('quiz_attempts')
         .select('completed_at, draft_answers')
         .eq('id', attemptId)
-        .single();
+        .single()
+        .overrideTypes<{ completed_at: string | null; draft_answers: unknown }, { merge: false }>();
 
       expect(attempt?.completed_at).not.toBeNull();
       // Submit clears the draft.

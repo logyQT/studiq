@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { ActivityController } from '@studiq/server/controllers/activity.controller';
 import type { ActivityService } from '@studiq/server/services/activity.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return { getClassActivity: vi.fn() };
@@ -26,7 +27,7 @@ describe('ActivityController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new ActivityController(mockService as unknown as ActivityService);
+    controller = new ActivityController(asService<ActivityService>(mockService));
   });
 
   describe('getActivity', () => {

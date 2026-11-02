@@ -1,8 +1,19 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { PaymentService } from '@studiq/server/services/payment.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-const ctx = { userId: 'u-1' } as unknown as Parameters<PaymentService['listMine']>[0];
+const ctx: RequestContext = {
+  userId: 'u-1',
+  accountType: AccountType.STUDENT,
+  traceId: 't',
+  url: '',
+  method: 'GET',
+  activeOrgId: null,
+  orgRoleId: null,
+  groupIds: [],
+  permissionScopes: {},
+};
 
 type QueryResult = { data: unknown; error: unknown };
 type QueryChain = {

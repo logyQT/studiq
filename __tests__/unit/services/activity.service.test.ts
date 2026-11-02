@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { ActivityService } from '@studiq/server/services/activity.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -28,6 +29,12 @@ type QueryBuilder = {
   single: Mock;
   maybeSingle: Mock;
 } & Pick<Promise<QueryResult>, 'then' | 'catch' | 'finally'>;
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
 
 function qb(data: unknown, error: unknown = null): QueryBuilder {
   const promise = Promise.resolve({ data: data ?? null, error });
@@ -89,8 +96,8 @@ describe('ActivityService', () => {
       const result = await service.getClassActivity(ctx, { range: '7d' });
 
       expect(result.success).toBe(true);
-      expect(result.data.students).toEqual([]);
-      expect(result.data.dailyActivity).toEqual([]);
+      expect(expectSuccess(result).students).toEqual([]);
+      expect(expectSuccess(result).dailyActivity).toEqual([]);
     });
 
     it('returns error on member query failure', async () => {
@@ -125,12 +132,12 @@ describe('ActivityService', () => {
       const result = await service.getClassActivity(ctx, { range: '7d' });
 
       expect(result.success).toBe(true);
-      expect(result.data.students).toHaveLength(1);
-      expect(result.data.students[0].name).toBe('Student');
+      expect(expectSuccess(result).students).toHaveLength(1);
+      expect(expectSuccess(result).students[0].name).toBe('Student');
       // The dead difficulty breakdown is gone: the endpoint must no longer read
       // quiz_attempts at all (#208).
       expect(mock.from).toHaveBeenCalledTimes(4);
-      expect(mock.from.mock.calls.map(([table]) => table)).not.toContain('quiz_attempts');
+      expect(mock.from.mock.calls.map((call: unknown[]) => call[0])).not.toContain('quiz_attempts');
       expect(result.data).not.toHaveProperty('quizzes');
     });
 

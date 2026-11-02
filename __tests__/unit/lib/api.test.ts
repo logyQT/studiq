@@ -19,6 +19,17 @@ const issueBody = {
   },
 };
 
+/** Awaits a call expected to reject with an `ApiError` and returns it typed. */
+async function apiError(promise: Promise<unknown>): Promise<ApiError> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof ApiError) return error;
+    throw error;
+  }
+  throw new Error('expected the call to reject');
+}
+
 function mockFetchResponse(body: unknown, status: number) {
   const fetchMock = vi.fn().mockResolvedValue(
     new Response(JSON.stringify(body), {
@@ -38,7 +49,7 @@ describe('apiPut', () => {
   it('throws an ApiError that keeps the app error code in message and preserves issues', async () => {
     mockFetchResponse(issueBody, 422);
 
-    const error = await apiPut('/api/v1/auth/profile', { name: 'Anna123' }).catch((err) => err);
+    const error = await apiError(apiPut('/api/v1/auth/profile', { name: 'Anna123' }));
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toBeInstanceOf(Error);
@@ -51,7 +62,7 @@ describe('apiPut', () => {
   it('falls back to a method/url message when the body has no error code', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not json', { status: 500 })));
 
-    const error = await apiPut('/api/v1/auth/profile', { name: 'Anna Nowak' }).catch((err) => err);
+    const error = await apiError(apiPut('/api/v1/auth/profile', { name: 'Anna Nowak' }));
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error.code).toBe('PUT /api/v1/auth/profile failed');
@@ -71,7 +82,7 @@ describe('network failures (#190)', () => {
   it('turns a failed fetch into ApiError(NETWORK_ERROR) so callers can say the network is down', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
 
-    const error = await apiPut('/api/v1/flashcards/decks', { name: 'Deck' }).catch((err) => err);
+    const error = await apiError(apiPut('/api/v1/flashcards/decks', { name: 'Deck' }));
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error.code).toBe('NETWORK_ERROR');
@@ -82,7 +93,7 @@ describe('network failures (#190)', () => {
   it('does not treat other failures as network errors', async () => {
     mockFetchResponse({ success: false, error: 'INTERNAL_SERVER' }, 500);
 
-    const error = await apiGet('/api/v1/flashcards/decks').catch((err) => err);
+    const error = await apiError(apiGet('/api/v1/flashcards/decks'));
 
     expect(isNetworkError(error)).toBe(false);
     expect(isNetworkError(new Error('NETWORK_ERROR'))).toBe(false);
@@ -100,7 +111,7 @@ describe('getFieldErrorCode', () => {
   it('returns the first validation code for a top-level field', async () => {
     mockFetchResponse(issueBody, 422);
 
-    const error = await apiPut('/api/v1/auth/profile', { name: 'Anna123' }).catch((err) => err);
+    const error = await apiError(apiPut('/api/v1/auth/profile', { name: 'Anna123' }));
 
     expect(getFieldErrorCode(error, 'name')).toBe('VALIDATION_NAME_INVALID_FORMAT');
   });

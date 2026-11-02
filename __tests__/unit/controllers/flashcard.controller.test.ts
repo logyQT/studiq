@@ -4,6 +4,7 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { failure, success } from '@studiq/server/lib/service-result';
 import type { FlashcardService } from '@studiq/server/services/flashcard.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 type FailureResponse = Extract<ControllerResponse, { success: false }>;
 
@@ -53,7 +54,7 @@ describe('FlashcardController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardController(mockService as unknown as FlashcardService);
+    controller = new FlashcardController(asService<FlashcardService>(mockService));
   });
 
   describe('create', () => {

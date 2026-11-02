@@ -55,8 +55,9 @@ describe('withAuth root span exceptions', () => {
     });
 
     expect(spanSpy.recordException).toHaveBeenCalledTimes(1);
+    const httpMessage: unknown = expect.stringContaining('HTTP');
     expect(spanSpy.setStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 2, message: expect.stringContaining('HTTP') }),
+      expect.objectContaining({ code: 2, message: httpMessage }),
     );
   });
 

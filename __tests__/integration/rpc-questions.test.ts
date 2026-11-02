@@ -8,9 +8,41 @@ import {
   seedOrganization,
   seedOrgMembership,
 } from '#test/integration/helpers';
+import { asJson } from '#test/helpers/json';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** The row shape `get_accessible_questions` returns (only the fields these tests read). */
+interface AccessibleQuestion {
+  id: string;
+  question_options: { content: string; is_correct: boolean }[];
+}
+
+interface AccessibleQuestionsParams {
+  p_user_id: string;
+  p_org_id: string | null;
+  p_scope: 'own' | 'group' | 'organization' | 'any';
+  p_question_id?: string;
+  p_bank_ids?: string[];
+  p_type?: 'mcq' | 'true_false' | 'open';
+}
+
+/** What `seedOrganization` hands back. */
+interface SeededOrganization {
+  org: { id: string };
+  memberRoleId: string;
+  teacherRoleId: string;
+  defaultGroupId: string;
+}
+
+/** `createServiceClient()` is untyped, so the RPC payload is the one `any` boundary here. */
+async function getAccessibleQuestions(
+  params: AccessibleQuestionsParams,
+): Promise<AccessibleQuestion[]> {
+  const response = await createServiceClient().rpc('get_accessible_questions', params);
+  return asJson<AccessibleQuestion[]>(response.data ?? []);
+}
 
 /** The `id` an RPC row carries, if it has one. */
 function readId(row: object): unknown {
@@ -20,7 +52,7 @@ function readId(row: object): unknown {
 /** Ids of the rows an RPC returned, in a stable order. */
 function sortedIds(rows: unknown): string[] {
   if (!Array.isArray(rows)) return [];
-  return rows
+  return (rows as unknown[])
     .map((row) => (typeof row === 'object' && row !== null ? readId(row) : undefined))
     .filter((id): id is string => typeof id === 'string')
     .toSorted();
@@ -63,7 +95,7 @@ describe(`get_accessible_questions RPC`, () => {
       await cleanupQuestions(user.id);
     }
 
-    const seeded = await seedOrganization(`${ORG_PREFIX}${Date.now()}`);
+    const seeded = asJson<SeededOrganization>(await seedOrganization(`${ORG_PREFIX}${Date.now()}`));
     orgId = seeded.org.id;
     defaultGroupId = seeded.defaultGroupId;
 
@@ -99,7 +131,7 @@ describe(`get_accessible_questions RPC`, () => {
     const sb = createServiceClient();
 
     // Create 2 banks
-    const { data: b1 } = await sb
+    const b1Response = await sb
       .from('question_banks')
       .insert({
         name: 'Bank 1',
@@ -108,9 +140,9 @@ describe(`get_accessible_questions RPC`, () => {
       })
       .select()
       .single();
-    bank1Id = b1!.id;
+    bank1Id = asJson<{ id: string }>(b1Response.data).id;
 
-    const { data: b2 } = await sb
+    const b2Response = await sb
       .from('question_banks')
       .insert({
         name: 'Bank 2',
@@ -119,14 +151,14 @@ describe(`get_accessible_questions RPC`, () => {
       })
       .select()
       .single();
-    bank2Id = b2!.id;
+    bank2Id = asJson<{ id: string }>(b2Response.data).id;
 
     // Bank1 → Group, Bank2 → no group
     await sb.from('bank_groups').insert({ bank_id: bank1Id, group_id: defaultGroupId });
 
     // Create 4 questions (bank_id is a direct NOT NULL FK since 20260716000001).
     // Content is prefixed with suiteId so cleanupQuestions can scope by copy.
-    const { data: q1 } = await sb
+    const q1Response = await sb
       .from('questions')
       .insert({
         type: 'mcq',
@@ -138,9 +170,9 @@ describe(`get_accessible_questions RPC`, () => {
       })
       .select()
       .single();
-    q1Id = q1!.id;
+    q1Id = asJson<{ id: string }>(q1Response.data).id;
 
-    const { data: q2 } = await sb
+    const q2Response = await sb
       .from('questions')
       .insert({
         type: 'mcq',
@@ -152,9 +184,9 @@ describe(`get_accessible_questions RPC`, () => {
       })
       .select()
       .single();
-    q2Id = q2!.id;
+    q2Id = asJson<{ id: string }>(q2Response.data).id;
 
-    const { data: q3 } = await sb
+    const q3Response = await sb
       .from('questions')
       .insert({
         type: 'mcq',
@@ -166,9 +198,9 @@ describe(`get_accessible_questions RPC`, () => {
       })
       .select()
       .single();
-    q3Id = q3!.id;
+    q3Id = asJson<{ id: string }>(q3Response.data).id;
 
-    const { data: q4 } = await sb
+    const q4Response = await sb
       .from('questions')
       .insert({
         type: 'mcq',
@@ -180,7 +212,7 @@ describe(`get_accessible_questions RPC`, () => {
       })
       .select()
       .single();
-    q4Id = q4!.id;
+    q4Id = asJson<{ id: string }>(q4Response.data).id;
 
     // Answers for Q1 (for p_question_id test)
     await sb.from('question_options').insert([
@@ -202,7 +234,7 @@ describe(`get_accessible_questions RPC`, () => {
   // ---------------------------------------------------------------
   describe('scope — Student A (group member)', () => {
     it("p_scope='own' returns only own questions", async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'own',
@@ -213,7 +245,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it("p_scope='group' returns own + group-shared", async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'group',
@@ -224,7 +256,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it("p_scope='organization' returns all questions in org", async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'organization',
@@ -235,7 +267,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it("p_scope='any' returns all questions in org", async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'any',
@@ -251,7 +283,7 @@ describe(`get_accessible_questions RPC`, () => {
   // ---------------------------------------------------------------
   describe('scope — Student B (not a group member)', () => {
     it("p_scope='own' returns only own questions", async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentB.id,
         p_org_id: orgId,
         p_scope: 'own',
@@ -262,7 +294,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it("p_scope='group' returns only own (no group access)", async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentB.id,
         p_org_id: orgId,
         p_scope: 'group',
@@ -274,7 +306,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it("p_scope='organization' returns all questions", async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentB.id,
         p_org_id: orgId,
         p_scope: 'organization',
@@ -289,25 +321,26 @@ describe(`get_accessible_questions RPC`, () => {
   // ---------------------------------------------------------------
   describe('p_question_id', () => {
     it('returns question with answers inline when accessible', async () => {
-      const { data, error } = await createServiceClient().rpc('get_accessible_questions', {
+      const response = await createServiceClient().rpc('get_accessible_questions', {
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'own',
         p_question_id: q1Id,
       });
 
-      expect(error).toBeNull();
+      expect(response.error).toBeNull();
+      const data = asJson<AccessibleQuestion[]>(response.data ?? []);
       expect(data).toHaveLength(1);
-      expect(data![0].id).toBe(q1Id);
-      expect(data![0].question_options).toBeDefined();
-      expect(Array.isArray(data![0].question_options)).toBe(true);
-      expect(data![0].question_options).toHaveLength(2);
-      expect(data![0].question_options[0].content).toBe('Ans 1');
-      expect(data![0].question_options[0].is_correct).toBe(true);
+      expect(data[0].id).toBe(q1Id);
+      expect(data[0].question_options).toBeDefined();
+      expect(Array.isArray(data[0].question_options)).toBe(true);
+      expect(data[0].question_options).toHaveLength(2);
+      expect(data[0].question_options[0].content).toBe('Ans 1');
+      expect(data[0].question_options[0].is_correct).toBe(true);
     });
 
     it('returns empty when question is not accessible', async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentB.id,
         p_org_id: orgId,
         p_scope: 'group',
@@ -318,7 +351,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it('returns empty for nonexistent id', async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'any',
@@ -334,7 +367,7 @@ describe(`get_accessible_questions RPC`, () => {
   // ---------------------------------------------------------------
   describe('filter params', () => {
     it('p_bank_ids filters by bank', async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'organization',
@@ -346,7 +379,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it('p_type filters by type', async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'any',
@@ -357,7 +390,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it('p_type returns empty for non-matching type', async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'any',
@@ -368,7 +401,7 @@ describe(`get_accessible_questions RPC`, () => {
     });
 
     it('p_bank_ids returns empty for non-matching bank', async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'organization',
@@ -384,7 +417,7 @@ describe(`get_accessible_questions RPC`, () => {
   // ---------------------------------------------------------------
   describe('p_org_id = null', () => {
     it('returns own questions across all orgs when p_org_id is null', async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: null,
         p_scope: 'own',
@@ -401,7 +434,7 @@ describe(`get_accessible_questions RPC`, () => {
   // ---------------------------------------------------------------
   describe('default scope', () => {
     it("p_scope='own' returns own questions only (default scope)", async () => {
-      const { data } = await createServiceClient().rpc('get_accessible_questions', {
+      const data = await getAccessibleQuestions({
         p_user_id: studentA.id,
         p_org_id: orgId,
         p_scope: 'own',

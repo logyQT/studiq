@@ -6,8 +6,9 @@ import {
   UpdateStudySettingsSchema,
 } from '@studiq/server/models/study-settings.model';
 import { FlashcardPracticeService } from '@studiq/server/services/flashcard-practice.service';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { asService } from '#test/helpers/service-double';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
 import { GOAL_PRESETS, goalProgress, MAX_GOAL, parseGoalInput } from '@/lib/goal-progress';
 
 // #656: the daily review goal. The column and the chart line existed; nothing could set the
@@ -17,6 +18,16 @@ vi.mock('@studiq/server/lib/authz', () => ({
   buildQueryFilter: vi.fn(() => ({})),
   Permission: { FLASHCARD_READ: 'flashcard.read' },
 }));
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** `getSettings` answers `ServiceResult<unknown>`; this narrows the counter the test reads. */
+function reviewedToday(data: unknown): unknown {
+  if (!isRecord(data) || !('reviewedToday' in data)) throw new Error('expected reviewedToday');
+  return data.reviewedToday;
+}
 
 const ctx: RequestContext = {
   userId: 'student-1',
@@ -109,10 +120,7 @@ describe('FlashcardPracticeService settings', () => {
       user_daily_activity: builder({ data: { reviews_count: 12 }, error: null }),
     };
     service = new FlashcardPracticeService(() =>
-      Promise.resolve({
-        from: vi.fn((table: string) => tables[table]),
-        rpc,
-      } as unknown as SupabaseClient),
+      Promise.resolve(asSupabaseClient({ from: vi.fn((table: string) => tables[table]), rpc })),
     );
   });
 
@@ -137,7 +145,7 @@ describe('FlashcardPracticeService settings', () => {
 
     const result = await service.getSettings(ctx);
 
-    expect(result.success && (result.data as { reviewedToday: number }).reviewedToday).toBe(0);
+    expect(result.success && reviewedToday(result.data)).toBe(0);
   });
 
   it('stores the goal for the caller only and answers the fresh settings', async () => {
@@ -165,9 +173,7 @@ describe('FlashcardPracticeService settings', () => {
 
 describe('FlashcardPracticeController.updateSettings', () => {
   const practice = { updateSettings: vi.fn() };
-  const controller = new FlashcardPracticeController(
-    practice as unknown as FlashcardPracticeService,
-  );
+  const controller = new FlashcardPracticeController(asService<FlashcardPracticeService>(practice));
 
   beforeEach(() => vi.clearAllMocks());
 

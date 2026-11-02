@@ -17,7 +17,7 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
 
 type QueryResult = { data: unknown; error: unknown; count?: number };
 type QueryChain = {
-  select: Mock<(...args: unknown[]) => QueryChain>;
+  select: Mock<(columns: string) => QueryChain>;
   eq: Mock<(...args: unknown[]) => QueryChain>;
   in: Mock<(...args: unknown[]) => QueryChain>;
   or: Mock<(...args: unknown[]) => QueryChain>;
@@ -326,7 +326,7 @@ describe('QuestionService', () => {
 
       await service.list(ctx, { type: 'mcq' });
 
-      const selectArg = c.select.mock.calls[0][0] as string;
+      const selectArg = c.select.mock.calls[0][0];
       expect(selectArg).toContain('question_topic_assignments(topic_id, topics(id, name))');
       expect(selectArg).not.toContain('!inner');
       expect(c.filter).not.toHaveBeenCalledWith(

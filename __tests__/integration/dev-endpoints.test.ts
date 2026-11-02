@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BeforeResult, before } from '#test/helpers/test-user';
+import { json } from '#test/helpers/json';
 import {
   useRealSupabase,
   cleanupFlashcardDecks,
@@ -11,6 +12,12 @@ import {
 import { createNextRequest } from '#test/integration/test-utils';
 import { POST as studySimulatePost } from '@/app/(backend)/api/v1/dev/study-simulate/route';
 import { GET as tracesGet } from '@/app/(backend)/api/v1/dev/traces/route';
+
+/** Body of `GET /api/v1/dev/traces` that the assertions below read. */
+type TracesBody = { events: unknown[] };
+
+/** Body of `POST /api/v1/dev/study-simulate` that the assertions below read. */
+type StudySimulateBody = { cards: number; updated: number; errors?: string[] };
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -51,7 +58,7 @@ describe(`Dev endpoints Integration`, () => {
     mockUser(student.user);
 
     const res = await tracesGet(createNextRequest('http://localhost/api/v1/dev/traces'));
-    const body = await res.json();
+    const body = await json<TracesBody>(res);
 
     expect(res.status).toBe(200);
     expect(body).toHaveProperty('events');
@@ -67,7 +74,7 @@ describe(`Dev endpoints Integration`, () => {
         body: JSON.stringify({ email: student.email }),
       }),
     );
-    const body = await res.json();
+    const body = await json<StudySimulateBody>(res);
 
     expect(res.status).toBe(200);
     // The stale `profiles.university_id` query answered 404 for every

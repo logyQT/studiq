@@ -1,14 +1,15 @@
 import type { RequestContext } from '@studiq/authz';
 import { FeatureResolver } from '@studiq/server/services/feature.resolver';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
+import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   useRealSupabase,
   cleanupOrganizationDeep,
-  createServiceClient,
   seedOrgMembership,
 } from '#test/integration/helpers';
+import { createTypedServiceClient } from '#test/integration/test-utils';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -23,8 +24,8 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 
 const PASSWORD = 'Rls4Test!';
 
-function anonSession(email: string): Promise<SupabaseClient> {
-  const client = createClient(
+function anonSession(email: string): Promise<SupabaseClient<Database>> {
+  const client = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { auth: { persistSession: false, autoRefreshToken: false } },
@@ -40,7 +41,7 @@ describe(`org_role_features RLS`, () => {
   const memberEmail = `rls-member-${tag}@dev.local`;
   const outsiderEmail = `rls-outsider-${tag}@dev.local`;
 
-  let service: SupabaseClient;
+  let service: SupabaseClient<Database>;
   let org1: string; // the member's org
   let org2: string; // a foreign org neither user belongs to
   let hubOrg: string; // the member's org on a paid plan (limit RLS probe)
@@ -49,8 +50,8 @@ describe(`org_role_features RLS`, () => {
   let hubMemberRole: string;
   let memberId: string;
   let outsiderId: string;
-  let memberSession: SupabaseClient;
-  let outsiderSession: SupabaseClient;
+  let memberSession: SupabaseClient<Database>;
+  let outsiderSession: SupabaseClient<Database>;
 
   async function createOrg(name: string): Promise<string> {
     const { data, error } = await service
@@ -88,7 +89,7 @@ describe(`org_role_features RLS`, () => {
   }
 
   beforeAll(async () => {
-    service = createServiceClient();
+    service = createTypedServiceClient();
 
     org1 = await createOrg(`rls-org1-${tag}`);
     org2 = await createOrg(`rls-org2-${tag}`);

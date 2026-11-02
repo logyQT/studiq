@@ -5,8 +5,8 @@ import {
   INVITE_MAIL_LIMIT_PER_HOUR,
   InvitationService,
 } from '@studiq/server/services/invitation.service';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: {
@@ -81,7 +81,7 @@ describe('InvitationService e-mail delivery', () => {
   let admin: { from: ReturnType<typeof vi.fn>; rpc: ReturnType<typeof vi.fn> };
   let sendInvitation: Mock<Mailer['sendInvitation']>;
   let mailer: Mailer;
-  let getMailer: ReturnType<typeof vi.fn>;
+  let getMailer: Mock<() => Mailer | null>;
   let service: InvitationService;
 
   beforeEach(() => {
@@ -101,8 +101,8 @@ describe('InvitationService e-mail delivery', () => {
     mailer = { sendInvitation };
     getMailer = vi.fn(() => mailer);
     service = new InvitationService(
-      () => Promise.resolve(request as unknown as SupabaseClient),
-      () => admin as unknown as SupabaseClient,
+      () => Promise.resolve(asSupabaseClient(request)),
+      () => asSupabaseClient(admin),
       getMailer,
     );
   });

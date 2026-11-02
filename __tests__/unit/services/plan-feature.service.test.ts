@@ -24,15 +24,22 @@ const CHAIN_METHODS = ['select', 'insert', 'update', 'delete', 'eq', 'order'] as
 function qb(data: unknown, error: unknown = null): QueryBuilder {
   const result = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const builder = {} as QueryBuilder;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    order: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: vi.fn(promise.then.bind(promise)),
+    catch: vi.fn(promise.catch.bind(promise)),
+    finally: vi.fn(promise.finally.bind(promise)),
+  };
   for (const method of CHAIN_METHODS) {
-    builder[method] = vi.fn(() => builder);
+    builder[method].mockReturnValue(builder);
   }
-  builder.single = vi.fn().mockResolvedValue(result);
-  builder.maybeSingle = vi.fn().mockResolvedValue(result);
-  builder.then = vi.fn(promise.then.bind(promise));
-  builder.catch = vi.fn(promise.catch.bind(promise));
-  builder.finally = vi.fn(promise.finally.bind(promise));
   return builder;
 }
 

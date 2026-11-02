@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import {
   type BeforeResult,
   before,
@@ -10,7 +12,6 @@ import {
   cleanupFlashcardReviewState,
   cleanupFlashcards,
   cleanupOrganizationDeep,
-  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
@@ -25,6 +26,42 @@ import { GET as getStateBreakdown } from '@/app/(backend)/api/v1/flashcards/prac
 import { POST as createFlashcardPost } from '@/app/(backend)/api/v1/flashcards/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** Payload of a created deck/card (`{ success, data }`) — only `data.id` is read. */
+interface CreatedBody {
+  success: boolean;
+  data: { id: string };
+}
+
+/** `/practice/new` and `/practice/prepare` payloads: the card list itself. */
+interface CardListBody {
+  data: Array<{ id: string }>;
+}
+
+/** `/practice/settings` payload — the field read below. */
+interface SettingsBody {
+  data: { totalNewCards: number };
+}
+
+/** `/practice/states` payload — the fields read below. */
+interface StatesBody {
+  data: { totalCards: number; neverPracticed: number };
+}
+
+/** `/practice/due/count` payload — the field read below. */
+interface DueCountBody {
+  data: { count: number };
+}
+
+/** `/practice/due/breakdown` payload — the field read below. */
+interface DueBreakdownBody {
+  data: { total: number };
+}
+
+/** `/practice/cards-stats` payload — the fields read below. */
+interface CardsStatsBody {
+  data: { items: Array<{ id: string }> };
+}
 
 /**
  * Regression coverage for the 20260915000008 migration: get_due_flashcards,
@@ -60,7 +97,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
     groupA = teacher.groups[1];
     const groupB = teacher.groups[2];
 
-    const service = createServiceClient();
+    const service = createSeedDb();
     // The API creates a group without enrolling its creator, so make the
     // teacher a real `teacher` member of groupA — deck group-sharing is only
     // allowed to groups the caller teaches (#140).
@@ -109,11 +146,11 @@ describe(`Flashcard Practice Group Scoping`, () => {
       { active_org_id: orgId },
     );
     const deckRes = await createDeckPost(deckReq);
-    const deckBody = await deckRes.json();
+    const deckBody = await json<CreatedBody>(deckRes);
     if (!deckRes.ok || !deckBody.success) {
       throw new Error(`[setup] deck creation failed: ${JSON.stringify(deckBody)}`);
     }
-    deckId = deckBody.data.id as string;
+    deckId = deckBody.data.id;
 
     const flashcardReq = createNextRequest(
       'http://localhost/api/v1/flashcards',
@@ -129,11 +166,11 @@ describe(`Flashcard Practice Group Scoping`, () => {
       { active_org_id: orgId },
     );
     const flashcardRes = await createFlashcardPost(flashcardReq);
-    const flashcardBody = await flashcardRes.json();
+    const flashcardBody = await json<CreatedBody>(flashcardRes);
     if (!flashcardRes.ok || !flashcardBody.success) {
       throw new Error(`[setup] flashcard creation failed: ${JSON.stringify(flashcardBody)}`);
     }
-    flashcardId = flashcardBody.data.id as string;
+    flashcardId = flashcardBody.data.id;
 
     // #343: a personal deck + card owned by student A. Own-scope content must
     // stay visible to its owner (and only to them).
@@ -149,7 +186,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
         { active_org_id: orgId },
       ),
     );
-    const ownDeckBody = await ownDeckRes.json();
+    const ownDeckBody = await json<CreatedBody>(ownDeckRes);
     if (!ownDeckRes.ok || !ownDeckBody.success) {
       throw new Error(`[setup] own deck creation failed: ${JSON.stringify(ownDeckBody)}`);
     }
@@ -169,11 +206,11 @@ describe(`Flashcard Practice Group Scoping`, () => {
         { active_org_id: orgId },
       ),
     );
-    const ownFlashcardBody = await ownFlashcardRes.json();
+    const ownFlashcardBody = await json<CreatedBody>(ownFlashcardRes);
     if (!ownFlashcardRes.ok || !ownFlashcardBody.success) {
       throw new Error(`[setup] own flashcard creation failed: ${JSON.stringify(ownFlashcardBody)}`);
     }
-    ownFlashcardId = ownFlashcardBody.data.id as string;
+    ownFlashcardId = ownFlashcardBody.data.id;
 
     // #343: the S3 shape — a user with NO membership in the org owns a card
     // stamped with the org id. RLS is org-level, so only the app-layer
@@ -207,7 +244,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
     if (outsiderCardError || !outsiderCard) {
       throw new Error(`[setup] outsider card failed: ${outsiderCardError?.message}`);
     }
-    outsiderFlashcardId = outsiderCard.id as string;
+    outsiderFlashcardId = outsiderCard.id;
   });
 
   afterAll(async () => {
@@ -230,9 +267,9 @@ describe(`Flashcard Practice Group Scoping`, () => {
       { active_org_id: teacher.orgId! },
     );
     const resA = await getDueCards(reqA);
-    const bodyA = await resA.json();
+    const bodyA = await json<CardListBody>(resA);
     expect(resA.status).toBe(200);
-    expect(bodyA.data.some((c: { id: string }) => c.id === flashcardId)).toBe(true);
+    expect(bodyA.data.some((c) => c.id === flashcardId)).toBe(true);
 
     mockUser(studentInGroupB);
     const reqB = createNextRequest(
@@ -241,9 +278,9 @@ describe(`Flashcard Practice Group Scoping`, () => {
       { active_org_id: teacher.orgId! },
     );
     const resB = await getDueCards(reqB);
-    const bodyB = await resB.json();
+    const bodyB = await json<CardListBody>(resB);
     expect(resB.status).toBe(200);
-    expect(bodyB.data.some((c: { id: string }) => c.id === flashcardId)).toBe(false);
+    expect(bodyB.data.some((c) => c.id === flashcardId)).toBe(false);
   });
 
   // #345: `flashcard.read = group` means own cards + group-shared cards, so a
@@ -269,11 +306,11 @@ describe(`Flashcard Practice Group Scoping`, () => {
         { active_org_id: orgId },
       ),
     );
-    const deckBody = await deckRes.json();
+    const deckBody = await json<CreatedBody>(deckRes);
     if (!deckRes.ok || !deckBody.success) {
       throw new Error(`[setup] own deck creation failed: ${JSON.stringify(deckBody)}`);
     }
-    const ownDeckId = deckBody.data.id as string;
+    const ownDeckId = deckBody.data.id;
 
     const ownCardIds: string[] = [];
     for (const n of [1, 2]) {
@@ -292,11 +329,11 @@ describe(`Flashcard Practice Group Scoping`, () => {
           { active_org_id: orgId },
         ),
       );
-      const cardBody = await cardRes.json();
+      const cardBody = await json<CreatedBody>(cardRes);
       if (!cardRes.ok || !cardBody.success) {
         throw new Error(`[setup] own card creation failed: ${JSON.stringify(cardBody)}`);
       }
-      ownCardIds.push(cardBody.data.id as string);
+      ownCardIds.push(cardBody.data.id);
     }
 
     try {
@@ -306,9 +343,9 @@ describe(`Flashcard Practice Group Scoping`, () => {
           active_org_id: orgId,
         }),
       );
-      const newBody = await newRes.json();
+      const newBody = await json<CardListBody>(newRes);
       expect(newRes.status).toBe(200);
-      const offeredIds = newBody.data.map((c: { id: string }) => c.id);
+      const offeredIds = newBody.data.map((c) => c.id);
       for (const ownCardId of ownCardIds) expect(offeredIds).toContain(ownCardId);
       expect(offeredIds).toContain(flashcardId);
 
@@ -320,11 +357,9 @@ describe(`Flashcard Practice Group Scoping`, () => {
           { active_org_id: orgId },
         ),
       );
-      const ownDeckBody = await ownDeckRes.json();
+      const ownDeckBody = await json<CardListBody>(ownDeckRes);
       expect(ownDeckRes.status).toBe(200);
-      expect(ownDeckBody.data.map((c: { id: string }) => c.id).toSorted()).toEqual(
-        [...ownCardIds].toSorted(),
-      );
+      expect(ownDeckBody.data.map((c) => c.id).toSorted()).toEqual([...ownCardIds].toSorted());
 
       // Learn badge / "N nowych kart": own new + group-shared new.
       const settingsRes = await getSettings(
@@ -332,7 +367,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
           active_org_id: orgId,
         }),
       );
-      const settingsBody = await settingsRes.json();
+      const settingsBody = await json<SettingsBody>(settingsRes);
       expect(settingsRes.status).toBe(200);
       expect(settingsBody.data.totalNewCards).toBeGreaterThanOrEqual(3);
 
@@ -342,13 +377,13 @@ describe(`Flashcard Practice Group Scoping`, () => {
           active_org_id: orgId,
         }),
       );
-      const statesBody = await statesRes.json();
+      const statesBody = await json<StatesBody>(statesRes);
       expect(statesRes.status).toBe(200);
       expect(statesBody.data.totalCards).toBeGreaterThanOrEqual(3);
       expect(statesBody.data.neverPracticed).toBeGreaterThanOrEqual(3);
 
       // Own due reviews are visible too (get_due_breakdown feeds the badge).
-      const service = createServiceClient();
+      const service = createSeedDb();
       const pastDue = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { error: reviewStateError } = await service.from('flashcard_review_state').insert({
         user_id: studentInGroupA.id,
@@ -373,7 +408,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
           active_org_id: orgId,
         }),
       );
-      const dueCountBody = await dueCountRes.json();
+      const dueCountBody = await json<DueCountBody>(dueCountRes);
       expect(dueCountRes.status).toBe(200);
       expect(dueCountBody.data.count).toBeGreaterThanOrEqual(1);
 
@@ -386,7 +421,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
           { active_org_id: orgId },
         ),
       );
-      const otherBody = await otherRes.json();
+      const otherBody = await json<CardListBody>(otherRes);
       expect(otherRes.status).toBe(200);
       expect(otherBody.data).toEqual([]);
 
@@ -395,7 +430,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
           active_org_id: orgId,
         }),
       );
-      const otherSettingsBody = await otherSettingsRes.json();
+      const otherSettingsBody = await json<SettingsBody>(otherSettingsRes);
       expect(otherSettingsRes.status).toBe(200);
       expect(otherSettingsBody.data.totalNewCards).toBe(0);
     } finally {
@@ -415,7 +450,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
       },
     );
     const resA = await getSettings(reqA);
-    const bodyA = await resA.json();
+    const bodyA = await json<SettingsBody>(resA);
     expect(resA.status).toBe(200);
     expect(bodyA.data.totalNewCards).toBeGreaterThanOrEqual(1);
 
@@ -428,7 +463,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
       },
     );
     const resB = await getSettings(reqB);
-    const bodyB = await resB.json();
+    const bodyB = await json<SettingsBody>(resB);
     expect(resB.status).toBe(200);
     expect(bodyB.data.totalNewCards).toBe(0);
   });
@@ -443,7 +478,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
       },
     );
     const resA = await getStateBreakdown(reqA);
-    const bodyA = await resA.json();
+    const bodyA = await json<StatesBody>(resA);
     expect(resA.status).toBe(200);
     expect(bodyA.data.totalCards).toBeGreaterThanOrEqual(1);
 
@@ -456,13 +491,13 @@ describe(`Flashcard Practice Group Scoping`, () => {
       },
     );
     const resB = await getStateBreakdown(reqB);
-    const bodyB = await resB.json();
+    const bodyB = await json<StatesBody>(resB);
     expect(resB.status).toBe(200);
     expect(bodyB.data.totalCards).toBe(0);
   });
 
   it('get_due_breakdown (via /practice/due/breakdown): a due review state does not leak past group scoping', async () => {
-    const service = createServiceClient();
+    const service = createSeedDb();
     const pastDue = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     for (const student of [studentInGroupA, studentInGroupB]) {
       const { error } = await service.from('flashcard_review_state').insert({
@@ -489,7 +524,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
       { active_org_id: teacher.orgId! },
     );
     const resA = await getDueBreakdown(reqA);
-    const bodyA = await resA.json();
+    const bodyA = await json<DueBreakdownBody>(resA);
     expect(resA.status).toBe(200);
     expect(bodyA.data.total).toBeGreaterThanOrEqual(1);
 
@@ -500,7 +535,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
       { active_org_id: teacher.orgId! },
     );
     const resB = await getDueBreakdown(reqB);
-    const bodyB = await resB.json();
+    const bodyB = await json<DueBreakdownBody>(resB);
     expect(resB.status).toBe(200);
     expect(bodyB.data.total).toBe(0);
   });
@@ -518,9 +553,9 @@ describe(`Flashcard Practice Group Scoping`, () => {
         { active_org_id: teacher.orgId! },
       ),
     );
-    const bodyA = await resA.json();
+    const bodyA = await json<CardsStatsBody>(resA);
     expect(resA.status).toBe(200);
-    const idsA = bodyA.data.items.map((i: { id: string }) => i.id);
+    const idsA = bodyA.data.items.map((i) => i.id);
     expect(idsA).toContain(flashcardId);
     expect(idsA).toContain(ownFlashcardId);
     expect(idsA).not.toContain(outsiderFlashcardId);
@@ -536,7 +571,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
         { active_org_id: teacher.orgId! },
       ),
     );
-    const bodyB = await resB.json();
+    const bodyB = await json<CardsStatsBody>(resB);
     expect(resB.status).toBe(200);
     expect(bodyB.data.items).toEqual([]);
   });
@@ -550,13 +585,13 @@ describe(`Flashcard Practice Group Scoping`, () => {
         { active_org_id: teacher.orgId! },
       ),
     );
-    const statsBody = await statsRes.json();
+    const statsBody = await json<CardsStatsBody>(statsRes);
     const statesRes = await getStateBreakdown(
       createNextRequest('http://localhost/api/v1/flashcards/practice/states', undefined, {
         active_org_id: teacher.orgId!,
       }),
     );
-    const statesBody = await statesRes.json();
+    const statesBody = await json<StatesBody>(statesRes);
     expect(statesRes.status).toBe(200);
     expect(statesBody.data.totalCards).toBe(statsBody.data.items.length);
 
@@ -566,7 +601,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
         active_org_id: teacher.orgId!,
       }),
     );
-    const bodyB = await resB.json();
+    const bodyB = await json<StatesBody>(resB);
     expect(resB.status).toBe(200);
     expect(bodyB.data.totalCards).toBe(0);
   });
@@ -580,9 +615,9 @@ describe(`Flashcard Practice Group Scoping`, () => {
         { active_org_id: teacher.orgId! },
       ),
     );
-    const bodyA = await resA.json();
+    const bodyA = await json<CardListBody>(resA);
     expect(resA.status).toBe(200);
-    expect(bodyA.data.map((c: { id: string }) => c.id)).toEqual([flashcardId]);
+    expect(bodyA.data.map((c) => c.id)).toEqual([flashcardId]);
 
     mockUser(studentInGroupB);
     const resB = await getPrepare(
@@ -592,7 +627,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
         { active_org_id: teacher.orgId! },
       ),
     );
-    const bodyB = await resB.json();
+    const bodyB = await json<CardListBody>(resB);
     expect(resB.status).toBe(200);
     expect(bodyB.data).toEqual([]);
   });

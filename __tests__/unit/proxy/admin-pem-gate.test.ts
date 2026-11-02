@@ -15,7 +15,11 @@ import {
   signAdminRequest,
 } from '#test/helpers/admin-pem';
 
-const logger = vi.hoisted(() => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+const logger = vi.hoisted(() => ({
+  log: vi.fn<(message: string, attributes: Record<string, unknown>) => void>(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
 
 vi.mock('@studiq/server/lib/log', () => logger);
 
@@ -479,7 +483,7 @@ describe('admin PEM gate — proxy status matrix', () => {
     expectPassed(res);
 
     expect(logger.log).toHaveBeenCalledTimes(1);
-    const [message, attributes] = logger.log.mock.calls[0] as [string, Record<string, unknown>];
+    const [message, attributes] = logger.log.mock.calls[0];
     expect(message).toBe('admin_api_request');
     expect(attributes).toEqual({
       key_id: 'users-read',

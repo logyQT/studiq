@@ -1,10 +1,19 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { ClassroomController } from '@studiq/server/controllers/classroom.controller';
-import type { ClassroomService } from '@studiq/server/services/classroom.service';
+import { ClassroomService } from '@studiq/server/services/classroom.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return { create: vi.fn() };
+  // Only `create` is exercised; the client factory only has to satisfy the
+  // constructor's type.
+  return Object.assign(
+    new ClassroomService(() => {
+      throw new Error('unused');
+    }),
+    {
+      create: vi.fn(),
+    },
+  );
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -26,8 +35,7 @@ describe('ClassroomController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    // Only `create` is exercised; the rest of the service is never reached.
-    controller = new ClassroomController(mockService as unknown as ClassroomService);
+    controller = new ClassroomController(mockService);
   });
 
   describe('create', () => {

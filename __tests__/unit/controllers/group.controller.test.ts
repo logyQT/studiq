@@ -1,7 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { GroupController } from '@studiq/server/controllers/group.controller';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
-import type { GroupService } from '@studiq/server/services/group.service';
+import { GroupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/features', () => ({
@@ -9,7 +9,9 @@ vi.mock('@studiq/server/lib/features', () => ({
 }));
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new GroupService(() => Promise.reject(new Error('unused'))), {
     listGroups: vi.fn(),
     createGroup: vi.fn(),
     updateGroup: vi.fn(),
@@ -18,7 +20,7 @@ function createMockService() {
     listAddableMembers: vi.fn(),
     setGroupMembers: vi.fn(),
     listMyGroups: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -40,7 +42,7 @@ describe('GroupController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new GroupController(mockService as unknown as GroupService);
+    controller = new GroupController(mockService);
   });
 
   describe('listGroups', () => {
@@ -190,7 +192,7 @@ describe('GroupController', () => {
         name: '  Updated  ',
       });
 
-      const payload = mockService.updateGroup.mock.calls.at(-1)?.[2];
+      const payload: unknown = mockService.updateGroup.mock.calls.at(-1)?.[2];
       expect(payload).toEqual({ name: 'Updated' });
       expect(payload).not.toHaveProperty('description');
     });

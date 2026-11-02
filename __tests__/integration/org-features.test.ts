@@ -4,9 +4,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import {
   useRealSupabase,
   cleanupOrganizationDeep,
-  createServiceClient,
   seedOrgMembership,
 } from '#test/integration/helpers';
+import { createTypedServiceClient } from '#test/integration/test-utils';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
@@ -24,7 +24,7 @@ describe(`Org Features (trigger)`, () => {
     vi.clearAllMocks();
     useRealSupabase();
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const name = `${PREFIX}${suiteId}-${Date.now()}`;
 
     const { data: org } = await supabase.from('organizations').insert({ name }).select().single();
@@ -40,7 +40,7 @@ describe(`Org Features (trigger)`, () => {
   });
 
   it('creates default roles with correct names', async () => {
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
 
     const { data: roles } = await supabase
       .from('org_roles')
@@ -57,7 +57,7 @@ describe(`Org Features (trigger)`, () => {
   });
 
   it('seeds permissions for all roles', async () => {
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
 
     const { data: roles } = await supabase
       .from('org_roles')
@@ -69,9 +69,9 @@ describe(`Org Features (trigger)`, () => {
     );
 
     for (const [roleName, expectedScopeFn] of Object.entries({
-      admin: (_name: string) => 'organization',
-      teacher: (_name: string) => 'own',
-      member: (name: string) => (name.endsWith('.read') ? 'group' : 'own'),
+      admin: (_name: string): string => 'organization',
+      teacher: (_name: string): string => 'own',
+      member: (name: string): string => (name.endsWith('.read') ? 'group' : 'own'),
     })) {
       const { data: perms } = await supabase
         .from('org_role_permissions')
@@ -86,7 +86,7 @@ describe(`Org Features (trigger)`, () => {
   });
 
   it('seeds features for admin role from plan template', async () => {
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
 
     const { data: adminRole } = await supabase
       .from('org_roles')
@@ -98,7 +98,7 @@ describe(`Org Features (trigger)`, () => {
     const { data: features } = await supabase
       .from('org_role_features')
       .select('feature_key, is_enabled')
-      .eq('org_role_id', adminRole?.id);
+      .eq('org_role_id', adminRole!.id);
 
     // Admin should get all features from the default 'launch' plan
     expect(features?.length).toBeGreaterThanOrEqual(5);
@@ -109,7 +109,7 @@ describe(`Org Features (trigger)`, () => {
   });
 
   it('seeds features for teacher role excluding member.manage and role.builder', async () => {
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
 
     const { data: teacherRole } = await supabase
       .from('org_roles')
@@ -121,7 +121,7 @@ describe(`Org Features (trigger)`, () => {
     const { data: features } = await supabase
       .from('org_role_features')
       .select('feature_key, is_enabled')
-      .eq('org_role_id', teacherRole?.id);
+      .eq('org_role_id', teacherRole!.id);
 
     const featureKeys = features?.map((f) => f.feature_key) ?? [];
     expect(featureKeys).toContain('flashcards');
@@ -132,7 +132,7 @@ describe(`Org Features (trigger)`, () => {
   });
 
   it('seeds features for member role limited to basic features', async () => {
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
 
     const { data: memberRole } = await supabase
       .from('org_roles')
@@ -144,7 +144,7 @@ describe(`Org Features (trigger)`, () => {
     const { data: features } = await supabase
       .from('org_role_features')
       .select('feature_key, is_enabled')
-      .eq('org_role_id', memberRole?.id);
+      .eq('org_role_id', memberRole!.id);
 
     const featureKeys = features?.map((f) => f.feature_key) ?? [];
     // launch plan includes flashcards, quiz, documents
@@ -153,7 +153,7 @@ describe(`Org Features (trigger)`, () => {
   });
 
   it('derives org limits from plan_limits (no snapshot)', async () => {
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const resolver = new LimitsResolver(() => Promise.resolve(supabase));
 
     // The org defaults to the 'launch' plan. Limits are no longer copied into
@@ -193,7 +193,7 @@ describe(`Org Features (trigger)`, () => {
   });
 
   it('resolves the org plan for a member even when ctx.orgRoleId is null', async () => {
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const resolver = new LimitsResolver(() => Promise.resolve(supabase));
 
     // The org_members row — not the ctx role id — decides the org branch, so a

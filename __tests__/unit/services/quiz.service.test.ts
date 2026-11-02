@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { accessibleFilter } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { QuizService } from '@studiq/server/services/quiz.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -63,16 +64,49 @@ function qb(data: unknown, error: unknown = null, count?: number): QueryBuilder 
   const result =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const builder = {} as QueryBuilder;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    is: vi.fn(),
+    gte: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    or: vi.fn(),
+    not: vi.fn(),
+    neq: vi.fn(),
+    rpc: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: vi.fn(promise.then.bind(promise)),
+    catch: vi.fn(promise.catch.bind(promise)),
+    finally: vi.fn(promise.finally.bind(promise)),
+  };
   for (const method of CHAIN_METHODS) {
-    builder[method] = vi.fn(() => builder);
+    builder[method].mockReturnValue(builder);
   }
-  builder.single = vi.fn().mockResolvedValue(result);
-  builder.maybeSingle = vi.fn().mockResolvedValue(result);
-  builder.then = vi.fn(promise.then.bind(promise));
-  builder.catch = vi.fn(promise.catch.bind(promise));
-  builder.finally = vi.fn(promise.finally.bind(promise));
   return builder;
+}
+
+/** A recorded mock argument, narrowed to the projection string the test asserts on. */
+function stringArg(value: unknown): string {
+  if (typeof value !== 'string') throw new Error('expected a string argument');
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** `generateQuiz` answers `ServiceResult<unknown>`; this narrows the questions it returned. */
+function quizQuestions(result: ServiceResult<unknown>): unknown {
+  if (!result.success || !isRecord(result.data) || !('questions' in result.data)) {
+    throw new Error('expected a generated quiz');
+  }
+  return result.data.questions;
 }
 
 describe('QuizService', () => {
@@ -113,7 +147,7 @@ describe('QuizService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(result.data?.questions).toBeDefined();
+      expect(quizQuestions(result)).toBeDefined();
     });
 
     it('returns NOT_FOUND when no questions available', async () => {
@@ -180,7 +214,7 @@ describe('QuizService', () => {
       const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 1 }, ctx);
 
       expect(result.success).toBe(true);
-      const projection = questionsBuilder.select.mock.calls[0][0] as string;
+      const projection = stringArg(questionsBuilder.select.mock.calls[0][0]);
       expect(projection).not.toContain('*');
       expect(projection).not.toContain('is_correct');
       expect(projection).not.toContain('explanation');

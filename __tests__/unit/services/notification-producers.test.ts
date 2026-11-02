@@ -55,7 +55,10 @@ function chain(result: unknown, count?: number): QueryBuilder {
   return c;
 }
 
-function fakeNotifier(): { [K in keyof Notifier]: ReturnType<typeof vi.fn> } {
+/** A notifier whose calls stay typed, so the tests can assert on the arguments. */
+type FakeNotifier = { [K in keyof Notifier]: Mock<Notifier[K]> };
+
+function fakeNotifier(): FakeNotifier {
   return {
     assignmentPublished: vi.fn().mockResolvedValue(undefined),
     assignmentGraded: vi.fn().mockResolvedValue(undefined),
@@ -90,10 +93,7 @@ describe('TeacherAssignmentService notifies students', () => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
     notifier = fakeNotifier();
-    service = new TeacherAssignmentService(
-      () => Promise.resolve(mock),
-      notifier as unknown as Notifier,
-    );
+    service = new TeacherAssignmentService(() => Promise.resolve(mock), notifier);
   });
 
   function gradeWith(attempt: Record<string, unknown>) {
@@ -229,10 +229,7 @@ describe('QuestionReportService notifies the owner of a new report', () => {
       .mockReturnValueOnce(chain({ id: 'q-1', created_by: 'teacher-1', organization_id: orgId }))
       .mockReturnValueOnce(chain({ id: 'r-1' }))
       .mockReturnValueOnce(chain(undefined));
-    const service = new QuestionReportService(
-      () => Promise.resolve(supabase),
-      notifier as unknown as Notifier,
-    );
+    const service = new QuestionReportService(() => Promise.resolve(supabase), notifier);
 
     const result = await service.createReport(
       { questionId: 'q-1' },
@@ -255,10 +252,7 @@ describe('QuestionReportService notifies the owner of a new report', () => {
     supabase.from.mockReturnValueOnce(
       chain({ id: 'q-1', created_by: 'student-1', organization_id: orgId }),
     );
-    const service = new QuestionReportService(
-      () => Promise.resolve(supabase),
-      notifier as unknown as Notifier,
-    );
+    const service = new QuestionReportService(() => Promise.resolve(supabase), notifier);
 
     const result = await service.createReport({ questionId: 'q-1' }, { message: 'x' }, studentCtx);
 
@@ -285,16 +279,12 @@ describe('QuestionReportService notifies the other participant', () => {
   function serviceFor(sender: string, notifier: ReturnType<typeof fakeNotifier>) {
     const supabase = mockSupabaseClient();
     supabase.from.mockReturnValue(chain({ id: 'm1', body: 'hi', sender_id: sender }));
-    const service = new QuestionReportService(
-      () => Promise.resolve(supabase),
-      notifier as unknown as Notifier,
-    );
+    const service = new QuestionReportService(() => Promise.resolve(supabase), notifier);
     // The access check has its own tests; here the report is simply readable by the sender.
     // It's private because callers never need it — the test seam exposes it for this stub.
-    vi.spyOn(
-      service as unknown as { fetchAccessibleReport: () => Promise<unknown> },
-      'fetchAccessibleReport',
-    ).mockResolvedValue(report);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- private method: the test seam needs a mockable view of it
+    const seam = service as unknown as { fetchAccessibleReport: () => Promise<unknown> };
+    vi.spyOn(seam, 'fetchAccessibleReport').mockResolvedValue(report);
     return service;
   }
 

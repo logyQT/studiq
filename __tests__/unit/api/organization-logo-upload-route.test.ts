@@ -1,9 +1,9 @@
 import { AppError } from '@studiq/server/lib/errors';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const uploadToBucketMock = vi.fn();
-const deleteObjectByPublicUrlMock = vi.fn();
+const uploadToBucketMock = vi.fn<(...args: unknown[]) => unknown>();
+const deleteObjectByPublicUrlMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/services/storage.service', () => ({
   storageService: {
     uploadToBucket: (...args: unknown[]) => uploadToBucketMock(...args),
@@ -11,8 +11,8 @@ vi.mock('@studiq/server/services/storage.service', () => ({
   },
 }));
 
-const updateMock = vi.fn();
-const getByIdMock = vi.fn();
+const updateMock = vi.fn<(...args: unknown[]) => unknown>();
+const getByIdMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/controllers/organization.controller', () => ({
   organizationController: {
     update: (...args: unknown[]) => updateMock(...args),
@@ -20,7 +20,7 @@ vi.mock('@studiq/server/controllers/organization.controller', () => ({
   },
 }));
 
-const requireFeatureMock = vi.fn();
+const requireFeatureMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/lib/features', () => ({
   requireFeature: (...args: unknown[]) => requireFeatureMock(...args),
 }));
@@ -30,7 +30,7 @@ vi.mock('@studiq/server/lib/with-auth', () => ({
   withAuth: async (_req: unknown, handler: (ctx: unknown) => Promise<Response>) => handler(mockCtx),
 }));
 
-const logErrorMock = vi.fn();
+const logErrorMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/lib/log', () => ({
   log: vi.fn(),
   warn: vi.fn(),
@@ -43,7 +43,10 @@ import { POST } from '@/app/(backend)/api/v1/organization/[id]/logo/route';
 // (e.g. plain text renamed fake.png) must never reach storage, and a rejected
 // upload must never overwrite `organizations.logo_url`.
 function fakeRequest(formData: () => Promise<FormData>): NextRequest {
-  return { formData } as unknown as NextRequest;
+  const request = new NextRequest('http://localhost/api/v1/organization/org-1/logo', {
+    method: 'POST',
+  });
+  return Object.assign(request, { formData });
 }
 
 const params = { params: Promise.resolve({ id: 'org-1' }) };
@@ -282,9 +285,10 @@ describe('POST /api/v1/organization/[id]/logo — replaced logo cleanup (#281)',
       success: true,
       data: { id: 'org-1', logoUrl: NEXT_URL },
     });
+    const anyError: unknown = expect.any(Error);
     expect(logErrorMock).toHaveBeenCalledWith('Previous logo cleanup failed', {
       orgId: 'org-1',
-      error: expect.any(Error),
+      error: anyError,
     });
   });
 

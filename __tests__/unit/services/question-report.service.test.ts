@@ -2,9 +2,13 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { decodeCursor } from '@studiq/server/lib/query-list';
 import { QuestionReportService } from '@studiq/server/services/question-report.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { asJson } from '#test/helpers/json';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 type QueryResult = { data: unknown; error: unknown };
+
+/** `expect.any`/`objectContaining` are typed `any`; hoisted so expected objects stay typed. */
+const anyString: unknown = expect.any(String);
 type QueryChain = {
   select: Mock<(...args: unknown[]) => QueryChain>;
   insert: Mock<(...args: unknown[]) => QueryChain>;
@@ -210,11 +214,11 @@ describe('QuestionReportService', () => {
 
       expect(result.success).toBe(true);
       if (!result.success) return;
-      const data = result.data as {
+      const data = asJson<{
         items: Array<{ id: string }>;
         nextCursor: string;
         hasMore: boolean;
-      };
+      }>(result.data);
       expect(data.items.map((r) => r.id)).toEqual(['r-1', 'r-2']);
       expect(data.hasMore).toBe(true);
       expect(decodeCursor(data.nextCursor)).toEqual({ v: '2024-01-02T00:00:00Z', id: 'r-2' });
@@ -330,7 +334,7 @@ describe('QuestionReportService', () => {
       const result = await service.setStatus('r-1', { status: 'resolved' }, teacherCtx);
 
       expect(result.success).toBe(true);
-      const patch = updateQuery.update.mock.calls[0][0] as Record<string, unknown>;
+      const patch = asJson<Record<string, unknown>>(updateQuery.update.mock.calls[0][0]);
       expect(patch).toEqual(
         expect.objectContaining({ status: 'resolved', resolved_by: 'teacher-1' }),
       );
@@ -370,7 +374,7 @@ describe('QuestionReportService', () => {
           status: 'open',
           resolved_at: null,
           resolved_by: null,
-          reporter_last_read_at: expect.any(String),
+          reporter_last_read_at: anyString,
         }),
       );
     });
@@ -385,7 +389,7 @@ describe('QuestionReportService', () => {
       const result = await service.setStatus('r-1', { status: 'resolved' }, managerCtx);
 
       expect(result.success).toBe(true);
-      const patch = updateQuery.update.mock.calls[0][0] as Record<string, unknown>;
+      const patch = asJson<Record<string, unknown>>(updateQuery.update.mock.calls[0][0]);
       expect(patch).toEqual(
         expect.objectContaining({ status: 'resolved', resolved_by: 'manager-1' }),
       );
@@ -787,8 +791,9 @@ describe('QuestionReportService', () => {
       const result = await service.getById('r-1', managerCtx);
 
       expect(result.success).toBe(true);
+      const anyReport: unknown = expect.objectContaining({ id: 'r-1' });
       expect(result.data).toEqual({
-        report: expect.objectContaining({ id: 'r-1' }),
+        report: anyReport,
         messages: [{ id: 'm-1' }],
       });
     });

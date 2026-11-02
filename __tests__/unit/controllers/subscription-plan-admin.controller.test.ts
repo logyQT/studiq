@@ -1,15 +1,17 @@
 import { SubscriptionPlanAdminController } from '@admin/server/controllers/subscription-plan-admin.controller';
-import type { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
+import { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new SubscriptionPlanService(() => Promise.reject(new Error('unused'))), {
     getAllAdmin: vi.fn(),
     getById: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -20,9 +22,7 @@ describe('SubscriptionPlanAdminController', () => {
     vi.clearAllMocks();
     mockService = createMockService();
     // Only the admin handlers are exercised; the rest of the service is unreached.
-    controller = new SubscriptionPlanAdminController(
-      mockService as unknown as SubscriptionPlanService,
-    );
+    controller = new SubscriptionPlanAdminController(mockService);
   });
 
   describe('getAll', () => {

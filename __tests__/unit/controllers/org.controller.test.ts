@@ -3,6 +3,7 @@ import { OrgController } from '@studiq/server/controllers/org.controller';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import type { OrgService } from '@studiq/server/services/org.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return { listOrgs: vi.fn(), verifyMembership: vi.fn() };
@@ -30,7 +31,7 @@ describe('OrgController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new OrgController(mockService as unknown as OrgService);
+    controller = new OrgController(asService<OrgService>(mockService));
   });
 
   describe('listOrgs', () => {

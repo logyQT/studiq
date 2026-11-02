@@ -1,6 +1,7 @@
 import { FeatureFlagController } from '@admin/server/controllers/feature-flag.controller';
 import type { FeatureFlagService } from '@admin/server/services/feature-flag.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return {
@@ -19,7 +20,7 @@ describe('FeatureFlagController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FeatureFlagController(mockService as unknown as FeatureFlagService);
+    controller = new FeatureFlagController(asService<FeatureFlagService>(mockService));
   });
 
   describe('getAll', () => {

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { asJson } from '#test/helpers/json';
 import { describe, expect, it } from 'vitest';
 
 // #664 review: a failed read must not look like "no notifications" with a badge of 0, the count
@@ -27,7 +28,10 @@ describe('notification bell', () => {
   });
 
   it.each(['pl', 'en'])('%s has the strings', (locale) => {
-    const json = JSON.parse(read(`apps/web/src/i18n/messages/${locale}.json`));
+    const json = asJson<{
+      DashboardLayout: { notifications: unknown };
+      Notifications: Record<string, unknown>;
+    }>(JSON.parse(read(`apps/web/src/i18n/messages/${locale}.json`)));
     expect(json.DashboardLayout.notifications).toBeTruthy();
     expect(json.Notifications.load_error).toBeTruthy();
     expect(json.Notifications.retry).toBeTruthy();

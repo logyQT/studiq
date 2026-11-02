@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -94,11 +95,11 @@ describe(`Quiz Group Scoping`, () => {
       { active_org_id: orgId },
     );
     const bankRes = await createBankPost(bankReq);
-    const bankBody = await bankRes.json();
+    const bankBody = await json<{ success: boolean; data: { id: string } }>(bankRes);
     if (!bankRes.ok || !bankBody.success) {
       throw new Error(`[setup] bank creation failed: ${JSON.stringify(bankBody)}`);
     }
-    bankId = bankBody.data.id as string;
+    bankId = bankBody.data.id;
 
     const questionReq = createNextRequest(
       'http://localhost/api/v1/questions',
@@ -119,7 +120,7 @@ describe(`Quiz Group Scoping`, () => {
       { active_org_id: orgId },
     );
     const questionRes = await createQuestionPost(questionReq);
-    const questionBody = await questionRes.json();
+    const questionBody = await json<{ success: boolean }>(questionRes);
     if (!questionRes.ok || !questionBody.success) {
       throw new Error(`[setup] question creation failed: ${JSON.stringify(questionBody)}`);
     }
@@ -146,7 +147,7 @@ describe(`Quiz Group Scoping`, () => {
       { active_org_id: teacher.orgId! },
     );
     const resA = await generateQuiz(reqA);
-    const bodyA = await resA.json();
+    const bodyA = await json<{ data: { questions: Array<{ id: string }> } }>(resA);
     expect(resA.status).toBe(201);
     expect(bodyA.data.questions.length).toBe(1);
 
@@ -161,7 +162,7 @@ describe(`Quiz Group Scoping`, () => {
       { active_org_id: teacher.orgId! },
     );
     const resB = await generateQuiz(reqB);
-    const bodyB = await resB.json();
+    const bodyB = await json<{ success: boolean }>(resB);
     expect(resB.status).toBe(404);
     expect(bodyB.success).toBe(false);
   });

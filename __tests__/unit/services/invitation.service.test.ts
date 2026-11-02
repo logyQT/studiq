@@ -3,9 +3,9 @@ import { AppError } from '@studiq/server/lib/errors';
 import { InvitationService } from '@studiq/server/services/invitation.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { Notifier } from '@studiq/server/services/notification.service';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { isRecord } from '@studiq/server/lib/record';
+import { mockSupabaseClient, type MockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: {
@@ -102,11 +102,36 @@ function inviteRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function adminClient() {
-  const from = vi.fn();
-  const rpc = vi.fn().mockResolvedValue({ data: true, error: null });
-  // Only `from`/`rpc` are stubbed; the rest of the client is never reached.
-  return { client: { from, rpc } as unknown as SupabaseClient, from, rpc };
+/** Only `from`/`rpc` are stubbed; the rest of the client is never reached. */
+type AdminClient = {
+  client: MockSupabaseClient;
+  /** Typed with its argument so `mock.calls` stays usable. */
+  from: Mock<(table: string) => unknown>;
+  rpc: Mock;
+};
+
+function adminClient(): AdminClient {
+  const client = mockSupabaseClient();
+  client.rpc.mockResolvedValue({ data: true, error: null });
+  return { client, from: client.from, rpc: client.rpc };
+}
+
+/** The rows a mocked `insert()` was handed, narrowed for property reads. */
+function insertedRows(mock: Mock): Array<Record<string, unknown>> {
+  const payload: unknown = mock.mock.calls[0]?.[0];
+  return Array.isArray(payload) ? payload.filter(isRecord) : [];
+}
+
+/** A notifier whose calls stay typed, so the tests can assert on the arguments. */
+type FakeNotifier = { [K in keyof Notifier]: Mock<Notifier[K]> };
+
+function fakeNotifier(): FakeNotifier {
+  return {
+    assignmentPublished: vi.fn().mockResolvedValue(undefined),
+    assignmentGraded: vi.fn().mockResolvedValue(undefined),
+    reportMessage: vi.fn().mockResolvedValue(undefined),
+    invitationAccepted: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 /** Chain that answers the `org_members` seat count (`.neq(...)`). */
@@ -501,7 +526,7 @@ describe('InvitationService', () => {
 
       // One multi-row INSERT: same expires_at for all rows.
       expect(insertQb.insert).toHaveBeenCalledTimes(1);
-      const rows = insertQb.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
+      const rows = insertedRows(insertQb.insert);
       expect(rows).toHaveLength(2);
       expect(rows[0]).toMatchObject({
         email: 'john@example.com',
@@ -810,11 +835,10 @@ describe('InvitationService', () => {
       const requestClient = vi.fn(() => {
         throw new Error('request-scoped client must not be used for a public preview');
       });
-      const admin = {
-        from: vi.fn(() => qb(inviteRow())),
-        rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
-      };
-      service = new InvitationService(requestClient, () => admin as unknown as SupabaseClient);
+      const admin = mockSupabaseClient();
+      admin.from.mockReturnValue(qb(inviteRow()));
+      admin.rpc.mockResolvedValue({ data: true, error: null });
+      service = new InvitationService(requestClient, () => admin);
 
       const result = await service.getInvitationByToken('public-token');
 
@@ -950,12 +974,12 @@ describe('InvitationService', () => {
 
     it('tells the inviter that the invitation was accepted (#664)', async () => {
       const admin = adminClient();
-      const notifier = { invitationAccepted: vi.fn().mockResolvedValue(undefined) };
+      const notifier = fakeNotifier();
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
         () => null,
-        notifier as unknown as Notifier,
+        notifier,
       );
       admin.from
         .mockReturnValueOnce(qb(invitation))
@@ -979,12 +1003,12 @@ describe('InvitationService', () => {
 
     it('does not notify anybody when the accept is refused (full organization)', async () => {
       const admin = adminClient();
-      const notifier = { invitationAccepted: vi.fn().mockResolvedValue(undefined) };
+      const notifier = fakeNotifier();
       service = new InvitationService(
         () => Promise.resolve(mock),
         () => admin.client,
         () => null,
-        notifier as unknown as Notifier,
+        notifier,
       );
       admin.from.mockReturnValueOnce(qb(invitation)).mockReturnValueOnce(countQb(5));
       vi.mocked(limitsResolver.checkOrgLimit).mockRejectedValueOnce(

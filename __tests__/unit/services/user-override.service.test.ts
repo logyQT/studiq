@@ -24,7 +24,19 @@ const CHAIN_METHODS = ['select', 'insert', 'update', 'delete', 'eq', 'order'] as
 function qb(data: unknown, error: unknown = null): QueryBuilder {
   const result = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const builder = {} as QueryBuilder;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    order: vi.fn(),
+    single: vi.fn(),
+    maybeSingle: vi.fn(),
+    then: vi.fn(),
+    catch: vi.fn(),
+    finally: vi.fn(),
+  };
   for (const method of CHAIN_METHODS) {
     builder[method] = vi.fn(() => builder);
   }

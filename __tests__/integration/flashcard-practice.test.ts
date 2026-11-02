@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   useRealSupabase,
@@ -6,7 +8,6 @@ import {
   cleanupFlashcardPractice,
   cleanupFlashcardReviewState,
   cleanupFlashcards,
-  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -22,6 +23,76 @@ import { POST as completeSession } from '@/app/(backend)/api/v1/flashcards/pract
 import { GET as getSettings } from '@/app/(backend)/api/v1/flashcards/practice/settings/route';
 import { GET as getStateBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/states/route';
 import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
+
+/** Review state written by the practice route — the fields the assertions read. */
+interface ReviewState {
+  easiness_factor: number;
+  interval_days: number;
+  learning_state?: string;
+  learning_step?: number;
+  interval_unit?: string;
+}
+
+/** `POST /api/v1/flashcards/:id/practice` payload. */
+interface PracticeBody {
+  success: boolean;
+  data: {
+    practice: { response_time_ms: number; confidence_level: number; session_id: string };
+    reviewState: ReviewState;
+  };
+}
+
+/** Error envelope (`{ success: false }`) of the routes under test. */
+type ErrorBody = { success: boolean };
+
+/** `GET /practice/new` payload: the card list itself. */
+type DueCardsBody = { data: unknown[] };
+
+/** `GET /practice/due/breakdown` payload — the fields read below. */
+type DueBreakdownBody = { data: { total: number; byTopic: object; byDeck: object } };
+
+/** `GET /practice/due/count` payload — the field read below. */
+type DueCountBody = { data: { count: number } };
+
+/** `GET /flashcards/:id/practice/stats` payload — the fields read below. */
+interface CardPracticeStatsBody {
+  success: boolean;
+  data: { totalAttempts: unknown; correctRate: unknown; averageResponseTimeMs: unknown };
+}
+
+/** `GET /practice/states` KPIs — the fields the assertions read. */
+interface StatesBody {
+  data: {
+    totalCards: number;
+    practicedCards: number;
+    averageAccuracy: number;
+    averageEasinessFactor: number;
+  };
+}
+
+/** One row of `GET /practice/cards-stats`. */
+type CardStatsItem = Record<string, unknown> & { id: string };
+
+/** `GET /practice/cards-stats` payload. */
+type CardsStatsBody = { data: { items: CardStatsItem[] } };
+
+/** `GET /practice/settings` payload — the field read below. */
+type SettingsBody = { data: { remainingNewCards: number } };
+
+/** `POST /flashcards/batch/:action` payload. */
+interface BatchBody {
+  success?: boolean;
+  data: { success?: boolean; results: unknown[] };
+}
+
+/** `GET /practice/review` payload. */
+type ReviewCardsBody = { data: Array<{ id: string; reviewState: Record<string, unknown> | null }> };
+
+/** `GET /practice/stats` payload — the fields read below. */
+interface PracticeStatsBody {
+  success: boolean;
+  data: { totalPracticed: unknown; totalDue: unknown; totalCardsReviewed: unknown };
+}
 
 describe(`Flashcard Practice Integration`, () => {
   let teacher!: BeforeResult;
@@ -66,7 +137,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await logPractice(request, { params });
-      const body = await response.json();
+      const body = await json<PracticeBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -90,7 +161,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await logPractice(request, { params });
-      const body = await response.json();
+      const body = await json<PracticeBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.data.reviewState.learning_state).toBe('learning');
@@ -113,7 +184,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await logPractice(request, { params });
-      const body = await response.json();
+      const body = await json<PracticeBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.data.reviewState.learning_state).toBe('learning');
@@ -143,7 +214,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await logPractice(request, { params });
-      const body = await response.json();
+      const body = await json<PracticeBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -167,7 +238,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await logPractice(request, { params });
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -187,7 +258,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await logPractice(request, { params });
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -201,7 +272,7 @@ describe(`Flashcard Practice Integration`, () => {
       const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/new?limit=10`);
 
       const response = await getDueCards(request);
-      const body = await response.json();
+      const body = await json<DueCardsBody>(response);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data)).toBe(true);
@@ -213,7 +284,7 @@ describe(`Flashcard Practice Integration`, () => {
       const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/new`);
 
       const response = await getDueCards(request);
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -229,7 +300,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await getDueBreakdown(request);
-      const body = await response.json();
+      const body = await json<DueBreakdownBody>(response);
 
       expect(response.status).toBe(200);
       expect(typeof body.data.total).toBe('number');
@@ -245,7 +316,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await getDueBreakdown(request);
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -259,7 +330,7 @@ describe(`Flashcard Practice Integration`, () => {
       const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due/count`);
 
       const response = await getDueCount(request);
-      const body = await response.json();
+      const body = await json<DueCountBody>(response);
 
       expect(response.status).toBe(200);
       expect(typeof body.data.count).toBe('number');
@@ -271,7 +342,7 @@ describe(`Flashcard Practice Integration`, () => {
       const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due/count`);
 
       const response = await getDueCount(request);
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -288,7 +359,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await getStatsForCard(request, { params });
-      const body = await response.json();
+      const body = await json<CardPracticeStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -306,7 +377,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
 
       const response = await getStatsForCard(request, { params });
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -328,12 +399,12 @@ describe(`Flashcard Practice Integration`, () => {
       await cleanupFlashcardDecks(kpi.user.id);
     });
 
-    async function fetchStates() {
+    async function fetchStates(): Promise<StatesBody['data']> {
       mockUser(kpi.user);
       const response = await getStateBreakdown(
         createNextRequest('http://localhost/api/v1/flashcards/practice/states'),
       );
-      const body = await response.json();
+      const body = await json<StatesBody>(response);
       expect(response.status).toBe(200);
       return body.data;
     }
@@ -354,8 +425,8 @@ describe(`Flashcard Practice Integration`, () => {
         );
         const response = await logPractice(request, { params });
         expect(response.status).toBe(201);
-        const body = await response.json();
-        return body.data.reviewState as { easiness_factor: number };
+        const body = await json<PracticeBody>(response);
+        return body.data.reviewState;
       };
 
       // Card A: correct + wrong -> 50%. Card B: correct -> 100%.
@@ -381,7 +452,7 @@ describe(`Flashcard Practice Integration`, () => {
           'http://localhost/api/v1/flashcards/practice/cards-stats?state=new&limit=100',
         ),
       );
-      const filtered = await filteredResponse.json();
+      const filtered = await json<CardsStatsBody>(filteredResponse);
 
       expect(filteredResponse.status).toBe(200);
       expect(filtered.data.items).toHaveLength(0);
@@ -416,13 +487,9 @@ describe(`Flashcard Practice Integration`, () => {
         },
       );
       const response = await logPractice(request, { params });
-      const body = await response.json();
+      const body = await json<PracticeBody>(response);
       expect(response.status).toBe(201);
-      return body.data.reviewState as {
-        learning_state: string;
-        interval_days: number;
-        interval_unit: string;
-      };
+      return body.data.reviewState;
     }
 
     it('persists the unit alongside the magnitude so 1 min and 1 day stay distinct', async () => {
@@ -448,10 +515,10 @@ describe(`Flashcard Practice Integration`, () => {
       const response = await getCardsStats(
         createNextRequest('http://localhost/api/v1/flashcards/practice/cards-stats?limit=100'),
       );
-      const body = await response.json();
+      const body = await json<CardsStatsBody>(response);
       expect(response.status).toBe(200);
 
-      const items = body.data.items as Array<Record<string, unknown>>;
+      const items = body.data.items;
       const itemA = items.find((i) => i.id === cardA);
       const itemB = items.find((i) => i.id === cardB);
 
@@ -477,7 +544,7 @@ describe(`Flashcard Practice Integration`, () => {
     });
 
     afterAll(async () => {
-      const service = createServiceClient();
+      const service = createSeedDb();
       await service.from('flashcard_study_sessions').delete().eq('user_id', cram.user.id);
       await cleanupFlashcardPractice(cram.user.id);
       await cleanupFlashcardReviewState(cram.user.id);
@@ -497,7 +564,7 @@ describe(`Flashcard Practice Integration`, () => {
         },
       );
       const response = await batchPractice(request, { params });
-      return { status: response.status, body: await response.json() };
+      return { status: response.status, body: await json<BatchBody>(response) };
     }
 
     async function readSettings(): Promise<{ remainingNewCards: number }> {
@@ -506,7 +573,7 @@ describe(`Flashcard Practice Integration`, () => {
         createNextRequest('http://localhost/api/v1/flashcards/practice/settings'),
       );
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await json<SettingsBody>(response);
       return body.data;
     }
 
@@ -516,13 +583,16 @@ describe(`Flashcard Practice Integration`, () => {
         createNextRequest('http://localhost/api/v1/flashcards/practice/cards-stats?limit=100'),
       );
       expect(response.status).toBe(200);
-      const body = await response.json();
-      const items = body.data.items as Array<Record<string, unknown>>;
+      const body = await json<CardsStatsBody>(response);
+      const items = body.data.items;
       return items.find((i) => i.id === flashcardId);
     }
 
-    async function countRows(table: string, flashcardId?: string) {
-      const service = createServiceClient();
+    async function countRows(
+      table: 'flashcard_practice' | 'flashcard_review_state',
+      flashcardId?: string,
+    ) {
+      const service = createSeedDb();
       let query = service
         .from(table)
         .select('user_id', { count: 'exact', head: true })
@@ -534,13 +604,13 @@ describe(`Flashcard Practice Integration`, () => {
     }
 
     async function readReviewsCount() {
-      const service = createServiceClient();
+      const service = createSeedDb();
       const { data } = await service
         .from('user_daily_activity')
         .select('reviews_count')
         .eq('user_id', cram.user.id)
         .maybeSingle();
-      return (data?.reviews_count as number | undefined) ?? 0;
+      return data?.reviews_count ?? 0;
     }
 
     it('acceptance 1–3: a cram answer writes no practice row, no review state and burns no budget', async () => {
@@ -606,7 +676,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
       expect(response.status).toBe(200);
 
-      const service = createServiceClient();
+      const service = createSeedDb();
       const { data } = await service
         .from('flashcard_study_sessions')
         .select('id, mode, cards_studied')
@@ -672,7 +742,7 @@ describe(`Flashcard Practice Integration`, () => {
       );
       expect((await logPractice(request, { params })).status).toBe(201);
 
-      const service = createServiceClient();
+      const service = createSeedDb();
       const { error } = await service
         .from('flashcard_review_state')
         .update({
@@ -689,11 +759,8 @@ describe(`Flashcard Practice Integration`, () => {
         createNextRequest('http://localhost/api/v1/flashcards/practice/review?limit=100'),
       );
       expect(response.status).toBe(200);
-      const body = await response.json();
-      const cards = body.data as Array<{
-        id: string;
-        reviewState: Record<string, unknown> | null;
-      }>;
+      const body = await json<ReviewCardsBody>(response);
+      const cards = body.data;
       const card = cards.find((c) => c.id === flashcardId);
 
       expect(card?.reviewState).toMatchObject({
@@ -710,7 +777,7 @@ describe(`Flashcard Practice Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/practice/stats');
       const response = await getStatsAll(req);
-      const body = await response.json();
+      const body = await json<PracticeStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -724,7 +791,7 @@ describe(`Flashcard Practice Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/practice/stats');
       const response = await getStatsAll(req);
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);

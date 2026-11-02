@@ -333,14 +333,15 @@ describe('QuestionBankService', () => {
       const linked = { id: 'b-1', name: 'Bank', created_by: ctx.userId, groupIds: ['g-1'] };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // delete links
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      const insertLinks = qb(undefined); // insert links
+      mock.from.mockReturnValueOnce(insertLinks);
       mock.from.mockReturnValueOnce(qb(linked)); // getById
 
       const result = await service.update('b-1', { groupIds: ['g-1'] }, ctx);
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
-      const insertCall = mock.from.mock.results[2].value.insert;
+      const insertCall = insertLinks.insert;
       expect(insertCall).toHaveBeenCalledWith([{ bank_id: 'b-1', group_id: 'g-1' }]);
     });
 

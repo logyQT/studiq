@@ -16,7 +16,9 @@ vi.mock('ai', async (importOriginal) => {
 // webfetchTool resolves DNS via assertSafeExternalUrl before fetching — mock it
 // so these tests don't depend on real network/DNS. Public IP by default; tests
 // that need a different resolution override with mockResolvedValueOnce.
-const dnsLookupMock = vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+const dnsLookupMock = vi
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
 vi.mock('node:dns/promises', () => ({
   lookup: (...args: unknown[]) => dnsLookupMock(...args),
 }));
@@ -47,6 +49,30 @@ type ToolContextMock = {
   };
   agentRegistry: { get: Mock; getAll: Mock };
 };
+
+/** The result `askUserTool` answers with. */
+type QuestionToolResult = {
+  type: string;
+  question: { id: string; question: string; options?: Array<{ label: string; value: string }> };
+};
+
+/** `extractConceptsTool` answers with the concepts it parsed out of the task. */
+type TermsToolResult = { terms?: Array<{ term: string; definition: string }> };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isQuestionToolResult(value: unknown): value is QuestionToolResult {
+  return isRecord(value) && isRecord(value.question) && typeof value.question.id === 'string';
+}
+
+function isTermsToolResult(value: unknown): value is TermsToolResult {
+  return (
+    isRecord(value) &&
+    (!('terms' in value) || value.terms === undefined || Array.isArray(value.terms))
+  );
+}
 
 function mockCtx(
   overrides?: Record<string, unknown>,
@@ -90,10 +116,11 @@ beforeEach(() => {
 describe('askUserTool', () => {
   it('returns a question object with generated id', async () => {
     const ctx = mockCtx();
-    const result = await askUserTool.execute(
+    const result: unknown = await askUserTool.execute(
       { question: 'What topic?', options: [{ label: 'A', value: 'a' }] },
       ctx,
     );
+    if (!isQuestionToolResult(result)) throw new Error('expected a question result');
     expect(result.type).toBe('question');
     expect(result.question.id).toMatch(/^q_\d+_/);
     expect(result.question.question).toBe('What topic?');
@@ -151,9 +178,10 @@ describe('extractConceptsTool', () => {
   it('returns terms passed in args', async () => {
     const ctx = mockCtx();
     const terms = [{ term: 'T1', definition: 'D1' }];
-    const result = await extractConceptsTool.execute({ terms }, ctx);
+    const result: unknown = await extractConceptsTool.execute({ terms }, ctx);
+    if (!isTermsToolResult(result) || !result.terms) throw new Error('expected tool terms');
     expect(result.terms).toHaveLength(1);
-    expect(result.terms![0].term).toBe('T1');
+    expect(result.terms[0].term).toBe('T1');
   });
 
   it('returns empty array when terms is empty', async () => {
@@ -177,7 +205,7 @@ describe('fetchMaterialTool', () => {
     await fetchMaterialTool.execute({ topic: 'Math', focusAreas: ['Algebra', 'Geometry'] }, ctx);
     expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringContaining('Algebra'),
+        prompt: expect.stringContaining('Algebra') as unknown,
       }),
     );
   });

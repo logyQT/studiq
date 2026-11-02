@@ -1,10 +1,14 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardImportController } from '@studiq/server/controllers/flashcard-import.controller';
-import type { FlashcardImportService } from '@studiq/server/services/flashcard-import.service';
+import { FlashcardImportService } from '@studiq/server/services/flashcard-import.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return { importCsv: vi.fn() };
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new FlashcardImportService(() => Promise.reject(new Error('unused'))), {
+    importCsv: vi.fn(),
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -26,7 +30,7 @@ describe('FlashcardImportController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardImportController(mockService as unknown as FlashcardImportService);
+    controller = new FlashcardImportController(mockService);
   });
 
   describe('importCsv', () => {

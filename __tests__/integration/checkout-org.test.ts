@@ -1,6 +1,7 @@
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestUser, seedViaApi, type TestUserFixture } from '#test/helpers/test-user';
 import {
@@ -8,6 +9,7 @@ import {
   createServiceClient,
   seedOrgMembership,
 } from '#test/integration/helpers';
+import { json } from '#test/helpers/json';
 import { createNextRequest } from '#test/integration/test-utils';
 import { GET as getMyOrgs } from '@/app/(backend)/api/v1/me/orgs/route';
 import { POST as createCheckoutSession } from '@/app/(backend)/api/v1/stripe/create-checkout-session/route';
@@ -27,13 +29,13 @@ const BASE_URL = 'http://localhost';
 
 interface Session {
   user: TestUserFixture;
-  build: () => SupabaseClient;
+  build: () => SupabaseClient<Database>;
 }
 
 async function signIn(email: string, user: TestUserFixture): Promise<Session> {
   const jar = new Map<string, string>();
   const build = () =>
-    createServerClient(
+    createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -88,7 +90,8 @@ describe('org checkout resolves the target organization (#225)', () => {
       .select('id')
       .eq('organization_id', orgId)
       .eq('name', 'teacher')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     if (roleError || !teacherRole) throw new Error('[setup] teacher org role missing');
 
     // Same account type as the buyer (manager) but a non-admin org role: this is
@@ -121,7 +124,7 @@ describe('org checkout resolves the target organization (#225)', () => {
     const res = await getMyOrgs(
       createNextRequest(`${BASE_URL}/api/v1/me/orgs`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<{ data: { id: string; orgRoleName: string }[] }>(res);
 
     expect(res.status).toBe(200);
     expect(body.data).toEqual([expect.objectContaining({ id: orgId, orgRoleName: 'admin' })]);
@@ -132,7 +135,7 @@ describe('org checkout resolves the target organization (#225)', () => {
     const res = await getMyOrgs(
       createNextRequest(`${BASE_URL}/api/v1/me/orgs`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<{ data: unknown[] }>(res);
 
     expect(res.status).toBe(200);
     expect(body.data).toEqual([]);
@@ -141,7 +144,7 @@ describe('org checkout resolves the target organization (#225)', () => {
   it('creates a checkout session whose URL carries the resolved org', async () => {
     actAs(admin);
     const res = await createCheckoutSession(checkoutRequest({ planId: 'hub', orgId }));
-    const body = await res.json();
+    const body = await json<{ data: { url: string } }>(res);
 
     expect(res.status).toBe(200);
     expect(body.data.url).toContain(`org_id=${orgId}`);

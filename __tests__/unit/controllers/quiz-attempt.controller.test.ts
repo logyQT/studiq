@@ -3,6 +3,7 @@ import { QuizAttemptController } from '@studiq/server/controllers/quiz-attempt.c
 import { failure, success } from '@studiq/server/lib/service-result';
 import type { QuizAttemptService } from '@studiq/server/services/quiz-attempt.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockQuizAttemptService() {
   return {
@@ -33,7 +34,7 @@ describe('QuizAttemptController', () => {
     vi.clearAllMocks();
     mockService = createMockQuizAttemptService();
     // Only the four handlers under test are exercised; the rest is unreached.
-    controller = new QuizAttemptController(mockService as unknown as QuizAttemptService);
+    controller = new QuizAttemptController(asService<QuizAttemptService>(mockService));
   });
 
   describe('list', () => {

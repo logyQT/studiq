@@ -1,7 +1,14 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { GroupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: {
@@ -95,9 +102,9 @@ describe('GroupService', () => {
       const result = await service.listGroups(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].memberCount).toBe(5);
-      expect(result.data[0].teacherCount).toBe(2);
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].memberCount).toBe(5);
+      expect(expectSuccess(result)[0].teacherCount).toBe(2);
     });
 
     it('returns error on DB failure', async () => {
@@ -134,7 +141,7 @@ describe('GroupService', () => {
       const result = await service.listGroups(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.every((g) => g.canManage)).toBe(true);
+      expect(expectSuccess(result).every((g) => g.canManage)).toBe(true);
     });
 
     it('marks only self-created groups manageable for an educator', async () => {
@@ -172,9 +179,9 @@ describe('GroupService', () => {
       const result = await service.listGroups({ ...ctx, accountType: AccountType.EDUCATOR });
 
       expect(result.success).toBe(true);
-      expect(result.data.find((g) => g.id === 'g-1')?.canManage).toBe(true);
-      expect(result.data.find((g) => g.id === 'g-2')?.canManage).toBe(false);
-      expect(result.data.find((g) => g.id === 'g-3')?.canManage).toBe(false);
+      expect(expectSuccess(result).find((g) => g.id === 'g-1')?.canManage).toBe(true);
+      expect(expectSuccess(result).find((g) => g.id === 'g-2')?.canManage).toBe(false);
+      expect(expectSuccess(result).find((g) => g.id === 'g-3')?.canManage).toBe(false);
     });
   });
 
@@ -194,7 +201,7 @@ describe('GroupService', () => {
       const result = await service.createGroup(ctx, { name: 'New Group' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(group);
+      expect(expectSuccess(result)).toEqual(group);
     });
 
     it('stores a blank description as null on create', async () => {
@@ -241,7 +248,7 @@ describe('GroupService', () => {
       const result = await service.updateGroup(ctx, 'g-1', { name: 'Updated' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(group);
+      expect(expectSuccess(result)).toEqual(group);
     });
 
     it.each([
@@ -404,7 +411,7 @@ describe('GroupService', () => {
       const result = await service.getGroupMembers(ctx, 'g-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([{ userId: 'u-1', role: 'teacher' }]);
+      expect(expectSuccess(result)).toEqual([{ userId: 'u-1', role: 'teacher' }]);
     });
 
     it('returns error on members query failure', async () => {
@@ -515,7 +522,7 @@ describe('GroupService', () => {
       const result = await service.listAddableMembers(ctx, 'g-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([
+      expect(expectSuccess(result)).toEqual([
         { id: 'u-1', email: 'a@test.com', fullName: 'Alice', orgRoleName: 'admin' },
         { id: 'u-2', email: 'b@test.com', fullName: null, orgRoleName: 'member' },
       ]);
@@ -529,7 +536,7 @@ describe('GroupService', () => {
       const result = await service.listAddableMembers(educatorCtx, 'g-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
     });
 
     it('returns NOT_FOUND when the group to authorize does not exist', async () => {
@@ -561,7 +568,7 @@ describe('GroupService', () => {
       const result = await service.getUserGroupIds(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(['g-1', 'g-2']);
+      expect(expectSuccess(result)).toEqual(['g-1', 'g-2']);
     });
 
     it('returns error on RPC failure', async () => {
@@ -578,7 +585,7 @@ describe('GroupService', () => {
       const result = await service.getUserGroupIds(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
     });
   });
 
@@ -589,7 +596,7 @@ describe('GroupService', () => {
       const result = await service.isTeacherInGroup(ctx, 'g-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toBe(true);
+      expect(expectSuccess(result)).toBe(true);
     });
 
     it('returns false when user is not teacher', async () => {
@@ -598,7 +605,7 @@ describe('GroupService', () => {
       const result = await service.isTeacherInGroup(ctx, 'g-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toBe(false);
+      expect(expectSuccess(result)).toBe(false);
     });
 
     it('returns error on DB failure', async () => {
@@ -697,7 +704,7 @@ describe('GroupService', () => {
       const result = await service.isUserInGroup(ctx, 'g-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toBe(true);
+      expect(expectSuccess(result)).toBe(true);
     });
 
     it('returns false when user is not in group', async () => {
@@ -706,7 +713,7 @@ describe('GroupService', () => {
       const result = await service.isUserInGroup(ctx, 'g-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toBe(false);
+      expect(expectSuccess(result)).toBe(false);
     });
   });
 
@@ -726,8 +733,8 @@ describe('GroupService', () => {
       const result = await service.listMyGroups(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].id).toBe('g-1');
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].id).toBe('g-1');
     });
 
     it('returns [] when the caller has no org memberships (#249)', async () => {
@@ -736,7 +743,7 @@ describe('GroupService', () => {
       const result = await service.listMyGroups(ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data).toEqual([]);
+      if (result.success) expect(expectSuccess(result)).toEqual([]);
       // No group_members query is issued once the org list is empty.
       expect(mock.from).toHaveBeenCalledTimes(1);
     });

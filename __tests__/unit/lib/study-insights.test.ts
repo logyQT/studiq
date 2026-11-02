@@ -10,6 +10,7 @@ import {
 import { StudentInsightsService } from '@studiq/server/services/student-insights.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { asService } from '#test/helpers/service-double';
 import {
   busiestWeekday,
   hiddenMasteryCount,
@@ -215,7 +216,7 @@ describe('StudentInsightsService', () => {
 describe('StudentInsightsController', () => {
   const insightsService = { getInsights: vi.fn() };
   const controller = new StudentInsightsController(
-    insightsService as unknown as StudentInsightsService,
+    asService<StudentInsightsService>(insightsService),
   );
 
   beforeEach(() => vi.clearAllMocks());

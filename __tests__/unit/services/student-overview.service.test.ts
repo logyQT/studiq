@@ -7,6 +7,7 @@ import {
 } from '@studiq/server/services/student-overview.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { asService } from '#test/helpers/service-double';
 
 // #655: the data behind "continue where you left off", today's progress and the recent activity
 // timeline. Everything is the caller's own, read through the request client.
@@ -339,7 +340,7 @@ describe('StudentOverviewService.getOverview', () => {
 
 describe('StudentOverviewController', () => {
   const overview = { getOverview: vi.fn() };
-  const controller = new StudentOverviewController(overview as unknown as StudentOverviewService);
+  const controller = new StudentOverviewController(asService<StudentOverviewService>(overview));
 
   it('answers 200 with the overview', async () => {
     const data = { resume: { quiz: null, deck: null }, reviewedToday: 0, activity: [] };

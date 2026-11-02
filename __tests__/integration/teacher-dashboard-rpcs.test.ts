@@ -1,6 +1,30 @@
+import type { Database, Json } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createServiceClient } from '#test/integration/helpers';
+import { createSeedDb } from '#test/helpers/tenant-seed';
+import { asJson } from '#test/helpers/json';
+
+/** One row of `get_teacher_activity_feed()`. */
+type ActivityFeedItem = {
+  at: string;
+  title: string | null;
+  personName: string | null;
+  assignmentId: string | null;
+  kind: string;
+  needsGrading: boolean;
+  questionId: string | null;
+};
+
+/** The `profiles` columns these tests read. */
+type ProfileName = { full_name: string | null; email: string };
+
+/** One row of `get_teacher_group_performance().groups`. */
+type GroupPerformanceRow = {
+  groupName: string;
+  students: number;
+  avgScore: number | null;
+  flashcardAccuracy: number | null;
+};
 
 // #654: get_teacher_group_performance / get_teacher_activity_feed are SECURITY DEFINER (teachers
 // cannot read other users' flashcard_practice through RLS), so they must not be a cross-user or
@@ -14,8 +38,8 @@ const OTHER_USER_ID = '00000000-0000-4000-8001-000000000001';
 const ORG = '00000000-0000-4000-8000-000000000001'; // WSB Merito, teacher1 is a member
 const FOREIGN_ORG = '00000000-0000-4000-8000-00000000000e'; // Akademia Górnicza: teacher1 is not a member
 
-const signIn = async (email: string) => {
-  const client = createClient(url, anonKey, {
+const signIn = async (email: string): Promise<SupabaseClient<Database>> => {
+  const client = createClient<Database>(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { error } = await client.auth.signInWithPassword({ email, password: 'pass' });
@@ -24,10 +48,10 @@ const signIn = async (email: string) => {
 };
 
 describe('teacher dashboard RPCs (#654)', () => {
-  let teacher: SupabaseClient;
+  let teacher: SupabaseClient<Database>;
 
   beforeAll(async () => {
-    teacher = createClient(url, anonKey, {
+    teacher = createClient<Database>(url, anonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     const { error } = await teacher.auth.signInWithPassword({
@@ -37,17 +61,20 @@ describe('teacher dashboard RPCs (#654)', () => {
     if (error) throw new Error(`sign-in failed: ${error.message}`);
   });
 
-  it.each(['get_teacher_group_performance', 'get_teacher_activity_feed'])(
+  it.each(['get_teacher_group_performance', 'get_teacher_activity_feed'] as const)(
     "%s answers for the caller's own organization",
     async (fn) => {
       const { data, error } = await teacher.rpc(fn, {
         p_user_id: TEACHER_ID,
         p_organization_id: ORG,
       });
+      const payload = asJson<{ groups?: unknown }>(data);
       expect(error).toBeNull();
       // The feed is a list; the group results are { groups, totals }.
       expect(
-        fn === 'get_teacher_group_performance' ? Array.isArray(data.groups) : Array.isArray(data),
+        fn === 'get_teacher_group_performance'
+          ? Array.isArray(payload.groups)
+          : Array.isArray(payload),
       ).toBe(true);
     },
   );
@@ -57,11 +84,11 @@ describe('teacher dashboard RPCs (#654)', () => {
       p_user_id: TEACHER_ID,
       p_organization_id: ORG,
     });
-    for (const group of data.groups as Array<Record<string, number | null | string>>) {
+    for (const group of asJson<{ groups: GroupPerformanceRow[] }>(data).groups) {
       expect(typeof group.groupName).toBe('string');
-      expect(group.students as number).toBeGreaterThanOrEqual(0);
+      expect(group.students).toBeGreaterThanOrEqual(0);
       for (const key of ['avgScore', 'flashcardAccuracy'] as const) {
-        const value = group[key] as number | null;
+        const value = group[key];
         if (value !== null) {
           expect(value).toBeGreaterThanOrEqual(0);
           expect(value).toBeLessThanOrEqual(100);
@@ -70,7 +97,7 @@ describe('teacher dashboard RPCs (#654)', () => {
     }
   });
 
-  it.each(['get_teacher_group_performance', 'get_teacher_activity_feed'])(
+  it.each(['get_teacher_group_performance', 'get_teacher_activity_feed'] as const)(
     '%s refuses to run for another user (42501)',
     async (fn) => {
       const { error } = await teacher.rpc(fn, {
@@ -81,7 +108,7 @@ describe('teacher dashboard RPCs (#654)', () => {
     },
   );
 
-  it.each(['get_teacher_group_performance', 'get_teacher_activity_feed'])(
+  it.each(['get_teacher_group_performance', 'get_teacher_activity_feed'] as const)(
     '%s returns nothing for an organization the caller is not in',
     async (fn) => {
       const { data, error } = await teacher.rpc(fn, {
@@ -103,12 +130,12 @@ describe('teacher dashboard RPCs (#654)', () => {
 // organization, and rows of personal resources (no organization), are in no aggregate. Every
 // fixture is built here, nothing depends on what the seed happens to contain.
 describe('teacher dashboard organization isolation (#654 review)', () => {
-  const service = createServiceClient();
+  const service = createSeedDb();
   const STUDENT_ID = '00000000-0000-4000-8001-000000000005'; // student1, member of O1G1 in WSB
   const MARK = `zz654-${Date.now()}`;
   const BANK = '00000000-0000-4000-8020-000000000001';
-  let teacher: SupabaseClient;
-  let student: SupabaseClient;
+  let teacher: SupabaseClient<Database>;
+  let student: SupabaseClient<Database>;
   let secondGroupId: string;
   let ownAssignmentId: string;
   let foreignAssignmentId: string;
@@ -148,7 +175,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       p_organization_id: ORG,
     });
     expect(error).toBeNull();
-    return data as Perf;
+    return asJson<Perf>(data);
   }
 
   async function feed() {
@@ -158,15 +185,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       p_limit: 50,
     });
     expect(error).toBeNull();
-    return data as Array<{
-      at: string;
-      title: string | null;
-      personName: string | null;
-      assignmentId: string | null;
-      kind: string;
-      needsGrading: boolean;
-      questionId: string | null;
-    }>;
+    return asJson<ActivityFeedItem[]>(data);
   }
 
   async function stampOf(attemptId: string) {
@@ -181,8 +200,8 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
 
   const finished = (
     organization_id: string | null,
-    config: Record<string, unknown>,
-    extra: Record<string, unknown> = {},
+    config: Record<string, Json>,
+    extra: Record<string, Json> = {},
   ) => ({
     user_id: STUDENT_ID,
     score: 1,
@@ -492,8 +511,10 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       .single();
     expect(studentProfileError).toBeNull();
 
-    const studentName = studentProfile!.full_name?.trim() || studentProfile!.email.split('@')[0];
-    const foreignNames = [foreignProfile!.full_name, foreignProfile!.email.split('@')[0]].filter(
+    const studentRow = asJson<ProfileName>(studentProfile);
+    const foreignRow = asJson<ProfileName>(foreignProfile);
+    const studentName = studentRow.full_name?.trim() || studentRow.email.split('@')[0];
+    const foreignNames = [foreignRow.full_name, foreignRow.email.split('@')[0]].filter(
       (name): name is string => Boolean(name),
     );
 
@@ -746,7 +767,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       ])
       .select('id, type');
     expect(questionsError).toBeNull();
-    mixedQuestionIds = questions!.map((question) => question.id);
+    mixedQuestionIds = asJson<Array<{ id: string }>>(questions).map((question) => question.id);
     const mcqQuestion = questions!.find((question) => question.type === 'mcq')!;
 
     const { error: linkError } = await service.from('assignment_questions').insert(
@@ -807,7 +828,7 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
       ])
       .select('id');
     expect(questionsError).toBeNull();
-    stampQuestionIds = questions!.map((question) => question.id);
+    stampQuestionIds = asJson<Array<{ id: string }>>(questions).map((question) => question.id);
 
     const { data: attempt, error: attemptError } = await service
       .from('quiz_attempts')

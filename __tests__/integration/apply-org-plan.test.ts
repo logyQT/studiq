@@ -17,13 +17,19 @@ describe('apply_org_plan()', () => {
       .from('org_role_features')
       .select('feature_key, org_roles!inner(name, organization_id)')
       .eq('org_roles.organization_id', orgId)
-      .eq('org_roles.name', roleName);
+      .eq('org_roles.name', roleName)
+      .overrideTypes<{ feature_key: string }[], { merge: false }>();
     if (error) throw new Error(error.message);
     return (data ?? []).map((r) => r.feature_key).toSorted();
   }
 
-  async function plan(): Promise<string> {
-    const { data } = await service.from('organizations').select('plan').eq('id', orgId).single();
+  async function plan(): Promise<string | undefined> {
+    const { data } = await service
+      .from('organizations')
+      .select('plan')
+      .eq('id', orgId)
+      .single()
+      .overrideTypes<{ plan: string }, { merge: false }>();
     return data?.plan;
   }
 
@@ -33,7 +39,8 @@ describe('apply_org_plan()', () => {
       .from('organizations')
       .insert({ name: `apply-org-plan-${Date.now()}` })
       .select('id')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     if (error || !data) throw new Error(`org create failed: ${error?.message}`);
     orgId = data.id;
   });

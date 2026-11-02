@@ -1,7 +1,14 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { SearchService } from '@studiq/server/services/search.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
 
 vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({ or: 'created_by.eq.user-1' }),
@@ -55,7 +62,7 @@ describe('SearchService', () => {
 
       const result = await service.search('test', ctx);
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
     });
 
     it('returns search results', async () => {
@@ -67,8 +74,8 @@ describe('SearchService', () => {
       const result = await service.search('hello', ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].title).toBe('Hello');
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].title).toBe('Hello');
     });
 
     it('groups results by flashcard id', async () => {
@@ -95,9 +102,9 @@ describe('SearchService', () => {
       const result = await service.search('hello', ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].decks).toHaveLength(2);
-      expect(result.data[0].rank).toBe(0.9); // max rank
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].decks).toHaveLength(2);
+      expect(expectSuccess(result)[0].rank).toBe(0.9); // max rank
     });
 
     it('returns empty when no results', async () => {
@@ -106,7 +113,7 @@ describe('SearchService', () => {
       const result = await service.search('xyz', ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
     });
 
     it('returns error on RPC failure', async () => {
@@ -123,7 +130,7 @@ describe('SearchService', () => {
       const result = await service.search('test', ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual([]);
+      expect(expectSuccess(result)).toEqual([]);
     });
 
     it('uses /edu path for educators', async () => {
@@ -136,7 +143,7 @@ describe('SearchService', () => {
       const result = await service.search('hello', educatorCtx);
 
       expect(result.success).toBe(true);
-      expect(result.data[0].decks[0].href).toContain('/edu/');
+      expect(expectSuccess(result)[0].decks[0].href).toContain('/edu/');
     });
   });
 });

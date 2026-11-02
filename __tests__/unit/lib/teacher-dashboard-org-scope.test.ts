@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { asJson } from '#test/helpers/json';
 import { describe, expect, it } from 'vitest';
 
 // #654 review, operator decision A2: the teacher dashboard shows only the active organization's
@@ -173,7 +174,9 @@ describe('dashboard screen', () => {
   });
 
   it.each(['pl', 'en'])('%s has the new strings', (locale) => {
-    const messages = JSON.parse(read(`apps/web/src/i18n/messages/${locale}.json`));
+    const messages = asJson<{ EduOverviewPage: Record<string, unknown> }>(
+      JSON.parse(read(`apps/web/src/i18n/messages/${locale}.json`)),
+    );
     for (const key of [
       'col_flashcard_accuracy',
       'no_data',
@@ -230,8 +233,8 @@ describe('review round 2 (#654)', () => {
     const card = read('apps/web/src/components/edu/dashboard/activity-feed-card.tsx');
     expect(card).toContain('feed_${item.kind}_plain');
     for (const locale of ['pl', 'en']) {
-      const messages = JSON.parse(
-        read(`apps/web/src/i18n/messages/${locale}.json`),
+      const messages = asJson<{ EduOverviewPage: Record<string, unknown> }>(
+        JSON.parse(read(`apps/web/src/i18n/messages/${locale}.json`)),
       ).EduOverviewPage;
       for (const kind of ['quiz_completed', 'assignment_submitted', 'report_opened']) {
         expect(messages[`feed_${kind}_plain`], `${locale} ${kind}`).toBeTruthy();
@@ -245,8 +248,8 @@ describe('review round 2 (#654)', () => {
     expect(spec).not.toContain('flashcards_card_title');
     expect(spec).toContain('/api/v1/stats/teacher/groups');
     for (const locale of ['pl', 'en']) {
-      const messages = JSON.parse(
-        read(`apps/web/src/i18n/messages/${locale}.json`),
+      const messages = asJson<{ EduOverviewPage: Record<string, unknown> }>(
+        JSON.parse(read(`apps/web/src/i18n/messages/${locale}.json`)),
       ).EduOverviewPage;
       for (const key of ['total_questions', 'flashcards', 'students_stat', 'completed_stat']) {
         expect(messages[key], `${locale} ${key}`).toBeTruthy();

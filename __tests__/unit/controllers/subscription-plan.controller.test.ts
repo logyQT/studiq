@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { SubscriptionPlanController } from '@studiq/server/controllers/subscription-plan.controller';
 import type { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return {
@@ -31,7 +32,7 @@ describe('SubscriptionPlanController', () => {
     vi.clearAllMocks();
     mockService = createMockService();
     // Only the read paths are exercised; the rest of the service is unreached.
-    controller = new SubscriptionPlanController(mockService as unknown as SubscriptionPlanService);
+    controller = new SubscriptionPlanController(asService<SubscriptionPlanService>(mockService));
   });
 
   describe('listPublic', () => {

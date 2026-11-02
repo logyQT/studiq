@@ -6,6 +6,7 @@ import { requireFeature } from '@studiq/server/lib/features';
 import { failure, success } from '@studiq/server/lib/service-result';
 import type { OrganizationService } from '@studiq/server/services/organization.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 vi.mock('@studiq/server/lib/features', () => ({
   requireFeature: vi.fn().mockResolvedValue(undefined),
@@ -45,7 +46,7 @@ describe('OrganizationController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new OrganizationController(mockService as unknown as OrganizationService);
+    controller = new OrganizationController(asService<OrganizationService>(mockService));
   });
 
   describe('create', () => {

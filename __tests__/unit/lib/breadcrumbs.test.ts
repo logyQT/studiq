@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
+import { readColumn } from '@studiq/server/lib/record';
 import { buildBreadcrumbs, ID_SEGMENT, OMITTED_PREFIXES, PATH_LABELS } from '@/lib/breadcrumbs';
 import { describe, expect, it } from 'vitest';
 
@@ -15,7 +16,7 @@ function translate(messages: Messages) {
   return (key: string): string => {
     const value = key.split('.').reduce<unknown>((node, part) => {
       if (!node || typeof node !== 'object') return undefined;
-      return (node as Messages)[part];
+      return readColumn(node, part);
     }, messages);
 
     return typeof value === 'string' ? value : '';

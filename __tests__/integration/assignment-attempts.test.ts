@@ -16,6 +16,7 @@ import {
   seedOrgMembership,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import { asJson, json } from '#test/helpers/json';
 import { GET as assignmentGet } from '@/app/(backend)/api/v1/assignments/[id]/route';
 import { POST as assignmentStart } from '@/app/(backend)/api/v1/assignments/[id]/start/route';
 import { GET as assignmentsList } from '@/app/(backend)/api/v1/assignments/route';
@@ -68,6 +69,19 @@ type AttemptListRow = { id: string; completed_at: string | null; score: number |
 /** `GET /api/v1/quiz/:attemptId` — the review payload. */
 type ReviewBody = { data: { assignment_id: string; completed_at: string | null } };
 
+/** The same review payload once submitted (questions + answers are revealed). */
+type SubmittedReviewBody = {
+  data: {
+    assignment_id: string;
+    completed_at: string | null;
+    questions: Array<{ question_answers: Array<{ is_correct?: boolean }> }>;
+    answers: Record<string, unknown>;
+  };
+};
+
+/** `GET /api/v1/assignments` — the list rows under `data`. */
+type AssignmentListBody = { data: AssignmentRow[] };
+
 /** `GET /api/v1/stats/student`. */
 type StudentStats = {
   totalQuizzes: number;
@@ -93,7 +107,7 @@ describe(`Assignment Attempts Integration`, () => {
       { method: 'POST' },
     );
     const response = await assignmentStart(request, { params });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, body: await json<StartBody>(response) };
   }
 
   async function openAttemptCount(userId: string = student.user.id): Promise<number> {
@@ -150,7 +164,7 @@ describe(`Assignment Attempts Integration`, () => {
     );
     const submitRes = await attemptPost(request, { params });
     expect(submitRes.status).toBe(200);
-    return submitRes.json();
+    return json<SubmitBody>(submitRes);
   }
 
   async function detail(): Promise<{ status: number; body: DetailBody }> {
@@ -160,16 +174,16 @@ describe(`Assignment Attempts Integration`, () => {
       { id: assignmentId },
     );
     const response = await assignmentGet(request, { params });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, body: await json<DetailBody>(response) };
   }
 
   async function listRow(): Promise<AssignmentRow> {
     mockUser(student.user);
     const request = createNextRequest('http://localhost/api/v1/assignments');
     const response = await assignmentsList(request);
-    const body = await response.json();
+    const body = await json<AssignmentListBody>(response);
     expect(response.status).toBe(200);
-    return (body.data as AssignmentRow[]).find((row) => row.id === assignmentId)!;
+    return body.data.find((row) => row.id === assignmentId)!;
   }
 
   async function review(attemptId: string): Promise<{ status: number; body: ReviewBody }> {
@@ -179,7 +193,7 @@ describe(`Assignment Attempts Integration`, () => {
       { attemptId },
     );
     const response = await attemptGet(request, { params });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, body: await json<ReviewBody>(response) };
   }
 
   async function studentStats(): Promise<StudentStats> {
@@ -188,7 +202,7 @@ describe(`Assignment Attempts Integration`, () => {
       createNextRequest('http://localhost/api/v1/stats/student'),
     );
     expect(response.status).toBe(200);
-    return (await response.json()).data;
+    return (await json<{ data: StudentStats }>(response)).data;
   }
 
   /** The rows behind `/app/stats/results` (`QuizzesTab`). */
@@ -196,7 +210,7 @@ describe(`Assignment Attempts Integration`, () => {
     mockUser(student.user);
     const response = await attemptsGet(createNextRequest('http://localhost/api/v1/quiz/attempts'));
     expect(response.status).toBe(200);
-    return (await response.json()).data as AttemptListRow[];
+    return (await json<{ data: AttemptListRow[] }>(response)).data;
   }
 
   beforeAll(async () => {
@@ -209,7 +223,7 @@ describe(`Assignment Attempts Integration`, () => {
     // target rather than for a missing organisation membership.
     nonTargeted = await createTestUser({ role: 'student' });
 
-    assignmentId = teacher.created.assignmentId as string;
+    assignmentId = asJson<string>(teacher.created.assignmentId);
     if (!assignmentId) throw new Error('Assignment was not seeded');
     if (!teacher.orgId) throw new Error('Teacher organisation was not seeded');
 
@@ -218,7 +232,8 @@ describe(`Assignment Attempts Integration`, () => {
       .select('id')
       .eq('organization_id', teacher.orgId)
       .eq('name', 'member')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     if (!memberRole) throw new Error('Member role not found for the teacher organisation');
     await seedOrgMembership({
       organizationId: teacher.orgId,
@@ -323,7 +338,8 @@ describe(`Assignment Attempts Integration`, () => {
     const { data: targets } = await createServiceClient()
       .from('assignment_targets')
       .select('student_id')
-      .eq('assignment_id', assignmentId);
+      .eq('assignment_id', assignmentId)
+      .overrideTypes<{ student_id: string }[], { merge: false }>();
     expect((targets ?? []).map((t) => t.student_id)).toEqual([student.user.id]);
   });
 
@@ -375,7 +391,7 @@ describe(`Assignment Attempts Integration`, () => {
       { id: assignmentId },
     );
     const response = await assignmentGet(request, { params });
-    const body = await response.json();
+    const body = await json<DetailBody>(response);
 
     expect(response.status).toBe(200);
     expect(body.data.attempt?.id).toBe(started.body.data.id);
@@ -473,7 +489,7 @@ describe(`Assignment Attempts Integration`, () => {
       { attemptId: submittedAttemptId },
     );
     const response = await attemptGet(request, { params });
-    const body = await response.json();
+    const body = await json<SubmittedReviewBody>(response);
 
     expect(response.status).toBe(200);
     expect(body.data.assignment_id).toBe(assignmentId);

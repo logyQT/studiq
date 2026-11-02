@@ -1,15 +1,17 @@
 import { PlanLimitController } from '@admin/server/controllers/plan-limit.controller';
-import type { PlanLimitService } from '@admin/server/services/plan-limit.service';
+import { PlanLimitService } from '@admin/server/services/plan-limit.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new PlanLimitService(() => Promise.reject(new Error('unused'))), {
     getByPlanKey: vi.fn(),
     getAll: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -19,7 +21,7 @@ describe('PlanLimitController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new PlanLimitController(mockService as unknown as PlanLimitService);
+    controller = new PlanLimitController(mockService);
   });
 
   describe('getAll', () => {

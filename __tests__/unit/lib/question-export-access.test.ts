@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { asJson } from '#test/helpers/json';
 import { describe, expect, it } from 'vitest';
 
 // #652 operator decision: export follows read, import follows update, the export is never
@@ -35,7 +36,9 @@ describe('question bank export access (#652)', () => {
   });
 
   it.each(['pl', 'en'])('%s tells the reader what the export contains', (locale) => {
-    const json = JSON.parse(readFileSync(`apps/web/src/i18n/messages/${locale}.json`, 'utf8'));
+    const json = asJson<{ QuestionTransfer: Record<string, unknown> }>(
+      JSON.parse(readFileSync(`apps/web/src/i18n/messages/${locale}.json`, 'utf8')),
+    );
     for (const key of [
       'export_note',
       'export_failed',

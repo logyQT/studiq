@@ -1,8 +1,10 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
-import { createServiceClient, mockUser } from '#test/integration/helpers';
+import { mockUser } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 import { GET as paymentsGet } from '@/app/(backend)/api/v1/me/payments/route';
 import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route';
@@ -18,16 +20,29 @@ import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route
 const PASSWORD = 'Pay392Test!';
 const BASE_URL = 'http://localhost';
 
+/** Row of `GET /api/v1/me/payments` — the fields the assertions read. */
+interface PaymentRow {
+  id: string;
+  planKey: string;
+  planName: string;
+  amount: number;
+  currency: string;
+  paidAt: string;
+}
+
+/** `GET /api/v1/me/payments` payload. */
+type PaymentsBody = { data: PaymentRow[] };
+
 let buyer: TestUserFixture;
 let other: TestUserFixture;
-let buyerSession: SupabaseClient;
-let otherSession: SupabaseClient;
+let buyerSession: SupabaseClient<Database>;
+let otherSession: SupabaseClient<Database>;
 let sessionId: string;
 
-const service = createServiceClient();
+const service = createSeedDb();
 
-async function signIn(email: string): Promise<SupabaseClient> {
-  const client = createClient(
+async function signIn(email: string): Promise<SupabaseClient<Database>> {
+  const client = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { auth: { persistSession: false, autoRefreshToken: false } },
@@ -56,7 +71,7 @@ async function completeCheckout(user: TestUserFixture, sid: string, planId = 'sp
 async function listPayments(user: TestUserFixture) {
   mockUser(user);
   const res = await paymentsGet(createNextRequest(`${BASE_URL}/api/v1/me/payments`));
-  return { res, body: await res.json() };
+  return { res, body: await json<PaymentsBody>(res) };
 }
 
 describe('payment history (#392)', () => {
@@ -173,10 +188,10 @@ describe('payment history (#392)', () => {
     });
     expect(insert.error?.code).toBe('42501');
 
-    const update = await buyerSession.from('payments').update({ amount: 1 }).eq('id', own?.[0].id);
+    const update = await buyerSession.from('payments').update({ amount: 1 }).eq('id', own![0].id);
     expect(update.error?.code).toBe('42501');
 
-    const remove = await buyerSession.from('payments').delete().eq('id', own?.[0].id);
+    const remove = await buyerSession.from('payments').delete().eq('id', own![0].id);
     expect(remove.error?.code).toBe('42501');
   });
 });

@@ -6,6 +6,23 @@ import { evaluateScope } from '@studiq/authz';
 // #152: a student opening a bank shared with their group got the teacher's management UI
 // ("Utwórz pytanie", row edit / delete) although the API answers 403 to every one of those.
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Parses one message file; `JSON.parse` is untyped, so the payload stays `unknown`. */
+function readMessages(locale: string): unknown {
+  return JSON.parse(readFileSync(`apps/web/src/i18n/messages/${locale}.json`, 'utf8'));
+}
+
+/** One key from a message namespace, failing loudly when the file no longer has it. */
+function messageValue(messages: unknown, namespace: string, key: string): unknown {
+  if (!isRecord(messages)) throw new Error('the message file is not an object');
+  const entries = messages[namespace];
+  if (!isRecord(entries)) throw new Error(`${namespace} is missing from the message file`);
+  return entries[key];
+}
+
 describe('bankAccess', () => {
   it('offers nothing and shows no notice while the bank loads', () => {
     const a = bankAccess(false, false);
@@ -57,10 +74,10 @@ describe('bank detail wiring', () => {
 describe('messages', () => {
   for (const locale of ['pl', 'en']) {
     it(`${locale} has the read-only strings`, () => {
-      const json = JSON.parse(readFileSync(`apps/web/src/i18n/messages/${locale}.json`, 'utf8'));
-      expect(json.QuestionBankDetail.read_only_notice).toBeTruthy();
-      expect(json.QuestionBankDetail.no_questions_read_only).toBeTruthy();
-      expect(json.QuestionBankManagement.view_bank).toBeTruthy();
+      const messages = readMessages(locale);
+      expect(messageValue(messages, 'QuestionBankDetail', 'read_only_notice')).toBeTruthy();
+      expect(messageValue(messages, 'QuestionBankDetail', 'no_questions_read_only')).toBeTruthy();
+      expect(messageValue(messages, 'QuestionBankManagement', 'view_bank')).toBeTruthy();
     });
   }
 });

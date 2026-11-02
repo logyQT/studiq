@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { TopicController } from '@studiq/server/controllers/topic.controller';
 import type { TopicService } from '@studiq/server/services/topic.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
@@ -38,7 +39,7 @@ describe('TopicController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new TopicController(mockService as unknown as TopicService);
+    controller = new TopicController(asService<TopicService>(mockService));
   });
 
   describe('create', () => {

@@ -1,10 +1,14 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { SearchController } from '@studiq/server/controllers/search.controller';
-import type { SearchService } from '@studiq/server/services/search.service';
+import { SearchService } from '@studiq/server/services/search.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return { search: vi.fn() };
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new SearchService(() => Promise.reject(new Error('unused'))), {
+    search: vi.fn(),
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -26,7 +30,7 @@ describe('SearchController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new SearchController(mockService as unknown as SearchService);
+    controller = new SearchController(mockService);
   });
 
   describe('search', () => {

@@ -1,6 +1,7 @@
 import { PlanFeatureController } from '@admin/server/controllers/plan-feature.controller';
 import type { PlanFeatureService } from '@admin/server/services/plan-feature.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return {
@@ -19,7 +20,7 @@ describe('PlanFeatureController', () => {
     vi.clearAllMocks();
     mockService = createMockService();
     // Only the handlers under test are exercised; the rest is unreached.
-    controller = new PlanFeatureController(mockService as unknown as PlanFeatureService);
+    controller = new PlanFeatureController(asService<PlanFeatureService>(mockService));
   });
 
   describe('getAll', () => {

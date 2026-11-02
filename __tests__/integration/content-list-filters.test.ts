@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   useRealSupabase,
@@ -55,11 +56,11 @@ describe(`Content list filters (#595)`, () => {
         cookie,
       ),
     );
-    const payload = await res.json();
+    const payload = await json<{ data: { id: string } }>(res);
     if (res.status !== 201) {
       throw new Error(`[595] ${url} seed failed (${res.status}): ${JSON.stringify(payload)}`);
     }
-    return payload.data.id as string;
+    return payload.data.id;
   }
 
   beforeAll(async () => {
@@ -136,7 +137,7 @@ describe(`Content list filters (#595)`, () => {
     const res = await endpoint.get(
       createNextRequest(`${BASE}${endpoint.url}${separator}`, undefined, cookie),
     );
-    return { status: res.status, body: await res.json() };
+    return { status: res.status, body: await json<ListResponse['body']>(res) };
   }
 
   describe.each(endpoints)('$label', (endpoint) => {

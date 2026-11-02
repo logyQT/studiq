@@ -9,13 +9,23 @@ interface PermissionsBody {
   features?: Record<string, boolean>;
 }
 
-/**
- * The controller's declared response is `ControllerResponse<unknown>`; this view
- * narrows `data` to the payload the endpoint promises instead of using `any`.
- */
+/** The payload is declared `unknown`; this guard narrows it to what the endpoint promises. */
+function isPermissionsBody(value: unknown): value is PermissionsBody {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'permissions' in value &&
+    typeof value.permissions === 'object' &&
+    value.permissions !== null
+  );
+}
+
+/** The controller's declared response is `ControllerResponse<unknown>`; this narrows `data`. */
 function body(response: ControllerResponse): PermissionsBody {
-  return (response as Extract<ControllerResponse, { success: true }> & { data: PermissionsBody })
-    .data;
+  if (!response.success || !isPermissionsBody(response.data)) {
+    throw new Error('expected the resolved permissions payload');
+  }
+  return response.data;
 }
 
 const mockCtx: RequestContext = {
@@ -39,31 +49,31 @@ describe('PermissionsController', () => {
   });
 
   describe('listMyPermissions', () => {
-    it('returns the resolved permissions map', async () => {
-      const response = await controller.listMyPermissions(mockCtx);
+    it('returns the resolved permissions map', () => {
+      const response = controller.listMyPermissions(mockCtx);
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
       expect(body(response).permissions).toBeDefined();
     });
 
-    it('returns only the permissions map (features live on /features/me)', async () => {
-      const response = await controller.listMyPermissions(mockCtx);
+    it('returns only the permissions map (features live on /features/me)', () => {
+      const response = controller.listMyPermissions(mockCtx);
 
       expect(body(response).features).toBeUndefined();
     });
 
-    it('adds default own permissions for student', async () => {
-      const response = await controller.listMyPermissions(mockCtx);
+    it('adds default own permissions for student', () => {
+      const response = controller.listMyPermissions(mockCtx);
 
       expect(response.success).toBe(true);
       const perms = body(response).permissions;
       expect(perms['flashcard.read']).toBe('own');
     });
 
-    it('adds own permissions for educator', async () => {
+    it('adds own permissions for educator', () => {
       const educatorCtx = { ...mockCtx, accountType: AccountType.EDUCATOR };
-      const response = await controller.listMyPermissions(educatorCtx);
+      const response = controller.listMyPermissions(educatorCtx);
 
       expect(response.success).toBe(true);
     });

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -14,6 +15,17 @@ import {
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
+
+/** `GET /api/v1/organization/members` returns the rows under `data`. */
+interface MembersListPayload {
+  data: unknown[];
+}
+
+/** Bodies where only the envelope is asserted. */
+interface ApiEnvelope {
+  success: boolean;
+  error?: string;
+}
 
 describe(`Members Integration`, () => {
   let fixture!: BeforeResult;
@@ -40,7 +52,8 @@ describe(`Members Integration`, () => {
       .select('id')
       .eq('organization_id', orgId)
       .eq('name', 'admin')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     adminRoleId = adminRole!.id;
 
     const { data: memberRole } = await supabase
@@ -48,7 +61,8 @@ describe(`Members Integration`, () => {
       .select('id')
       .eq('organization_id', orgId)
       .eq('name', 'member')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     memberRoleId = memberRole!.id;
 
     // #189: a manager of a different org, used to prove a no-op delete/update
@@ -60,7 +74,8 @@ describe(`Members Integration`, () => {
       .select('id')
       .eq('organization_id', foreignOrgId)
       .eq('name', 'admin')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     foreignAdminRoleId = foreignAdminRole!.id;
   });
 
@@ -86,7 +101,7 @@ describe(`Members Integration`, () => {
         active_org_id: orgId,
       });
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<MembersListPayload>(response);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data)).toBe(true);
@@ -104,7 +119,7 @@ describe(`Members Integration`, () => {
         },
       );
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<MembersListPayload>(response);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data)).toBe(true);
@@ -116,7 +131,7 @@ describe(`Members Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/organization/members');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -127,7 +142,7 @@ describe(`Members Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/organization/members');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -152,7 +167,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await PUT(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -175,7 +190,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await PUT(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -206,7 +221,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await PUT(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -216,7 +231,8 @@ describe(`Members Integration`, () => {
         .select('org_role_id')
         .eq('organization_id', orgId)
         .eq('user_id', target.id)
-        .single();
+        .single()
+        .overrideTypes<{ org_role_id: string }, { merge: false }>();
       expect(data?.org_role_id).toBe(memberRoleId);
     });
 
@@ -233,7 +249,7 @@ describe(`Members Integration`, () => {
       });
 
       const response = await PUT(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -251,7 +267,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await DELETE(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -273,12 +289,13 @@ describe(`Members Integration`, () => {
         .from('org_seat_pools')
         .insert({ organization_id: orgId, plan_key: 'pro', total: 1, assigned: 0 })
         .select('id')
-        .single();
+        .single()
+        .overrideTypes<{ id: string }, { merge: false }>();
       expect(poolError).toBeNull();
 
       const { error: assignmentError } = await supabase.from('org_seat_assignments').insert({
         organization_id: orgId,
-        pool_id: pool?.id as string,
+        pool_id: pool!.id,
         user_id: seatUser.id,
       });
       expect(assignmentError).toBeNull();
@@ -291,7 +308,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await DELETE(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -306,8 +323,9 @@ describe(`Members Integration`, () => {
       const { data: poolAfter } = await supabase
         .from('org_seat_pools')
         .select('assigned')
-        .eq('id', pool?.id as string)
-        .single();
+        .eq('id', pool!.id)
+        .single()
+        .overrideTypes<{ assigned: number }, { merge: false }>();
       expect(poolAfter?.assigned).toBe(0);
     });
 
@@ -330,7 +348,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await DELETE(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -339,7 +357,8 @@ describe(`Members Integration`, () => {
         .from('org_members')
         .select('user_id')
         .eq('organization_id', orgId)
-        .eq('user_id', target.id);
+        .eq('user_id', target.id)
+        .overrideTypes<{ user_id: string }[], { merge: false }>();
       expect(data).toEqual([{ user_id: target.id }]);
     });
 
@@ -354,7 +373,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await DELETE(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -373,7 +392,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await DELETE(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(400);
       expect(body.success).toBe(false);
@@ -388,7 +407,7 @@ describe(`Members Integration`, () => {
       );
 
       const response = await DELETE(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);

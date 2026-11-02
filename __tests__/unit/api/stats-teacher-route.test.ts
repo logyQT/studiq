@@ -1,22 +1,23 @@
+import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const teacherStatsMock = vi.fn();
-const activityMock = vi.fn();
-const flashcardTeacherStatsMock = vi.fn();
-const difficultyMock = vi.fn();
+const teacherStatsMock = vi.fn<(req: NextRequest) => Promise<unknown>>();
+const activityMock = vi.fn<(req: NextRequest) => Promise<unknown>>();
+const flashcardTeacherStatsMock = vi.fn<(req: NextRequest) => Promise<unknown>>();
+const difficultyMock = vi.fn<(req: NextRequest) => Promise<unknown>>();
 
 vi.mock('@studiq/server/controllers/stats.controller', () => ({
-  statsController: { getTeacherStats: (...args: unknown[]) => teacherStatsMock(...args) },
+  statsController: { getTeacherStats: (req: NextRequest) => teacherStatsMock(req) },
 }));
 
 vi.mock('@studiq/server/controllers/activity.controller', () => ({
-  activityController: { getActivity: (...args: unknown[]) => activityMock(...args) },
+  activityController: { getActivity: (req: NextRequest) => activityMock(req) },
 }));
 
 vi.mock('@studiq/server/controllers/flashcard-stats.controller', () => ({
   flashcardStatsController: {
-    getTeacherStats: (...args: unknown[]) => flashcardTeacherStatsMock(...args),
-    getDifficultyCards: (...args: unknown[]) => difficultyMock(...args),
+    getTeacherStats: (req: NextRequest) => flashcardTeacherStatsMock(req),
+    getDifficultyCards: (req: NextRequest) => difficultyMock(req),
   },
 }));
 
@@ -62,22 +63,21 @@ describe('teacher stats routes — allowed account types (#189)', () => {
   it.each([
     [
       'GET /api/v1/stats/teacher',
-      () => teacherGet(new Request('http://localhost/api/v1/stats/teacher') as never),
+      () => teacherGet(new NextRequest('http://localhost/api/v1/stats/teacher')),
     ],
     [
       'GET /api/v1/stats/teacher/activity',
-      () => activityGet(new Request('http://localhost/api/v1/stats/teacher/activity') as never),
+      () => activityGet(new NextRequest('http://localhost/api/v1/stats/teacher/activity')),
     ],
     [
       'GET /api/v1/flashcards/stats/teacher',
-      () =>
-        flashcardStatsGet(new Request('http://localhost/api/v1/flashcards/stats/teacher') as never),
+      () => flashcardStatsGet(new NextRequest('http://localhost/api/v1/flashcards/stats/teacher')),
     ],
     [
       'GET /api/v1/flashcards/stats/teacher/difficulty/[bucket]',
       () =>
         difficultyGet(
-          new Request('http://localhost/api/v1/flashcards/stats/teacher/difficulty/easy') as never,
+          new NextRequest('http://localhost/api/v1/flashcards/stats/teacher/difficulty/easy'),
           {
             params: Promise.resolve({ bucket: 'easy' }),
           },

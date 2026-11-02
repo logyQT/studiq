@@ -22,6 +22,15 @@ type PagedBuilder = {
   ) => Promise<unknown>;
 };
 
+/** A recorded mock argument, narrowed to the id list the test compares. */
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('expected a list argument');
+  return value.map((entry: unknown) => {
+    if (typeof entry !== 'string') throw new Error('expected a string entry');
+    return entry;
+  });
+}
+
 function pagedBuilder(pages: unknown[][], error: unknown = null): PagedBuilder {
   let current: Page = { data: pages[0] ?? [], error };
   const b: PagedBuilder = {
@@ -103,9 +112,8 @@ describe('gradableQuestionCounts (#619)', () => {
 
     expect(result.success).toBe(true);
     expect(client.from).toHaveBeenCalledTimes(2);
-    const inCalls = builder.in.mock.calls as Array<[string, string[]]>;
-    expect(inCalls[0][1]).toHaveLength(100);
-    expect(inCalls[1][1]).toEqual(['a-100']);
+    expect(stringList(builder.in.mock.calls[0][1])).toHaveLength(100);
+    expect(stringList(builder.in.mock.calls[1][1])).toEqual(['a-100']);
   });
 
   it('pages past the PostgREST 1000-row cap instead of truncating the denominator', async () => {

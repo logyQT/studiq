@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -17,6 +18,12 @@ type QueryChain = {
   catch: Promise<QueryResult>['catch'];
   finally: Promise<QueryResult>['finally'];
 };
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
 
 function qb(data: unknown, error: unknown = null, count?: number) {
   const result: QueryResult =
@@ -84,9 +91,9 @@ describe('OrgRoleService', () => {
       const result = await service.listRoles(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].memberCount).toBe(3);
-      expect(result.data[0].permissionCount).toBe(5);
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].memberCount).toBe(3);
+      expect(expectSuccess(result)[0].permissionCount).toBe(5);
     });
 
     it('returns error on DB failure', async () => {
@@ -120,7 +127,7 @@ describe('OrgRoleService', () => {
       const result = await service.getRole(ctx, 'r-1');
 
       expect(result.success).toBe(true);
-      expect(result.data.permissions).toHaveLength(1);
+      expect(expectSuccess(result).permissions).toHaveLength(1);
     });
 
     it('returns error on DB failure', async () => {
@@ -234,7 +241,7 @@ describe('OrgRoleService', () => {
         name: 'Asystent Lektora',
         display_name: 'Asystent Lektora',
       });
-      expect(result.data.displayName).toBe('Asystent Lektora');
+      expect(expectSuccess(result).displayName).toBe('Asystent Lektora');
     });
 
     it('does not touch display_name on a description-only update', async () => {

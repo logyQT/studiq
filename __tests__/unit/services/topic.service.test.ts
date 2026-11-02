@@ -43,7 +43,22 @@ const CHAIN_METHODS = [
 function qb(data: unknown, error: unknown = null): QueryBuilder {
   const result = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const builder = {} as QueryBuilder;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    or: vi.fn(),
+    single: vi.fn(),
+    maybeSingle: vi.fn(),
+    then: vi.fn(),
+    catch: vi.fn(),
+    finally: vi.fn(),
+  };
   for (const method of CHAIN_METHODS) {
     builder[method] = vi.fn(() => builder);
   }
@@ -84,7 +99,8 @@ describe('TopicService', () => {
     it('inserts the topic and its group links when the caller teaches the groups', async () => {
       const topic = { id: 't-1', name: 'Topic', created_by: ctx.userId, visibility: 'group' };
       mock.from.mockReturnValueOnce(qb(topic)); // topics insert
-      mock.from.mockReturnValueOnce(qb(undefined)); // topic_groups insert
+      const insertLinks = qb(undefined); // topic_groups insert
+      mock.from.mockReturnValueOnce(insertLinks);
 
       const result = await service.create(
         { name: 'Topic', visibility: 'group', groupIds: ['g-1'] },
@@ -93,7 +109,7 @@ describe('TopicService', () => {
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
-      const insertCall = mock.from.mock.results[1].value.insert;
+      const insertCall = insertLinks.insert;
       expect(insertCall).toHaveBeenCalledWith([{ topic_id: 't-1', group_id: 'g-1' }]);
     });
 
@@ -238,14 +254,15 @@ describe('TopicService', () => {
       const linked = { id: 't-1', name: 'Topic', created_by: ctx.userId };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // delete links
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      const insertLinks = qb(undefined); // insert links
+      mock.from.mockReturnValueOnce(insertLinks);
       mock.from.mockReturnValueOnce(qb(linked)); // getById
 
       const result = await service.update('t-1', { groupIds: ['g-1'] }, ctx);
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
-      const insertCall = mock.from.mock.results[2].value.insert;
+      const insertCall = insertLinks.insert;
       expect(insertCall).toHaveBeenCalledWith([{ topic_id: 't-1', group_id: 'g-1' }]);
     });
 

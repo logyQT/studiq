@@ -1,10 +1,12 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { QuestionReportController } from '@studiq/server/controllers/question-report.controller';
-import type { QuestionReportService } from '@studiq/server/services/question-report.service';
+import { QuestionReportService } from '@studiq/server/services/question-report.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new QuestionReportService(() => Promise.reject(new Error('unused'))), {
     createReport: vi.fn(),
     list: vi.fn(),
     setStatus: vi.fn(),
@@ -12,7 +14,7 @@ function createMockService() {
     addMessage: vi.fn(),
     markRead: vi.fn(),
     unreadCount: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -34,7 +36,7 @@ describe('QuestionReportController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new QuestionReportController(mockService as unknown as QuestionReportService);
+    controller = new QuestionReportController(mockService);
   });
 
   describe('createReport', () => {

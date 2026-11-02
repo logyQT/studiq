@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -56,6 +57,12 @@ function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
     method.mockImplementation(() => b);
   }
   return b;
+}
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
 }
 
 function planRow(key: string, forAccountType: string | null = null) {
@@ -126,9 +133,9 @@ describe('SubscriptionPlanService', () => {
       const result = await service.listActive();
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].features).toEqual(['quiz']);
-      expect(result.data[0].limits.max_groups).toBe(3);
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].features).toEqual(['quiz']);
+      expect(expectSuccess(result)[0].limits.max_groups).toBe(3);
     });
 
     it('maps for_account_type to forAccountType, defaulting to null', async () => {
@@ -143,8 +150,8 @@ describe('SubscriptionPlanService', () => {
       const result = await service.listActive();
 
       expect(result.success).toBe(true);
-      expect(result.data[0].forAccountType).toBe('manager');
-      expect(result.data[1].forAccountType).toBeNull();
+      expect(expectSuccess(result)[0].forAccountType).toBe('manager');
+      expect(expectSuccess(result)[1].forAccountType).toBeNull();
     });
 
     it('filters by account type', async () => {
@@ -191,10 +198,12 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('ace');
-      expect(result.data.limits.max_ai_tokens_per_day).toBe(200000);
-      expect(result.data.limits.max_decks).toBe(200);
-      expect(result.data.features).toEqual(expect.arrayContaining(['ai.chat', 'advanced.stats']));
+      expect(expectSuccess(result).key).toBe('ace');
+      expect(expectSuccess(result).limits.max_ai_tokens_per_day).toBe(200000);
+      expect(expectSuccess(result).limits.max_decks).toBe(200);
+      expect(expectSuccess(result).features).toEqual(
+        expect.arrayContaining(['ai.chat', 'advanced.stats']),
+      );
       expect(mock.from).not.toHaveBeenCalledWith('profiles');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
@@ -214,7 +223,7 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('ace');
+      expect(expectSuccess(result).key).toBe('ace');
       expect(mock.from).not.toHaveBeenCalledWith('profiles');
     });
 
@@ -234,8 +243,8 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('hub');
-      expect(result.data.limits.max_groups).toBe(3);
+      expect(expectSuccess(result).key).toBe('hub');
+      expect(expectSuccess(result).limits.max_groups).toBe(3);
       // Managers are the org's billing contact: the seat never overrides the org plan.
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
@@ -249,7 +258,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('base');
+      expect(expectSuccess(result).key).toBe('base');
       expect(mock.from).toHaveBeenCalledWith('org_seat_assignments');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
@@ -267,7 +276,7 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('lite');
+      expect(expectSuccess(result).key).toBe('lite');
     });
 
     it('falls back to the personal plan when a manager has no org plan', async () => {
@@ -283,7 +292,7 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('launch');
     });
 
     it('returns the manager free personal plan with no active org (#228)', async () => {
@@ -295,7 +304,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getMyPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('launch');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
 
@@ -308,7 +317,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getMyPlan(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('free');
+      expect(expectSuccess(result).key).toBe('free');
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
@@ -416,7 +425,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getPersonalPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(result.data?.key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('launch');
     });
 
     it('keeps a manager on the free personal plan without an extra catalog lookup (#228)', async () => {
@@ -441,7 +450,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getPersonalPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(result.data?.key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('launch');
       expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
@@ -525,7 +534,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.create({ key: 'new', name: 'New Plan' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(plan);
+      expect(expectSuccess(result)).toEqual(plan);
     });
 
     it('writes for_account_type from forAccountType, defaulting to null', async () => {
@@ -564,7 +573,7 @@ describe('SubscriptionPlanService', () => {
       await service.update('p-1', { name: 'Updated' });
 
       expect(b.update).toHaveBeenCalledWith(
-        expect.not.objectContaining({ for_account_type: expect.anything() }),
+        expect.not.objectContaining({ for_account_type: expect.anything() as unknown }) as unknown,
       );
 
       const b2 = qb({ id: 'p-1' });
@@ -572,7 +581,9 @@ describe('SubscriptionPlanService', () => {
 
       await service.update('p-1', { forAccountType: null });
 
-      expect(b2.update).toHaveBeenCalledWith(expect.objectContaining({ for_account_type: null }));
+      expect(b2.update).toHaveBeenCalledWith(
+        expect.objectContaining({ for_account_type: null }) as unknown,
+      );
     });
   });
 

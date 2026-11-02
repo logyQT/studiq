@@ -21,6 +21,45 @@ const nav = NAV_SHORTCUTS.app;
 
 const read = (path: string) => readFileSync(path, 'utf8');
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isShortcutArea(key: string): key is ShortcutArea {
+  return key in NAV_SHORTCUTS;
+}
+
+/** Parses one message file; `JSON.parse` is untyped, so the payload stays `unknown`. */
+function readMessages(locale: string): unknown {
+  return JSON.parse(
+    readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
+  );
+}
+
+/** One key from a message namespace, failing loudly when the file no longer has it. */
+function messageValue(messages: unknown, namespace: string, key: string): unknown {
+  if (!isRecord(messages)) throw new Error('the message file is not an object');
+  const entries = messages[namespace];
+  if (!isRecord(entries)) throw new Error(`${namespace} is missing from the message file`);
+  return entries[key];
+}
+
+/** `Shortcuts.nav` as a label map. */
+function navLabels(messages: unknown): Record<string, string> {
+  if (!isRecord(messages)) throw new Error('the message file is not an object');
+  const shortcuts = messages.Shortcuts;
+  if (!isRecord(shortcuts)) throw new Error('Shortcuts is missing from the message file');
+  const labels = shortcuts.nav;
+  if (!isRecord(labels)) throw new Error('Shortcuts.nav is missing from the message file');
+
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(labels)) {
+    if (typeof value !== 'string') throw new Error(`Shortcuts.nav.${key} is not a string`);
+    result[key] = value;
+  }
+  return result;
+}
+
 describe('createSequenceMatcher', () => {
   it('returns the href when the second key completes a sequence', () => {
     const m = createSequenceMatcher(nav);
@@ -95,14 +134,26 @@ describe('createSequenceMatcher', () => {
   });
 });
 
-const el = (tag: string, attrs: Record<string, string> = {}) => {
-  const node = {
+/**
+ * The unit environment has no DOM, so tests hand the code structural stand-ins.
+ * These two helpers are the single place that crosses that boundary.
+ */
+function elementStub(node: object): Element {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- no DOM in the unit env; the stub answers every member the code reads
+  return node as Element;
+}
+
+function rootStub(node: object): ParentNode {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- no DOM in the unit env; the stub answers every member the code reads
+  return node as ParentNode;
+}
+
+const el = (tag: string, attrs: Record<string, string> = {}) =>
+  elementStub({
     tagName: tag.toUpperCase(),
     isContentEditable: attrs.contenteditable === 'true',
     getAttribute: (name: string) => attrs[name] ?? null,
-  };
-  return node as unknown as Element;
-};
+  });
 
 describe('isTypingTarget', () => {
   it.each(['input', 'textarea', 'select'])('is true for <%s>', (tag) => {
@@ -154,7 +205,7 @@ describe('sequencesDisabled', () => {
 });
 
 describe('NAV_SHORTCUTS', () => {
-  const areas = Object.keys(NAV_SHORTCUTS) as ShortcutArea[];
+  const areas = Object.keys(NAV_SHORTCUTS).filter(isShortcutArea);
   const pagesRoot = join(process.cwd(), 'apps/web/src/app/(frontend)');
 
   it.each(areas)('%s: every sequence is "g" and one letter, and none repeats', (area) => {
@@ -175,10 +226,7 @@ describe('NAV_SHORTCUTS', () => {
   });
 
   it.each(['pl', 'en'])('%s: the dialog has a label for every shortcut', (locale) => {
-    const messages = JSON.parse(
-      readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
-    );
-    const labels = messages.Shortcuts.nav as Record<string, string>;
+    const labels = navLabels(readMessages(locale));
     for (const area of areas) {
       for (const { labelKey } of NAV_SHORTCUTS[area]) {
         expect(labels[labelKey], `${locale}: Shortcuts.nav.${labelKey}`).toBeTruthy();
@@ -210,20 +258,20 @@ describe('isIgnorableKeyEvent (#665 review)', () => {
 
 // The unit environment has no DOM: a stand-in root answers the selector the way a page would.
 const rootWith = (matches: string[]) =>
-  ({
+  rootStub({
     querySelector: (selector: string) =>
-      matches.some((m) => selector.includes(m)) ? ({} as Element) : null,
-  }) as unknown as ParentNode;
+      matches.some((m) => selector.includes(m)) ? elementStub({}) : null,
+  });
 
 describe('overlayOpen', () => {
   it('asks for an open dialog, alert dialog or menu', () => {
     const asked: string[] = [];
-    const root = {
+    const root = rootStub({
       querySelector: (selector: string) => {
         asked.push(selector);
         return null;
       },
-    } as unknown as ParentNode;
+    });
 
     expect(overlayOpen(root)).toBe(false);
     for (const role of ['dialog', 'alertdialog', 'menu', 'listbox']) {
@@ -336,10 +384,9 @@ describe('where the guards are wired (#665 QA)', () => {
   });
 
   it.each(['pl', 'en'])('%s: translate the session shortcuts panel label', (locale) => {
-    const messages = JSON.parse(
-      readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
-    );
-    expect(messages.AppFlashcardSessionPage.shortcuts_panel_label).toBeTruthy();
+    expect(
+      messageValue(readMessages(locale), 'AppFlashcardSessionPage', 'shortcuts_panel_label'),
+    ).toBeTruthy();
   });
 });
 
@@ -387,10 +434,9 @@ describe('the flashcard is keyboard operable (#674 review)', () => {
   });
 
   it.each(['pl', 'en'])('%s: translate the card label', (locale) => {
-    const messages = JSON.parse(
-      readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
-    );
-    expect(messages.AppFlashcardSessionPage.flashcard_aria).toBeTruthy();
+    expect(
+      messageValue(readMessages(locale), 'AppFlashcardSessionPage', 'flashcard_aria'),
+    ).toBeTruthy();
   });
 
   it('the global handler never arms a sequence on an already-handled key', () => {

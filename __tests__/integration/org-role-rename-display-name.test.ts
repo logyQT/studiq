@@ -1,12 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  useRealSupabase,
-  cleanupOrganizationDeep,
-  createServiceClient,
-} from '#test/integration/helpers';
+import { useRealSupabase, cleanupOrganizationDeep } from '#test/integration/helpers';
+import { createTypedServiceClient } from '#test/integration/test-utils';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -21,7 +19,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 describe(`OrgRoleService.rename display_name sync`, () => {
   const tag = `${suiteId}-${Date.now()}`;
 
-  let service: SupabaseClient;
+  let service: SupabaseClient<Database>;
   let orgId: string;
   let customRoleId: string;
 
@@ -50,7 +48,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
   }
 
   beforeAll(async () => {
-    service = createServiceClient();
+    service = createTypedServiceClient();
 
     const { data: org, error: orgError } = await service
       .from('organizations')
@@ -102,6 +100,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
     const result = await orgRoleService.listRoles(ctx());
 
     expect(result.success).toBe(true);
+    if (!result.success) throw new Error(`listRoles failed: ${result.error}`);
     const role = result.data.find((r) => r.id === customRoleId);
     expect(role).toBeDefined();
     expect(role?.displayName).toBe(newName);

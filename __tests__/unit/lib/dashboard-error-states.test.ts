@@ -6,6 +6,19 @@ import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(path, 'utf8');
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** One namespace of a message file, failing loudly when the file no longer has it. */
+function messageNamespace(path: string, namespace: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(read(path));
+  if (!isRecord(parsed)) throw new Error('the message file is not an object');
+  const entries = parsed[namespace];
+  if (!isRecord(entries)) throw new Error(`${namespace} is missing from the message file`);
+  return entries;
+}
+
 describe('student dashboard error states', () => {
   const cards = ['continue-card', 'due-progress-card', 'recent-activity-card'].map((name) =>
     read(`apps/web/src/components/app/dashboard/${name}.tsx`),
@@ -34,8 +47,8 @@ describe('student dashboard error states', () => {
   });
 
   it.each(['pl', 'en'])('%s has the error strings', (locale) => {
-    const json = JSON.parse(read(`apps/web/src/i18n/messages/${locale}.json`));
-    expect(json.AppDashboard.load_error).toBeTruthy();
-    expect(json.AppDashboard.retry).toBeTruthy();
+    const messages = messageNamespace(`apps/web/src/i18n/messages/${locale}.json`, 'AppDashboard');
+    expect(messages.load_error).toBeTruthy();
+    expect(messages.retry).toBeTruthy();
   });
 });

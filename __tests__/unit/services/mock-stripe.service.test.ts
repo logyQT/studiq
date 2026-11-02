@@ -254,12 +254,12 @@ describe('MockStripeService', () => {
 
       // A forged id can still arrive from JS or an untyped future caller; the
       // service must not have a code path that reads it.
-      const forged = {
+      const forged: MockWebhookEvent & { user_id: string } = {
         ...event,
         plan_id: 'campus',
         org_id: 'org-1',
         user_id: 'victim-9',
-      } as unknown as MockWebhookEvent;
+      };
       const result = await service.handleWebhook(forged, 'manager', 'u-1');
 
       expect(result.success).toBe(true);

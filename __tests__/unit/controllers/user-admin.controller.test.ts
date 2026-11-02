@@ -1,11 +1,13 @@
 import { UserAdminController } from '@admin/server/controllers/user-admin.controller';
-import type { UserAdminService } from '@admin/server/services/user-admin.service';
+import { UserAdminService } from '@admin/server/services/user-admin.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new UserAdminService(() => Promise.reject(new Error('unused'))), {
     listUsers: vi.fn(),
     getUser: vi.fn(),
     createUser: vi.fn(),
@@ -14,7 +16,7 @@ function createMockService() {
     restoreUser: vi.fn(),
     purgeNow: vi.fn(),
     purgeExpired: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -24,7 +26,7 @@ describe('UserAdminController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new UserAdminController(mockService as unknown as UserAdminService);
+    controller = new UserAdminController(mockService);
   });
 
   describe('list', () => {
