@@ -7,6 +7,7 @@ Use this helper when a skill needs thread-aware CodeRabbit PR feedback, not flat
 ## Prerequisites
 
 - `gh` authenticated (`gh auth status`)
+- `jq` installed (`jq --version`)
 - current branch associated with a GitHub repository
 
 ## 1. Resolve Current PR
