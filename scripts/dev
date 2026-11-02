@@ -1150,7 +1150,10 @@ acquire_build_lock() {
 release_build_lock() {
   (( BUILD_LOCK_HELD == 1 )) || return 0
   if [[ "$BUILD_LOCK_MODE" == "flock" ]]; then
-    exec 9>&- 2>/dev/null || true
+    # No stderr redirect here: redirections on `exec` persist in this shell and
+    # would mute every later warn/fail message. Closing an unopened fd is not
+    # an error in bash.
+    exec 9>&-
   elif [[ "$BUILD_LOCK_MODE" == "mkdir" && -n "$BUILD_LOCK_DIR" ]]; then
     rm -rf "$BUILD_LOCK_DIR"
   fi

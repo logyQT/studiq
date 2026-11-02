@@ -75,18 +75,18 @@ per run and then keep their session alive without re-authenticating.
 bun scripts/load-test/seed.ts --count 1000
 ```
 
-| Flag                   | Default                 | Description                      |
-| ---------------------- | ----------------------- | -------------------------------- |
-| `--count <n>`          | `1000`                  | number of accounts               |
-| `--concurrency <n>`    | `20`                    | parallel Admin API requests      |
-| `--students <0-1>`     | `0.85`                  | student ratio                    |
-| `--educators <0-1>`    | `0.10`                  | educator ratio                   |
-| `--managers <0-1>`     | `0.05`                  | manager ratio                    |
-| `--password <pw>`      | `Password123!`          | shared password                  |
-| `--domain <domain>`    | `loadtest.studiq.local` | email domain                     |
-| `--supabase-url <url>` | env                     | Supabase API URL                 |
-| `--dry-run`            | –                       | print the plan, create nothing   |
-| `--reset`              | –                       | delete every account in the pool |
+| Flag                   | Default                 | Description                           |
+| ---------------------- | ----------------------- | ------------------------------------- |
+| `--count <n>`          | `1000`                  | number of accounts                    |
+| `--concurrency <n>`    | `20`                    | parallel Admin API requests           |
+| `--students <0-1>`     | `0.85`                  | student ratio                         |
+| `--educators <0-1>`    | `0.10`                  | educator ratio                        |
+| `--managers <0-1>`     | `0.05`                  | manager ratio                         |
+| `--password <pw>`      | `Password123!`          | shared password                       |
+| `--domain <domain>`    | `loadtest.studiq.local` | email domain                          |
+| `--supabase-url <url>` | env                     | Supabase API URL                      |
+| `--dry-run`            | –                       | print the plan, create/delete nothing |
+| `--reset`              | –                       | delete every account in the pool      |
 
 - **Idempotent** — re-running skips accounts that already exist.
 - Accounts are created with `email_confirm: true`, so they can log in

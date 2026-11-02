@@ -282,7 +282,7 @@ async function main(): Promise<void> {
   --domain <domain>    email domain (default loadtest.studiq.local)
   --supabase-url <url> Supabase API URL (default ${config.supabaseUrl})
   --reset              delete every account in the pool, then exit
-  --dry-run            print the plan without creating anything
+  --dry-run            print the plan without creating or deleting anything
   --help               show this help`);
     return;
   }
@@ -306,6 +306,12 @@ async function main(): Promise<void> {
         '  The generated file is stale (another checkout may own that port). Re-run a bun dev:* command to re-render it, or pass --supabase-url explicitly.',
       );
       process.exit(1);
+    }
+    if (argBool(args, 'dry-run')) {
+      console.log(
+        `Dry run: would delete accounts in @${config.emailDomain} on ${config.supabaseUrl}; nothing deleted.`,
+      );
+      return;
     }
     console.log(
       `Resetting load-test pool (domain: @${config.emailDomain}, target: ${config.supabaseUrl}) …`,
