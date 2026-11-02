@@ -59,11 +59,14 @@ bun dev:logs            # follow the web log + recent Supabase container logs
 The stack is **per checkout**: `SUPABASE_PROJECT_ID` (derived from the checkout
 path when blank) plus a port block from `SUPABASE_PORT_BASE` (default `54320` →
 API `:54321`, DB `:54322`, Studio `:54323`, Mail `:54324`; `APP_PORT` defaults to
-`3000`). For parallel agents, set `APP_PORT`, `SUPABASE_PROJECT_ID` and
-`SUPABASE_PORT_BASE` in `.env` — `bun dev:ports --suggest` prints a free block,
-`bun dev:doctor` explains collisions, and a stack another checkout owns is never
-reused or stopped. `dev:up` renders `apps/web/.env` **and** `supabase/.env`, so
-plain `bunx supabase ...` commands follow the same checkout. The shared QA stack
+`3000`). Supabase starts **lean** (`supabase start -x
+realtime,edge-runtime,imgproxy,logflare,vector,supavisor` — the app uses none of
+them locally); set `SUPABASE_START_EXCLUDE=` for the full stack. For parallel
+agents, set `APP_PORT`, `SUPABASE_PROJECT_ID` and `SUPABASE_PORT_BASE` in
+`.env` — `bun dev:ports --suggest` prints a free block, `bun dev:doctor` explains
+collisions, and a stack another checkout owns is never reused or stopped.
+`dev:up` renders `apps/web/.env` **and** `supabase/.env`, so plain
+`bunx supabase ...` commands follow the same checkout. The shared QA stack
 (`:3010` / `:54421`) is refused unless `DEV_ALLOW_SHARED=1`; `SUPABASE_SHARED=1`
 reuses a stack read-only and refuses destructive commands. `apps/admin` is
 **not** part of `dev:up` — run it with `bun dev:admin` and its own

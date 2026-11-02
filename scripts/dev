@@ -155,7 +155,7 @@ CONTRACT_KEYS=(
   SUPABASE_URL SUPABASE_DB_URL SUPABASE_MAIL_URL SUPABASE_STUDIO_URL
   SUPABASE_SHARED SUPABASE_SHARED_OWNER
   NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY
-  STUDIQ_DEV_REGISTRY DEV_BUILD_MEMORY_MB
+  STUDIQ_DEV_REGISTRY DEV_BUILD_MEMORY_MB SUPABASE_START_EXCLUDE
 )
 
 declare -A PROC_ENV=()
@@ -236,6 +236,10 @@ http_code() {
 # (there are no hardcoded defaults at load time, which keeps process-env
 # overrides observable).
 
+# Local stack services the app does not use. `supabase start -x` skips them;
+# set SUPABASE_START_EXCLUDE= (empty) to start the full stack.
+DEFAULT_START_EXCLUDE="realtime,edge-runtime,imgproxy,logflare,vector,supavisor"
+
 sanitize_project_id() {
   local value
   value=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')
@@ -292,6 +296,15 @@ resolve_contract() {
     *) fail "SUPABASE_SHARED must be 0 or 1 (got '$SHARED')." ;;
   esac
   SHARED_OWNER=${ENV[SUPABASE_SHARED_OWNER]:-}
+
+  # Lean stack: skip services the app does not use locally. An explicit empty
+  # value (`SUPABASE_START_EXCLUDE=`) starts the full stack.
+  if env_has SUPABASE_START_EXCLUDE; then
+    SUPABASE_START_EXCLUDE=${ENV[SUPABASE_START_EXCLUDE]}
+  else
+    SUPABASE_START_EXCLUDE=$DEFAULT_START_EXCLUDE
+  fi
+  SUPABASE_START_EXCLUDE=$(printf '%s' "$SUPABASE_START_EXCLUDE" | tr -d '[:space:]')
 
   # Project id: explicit wins; blank/absent derives from this checkout.
   explicit=${ENV[SUPABASE_PROJECT_ID]:-}
@@ -396,6 +409,7 @@ resolve_contract() {
   env_set SUPABASE_URL "$SUPABASE_URL" force
   env_set NEXT_PUBLIC_SUPABASE_URL "$SUPABASE_URL" force
   env_set SUPABASE_SHARED "$SHARED" force
+  env_set SUPABASE_START_EXCLUDE "$SUPABASE_START_EXCLUDE" force
   if [[ -n "$SUPABASE_DB_URL" ]]; then env_set SUPABASE_DB_URL "$SUPABASE_DB_URL" force; fi
   if [[ -n "$SUPABASE_MAIL_URL" ]]; then env_set SUPABASE_MAIL_URL "$SUPABASE_MAIL_URL" force; fi
   if [[ -n "$SUPABASE_STUDIO_URL" ]]; then env_set SUPABASE_STUDIO_URL "$SUPABASE_STUDIO_URL" force; fi
@@ -732,6 +746,16 @@ SUPA_LOADED=0
 
 supa() { (cd "$REPO_ROOT" && bunx supabase "$@"); }
 
+# `supabase start` for the lean local stack. Services the app does not use are
+# skipped via `-x` (see SUPABASE_START_EXCLUDE); an empty list starts everything.
+supabase_start() {
+  local -a args=(start)
+  if [[ -n "${SUPABASE_START_EXCLUDE:-}" ]]; then
+    args+=(-x "$SUPABASE_START_EXCLUDE")
+  fi
+  supa "${args[@]}"
+}
+
 supabase_health_url() {
   printf '%s/auth/v1/health' "$(normalize_localhost "$(env_url "$SUPABASE_URL")")"
 }
@@ -782,8 +806,8 @@ ensure_supabase_running() {
     * set SUPABASE_SHARED=1 + SUPABASE_SHARED_OWNER and the stack's keys in $ROOT_ENV_FILE to reuse it deliberately."
   fi
 
-  header "Starting Supabase project '$SUPABASE_PROJECT_ID'"
-  supa start
+  header "Starting Supabase project '$SUPABASE_PROJECT_ID'${SUPABASE_START_EXCLUDE:+ (skipping: $SUPABASE_START_EXCLUDE)}"
+  supabase_start
 
   local waited=0
   while (( waited < 180 )); do
@@ -1449,6 +1473,7 @@ cmd_doctor() {
   printf '  pooler     %s\n' "$SUPABASE_POOLER_PORT"
   printf '  analytics  %s\n' "$SUPABASE_ANALYTICS_PORT"
   printf '  edge insp. %s\n' "$SUPABASE_EDGE_INSPECTOR_PORT"
+  printf '  excluded   %s\n' "${SUPABASE_START_EXCLUDE:-(none — full stack)}"
 
   printf '\n▸ State\n'
   if docker_available; then
@@ -1577,7 +1602,7 @@ cmd_prepull() {
   preflight_ports 1
   render_supabase_env
   header "Pulling Supabase images (starts then stops project '$SUPABASE_PROJECT_ID')"
-  supa start
+  supabase_start
   supa stop --project-id "$SUPABASE_PROJECT_ID"
   info "Images pulled; project stopped. The database volume was initialised and kept."
 }
@@ -1588,6 +1613,9 @@ Usage: bun dev:<command>
 
   up            Start Supabase (if needed) + the web server (dev mode)
                   --prod    production build (if missing) + `next start`
+                Supabase starts lean by default (`-x` skips realtime,
+                edge-runtime, imgproxy, logflare, vector, supavisor); override
+                with SUPABASE_START_EXCLUDE (empty = full stack).
   build         Production build of @studiq/web (waits on the registry build lock)
   serve         `next start` for this checkout on APP_PORT (no dev server)
   status        Web/Supabase health, PIDs, ports, project id and owner

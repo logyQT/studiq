@@ -154,25 +154,26 @@ bun dev:down           # stop this checkout's web; `--all` also stops this check
 - **Ownership is recorded in a runtime registry** outside the repo (`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`, override `STUDIQ_DEV_REGISTRY`). `dev:up` checks the project id, every port and the Docker `com.supabase.cli.project` label **before** starting anything and fails with the owning checkout instead of reusing or killing it. `dev:down --all` / `dev:reset-db` verify ownership and scope every destructive call with `--project-id`; `supabase stop --all`, `pkill` and unscoped `docker rm` are never used.
 - **`SUPABASE_SHARED=1`** runs the app/tests against a stack another checkout owns. `dev:up` never starts Supabase, and `dev:down --all` / `dev:reset-db` / `supabase stop` are refused. Root `.env` must provide `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`.
 - **Root `.env` is the only hand-edited env file.** `dev:up` reads it, resolves the per-checkout contract and renders two generated, Git-ignored, mode-`600` files: **`apps/web/.env`** (app runtime) and **`supabase/.env`** (so plain `bunx supabase ...` in this checkout follows this checkout's stack). A user-provided key in root `.env` is never overwritten.
-- **`dev:up` is fast and idempotent**: no `bun install`, no `next build`, no `supabase db reset`, no seeds or manual migrations. Cold time is dominated by `supabase start`. `dev:up --prod` builds once (held by the registry build lock, `DEV_BUILD_MEMORY_MB=4096`) and then serves.
+- **`dev:up` is fast and idempotent**: no `bun install`, no `next build`, no `supabase db reset`, no seeds or manual migrations. Cold time is dominated by `supabase start`. Supabase starts **lean** by default — `supabase start -x realtime,edge-runtime,imgproxy,logflare,vector,supavisor` (the app uses none of them locally); set `SUPABASE_START_EXCLUDE=` in `.env` to start the full stack. `dev:up --prod` builds once (held by the registry build lock, `DEV_BUILD_MEMORY_MB=4096`) and then serves.
 - **Destructive/explicit steps are separate**: `bun dev:reset-db` (drops and re-seeds **this checkout's** DB) and `bun dev:build` (production build; stop the web server first). `bun dev:prepull` pulls images for VM templates.
 - **The shared QA stack is protected**: `dev:up` refuses `APP_URL`/`SUPABASE_URL` on `:3010` / `:54421` unless `DEV_ALLOW_SHARED=1` (or the checkout is in `SUPABASE_SHARED=1` mode).
 - **`apps/admin` is out of scope** for `dev:up`: it keeps its own `apps/admin/.env` and `bun dev:admin`.
 
-| Variable                        | Source                                                                         |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `APP_PORT`                      | root `.env` (default `3000`)                                                   |
-| `APP_URL`                       | root `.env` (defaults to `http://localhost:$APP_PORT`)                         |
-| `NEXT_PUBLIC_SITE_URL`          | root `.env` (defaults to `APP_URL`)                                            |
-| `SUPABASE_PROJECT_ID`           | root `.env`; blank = derived from the checkout path                            |
-| `SUPABASE_PORT_BASE`            | root `.env` (default `54320`); explicit `SUPABASE_*_PORT` wins                 |
-| `NEXT_PUBLIC_SUPABASE_URL`      | derived from `SUPABASE_API_PORT` (explicit only for shared/remote)             |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | root `.env` (shared mode) or `supabase status` (local stack)                   |
-| `SUPABASE_SERVICE_ROLE_KEY`     | root `.env` (shared mode) or `supabase status` (local stack)                   |
-| `SUPABASE_SHARED`               | root `.env` (`0`/`1`; shared mode refuses destructive commands)                |
-| `STUDIQ_DEV_REGISTRY`           | root `.env`; blank = `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)` |
-| `DEV_BUILD_MEMORY_MB`           | root `.env` (default `4096`) — `dev:build` heap cap                            |
-| `OTEL_*`                        | root `.env` (copied verbatim into `apps/web/.env`)                             |
+| Variable                        | Source                                                                              |
+| ------------------------------- | ----------------------------------------------------------------------------------- |
+| `APP_PORT`                      | root `.env` (default `3000`)                                                        |
+| `APP_URL`                       | root `.env` (defaults to `http://localhost:$APP_PORT`)                              |
+| `NEXT_PUBLIC_SITE_URL`          | root `.env` (defaults to `APP_URL`)                                                 |
+| `SUPABASE_PROJECT_ID`           | root `.env`; blank = derived from the checkout path                                 |
+| `SUPABASE_PORT_BASE`            | root `.env` (default `54320`); explicit `SUPABASE_*_PORT` wins                      |
+| `NEXT_PUBLIC_SUPABASE_URL`      | derived from `SUPABASE_API_PORT` (explicit only for shared/remote)                  |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | root `.env` (shared mode) or `supabase status` (local stack)                        |
+| `SUPABASE_SERVICE_ROLE_KEY`     | root `.env` (shared mode) or `supabase status` (local stack)                        |
+| `SUPABASE_SHARED`               | root `.env` (`0`/`1`; shared mode refuses destructive commands)                     |
+| `SUPABASE_START_EXCLUDE`        | root `.env`; `supabase start -x` list (default skips unused services; empty = full) |
+| `STUDIQ_DEV_REGISTRY`           | root `.env`; blank = `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`      |
+| `DEV_BUILD_MEMORY_MB`           | root `.env` (default `4096`) — `dev:build` heap cap                                 |
+| `OTEL_*`                        | root `.env` (copied verbatim into `apps/web/.env`)                                  |
 
 ### Formatting scope & blame
 
