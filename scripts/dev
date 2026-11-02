@@ -580,22 +580,30 @@ registry_write_entry() {
 }
 
 registry_remove_entry() {
+  local expected=${1:-}
   registry_dir_trusted || return 0
-  bun "$REGISTRY_HELPER" remove --dir "$REGISTRY_DIR" --project-id "$SUPABASE_PROJECT_ID" 2>/dev/null || true
+  local -a remove_args=(remove --dir "$REGISTRY_DIR" --project-id "$SUPABASE_PROJECT_ID")
+  if [[ -n "$expected" ]]; then remove_args+=(--expected-claim-id "$expected"); fi
+  bun "$REGISTRY_HELPER" "${remove_args[@]}" 2>/dev/null || true
 }
 
-# Failed-startup cleanup: remove the entry only while it still carries the
-# claim id this invocation created. Another invocation that replaced the claim
-# is preserved, even if this one created an entry earlier.
+# Whether the current entry still carries this invocation's claim id.
+claim_is_current() {
+  [[ -n "$CLAIM_ID" ]] || return 1
+  local entry claim_id
+  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
+  [[ -n "$entry" ]] || return 1
+  claim_id=$(entry_field "$entry" claimId 2>/dev/null) || claim_id=""
+  [[ "$claim_id" == "$CLAIM_ID" ]]
+}
+
+# Failed-startup cleanup: the helper compares this invocation's claim id with
+# the on-disk entry under the registry lock, so a claim refreshed/replaced by
+# another invocation is never removed by this stale one.
 remove_claim_if_ours() {
   (( CLAIM_CREATED == 1 )) || return 0
   [[ -n "$CLAIM_ID" ]] || return 0
-  local entry claim_id
-  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
-  [[ -n "$entry" ]] || return 0
-  claim_id=$(entry_field "$entry" claimId 2>/dev/null) || claim_id=""
-  [[ "$claim_id" == "$CLAIM_ID" ]] || return 0
-  registry_remove_entry || true
+  registry_remove_entry "$CLAIM_ID"
 }
 
 entry_for_port_in() {
@@ -664,7 +672,15 @@ claim_project() {
 
   if [[ -n "$entry" ]]; then
     warn "Reclaiming stale registry entry for '$SUPABASE_PROJECT_ID' (was ${worktree:-unknown})."
-    registry_remove_entry
+    # Remove only if the entry still matches the stale one we inspected; a
+    # concurrent refresh by another invocation must win.
+    local stale_claim
+    stale_claim=$(entry_field "$entry" claimId 2>/dev/null) || stale_claim=""
+    if [[ -n "$stale_claim" ]]; then
+      registry_remove_entry "$stale_claim"
+    else
+      registry_remove_entry
+    fi
   fi
 
   ensure_registry_dir
@@ -1318,8 +1334,13 @@ cleanup() {
       terminate_web_pid "$WEB_STARTED_PID" || true
     fi
     if (( STACK_START_ATTEMPTED == 1 )); then
-      stop_supabase_scoped || true
-      remove_claim_if_ours
+      # A later invocation may have refreshed the claim and be using the
+      # stack. Recheck ownership immediately before teardown; if the entry no
+      # longer carries this invocation's id, leave the stack and claim alone.
+      if claim_is_current; then
+        stop_supabase_scoped || true
+        remove_claim_if_ours
+      fi
     elif (( STACK_ADOPTED == 1 )); then
       : # adopted stack still running; keep ownership
     else

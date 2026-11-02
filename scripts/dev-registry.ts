@@ -16,7 +16,7 @@
  *   bun scripts/dev-registry.ts write --dir DIR --project-id ID --worktree PATH ...
  *   bun scripts/dev-registry.ts list  --dir DIR [--format json|tsv]
  *   bun scripts/dev-registry.ts get   --dir DIR --project-id ID [--format json|tsv]
- *   bun scripts/dev-registry.ts remove --dir DIR --project-id ID
+ *   bun scripts/dev-registry.ts remove --dir DIR --project-id ID [--expected-claim-id TOKEN]
  *
  * `scripts/dev` consumes `--format tsv` (tab-separated, one entry per line) so
  * bash never has to parse JSON. The field order is `FIELDS`, exported for the
@@ -31,6 +31,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -219,6 +220,40 @@ function printEntry(entry: Entry, format: 'json' | 'tsv'): void {
   console.log(JSON.stringify(entry, null, 2));
 }
 
+/**
+ * Serialize claim refreshes and conditional removals per project. The lock is
+ * a `wx` file next to the entry; a crashed holder is reclaimed after 5s so a
+ * stale lock cannot wedge the checkout forever.
+ */
+function withEntryLock<T>(file: string, fn: () => T): T {
+  const lock = `${file}.lock`;
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      writeFileSync(lock, `${process.pid}\n`, { flag: 'wx', mode: 0o600 });
+      break;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'EEXIST') fail(`cannot lock ${lock}: ${(error as Error).message}`);
+      try {
+        if (Date.now() - statSync(lock).mtimeMs > 5_000) {
+          rmSync(lock, { force: true });
+          continue;
+        }
+      } catch {
+        /* lock vanished; retry */
+      }
+      if (Date.now() > deadline) fail(`timed out waiting for ${lock}`);
+      Bun.sleepSync(20);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    rmSync(lock, { force: true });
+  }
+}
+
 function writeEntry(args: Args): void {
   const dir = requireDir(args);
   const projectId = requireProjectId(args);
@@ -259,19 +294,21 @@ function writeEntry(args: Args): void {
   const file = entryPath(dir, projectId);
   const payload = `${JSON.stringify(entry, null, 2)}\n`;
 
-  if (args.values.exclusive === '1') {
-    // Atomic claim: O_EXCL fails when another checkout already owns the entry.
-    try {
-      writeFileSync(file, payload, { mode: 0o600, flag: 'wx' });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST') process.exit(2);
-      fail(`cannot create ${file}: ${(error as Error).message}`);
+  withEntryLock(file, () => {
+    if (args.values.exclusive === '1') {
+      // Atomic claim: O_EXCL fails when another checkout already owns the entry.
+      try {
+        writeFileSync(file, payload, { mode: 0o600, flag: 'wx' });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') process.exit(2);
+        fail(`cannot create ${file}: ${(error as Error).message}`);
+      }
+    } else {
+      const tmp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+      writeFileSync(tmp, payload, { mode: 0o600, flag: 'wx' });
+      renameSync(tmp, file);
     }
-  } else {
-    const tmp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
-    writeFileSync(tmp, payload, { mode: 0o600, flag: 'wx' });
-    renameSync(tmp, file);
-  }
+  });
   printEntry(entry, args.format);
 }
 
@@ -297,8 +334,16 @@ function removeCommand(args: Args): void {
   const dir = requireDir(args);
   const projectId = requireProjectId(args);
   const file = entryPath(dir, projectId);
-  if (!existsSync(file)) return;
-  rmSync(file, { force: true });
+  const expected = args.values['expected-claim-id'] || null;
+  withEntryLock(file, () => {
+    if (!existsSync(file)) return;
+    if (expected !== null) {
+      const entry = readEntry(file);
+      // A refreshed/replaced claim is not ours; leave it untouched.
+      if (!entry || entry.claimId !== expected) return;
+    }
+    rmSync(file, { force: true });
+  });
 }
 
 function main(): void {
