@@ -6,7 +6,8 @@ import { isRecord } from '@/lib/unknown-value';
 /** Derived from the single locale source (`lib/locale.ts`) — never re-declared. */
 export const locales = LOCALES;
 
-type Messages = Record<string, Record<string, string>>;
+type MessageValue = string | { [key: string]: MessageValue };
+type Messages = Record<string, Record<string, MessageValue>>;
 
 function mergeCommon(raw: Messages) {
   const common = raw.Common ?? {};
@@ -17,11 +18,16 @@ function mergeCommon(raw: Messages) {
   return merged;
 }
 
-/** `{ key: message }` — the shape of one namespace in a `messages/<locale>.json`. */
-function isNamespace(value: unknown): value is Record<string, string> {
+/** A nested message group, e.g. `Shortcuts.nav.*`, or a concrete message. */
+function isMessageValue(value: unknown): value is MessageValue {
+  return typeof value === 'string' || isNamespace(value);
+}
+
+/** `{ key: message | group }` — the shape of one namespace in a `messages/<locale>.json`. */
+function isNamespace(value: unknown): value is Record<string, MessageValue> {
   if (!isRecord(value)) return false;
   for (const message of Object.values(value)) {
-    if (typeof message !== 'string') return false;
+    if (!isMessageValue(message)) return false;
   }
   return true;
 }
