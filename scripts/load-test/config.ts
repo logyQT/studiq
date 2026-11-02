@@ -5,10 +5,13 @@
  *   - scripts/load-test/seed.ts  → creates the account pool via the Supabase Admin API
  *   - scripts/load-test/bots.ts  → drives concurrent "bot" users against the running app
  *
- * Everything is dependency-free (Bun + global fetch). Bun auto-loads `.env` /
- * `.env.local`, so any value below can be overridden by an env var of the same
- * name; otherwise the well-known local Supabase defaults are used.
+ * Everything is dependency-free (Bun + Node builtins + global fetch). Bun
+ * auto-loads `.env` / `.env.local`, so any value below can be overridden by an
+ * env var of the same name; otherwise the value recorded by `scripts/dev` in
+ * `supabase/.env`, or the well-known local Supabase defaults, are used.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 export type AccountType = 'student' | 'educator' | 'manager';
 
@@ -50,12 +53,40 @@ function env(name: string, fallback: string): string {
   return value && value.trim().length > 0 ? value.trim() : fallback;
 }
 
+function parsePort(raw: string | null | undefined): number | null {
+  const value = raw?.trim();
+  if (!value || !/^\d+$/.test(value)) return null;
+  const port = Number(value);
+  return port > 0 && port <= 65535 ? port : null;
+}
+
 /** A valid port from the environment, or null when unset/blank/invalid. */
 function envPort(name: string): number | null {
-  const raw = process.env[name]?.trim();
-  if (!raw || !/^\d+$/.test(raw)) return null;
-  const value = Number(raw);
-  return value > 0 && value <= 65535 ? value : null;
+  return parsePort(process.env[name]);
+}
+
+const ROOT = join(import.meta.dir, '..', '..');
+const GENERATED_SUPABASE_ENV = join(ROOT, 'supabase', '.env');
+
+/**
+ * Port recorded in the generated `supabase/.env` (written by `scripts/dev`).
+ * Bun does not auto-load that file, so this is how a start-time port override
+ * reaches the harness. Missing file/key (shared mode, never started) is fine.
+ */
+function generatedPort(name: string): number | null {
+  try {
+    const raw = readFileSync(GENERATED_SUPABASE_ENV, 'utf8');
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq <= 0 || trimmed.slice(0, eq).trim() !== name) continue;
+      return parsePort(trimmed.slice(eq + 1));
+    }
+  } catch {
+    /* no generated file yet */
+  }
+  return null;
 }
 
 export function resolveConfig(overrides: Partial<LoadTestConfig> = {}): LoadTestConfig {
@@ -68,7 +99,10 @@ export function resolveConfig(overrides: Partial<LoadTestConfig> = {}): LoadTest
   // overrides still win; the absent-variable defaults stay 3000 / 54321.
   const appPort = envPort('APP_PORT') ?? 3000;
   const supabasePortBase = envPort('SUPABASE_PORT_BASE') ?? 54320;
-  const supabaseApiPort = envPort('SUPABASE_API_PORT') ?? supabasePortBase + 1;
+  // Precedence: explicit SUPABASE_API_PORT, then the port `scripts/dev`
+  // recorded in supabase/.env, then the block's default (base + 1).
+  const supabaseApiPort =
+    envPort('SUPABASE_API_PORT') ?? generatedPort('SUPABASE_API_PORT') ?? supabasePortBase + 1;
   return {
     supabaseUrl:
       overrides.supabaseUrl ?? env('SUPABASE_URL', `http://127.0.0.1:${supabaseApiPort}`),
