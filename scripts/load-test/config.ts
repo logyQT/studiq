@@ -40,7 +40,6 @@ export interface LoadTestConfig {
 }
 
 /** supabase start defaults (legacy JWTs) — safe to hardcode for local dev. */
-const LOCAL_SUPABASE_URL = 'http://127.0.0.1:54321';
 const LOCAL_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 const LOCAL_SERVICE_ROLE_KEY =
@@ -51,16 +50,32 @@ function env(name: string, fallback: string): string {
   return value && value.trim().length > 0 ? value.trim() : fallback;
 }
 
+/** A valid port from the environment, or null when unset/blank/invalid. */
+function envPort(name: string): number | null {
+  const raw = process.env[name]?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  const value = Number(raw);
+  return value > 0 && value <= 65535 ? value : null;
+}
+
 export function resolveConfig(overrides: Partial<LoadTestConfig> = {}): LoadTestConfig {
   const outDir = overrides.outDir ?? env('LOADTEST_DIR', '.dev/load-test');
   const emailDomain =
     overrides.emailDomain ?? env('LOADTEST_EMAIL_DOMAIN', 'loadtest.studiq.local');
+  // No fixed port fallbacks: a checkout can run on any block. Derive the local
+  // defaults from APP_PORT / the Supabase block so the load test targets the
+  // stack this checkout actually started. Explicit APP_URL / SUPABASE_URL /
+  // overrides still win; the absent-variable defaults stay 3000 / 54321.
+  const appPort = envPort('APP_PORT') ?? 3000;
+  const supabasePortBase = envPort('SUPABASE_PORT_BASE') ?? 54320;
+  const supabaseApiPort = envPort('SUPABASE_API_PORT') ?? supabasePortBase + 1;
   return {
-    supabaseUrl: overrides.supabaseUrl ?? env('SUPABASE_URL', LOCAL_SUPABASE_URL),
+    supabaseUrl:
+      overrides.supabaseUrl ?? env('SUPABASE_URL', `http://127.0.0.1:${supabaseApiPort}`),
     anonKey: overrides.anonKey ?? env('SUPABASE_ANON_KEY', LOCAL_ANON_KEY),
     serviceRoleKey:
       overrides.serviceRoleKey ?? env('SUPABASE_SERVICE_ROLE_KEY', LOCAL_SERVICE_ROLE_KEY),
-    appUrl: overrides.appUrl ?? env('APP_URL', 'http://localhost:3000'),
+    appUrl: overrides.appUrl ?? env('APP_URL', `http://localhost:${appPort}`),
     outDir,
     accountsFile: overrides.accountsFile ?? `${outDir}/accounts.json`,
     password: overrides.password ?? env('LOADTEST_PASSWORD', 'Password123!'),

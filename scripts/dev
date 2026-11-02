@@ -138,7 +138,15 @@ load_env_file() {
 
   local apply
   for apply in "${file_order[@]}"; do
-    if [[ "$mode" != "force" ]] && env_has "$apply" && [[ -n "${ENV[$apply]}" ]]; then continue; fi
+    if [[ "$mode" != "force" ]]; then
+      # An explicitly empty SUPABASE_START_EXCLUDE in the process environment
+      # means "start the full stack" and must beat a non-empty value from the
+      # file. Every other key keeps the existing blank-is-absent behaviour.
+      if [[ "$apply" == "SUPABASE_START_EXCLUDE" && -n "${PROC_ENV[$apply]+x}" ]]; then
+        continue
+      fi
+      if env_has "$apply" && [[ -n "${ENV[$apply]}" ]]; then continue; fi
+    fi
     env_set "$apply" "${file_env[$apply]}" force
   done
 }

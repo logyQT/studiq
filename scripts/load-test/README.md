@@ -26,15 +26,18 @@ Both run directly with Bun (no build step) and are dependency-free.
 - Connection settings are read from the environment (Bun auto-loads `.env` /
   `.env.local`) with local defaults:
 
-  | Variable                    | Default                  |
-  | --------------------------- | ------------------------ |
-  | `SUPABASE_URL`              | `http://127.0.0.1:54321` |
-  | `SUPABASE_ANON_KEY`         | local anon JWT           |
-  | `SUPABASE_SERVICE_ROLE_KEY` | local service-role JWT   |
-  | `APP_URL`                   | `http://localhost:3000`  |
-  | `LOADTEST_DIR`              | `.dev/load-test`         |
-  | `LOADTEST_PASSWORD`         | `Password123!`           |
-  | `LOADTEST_EMAIL_DOMAIN`     | `loadtest.studiq.local`  |
+  | Variable                    | Default                                                   |
+  | --------------------------- | --------------------------------------------------------- |
+  | `SUPABASE_URL`              | `http://127.0.0.1:${SUPABASE_API_PORT}` (default `54321`) |
+  | `SUPABASE_ANON_KEY`         | local anon JWT                                            |
+  | `SUPABASE_SERVICE_ROLE_KEY` | local service-role JWT                                    |
+  | `APP_URL`                   | `http://localhost:${APP_PORT}` (default `3000`)           |
+  | `LOADTEST_DIR`              | `.dev/load-test`                                          |
+  | `LOADTEST_PASSWORD`         | `Password123!`                                            |
+
+  `SUPABASE_API_PORT` defaults to `SUPABASE_PORT_BASE + 1` (base `54320`), so a
+  non-default checkout block is picked up without hardcoding it.
+  | `LOADTEST_EMAIL_DOMAIN` | `loadtest.studiq.local` |
 
 > `.dev/` is git-ignored, so generated pools and reports never get committed.
 
