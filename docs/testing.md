@@ -7,7 +7,7 @@ The project uses two testing frameworks:
 | Framework  | Purpose                    | Location                                    |
 | ---------- | -------------------------- | ------------------------------------------- |
 | Vitest     | Unit and integration tests | `__tests__/unit/`, `__tests__/integration/` |
-| Playwright | End-to-end tests           | `e2e/`                                      |
+| Playwright | End-to-end tests           | `__tests__/e2e/`                            |
 
 ## Unit Tests
 
@@ -59,7 +59,7 @@ management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/covera
 ## Running Tests
 
 ```bash
-bun test              # Reset DB + run all tests
+bun run test          # Reset DB + run all tests
 bun test:unit         # Run unit tests only
 bun test:integration  # Run integration tests only
 bun test:watch        # Watch mode (re-runs on file changes)

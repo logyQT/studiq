@@ -1,6 +1,6 @@
 # Global context — StudiQ manual test plan
 
-_Verbatim extract of sections 1-4 and the defect-template section of the source document (Polish). Read this once per session._
+_Adapted extract of sections 1-4 and the defect-template section of the source document (Polish). STU-25 is excluded from the active corpus. Read this once per session._
 
 STUDIQ
 
