@@ -314,7 +314,7 @@ function writeEntry(args: Args): void {
   // Record write failures instead of exiting inside the lock: withEntryLock's
   // finally must release the lock first, then the caller handles the failure.
   let collision = false;
-  let writeError: Error | null = null;
+  let writeError = null as Error | null;
 
   withEntryLock(file, () => {
     try {
