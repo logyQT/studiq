@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -32,7 +32,7 @@ export class OrganizationMemberService {
       return failure('FORBIDDEN');
     }
 
-    if (ctx.accountType === 'educator' && ctx.activeOrgId) {
+    if (ctx.accountType === AccountType.EDUCATOR && ctx.activeOrgId) {
       const { groupService } = await import('@studiq/server/services/group.service');
       const groupResult = await groupService.getUserGroupIds(ctx);
       if (!groupResult.success) return failure(groupResult.error);
@@ -79,13 +79,8 @@ export class OrganizationMemberService {
 
       return success(
         data.map((m) => {
-          const profile = m.profiles as unknown as {
-            id: string;
-            email: string;
-            full_name: string | null;
-            created_at: string;
-          };
-          const orgRole = m.org_roles as unknown as { name: string; display_name?: string };
+          const profile = m.profiles;
+          const orgRole = m.org_roles;
           const roleName = orgRole.name;
           const roleDisplayName = orgRole.display_name ?? roleName;
           return {
@@ -137,13 +132,8 @@ export class OrganizationMemberService {
 
     return success(
       data.map((m) => {
-        const profile = m.profiles as unknown as {
-          id: string;
-          email: string;
-          full_name: string | null;
-          created_at: string;
-        };
-        const orgRole = m.org_roles as unknown as { name: string; display_name?: string };
+        const profile = m.profiles;
+        const orgRole = m.org_roles;
         const roleName = orgRole.name;
         const roleDisplayName = orgRole.display_name ?? roleName;
         return {

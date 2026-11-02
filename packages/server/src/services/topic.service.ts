@@ -15,7 +15,6 @@ import type {
   BatchDeleteTopicInput,
   BulkCreateTopicInput,
   CreateTopicInput,
-  Topic,
   TopicListQuery,
   UpdateTopicInput,
 } from '@studiq/server/models/topic.model';
@@ -122,19 +121,19 @@ export class TopicService {
     const { data, error } = await query;
     if (error) return toDbFailure(error);
 
-    const rows = data as Array<Record<string, unknown>> | null;
-    const hasMore = (rows?.length ?? 0) > pageSize;
-    const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-    const items = sliced.map((item) => {
-      const countArr = item.flashcard_count as { count: number }[] | undefined;
-      return { ...item, flashcard_count: countArr?.[0]?.count ?? 0 };
-    });
+    const rows = data ?? [];
+    const hasMore = rows.length > pageSize;
+    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
+    const items = sliced.map((item) => ({
+      ...item,
+      flashcard_count: item.flashcard_count?.[0]?.count ?? 0,
+    }));
     const nextCursor = hasMore
       ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
       : null;
 
     return success({
-      items: items as unknown as Topic[],
+      items,
       nextCursor,
       hasMore,
     });

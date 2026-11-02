@@ -101,7 +101,7 @@ export class AuthService {
   async claimInvitation(
     user: Pick<User, 'id' | 'user_metadata'>,
   ): Promise<{ orgId: string } | null> {
-    const token = user.user_metadata?.invite_token;
+    const token: unknown = user.user_metadata?.invite_token;
     if (typeof token !== 'string' || token.trim() === '') return null;
 
     try {

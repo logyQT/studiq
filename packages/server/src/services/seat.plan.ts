@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * Resolve the plan key a user is entitled to via seat licensing within the
@@ -11,7 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  */
 export async function getSeatPlanKey(
   ctx: RequestContext,
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
 ): Promise<string | null> {
   if (!ctx.activeOrgId) return null;
 

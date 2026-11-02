@@ -32,7 +32,7 @@ export type MockWebhookEvent = {
 export class MockStripeService {
   constructor(
     private clientFactory: () => Promise<SupabaseClient<Database>>,
-    private createAdminClient: () => SupabaseClient = createServiceClient,
+    private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
   ) {}
 
   /**
@@ -70,7 +70,7 @@ export class MockStripeService {
   private async assertOrgAdmin(
     orgId: string | undefined,
     userId: string,
-  ): Promise<ServiceResult<void>> {
+  ): Promise<ServiceResult<string>> {
     if (!orgId) return failure('BAD_REQUEST');
 
     const supabase = await this.clientFactory();
@@ -86,7 +86,7 @@ export class MockStripeService {
     const role = membership?.org_roles as { name?: string } | { name?: string }[] | undefined;
     const roleName = Array.isArray(role) ? role[0]?.name : role?.name;
     if (!isOrgAdminRole(roleName)) return failure('FORBIDDEN');
-    return success(undefined);
+    return success(orgId);
   }
 
   async createCheckoutSession(
@@ -131,11 +131,12 @@ export class MockStripeService {
     if (purchasable.data.isOrgPlan) {
       const adminMembership = await this.assertOrgAdmin(event.org_id, userId);
       if (isFailure(adminMembership)) return adminMembership;
+      const orgId = adminMembership.data;
 
       // organizations.plan alone changes nothing: features and limits are
       // snapshots, so the DB function moves the plan and re-syncs them.
       const { error: planError } = await admin.rpc('apply_org_plan', {
-        p_org_id: event.org_id,
+        p_org_id: orgId,
         p_plan: event.plan_id,
       });
       if (planError) return toDbFailure(planError);

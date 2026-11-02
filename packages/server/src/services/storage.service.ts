@@ -1,17 +1,20 @@
 import { AppError } from '@studiq/server/lib/errors';
 import {
   extensionForMimeType,
+  isUploadMimeType,
   sniffMimeType,
   UPLOAD_MIME_TYPES,
   type UploadMimeType,
 } from '@studiq/server/lib/file-signature';
 import { error as logError } from '@studiq/server/lib/log';
+import { isRecord } from '@studiq/server/lib/record';
 import {
   isStoragePathWithinPrefix,
   storagePathFromPublicUrl,
 } from '@studiq/server/lib/storage-objects';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 const BUCKET = 'flashcard-media';
 
@@ -53,7 +56,7 @@ async function validateUpload(
   allowed: readonly UploadMimeType[],
   maxBytes: number,
 ): Promise<UploadMimeType> {
-  if (!allowed.includes(file.type as UploadMimeType)) {
+  if (!isUploadMimeType(file.type) || !allowed.includes(file.type)) {
     throw new AppError('UNPROCESSABLE_ENTITY');
   }
   if (file.size === 0) {
@@ -74,9 +77,8 @@ async function validateUpload(
 
 /** Provider errors carry the HTTP status under two different keys. */
 function storageErrorStatus(error: unknown): number {
-  const status = Number(
-    (error as { status?: number }).status ?? (error as { statusCode?: string }).statusCode,
-  );
+  const raw = isRecord(error) ? (error.status ?? error.statusCode) : undefined;
+  const status = Number(raw);
   return Number.isFinite(status) ? status : 0;
 }
 
@@ -91,7 +93,7 @@ function throwStorageError(bucket: string, error: unknown): never {
 }
 
 export class StorageService {
-  constructor(private clientFactory: () => SupabaseClient = createServiceClient) {}
+  constructor(private clientFactory: () => SupabaseClient<Database> = createServiceClient) {}
 
   async uploadFile(userId: string, file: File): Promise<{ url: string }> {
     const mimeType = await validateUpload(file, UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES);

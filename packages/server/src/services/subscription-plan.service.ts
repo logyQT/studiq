@@ -26,6 +26,8 @@ export interface PlanInfo {
   forAccountType: string | null;
 }
 
+type SubscriptionPlanRow = Database['public']['Tables']['subscription_plans']['Row'];
+
 export class SubscriptionPlanService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
@@ -49,21 +51,21 @@ export class SubscriptionPlanService {
   }
 
   private toPlanInfo(
-    plan: Record<string, unknown>,
+    plan: SubscriptionPlanRow,
     features: string[],
     limits: Record<string, number>,
   ): PlanInfo {
     return {
-      id: plan.id as string,
-      key: plan.key as string,
-      name: plan.name as string,
-      description: (plan.description as string) ?? null,
-      priceMonthly: (plan.price_monthly as number) ?? 0,
-      priceYearly: (plan.price_yearly as number) ?? 0,
-      currency: (plan.currency as string) ?? 'PLN',
-      sortOrder: (plan.sort_order as number) ?? 0,
-      isActive: (plan.is_active as boolean) ?? true,
-      forAccountType: (plan.for_account_type as string) ?? null,
+      id: plan.id,
+      key: plan.key,
+      name: plan.name,
+      description: plan.description ?? null,
+      priceMonthly: plan.price_monthly ?? 0,
+      priceYearly: plan.price_yearly ?? 0,
+      currency: plan.currency ?? 'PLN',
+      sortOrder: plan.sort_order ?? 0,
+      isActive: plan.is_active ?? true,
+      forAccountType: plan.for_account_type ?? null,
       features,
       limits,
     };

@@ -5,6 +5,7 @@ import {
 } from '@studiq/server/lib/controller-response';
 import { requireFeature } from '@studiq/server/lib/features';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
   CreateOrganizationSchema,
@@ -95,8 +96,7 @@ export class OrganizationController {
     // request when it actually carries branding fields. Checked on the raw
     // body (before validation) so a disabled feature fails closed rather than
     // leaking a 422 for a payload the org was never allowed to send.
-    const rawBody =
-      typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+    const rawBody = isRecord(body) ? body : {};
     if ('logoUrl' in rawBody || 'brandColor' in rawBody) {
       await requireFeature(ctx, 'branding');
     }

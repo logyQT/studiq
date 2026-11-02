@@ -18,15 +18,21 @@ export type TeacherStatsQuery = z.infer<typeof TeacherStatsQuerySchema>;
 export const MIN_PROBLEM_QUESTION_ANSWERS = 3;
 
 /** Per-question accuracy behind the „Problematyczne pytania” card (#204). */
-export interface ProblematicQuestionStats {
-  id: string;
-  content: string;
-  type: string;
+/** One row of `get_teacher_problematic_questions` (a `json` column). */
+export const ProblematicQuestionStatsSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  type: z.string(),
   /** 0..1 fraction; the UI renders `Math.round(correctRate * 100)`. */
-  correctRate: number;
+  correctRate: z.number(),
   /** Completed learner attempts that answered this question. */
-  totalAnswers: number;
-}
+  totalAnswers: z.number(),
+});
+
+export type ProblematicQuestionStats = z.infer<typeof ProblematicQuestionStatsSchema>;
+
+/** The whole `get_teacher_problematic_questions` payload. */
+export const ProblematicQuestionsSchema = z.array(ProblematicQuestionStatsSchema);
 
 /**
  * A "subject" in the content statistics is a `question_banks` row: the legacy
@@ -115,47 +121,64 @@ export const TeacherDashboardQuerySchema = registry.register(
 
 export type TeacherDashboardQuery = z.infer<typeof TeacherDashboardQuerySchema>;
 
-/** One group of the teacher on the dashboard: learners, completed attempts, flashcard accuracy. */
-export interface TeacherGroupPerformanceItem {
-  groupId: string;
-  groupName: string;
+/**
+ * One group of the teacher on the dashboard: learners, completed attempts,
+ * flashcard accuracy.
+ */
+export const TeacherGroupPerformanceItemSchema = z.object({
+  groupId: z.string(),
+  groupName: z.string(),
   /** Learners (`member` role) of the group, the teacher excluded. */
-  students: number;
+  students: z.number(),
   /** Completed quiz / assignment attempts of those learners inside the window. */
-  completedAttempts: number;
+  completedAttempts: z.number(),
   /** Submitted assignment attempts still waiting for the teacher's grade; not in `avgScore`. */
-  awaitingGrade: number;
+  awaitingGrade: z.number(),
   /** Mean score of the GRADED attempts, 0–100; `null` without any ("no data" is not 0 %). */
-  avgScore: number | null;
-  flashcardReviews: number;
+  avgScore: z.number().nullable(),
+  flashcardReviews: z.number(),
   /** Share of correct flashcard reviews, 0–100; `null` without reviews. */
-  flashcardAccuracy: number | null;
-}
+  flashcardAccuracy: z.number().nullable(),
+});
+
+export type TeacherGroupPerformanceItem = z.infer<typeof TeacherGroupPerformanceItemSchema>;
+
+/** Payload of `get_teacher_group_performance` (a `json` column). */
+export const TeacherGroupPerformanceSchema = z.object({
+  groups: z.array(TeacherGroupPerformanceItemSchema).default([]),
+  totals: z.object({
+    students: z.number(),
+    completedAttempts: z.number(),
+    awaitingGrade: z.number(),
+  }),
+});
 
 /**
  * Per-group rows plus totals that count each learner and each attempt once. A learner in two
  * groups is one learner, so the totals are never the sum of the rows.
  */
-export interface TeacherGroupPerformance {
-  groups: TeacherGroupPerformanceItem[];
-  totals: { students: number; completedAttempts: number; awaitingGrade: number };
-}
+export type TeacherGroupPerformance = z.infer<typeof TeacherGroupPerformanceSchema>;
 
 export type TeacherFeedKind = 'quiz_completed' | 'assignment_submitted' | 'report_opened';
 
-/** One line of the teacher dashboard's activity feed. */
-export interface TeacherFeedItem {
-  kind: TeacherFeedKind;
-  at: string;
-  personName: string | null;
+/** One line of the teacher dashboard's activity feed (a row of `get_teacher_activity_feed`). */
+export const TeacherFeedItemSchema = z.object({
+  kind: z.enum(['quiz_completed', 'assignment_submitted', 'report_opened']),
+  at: z.string(),
+  personName: z.string().nullable().default(null),
   /** Quiz / assignment title, or the beginning of the reported question. */
-  title: string | null;
-  scorePct: number | null;
+  title: z.string().nullable().default(null),
+  scorePct: z.number().nullable().default(null),
   /** A submitted assignment still waiting for a grade. */
-  needsGrading: boolean;
-  assignmentId: string | null;
-  questionId: string | null;
-}
+  needsGrading: z.boolean().default(false),
+  assignmentId: z.string().nullable().default(null),
+  questionId: z.string().nullable().default(null),
+});
+
+export type TeacherFeedItem = z.infer<typeof TeacherFeedItemSchema>;
+
+/** The whole `get_teacher_activity_feed` payload. */
+export const TeacherFeedSchema = z.array(TeacherFeedItemSchema);
 
 export interface TeacherQuizStatsItem {
   id: string;

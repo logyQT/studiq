@@ -4,9 +4,10 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 
 export class PlanFeatureService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getAll(): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();

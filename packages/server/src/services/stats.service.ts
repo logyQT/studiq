@@ -7,25 +7,19 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import {
   MIN_PROBLEM_QUESTION_ANSWERS,
-  type ProblematicQuestionStats,
+  ProblematicQuestionsSchema,
   type StudentStatsResponse,
   type TeacherFeedItem,
+  TeacherFeedSchema,
   type TeacherGroupPerformance,
+  TeacherGroupPerformanceSchema,
   type TeacherQuizStatsItem,
   type TeacherStatsQuery,
   type TeacherStatsResponse,
 } from '@studiq/server/models/stats.model';
+import { isRecord } from '@studiq/server/lib/record';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
-
-/**
- * The generated RPC arg types represent nullable SQL parameters as optional
- * (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
- * keep sending it: callers/tests rely on the parameter being present as NULL.
- */
-function nullableRpcArg<T>(value: T | null): T {
-  return value as T;
-}
 
 /**
  * Single rounding rule for per-attempt percentages. `avgScore` in
@@ -66,6 +60,18 @@ const EMPTY_GROUP_PERFORMANCE: TeacherGroupPerformance = {
   groups: [],
   totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 },
 };
+
+/** Reads a to-one embed (a to-many shape is tolerated) as an untyped record. */
+function toOne(value: unknown): Record<string, unknown> | null {
+  const first: unknown = Array.isArray(value) ? value[0] : value;
+  return isRecord(first) ? first : null;
+}
+
+/** `config` is a `json` column: the stored quiz title, when it has one. */
+function configTitle(config: unknown): string | null {
+  if (!isRecord(config)) return null;
+  return typeof config.title === 'string' && config.title !== '' ? config.title : null;
+}
 
 export class StatsService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -149,22 +155,28 @@ export class StatsService {
     const { data: problematicQuestions, error: problematicQuestionsError } = await supabase.rpc(
       'get_teacher_problematic_questions',
       {
+        // Explicit NULLs (never omitted): the RPC keys on their presence.
         p_user_id: ctx.userId,
-        p_organization_id: nullableRpcArg(ctx.activeOrgId),
-        p_bank_id: nullableRpcArg(subjectId ?? null),
+        p_organization_id: ctx.activeOrgId,
+        p_bank_id: subjectId ?? null,
       },
     );
 
     if (problematicQuestionsError) return toDbFailure(problematicQuestionsError);
+
+    const parsedProblematicQuestions = ProblematicQuestionsSchema.safeParse(problematicQuestions);
+    const problematicRows = parsedProblematicQuestions.success
+      ? parsedProblematicQuestions.data
+      : [];
 
     return success({
       totalQuestions: rows.length,
       totalFlashcards: flashcards?.length ?? 0,
       subject: {
         byType,
-        problematicQuestions: (
-          (problematicQuestions as ProblematicQuestionStats[] | null) ?? []
-        ).filter((question) => question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS),
+        problematicQuestions: problematicRows.filter(
+          (question) => question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS,
+        ),
       },
       bySubject,
     });
@@ -425,12 +437,12 @@ export class StatsService {
     >();
 
     for (const row of attempts) {
-      const config = row.config as { title?: string } | null;
+      const config: unknown = row.config;
       // Precedence: an explicit stored title, then the quiz behind the
       // assignment, then the assignment title. Untitled rows stay null and the
       // UI supplies the localized label.
       const title =
-        config?.title ??
+        configTitle(config) ??
         (row.assignment_id ? assignmentNames.get(row.assignment_id) : undefined) ??
         null;
       const key = title ?? '';
@@ -528,10 +540,9 @@ export class StatsService {
     const cardToDecks = new Map<string, Array<{ deckId: string; name: string }>>();
     for (const f of flashcardsWithDecks ?? []) {
       const decks = cardToDecks.get(f.id) ?? [];
-      const deckRaw = f.flashcard_decks as unknown;
-      const deckData = Array.isArray(deckRaw) ? deckRaw[0] : deckRaw;
-      if (deckData) {
-        decks.push({ deckId: f.deck_id, name: deckData.name ?? 'Unknown' });
+      const deck = toOne(f.flashcard_decks);
+      if (deck && typeof deck.name === 'string') {
+        decks.push({ deckId: f.deck_id, name: deck.name });
         cardToDecks.set(f.id, decks);
       }
     }
@@ -575,11 +586,8 @@ export class StatsService {
     const cardToTopics = new Map<string, Array<{ topicId: string; name: string }>>();
     for (const a of topicAssignments ?? []) {
       const topics = cardToTopics.get(a.flashcard_id) ?? [];
-      const topicRaw = a.topics as unknown;
-      const topicName =
-        topicRaw && typeof topicRaw === 'object' && 'name' in topicRaw
-          ? (topicRaw as { name: string }).name
-          : ((topicRaw as Array<{ name: string }> | null)?.[0]?.name ?? 'Unknown');
+      const topic = toOne(a.topics);
+      const topicName = typeof topic?.name === 'string' ? topic.name : 'Unknown';
       topics.push({ topicId: a.topic_id, name: topicName });
       cardToTopics.set(a.flashcard_id, topics);
     }
@@ -634,7 +642,8 @@ export class StatsService {
     });
 
     if (error) return toDbFailure(error);
-    return success((data as TeacherGroupPerformance | null) ?? EMPTY_GROUP_PERFORMANCE);
+    const parsed = TeacherGroupPerformanceSchema.safeParse(data);
+    return success(parsed.success ? parsed.data : EMPTY_GROUP_PERFORMANCE);
   }
 
   /**
@@ -657,7 +666,8 @@ export class StatsService {
     });
 
     if (error) return toDbFailure(error);
-    return success((data as TeacherFeedItem[] | null) ?? []);
+    const parsed = TeacherFeedSchema.safeParse(data);
+    return success(parsed.success ? parsed.data : []);
   }
 }
 export const statsService = wrapService(new StatsService(createClient), 'stats.service');

@@ -21,6 +21,10 @@ export const UPLOAD_MIME_TYPES = [
 
 export type UploadMimeType = (typeof UPLOAD_MIME_TYPES)[number];
 
+export function isUploadMimeType(value: string): value is UploadMimeType {
+  return (UPLOAD_MIME_TYPES as readonly string[]).includes(value);
+}
+
 const EXTENSION_BY_MIME: Record<UploadMimeType, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',

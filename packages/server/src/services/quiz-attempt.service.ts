@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import {
   IN_PROGRESS_QUESTION_SELECT,
   REVIEW_QUESTION_SELECT,
@@ -31,12 +32,11 @@ type DraftAnswer = {
  * anything beyond the student's own selection (#331).
  */
 function readDraftAnswers(value: unknown): Record<string, DraftAnswer> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if (!isRecord(value) || Array.isArray(value)) return {};
 
   const draft: Record<string, DraftAnswer> = {};
-  for (const [questionId, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (!raw || typeof raw !== 'object') continue;
-    const entry = raw as Record<string, unknown>;
+  for (const [questionId, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) continue;
     draft[questionId] = {
       selected_answer_id:
         typeof entry.selected_answer_id === 'string' ? entry.selected_answer_id : null,

@@ -46,10 +46,8 @@ export class HealthService {
       // Deliberately probes a table that does not exist: PGRST205 proves the
       // database answered. The generated `Database` type only knows real tables,
       // so this one query goes through the untyped client.
-      const { error } = await (supabase as UntypedSupabaseClient)
-        .from('_health_check_')
-        .select('*')
-        .limit(1);
+      const untyped: UntypedSupabaseClient = supabase;
+      const { error } = await untyped.from('_health_check_').select('*').limit(1);
 
       if (error) {
         return error.code === 'PGRST205';

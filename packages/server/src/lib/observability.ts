@@ -102,14 +102,15 @@ export function wrapService<T extends object>(
   return new Proxy(service, {
     get(target, prop) {
       const key = String(prop);
-      if (key === 'constructor') return (target as Record<string, unknown>)[key];
+      const value: unknown = Reflect.get(target, key);
+      if (key === 'constructor') return value;
 
       if (cache.has(key)) return cache.get(key);
 
-      const value = (target as Record<string, unknown>)[key];
       if (typeof value === 'function') {
         const wrapped = withSupervision(
-          value.bind(target) as (...args: unknown[]) => Promise<unknown>,
+          (...args: unknown[]): Promise<unknown> =>
+            Promise.resolve(Reflect.apply(value, target, args)),
           { service: serviceName, method: key, group: opts?.group },
         );
         cache.set(key, wrapped);

@@ -3,12 +3,14 @@ import { can, check, Permission } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import {
   EXPORT_MAX_QUESTIONS,
   type ImportQuestionsResult,
+  type RawTransferQuestion,
   type TransferQuestion,
   TransferQuestionSchema,
 } from '@studiq/server/models/question-transfer.model';
@@ -24,15 +26,6 @@ import type { Database } from '../types/database';
  * rollback and leave half-written questions behind.
  */
 const ROLLBACK_BATCH_SIZE = 100;
-
-/** Row of `questionService.list` as far as the export needs it. */
-interface ListedQuestion {
-  type: TransferQuestion['type'];
-  content: string;
-  explanation: string | null;
-  topics?: Array<{ name: string }>;
-  question_answers?: Array<{ content: string; is_correct: boolean; order_index: number | null }>;
-}
 
 /**
  * Question-bank import/export (#652). Export follows read and never truncates, import follows
@@ -53,7 +46,7 @@ export class QuestionTransferService {
     ctx: RequestContext,
     bankId: string,
   ): Promise<
-    ServiceResult<{ bankName: string; questions: TransferQuestion[]; notReimportable: number }>
+    ServiceResult<{ bankName: string; questions: RawTransferQuestion[]; notReimportable: number }>
   > {
     // The bank lookup applies the read permission, so a foreign or unknown bank is NOT_FOUND.
     // From here the whole bank is readable (decision B, #678).
@@ -63,10 +56,7 @@ export class QuestionTransferService {
     const listed = await questionService.listBankQuestions(bankId);
     if (!listed.success) return failure(listed.error);
 
-    const { questions: rows, total } = listed.data as {
-      questions: ListedQuestion[];
-      total: number;
-    };
+    const { questions: rows, total } = listed.data;
 
     // The cap is decided by the exact total of the query that builds the file: a longer bank is
     // refused (422) instead of being cut off at PostgREST's `max_rows` and shipped as a
@@ -74,7 +64,7 @@ export class QuestionTransferService {
     if (total > EXPORT_MAX_QUESTIONS) return failure('UNPROCESSABLE_ENTITY');
     if (rows.length < total) return failure('INTERNAL_SERVER');
 
-    const questions = rows.map((row): TransferQuestion => {
+    const questions = rows.map((row): RawTransferQuestion => {
       const answers = [...(row.question_answers ?? [])].toSorted(
         (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
       );
@@ -91,7 +81,10 @@ export class QuestionTransferService {
       (question) => !TransferQuestionSchema.safeParse(question).success,
     ).length;
 
-    return success({ bankName: (bank.data as { name: string }).name, questions, notReimportable });
+    const bankData = bank.data;
+    const bankName =
+      isRecord(bankData) && typeof bankData.name === 'string' ? bankData.name : 'Unknown';
+    return success({ bankName, questions, notReimportable });
   }
 
   /**

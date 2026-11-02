@@ -50,14 +50,14 @@ export class OrgService {
 
     return success(
       memberships.map((m) => {
-        const roles = Array.isArray(m.org_roles) ? m.org_roles : [m.org_roles];
+        const orgRole = m.org_roles;
         const org = orgMap.get(m.organization_id);
-        const roleName = roles[0]?.name ?? 'member';
+        const roleName = orgRole?.name ?? 'member';
         return {
           id: m.organization_id,
           name: org?.name ?? 'Unknown',
           orgRoleName: roleName,
-          orgRoleDisplayName: roles[0]?.display_name ?? roleName,
+          orgRoleDisplayName: orgRole?.display_name ?? roleName,
           orgRoleId: m.org_role_id,
           isActive: m.organization_id === ctx.activeOrgId,
           logo_url: org?.logo_url ?? null,

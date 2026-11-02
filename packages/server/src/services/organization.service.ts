@@ -19,7 +19,7 @@ export class OrganizationService {
     // sequence (and org deletion, which has no DELETE policy at all) has to run
     // on the service-role client. `delete` therefore re-checks manager authority
     // explicitly before touching the admin client.
-    private createAdminClient: () => SupabaseClient = createServiceClient,
+    private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
   ) {}
 
   async create(ctx: RequestContext, data: CreateOrganizationInput) {
@@ -243,11 +243,11 @@ export class OrganizationService {
 
     return success({
       ...org,
-      members: (membersResult.data ?? []).map((m: Record<string, unknown>) => ({
+      members: (membersResult.data ?? []).map((m) => ({
         id: m.user_id,
-        full_name: (m.profiles as Record<string, unknown>).full_name ?? null,
-        email: (m.profiles as Record<string, unknown>).email,
-        role_name: (m.org_roles as Record<string, unknown>).name,
+        full_name: m.profiles.full_name ?? null,
+        email: m.profiles.email,
+        role_name: m.org_roles.name,
         joined_at: m.joined_at,
       })),
       groups: (groupsResult.data ?? []).map((g: { id: string; name: string }) => ({

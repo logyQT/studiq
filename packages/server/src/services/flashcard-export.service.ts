@@ -2,15 +2,9 @@ import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
-import type { Flashcard } from '@studiq/server/models/flashcard.model';
-import { flashcardService } from '@studiq/server/services/flashcard.service';
+import { type FlashcardListRow, flashcardService } from '@studiq/server/services/flashcard.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
-
-type FlashcardWithAssignments = Flashcard & {
-  flashcard_topic_assignments: Array<{ topic_id: string }>;
-  deck_id?: string | null;
-};
 
 export class FlashcardExportService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -26,7 +20,7 @@ export class FlashcardExportService {
       listFilters.deckIds = filters.deckIds;
     }
 
-    const allFlashcards: FlashcardWithAssignments[] = [];
+    const allFlashcards: FlashcardListRow[] = [];
     let cursor: string | undefined;
 
     do {
@@ -36,11 +30,7 @@ export class FlashcardExportService {
         cursor,
       });
       if (!serviceResult.success) return failure(serviceResult.error);
-      const result = serviceResult.data as {
-        items: FlashcardWithAssignments[];
-        hasMore: boolean;
-        nextCursor: string | null;
-      };
+      const result = serviceResult.data;
       allFlashcards.push(...result.items);
       cursor = result.hasMore && result.nextCursor ? result.nextCursor : undefined;
     } while (cursor);

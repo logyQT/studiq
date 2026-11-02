@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { PanelLeftIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import * as React from 'react';
-import { cn } from '../../utils';
+import { cn, cssVars } from '../../utils';
 import { Button } from './button';
 import { Input } from './input';
 import { Separator } from './separator';
@@ -117,13 +117,11 @@ function SidebarProvider({
       <TooltipProvider delayDuration={0}>
         <div
           data-slot="sidebar-wrapper"
-          style={
-            {
-              '--sidebar-width': SIDEBAR_WIDTH,
-              '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
-              ...style,
-            } as React.CSSProperties
-          }
+          style={cssVars({
+            '--sidebar-width': SIDEBAR_WIDTH,
+            '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
+            ...style,
+          })}
           className={cn(
             'group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full',
             className,
@@ -174,11 +172,7 @@ function Sidebar({
           data-slot="sidebar"
           data-mobile="true"
           className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
-          style={
-            {
-              '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
-            } as React.CSSProperties
-          }
+          style={cssVars({ '--sidebar-width': SIDEBAR_WIDTH_MOBILE })}
           side={side}
         >
           <SheetHeader className="sr-only">
@@ -201,7 +195,9 @@ function Sidebar({
     </div>
   );
 
-  /* eslint-disable @typescript-eslint/no-explicit-any */
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion --
+     `motion.div` redefines React's animation and drag handler props as framer-motion callbacks,
+     so the div props Sidebar accepts cannot be spread onto it without widening. */
   const container =
     collapsible === 'icon' ? (
       <motion.div
@@ -240,7 +236,7 @@ function Sidebar({
         {inner}
       </div>
     );
-  /* eslint-enable @typescript-eslint/no-explicit-any */
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion */
 
   return (
     <div
@@ -618,11 +614,7 @@ function SidebarMenuSkeleton({
       <Skeleton
         className="h-4 max-w-(--skeleton-width) flex-1"
         data-sidebar="menu-skeleton-text"
-        style={
-          {
-            '--skeleton-width': width,
-          } as React.CSSProperties
-        }
+        style={cssVars({ '--skeleton-width': width })}
       />
     </div>
   );

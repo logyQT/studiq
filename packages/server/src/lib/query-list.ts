@@ -1,6 +1,12 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { z } from '@studiq/server/lib/zod';
 
+/** A cursor is `{ value, id }`; anything else is a corrupt/forged token. */
+const CursorSchema = z.object({
+  v: z.union([z.string(), z.number()]),
+  id: z.string(),
+});
+
 export interface PaginatedResult<T> {
   items: T[];
   nextCursor: string | null;
@@ -12,7 +18,7 @@ export function encodeCursor(value: unknown, id: unknown): string {
 }
 
 export function decodeCursor(cursor: string): { v: string | number; id: string } {
-  return JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
+  return CursorSchema.parse(JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')));
 }
 
 /**
@@ -36,23 +42,24 @@ export const groupsParamSchema = z
   )
   .transform((ids) => [...new Set(ids)]);
 
-export function createListQuerySchema(opts?: {
-  sortColumns?: readonly [string, ...string[]];
+export function createListQuerySchema<const TSort extends readonly [string, ...string[]]>(opts: {
+  /** Sortable columns; `sortBy` is validated against exactly this list. */
+  sortColumns: TSort;
   maxLimit?: number;
   defaultLimit?: number;
-  sortByDefault?: string;
+  sortByDefault?: TSort[number];
   sortOrderDefault?: 'asc' | 'desc';
 }) {
-  const sortColumns = opts?.sortColumns ?? (['created_at', 'updated_at', 'name'] as const);
-  const maxLimit = opts?.maxLimit ?? 100;
-  const defaultLimit = opts?.defaultLimit ?? 24;
-  const sortByDefault = opts?.sortByDefault ?? 'created_at';
-  const sortOrderDefault = opts?.sortOrderDefault ?? 'desc';
+  const { sortColumns } = opts;
+  const maxLimit = opts.maxLimit ?? 100;
+  const defaultLimit = opts.defaultLimit ?? 24;
+  const sortByDefault: TSort[number] = opts.sortByDefault ?? sortColumns[0];
+  const sortOrderDefault = opts.sortOrderDefault ?? 'desc';
 
   return z.object({
     q: z.string().optional(),
     sortBy: z
-      .enum(sortColumns as [string, ...string[]])
+      .enum([...sortColumns])
       .optional()
       .default(sortByDefault),
     sortOrder: z

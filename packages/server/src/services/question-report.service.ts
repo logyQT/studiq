@@ -217,7 +217,7 @@ export class QuestionReportService {
     const { data, error } = await query;
     if (error) return toDbFailure(error);
 
-    const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+    const rows = data ?? [];
     const hasMore = rows.length > pageSize;
     const sliced = hasMore ? rows.slice(0, pageSize) : rows;
 
@@ -225,9 +225,9 @@ export class QuestionReportService {
       ...r,
       isUnread:
         r.reported_by === ctx.userId
-          ? new Date(r.updated_at as string) > new Date(r.reporter_last_read_at as string)
+          ? new Date(r.updated_at) > new Date(r.reporter_last_read_at)
           : r.teacher_last_read_at == null ||
-            new Date(r.updated_at as string) > new Date(r.teacher_last_read_at as string),
+            new Date(r.updated_at) > new Date(r.teacher_last_read_at),
     }));
 
     const last = sliced[sliced.length - 1];

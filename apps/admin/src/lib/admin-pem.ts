@@ -111,7 +111,7 @@ export function parseKeyring(raw: string): Keyring {
         throw new Error('key must be a non-empty base64 DER SPKI string');
       }
 
-      if (!Array.isArray(entry.scopes) || entry.scopes.some((s) => typeof s !== 'string')) {
+      if (!isStringArray(entry.scopes)) {
         throw new Error('scopes must be an array of strings');
       }
 
@@ -138,7 +138,7 @@ export function parseKeyring(raw: string): Keyring {
         );
       }
 
-      const scopes = entry.scopes as string[];
+      const scopes = entry.scopes;
       seenIds.add(entry.id);
       keyring.keys.push({
         id: entry.id,
@@ -266,4 +266,8 @@ export function verifyAny(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item): item is string => typeof item === 'string');
 }

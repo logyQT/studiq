@@ -2,14 +2,16 @@ import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
+import { isRecord } from '@studiq/server/lib/record';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  DifficultyBucket,
-  DifficultyFlashcardDetail,
-  TeacherFlashcardStatsQuery,
-  TeacherFlashcardStatsResponse,
+import {
+  type DifficultyBucket,
+  type DifficultyFlashcardDetail,
+  type TeacherFlashcardStatsQuery,
+  type TeacherFlashcardStatsResponse,
+  TeacherFlashcardStatsResponseSchema,
 } from '@studiq/server/models/flashcard-stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -19,8 +21,16 @@ import type { Database } from '../types/database';
  * (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
  * keep sending it: callers/tests rely on the parameter being present as NULL.
  */
-function nullableRpcArg<T>(value: T | null): T {
-  return value as T;
+/**
+ * The `flashcard_decks!inner(...)` embed, read defensively: the generated types
+ * model it as a to-one object, a to-many shape is tolerated too.
+ */
+function toOneDeck(value: unknown): { id: string; name: string } | null {
+  const first: unknown = Array.isArray(value) ? value[0] : value;
+  if (!isRecord(first) || typeof first.id !== 'string' || typeof first.name !== 'string') {
+    return null;
+  }
+  return { id: first.id, name: first.name };
 }
 
 export class FlashcardStatsService {
@@ -60,13 +70,15 @@ export class FlashcardStatsService {
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_teacher_stats', {
       p_flashcard_ids: flashcardIds,
       p_user_id: ctx.userId,
-      p_deck_id: nullableRpcArg(filters?.deckId ?? null),
-      p_organization_id: nullableRpcArg(ctx.activeOrgId ?? null),
+      // Sent as an explicit NULL (never omitted): the SQL function keys on it.
+      p_deck_id: filters?.deckId ?? null,
+      p_organization_id: ctx.activeOrgId ?? null,
     });
 
     if (rpcError) return toDbFailure(rpcError);
 
-    return success(rpcResult as unknown as TeacherFlashcardStatsResponse);
+    const parsed = TeacherFlashcardStatsResponseSchema.safeParse(rpcResult);
+    return success(parsed.success ? parsed.data : emptyResponse);
   }
 
   async getDifficultyCards(
@@ -106,8 +118,7 @@ export class FlashcardStatsService {
     const cardToDeckId = new Map<string, string>();
     const cardToDeckName = new Map<string, string>();
     for (const f of flashcardsWithDecks ?? []) {
-      const deckRaw = f.flashcard_decks as unknown;
-      const deck = Array.isArray(deckRaw) ? deckRaw[0] : deckRaw;
+      const deck = toOneDeck(f.flashcard_decks);
       if (deck) {
         deckNameMap.set(deck.id, deck.name);
         cardToDeckId.set(f.id, deck.id);

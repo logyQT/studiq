@@ -280,7 +280,7 @@ export class FeatureResolver {
   private async addPlanFeatures(
     enabled: Set<FeatureKey>,
     planKey: string,
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
   ): Promise<void> {
     const { data: pf } = await supabase
       .from('plan_features')

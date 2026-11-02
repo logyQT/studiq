@@ -717,6 +717,51 @@ export type Database = {
           },
         ];
       };
+      notifications: {
+        Row: {
+          created_at: string;
+          id: string;
+          organization_id: string | null;
+          payload: Json;
+          read_at: string | null;
+          type: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          organization_id?: string | null;
+          payload?: Json;
+          read_at?: string | null;
+          type: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          organization_id?: string | null;
+          payload?: Json;
+          read_at?: string | null;
+          type?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'notifications_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       org_members: {
         Row: {
           id: string;
@@ -2164,6 +2209,8 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
+      admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
       apply_org_plan: { Args: { p_org_id: string; p_plan: string }; Returns: undefined };
       bulk_create_flashcards: {
         Args: {
@@ -2334,14 +2381,18 @@ export type Database = {
         Returns: Json;
       };
       get_teacher_problematic_questions: {
-        Args: { p_bank_id?: string; p_organization_id?: string; p_user_id: string };
+        Args: {
+          p_bank_id?: string | null;
+          p_organization_id?: string | null;
+          p_user_id: string;
+        };
         Returns: Json;
       };
       get_teacher_stats: {
         Args: {
-          p_deck_id?: string;
+          p_deck_id?: string | null;
           p_flashcard_ids: string[];
-          p_organization_id?: string;
+          p_organization_id?: string | null;
           p_user_id: string;
         };
         Returns: Json;
@@ -2388,8 +2439,8 @@ export type Database = {
       };
       search_flashcards: {
         Args: {
-          p_organization_id?: string;
-          p_user_id?: string;
+          p_organization_id?: string | null;
+          p_user_id?: string | null;
           result_limit?: number;
           search_query: string;
         };

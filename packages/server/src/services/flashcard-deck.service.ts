@@ -7,6 +7,7 @@ import {
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import type { FilterableBuilder } from '@studiq/server/lib/postgrest';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -15,7 +16,6 @@ import type {
   BatchDeleteDeckInput,
   BulkCreateDeckInput,
   CreateDeckInput,
-  Deck,
   DeckListQuery,
   UpdateDeckInput,
 } from '@studiq/server/models/flashcard-deck.model';
@@ -166,32 +166,40 @@ export class FlashcardDeckService {
     // Every filter (RBAC, suspended, owner, group, search) lives here and is shared by the page
     // query and the total-count query, so `total` always matches the visible set. The cursor and
     // limit are applied to the page query only, which keeps `total` stable while paging.
-    const buildFiltered = (select: string, options?: { count: 'exact'; head: true }) => {
-      let q = supabase.from('flashcard_decks').select(select, options);
+    const applyFilters = <T extends FilterableBuilder<T>>(q: T): T => {
+      let filtered = q;
 
-      if (filter.or) q = q.or(filter.or);
-      if (filter.created_by) q = q.eq('created_by', filter.created_by);
-      if (filter.organization_id) q = q.eq('organization_id', filter.organization_id);
+      if (filter.or) filtered = filtered.or(filter.or);
+      if (filter.created_by) filtered = filtered.eq('created_by', filter.created_by);
+      if (filter.organization_id) filtered = filtered.eq('organization_id', filter.organization_id);
 
       // Exclude suspended decks by default
       if (!includeSuspended && suspendedIds.size > 0) {
-        q = q.not('id', 'in', `(${[...suspendedIds].join(',')})`);
+        filtered = filtered.not('id', 'in', `(${[...suspendedIds].join(',')})`);
       }
 
       if (queryParams?.owner === 'mine') {
-        q = q.eq('created_by', ctx.userId);
+        filtered = filtered.eq('created_by', ctx.userId);
       }
 
-      if (groupIds) q = q.in('id', groupIds);
+      if (groupIds) filtered = filtered.in('id', groupIds);
 
       if (queryParams?.q) {
-        q = q.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
+        filtered = filtered.or(
+          `name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`,
+        );
       }
-      return q;
+      return filtered;
     };
 
-    let query = buildFiltered('*, flashcard_count:flashcards(count), deck_groups(group_id)');
-    const countQuery = buildFiltered('id', { count: 'exact', head: true });
+    let query = applyFilters(
+      supabase
+        .from('flashcard_decks')
+        .select('*, flashcard_count:flashcards(count), deck_groups(group_id)'),
+    );
+    const countQuery = applyFilters(
+      supabase.from('flashcard_decks').select('id', { count: 'exact', head: true }),
+    );
 
     // Apply sorting with tie-breaker
     const sortBy = queryParams?.sortBy ?? 'created_at';
@@ -215,25 +223,21 @@ export class FlashcardDeckService {
     if (error) return toDbFailure(error);
     if (countError) return toDbFailure(countError);
 
-    const rows = data as unknown as Array<Record<string, unknown>> | null;
-    const hasMore = (rows?.length ?? 0) > pageSize;
-    const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-    const items = sliced.map((item) => {
-      const countArr = item.flashcard_count as { count: number }[] | undefined;
-      const groups = item.deck_groups as { group_id: string }[] | undefined;
-      return {
-        ...item,
-        flashcard_count: countArr?.[0]?.count ?? 0,
-        groupIds: groups?.map((g) => g.group_id) ?? [],
-        suspended: suspendedIds.has(item.id as string),
-      };
-    });
+    const rows = data ?? [];
+    const hasMore = rows.length > pageSize;
+    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
+    const items = sliced.map((item) => ({
+      ...item,
+      flashcard_count: item.flashcard_count?.[0]?.count ?? 0,
+      groupIds: item.deck_groups?.map((g) => g.group_id) ?? [],
+      suspended: suspendedIds.has(item.id),
+    }));
     const nextCursor = hasMore
       ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
       : null;
 
     return success({
-      items: items as unknown as Deck[],
+      items,
       nextCursor,
       hasMore,
       total: count ?? 0,
@@ -260,14 +264,10 @@ export class FlashcardDeckService {
     const { data: deck, error } = await query.single();
     if (error || !deck) return failure('NOT_FOUND');
 
-    const countArr = (deck as Record<string, unknown>).flashcard_count as
-      { count: number }[] | undefined;
-    const groups = (deck as Record<string, unknown>).deck_groups as
-      { group_id: string }[] | undefined;
     return success({
       ...deck,
-      flashcard_count: countArr?.[0]?.count ?? 0,
-      groupIds: groups?.map((g) => g.group_id) ?? [],
+      flashcard_count: deck.flashcard_count?.[0]?.count ?? 0,
+      groupIds: deck.deck_groups?.map((g) => g.group_id) ?? [],
       suspended: suspendedIds.has(id),
     });
   }

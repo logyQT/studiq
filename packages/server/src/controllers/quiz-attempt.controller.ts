@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
   SaveQuizAnswersSchema,
@@ -11,6 +12,11 @@ import {
   type QuizAttemptService,
   quizAttemptService,
 } from '@studiq/server/services/quiz-attempt.service';
+
+/** A request body is spread into the schema input; a non-object body adds nothing. */
+function bodyOrEmptyObject(body: unknown): Record<string, unknown> {
+  return isRecord(body) ? body : {};
+}
 
 export class QuizAttemptController {
   constructor(private service: QuizAttemptService) {}
@@ -33,7 +39,7 @@ export class QuizAttemptController {
 
   async submit(body: unknown, attemptId: string, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = SubmitQuizAttemptSchema.safeParse({
-      ...(body as Record<string, unknown>),
+      ...bodyOrEmptyObject(body),
       attemptId,
     });
 
@@ -59,7 +65,7 @@ export class QuizAttemptController {
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
     const parsed = SaveQuizAnswersSchema.safeParse({
-      ...(body as Record<string, unknown>),
+      ...bodyOrEmptyObject(body),
       attemptId,
     });
 

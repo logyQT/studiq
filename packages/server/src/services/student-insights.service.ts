@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { isRecord } from '@studiq/server/lib/record';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { StudentInsights } from '@studiq/server/models/student-insights.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -13,8 +14,8 @@ import type { Database } from '../types/database';
  * `99_rpc_functions.sql`) before it is served as `StudentInsights`.
  */
 function isStudentInsights(value: unknown): value is StudentInsights {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const candidate = value as Record<string, unknown>;
+  if (!isRecord(value) || Array.isArray(value)) return false;
+  const candidate = value;
   return (
     typeof candidate.days === 'number' &&
     typeof candidate.studyTime === 'object' &&

@@ -5,16 +5,18 @@ import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  BatchPracticeInput,
-  CardStatsItem,
-  CompleteSessionInput,
-  DueBreakdownResponse,
-  DueCountResponse,
-  DueFlashcardItem,
-  PracticeMode,
-  PracticeSummary,
-  StateBreakdown,
+import {
+  type BatchPracticeInput,
+  type CardStatsItem,
+  type CompleteSessionInput,
+  DueBreakdownSchema,
+  type DueBreakdownResponse,
+  DueFlashcardItemsSchema,
+  type DueFlashcardItem,
+  type PracticeMode,
+  type PracticeSummary,
+  type StateBreakdown,
+  StateBreakdownSchema,
 } from '@studiq/server/models/flashcard-practice.model';
 import type {
   IntervalUnit,
@@ -24,7 +26,33 @@ import type {
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import type { UpdateStudySettingsInput } from '@studiq/server/models/study-settings.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isRecord, readColumn } from '@studiq/server/lib/record';
+import { z } from '@studiq/server/lib/zod';
 import type { Database, Json } from '../types/database';
+
+/** Clamp a caller-supplied confidence to the SRS rating scale (1–4). */
+function toRating(value: number): Rating {
+  if (value <= 1) return 1;
+  if (value < 3) return 2;
+  if (value < 4) return 3;
+  return 4;
+}
+
+/** Narrow the free-form `interval_unit` `text` column to the SRS unit union. */
+function isIntervalUnit(value: unknown): value is IntervalUnit {
+  return value === 'minutes' || value === 'days';
+}
+
+/** The name of a to-one (or, defensively, to-many) `topics` embed. */
+function topicName(topic: unknown): string | undefined {
+  const first: unknown = Array.isArray(topic) ? topic[0] : topic;
+  return isRecord(first) && typeof first.name === 'string' ? first.name : undefined;
+}
+
+/** Sort text of a column value: scalars stringify, anything else sorts as empty. */
+function sortText(value: unknown): string {
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+}
 
 /** Narrow a free-form `text` column to the SRS learning-state union. */
 function toLearningState(value: string): LearningState {
@@ -42,13 +70,22 @@ function toLearningState(value: string): LearningState {
 
 /**
  * `supabase.rpc` types every `RETURNS json` function as the generated `Json`
- * union, which erases the payload shape the SQL function actually returns.
- * The caller knows the shape (see the migration for each RPC), so re-assert it
- * here instead of sprinkling `as unknown as` at every call site.
+ * union, which erases the payload shape the SQL function actually returns. The
+ * schemas in `flashcard-practice.model` describe that shape, so each payload is
+ * validated here; an unparsable one falls back instead of leaking a cast.
  */
-function parseRpcJson<T>(value: Json): T {
-  return value as T;
+function parseRpcJson<T>(schema: z.ZodType<T>, value: Json, fallback: T): T {
+  const parsed = schema.safeParse(value);
+  return parsed.success ? parsed.data : fallback;
 }
+
+/** Zero envelope for `getDueBreakdown`/`getDueCount` when the RPC returns nothing usable. */
+const EMPTY_DUE_BREAKDOWN: DueBreakdownResponse = {
+  total: 0,
+  nextReviewAt: null,
+  byTopic: [],
+  byDeck: [],
+};
 
 /** Zero envelope for `getStateBreakdown` when the call is impossible or the RPC fails. */
 const EMPTY_STATE_BREAKDOWN: StateBreakdown = {
@@ -309,7 +346,7 @@ export class FlashcardPracticeService {
     if (!settingsResult.success) return settingsResult;
     const settings = settingsResult.data;
 
-    const rating = Math.min(Math.max(confidenceLevel ?? 3, 1), 4) as Rating;
+    const rating = toRating(confidenceLevel ?? 3);
 
     const result = flashcardSpacedRepetitionService.calculateNextReview({
       learningState: toLearningState(existing?.learning_state ?? 'new'),
@@ -456,7 +493,7 @@ export class FlashcardPracticeService {
     });
 
     if (rpcError) return toDbFailure(rpcError);
-    const cards = (rpcResult as unknown as DueFlashcardItem[]) ?? [];
+    const cards: DueFlashcardItem[] = parseRpcJson(DueFlashcardItemsSchema, rpcResult, []);
 
     return success(cards);
   }
@@ -478,7 +515,7 @@ export class FlashcardPracticeService {
 
     if (error) return toDbFailure(error);
 
-    const rpcResult = parseRpcJson<DueBreakdownResponse>(data);
+    const rpcResult = parseRpcJson(DueBreakdownSchema, data, EMPTY_DUE_BREAKDOWN);
 
     const byTopic: Record<string, number> = {};
     for (const t of rpcResult.byTopic ?? []) byTopic[t.topic_id] = t.count;
@@ -512,7 +549,7 @@ export class FlashcardPracticeService {
     });
 
     if (error) return toDbFailure(error);
-    return success({ count: parseRpcJson<DueCountResponse>(data).total });
+    return success({ count: parseRpcJson(DueBreakdownSchema, data, EMPTY_DUE_BREAKDOWN).total });
   }
 
   async getStatsAll(ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -579,7 +616,7 @@ export class FlashcardPracticeService {
       return success({ ...EMPTY_STATE_BREAKDOWN });
     }
 
-    return success(parseRpcJson<StateBreakdown>(data));
+    return success(parseRpcJson(StateBreakdownSchema, data, EMPTY_STATE_BREAKDOWN));
   }
 
   async getStatsForFlashcard(
@@ -661,12 +698,7 @@ export class FlashcardPracticeService {
     const { data: flashcards, error } = await query;
     if (error) return toDbFailure(error);
 
-    const rows = (flashcards ?? []) as Array<{
-      id: string;
-      front: string;
-      back: string;
-      created_at: string;
-    }>;
+    const rows = flashcards ?? [];
     const hasMore = rows.length > pageSize;
     const page = hasMore ? rows.slice(0, pageSize) : rows;
 
@@ -719,7 +751,7 @@ export class FlashcardPracticeService {
         id: fc.id,
         front: fc.front,
         back: fc.back,
-        createdAt: fc.created_at,
+        createdAt: fc.created_at ?? null,
         state: stateLabel,
         totalAttempts: practice?.total ?? 0,
         correctRate:
@@ -729,7 +761,7 @@ export class FlashcardPracticeService {
         lastPracticedAt: practice?.lastPracticedAt ?? null,
         easinessFactor: state?.easiness_factor ?? null,
         intervalValue: state?.interval_days ?? null,
-        intervalUnit: (state?.interval_unit as IntervalUnit | null) ?? null,
+        intervalUnit: isIntervalUnit(state?.interval_unit) ? state.interval_unit : null,
         nextReviewAt: state?.next_review_at ?? null,
         repetitions: state?.repetitions ?? null,
         isLeech,
@@ -742,13 +774,13 @@ export class FlashcardPracticeService {
       items = items.filter((i) => i.state === filters.state);
     }
 
-    const sortField = (filters?.sortBy ?? 'createdAt') as keyof CardStatsItem;
+    const sortField = filters?.sortBy ?? 'createdAt';
     const sortOrder = filters?.order === 'asc' ? 1 : -1;
     items.sort((a: CardStatsItem, b: CardStatsItem) => {
-      const av = a[sortField] ?? '';
-      const bv = b[sortField] ?? '';
+      const av = readColumn(a, sortField) ?? '';
+      const bv = readColumn(b, sortField) ?? '';
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sortOrder;
-      return String(av).localeCompare(String(bv)) * sortOrder;
+      return sortText(av).localeCompare(sortText(bv)) * sortOrder;
     });
 
     const nextCursor = hasMore ? page[page.length - 1].id : null;
@@ -883,14 +915,14 @@ export class FlashcardPracticeService {
             fc.flashcard_topic_assignments?.flatMap((a) => {
               // The generated types model `topics(name)` as a to-one embed
               // (object); tolerate the array shape too, as before.
-              const name = Array.isArray(a.topics) ? a.topics[0]?.name : undefined;
+              const name = topicName(a.topics);
               return name ? [name] : [];
             }) ?? [],
           reviewState: state
             ? {
                 easinessFactor: state.easiness_factor,
                 intervalValue: state.interval_days,
-                intervalUnit: state.interval_unit as IntervalUnit,
+                intervalUnit: isIntervalUnit(state.interval_unit) ? state.interval_unit : null,
                 repetitions: state.repetitions,
                 nextReviewAt: state.next_review_at,
                 lastReviewedAt: state.last_reviewed_at,

@@ -132,7 +132,7 @@ export class LimitsResolver {
     limitKey: LimitKey,
     currentCount: number,
     increment = 1,
-    client?: SupabaseClient,
+    client?: SupabaseClient<Database>,
   ): Promise<void> {
     const supabase = client ?? (await this.clientFactory());
 

@@ -26,7 +26,9 @@ import {
  * `GET /api/v1/quiz/:attemptId`, which maps it to `answers` (#349). The start
  * payload never serialises the raw column, so both payload shapes stay equal.
  */
-function toAttemptPayload(attempt: Record<string, unknown>): Record<string, unknown> {
+function toAttemptPayload<T extends { draft_answers?: unknown }>(
+  attempt: T,
+): Omit<T, 'draft_answers'> {
   const { draft_answers: _draftAnswers, ...attemptFields } = attempt;
   return attemptFields;
 }
@@ -44,15 +46,19 @@ const TARGET_CHUNK = 200;
 const STUDENT_ATTEMPT_SELECT =
   'assignment_id, id, score, total_questions, total_points, completed_at, started_at';
 
-interface StudentAttemptSummaryRow {
-  assignment_id: string;
-  id: string;
-  score: number;
-  total_questions: number;
-  total_points: number | null;
-  completed_at: string | null;
-  started_at: string | null;
-}
+type QuizAttemptRow = Database['public']['Tables']['quiz_attempts']['Row'];
+
+/** The slice of a `quiz_attempts` row `STUDENT_ATTEMPT_SELECT` projects. */
+type StudentAttemptSummaryRow = Pick<
+  Database['public']['Tables']['quiz_attempts']['Row'],
+  | 'assignment_id'
+  | 'id'
+  | 'score'
+  | 'total_questions'
+  | 'total_points'
+  | 'completed_at'
+  | 'started_at'
+>;
 
 export type AnswersExportStatus = 'graded' | 'submitted' | 'in_progress';
 
@@ -666,9 +672,9 @@ export class TeacherAssignmentService {
    * set. A missing key means the question is no longer part of the assignment.
    */
   private async loadAssignmentPoints(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     assignmentId: string,
-  ): Promise<ServiceResult<Map<string, number>>> {
+  ): Promise<ServiceResult<Map<string | null, number>>> {
     const { data, error } = await supabase
       .from('assignment_questions')
       .select('question_id, points')
@@ -685,7 +691,7 @@ export class TeacherAssignmentService {
    * questions store one row per selected unit.
    */
   private async computeAttemptScore(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     attemptId: string,
     assignmentId: string,
   ): Promise<ServiceResult<number>> {
@@ -699,7 +705,10 @@ export class TeacherAssignmentService {
 
     if (answersError) return toDbFailure(answersError);
 
-    const perQuestion = new Map<string, { teacherPoints: number | null; isCorrect: boolean }>();
+    const perQuestion = new Map<
+      string | null,
+      { teacherPoints: number | null; isCorrect: boolean }
+    >();
     for (const answer of answers ?? []) {
       const entry = perQuestion.get(answer.question_id) ?? {
         teacherPoints: null,
@@ -739,7 +748,7 @@ export class TeacherAssignmentService {
    * Same rule as the list endpoint, so id-based access cannot bypass it.
    */
   private async isAssignmentTarget(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     assignment: {
       created_by?: string | null;
       organization_id?: string | null;
@@ -853,8 +862,8 @@ export class TeacherAssignmentService {
 
     if (attemptsError) return toDbFailure(attemptsError);
 
-    const attemptsByAssignment = new Map<string, StudentAttemptSummaryRow[]>();
-    for (const row of (attempts ?? []) as StudentAttemptSummaryRow[]) {
+    const attemptsByAssignment = new Map<string | null, StudentAttemptSummaryRow[]>();
+    for (const row of attempts ?? []) {
       const rows = attemptsByAssignment.get(row.assignment_id) ?? [];
       rows.push(row);
       attemptsByAssignment.set(row.assignment_id, rows);
@@ -895,10 +904,7 @@ export class TeacherAssignmentService {
 
     return success({
       ...assignment,
-      ...this.summarizeAttempts(
-        (attempts ?? []) as StudentAttemptSummaryRow[],
-        assignment.show_results,
-      ),
+      ...this.summarizeAttempts(attempts ?? [], assignment.show_results),
     });
   }
 
@@ -1048,13 +1054,13 @@ export class TeacherAssignmentService {
    * original start, so „Kontynuuj” shows the questions the student already had.
    */
   private async loadAttemptForTake(
-    supabase: SupabaseClient,
-    attempt: Record<string, unknown>,
+    supabase: SupabaseClient<Database>,
+    attempt: QuizAttemptRow,
   ): Promise<ServiceResult<unknown>> {
     const { data: rows, error } = await supabase
       .from('quiz_attempt_questions')
       .select(`order_index, question_id, questions(${IN_PROGRESS_QUESTION_SELECT})`)
-      .eq('attempt_id', attempt.id as string)
+      .eq('attempt_id', attempt.id)
       .order('order_index', { ascending: true });
 
     if (error) return toDbFailure(error);
@@ -1156,7 +1162,7 @@ export class TeacherAssignmentService {
    * are sent in chunks so a large class does not overflow the request URL.
    */
   private async hasForeignTargets(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     assignmentId: string,
     data: SetTargetsInput,
     ctx: RequestContext,
@@ -1172,7 +1178,7 @@ export class TeacherAssignmentService {
       .single();
     // Fail closed: a failed read must not be mistaken for a personal (no-organisation) row.
     if (assignmentError || !assignment) return true;
-    const organizationId = assignment.organization_id as string | null;
+    const organizationId = assignment.organization_id;
 
     if (organizationId === null) {
       if (groupIds.length === 0) return false;
@@ -1182,7 +1188,9 @@ export class TeacherAssignmentService {
         .select('organization_id')
         .eq('user_id', ctx.userId);
       const callerOrgIds = [
-        ...new Set((memberships ?? []).map((m) => m.organization_id as string)),
+        ...new Set(
+          (memberships ?? []).flatMap((m) => (m.organization_id ? [m.organization_id] : [])),
+        ),
       ];
       if (callerOrgIds.length === 0) return true;
 

@@ -139,12 +139,18 @@ export interface DueBreakdownDeck {
   count: number;
 }
 
-export interface DueBreakdownResponse {
-  total: number;
-  nextReviewAt: string | null;
-  byTopic: DueBreakdownTopic[];
-  byDeck: DueBreakdownDeck[];
-}
+/**
+ * Payload of `get_due_breakdown` (a `json` column from PostgREST's point of view).
+ * `byTopic`/`byDeck` default to `[]` so a partial payload still parses.
+ */
+export const DueBreakdownSchema = z.object({
+  total: z.number(),
+  nextReviewAt: z.string().nullish().default(null),
+  byTopic: z.array(z.object({ topic_id: z.string(), count: z.number() })).default([]),
+  byDeck: z.array(z.object({ deck_id: z.string(), count: z.number() })).default([]),
+});
+
+export type DueBreakdownResponse = z.infer<typeof DueBreakdownSchema>;
 
 export interface DueCountResponse {
   total: number;
@@ -160,7 +166,7 @@ export interface CardStatsItem {
   id: string;
   front: string;
   back: string;
-  createdAt: string;
+  createdAt: string | null;
   /** One of `new`, `learning`, `review`, `relearning`, `leech`; open-ended because the DB column is free-form. */
   state: string;
   totalAttempts: number;
@@ -191,15 +197,37 @@ export interface FlashcardRow {
   }>;
 }
 
-export interface DueFlashcardItem {
-  id: string;
-  front: string;
-  back: string;
-  createdAt: string;
-  reviewState: Record<string, unknown> | null;
-  deckName: string | null;
-  topicNames: string[];
-}
+/** One card of `get_due_flashcards` (also a `json` column). */
+export const DueFlashcardItemSchema = z.object({
+  id: z.string(),
+  front: z.string(),
+  back: z.string(),
+  createdAt: z.string().nullish().default(null),
+  reviewState: z.record(z.string(), z.unknown()).nullish().default(null),
+  deckName: z.string().nullish().default(null),
+  topicNames: z.array(z.string()).default([]),
+});
+
+export type DueFlashcardItem = z.infer<typeof DueFlashcardItemSchema>;
+
+/** The whole `get_due_flashcards` payload: an array of due/new cards. */
+export const DueFlashcardItemsSchema = z.array(DueFlashcardItemSchema);
+
+/** Payload of `get_practice_state_breakdown`. */
+export const StateBreakdownSchema = z.object({
+  totalCards: z.number(),
+  neverPracticed: z.number(),
+  learning: z.number(),
+  review: z.number(),
+  relearning: z.number(),
+  leeched: z.number(),
+  /** Cards with ≥1 practice attempt — whole accessible collection, never state-filtered. */
+  practicedCards: z.number(),
+  /** Mean of per-card correct rates, 0–100 (0 when nothing practiced). */
+  averageAccuracy: z.number(),
+  /** Mean easiness factor over reviewed cards (0 when none). */
+  averageEasinessFactor: z.number(),
+});
 
 export interface StateBreakdown {
   totalCards: number;

@@ -198,7 +198,9 @@ export class ActivityService {
       .order('practiced_at', { ascending: false });
 
     const lastActiveMap = new Map<string, string>();
-    for (const row of (lastPractice || []) as Array<{ user_id: string; practiced_at: string }>) {
+    for (const row of lastPractice ?? []) {
+      // A practice row without a user or a timestamp carries no "last active" answer.
+      if (!row.user_id || !row.practiced_at) continue;
       if (!lastActiveMap.has(row.user_id)) {
         lastActiveMap.set(row.user_id, row.practiced_at);
       }

@@ -70,7 +70,7 @@ interface LoadedInvite {
 export class InvitationService {
   constructor(
     private clientFactory: () => Promise<SupabaseClient<Database>>,
-    private createAdminClient: () => SupabaseClient = createServiceClient,
+    private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
     /** Null when no mail adapter is configured: the copyable link is then the only delivery path. */
     private mailerFactory: () => Mailer | null = () => null,
     /** Tells the inviter that the invitation was accepted; none in unit tests. */
@@ -112,8 +112,8 @@ export class InvitationService {
         admin.from('organizations').select('name').eq('id', organizationId).maybeSingle(),
         admin.from('profiles').select('full_name').eq('id', ctx.userId).maybeSingle(),
       ]);
-      const orgName = (org.data?.name as string | undefined) ?? 'StudiQ';
-      const inviterName = (inviter.data?.full_name as string | null | undefined) ?? null;
+      const orgName = org.data?.name ?? 'StudiQ';
+      const inviterName = inviter.data?.full_name ?? null;
 
       const outcomes = await Promise.allSettled(
         allowed.map((job) =>
@@ -168,9 +168,6 @@ export class InvitationService {
 
     if (error || !data) return null;
 
-    const org = data.organizations as unknown as { name: string } | null;
-    const role = data.org_roles as unknown as { name: string; organization_id: string } | null;
-
     return {
       email: data.email,
       inviterId: data.inviter_id ?? null,
@@ -178,9 +175,9 @@ export class InvitationService {
       expiresAt: data.expires_at,
       organizationId: data.organization_id ?? null,
       targetOrgRoleId: data.target_org_role_id,
-      organizationName: org?.name ?? '',
-      orgRoleName: role?.name ?? '',
-      roleOrganizationId: role?.organization_id ?? null,
+      organizationName: data.organizations?.name ?? '',
+      orgRoleName: data.org_roles?.name ?? '',
+      roleOrganizationId: data.org_roles?.organization_id ?? null,
     };
   }
 
@@ -190,7 +187,9 @@ export class InvitationService {
    * organization (a cross-tenant reference would leak that org's permission
    * scopes through the member row).
    */
-  private isInviteUsable(invite: LoadedInvite): boolean {
+  private isInviteUsable(
+    invite: LoadedInvite,
+  ): invite is LoadedInvite & { organizationId: string } {
     return (
       !invite.isAccepted &&
       new Date(invite.expiresAt) >= new Date() &&
@@ -270,7 +269,7 @@ export class InvitationService {
     });
 
     if (error) return toDbFailure(error);
-    return success(data === true);
+    return success(data);
   }
 
   /**
@@ -564,7 +563,7 @@ export class InvitationService {
     // the org/role names.
     return success({
       email: invite.email,
-      organizationId: invite.organizationId as string,
+      organizationId: invite.organizationId,
       organizationName: invite.organizationName,
       targetRole: invite.targetOrgRoleId,
       orgRoleName: invite.orgRoleName,
@@ -746,12 +745,11 @@ export class InvitationService {
 
     return success(
       (data ?? []).map((inv) => {
-        const role = inv.org_roles as unknown as { name: string } | null;
         return {
           id: inv.id,
           email: inv.email,
           targetOrgRoleId: inv.target_org_role_id,
-          orgRoleName: role?.name ?? '',
+          orgRoleName: inv.org_roles?.name ?? '',
           isAccepted: inv.is_accepted,
           expiresAt: inv.expires_at,
           createdAt: inv.created_at,

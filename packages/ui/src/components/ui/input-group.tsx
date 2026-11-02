@@ -65,7 +65,7 @@ function InputGroupAddon({
       // Pointer-down (not click) keeps keyboard users out of a container that only forwards
       // focus to the input: it matches how a native input focuses, and needs no tab stop.
       onPointerDown={(e) => {
-        if ((e.target as HTMLElement).closest('button')) {
+        if (e.target instanceof Element && e.target.closest('button')) {
           return;
         }
         e.currentTarget.parentElement?.querySelector('input')?.focus();

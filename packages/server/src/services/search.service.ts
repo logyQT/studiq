@@ -9,24 +9,6 @@ import type { SearchResult } from '@studiq/server/models/search.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
-/**
- * The generated RPC arg types represent nullable SQL parameters as optional
- * (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
- * keep sending it: the search RPC treats an absent value as "no filter".
- */
-function nullableRpcArg<T>(value: T | null): T {
-  return value as T;
-}
-
-type RpcRow = {
-  id: string;
-  front: string;
-  back: string;
-  rank: number;
-  deck_id: string | null;
-  deck_name: string | null;
-};
-
 export class SearchService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
@@ -52,13 +34,13 @@ export class SearchService {
     const { data, error } = await supabase.rpc('search_flashcards', {
       search_query: q,
       result_limit: limit,
-      p_user_id: nullableRpcArg(p_user_id),
-      p_organization_id: nullableRpcArg(p_organization_id),
+      p_user_id,
+      p_organization_id,
     });
 
     if (error) return toDbFailure(error);
 
-    const rows = data as RpcRow[] | null;
+    const rows = data;
     if (!rows || rows.length === 0) return success([]);
 
     const basePath = ctx.accountType === AccountType.EDUCATOR ? '/edu' : '/app';

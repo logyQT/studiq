@@ -10,7 +10,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
 export async function PUT(request: Request, { params }: RouteContext) {
   const { id } = await params;
-  const body = await request.json();
+  const body: unknown = await request.json();
   return toNextResponse(await subscriptionPlanAdminController.update(id, body));
 }
 

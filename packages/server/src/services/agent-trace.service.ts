@@ -1,5 +1,38 @@
 import { mkdirSync } from 'node:fs';
+import type { Database as BunSqliteDatabase, Statement as BunSqliteStatement } from 'bun:sqlite';
+import { isRecord } from '@studiq/server/lib/record';
 import { SERVER_SESSION_ID } from '@studiq/server/lib/server-session';
+
+const TRACE_EVENT_TYPES = [
+  'step',
+  'tool_call',
+  'tool_result',
+  'llm_request',
+  'llm_response',
+  'error',
+  'retry',
+] as const;
+
+export type TraceEventType = (typeof TRACE_EVENT_TYPES)[number];
+
+function isTraceEventType(value: unknown): value is TraceEventType {
+  return typeof value === 'string' && (TRACE_EVENT_TYPES as readonly string[]).includes(value);
+}
+
+/** SQLite hands back loose values; text columns are read as text. */
+function asText(value: unknown): string {
+  return typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'bigint' ||
+    typeof value === 'boolean'
+    ? String(value)
+    : '';
+}
+
+/** A JSON column that must contain an object (arrays/scalars are treated as empty). */
+function asDataRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) && !Array.isArray(value) ? value : {};
+}
 
 export interface TraceEvent {
   id: string;
@@ -8,8 +41,7 @@ export interface TraceEvent {
   conversationId?: string;
   agentName: string;
   iteration?: number;
-  eventType:
-    'step' | 'tool_call' | 'tool_result' | 'llm_request' | 'llm_response' | 'error' | 'retry';
+  eventType: TraceEventType;
   label: string;
   data: Record<string, unknown>;
 }
@@ -25,12 +57,10 @@ export interface TraceFilters {
   sort?: 'asc' | 'desc';
 }
 
+/** The slice of `bun:sqlite` this tracer touches, typed by bun's own definitions. */
 interface SqliteDatabase {
-  run(sql: string, params?: unknown[]): void;
-  query(sql: string): {
-    all(params?: unknown[]): Array<Record<string, unknown>>;
-    get(params?: unknown[]): Record<string, unknown> | undefined;
-  };
+  run: BunSqliteDatabase['run'];
+  query(sql: string): Pick<BunSqliteStatement, 'all' | 'get'>;
 }
 
 export class AgentTraceService {
@@ -63,7 +93,7 @@ export class AgentTraceService {
       db.run('CREATE INDEX IF NOT EXISTS idx_traces_session ON traces(serverSessionId)');
       db.run('CREATE INDEX IF NOT EXISTS idx_traces_conversation ON traces(conversationId)');
       db.run('CREATE INDEX IF NOT EXISTS idx_traces_event_type ON traces(eventType)');
-      this.db = db as unknown as SqliteDatabase;
+      this.db = db;
       return this.db;
     } catch {
       return null;
@@ -139,24 +169,32 @@ export class AgentTraceService {
     const offset = filters.offset || 0;
 
     try {
-      const countRow = db.query(`SELECT COUNT(*) as cnt FROM traces ${where}`).all(params);
-      const total = (countRow[0] as { cnt?: number })?.cnt ?? 0;
+      const [countRow] = db.query(`SELECT COUNT(*) as cnt FROM traces ${where}`).all(params);
+      const total = isRecord(countRow) && typeof countRow.cnt === 'number' ? countRow.cnt : 0;
 
       const rows = db
         .query(`SELECT * FROM traces ${where} ORDER BY timestamp ${order} LIMIT ? OFFSET ?`)
         .all([...params, limit, offset]);
 
-      const events: TraceEvent[] = rows.map((r) => ({
-        id: String(r.id),
-        timestamp: String(r.timestamp),
-        serverSessionId: String(r.serverSessionId),
-        conversationId: typeof r.conversationId === 'string' ? r.conversationId : undefined,
-        agentName: String(r.agentName),
-        iteration: r.iteration != null ? Number(r.iteration) : undefined,
-        eventType: r.eventType as TraceEvent['eventType'],
-        label: String(r.label),
-        data: typeof r.data === 'string' ? JSON.parse(r.data) : (r.data ?? {}),
-      }));
+      const events: TraceEvent[] = rows.flatMap((row) => {
+        if (!isRecord(row)) return [];
+        return [
+          {
+            id: asText(row.id),
+            timestamp: asText(row.timestamp),
+            serverSessionId: asText(row.serverSessionId),
+            conversationId: typeof row.conversationId === 'string' ? row.conversationId : undefined,
+            agentName: asText(row.agentName),
+            iteration: row.iteration != null ? Number(row.iteration) : undefined,
+            eventType: isTraceEventType(row.eventType) ? row.eventType : 'step',
+            label: asText(row.label),
+            data:
+              typeof row.data === 'string'
+                ? asDataRecord(JSON.parse(row.data))
+                : asDataRecord(row.data),
+          },
+        ];
+      });
 
       return { events, total };
     } catch {
@@ -190,13 +228,12 @@ export class AgentTraceService {
 const GLOBAL_KEY = '__agentTraceService';
 
 function getGlobalTraceService(): AgentTraceService {
-  if (typeof globalThis !== 'undefined' && (globalThis as Record<string, unknown>)[GLOBAL_KEY]) {
-    return (globalThis as Record<string, unknown>)[GLOBAL_KEY] as AgentTraceService;
-  }
+  // Kept on `globalThis` so a dev-mode module reload reuses the same tracer.
+  const existing: unknown = Reflect.get(globalThis, GLOBAL_KEY);
+  if (existing instanceof AgentTraceService) return existing;
+
   const service = new AgentTraceService();
-  if (typeof globalThis !== 'undefined') {
-    (globalThis as Record<string, unknown>)[GLOBAL_KEY] = service;
-  }
+  Reflect.set(globalThis, GLOBAL_KEY, service);
   return service;
 }
 

@@ -49,9 +49,8 @@ export class OrgRoleService {
 
     return success(
       (data ?? []).map((r) => {
-        const memberCount = (r.org_members as unknown as { count: number }[])?.[0]?.count ?? 0;
-        const permissionCount =
-          (r.org_role_permissions as unknown as { count: number }[])?.[0]?.count ?? 0;
+        const memberCount = r.org_members?.[0]?.count ?? 0;
+        const permissionCount = r.org_role_permissions?.[0]?.count ?? 0;
         return {
           id: r.id,
           name: r.name,
@@ -107,9 +106,10 @@ export class OrgRoleService {
       // `is_system` is nullable (`DEFAULT false`); treat a missing flag as custom.
       isSystem: data.is_system ?? false,
       permissions:
-        (data.org_role_permissions as unknown as { permission_name: string; scope: string }[])?.map(
-          (p) => ({ permissionName: p.permission_name, scope: p.scope }),
-        ) ?? [],
+        data.org_role_permissions?.map((p) => ({
+          permissionName: p.permission_name,
+          scope: p.scope,
+        })) ?? [],
     });
   }
 

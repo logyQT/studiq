@@ -5,6 +5,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 
 // Accounts are banned for this long once soft-deleted, so they can't sign
 // in during the grace window without needing our own session check.
@@ -21,7 +22,7 @@ export interface AdminUser {
   id: string;
   email: string;
   fullName: string | null;
-  createdAt: string;
+  createdAt: string | null;
   personalPlanKey: string | null;
   accountType: string | null;
   bannedUntil: string | null;
@@ -29,15 +30,11 @@ export interface AdminUser {
   purgeAt: string | null;
 }
 
-interface ProfileRow {
-  id: string;
-  email: string;
-  full_name: string | null;
-  created_at: string;
-  personal_plan_key: string | null;
-  deleted_at: string | null;
-  purge_at: string | null;
-}
+/** Exactly the columns `PROFILE_COLUMNS` projects, taken from the generated row type. */
+type ProfileRow = Pick<
+  Database['public']['Tables']['profiles']['Row'],
+  'id' | 'email' | 'full_name' | 'created_at' | 'personal_plan_key' | 'deleted_at' | 'purge_at'
+>;
 
 export interface PurgeExpiredResult {
   purged: number;
@@ -64,7 +61,7 @@ interface FilterableQuery<T> {
 }
 
 export class UserAdminService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /** Hard-deletes any account whose grace period has elapsed. Called at the
    * top of listUsers() (no cron infra in this repo yet) and exposed via its
@@ -115,7 +112,7 @@ export class UserAdminService {
    *   the account are ON DELETE CASCADE and disappear with the profile).
    */
   private async deleteAccount(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     id: string,
   ): Promise<ServiceResult<{ success: true }>> {
     const { error: seatError } = await supabase
@@ -151,7 +148,10 @@ export class UserAdminService {
     return success({ success: true });
   }
 
-  private async enrich(profiles: ProfileRow[], supabase: SupabaseClient): Promise<AdminUser[]> {
+  private async enrich(
+    profiles: ProfileRow[],
+    supabase: SupabaseClient<Database>,
+  ): Promise<AdminUser[]> {
     return Promise.all(
       profiles.map(async (p) => {
         const { data } = await supabase.auth.admin.getUserById(p.id);
@@ -163,7 +163,10 @@ export class UserAdminService {
           personalPlanKey: p.personal_plan_key,
           deletedAt: p.deleted_at,
           purgeAt: p.purge_at,
-          accountType: (data.user?.app_metadata?.account_type as string) ?? null,
+          accountType:
+            typeof data.user?.app_metadata?.account_type === 'string'
+              ? data.user.app_metadata.account_type
+              : null,
           bannedUntil: data.user?.banned_until ?? null,
         };
       }),
@@ -191,7 +194,7 @@ export class UserAdminService {
   }
 
   private async countUsers(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     query: ListUsersQuery,
   ): Promise<ServiceResult<number>> {
     const dbQuery = this.applyListFilters(

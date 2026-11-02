@@ -203,9 +203,8 @@ export class SeatService {
         // rows of users who share an organization with them. An assignment that
         // outlived the membership (historical removals) must still be listed so
         // a manager can free the seat, so `profile` may be null here.
-        userEmail: (a.profile as unknown as { email: string } | null)?.email ?? '',
-        userFullName:
-          (a.profile as unknown as { full_name: string | null } | null)?.full_name ?? null,
+        userEmail: a.profile?.email ?? '',
+        userFullName: a.profile?.full_name ?? null,
         assignedAt: a.assigned_at,
       })),
     );
@@ -260,7 +259,7 @@ export class SeatService {
         .eq('user_id', input.userId)
         .maybeSingle();
 
-      const roleName = (member?.org_roles as unknown as { name: string })?.name;
+      const roleName = member?.org_roles?.name;
       const userTier = roleName ? ROLE_TIER_MAP[roleName] : undefined;
 
       if (userTier && userTier !== poolTier) {

@@ -120,11 +120,29 @@ export function buildQueryFilter(
   }
 }
 
-// ── Resource-scoped actions (async — group membership needs DB lookups) ────
-export type ResourceType = 'deck' | 'flashcard' | 'question_bank' | 'question' | 'topic';
+// ── Action / context narrowing ────────────────────────────────────────────
+const RESOURCE_TYPES = ['deck', 'flashcard', 'question_bank', 'question', 'topic'] as const;
 
-function resourceTypeFromPermission(permission: string): ResourceType {
-  return permission.replace(/\.[^.]+$/, '') as ResourceType;
+// ── Resource-scoped actions (async — group membership needs DB lookups) ────
+export type ResourceType = (typeof RESOURCE_TYPES)[number];
+
+export function isResourceType(value: string): value is ResourceType {
+  return (RESOURCE_TYPES as readonly string[]).includes(value);
+}
+
+export function isPermissionScope(value: unknown): value is PermissionScope {
+  return value === 'own' || value === 'group' || value === 'organization' || value === 'any';
+}
+
+export function isAccountType(value: unknown): value is AccountType {
+  return (
+    value === AccountType.STUDENT || value === AccountType.EDUCATOR || value === AccountType.MANAGER
+  );
+}
+
+function resourceTypeFromPermission(permission: string): ResourceType | null {
+  const candidate = permission.replace(/\.[^.]+$/, '');
+  return isResourceType(candidate) ? candidate : null;
 }
 
 export async function can(

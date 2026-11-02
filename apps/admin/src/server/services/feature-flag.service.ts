@@ -7,9 +7,10 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 
 export class FeatureFlagService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getAll() {
     const supabase = await this.clientFactory();
@@ -52,7 +53,7 @@ export class FeatureFlagService {
 
   async update(id: string, input: UpdateFeatureFlagInput) {
     const supabase = await this.clientFactory();
-    const updateData: Record<string, unknown> = {};
+    const updateData: Database['public']['Tables']['feature_flags']['Update'] = {};
     if (input.key !== undefined) updateData.key = input.key;
     if (input.name !== undefined) updateData.name = input.name;
     if (input.description !== undefined) updateData.description = input.description;

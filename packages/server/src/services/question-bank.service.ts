@@ -15,7 +15,6 @@ import type {
   BatchDeleteQuestionBankInput,
   BulkCreateQuestionBankInput,
   CreateQuestionBankInput,
-  QuestionBank,
   QuestionBankListQuery,
   UpdateQuestionBankInput,
 } from '@studiq/server/models/question-bank.model';
@@ -133,24 +132,20 @@ export class QuestionBankService {
     const { data, error } = await query;
     if (error) return toDbFailure(error);
 
-    const rows = data as Array<Record<string, unknown>> | null;
-    const hasMore = (rows?.length ?? 0) > pageSize;
-    const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-    const items = sliced.map((item) => {
-      const countArr = item.question_count as { count: number }[] | undefined;
-      const groups = item.bank_groups as { group_id: string }[] | undefined;
-      return {
-        ...item,
-        question_count: countArr?.[0]?.count ?? 0,
-        groupIds: groups?.map((g) => g.group_id) ?? [],
-      };
-    });
+    const rows = data ?? [];
+    const hasMore = rows.length > pageSize;
+    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
+    const items = sliced.map((item) => ({
+      ...item,
+      question_count: item.question_count?.[0]?.count ?? 0,
+      groupIds: item.bank_groups?.map((g) => g.group_id) ?? [],
+    }));
     const nextCursor = hasMore
       ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
       : null;
 
     return success({
-      items: items as unknown as QuestionBank[],
+      items,
       nextCursor,
       hasMore,
     });
@@ -174,14 +169,10 @@ export class QuestionBankService {
     const { data: bank, error } = await query.single();
     if (error || !bank) return failure('NOT_FOUND');
 
-    const countArr = (bank as Record<string, unknown>).question_count as
-      { count: number }[] | undefined;
-    const groups = (bank as Record<string, unknown>).bank_groups as
-      { group_id: string }[] | undefined;
     return success({
       ...bank,
-      question_count: countArr?.[0]?.count ?? 0,
-      groupIds: groups?.map((g) => g.group_id) ?? [],
+      question_count: bank.question_count?.[0]?.count ?? 0,
+      groupIds: bank.bank_groups?.map((g) => g.group_id) ?? [],
     });
   }
 
@@ -346,7 +337,10 @@ export class QuestionBankService {
    * is scoped to content owned by the caller **in that org**, so personal-space
    * banks never consume the org plan's capacity.
    */
-  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+  private async countOwned(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<number> {
     let query = supabase
       .from('question_banks')
       .select('*', { count: 'exact', head: true })

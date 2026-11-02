@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { Permission } from '@studiq/server/lib/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -7,11 +7,10 @@ export class PermissionsController {
   listMyPermissions(ctx: RequestContext): ControllerResponse {
     const permissions = { ...ctx.permissionScopes };
 
-    for (const key of Object.keys(Permission)) {
-      const perm = Permission[key as keyof typeof Permission];
+    for (const perm of Object.values(Permission)) {
       if (!(perm in permissions)) {
         if (
-          (ctx.accountType === 'student' || ctx.accountType === 'educator') &&
+          (ctx.accountType === AccountType.STUDENT || ctx.accountType === AccountType.EDUCATOR) &&
           (perm.endsWith('.read') ||
             perm.endsWith('.create') ||
             perm.endsWith('.update') ||

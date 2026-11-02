@@ -78,6 +78,15 @@ export const ExportQuestionsQuerySchema = registry.register(
 );
 
 export type TransferQuestion = z.infer<typeof TransferQuestionSchema>;
+
+/**
+ * A question whose `type` has not been validated yet. The CSV reader and the
+ * bank export both emit these: a bank may hold a `matching` question that the
+ * import format cannot represent, and only `TransferQuestionSchema` decides
+ * whether a question is re-importable.
+ */
+export type RawTransferQuestion = Omit<TransferQuestion, 'type'> & { type: string };
+
 export type ImportQuestionsInput = z.infer<typeof ImportQuestionsSchema>;
 
 export interface ImportQuestionsResult {

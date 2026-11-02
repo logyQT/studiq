@@ -1,8 +1,15 @@
+import { z } from '@studiq/server/lib/zod';
 import { cookies } from 'next/headers';
 import { getRequestConfig } from 'next-intl/server';
 
 export const locales = ['pl', 'en'];
 const defaultLocale = 'pl';
+
+/** `namespace -> key -> message`; the JSON files are flat per namespace. */
+const MessageTableSchema = z.record(z.string(), z.record(z.string(), z.string()));
+
+/** A dynamic `import()` of a JSON file resolves to `any`; validate the envelope. */
+const MessageModuleSchema = z.object({ default: MessageTableSchema });
 
 function mergeCommon(raw: Record<string, Record<string, string>>) {
   const common = raw.Common ?? {};
@@ -21,6 +28,8 @@ export default getRequestConfig(async () => {
 
   return {
     locale: activeLocale,
-    messages: mergeCommon((await import(`./messages/${activeLocale}.json`)).default),
+    messages: mergeCommon(
+      MessageModuleSchema.parse(await import(`./messages/${activeLocale}.json`)).default,
+    ),
   };
 });

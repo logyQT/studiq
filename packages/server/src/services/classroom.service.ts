@@ -5,13 +5,14 @@ import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { CreateClassroomInput } from '@studiq/server/models/classroom.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class ClassroomService {
   // Classroom provisioning is the only thing this service does, and every step
   // runs before the caller is a member: RLS hides the new organization, its
   // trigger-created roles and the membership row from a user-session client, so
   // the whole sequence is service-role (authorization stays in the controller).
-  constructor(private createAdminClient: () => SupabaseClient = createServiceClient) {}
+  constructor(private createAdminClient: () => SupabaseClient<Database> = createServiceClient) {}
 
   async create(ctx: RequestContext, data: CreateClassroomInput): Promise<ServiceResult<unknown>> {
     const supabase = this.createAdminClient();

@@ -64,9 +64,8 @@ export class GroupService {
 
     return success(
       data.map((g) => {
-        const total = (g.group_members as unknown as { count: number }[])?.[0]?.count ?? 0;
-        const teachers =
-          (g.group_members_teachers as unknown as { count: number }[])?.[0]?.count ?? 0;
+        const total = g.group_members?.[0]?.count ?? 0;
+        const teachers = g.group_members_teachers?.[0]?.count ?? 0;
         return {
           id: g.id,
           name: g.name,
@@ -121,12 +120,14 @@ export class GroupService {
   private async assertCanManage(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
     if (canManageAnyGroup(ctx)) return success(undefined);
 
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
     const supabase = await this.clientFactory();
     const { data: group } = await supabase
       .from('groups')
       .select('created_by')
       .eq('id', id)
-      .eq('organization_id', ctx.activeOrgId as string)
+      .eq('organization_id', ctx.activeOrgId)
       .maybeSingle();
 
     if (!group) return failure('NOT_FOUND');
