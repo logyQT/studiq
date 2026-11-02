@@ -37,14 +37,14 @@ export function ProblemQuestionsCard({
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-4">
-        <CardTitle role="heading" aria-level={2} className="flex items-center gap-2 text-base">
+        <CardTitle className="flex items-center gap-2 text-base">
           <div className="rounded-lg bg-amber-500/10 p-1.5">
             <AlertTriangle
               className="h-4 w-4 text-amber-600 dark:text-amber-400"
               aria-hidden="true"
             />
           </div>
-          {t('problem_title')}
+          <h2>{t('problem_title')}</h2>
         </CardTitle>
         <CardDescription>{t('problem_desc')}</CardDescription>
       </CardHeader>

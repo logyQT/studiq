@@ -134,6 +134,8 @@ export function LanguageSwitcherPanel({
           ref={inputRef}
           value={query}
           onValueChange={setQuery}
+          // The search box takes focus when the panel opens (inline in the mobile sheet it can opt out).
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- see above.
           autoFocus={autoFocus}
           placeholder={t('search_placeholder')}
           className={cn('h-full py-0 pr-7 focus-visible:ring-0', fill && 'text-base')}
@@ -199,9 +201,7 @@ export function LanguageSwitcherPanel({
       </CommandList>
       <ActiveDescendantSync inputRef={inputRef} query={query} locale={locale} />
       <CommandEmpty className="px-3 py-8 text-center text-sm">
-        <p role="status" className="font-medium">
-          {t('empty_title')}
-        </p>
+        <output className="block font-medium">{t('empty_title')}</output>
         <p className="mt-1 text-xs text-muted-foreground">{t('empty_hint')}</p>
       </CommandEmpty>
     </Command>

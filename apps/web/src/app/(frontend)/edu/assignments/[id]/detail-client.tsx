@@ -153,6 +153,7 @@ function SortableQuestionRow({
       className={`flex items-center gap-3 p-3 rounded-lg border ${isDragging ? 'z-10' : ''}`}
     >
       <button
+        type="button"
         className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
         {...attributes}
         {...listeners}
@@ -170,6 +171,7 @@ function SortableQuestionRow({
         {question.points} pts
       </span>
       <button
+        type="button"
         className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
         onClick={onRemove}
       >
@@ -334,7 +336,7 @@ export default function AssignmentDetailClient() {
 
   const handleUnpublish = async () => {
     await unpublishMutation.mutateAsync(undefined);
-    refetch();
+    void refetch();
   };
 
   const addQuestionsMutation = useApiMutation<unknown, { questionIds: string[] }>({
@@ -770,7 +772,7 @@ export default function AssignmentDetailClient() {
                           });
                           setSelectedQuestionIds([]);
                           setBrowseOpen(false);
-                          refetch();
+                          void refetch();
                         }}
                       >
                         {t('add_selected')} ({selectedQuestionIds.length})
@@ -868,7 +870,7 @@ export default function AssignmentDetailClient() {
                             types: randomizeTypes.length > 0 ? randomizeTypes : undefined,
                           });
                           setRandomizeOpen(false);
-                          refetch();
+                          void refetch();
                         }}
                       >
                         {t('add_random')}
@@ -986,7 +988,7 @@ export default function AssignmentDetailClient() {
               disabled={deleteMutation.isPending}
               onClick={(e) => {
                 e.preventDefault();
-                handleDelete();
+                void handleDelete();
               }}
               className="bg-destructive text-destructive-foreground"
             >

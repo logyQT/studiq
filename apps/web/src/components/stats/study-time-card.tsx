@@ -46,7 +46,7 @@ export function StudyTimeCard() {
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="text-base">{t('study_time_title')}</CardTitle>
-        <div className="flex items-center gap-2" role="group" aria-label={t('study_range_label')}>
+        <fieldset className="flex items-center gap-2" aria-label={t('study_range_label')}>
           {RANGES.map((range) => (
             <Button
               key={range}
@@ -59,7 +59,7 @@ export function StudyTimeCard() {
               {t('study_range_days', { days: range })}
             </Button>
           ))}
-        </div>
+        </fieldset>
       </CardHeader>
       <CardContent className="space-y-6">
         {isLoading ? (

@@ -113,7 +113,7 @@ describe('lists report a failed load', () => {
   });
 
   it('the shared empty state renders a real heading', () => {
-    expect(src('components/shared/empty-state.tsx')).toContain('role="heading" aria-level={3}');
+    expect(src('components/shared/empty-state.tsx')).toContain('<h3>');
   });
 
   it('the member and invitation search hand a no-results state instead of "no members"', () => {

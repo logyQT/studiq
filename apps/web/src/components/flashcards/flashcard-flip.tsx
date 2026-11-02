@@ -4,6 +4,13 @@ import { motion } from 'motion/react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
+/*
+ * The flip card is a focusable group, not a button: its markdown faces keep their own links, and a
+ * button/switch role would make those descendants presentational. That is why a non-interactive
+ * element carries `tabIndex` and the key/mouse handlers below.
+ */
+/* eslint-disable jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- see above. */
+
 interface FlashcardFlipProps {
   isFlipped: boolean;
   front: ReactNode;
@@ -28,7 +35,7 @@ export function FlashcardFlip({
   // Keyboard parity with `onClick`, for the card itself only: a focused link inside a face keeps
   // Enter for its own activation. The event is consumed so the page-level Space handlers (the
   // study session flips on Space) cannot flip the card a second time.
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+  function onKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (e.target !== e.currentTarget) return;
     if (e.key !== 'Enter' && e.key !== ' ' && e.code !== 'Space') return;
     // Holding the key must not flip the card over and over; consume the repeats so the page-level
@@ -44,8 +51,7 @@ export function FlashcardFlip({
   }
 
   return (
-    <div
-      role="group"
+    <fieldset
       aria-label={ariaLabel}
       aria-keyshortcuts="Enter Space"
       tabIndex={0}
@@ -83,6 +89,6 @@ export function FlashcardFlip({
           {back}
         </div>
       </motion.div>
-    </div>
+    </fieldset>
   );
 }

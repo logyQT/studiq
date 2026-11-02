@@ -67,7 +67,11 @@ export const QuestionBankCard = memo(
         {/* Mobile: Compact row */}
         <div className="relative flex items-center justify-between gap-3 p-3.5 sm:hidden max-w-[calc(100vw-2rem)]">
           {isSelecting && (
-            <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
+            <div
+              role="presentation"
+              className="absolute top-4 right-4 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
               <Checkbox
                 checked={isSelected}
                 onCheckedChange={onToggleSelect}
@@ -178,7 +182,11 @@ export const QuestionBankCard = memo(
         {/* Desktop: Card grid item */}
         <div className="hidden sm:flex flex-col flex-1 p-5 relative">
           {isSelecting && (
-            <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
+            <div
+              role="presentation"
+              className="absolute top-4 right-4 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
               <Checkbox
                 checked={isSelected}
                 onCheckedChange={onToggleSelect}

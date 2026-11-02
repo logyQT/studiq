@@ -115,6 +115,8 @@ export function MarkdownToolbar({
               }}
             >
               <Input
+                // Focus is the whole point of this popover: it exists to type one URL.
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- see above.
                 autoFocus
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
@@ -230,6 +232,7 @@ export function MarkdownToolbar({
                     <button
                       key={i}
                       type="button"
+                      aria-label={`${col} × ${row}`}
                       className={cn(
                         'h-5 w-5 rounded-sm border transition-colors',
                         isHighlighted

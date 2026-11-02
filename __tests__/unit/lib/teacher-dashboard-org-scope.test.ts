@@ -160,7 +160,7 @@ describe('dashboard screen', () => {
     (name) => {
       const card = read(`apps/web/src/components/edu/dashboard/${name}.tsx`);
       expect(card).toContain('<CardError onRetry={onRetry} />');
-      expect(card).toContain('role="heading" aria-level={2}');
+      expect(card).toContain('<h2>');
     },
   );
 

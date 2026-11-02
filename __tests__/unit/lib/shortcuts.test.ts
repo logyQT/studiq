@@ -350,7 +350,7 @@ describe('the flashcard is keyboard operable (#674 review)', () => {
   it('is a focusable group, not a button: its faces contain markdown links', () => {
     const card = flashcard();
     expect(card).toContain('tabIndex={0}');
-    expect(card).toContain('role="group"');
+    expect(card).toContain('<fieldset');
     // A button role would make every link inside the faces presentational.
     expect(card).not.toContain('role="button"');
     expect(card).toContain('aria-keyshortcuts="Enter Space"');

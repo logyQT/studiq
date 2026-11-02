@@ -41,6 +41,7 @@ function BrowserItem({
     >
       {draggable && (
         <button
+          type="button"
           {...attributes}
           {...listeners}
           className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"

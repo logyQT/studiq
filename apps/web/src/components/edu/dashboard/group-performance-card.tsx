@@ -47,11 +47,11 @@ export function GroupPerformanceCard({
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-4">
-        <CardTitle role="heading" aria-level={2} className="flex items-center gap-2 text-base">
+        <CardTitle className="flex items-center gap-2 text-base">
           <div className="rounded-lg bg-primary/10 p-1.5">
             <Users className="h-4 w-4 text-primary" aria-hidden="true" />
           </div>
-          {t('group_performance_title')}
+          <h2>{t('group_performance_title')}</h2>
         </CardTitle>
         <CardDescription>{t('group_performance_desc', { days })}</CardDescription>
       </CardHeader>

@@ -510,15 +510,33 @@ export function DeckDetailScreen({
     onMoveTargetDeckIdChange: (moveTargetDeckId) => setD((prev) => ({ ...prev, moveTargetDeckId })),
     onCopyTargetDeckIdChange: (copyTargetDeckId) => setD((prev) => ({ ...prev, copyTargetDeckId })),
 
-    onDelete: handleDelete,
-    onMove: handleMove,
-    onCopy: handleCopy,
-    onDeckUpdate: handleDeckUpdate,
-    onDeckDelete: handleDeckDelete,
-    onBulkDelete: handleBulkDelete,
-    onBulkTopics: handleBulkTopics,
-    onBulkMove: handleBulkMove,
-    onBulkCopy: handleBulkCopy,
+    onDelete: () => {
+      void handleDelete();
+    },
+    onMove: () => {
+      void handleMove();
+    },
+    onCopy: () => {
+      void handleCopy();
+    },
+    onDeckUpdate: (data) => {
+      void handleDeckUpdate(data);
+    },
+    onDeckDelete: () => {
+      void handleDeckDelete();
+    },
+    onBulkDelete: () => {
+      void handleBulkDelete();
+    },
+    onBulkTopics: () => {
+      void handleBulkTopics();
+    },
+    onBulkMove: () => {
+      void handleBulkMove();
+    },
+    onBulkCopy: () => {
+      void handleBulkCopy();
+    },
     onBulkTopicsOperationChange: (op) => setD((prev) => ({ ...prev, bulkTopicsOperation: op })),
     onBulkMoveTargetDeckIdChange: (bulkMoveTargetDeckId) =>
       setD((prev) => ({ ...prev, bulkMoveTargetDeckId })),
@@ -655,6 +673,7 @@ export function DeckDetailScreen({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    type="button"
                     className="group flex h-14 w-14 items-center justify-center rounded-lg bg-muted-foreground/10 hover:bg-muted-foreground/20 transition-colors cursor-pointer"
                     onClick={() => router.push(`${practiceHref}${currentDeck!.id}`)}
                   >

@@ -136,6 +136,7 @@ function SortableQuestion({
       className="rounded-lg border p-3 flex items-start gap-3 bg-card"
     >
       <button
+        type="button"
         {...attributes}
         {...listeners}
         className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
@@ -164,6 +165,7 @@ function SortableQuestion({
         </span>
       </div>
       <button
+        type="button"
         onClick={() => onRemove(question.question_id)}
         className="text-muted-foreground hover:text-destructive"
       >
@@ -264,7 +266,8 @@ export function EditQuizClient() {
     setHasUnsavedChanges(true);
     if (isSaving.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
+
+    const persist = async () => {
       if (isSaving.current) return;
       isSaving.current = true;
       try {
@@ -280,6 +283,10 @@ export function EditQuizClient() {
       } finally {
         isSaving.current = false;
       }
+    };
+
+    saveTimer.current = setTimeout(() => {
+      void persist();
     }, 5000);
   };
 
@@ -487,7 +494,10 @@ export function EditQuizClient() {
         <DragOverlay>
           {activeDragItem ? (
             <div className="rounded-lg border p-3 flex items-start gap-3 bg-card shadow-lg">
-              <button className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground">
+              <button
+                type="button"
+                className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+              >
                 <GripVertical className="w-4 h-4" />
               </button>
               <div className="flex-1 min-w-0">
@@ -507,7 +517,7 @@ export function EditQuizClient() {
                   <span className="text-sm text-muted-foreground shrink-0">
                     {t('points_short', { points: activeDragItem.points })}
                   </span>
-                  <button className="text-muted-foreground">
+                  <button type="button" className="text-muted-foreground">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </>

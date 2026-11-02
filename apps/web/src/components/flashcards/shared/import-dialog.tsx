@@ -109,7 +109,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
       e.preventDefault();
       const file = e.dataTransfer.files?.[0];
       if (file && (file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv')) {
-        handleFile(file);
+        void handleFile(file);
       } else if (file) {
         toast.error(t('csv_parse_error'));
       }
@@ -120,7 +120,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) handleFile(file);
+      if (file) void handleFile(file);
     },
     [handleFile],
   );
@@ -165,9 +165,9 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
       setStep('done');
 
       if (deckId) {
-        queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
+        void queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
       }
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      void queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
     } catch {
       toast.error(t('import_failed'));
       setStep('preview');
@@ -194,15 +194,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
 
         <div className="flex-1 overflow-y-auto min-h-0">
           {step === 'upload' && (
-            <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
-              className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-12 cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">{t('drop_csv')}</p>
-              <p className="text-sm text-muted-foreground mt-1">{t('csv_format_hint')}</p>
+            <>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -210,7 +202,18 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                 className="hidden"
                 onChange={handleFileSelect}
               />
-            </div>
+              <button
+                type="button"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                className="flex w-full flex-col items-center justify-center border-2 border-dashed rounded-lg p-12 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+                <span className="text-lg font-medium">{t('drop_csv')}</span>
+                <span className="text-sm text-muted-foreground mt-1">{t('csv_format_hint')}</span>
+              </button>
+            </>
           )}
 
           {step === 'preview' && (

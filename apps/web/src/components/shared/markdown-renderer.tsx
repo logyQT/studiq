@@ -124,6 +124,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           hr: () => <hr className="my-2 border-border" />,
           audio: ({ src }) =>
             typeof src === 'string' ? (
+              // User-authored markdown media has no caption file to point a <track> at.
+              // eslint-disable-next-line jsx-a11y/media-has-caption -- see above.
               <audio controls src={src} className="w-full min-w-96 h-9 my-2 rounded-lg" />
             ) : null,
         }}

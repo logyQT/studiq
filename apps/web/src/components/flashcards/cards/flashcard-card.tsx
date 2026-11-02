@@ -94,6 +94,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                 />
               )}
               <div
+                role="presentation"
                 className="text-sm font-semibold text-foreground min-w-0 max-h-[1lh] overflow-hidden"
                 onClick={stopLinkClick}
               >
@@ -146,6 +147,7 @@ export const FlashcardCard = memo(function FlashcardCard({
         <div className="my-1.5 border-t border-border/50" />
 
         <div
+          role="presentation"
           className="text-sm text-muted-foreground/90 max-h-[2lh] overflow-hidden"
           onClick={stopLinkClick}
         >
@@ -173,7 +175,11 @@ export const FlashcardCard = memo(function FlashcardCard({
       {/* Desktop: two-row Q&A */}
       <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:px-4 sm:py-3.5">
         {selectable && (
-          <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
+          <div
+            role="presentation"
+            className="absolute top-4 right-4 z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Checkbox
               checked={selected}
               onCheckedChange={() => onToggleSelect?.(fc.id)}
@@ -225,6 +231,7 @@ export const FlashcardCard = memo(function FlashcardCard({
 
         <div className="min-w-0 pr-6">
           <div
+            role="presentation"
             className="text-base font-semibold text-foreground max-h-[1lh] overflow-hidden"
             onClick={stopLinkClick}
           >
@@ -237,6 +244,7 @@ export const FlashcardCard = memo(function FlashcardCard({
 
         <div className="flex-1 min-w-0">
           <div
+            role="presentation"
             className="text-sm text-muted-foreground/90 max-h-[3lh] overflow-hidden"
             onClick={stopLinkClick}
           >

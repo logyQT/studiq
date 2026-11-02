@@ -202,6 +202,7 @@ export function FlashcardBlock({
             >
               {/* Delete toggle */}
               <button
+                type="button"
                 onClick={() => toggleRemove(i)}
                 className={cn(
                   'absolute top-1.5 right-1.5 rounded-md p-1 transition-colors',
