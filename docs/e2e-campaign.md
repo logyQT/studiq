@@ -92,10 +92,11 @@ Triage today: **194 e2e · 12 API-level · 8 semantic** (of 214 cases).
 
 ## Batches
 
-One spec per case, in batches of 8, area order: **STU** (52) → **EDU** (39) → **MGR** (28) →
+One spec per case, in batches of 8, area order: **STU** (52) → **EDU** (41) → **MGR** (28) →
 **ADM** (21) → **AUT** (19) → **SEC** (13) → **ONB** (10) → **PUB** (8) → **BIL** (7) →
-**LIM** (7) → **NFR** (8), P1 cases first inside each area. Each batch: write → run → triage
-(red opens an issue) → merge what is green.
+**LIM** (7) → **NFR** (8), P1 cases first inside each area. The counts are the full per-area
+totals from [`qa/coverage.md`](../qa/coverage.md): 194 e2e + 12 API-level + 8 semantic = 214
+cases. Each batch: write → run → triage (red opens an issue) → merge what is green.
 
 ## Done
 

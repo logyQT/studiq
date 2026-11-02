@@ -34,7 +34,8 @@ Talia z ≥ 5 fiszkami; druga talia B.
 1. Otwórz talię A, na karcie fiszki wybierz z menu „…” pozycję „Wybierz Fiszki”,
    zaznacz 3 fiszki; sprawdź „Zaznacz Wszystkie” (a następnie „Odznacz Wszystkie”
    i ponowny wybór trzech).
-2. Wykonaj kolejno: Tematy (Ustaw), Kopiuj (do talii B), Przenieś (do B), Usuń.
+2. Wykonaj kolejno: Tematy (Ustaw), Kopiuj (do talii B), Przenieś (do B). Po przeniesieniu
+   zaznacz dwie pozostałe fiszki w talii A, wybierz „Usuń” i potwierdź usunięcie.
 
 ## Expected result
 
