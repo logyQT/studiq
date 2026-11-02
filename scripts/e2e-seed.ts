@@ -79,8 +79,11 @@ function env(name: string, fallback?: string): string {
   throw new Error(`missing env ${name}`);
 }
 
-const DB_URL = env('SUPABASE_DB_URL', 'postgresql://postgres:postgres@127.0.0.1:54322/postgres');
-const SUPABASE_URL = env('NEXT_PUBLIC_SUPABASE_URL', 'http://127.0.0.1:54321');
+// No port fallbacks on purpose: a checkout can run on any port block, and a
+// silent fallback would seed another checkout's database. `bun dev:up` renders
+// apps/web/.env (and loads SUPABASE_DB_URL above), so a local run just works.
+const DB_URL = env('SUPABASE_DB_URL');
+const SUPABASE_URL = env('NEXT_PUBLIC_SUPABASE_URL');
 const SERVICE_KEY = env('SUPABASE_SERVICE_ROLE_KEY');
 
 const sql = new SQL(DB_URL);

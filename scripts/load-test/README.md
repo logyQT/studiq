@@ -55,7 +55,7 @@ bots from one machine at once will trip it. Either:
   ```
 
   ```bash
-  supabase stop && supabase start
+  bun dev:down --all && bun dev:up   # this checkout only; never `supabase stop --all`
   ```
 
 Sessions are cookie-based and auto-refresh on each request, so bots log in once

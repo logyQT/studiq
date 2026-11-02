@@ -99,13 +99,16 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 
 | Command                           | What it does                                                                                                                                                                                                                                                                                                                                                                                               |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run dev`                     | Web dev server (port 3000)                                                                                                                                                                                                                                                                                                                                                                                 |
-| `bun run dev:up`                  | **One-command local stack** — Supabase (if needed) + web dev, renders `apps/web/.env`; never installs/builds/resets                                                                                                                                                                                                                                                                                        |
-| `bun run dev:status`              | Web/Supabase health, PIDs, ports, URLs (`--json` = stable machine shape)                                                                                                                                                                                                                                                                                                                                   |
-| `bun run dev:down`                | Stop the web server; `bun dev:down --all` also stops Supabase (volume kept)                                                                                                                                                                                                                                                                                                                                |
-| `bun run dev:reset-db`            | Explicit, destructive `supabase db reset` (never called by `dev:up`)                                                                                                                                                                                                                                                                                                                                       |
-| `bun run dev:build`               | Explicit production build of `@studiq/web` (never called by `dev:up`)                                                                                                                                                                                                                                                                                                                                      |
-| `bun run dev:logs`                | Follow `.dev/web.log` + recent Supabase container logs                                                                                                                                                                                                                                                                                                                                                     |
+| `bun run dev`                     | Web dev server (`next dev`) on `APP_PORT` (default 3000) — **agents use `dev:build` + `dev:serve` instead**                                                                                                                                                                                                                                                                                                |
+| `bun run dev:up`                  | **One-command local stack** — Supabase (if needed) + web dev, renders `apps/web/.env`; never installs/builds/resets. `--prod` = build (if missing) + `next start`                                                                                                                                                                                                                                          |
+| `bun run dev:serve`               | `next start` for this checkout on `APP_PORT` (production server, no dev server)                                                                                                                                                                                                                                                                                                                            |
+| `bun run dev:status`              | Web/Supabase health, PIDs, ports, project id, owner (`--json` = stable machine shape)                                                                                                                                                                                                                                                                                                                      |
+| `bun run dev:down`                | Stop this checkout's web server; `bun dev:down --all` also stops **this checkout's** Supabase (volume kept)                                                                                                                                                                                                                                                                                                |
+| `bun run dev:reset-db`            | Explicit, destructive `supabase db reset` for **this checkout's** DB (never called by `dev:up`)                                                                                                                                                                                                                                                                                                            |
+| `bun run dev:build`               | Explicit production build of `@studiq/web` (serialized by a registry-level build lock)                                                                                                                                                                                                                                                                                                                     |
+| `bun run dev:doctor`              | Explain missing / owned / colliding state (exit 1 on a real conflict)                                                                                                                                                                                                                                                                                                                                      |
+| `bun run dev:ports`               | Print a free `APP_PORT` / `SUPABASE_PORT_BASE` block (`--suggest` default, `--json`)                                                                                                                                                                                                                                                                                                                       |
+| `bun run dev:logs`                | Follow `.dev/web.log` + this stack's container logs                                                                                                                                                                                                                                                                                                                                                        |
 | `bun run dev:prepull`             | Pull Supabase images without leaving the stack running (VM templates)                                                                                                                                                                                                                                                                                                                                      |
 | `bun run dev:admin`               | Admin dev server (port 4000) — **not** part of `dev:up`                                                                                                                                                                                                                                                                                                                                                    |
 | `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin)                                                                                                                                                                                                                                                                                                                                  |
@@ -131,27 +134,45 @@ Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs form
 
 ```bash
 bun install            # once per checkout — dev:up never installs
-cp .env.example .env   # once; root .env is Git-ignored
-bun dev:up             # Supabase (if needed) + web dev on :3000
-bun dev:status         # health/PIDs/URLs; `--json` for scripts and agents
-bun dev:down           # stop web; `--all` also stops Supabase (volume kept)
+cp .env.example .env   # once; root .env is Git-ignored and is the only hand-edited env file
+bun dev:up             # Supabase (if needed) + web server on APP_PORT
+bun dev:status         # health/project/ports/owner; `--json` for scripts and agents
+bun dev:down           # stop this checkout's web; `--all` also stops this checkout's Supabase
 ```
 
-- **`scripts/dev` is the implementation** (Bash); the `dev:*` package scripts are thin aliases. Fixed ports: web `3000`, API `54321`, DB `54322`, Mailpit `54324`.
-- **Root `.env` is the only hand-edited env file.** `dev:up` reads it, pulls the generated keys from `supabase status -o env`, and renders **`apps/web/.env`** with mode `600`. That file is generated, Git-ignored and must not be edited or committed — a user-provided key in root `.env` is never overwritten.
-- **`dev:up` is fast and idempotent**: no `bun install`, no `next build`, no `supabase db reset`, no seeds or manual migrations. Cold time is dominated by `supabase start`.
-- **Destructive/explicit steps are separate**: `bun dev:reset-db` (drops and re-seeds the local DB) and `bun dev:build` (production build; stop the dev server first). `bun dev:prepull` pulls images for VM templates.
-- **The shared QA stack is protected**: `dev:up` refuses `APP_URL`/`SUPABASE_URL` on `:3010` / `:54421` unless `DEV_ALLOW_SHARED=1`.
+> **Supabase and ports are per checkout.** Set `APP_PORT`, `SUPABASE_PROJECT_ID`
+> and `SUPABASE_PORT_BASE` in your worktree's `.env` when another agent or
+> developer is running a stack. Derived defaults exist (project id from the
+> checkout path, ports from `SUPABASE_PORT_BASE=54320`), but explicit values are
+> recommended for parallel work. Never reuse another checkout's Supabase, never
+> run `supabase stop --all`, and never stop/reset a stack you did not start.
+> Agents must use `bun dev:build` + `bun dev:serve` (or `bun dev:up --prod`),
+> not `next dev`.
+
+- **`scripts/dev` is the implementation** (Bash); the `dev:*` package scripts are thin aliases. Defaults: web `APP_PORT=3000`; Supabase `SUPABASE_PORT_BASE=54320` → API `+1` (`54321`), DB `+2` (`54322`), Studio `+3` (`54323`), Mail `+4` (`54324`), Analytics `+7` (`54327`), Edge inspector `+8` (`54328`), Pooler `+9` (`54329`), Shadow `+0` (`54320`). Escalate the whole block (`54420`, `54520`, …) for a second checkout.
+- **Every Supabase stack is addressed by `SUPABASE_PROJECT_ID`.** `scripts/dev` derives it from the checkout path when `.env` leaves it blank (`studiq-<dirname>-<path hash>`). `supabase/config.toml` reads every configurable value through `env()`, so the same config drives every checkout.
+- **Ownership is recorded in a runtime registry** outside the repo (`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`, override `STUDIQ_DEV_REGISTRY`). `dev:up` checks the project id, every port and the Docker `com.supabase.cli.project` label **before** starting anything and fails with the owning checkout instead of reusing or killing it. `dev:down --all` / `dev:reset-db` verify ownership and scope every destructive call with `--project-id`; `supabase stop --all`, `pkill` and unscoped `docker rm` are never used.
+- **`SUPABASE_SHARED=1`** runs the app/tests against a stack another checkout owns. `dev:up` never starts Supabase, and `dev:down --all` / `dev:reset-db` / `supabase stop` are refused. Root `.env` must provide `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`.
+- **Root `.env` is the only hand-edited env file.** `dev:up` reads it, resolves the per-checkout contract and renders two generated, Git-ignored, mode-`600` files: **`apps/web/.env`** (app runtime) and **`supabase/.env`** (so plain `bunx supabase ...` in this checkout follows this checkout's stack). A user-provided key in root `.env` is never overwritten.
+- **`dev:up` is fast and idempotent**: no `bun install`, no `next build`, no `supabase db reset`, no seeds or manual migrations. Cold time is dominated by `supabase start`. `dev:up --prod` builds once (held by the registry build lock, `DEV_BUILD_MEMORY_MB=4096`) and then serves.
+- **Destructive/explicit steps are separate**: `bun dev:reset-db` (drops and re-seeds **this checkout's** DB) and `bun dev:build` (production build; stop the web server first). `bun dev:prepull` pulls images for VM templates.
+- **The shared QA stack is protected**: `dev:up` refuses `APP_URL`/`SUPABASE_URL` on `:3010` / `:54421` unless `DEV_ALLOW_SHARED=1` (or the checkout is in `SUPABASE_SHARED=1` mode).
 - **`apps/admin` is out of scope** for `dev:up`: it keeps its own `apps/admin/.env` and `bun dev:admin`.
 
-| Variable                        | Source                                                |
-| ------------------------------- | ----------------------------------------------------- |
-| `APP_URL`                       | root `.env` (default `http://localhost:3000`)         |
-| `NEXT_PUBLIC_SITE_URL`          | root `.env` (defaults to `APP_URL`)                   |
-| `NEXT_PUBLIC_SUPABASE_URL`      | root `.env` or `supabase status` (`API_URL`)          |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | root `.env` or `supabase status` (`ANON_KEY`)         |
-| `SUPABASE_SERVICE_ROLE_KEY`     | root `.env` or `supabase status` (`SERVICE_ROLE_KEY`) |
-| `OTEL_*`                        | root `.env` (copied verbatim into `apps/web/.env`)    |
+| Variable                        | Source                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `APP_PORT`                      | root `.env` (default `3000`)                                                   |
+| `APP_URL`                       | root `.env` (defaults to `http://localhost:$APP_PORT`)                         |
+| `NEXT_PUBLIC_SITE_URL`          | root `.env` (defaults to `APP_URL`)                                            |
+| `SUPABASE_PROJECT_ID`           | root `.env`; blank = derived from the checkout path                            |
+| `SUPABASE_PORT_BASE`            | root `.env` (default `54320`); explicit `SUPABASE_*_PORT` wins                 |
+| `NEXT_PUBLIC_SUPABASE_URL`      | derived from `SUPABASE_API_PORT` (explicit only for shared/remote)             |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | root `.env` (shared mode) or `supabase status` (local stack)                   |
+| `SUPABASE_SERVICE_ROLE_KEY`     | root `.env` (shared mode) or `supabase status` (local stack)                   |
+| `SUPABASE_SHARED`               | root `.env` (`0`/`1`; shared mode refuses destructive commands)                |
+| `STUDIQ_DEV_REGISTRY`           | root `.env`; blank = `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)` |
+| `DEV_BUILD_MEMORY_MB`           | root `.env` (default `4096`) — `dev:build` heap cap                            |
+| `OTEL_*`                        | root `.env` (copied verbatim into `apps/web/.env`)                             |
 
 ### Formatting scope & blame
 

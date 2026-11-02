@@ -26,15 +26,20 @@ This generates a SQL file in `supabase/migrations/` with the schema diff.
 
 ### Applying Migrations
 
-Migrations are applied automatically when running `bunx supabase start` after a `git pull`.
+Migrations are applied automatically when running `bun dev:up` (or plain
+`bunx supabase start`) after a `git pull`.
 
 ### Resetting Database
 
 ```bash
-bunx supabase db reset
+bun dev:reset-db
 ```
 
-This drops and recreates the database, applying all migrations and loading seed data.
+This drops and recreates **this checkout's** database, applying all migrations
+and loading seed data. It is scoped to this checkout's `SUPABASE_PROJECT_ID`,
+refuses in shared mode, and never touches another checkout's stack (plain
+`bunx supabase db reset` also follows this checkout because `scripts/dev`
+renders `supabase/.env`).
 
 ## Schema Organization
 

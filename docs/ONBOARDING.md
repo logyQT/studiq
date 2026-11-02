@@ -234,51 +234,62 @@ discarding work, but leaves Markdown/SQL/etc. as CRLF until the next checkout.)
 bun install
 ```
 
-### 2. Start local Supabase
+### 2. Configure the checkout
 
 ```bash
-bunx supabase start
+cp .env.example .env
+```
+
+Root `.env` is the only hand-edited env file. Every value is optional: the
+checkout gets a unique `SUPABASE_PROJECT_ID` (derived from its path) and its own
+port block (`SUPABASE_PORT_BASE=54320` → API `:54321`, DB `:54322`, Studio
+`:54323`, Mail `:54324`). When another developer or agent is already running a
+stack, set `APP_PORT`, `SUPABASE_PROJECT_ID` and `SUPABASE_PORT_BASE`
+explicitly — see the examples at the bottom of `.env.example` and
+`bun dev:ports --suggest` for a free block.
+
+### 3. Start the stack
+
+```bash
+bun dev:up
 ```
 
 > First run may take several minutes while Docker pulls images.
 
-Once complete, the terminal will display local API URLs and keys.
+`dev:up` starts **this checkout's** Supabase (if needed), renders the generated
+`apps/web/.env` and `supabase/.env` (mode `600`, Git-ignored), and starts the web
+server on `APP_PORT`. It never installs, builds or resets anything.
 
-### 3. Create env files
-
-The **web app** reads `apps/web/.env`; Vitest (and repo scripts) read the root
-`.env`. Create both:
+Agents (and anyone running several checkouts) should use the production server
+instead of `next dev`:
 
 ```bash
-touch apps/web/.env .env
+bun dev:build && bun dev:serve   # or: bun dev:up --prod
 ```
 
-### 4. Copy environment variables
+### 4. Generated env files
 
-1. Open [http://127.0.0.1:54323/](http://127.0.0.1:54323/) — local Supabase Studio
-2. Click **Connect** (top-right corner)
-3. Copy the environment variables into `apps/web/.env` (and mirror them into the root `.env`)
+`apps/web/.env` and `supabase/.env` are **generated** — do not edit or commit
+them; `dev:up` / `dev:build` rewrite them from root `.env` +
+`supabase status -o env`. A key you put in root `.env` is never overwritten.
 
-Example `apps/web/.env`:
+If you need the raw keys (e.g. shared mode, or a tool that does not go through
+`scripts/dev`):
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
-
-# Optional: deliver invitation e-mails to the local Inbucket (http://127.0.0.1:54324). Uncomment
-# `smtp_port` in supabase/config.toml first (and offset it per parallel slot).
-# Without it the copyable invite link is the only delivery path.
-# MAIL_DRIVER=smtp
-# MAIL_FROM=StudiQ <no-reply@studiq.local>
-# MAIL_SMTP_HOST=127.0.0.1
-# MAIL_SMTP_PORT=54325
-
-# OpenTelemetry — telemetry is ON by default. Leave OTEL_SDK_DISABLED unset to
-# ship traces/metrics/logs to the local collector (`docker compose up -d`).
-# Set OTEL_SDK_DISABLED=true only to turn telemetry off entirely.
+```bash
+bunx supabase status -o env   # this checkout's project
 ```
+
+Studio (default ports): [http://127.0.0.1:54323/](http://127.0.0.1:54323/).
+
+Optional local e-mail delivery uses the Inbucket container
+([http://127.0.0.1:54324](http://127.0.0.1:54324)); uncomment `smtp_port` in
+`supabase/config.toml` first (and offset it per parallel checkout). Without it
+the copyable invite link is the only delivery path.
+
+OpenTelemetry: telemetry is ON by default. Leave `OTEL_SDK_DISABLED` unset to
+ship traces/metrics/logs to the local collector (`docker compose up -d`). Set
+`OTEL_SDK_DISABLED=true` only to turn telemetry off entirely.
 
 ### 5. (Optional) Set up LLM / AI Provider
 
@@ -314,10 +325,12 @@ whatever you've pulled.
 ### 6. Seed the database (optional)
 
 ```bash
-bunx supabase db reset
+bun dev:reset-db
 ```
 
-> `db reset` **deletes all local data** and reloads seed data. Use intentionally.
+> `db reset` **deletes all local data** for **this checkout's** project and
+> reloads seed data. Use intentionally. It refuses to run in shared mode and
+> never touches another checkout's stack.
 
 ### 7. Install Playwright browsers (for E2E tests)
 
@@ -327,9 +340,9 @@ bunx playwright install chromium
 
 ### 8. Start the development server
 
-```bash
-bun dev
-```
+`bun dev:up` already started it. Use `bun dev` only for a local manual dev
+server; parallel agents should use `bun dev:build && bun dev:serve` (or
+`bun dev:up --prod`) to avoid several `next dev` processes competing for RAM.
 
 ### 9. Start the local observability stack (recommended)
 
@@ -363,10 +376,14 @@ Stop the stack with `docker compose down`.
 ## Stop Local Supabase
 
 ```bash
-bunx supabase stop
+bun dev:down --all
 ```
 
-> Data is preserved. To clear the database, add the `--no-backup` flag.
+> Stops only **this checkout's** Supabase project and keeps the data volume.
+> It refuses when `SUPABASE_SHARED=1` and never touches another checkout's
+> stack. Do not use `supabase stop --all` on a shared machine. To deliberately
+> wipe this checkout's database, use `bun dev:reset-db` (not `--no-backup`,
+> which deletes the volumes).
 
 ---
 
@@ -404,35 +421,50 @@ git commit -m "migration: migration_name"
 
 ```bash
 git pull
-bunx supabase start        # applies migrations automatically
-bunx supabase db reset     # (optional) reloads fresh seed data
+bun dev:up                 # this checkout's Supabase (+ web); applies migrations automatically
+bun dev:reset-db           # (optional) reloads fresh seed data, this checkout only
 ```
+
+Every checkout gets its own `SUPABASE_PROJECT_ID` and port block. If another
+developer/agent already runs a stack, set `APP_PORT`, `SUPABASE_PROJECT_ID` and
+`SUPABASE_PORT_BASE` in this checkout's `.env` first (`bun dev:ports --suggest`
+prints a free block). Never run `supabase stop --all`; `bun dev:down --all` only
+stops this checkout's stack.
 
 ---
 
 ## Useful Commands
 
-| Command                              | Description                                |
-| ------------------------------------ | ------------------------------------------ |
-| `bunx supabase start`                | Start local Supabase                       |
-| `bunx supabase stop`                 | Stop local Supabase                        |
-| `bunx supabase status`               | Check status and display API keys          |
-| `bunx supabase db reset`             | Reset database + load seeds                |
-| `bunx supabase db diff -f <name>`    | Generate migration from current changes    |
-| `bunx supabase migration new <name>` | Create an empty migration manually         |
-| `bunx supabase db push`              | Push migrations to database                |
-| `bun dev`                            | Start Next.js development server           |
-| `bun test`                           | Reset DB + run all tests                   |
-| `bun test:unit`                      | Run unit tests only                        |
-| `bun test:integration`               | Run integration tests only                 |
-| `bun lint`                           | Type check + lint                          |
-| `gh auth status`                     | Check GitHub CLI authentication            |
-| `scripts/pr`                         | Create a PR from current branch via `gh`   |
-| `scripts/spin <branch>`              | Create worktree + branch for isolated work |
+| Command                              | Description                                        |
+| ------------------------------------ | -------------------------------------------------- |
+| `bun dev:up`                         | Start this checkout's stack + web server           |
+| `bun dev:up --prod`                  | Production build (if missing) + `next start`       |
+| `bun dev:serve`                      | `next start` on `APP_PORT` (no dev server)         |
+| `bun dev:status`                     | Health, project id, ports, owner (`--json`)        |
+| `bun dev:down [--all]`               | Stop this checkout's web (+ Supabase with `--all`) |
+| `bun dev:reset-db`                   | Reset this checkout's DB + load seeds              |
+| `bun dev:doctor`                     | Explain missing / owned / colliding state          |
+| `bun dev:ports --suggest`            | Print a free `APP_PORT` / `SUPABASE_PORT_BASE`     |
+| `bunx supabase status -o env`        | This checkout's URLs and keys                      |
+| `bunx supabase db diff -f <name>`    | Generate migration from current changes            |
+| `bunx supabase migration new <name>` | Create an empty migration manually                 |
+| `bunx supabase db push`              | Push migrations to database                        |
+| `bun dev`                            | Next.js dev server (agents should not use it)      |
+| `bun test`                           | Reset DB + run all tests                           |
+| `bun test:unit`                      | Run unit tests only                                |
+| `bun test:integration`               | Run integration tests only                         |
+| `bun lint`                           | Type check + lint                                  |
+| `gh auth status`                     | Check GitHub CLI authentication                    |
+| `scripts/pr`                         | Create a PR from current branch via `gh`           |
+| `scripts/spin <branch>`              | Create worktree + branch for isolated work         |
+
+> Plain `bunx supabase start|stop|status|db ...` follows this checkout because
+> `scripts/dev` renders `supabase/.env`. Prefer the `bun dev:*` commands — they
+> add ownership/collision guards.
 
 ---
 
-## Local URLs
+## Local URLs (defaults for the first checkout)
 
 | Service                 | URL                            |
 | ----------------------- | ------------------------------ |
@@ -440,12 +472,16 @@ bunx supabase db reset     # (optional) reloads fresh seed data
 | API (REST)              | http://127.0.0.1:54321         |
 | Auth                    | http://127.0.0.1:54321/auth/v1 |
 | Inbucket (emails)       | http://127.0.0.1:54324         |
-| App (dev)               | http://localhost:3000          |
+| App                     | http://localhost:3000          |
 | Grafana (observability) | http://localhost:3001          |
 | Prometheus              | http://localhost:9090          |
 | Tempo (traces API)      | http://localhost:3200          |
 | Loki (logs API)         | http://localhost:3100          |
 | OTLP intake (collector) | http://localhost:4318          |
+
+A second checkout escalates the block (`SUPABASE_PORT_BASE=54420` → API
+`:54421`, DB `:54422`, …) and picks a free `APP_PORT`. `bun dev:status` prints
+the authoritative URLs for the checkout you are in.
 
 ---
 
@@ -463,6 +499,7 @@ bun test:coverage     # Run with coverage report
 
 ## Notes
 
-- `.env` / `apps/web/.env` are gitignored — **never commit them**
+- `.env`, `apps/web/.env` and `supabase/.env` are gitignored — **never commit them**
 - Each team member must complete these steps independently
-- Ensure Docker Desktop is running **before** `bunx supabase start` and `docker compose up`
+- Ensure Docker is running **before** `bun dev:up` and `docker compose up`
+- `apps/web/.env` and `supabase/.env` are generated by `scripts/dev` — never hand-edit them
