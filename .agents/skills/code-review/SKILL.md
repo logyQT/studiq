@@ -87,10 +87,10 @@ Read `--agent` as NDJSON, not a single JSON document. Preserve the returned `cri
 A heartbeat indicates liveness, not completion. Wait for the terminal result and require all of the following before reporting a complete review:
 
 - the review command exited with code 0;
-- the final `complete` event reports `status: complete` with a successful `outcome`;
+- the final `complete` event reports a successful status and outcome (CLI 0.9.x uses `status: review_completed` with `outcome: completed`);
 - `unreviewedFileCount` is 0 (or absent on CLI versions that do not emit it).
 
-Treat `status: review_skipped`, a failed/non-success `outcome`, a positive `unreviewedFileCount`, errors, or interrupted output as an incomplete review. Never use an incomplete review as evidence that the analyzed code is clean; report the incomplete status and stop.
+Treat `status: review_skipped`, any other non-success `status` or `outcome`, a positive `unreviewedFileCount`, errors, or interrupted output as an incomplete review. Never use an incomplete review as evidence that the analyzed code is clean; report the incomplete status and stop.
 
 Create a task list for issues found that need to be addressed.
 
