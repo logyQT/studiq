@@ -3,8 +3,10 @@
  * before the suite starts, so every spec owns its org, users and content.
  *
  * Design notes:
- * - Auth users are inserted straight into `auth.users` (bcrypt), like
- *   `supabase/seeds/01_seed.sql`; GoTrue accepts them without `auth.identities`.
+ * - Auth users go in as one SQL statement per tenant (`createSqlAccountWriter`),
+ *   the way `supabase/seeds/01_users.sql` did: GoTrue bcrypts every password it
+ *   creates, and with a shared test password the batch only needs one hash. The
+ *   writer also writes the `auth.identities` row GoTrue would have written.
  * - Domain rows go through the service-role client, typed against the generated
  *   `Database` type, so a schema change breaks this file at compile time.
  * - Every id is a uuidv5 of `<tenant>:<entity>`, so a test can address its rows
@@ -23,9 +25,13 @@ import { shortHash, tenantKey, uuidv5 } from '#test/e2e/fixtures/ids';
 import { profileFor } from '#test/e2e/fixtures/profiles';
 import {
   buildAccount,
+  concurrencyFromEnv,
   createSeedDb,
+  createSqlAccountWriter,
+  runBounded,
   seedTenantGraph,
   tenantId,
+  type AccountWriter,
   type SeedAccount,
 } from '#test/helpers/tenant-seed';
 
@@ -88,6 +94,7 @@ const SERVICE_KEY = env('SUPABASE_SERVICE_ROLE_KEY');
 
 const sql = new SQL(DB_URL);
 const db = createSeedDb({ url: SUPABASE_URL, serviceKey: SERVICE_KEY });
+const writeAccounts: AccountWriter = createSqlAccountWriter(sql);
 
 /* ------------------------------------------------------------------ manifest */
 
@@ -179,15 +186,19 @@ async function seedTenant(t: Tenant): Promise<void> {
   const teacher: SeedAccount = { ...t.users.teacher, role: 'educator' };
   const student: SeedAccount = { ...t.users.student, role: 'student' };
 
-  await seedTenantGraph(db, {
-    key: t.key,
-    org: t.org,
-    defaultGroup: { id: t.ids.group, name: 'G1', isDefault: false },
-    extraGroups: [],
-    owner: teacher,
-    members: [student],
-    ownerOrgRole: 'teacher',
-  });
+  await seedTenantGraph(
+    db,
+    {
+      key: t.key,
+      org: t.org,
+      defaultGroup: { id: t.ids.group, name: 'G1', isDefault: false },
+      extraGroups: [],
+      owner: teacher,
+      members: [student],
+      ownerOrgRole: 'teacher',
+    },
+    writeAccounts,
+  );
 
   type Res = { error: { message: string; details?: string | null } | null };
   const run = async (batch: Array<PromiseLike<Res>>) => {
@@ -402,17 +413,11 @@ async function main(): Promise<void> {
     ).values(),
   ];
   const index: Record<string, Tenant> = {};
-  const concurrency = Number(process.env.E2E_SEED_CONCURRENCY ?? 8);
 
-  for (let i = 0; i < tenants.length; i += concurrency) {
-    const chunk = tenants.slice(i, i + concurrency);
-    await Promise.all(
-      chunk.map(async (t) => {
-        await seedTenant(t);
-        index[t.key] = t;
-      }),
-    );
-  }
+  await runBounded(tenants, concurrencyFromEnv('E2E_SEED_CONCURRENCY'), async (t) => {
+    await seedTenant(t);
+    index[t.key] = t;
+  });
 
   mkdirSync(SEED_DIR, { recursive: true });
   writeFileSync(INDEX, JSON.stringify(index, null, 0));
