@@ -472,6 +472,7 @@ STARTUP_INCOMPLETE=0
 STACK_START_ATTEMPTED=0
 STACK_ADOPTED=0
 CLAIM_CREATED=0
+WEB_STARTED_BY_US=0
 
 # A registry directory is only trustworthy when it is a real directory owned by
 # the current effective user (mode is enforced separately on write). On shared
@@ -1158,6 +1159,7 @@ start_web() {
   pid=$!
   set +m
   printf '%s\n' "$pid" >"$WEB_PID_FILE"
+  WEB_STARTED_BY_US=1
 
   if ! wait_for_web "$timeout" "$pid"; then
     printf '\n──── last 60 lines of %s ────\n' "$WEB_LOG" >&2
@@ -1259,10 +1261,14 @@ release_build_lock() {
 
 cleanup() {
   release_build_lock || true
-  # A failed `dev:up` must not leave a *new* claim (or a freshly started
-  # stack) behind. An adopted stack keeps its entry, and a claim this
-  # invocation did not create is preserved.
+  # A failed `dev:up` must not leave a web server (this invocation launched
+  # it), a *new* claim, or a freshly started stack behind. An adopted stack
+  # keeps its entry, a pre-existing claim is preserved, and a web server that
+  # was already running before this command is left untouched.
   if (( STARTUP_CLAIM_ACTIVE == 1 && STARTUP_INCOMPLETE == 1 )); then
+    if (( WEB_STARTED_BY_US == 1 )); then
+      stop_web || true
+    fi
     if (( STACK_START_ATTEMPTED == 1 )); then
       stop_supabase_scoped || true
       if (( CLAIM_CREATED == 1 )); then registry_remove_entry || true; fi
