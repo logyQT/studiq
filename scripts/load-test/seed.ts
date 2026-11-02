@@ -308,6 +308,18 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
+    // A matching port is not enough: an implicit target must still be owned by
+    // this checkout. Checked before --dry-run so a dry run reports it too.
+    if (!explicitUrl) {
+      const ownership = implicitTargetOwnership();
+      if (!ownership.ok) {
+        console.error(`  reset: refusing to use ${config.supabaseUrl} — ${ownership.reason}.`);
+        console.error(
+          '  Run a bun dev:* command to refresh the generated state, or pass --supabase-url explicitly.',
+        );
+        process.exit(1);
+      }
+    }
     if (argBool(args, 'dry-run')) {
       console.log(
         `Dry run: would delete accounts in @${config.emailDomain} on ${config.supabaseUrl}; nothing deleted.`,

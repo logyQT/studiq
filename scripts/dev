@@ -246,6 +246,9 @@ json_escape() {
 pid_alive() {
   local pid=$1
   [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  # PID 0 is not a process: `kill -0 0` targets the caller's whole process
+  # group and would make ownerPid=0 registry entries look alive forever.
+  (( 10#$pid > 0 )) || return 1
   kill -0 "$pid" 2>/dev/null
 }
 
