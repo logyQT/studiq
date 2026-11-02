@@ -99,7 +99,7 @@ One spec per case, in batches of 8, area order: **STU** (52) â†’ **EDU** (39) â†
 
 ## Done
 
-- 195 e2e + 12 API-level cases green on `main`;
+- 194 e2e + 12 API-level cases green on `main`;
 - the 8 semantic cases acknowledged as the only agentic coverage;
 - `--shuffle` at 1 and N workers gives identical results;
 - the coverage map shows 0 untriaged / 0 failing.

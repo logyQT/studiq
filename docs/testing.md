@@ -54,7 +54,7 @@ Cross-test interference is a tenant leak, not a flake.
 
 **Covered flows today:** login and registration, student flashcard practice, teacher question
 management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/coverage.md) —
-195 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
+194 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
 
 ## Running Tests
 
