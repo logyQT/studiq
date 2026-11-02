@@ -450,7 +450,7 @@ block. If another developer/agent already runs a stack, set `APP_PORT`,
 | `bunx supabase status -o env`        | This checkout's URLs and keys                                   |
 | `bunx supabase db diff -f <name>`    | Generate migration from current changes                         |
 | `bunx supabase migration new <name>` | Create an empty migration manually                              |
-| `bunx supabase db push`              | Push migrations to database                                     |
+| `bunx supabase db push --local`      | Push migrations to this checkout's local database               |
 | `bun dev`                            | Next.js dev server (agents should not use it)                   |
 | `bun test`                           | Bun's built-in test runner — **not** Vitest; use `bun run test` |
 | `bun run test`                       | Vitest: all unit + integration tests (no DB reset)              |
@@ -493,7 +493,7 @@ checkout you are in.
 ## Testing
 
 ```bash
-bun test              # Reset DB + run all tests
+bun run test          # Run all Vitest tests (does not reset the database)
 bun test:unit         # Run unit tests only
 bun test:integration  # Run integration tests only
 bun test:watch        # Watch mode
