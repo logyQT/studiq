@@ -583,7 +583,12 @@ registry_remove_entry() {
   local expected=${1:-}
   registry_dir_trusted || return 0
   local -a remove_args=(remove --dir "$REGISTRY_DIR" --project-id "$SUPABASE_PROJECT_ID")
-  if [[ -n "$expected" ]]; then remove_args+=(--expected-claim-id "$expected"); fi
+  if [[ -n "$expected" ]]; then
+    remove_args+=(--expected-claim-id "$expected")
+  else
+    # Deliberate unconditional removal (e.g. an old-format stale entry).
+    remove_args+=(--force 1)
+  fi
   bun "$REGISTRY_HELPER" "${remove_args[@]}" 2>/dev/null || true
 }
 

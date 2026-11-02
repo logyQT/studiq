@@ -16,7 +16,7 @@
  *   bun scripts/dev-registry.ts write --dir DIR --project-id ID --worktree PATH ...
  *   bun scripts/dev-registry.ts list  --dir DIR [--format json|tsv]
  *   bun scripts/dev-registry.ts get   --dir DIR --project-id ID [--format json|tsv]
- *   bun scripts/dev-registry.ts remove --dir DIR --project-id ID [--expected-claim-id TOKEN]
+ *   bun scripts/dev-registry.ts remove --dir DIR --project-id ID [--expected-claim-id TOKEN | --force 1]
  *
  * `scripts/dev` consumes `--format tsv` (tab-separated, one entry per line) so
  * bash never has to parse JSON. The field order is `FIELDS`, exported for the
@@ -367,9 +367,13 @@ function removeCommand(args: Args): void {
   const projectId = requireProjectId(args);
   const file = entryPath(dir, projectId);
   const expected = args.values['expected-claim-id'] || null;
+  const force = args.values.force === '1';
+  if (expected === null && !force) {
+    fail('refusing unconditional removal; pass --expected-claim-id TOKEN or --force 1');
+  }
   withEntryLock(file, () => {
     if (!existsSync(file)) return;
-    if (expected !== null) {
+    if (!force) {
       const entry = readEntry(file);
       // A refreshed/replaced claim is not ours; leave it untouched.
       if (!entry || entry.claimId !== expected) return;
@@ -412,6 +416,8 @@ function main(): void {
           '  --mail-port --shadow-port --pooler-port --analytics-port',
           '  --edge-inspector-port --owner-pid --started-at --shared 0|1',
           '  --shared-owner NAME --mode dev|prod --exclusive 1 --claim-id TOKEN',
+          '',
+          'remove-only flags: --expected-claim-id TOKEN (conditional) or --force 1',
         ].join('\n'),
       );
       break;
