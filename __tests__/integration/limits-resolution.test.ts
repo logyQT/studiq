@@ -57,7 +57,7 @@ describe(`Limits resolve live from organizations.plan`, () => {
   beforeAll(async () => {
     fixture = await before({ role: 'manager', org: true });
     service = createServiceClient();
-    resolver = new LimitsResolver(async () => service);
+    resolver = new LimitsResolver(() => Promise.resolve(service));
 
     const { data: role, error } = await service
       .from('org_roles')

@@ -75,6 +75,12 @@ describe('get_student_insights (#657)', () => {
 //  * the weekday series is ISO (index 0 = Monday);
 //  * the retention curve buckets the gap to the previous review of the same card and anchors
 //    it to a review that may lie outside the window.
+
+/** ISO weekday index (0 = Monday) of a UTC date. */
+function weekday(date: Date): number {
+  return (date.getUTCDay() + 6) % 7;
+}
+
 describe('get_student_insights rules (#657 review)', () => {
   const service = createServiceClient();
   const TEACHER_ID = '00000000-0000-4000-8001-000000000003';
@@ -88,8 +94,11 @@ describe('get_student_insights rules (#657 review)', () => {
   // The most recent Monday at noon UTC; today when it is Monday and already past noon.
   const monday = new Date(now);
   monday.setUTCHours(12, 0, 0, 0);
-  const weekday = (date: Date) => (date.getUTCDay() + 6) % 7;
-  while (weekday(monday) !== 0 || monday > now) monday.setUTCDate(monday.getUTCDate() - 1);
+  let onMostRecentMonday = false;
+  while (!onMostRecentMonday) {
+    onMostRecentMonday = weekday(monday) === 0 && monday <= now;
+    if (!onMostRecentMonday) monday.setUTCDate(monday.getUTCDate() - 1);
+  }
 
   type Insights = {
     studyTime: {
@@ -352,12 +361,13 @@ describe('get_student_insights rules (#657 review)', () => {
     ]);
   });
 
+  const select = () =>
+    service
+      .from('quiz_attempts')
+      .select('id, assignment_id, is_assignment_attempt')
+      .eq('config->>marker', MARK);
+
   it('keeps the assignment marker database-controlled, so a client cannot flip it', async () => {
-    const select = () =>
-      service
-        .from('quiz_attempts')
-        .select('id, assignment_id, is_assignment_attempt')
-        .eq('config->>marker', MARK);
     const { data: rows, error } = await select();
     if (error) throw error;
     const practice = rows.find((row) => !row.assignment_id && !row.is_assignment_attempt)!;

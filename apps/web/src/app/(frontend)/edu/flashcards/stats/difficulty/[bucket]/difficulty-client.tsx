@@ -93,7 +93,10 @@ export default function DifficultyBucketClient() {
           className="max-w-xs"
         />
         <MultiSelect
-          options={(topicOpts.data?.items ?? []).map((t) => ({ label: t.name, value: t.id }))}
+          options={(topicOpts.data?.items ?? []).map((topic) => ({
+            label: topic.name,
+            value: topic.id,
+          }))}
           selected={topicIds}
           onChange={setTopicIds}
           placeholder={t('filterTopics')}

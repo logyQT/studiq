@@ -383,7 +383,7 @@ export default function AssignmentDetailClient() {
 
   useEffect(() => {
     if (assignment?.assignment_questions) {
-      const sorted = [...assignment.assignment_questions].sort(
+      const sorted = assignment.assignment_questions.toSorted(
         (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
       );
       setLocalQuestions(sorted);
@@ -834,7 +834,7 @@ export default function AssignmentDetailClient() {
                                 onChange={() =>
                                   setRandomizeTypes((prev) =>
                                     prev.includes(type)
-                                      ? prev.filter((t) => t !== type)
+                                      ? prev.filter((quizType) => quizType !== type)
                                       : [...prev, type],
                                   )
                                 }

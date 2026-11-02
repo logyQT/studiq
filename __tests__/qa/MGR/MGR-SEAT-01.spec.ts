@@ -235,11 +235,11 @@ test('a manager buys three seats and the purchase dialog refuses quantities belo
   });
 
   // --- The API enforces the same floor as the disabled button ---------------
-  for (const quantity of [0, -2]) {
+  for (const invalidQuantity of [0, -2]) {
     const res = await page.request.post(POOLS_API, {
-      data: { planKey: PLAN_KEY, quantity },
+      data: { planKey: PLAN_KEY, quantity: invalidQuantity },
     });
-    expect(res.status(), `POST ${POOLS_API} with quantity ${quantity}`).toBe(422);
+    expect(res.status(), `POST ${POOLS_API} with quantity ${invalidQuantity}`).toBe(422);
     expect(await res.json()).toMatchObject({
       success: false,
       error: 'UNPROCESSABLE_ENTITY',

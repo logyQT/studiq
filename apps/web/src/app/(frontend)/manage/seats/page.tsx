@@ -135,6 +135,7 @@ export default function ManageSeatsPage() {
         if (assignmentsRes.success) setAssignments(assignmentsRes.data);
         if (membersRes.success) setMembers(membersRes.data);
         setLoading(false);
+        return undefined;
       })
       .catch(() => setLoading(false));
   }, []);

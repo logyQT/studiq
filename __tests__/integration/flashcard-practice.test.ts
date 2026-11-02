@@ -26,12 +26,12 @@ import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/s
 describe(`Flashcard Practice Integration`, () => {
   let teacher!: BeforeResult;
   let student!: BeforeResult;
-  let flashcardId: string;
+  let teacherFlashcardId: string;
 
   beforeAll(async () => {
     // Fresh educator with a deck + flashcard (created via the real API).
     teacher = await before({ role: 'educator', decks: 1, flashcards: 1 });
-    flashcardId = teacher.created.flashcards[0];
+    teacherFlashcardId = teacher.created.flashcards[0];
     // Fresh student who practices the teacher's card.
     student = await before({ role: 'student' });
   });
@@ -56,8 +56,8 @@ describe(`Flashcard Practice Integration`, () => {
       mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
+        `http://localhost/api/v1/flashcards/${teacherFlashcardId}/practice`,
+        { id: teacherFlashcardId },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -80,8 +80,8 @@ describe(`Flashcard Practice Integration`, () => {
       mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
+        `http://localhost/api/v1/flashcards/${teacherFlashcardId}/practice`,
+        { id: teacherFlashcardId },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -103,8 +103,8 @@ describe(`Flashcard Practice Integration`, () => {
       mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
+        `http://localhost/api/v1/flashcards/${teacherFlashcardId}/practice`,
+        { id: teacherFlashcardId },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -128,8 +128,8 @@ describe(`Flashcard Practice Integration`, () => {
       const sessionId = '00000000-0000-4000-8000-000000000001';
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
+        `http://localhost/api/v1/flashcards/${teacherFlashcardId}/practice`,
+        { id: teacherFlashcardId },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -157,8 +157,8 @@ describe(`Flashcard Practice Integration`, () => {
       mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
+        `http://localhost/api/v1/flashcards/${teacherFlashcardId}/practice`,
+        { id: teacherFlashcardId },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -177,8 +177,8 @@ describe(`Flashcard Practice Integration`, () => {
       mockUser(null);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
+        `http://localhost/api/v1/flashcards/${teacherFlashcardId}/practice`,
+        { id: teacherFlashcardId },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -283,8 +283,8 @@ describe(`Flashcard Practice Integration`, () => {
       mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice/stats`,
-        { id: flashcardId },
+        `http://localhost/api/v1/flashcards/${teacherFlashcardId}/practice/stats`,
+        { id: teacherFlashcardId },
       );
 
       const response = await getStatsForCard(request, { params });
@@ -301,8 +301,8 @@ describe(`Flashcard Practice Integration`, () => {
       mockUser(null);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice/stats`,
-        { id: flashcardId },
+        `http://localhost/api/v1/flashcards/${teacherFlashcardId}/practice/stats`,
+        { id: teacherFlashcardId },
       );
 
       const response = await getStatsForCard(request, { params });

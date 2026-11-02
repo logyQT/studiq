@@ -55,7 +55,7 @@ import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa
 
 declare global {
   interface Window {
-    __qaToasts?: string[];
+    qaToasts?: string[];
   }
 }
 
@@ -230,9 +230,9 @@ async function signOut(page: Page): Promise<void> {
 /** Record every toast that appears, so a transient toast is still an assertion. */
 async function watchToasts(page: Page): Promise<void> {
   await page.evaluate(() => {
-    if (window.__qaToasts) return;
+    if (window.qaToasts) return;
     const recorded: string[] = [];
-    window.__qaToasts = recorded;
+    window.qaToasts = recorded;
     new MutationObserver(() => {
       for (const node of document.querySelectorAll('[data-sonner-toast]')) {
         const text = (node as HTMLElement).innerText.trim();
@@ -244,7 +244,7 @@ async function watchToasts(page: Page): Promise<void> {
 
 function expectToast(page: Page, text: string) {
   return expect
-    .poll(() => page.evaluate(() => window.__qaToasts ?? []), { timeout: 10_000 })
+    .poll(() => page.evaluate(() => window.qaToasts ?? []), { timeout: 10_000 })
     .toContain(text);
 }
 
@@ -384,12 +384,12 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     const memberOptions = (await page.getByRole('option').allInnerTexts()).map(normalize);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('listbox')).toHaveCount(0);
-    expect(memberOptions.sort()).toEqual(
+    expect(memberOptions.toSorted()).toEqual(
       [
         `${NAMES.manager} (admin)`,
         `${NAMES.teacher} (teacher)`,
         `${NAMES.student} (member)`,
-      ].sort(),
+      ].toSorted(),
     );
 
     // The plan picker is not usable before a member is chosen, and says so.
@@ -482,8 +482,8 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     const remainingMembers = (await page.getByRole('option').allInnerTexts()).map(normalize);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('listbox')).toHaveCount(0);
-    expect(remainingMembers.sort()).toEqual(
-      [`${NAMES.manager} (admin)`, `${NAMES.teacher} (teacher)`].sort(),
+    expect(remainingMembers.toSorted()).toEqual(
+      [`${NAMES.manager} (admin)`, `${NAMES.teacher} (teacher)`].toSorted(),
     );
     await reopen.getByRole('button', { name: COPY.cancel }).click();
     await expect(reopen).toBeHidden();

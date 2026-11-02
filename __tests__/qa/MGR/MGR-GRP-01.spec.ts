@@ -213,9 +213,9 @@ test.describe('@case:MGR-GRP-01 @area:MGR @prio:P1 organization groups CRUD', ()
       'deleted group is gone from the API',
     ).toEqual([]);
     expect(
-      afterDelete.map((group) => group.id).sort(),
+      afterDelete.map((group) => group.id).toSorted(),
       'the two pre-existing groups are untouched',
-    ).toEqual([defaultGroup.id, secondGroup.id].sort());
+    ).toEqual([defaultGroup.id, secondGroup.id].toSorted());
     expect(afterDelete.find((group) => group.id === defaultGroup.id)?.memberCount).toBe(3);
 
     expect(pageErrors, 'uncaught page errors during groups CRUD').toEqual([]);

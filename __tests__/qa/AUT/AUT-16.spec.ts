@@ -62,7 +62,7 @@ const PANEL_CHROME = 'a[href="/edu"], a[href^="/edu/"], a[href="/manage"], a[hre
 async function recordForeignPanelChrome(page: Page): Promise<() => Promise<string[]>> {
   await page.addInitScript((selector: string) => {
     const seen: string[] = [];
-    (window as unknown as { __qaPanelChrome?: string[] }).__qaPanelChrome = seen;
+    (window as unknown as { qaPanelChrome?: string[] }).qaPanelChrome = seen;
     const scan = () => {
       for (const anchor of document.querySelectorAll(selector)) {
         const href = anchor.getAttribute('href') ?? '';
@@ -79,9 +79,7 @@ async function recordForeignPanelChrome(page: Page): Promise<() => Promise<strin
   }, PANEL_CHROME);
 
   return () =>
-    page.evaluate(
-      () => (window as unknown as { __qaPanelChrome?: string[] }).__qaPanelChrome ?? [],
-    );
+    page.evaluate(() => (window as unknown as { qaPanelChrome?: string[] }).qaPanelChrome ?? []);
 }
 
 /** Path a redirect points at, resolved against the app origin. */

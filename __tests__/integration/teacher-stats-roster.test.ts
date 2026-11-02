@@ -58,6 +58,20 @@ function newClient(): SupabaseClient {
   });
 }
 
+async function fetchStats(owner: BeforeResult, orgId: string | null): Promise<StatsPayload> {
+  mockUser(owner.user);
+  const res = await getTeacherStats(
+    createNextRequest(
+      'http://localhost/api/v1/flashcards/stats/teacher',
+      undefined,
+      orgId ? { active_org_id: orgId } : {},
+    ),
+  );
+  const body = await res.json();
+  expect(res.status).toBe(200);
+  return body.data as StatsPayload;
+}
+
 describe('Teacher stats roster (#460)', () => {
   const tag = randomTag(6);
   const service = createServiceClient();
@@ -114,20 +128,6 @@ describe('Teacher stats roster (#460)', () => {
       ...learners.emptyOrg,
       ...learners.removal,
     ].filter((u): u is TestUserFixture => Boolean(u));
-  }
-
-  async function fetchStats(owner: BeforeResult, orgId: string | null): Promise<StatsPayload> {
-    mockUser(owner.user);
-    const res = await getTeacherStats(
-      createNextRequest(
-        'http://localhost/api/v1/flashcards/stats/teacher',
-        undefined,
-        orgId ? { active_org_id: orgId } : {},
-      ),
-    );
-    const body = await res.json();
-    expect(res.status).toBe(200);
-    return body.data as StatsPayload;
   }
 
   async function insertPractice(userId: string, flashcardId: string) {

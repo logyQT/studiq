@@ -11,7 +11,7 @@ import type {
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class OrgRoleService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async listRoles(ctx: RequestContext): Promise<
     ServiceResult<
@@ -26,7 +26,7 @@ export class OrgRoleService {
       }[]
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -77,7 +77,7 @@ export class OrgRoleService {
       permissions: { permissionName: string; scope: string }[];
     }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -116,7 +116,7 @@ export class OrgRoleService {
   ): Promise<
     ServiceResult<{ id: string; name: string; description: string | null; isSystem: boolean }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -152,7 +152,7 @@ export class OrgRoleService {
   ): Promise<
     ServiceResult<{ id: string; name: string; description: string | null; isSystem: boolean }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -207,7 +207,7 @@ export class OrgRoleService {
   }
 
   async deleteRole(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -252,7 +252,7 @@ export class OrgRoleService {
     id: string,
     data: SetRolePermissionsInput,
   ): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // active_org_id is a client-controlled cookie. orgRoleId is only set when
     // with-auth found a real org_members row for this exact org+user, so both

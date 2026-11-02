@@ -171,7 +171,7 @@ export function parseKeyring(raw: string): Keyring {
  * raw URL.
  */
 export function canonicalQuery(params: URLSearchParams): string {
-  const sorted = [...params.entries()].sort(([aKey, aValue], [bKey, bValue]) => {
+  const sorted = [...params.entries()].toSorted(([aKey, aValue], [bKey, bValue]) => {
     if (aKey !== bKey) return aKey < bKey ? -1 : 1;
     if (aValue === bValue) return 0;
     return aValue < bValue ? -1 : 1;

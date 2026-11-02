@@ -115,7 +115,7 @@ test('creates „Asystent”, renames it with a description and keeps the custom
     before.filter((role) => !role.isSystem).map((role) => role.name),
     'a fresh tenant starts without custom roles',
   ).toEqual([]);
-  expect(before.map((role) => role.name).sort()).toEqual(['admin', 'member', 'teacher']);
+  expect(before.map((role) => role.name).toSorted()).toEqual(['admin', 'member', 'teacher']);
   expect(
     before.some((role) => role.name === ROLE_NAME),
     `„${ROLE_NAME}” does not exist yet`,

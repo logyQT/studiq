@@ -63,10 +63,10 @@ export type QuizAttemptListItem = Omit<
 > & { score: number | null; gradable_questions: number };
 
 export class QuizAttemptService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async list(ctx: RequestContext): Promise<ServiceResult<QuizAttemptListItem[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('quiz_attempts')
@@ -122,7 +122,7 @@ export class QuizAttemptService {
     attemptId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<Record<string, unknown>>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
@@ -169,7 +169,7 @@ export class QuizAttemptService {
     if (answersError) return toDbFailure(answersError);
 
     const questions = (attemptQuestions ?? [])
-      .sort((a, b) => a.order_index - b.order_index)
+      .toSorted((a, b) => a.order_index - b.order_index)
       .map((aq) => aq.questions);
 
     const answerObj: Record<
@@ -213,7 +213,7 @@ export class QuizAttemptService {
     data: SaveQuizAnswersInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<{ saved: number }>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
@@ -264,7 +264,7 @@ export class QuizAttemptService {
     data: SubmitQuizAttemptInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<{ score: number | null; totalQuestions: number }>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempt, error: attemptCheckError } = await supabase
       .from('quiz_attempts')

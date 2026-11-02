@@ -56,7 +56,7 @@ describe('OrgRoleService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new OrgRoleService(async () => mock);
+    service = new OrgRoleService(() => Promise.resolve(mock));
   });
 
   describe('listRoles', () => {
@@ -349,16 +349,16 @@ describe('OrgRoleService', () => {
     });
   });
 
+  function mockRoleLookup() {
+    const roleQb = qb({ id: 'r-1' });
+    mock.from.mockReturnValueOnce(roleQb);
+    return roleQb;
+  }
+
   describe('setPermissions', () => {
     // setPermissions requires a verified membership for the active org
     // (orgRoleId is only set when with-auth found a real org_members row).
     const permCtx: RequestContext = { ...ctx, activeOrgId: 'org-1', orgRoleId: 'r-caller' };
-
-    function mockRoleLookup() {
-      const roleQb = qb({ id: 'r-1' });
-      mock.from.mockReturnValueOnce(roleQb);
-      return roleQb;
-    }
 
     it('returns FORBIDDEN when no activeOrgId', async () => {
       const result = await service.setPermissions({ ...permCtx, activeOrgId: null }, 'r-1', {

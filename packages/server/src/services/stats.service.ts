@@ -18,6 +18,15 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
+ * Single rounding rule for per-attempt percentages. `avgScore` in
+ * `getStudentStats` keeps its own expression on purpose — reusing this helper
+ * there would change its rounding and shift existing values by ±1.
+ */
+function percentageOf(attempt: { score: number | null }, total: number): number {
+  return Math.round(((attempt.score ?? 0) / total) * 100);
+}
+
+/**
  * Max score of an attempt: awarded points for assignment attempts, question
  * count for practice quizzes. Never 0, so it is always safe as a denominator.
  */
@@ -49,7 +58,7 @@ const EMPTY_GROUP_PERFORMANCE: TeacherGroupPerformance = {
 };
 
 export class StatsService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   /**
    * Returns the caller's content counts and question statistics, scoped to the active
@@ -61,7 +70,7 @@ export class StatsService {
     ctx: RequestContext,
     filters?: TeacherStatsQuery,
   ): Promise<ServiceResult<TeacherStatsResponse>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let questionsQuery = supabase
       .from('questions')
@@ -109,7 +118,7 @@ export class StatsService {
         subjectName: bankNames.get(bankId) ?? null,
         questionCount: countsByBank.get(bankId) ?? 0,
       }))
-      .sort((a, b) => {
+      .toSorted((a, b) => {
         if (a.subjectName === null) return b.subjectName === null ? 0 : 1;
         if (b.subjectName === null) return -1;
         return a.subjectName.localeCompare(b.subjectName, 'pl');
@@ -152,7 +161,7 @@ export class StatsService {
   }
 
   async getStudentStats(ctx: RequestContext): Promise<ServiceResult<StudentStatsResponse>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // quiz_attempts, flashcard_practice and flashcard_review_state carry no
     // organization_id of their own (they're pure user-activity logs keyed by
@@ -242,11 +251,6 @@ export class StatsService {
     if (dueError) return toDbFailure(dueError);
 
     const totalQuizzes = attempts?.length ?? 0;
-    // Single rounding rule for per-attempt percentages. avgScore below keeps its
-    // own expression on purpose — reusing the helper there would change its
-    // rounding and shift existing values by ±1.
-    const percentageOf = (attempt: { score: number | null }, total: number) =>
-      Math.round(((attempt.score ?? 0) / total) * 100);
     // `null` = no attempt had a gradable denominator, so there is no result to
     // report. The UI renders `—` instead of a fabricated 0 % (#619).
     const avgScore =
@@ -317,7 +321,7 @@ export class StatsService {
    * - `avgCompletionRate` — `round(completed / started * 100)`, integer 0–100
    */
   async getTeacherQuizStats(ctx: RequestContext): Promise<ServiceResult<TeacherQuizStatsItem[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId || !ctx.orgRoleId) return success([]);
 
@@ -447,7 +451,7 @@ export class StatsService {
     startDate?: string,
     endDate?: string,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let start: string;
     const end: string = endDate ?? new Date().toISOString().split('T')[0];
@@ -485,7 +489,7 @@ export class StatsService {
   }
 
   async getWeakPoints(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Step 1: Get all practice records for this user
     const { data: practice, error: practiceError } = await supabase
@@ -533,7 +537,7 @@ export class StatsService {
         totalAttempts: stats.total,
       }))
       .filter((d) => d.totalAttempts >= 5)
-      .sort((a, b) => a.accuracy - b.accuracy)
+      .toSorted((a, b) => a.accuracy - b.accuracy)
       .slice(0, 5);
 
     // Step 3: Build flashcard → topic lookup
@@ -578,7 +582,7 @@ export class StatsService {
         totalAttempts: stats.total,
       }))
       .filter((t) => t.totalAttempts >= 5)
-      .sort((a, b) => a.accuracy - b.accuracy)
+      .toSorted((a, b) => a.accuracy - b.accuracy)
       .slice(0, 5);
 
     return success({ weakDecks: weakDecksResult, weakTopics: weakTopicsResult });
@@ -598,7 +602,7 @@ export class StatsService {
   ): Promise<ServiceResult<TeacherGroupPerformance>> {
     if (!ctx.activeOrgId) return success(EMPTY_GROUP_PERFORMANCE);
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.rpc('get_teacher_group_performance', {
       p_user_id: ctx.userId,
       p_organization_id: ctx.activeOrgId,
@@ -621,7 +625,7 @@ export class StatsService {
   ): Promise<ServiceResult<TeacherFeedItem[]>> {
     if (!ctx.activeOrgId) return success([]);
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.rpc('get_teacher_activity_feed', {
       p_user_id: ctx.userId,
       p_organization_id: ctx.activeOrgId,

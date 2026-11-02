@@ -31,12 +31,12 @@ async function login(page: Page) {
 /** A marker that only survives a client-side refresh, not a document reload. */
 async function markPage(page: Page) {
   await page.evaluate(() => {
-    (window as unknown as { __localeMarker?: string }).__localeMarker = 'alive';
+    (window as unknown as { localeMarker?: string }).localeMarker = 'alive';
   });
 }
 
 async function pageMarker(page: Page) {
-  return page.evaluate(() => (window as unknown as { __localeMarker?: string }).__localeMarker);
+  return page.evaluate(() => (window as unknown as { localeMarker?: string }).localeMarker);
 }
 
 test.describe('language switcher — desktop select', () => {

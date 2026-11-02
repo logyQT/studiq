@@ -12,7 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class OrganizationService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient>,
     // RLS makes `organizations` / `groups` / `group_members` / `org_members`
     // invisible until the caller is a member of the org, so the provisioning
     // sequence (and org deletion, which has no DELETE policy at all) has to run
@@ -119,7 +119,7 @@ export class OrganizationService {
   }
 
   async getAll() {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: organizations, error } = await supabase
       .from('organizations')
@@ -164,7 +164,7 @@ export class OrganizationService {
   }
 
   async getById(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: organization, error } = await supabase
       .from('organizations')
@@ -182,7 +182,7 @@ export class OrganizationService {
   }
 
   async getByIdWithDetails(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: org, error } = await supabase
       .from('organizations')
@@ -268,7 +268,7 @@ export class OrganizationService {
   }
 
   async update(id: string, data: UpdateOrganizationInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const updateData: Partial<CreateOrganizationInput> & {
       logo_url?: string;
@@ -298,7 +298,7 @@ export class OrganizationService {
     // must be their active org (the cookie is client-controlled).
     if (ctx.activeOrgId !== id) return failure('FORBIDDEN');
 
-    const userClient = await this.createClient();
+    const userClient = await this.clientFactory();
     const { data: isManager, error: managerError } = await userClient.rpc(
       'rls_caller_is_org_manager',
       { p_organization_id: id },

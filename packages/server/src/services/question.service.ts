@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -60,14 +61,14 @@ function escapeLike(term: string): string {
 }
 
 export class QuestionService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async create(
     data: CreateQuestionInput,
     ctx: RequestContext,
     bankVisibility?: string,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const questionCount = await this.countOwned(supabase, ctx);
     await limitsResolver.checkLimit(ctx, 'max_questions', questionCount);
@@ -121,14 +122,15 @@ export class QuestionService {
     ctx: RequestContext,
     filters?: Partial<QuestionListQuery>,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const page = filters?.page;
     const limit = filters?.limit ?? 25;
     const paged = page !== undefined;
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
-    if (filter._impossible) return success(paged ? { items: [], total: 0, page, limit } : []);
+    if (isImpossibleFilter(filter))
+      return success(paged ? { items: [], total: 0, page, limit } : []);
 
     const topicIds = filters?.topicIds ?? [];
     const hasTopicFilter = topicIds.length > 0;
@@ -206,7 +208,7 @@ export class QuestionService {
   async listBankQuestions(
     bankId: string,
   ): Promise<ServiceResult<{ questions: unknown[]; total: number }>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error, count } = await supabase
       .from('questions')
@@ -219,10 +221,10 @@ export class QuestionService {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
-    if (filter._impossible) return failure('NOT_FOUND');
+    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     let query = supabase.from('questions').select(questionSelect()).eq('id', id);
 
@@ -241,7 +243,7 @@ export class QuestionService {
     ctx: RequestContext,
     bankVisibility?: string,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const updateFields: Record<string, unknown> = {};
     if (data.type) updateFields.type = data.type;
@@ -300,7 +302,7 @@ export class QuestionService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('questions')

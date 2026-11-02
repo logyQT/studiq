@@ -97,7 +97,7 @@ function toItem(row: NotificationRow): NotificationItem {
 
 export class NotificationService implements Notifier {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient>,
     /** Writes and the lookups of recipients: a user can read only their own rows. */
     private createAdminClient: () => SupabaseClient = createServiceClient,
   ) {}
@@ -108,7 +108,7 @@ export class NotificationService implements Notifier {
     ctx: RequestContext,
     options: { limit: number; unread: boolean },
   ): Promise<ServiceResult<NotificationList>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let items = supabase
       .from('notifications')
@@ -140,7 +140,7 @@ export class NotificationService implements Notifier {
 
   /** Marks one of the caller's notifications read; reading it again is not an error. */
   async markRead(ctx: RequestContext, id: string): Promise<ServiceResult<null>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: own, error } = await supabase
       .from('notifications')
       .select('id')

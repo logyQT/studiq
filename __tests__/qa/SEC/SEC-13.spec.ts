@@ -166,8 +166,8 @@ async function signIn(
 }
 
 /** Unwrap the app's `{ success, data }` envelope and fail the step on a refusal. */
-function getData<T>(body: string, label: string): T {
-  const parsed = JSON.parse(body) as Envelope<T>;
+function getData(body: string, label: string): unknown {
+  const parsed = JSON.parse(body) as Envelope<unknown>;
   expect(parsed.success, `${label}: ${body}`).toBe(true);
   return parsed.data;
 }
@@ -176,14 +176,14 @@ async function listDecks(page: Page, label: string): Promise<Deck[]> {
   const response = await page.request.get('/api/v1/flashcards/decks?limit=200');
   const body = await response.text();
   expect(response.status(), `${label} GET /api/v1/flashcards/decks: ${body}`).toBe(200);
-  return getData<{ items: Deck[] }>(body, label).items;
+  return (getData(body, label) as { items: Deck[] }).items;
 }
 
 async function listCards(page: Page, deckId: string, label: string): Promise<Flashcard[]> {
   const response = await page.request.get(`/api/v1/flashcards?deckIds=${deckId}&limit=100`);
   const body = await response.text();
   expect(response.status(), `${label} GET /api/v1/flashcards?deckIds=: ${body}`).toBe(200);
-  return getData<{ items: Flashcard[] }>(body, label).items;
+  return (getData(body, label) as { items: Flashcard[] }).items;
 }
 
 /**
@@ -199,7 +199,7 @@ async function ensureDeck(page: Page): Promise<Deck> {
   });
   const body = await response.text();
   expect(response.status(), `POST /api/v1/flashcards/decks: ${body}`).toBe(201);
-  return getData<Deck>(body, 'deck create');
+  return getData(body, 'deck create') as Deck;
 }
 
 /** One card in the deck — the flashcard row an anonymous caller must not read. */
@@ -214,7 +214,7 @@ async function ensureCard(page: Page, deckId: string): Promise<Flashcard> {
   });
   const body = await response.text();
   expect(response.status(), `POST /api/v1/flashcards: ${body}`).toBe(201);
-  return getData<Flashcard>(body, 'card create');
+  return getData(body, 'card create') as Flashcard;
 }
 
 test.describe('@case:SEC-13 @area:SEC @prio:P2 anonymous REST access', () => {

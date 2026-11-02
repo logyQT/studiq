@@ -143,14 +143,18 @@ async function ensureBank(page: Page): Promise<BankListItem> {
 }
 
 /** An open question of the case, created once per tenant. */
-async function ensureQuestion(page: Page, bankId: string, content: string): Promise<QuestionItem> {
+async function ensureQuestion(
+  page: Page,
+  bankId: string,
+  questionContent: string,
+): Promise<QuestionItem> {
   const questions = await getData<QuestionItem[]>(page, `${QUESTIONS_URL}?bankId=${bankId}`);
-  const existing = questions.find((question) => question.content === content);
+  const existing = questions.find((question) => question.content === questionContent);
   if (existing) return existing;
   return postData<QuestionItem>(page, QUESTIONS_URL, 201, {
     bankId,
     type: 'open',
-    content,
+    content: questionContent,
     answers: [],
   });
 }

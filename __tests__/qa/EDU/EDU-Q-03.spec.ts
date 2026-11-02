@@ -271,7 +271,7 @@ test.describe('@case:EDU-Q-03 @area:EDU @prio:P2 true/false question', () => {
     expect(saved.type, 'the saved type is P/F').toBe('true_false');
     expect(saved.bank_id, 'the question belongs to „Fizyka”').toBe(bank.id);
 
-    const answers = [...saved.question_answers].sort((a, b) => a.order_index - b.order_index);
+    const answers = [...saved.question_answers].toSorted((a, b) => a.order_index - b.order_index);
     expect(
       answers.map((answer) => ({ content: answer.content, isCorrect: answer.is_correct })),
       'both options are stored, in order, with „Fałsz” correct',

@@ -24,7 +24,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ContinueCard } from '@/components/app/dashboard/continue-card';
 import { DueProgressCard } from '@/components/app/dashboard/due-progress-card';
 import { RecentActivityCard } from '@/components/app/dashboard/recent-activity-card';
@@ -46,6 +46,11 @@ interface StudentStats {
   totalDecks: number;
   totalFlashcards: number;
   dueToday: number;
+}
+
+/** next-intl rich-text tag renderer — hoisted so the reference stays stable across renders. */
+function renderStrongText(chunks: ReactNode) {
+  return <strong>{chunks}</strong>;
 }
 
 export default function AppOverviewPage() {
@@ -110,7 +115,7 @@ export default function AppOverviewPage() {
               <p className="text-sm text-muted-foreground mt-1">
                 {t.rich('due_today', {
                   count: stats.dueToday,
-                  strong: (chunks) => <strong>{chunks}</strong>,
+                  strong: renderStrongText,
                 })}
               </p>
             )}

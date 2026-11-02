@@ -79,13 +79,13 @@ function scorePercent(row: CompletedAttemptRow, gradable: number | undefined): n
  * request client so RLS stays the floor.
  */
 export class StudentOverviewService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async getOverview(
     ctx: RequestContext,
     now = new Date(),
   ): Promise<ServiceResult<StudentOverview>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const today = now.toISOString().slice(0, 10);
     const resumeSince = new Date(now.getTime() - RESUME_WINDOW_DAYS * DAY_MS).toISOString();
 
@@ -185,7 +185,7 @@ export class StudentOverviewService {
         };
       }),
     ]
-      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .toSorted((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
       .slice(0, ACTIVITY_LIMIT);
 
     return success({

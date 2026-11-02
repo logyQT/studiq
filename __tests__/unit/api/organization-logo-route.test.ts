@@ -77,7 +77,7 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
     uploadToBucketMock.mockRejectedValue(new AppError('UNPROCESSABLE_ENTITY'));
 
     const res = await POST(
-      fakeRequest(async () => imageForm(type, name)),
+      fakeRequest(() => Promise.resolve(imageForm(type, name))),
       context(),
     );
 
@@ -94,7 +94,7 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
     uploadToBucketMock.mockRejectedValue(new AppError('PAYLOAD_TOO_LARGE'));
 
     const res = await POST(
-      fakeRequest(async () => imageForm()),
+      fakeRequest(() => Promise.resolve(imageForm())),
       context(),
     );
 
@@ -108,7 +108,7 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
     uploadToBucketMock.mockRejectedValue(new Error('boom'));
 
     const res = await POST(
-      fakeRequest(async () => imageForm()),
+      fakeRequest(() => Promise.resolve(imageForm())),
       context(),
     );
 
@@ -131,7 +131,7 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
 
   it('returns 422 MISSING_FIELDS when the form has no file', async () => {
     const res = await POST(
-      fakeRequest(async () => new FormData()),
+      fakeRequest(() => Promise.resolve(new FormData())),
       context(),
     );
 
@@ -142,7 +142,7 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
 
   it('rejects an id that is not the active org', async () => {
     const res = await POST(
-      fakeRequest(async () => imageForm()),
+      fakeRequest(() => Promise.resolve(imageForm())),
       context('22222222-2222-4222-8222-222222222222'),
     );
 
@@ -155,7 +155,7 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
     mockCtx = { userId: USER_ID, activeOrgId: ORG_ID, orgRoleId: null };
 
     const res = await POST(
-      fakeRequest(async () => imageForm()),
+      fakeRequest(() => Promise.resolve(imageForm())),
       context(),
     );
 
@@ -174,7 +174,7 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
     const formData = imageForm();
 
     const res = await POST(
-      fakeRequest(async () => formData),
+      fakeRequest(() => Promise.resolve(formData)),
       context(),
     );
 

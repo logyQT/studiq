@@ -35,12 +35,12 @@ export function OnboardingChecklist() {
   const [hasContent, setHasContent] = useState(false);
 
   useEffect(() => {
-    if (orgs.length === 0) return;
+    if (orgs.length === 0) return undefined;
     // orgRoleName is the org_roles row name ('admin'/'teacher'/'member'),
     // a different concept from account_type ('educator'/'manager') — only
     // account_type is meaningful to compare against those two literals.
     const accountType = user?.app_metadata?.account_type;
-    if (accountType !== 'educator' && accountType !== 'manager') return;
+    if (accountType !== 'educator' && accountType !== 'manager') return undefined;
 
     const controller = new AbortController();
 

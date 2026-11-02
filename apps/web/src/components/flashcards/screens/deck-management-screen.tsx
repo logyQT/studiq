@@ -149,7 +149,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
 
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
     observer.observe(el);
     return () => observer.disconnect();
@@ -200,7 +200,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const canCreateDeck = true;
 
   useEffect(() => {
-    if (!selectionIsActive) return;
+    if (!selectionIsActive) return undefined;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();

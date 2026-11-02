@@ -133,12 +133,12 @@ describe('unreadBadge', () => {
   });
 });
 
-describe('messages', () => {
-  const messages = (locale: string) =>
-    JSON.parse(
-      readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
-    );
+const messages = (locale: string) =>
+  JSON.parse(
+    readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
+  );
 
+describe('messages', () => {
   it.each(['pl', 'en'])('%s: every kind of notification has a message', (locale) => {
     const labels = messages(locale).Notifications as Record<string, string>;
     for (const type of NOTIFICATION_TYPES) {

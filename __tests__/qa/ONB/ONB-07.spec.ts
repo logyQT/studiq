@@ -266,8 +266,8 @@ async function ensureOrgMember(inviter: Page, invitee: Page, org: TenantOrg): Pr
 /** The third org the teacher must not reach: owned by the manager, no membership for them. */
 async function ensureForeignOrg(manager: Page): Promise<Entity> {
   const name = `ONB07 ${RUN} foreign`;
-  const memberships = await apiData<Entity[]>(manager, '/api/v1/me/orgs');
-  const existing = memberships.find((row) => row.name === name);
+  const foreignOrgs = await apiData<Entity[]>(manager, '/api/v1/me/orgs');
+  const existing = foreignOrgs.find((row) => row.name === name);
   if (existing) return existing;
 
   const response = await manager.request.post('/api/v1/organization', { data: { name } });
@@ -350,20 +350,20 @@ async function memberships(page: Page): Promise<OrgMembership[]> {
 }
 
 async function bankIds(page: Page): Promise<string[]> {
-  return (await bankItems(page)).map((bank) => bank.id).sort();
+  return (await bankItems(page)).map((bank) => bank.id).toSorted();
 }
 
 async function deckIds(page: Page): Promise<string[]> {
-  return (await deckItems(page)).map((deck) => deck.id).sort();
+  return (await deckItems(page)).map((deck) => deck.id).toSorted();
 }
 
 async function groupIds(page: Page): Promise<string[]> {
   const groups = await apiData<Entity[]>(page, '/api/v1/organization/groups');
-  return groups.map((group) => group.id).sort();
+  return groups.map((group) => group.id).toSorted();
 }
 
 function ids(entities: Entity[]): string[] {
-  return entities.map((entity) => entity.id).sort();
+  return entities.map((entity) => entity.id).toSorted();
 }
 
 function escapeRegExp(value: string): string {
@@ -508,7 +508,7 @@ test.describe('@case:ONB-07 @area:ONB @prio:P1 switching organizations', () => {
 
     // --- Step 1: the switcher lists exactly this teacher's two orgs ---------
     const listed = await memberships(page);
-    expect(listed.map((org) => org.id).sort()).toEqual(ids([orgA.org, orgB.org]));
+    expect(listed.map((org) => org.id).toSorted()).toEqual(ids([orgA.org, orgB.org]));
     expect(listed.map((org) => org.orgRoleName)).toEqual(['teacher', 'teacher']);
 
     const first = listed.find((org) => org.isActive)!;
@@ -562,7 +562,7 @@ test.describe('@case:ONB-07 @area:ONB @prio:P1 switching organizations', () => {
     expect(switched.status(), 'switch to a non-member org').toBe(404);
 
     const after = await memberships(page);
-    expect(after.map((org) => org.id).sort()).toEqual(before.map((org) => org.id).sort());
+    expect(after.map((org) => org.id).toSorted()).toEqual(before.map((org) => org.id).toSorted());
     expect(after.filter((org) => org.isActive).map((org) => org.id)).toEqual([activeBefore.id]);
 
     // The switcher never offers the foreign org either.

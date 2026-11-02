@@ -71,7 +71,7 @@ describe('GET /api/v1/teacher/assignments/[id]/export-answers', () => {
     vi.clearAllMocks();
     mockCtx = { userId: 'owner-user-id', accountType: 'teacher' };
     getLocaleMock.mockResolvedValue('pl');
-    getTranslationsMock.mockImplementation(async () => (key: string) => plMessages[key] ?? key);
+    getTranslationsMock.mockImplementation(() => (key: string) => plMessages[key] ?? key);
   });
 
   it('streams the results view as a downloadable, BOM-prefixed CSV', async () => {
@@ -150,7 +150,7 @@ describe('GET /api/v1/teacher/assignments/[id]/export-answers', () => {
 
   it('renders the English headers and status labels', async () => {
     getLocaleMock.mockResolvedValue('en');
-    getTranslationsMock.mockImplementation(async () => (key: string) => enMessages[key] ?? key);
+    getTranslationsMock.mockImplementation(() => (key: string) => enMessages[key] ?? key);
     exportAnswersMock.mockResolvedValue({
       success: true,
       statusCode: 200,

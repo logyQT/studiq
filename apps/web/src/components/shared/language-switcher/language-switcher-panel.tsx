@@ -74,6 +74,9 @@ function ActiveDescendantSync({ inputRef, query, locale }: ActiveDescendantSyncP
     if (input.getAttribute('aria-activedescendant') !== active.id) {
       input.setAttribute('aria-activedescendant', active.id);
     }
+    // The DOM query above depends on the highlighted item, the search query and the locale; only
+    // the ref is a value the rule can see.
+    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- DOM sync on highlight change.
   }, [activeValue, query, locale, inputRef]);
 
   return null;

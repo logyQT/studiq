@@ -11,10 +11,10 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 
 export class PlatformStatsController {
-  constructor(private platformStatsService: PlatformStatsService) {}
+  constructor(private service: PlatformStatsService) {}
 
   async getPlatformStats(): Promise<ControllerResponse> {
-    const result = await this.platformStatsService.getPlatformStats();
+    const result = await this.service.getPlatformStats();
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -25,7 +25,7 @@ export class PlatformStatsController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.platformStatsService.getDailyStats(parsed.data.days);
+    const result = await this.service.getDailyStats(parsed.data.days);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

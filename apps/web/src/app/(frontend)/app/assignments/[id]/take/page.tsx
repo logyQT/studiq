@@ -58,7 +58,7 @@ export default function TakeAssignmentPage() {
   const deadlineParam = searchParams.get('deadline');
 
   useEffect(() => {
-    if (!deadlineParam) return;
+    if (!deadlineParam) return undefined;
     const update = () => {
       setRemainingMs(Math.max(0, new Date(deadlineParam).getTime() - Date.now()));
     };
@@ -179,6 +179,9 @@ export default function TakeAssignmentPage() {
     } finally {
       setSubmitting(false);
     }
+    // `answers`, `submitMutation`, `id` and `router` are all read above; the rule mis-infers them
+    // as unused because they appear after `await`.
+    // eslint-disable-next-line react-hooks/memo-dependencies -- all deps are used by this callback.
   }, [attempt, answers, submitting, submitMutation, id, router]);
 
   const handleSubmit = useCallback(async () => {
@@ -293,10 +296,14 @@ export default function TakeAssignmentPage() {
                     const input = document.createElement('input');
                     input.type = 'file';
                     input.accept = 'image/*';
-                    input.onchange = async (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) await handleUploadImage(question.id, file);
-                    };
+                    input.addEventListener(
+                      'change',
+                      () => {
+                        const file = input.files?.[0];
+                        if (file) void handleUploadImage(question.id, file);
+                      },
+                      { once: true },
+                    );
                     input.click();
                   }}
                 >

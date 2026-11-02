@@ -207,19 +207,19 @@ describe(`Seats Integration`, () => {
     });
   });
 
+  const readPools = async () => {
+    const req = createNextRequest(
+      'http://localhost/api/v1/organization/seats/pools',
+      undefined,
+      orgCookies(),
+    );
+    const response = await getPools(req);
+    const body = await response.json();
+    return body.data as { id: string; planKey: string; total: number }[];
+  };
+
   describe('Seat quantity bounds (#266)', () => {
     const INT4_MAX = 2_147_483_647;
-
-    const readPools = async () => {
-      const req = createNextRequest(
-        'http://localhost/api/v1/organization/seats/pools',
-        undefined,
-        orgCookies(),
-      );
-      const response = await getPools(req);
-      const body = await response.json();
-      return body.data as { id: string; planKey: string; total: number }[];
-    };
 
     it('returns 422 (not 500) for a quantity above the int4 range and writes nothing', async () => {
       mockUser(fixture.user);
@@ -287,7 +287,7 @@ describe(`Seats Integration`, () => {
     it('returns 422 for a PUT above the int4 range and leaves the pool unchanged', async () => {
       mockUser(fixture.user);
 
-      const before = (await readPools()).find((p) => p.id === poolId);
+      const beforeUpdate = (await readPools()).find((p) => p.id === poolId);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/organization/seats/pools/${poolId}`,
@@ -308,7 +308,7 @@ describe(`Seats Integration`, () => {
       expect(body.error).toBe('UNPROCESSABLE_ENTITY');
 
       const after = (await readPools()).find((p) => p.id === poolId);
-      expect(after?.total).toBe(before?.total);
+      expect(after?.total).toBe(beforeUpdate?.total);
     });
 
     it('never stores a pool total above the int4 bound', async () => {

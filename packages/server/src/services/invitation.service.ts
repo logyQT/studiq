@@ -68,10 +68,10 @@ interface LoadedInvite {
 
 export class InvitationService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient>,
     private createAdminClient: () => SupabaseClient = createServiceClient,
     /** Null when no mail adapter is configured: the copyable link is then the only delivery path. */
-    private getMailer: () => Mailer | null = () => null,
+    private mailerFactory: () => Mailer | null = () => null,
     /** Tells the inviter that the invitation was accepted; none in unit tests. */
     private notifier: Notifier = noopNotifier,
   ) {}
@@ -93,7 +93,7 @@ export class InvitationService {
     jobs: InviteMailJob[],
   ): Promise<void> {
     try {
-      const mailer = this.getMailer();
+      const mailer = this.mailerFactory();
       if (!mailer || jobs.length === 0) return;
 
       const allowed = jobs.filter(() => inviteMailLimiter.check(organizationId).allowed);
@@ -313,7 +313,7 @@ export class InvitationService {
       inviteCode: string;
     }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // The body may only *select* one of the caller's memberships, never extend
     // the tenant: a foreign `organizationId` (or a forged `active_org_id`
@@ -403,7 +403,7 @@ export class InvitationService {
   > {
     if (invitations.length === 0) return failure('BAD_REQUEST');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Same membership gate as the single create: the body may only select one
     // of the caller's orgs, never extend the tenant (#242).
@@ -725,7 +725,7 @@ export class InvitationService {
       }>
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Same tenant boundary as create: the cookie is client-controlled, so the
     // list scope is the caller's verified membership, not the raw cookie (#242).
@@ -770,7 +770,7 @@ export class InvitationService {
     // invitation (MGR-INV-03).
     if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: invite, error: fetchError } = await supabase
       .from('invitations')
@@ -817,7 +817,7 @@ export class InvitationService {
     // See updateInvitation: the cookie alone proves nothing, orgRoleId does.
     if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: invite, error: fetchError } = await supabase
       .from('invitations')

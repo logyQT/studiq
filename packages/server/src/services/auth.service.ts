@@ -34,7 +34,7 @@ export class AuthService {
   private static readonly OTP_SESSION_MAX_AGE_SECONDS = 30 * 60;
 
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient>,
     private invitationService: InvitationService = defaultInvitationService,
   ) {}
 
@@ -60,7 +60,7 @@ export class AuthService {
       inviteToken = data.inviteToken;
     }
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const metadata: Record<string, unknown> = {
       name: data.name,
@@ -130,7 +130,7 @@ export class AuthService {
   async login(
     data: LoginInput,
   ): Promise<ServiceResult<{ user: User; session: Session }, 'UNAUTHORIZED' | 'INTERNAL_SERVER'>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
@@ -149,7 +149,7 @@ export class AuthService {
   }
 
   async logout(): Promise<ServiceResult<void, 'INTERNAL_SERVER'>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { error } = await supabase.auth.signOut({ scope: 'local' });
 
@@ -161,7 +161,7 @@ export class AuthService {
   }
 
   async requestPasswordReset(email: string): Promise<ServiceResult<void, 'BAD_REQUEST'>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { error } = await supabase.auth.resetPasswordForEmail(email);
 
@@ -173,7 +173,7 @@ export class AuthService {
   }
 
   async updateProfile(data: { name: string }): Promise<ServiceResult<User, 'BAD_REQUEST'>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: updatedUser, error } = await supabase.auth.updateUser({
       data: { name: data.name },
@@ -199,7 +199,7 @@ export class AuthService {
       | 'BAD_REQUEST'
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (data.currentPassword !== undefined) {
       // Account flow: prove the caller knows the current password before

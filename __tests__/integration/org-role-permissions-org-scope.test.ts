@@ -114,7 +114,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   });
 
   it('returns NOT_FOUND for a role outside the active org and leaves its rows untouched', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const before = await permissionsOf(orgBMemberRole);
     expect(before.length).toBeGreaterThan(0);
 
@@ -131,7 +131,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   });
 
   it('returns FORBIDDEN when the active org cookie points at an org the caller is not a member of', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const before = await permissionsOf(orgBMemberRole);
 
     // with-auth leaves orgRoleId null when no org_members row exists for
@@ -151,7 +151,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   });
 
   it('replaces permissions for a role in the caller own org (happy path preserved)', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
 
     const result = await orgRoleService.setPermissions(ctx({}), orgACustomRole, {
       permissions: [

@@ -78,7 +78,7 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 
 export class TeacherAssignmentService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient>,
     /** Tells students about a published assignment and a first grade; none in unit tests. */
     private notifier: Notifier = noopNotifier,
   ) {}
@@ -87,7 +87,7 @@ export class TeacherAssignmentService {
     data: CreateTeacherAssignmentInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const insertData: Record<string, unknown> = {
       organization_id: ctx.activeOrgId,
@@ -146,7 +146,7 @@ export class TeacherAssignmentService {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
@@ -169,7 +169,7 @@ export class TeacherAssignmentService {
   }
 
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const scope = ctx.permissionScopes['assignment.read'];
 
@@ -194,7 +194,7 @@ export class TeacherAssignmentService {
     data: UpdateTeacherAssignmentInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -223,7 +223,7 @@ export class TeacherAssignmentService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -234,7 +234,7 @@ export class TeacherAssignmentService {
   }
 
   async unpublish(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -266,7 +266,7 @@ export class TeacherAssignmentService {
     startTime: string | undefined,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -314,7 +314,7 @@ export class TeacherAssignmentService {
     data: AddQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -357,7 +357,7 @@ export class TeacherAssignmentService {
     questionId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -377,7 +377,7 @@ export class TeacherAssignmentService {
     data: ReorderQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -406,7 +406,7 @@ export class TeacherAssignmentService {
     data: RandomizeInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -454,7 +454,7 @@ export class TeacherAssignmentService {
     const available = (allQuestions ?? []).filter((q) => !existingIds.has(q.id));
     if (available.length === 0) return success({ added: 0 });
 
-    const shuffled = [...available].sort(() => Math.random() - 0.5);
+    const shuffled = [...available].toSorted(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(data.count, shuffled.length));
 
     const { data: maxOrder } = await supabase
@@ -483,7 +483,7 @@ export class TeacherAssignmentService {
     data: SetTargetsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -526,7 +526,7 @@ export class TeacherAssignmentService {
   }
 
   async getResults(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -546,7 +546,7 @@ export class TeacherAssignmentService {
     studentId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -583,7 +583,7 @@ export class TeacherAssignmentService {
     data: GradeAnswerInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -794,7 +794,7 @@ export class TeacherAssignmentService {
    * the pages can still render „Ukończono” without revealing the result.
    */
   private summarizeAttempts(rows: StudentAttemptSummaryRow[], showResults: boolean) {
-    const ordered = [...rows].sort((a, b) => {
+    const ordered = [...rows].toSorted((a, b) => {
       const at = a.started_at ? new Date(a.started_at).getTime() : 0;
       const bt = b.started_at ? new Date(b.started_at).getTime() : 0;
       return at - bt || a.id.localeCompare(b.id);
@@ -810,7 +810,7 @@ export class TeacherAssignmentService {
   }
 
   async listForStudent(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const [{ data: groups, error: groupError }, { data: orgRows, error: orgError }] =
       await Promise.all([
@@ -869,7 +869,7 @@ export class TeacherAssignmentService {
   }
 
   async getForStudent(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
@@ -903,7 +903,7 @@ export class TeacherAssignmentService {
   }
 
   async startAttempt(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: assignment, error: assignmentError } = await supabase
       .from('teacher_assignments')
@@ -963,7 +963,7 @@ export class TeacherAssignmentService {
 
     let orderedQuestions = [...questions];
     if (assignment.shuffle_questions) {
-      orderedQuestions = orderedQuestions.sort(() => Math.random() - 0.5);
+      orderedQuestions = orderedQuestions.toSorted(() => Math.random() - 0.5);
     }
 
     // Snapshot the assignment's scale on the attempt: an assignment is scored
@@ -984,7 +984,7 @@ export class TeacherAssignmentService {
     if (assignment.shuffle_answers) {
       for (const q of fullQuestions ?? []) {
         if (q.question_answers) {
-          q.question_answers = q.question_answers.sort(() => Math.random() - 0.5);
+          q.question_answers = q.question_answers.toSorted(() => Math.random() - 0.5);
         }
       }
     }
@@ -1074,7 +1074,7 @@ export class TeacherAssignmentService {
     studentId: string | undefined,
     ctx: RequestContext,
   ): Promise<ServiceResult<AnswersExportRow[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -1122,7 +1122,7 @@ export class TeacherAssignmentService {
     imageUrl: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempt } = await supabase
       .from('quiz_attempts')
@@ -1228,7 +1228,7 @@ export class TeacherAssignmentService {
   }
 
   private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: assignment } = await supabase
       .from('teacher_assignments')

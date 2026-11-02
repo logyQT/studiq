@@ -93,7 +93,7 @@ describe('FlashcardDeckService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new FlashcardDeckService(async () => mock);
+    service = new FlashcardDeckService(() => Promise.resolve(mock));
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,
       data: true,

@@ -193,7 +193,7 @@ function browseRows(dialog: Locator): Locator {
 /** Question contents currently listed in the browse dialog. */
 async function browseContents(dialog: Locator): Promise<string[]> {
   const rows = await browseRows(dialog).allInnerTexts();
-  return rows.map((row) => row.split('\n')[0].trim()).sort();
+  return rows.map((row) => row.split('\n')[0].trim()).toSorted();
 }
 
 /** The source-specific bank/topic select (rendered before the always-present type select). */
@@ -287,7 +287,7 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
     ];
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'all questions' })
-      .toEqual([...allQuestions].sort());
+      .toEqual([...allQuestions].toSorted());
 
     // ── Step 1b: „Bank pytań” + the chosen bank narrows the list ────────────
     await dialog.getByRole('radio', { name: COPY.sourceBank }).check();
@@ -299,7 +299,7 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
 
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'bank A questions' })
-      .toEqual([QUESTION.bankAOpen, QUESTION.bankATrueFalse].sort());
+      .toEqual([QUESTION.bankAOpen, QUESTION.bankATrueFalse].toSorted());
 
     // ── Step 1c: „Temat” + the chosen topic narrows the list ────────────────
     await dialog.getByRole('radio', { name: COPY.sourceTopic }).check();
@@ -310,7 +310,7 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
 
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'topic questions' })
-      .toEqual([QUESTION.bankAOpen, QUESTION.bankBOpen].sort());
+      .toEqual([QUESTION.bankAOpen, QUESTION.bankBOpen].toSorted());
 
     // ── Step 3: the search field filters by content ─────────────────────────
     await dialog.getByRole('radio', { name: COPY.sourceAll }).check();
@@ -323,7 +323,7 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
     await search.fill('');
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'cleared search' })
-      .toEqual([...allQuestions].sort());
+      .toEqual([...allQuestions].toSorted());
 
     // ── Step 2: select two questions and add them to the assignment ─────────
     await selectQuestion(dialog, QUESTION.bankAOpen);
@@ -357,16 +357,16 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
     expect(detail.question_count, 'persisted question count').toBe(2);
     expect(detail.total_points, 'persisted point sum').toBe(2);
     expect(
-      detail.assignment_questions.map((question) => question.question_id).sort(),
+      detail.assignment_questions.map((question) => question.question_id).toSorted(),
       'the two picked questions are stored in the assignment',
-    ).toEqual([bankAOpen.id, bankBOpenSecond.id].sort());
+    ).toEqual([bankAOpen.id, bankBOpenSecond.id].toSorted());
 
     // ── Adjacent regression: already-added questions leave the picker ───────
     await page.getByRole('button', { name: COPY.browse }).click();
     await expect(dialog).toBeVisible();
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'picker after adding' })
-      .toEqual([QUESTION.bankATrueFalse, QUESTION.bankBOpen].sort());
+      .toEqual([QUESTION.bankATrueFalse, QUESTION.bankBOpen].toSorted());
 
     await dialog.getByRole('button', { name: COPY.back }).click();
     await expect(dialog).toHaveCount(0);

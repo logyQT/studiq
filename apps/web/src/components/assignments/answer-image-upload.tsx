@@ -51,10 +51,14 @@ export function AnswerImageUpload({
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
-        input.onchange = async (e) => {
-          const file = (e.target as HTMLInputElement).files?.[0];
-          if (file) await handleUpload(file);
-        };
+        input.addEventListener(
+          'change',
+          () => {
+            const file = input.files?.[0];
+            if (file) void handleUpload(file);
+          },
+          { once: true },
+        );
         input.click();
       }}
     >

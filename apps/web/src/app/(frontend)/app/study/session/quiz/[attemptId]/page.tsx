@@ -77,7 +77,7 @@ export default function QuizTakingPage() {
       .then((data) => {
         if (data.completed_at) {
           router.push(`/app/study/session/quiz/${attemptId}/review`);
-          return;
+          return undefined;
         }
         const seeded = seedQuizAnswers(data.questions, data.answers);
         setAnswers(seeded);
@@ -88,6 +88,7 @@ export default function QuizTakingPage() {
         });
         setAttempt(data);
         setLoading(false);
+        return undefined;
       })
       .catch(() => {
         toast.error(t('load_failed'));
@@ -97,11 +98,11 @@ export default function QuizTakingPage() {
 
   // Autosave the full answer set while the attempt is running (#349).
   useEffect(() => {
-    if (!attempt) return;
+    if (!attempt) return undefined;
 
     const payload = toSaveAnswersPayload(attempt.questions, answers);
     const body = JSON.stringify({ answers: payload });
-    if (body === lastSavedRef.current) return;
+    if (body === lastSavedRef.current) return undefined;
 
     pendingRef.current = body;
     const timer = setTimeout(() => {

@@ -77,7 +77,10 @@ describe('payment history (#392)', () => {
       await service
         .from('payments')
         .delete()
-        .in('user_id', [buyer?.id, other?.id].filter(Boolean) as string[]);
+        .in(
+          'user_id',
+          [buyer?.id, other?.id].filter((id): id is string => Boolean(id)),
+        );
     }
     for (const user of [buyer, other]) {
       if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});

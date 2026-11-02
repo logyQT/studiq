@@ -8,13 +8,13 @@ import type { CsvImportInput, CsvImportResult } from '@studiq/server/models/flas
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class FlashcardImportService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async importCsv(
     data: CsvImportInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<CsvImportResult>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let defaultDeckId: string | undefined = data.deckId;
 

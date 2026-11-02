@@ -59,7 +59,7 @@ function reportVisibilityFilter(ctx: RequestContext, orgScope: string | null): s
 
 export class QuestionReportService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient>,
     /** Tells the other participant about a new message; none in unit tests. */
     private notifier: Notifier = noopNotifier,
   ) {}
@@ -69,7 +69,7 @@ export class QuestionReportService {
     data: CreateQuestionReportInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let organizationId: string | null;
     let recipientId: string;
@@ -157,7 +157,7 @@ export class QuestionReportService {
     ctx: RequestContext,
     queryParams?: Partial<QuestionReportListQuery>,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
 
     // Visibility is the first `.or()` on purpose: `supabase-js` appends the
@@ -233,7 +233,7 @@ export class QuestionReportService {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const access = await this.fetchReportAccess(id, ctx);
     if (!access) return failure('NOT_FOUND');
@@ -275,7 +275,7 @@ export class QuestionReportService {
     data: UpdateQuestionReportInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const access = await this.fetchReportAccess(id, ctx);
     if (!access) return failure('NOT_FOUND');
@@ -322,7 +322,7 @@ export class QuestionReportService {
     data: CreateReportMessageInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const report = await this.fetchAccessibleReport(id, ctx);
     if (!report) return failure('NOT_FOUND');
@@ -363,7 +363,7 @@ export class QuestionReportService {
   }
 
   async markRead(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const report = await this.fetchAccessibleReport(id, ctx);
     if (!report) return failure('NOT_FOUND');
@@ -385,7 +385,7 @@ export class QuestionReportService {
   }
 
   async unreadCount(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
 
     const { data, error } = await supabase
@@ -411,7 +411,7 @@ export class QuestionReportService {
     id: string,
     ctx: RequestContext,
   ): Promise<{ report: ReportRow; orgScope: string | null } | null> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: report } = await supabase
       .from('question_reports')
       .select('*')

@@ -262,6 +262,7 @@ export async function seedViaApi(
       cookie,
     ).then((card: { id?: string }) => {
       if (card.id) created.flashcards.push(card.id);
+      return undefined;
     });
   }
 

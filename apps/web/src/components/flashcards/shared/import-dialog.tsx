@@ -182,8 +182,8 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
   return (
     <Dialog
       open={open}
-      onOpenChange={(open) => {
-        if (!open) handleClose();
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) handleClose();
       }}
     >
       <DialogContent className="sm:max-w-3xl max-h-[80vh] flex flex-col">

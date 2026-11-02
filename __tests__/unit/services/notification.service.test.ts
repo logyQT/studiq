@@ -106,7 +106,7 @@ describe('NotificationService: reading', () => {
     const unread = builder({ data: null, count: 7, error: null });
     const user = client({ notifications: [list, unread] });
     const service = new NotificationService(
-      async () => asClient(user),
+      () => Promise.resolve(asClient(user)),
       () => asClient({}),
     );
 
@@ -135,7 +135,7 @@ describe('NotificationService: reading', () => {
     const list = builder({ data: [], error: null });
     const user = client({ notifications: [list, builder({ count: 0, error: null })] });
     const service = new NotificationService(
-      async () => asClient(user),
+      () => Promise.resolve(asClient(user)),
       () => asClient({}),
     );
 
@@ -152,7 +152,7 @@ describe('NotificationService: reading', () => {
       ],
     });
     const service = new NotificationService(
-      async () => asClient(user),
+      () => Promise.resolve(asClient(user)),
       () => asClient({}),
     );
 
@@ -167,7 +167,7 @@ describe('NotificationService: marking read', () => {
     const update = builder({ data: null, error: null });
     const admin = client({ notifications: [update] });
     const service = new NotificationService(
-      async () => asClient(user),
+      () => Promise.resolve(asClient(user)),
       () => asClient(admin),
     );
 
@@ -185,7 +185,7 @@ describe('NotificationService: marking read', () => {
     const user = client({ notifications: [builder({ data: null, error: null })] });
     const admin = client({});
     const service = new NotificationService(
-      async () => asClient(user),
+      () => Promise.resolve(asClient(user)),
       () => asClient(admin),
     );
 
@@ -199,7 +199,7 @@ describe('NotificationService: marking read', () => {
     const update = builder({ data: null, error: null });
     const admin = client({ notifications: [update] });
     const service = new NotificationService(
-      async () => asClient({}),
+      () => Promise.resolve(asClient({})),
       () => asClient(admin),
     );
 
@@ -222,7 +222,7 @@ describe('NotificationService: producers', () => {
     return {
       admin,
       service: new NotificationService(
-        async () => asClient({}),
+        () => Promise.resolve(asClient({})),
         () => asClient(admin),
       ),
     };
@@ -258,7 +258,7 @@ describe('NotificationService: producers', () => {
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
     const rows = insert.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
-    expect(rows.map((r) => r.user_id).sort()).toEqual(['a', 'b', 'extra']);
+    expect(rows.map((r) => r.user_id).toSorted()).toEqual(['a', 'b', 'extra']);
     expect(rows[0]).toMatchObject({
       organization_id: 'org-1',
       type: 'assignment_published',

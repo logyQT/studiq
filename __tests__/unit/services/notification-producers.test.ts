@@ -79,6 +79,8 @@ const ctx: RequestContext = {
   permissionScopes: {},
 };
 
+const owned = () => chain({ id: 'a1', created_by: teacherId, organization_id: orgId });
+
 describe('TeacherAssignmentService notifies students', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let notifier: ReturnType<typeof fakeNotifier>;
@@ -88,10 +90,23 @@ describe('TeacherAssignmentService notifies students', () => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
     notifier = fakeNotifier();
-    service = new TeacherAssignmentService(async () => mock, notifier as unknown as Notifier);
+    service = new TeacherAssignmentService(
+      () => Promise.resolve(mock),
+      notifier as unknown as Notifier,
+    );
   });
 
-  const owned = () => chain({ id: 'a1', created_by: teacherId, organization_id: orgId });
+  function gradeWith(attempt: Record<string, unknown>) {
+    mock.from
+      .mockReturnValueOnce(owned())
+      .mockReturnValueOnce(chain(attempt))
+      .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }])) // max points
+      .mockReturnValueOnce(chain({ id: 'answer-1' }))
+      .mockReturnValueOnce(chain(null)) // answer update
+      .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }]))
+      .mockReturnValueOnce(chain([{ question_id: 'q1', is_correct: true, teacher_points: 2 }]))
+      .mockReturnValueOnce(chain(null)); // attempt update
+  }
 
   function publishWith(previousStatus: string) {
     mock.from
@@ -150,18 +165,6 @@ describe('TeacherAssignmentService notifies students', () => {
   });
 
   describe('grading', () => {
-    function gradeWith(attempt: Record<string, unknown>) {
-      mock.from
-        .mockReturnValueOnce(owned())
-        .mockReturnValueOnce(chain(attempt))
-        .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }])) // max points
-        .mockReturnValueOnce(chain({ id: 'answer-1' }))
-        .mockReturnValueOnce(chain(null)) // answer update
-        .mockReturnValueOnce(chain([{ question_id: 'q1', points: 2 }]))
-        .mockReturnValueOnce(chain([{ question_id: 'q1', is_correct: true, teacher_points: 2 }]))
-        .mockReturnValueOnce(chain(null)); // attempt update
-    }
-
     it('tells the student at the first grade', async () => {
       gradeWith({ id: 'attempt-1', graded_at: null });
 
@@ -227,7 +230,7 @@ describe('QuestionReportService notifies the owner of a new report', () => {
       .mockReturnValueOnce(chain({ id: 'r-1' }))
       .mockReturnValueOnce(chain(undefined));
     const service = new QuestionReportService(
-      async () => supabase,
+      () => Promise.resolve(supabase),
       notifier as unknown as Notifier,
     );
 
@@ -253,7 +256,7 @@ describe('QuestionReportService notifies the owner of a new report', () => {
       chain({ id: 'q-1', created_by: 'student-1', organization_id: orgId }),
     );
     const service = new QuestionReportService(
-      async () => supabase,
+      () => Promise.resolve(supabase),
       notifier as unknown as Notifier,
     );
 
@@ -263,6 +266,8 @@ describe('QuestionReportService notifies the owner of a new report', () => {
     expect(notifier.reportMessage).not.toHaveBeenCalled();
   });
 });
+
+const sendAs = (userId: string) => ({ ...ctx, userId });
 
 describe('QuestionReportService notifies the other participant', () => {
   const student = 'student-1';
@@ -281,7 +286,7 @@ describe('QuestionReportService notifies the other participant', () => {
     const supabase = mockSupabaseClient();
     supabase.from.mockReturnValue(chain({ id: 'm1', body: 'hi', sender_id: sender }));
     const service = new QuestionReportService(
-      async () => supabase,
+      () => Promise.resolve(supabase),
       notifier as unknown as Notifier,
     );
     // The access check has its own tests; here the report is simply readable by the sender.
@@ -293,7 +298,6 @@ describe('QuestionReportService notifies the other participant', () => {
     return service;
   }
 
-  const sendAs = (userId: string) => ({ ...ctx, userId });
   let notifier: ReturnType<typeof fakeNotifier>;
 
   beforeEach(() => {
@@ -331,7 +335,7 @@ describe('QuestionReportService notifies the other participant', () => {
     await serviceFor(admin, notifier).addMessage('r1', { body: 'hi' }, sendAs(admin));
 
     expect(notifier.reportMessage).toHaveBeenCalledTimes(2);
-    expect(notifier.reportMessage.mock.calls.map(([call]) => call.recipientId).sort()).toEqual([
+    expect(notifier.reportMessage.mock.calls.map(([call]) => call.recipientId).toSorted()).toEqual([
       student,
       teacher,
     ]);

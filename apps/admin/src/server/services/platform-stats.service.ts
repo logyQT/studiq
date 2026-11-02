@@ -11,10 +11,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * granted to the service role only, which is what the admin app connects as.
  */
 export class PlatformStatsService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async getPlatformStats(): Promise<ServiceResult<PlatformStats>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.rpc('admin_platform_stats');
 
     if (error) return toDbFailure(error);
@@ -22,7 +22,7 @@ export class PlatformStatsService {
   }
 
   async getDailyStats(days = 30): Promise<ServiceResult<DailyStats>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.rpc('admin_daily_stats', { p_days: days });
 
     if (error) return toDbFailure(error);

@@ -18,5 +18,5 @@ import { AccountType, type RequestContext } from '@studiq/authz';
  */
 export function personalPlanApplies(ctx: RequestContext, inVerifiedOrg: boolean): boolean {
   if (!inVerifiedOrg) return true;
-  return String(ctx.accountType ?? '').toLowerCase() !== AccountType.MANAGER;
+  return (ctx.accountType ?? '').toLowerCase() !== AccountType.MANAGER;
 }

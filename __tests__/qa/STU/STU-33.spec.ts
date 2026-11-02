@@ -238,7 +238,7 @@ async function createQuestion(
 
 function answersOf(question: QuestionRow) {
   return [...(question.question_answers ?? [])]
-    .sort((left, right) => (left.order_index ?? 0) - (right.order_index ?? 0))
+    .toSorted((left, right) => (left.order_index ?? 0) - (right.order_index ?? 0))
     .map((answer) => ({ text: answer.content, correct: answer.is_correct }));
 }
 

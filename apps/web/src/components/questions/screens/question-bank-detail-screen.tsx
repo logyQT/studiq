@@ -189,7 +189,7 @@ export function QuestionBankDetailScreen({
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`${basePath}`}>
+          <Link href={basePath}>
             <ArrowLeft className="h-4 w-4" />
             <SrLabel k="back" />
           </Link>

@@ -325,8 +325,8 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     // --- The victim's own manager still sees an untouched organization ----
     await switchUser(page, 'managerB', orgB.id);
     const victimMembers = await listMembers(page);
-    expect(victimMembers.map((member) => member.id).sort()).toEqual(
-      [managerB.id, studentB.id].sort(),
+    expect(victimMembers.map((member) => member.id).toSorted()).toEqual(
+      [managerB.id, studentB.id].toSorted(),
     );
     expect(victimMembers.find((member) => member.id === studentB.id)?.orgRoleName).toBe('member');
 

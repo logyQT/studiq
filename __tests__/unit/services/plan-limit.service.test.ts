@@ -41,7 +41,7 @@ describe('PlanLimitService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new PlanLimitService(async () => mock);
+    service = new PlanLimitService(() => Promise.resolve(mock));
   });
 
   describe('getByPlanKey', () => {

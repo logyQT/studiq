@@ -198,9 +198,9 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
         after
           .map((group) => group.id)
           .filter((id) => seededIds.includes(id))
-          .sort(),
+          .toSorted(),
         'only the case’s own group was added',
-      ).toEqual(seededIds.sort());
+      ).toEqual(seededIds.toSorted());
 
       expect(pageErrors, 'uncaught page errors on /edu/groups').toEqual([]);
     } finally {

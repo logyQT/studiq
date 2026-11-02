@@ -53,7 +53,7 @@ async function signIn(email: string, user: TestUserFixture): Promise<Session> {
 }
 
 function actAs(session: Session) {
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => session.build());
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => Promise.resolve(session.build()));
 }
 
 describe('active_org_id membership gate (#186)', () => {

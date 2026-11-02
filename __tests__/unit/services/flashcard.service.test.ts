@@ -6,9 +6,9 @@ import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => {
-  const check = vi.fn().mockResolvedValue(undefined);
+  const checkMock = vi.fn().mockResolvedValue(undefined);
   return {
-    check,
+    check: checkMock,
     accessibleFilter: vi.fn().mockResolvedValue({}),
     can: vi.fn().mockResolvedValue(true),
     Permission: {
@@ -95,7 +95,7 @@ describe('FlashcardService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new FlashcardService(async () => mock);
+  const service = new FlashcardService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();

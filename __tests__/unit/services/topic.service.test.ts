@@ -73,7 +73,7 @@ describe('TopicService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new TopicService(async () => mock);
+    service = new TopicService(() => Promise.resolve(mock));
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,
       data: true,

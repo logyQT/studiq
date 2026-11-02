@@ -50,7 +50,7 @@ describe('withAuth root span exceptions', () => {
     ['SyntaxError', () => new SyntaxError('unexpected token')],
     ['generic Error', () => new Error('boom')],
   ])('records the exception on the root span for a thrown %s', async (_label, make) => {
-    await withAuth(request(), async () => {
+    await withAuth(request(), () => {
       throw make();
     });
 
@@ -61,8 +61,8 @@ describe('withAuth root span exceptions', () => {
   });
 
   it('does not record an exception for a returned error response', async () => {
-    await withAuth(request(), async () =>
-      toNextResponse({ success: false, statusCode: 404, error: 'NOT_FOUND' }),
+    await withAuth(request(), () =>
+      Promise.resolve(toNextResponse({ success: false, statusCode: 404, error: 'NOT_FOUND' })),
     );
 
     expect(spanSpy.recordException).not.toHaveBeenCalled();

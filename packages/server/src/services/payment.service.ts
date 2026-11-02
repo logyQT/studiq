@@ -21,10 +21,10 @@ export interface PaymentHistoryItem {
  * own-row SELECT policy and no write policy).
  */
 export class PaymentService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async listMine(ctx: RequestContext): Promise<ServiceResult<PaymentHistoryItem[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('payments')

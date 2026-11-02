@@ -62,6 +62,21 @@ interface OrgBundle {
   peerReportId: string | null;
 }
 
+/** RequestContext for driving the service-role accept flow. */
+function acceptCtx(userId: string): RequestContext {
+  return {
+    userId,
+    accountType: AccountType.STUDENT,
+    traceId: 'rls191-test',
+    url: '',
+    method: 'POST',
+    activeOrgId: null,
+    orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
+  };
+}
+
 describe('RLS tenant isolation (#191)', () => {
   const service = createServiceClient();
 
@@ -82,21 +97,6 @@ describe('RLS tenant isolation (#191)', () => {
   let studentSession: SupabaseClient;
   let outsiderSession: SupabaseClient;
   let lonerSession: SupabaseClient;
-
-  /** RequestContext for driving the service-role accept flow. */
-  function acceptCtx(userId: string): RequestContext {
-    return {
-      userId,
-      accountType: AccountType.STUDENT,
-      traceId: 'rls191-test',
-      url: '',
-      method: 'POST',
-      activeOrgId: null,
-      orgRoleId: null,
-      groupIds: [],
-      permissionScopes: {},
-    };
-  }
 
   async function createUser(email: string, accountType: string, label: string): Promise<string> {
     const { data, error } = await service.auth.admin.createUser({
@@ -431,7 +431,7 @@ describe('RLS tenant isolation (#191)', () => {
       rows
         .filter((r) => r.anon_select)
         .map((r) => r.table_name)
-        .sort(),
+        .toSorted(),
     ).toEqual(PUBLIC_TABLES);
     expect(rows.filter((r) => r.authenticated_truncate).map((r) => r.table_name)).toEqual([]);
   });

@@ -19,7 +19,7 @@ describe('apply_org_plan()', () => {
       .eq('org_roles.organization_id', orgId)
       .eq('org_roles.name', roleName);
     if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => r.feature_key).sort();
+    return (data ?? []).map((r) => r.feature_key).toSorted();
   }
 
   async function plan(): Promise<string> {

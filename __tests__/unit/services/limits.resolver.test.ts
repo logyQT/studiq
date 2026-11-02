@@ -77,7 +77,7 @@ describe('LimitsResolver', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    resolver = new LimitsResolver(async () => mock);
+    resolver = new LimitsResolver(() => Promise.resolve(mock));
   });
 
   // #230 acceptance: the dropped snapshot table must never be queried again,

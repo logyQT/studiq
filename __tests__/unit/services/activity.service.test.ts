@@ -72,7 +72,7 @@ describe('ActivityService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new ActivityService(async () => mock);
+    service = new ActivityService(() => Promise.resolve(mock));
   });
 
   describe('getClassActivity', () => {

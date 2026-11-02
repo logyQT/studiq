@@ -69,6 +69,7 @@ export default function QuizReviewPage() {
       .then((data) => {
         setAttempt(data);
         setLoading(false);
+        return undefined;
       })
       .catch(() => {
         toast.error(t('load_failed'));

@@ -342,7 +342,8 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
         `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${student.id}`,
       );
       const answer = answers.quiz_answers.find(
-        (row) => row.question_id === created!.id && row.text_answer === STUDENT_ANSWER,
+        (answerRow) =>
+          answerRow.question_id === created!.id && answerRow.text_answer === STUDENT_ANSWER,
       );
       expect(answer, 'the free text is stored as the student answer').toBeDefined();
       expect(answer!.selected_option_id, 'no option is selected for an open answer').toBeNull();
@@ -377,7 +378,9 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
         'GET',
         `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${student.id}`,
       );
-      const gradedAnswer = graded.quiz_answers.find((row) => row.question_id === created!.id);
+      const gradedAnswer = graded.quiz_answers.find(
+        (answerRow) => answerRow.question_id === created!.id,
+      );
       expect(gradedAnswer!.teacher_points, 'the teacher’s points are stored').toBe(1);
       expect(graded.graded_at, 'the attempt is marked graded').not.toBeNull();
       expect(gradedAnswer!.text_answer, 'the student text is kept after grading').toBe(

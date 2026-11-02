@@ -367,7 +367,7 @@ test.describe('@case:STU-40 @area:STU @prio:P2 student report thread replies', (
     ]);
     const timestamps = detail.messages.map((message) => Date.parse(message.created_at));
     expect(timestamps, 'messages are stored in chronological order').toEqual(
-      [...timestamps].sort((a, b) => a - b),
+      [...timestamps].toSorted((a, b) => a - b),
     );
     expect(detail.report.status, 'answering an open report keeps it open').toBe('open');
 

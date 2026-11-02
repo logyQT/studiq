@@ -101,7 +101,7 @@ describe('InvitationService e-mail delivery', () => {
     mailer = { sendInvitation };
     getMailer = vi.fn(() => mailer);
     service = new InvitationService(
-      async () => request as unknown as SupabaseClient,
+      () => Promise.resolve(request as unknown as SupabaseClient),
       () => admin as unknown as SupabaseClient,
       getMailer,
     );
@@ -227,8 +227,9 @@ describe('InvitationService e-mail delivery', () => {
       { id: 'i1', token: 'a'.repeat(32), email: 'a@example.com' },
       { id: 'i2', token: 'b'.repeat(32), email: 'b@example.com' },
     ]);
-    sendInvitation.mockImplementation(async (mail: { to: string }) => {
-      if (mail.to === 'b@example.com') throw new Error('boom');
+    sendInvitation.mockImplementation((mail: { to: string }) => {
+      if (mail.to === 'b@example.com') return Promise.reject(new Error('boom'));
+      return Promise.resolve();
     });
 
     const result = await service.createInvitationsBulk(ctxFor('org-g'), [

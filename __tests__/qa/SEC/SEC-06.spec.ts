@@ -392,9 +392,9 @@ test.describe('@case:SEC-06 @area:SEC @prio:P1 student and teacher do not manage
       'the rejected role creations left no rows',
     ).toEqual([]);
     expect(
-      rejectedRoles.map((row) => row.id).sort(),
+      rejectedRoles.map((row) => row.id).toSorted(),
       'the organization still has exactly its three system roles',
-    ).toEqual([adminRoleId, memberRoleId, teacherRoleId].sort());
+    ).toEqual([adminRoleId, memberRoleId, teacherRoleId].toSorted());
 
     // --- No over-block: the teacher's own panel still loads ----------------
     await page.goto('/edu');

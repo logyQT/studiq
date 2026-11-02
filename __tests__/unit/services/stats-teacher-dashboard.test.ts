@@ -25,7 +25,7 @@ const ctx: RequestContext = {
 describe('StatsService teacher dashboard', () => {
   const rpc = vi.fn();
   // Only `rpc` is stubbed; the rest of the client is never reached.
-  const service = new StatsService(async () => ({ rpc }) as unknown as SupabaseClient);
+  const service = new StatsService(() => Promise.resolve({ rpc } as unknown as SupabaseClient));
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -276,7 +276,7 @@ describe('problem questions floor (#654 review)', () => {
         error: null,
       }),
     };
-    const service = new StatsService(async () => supabase as unknown as SupabaseClient);
+    const service = new StatsService(() => Promise.resolve(supabase as unknown as SupabaseClient));
 
     const result = await service.getTeacherStats(ctx);
 

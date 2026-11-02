@@ -424,9 +424,9 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     const deckBCards = await getDeckCards(page, deckB.id);
     expect(deckBCards, 'deck B holds exactly the copies and the moved originals').toHaveLength(6);
     expect(
-      deckBCards.map((row) => row.front).sort(),
+      deckBCards.map((row) => row.front).toSorted(),
       'each picked card is present as a copy and as the moved original',
-    ).toEqual([...PICKED.map(cardFront), ...PICKED.map(cardFront)].sort());
+    ).toEqual([...PICKED.map(cardFront), ...PICKED.map(cardFront)].toSorted());
     for (const row of deckBCards) {
       await expect(card(page, row.id), 'every deck B card is rendered').toBeVisible();
     }

@@ -44,8 +44,8 @@ export default function ManageOverviewPage() {
 
   const teachers = members.filter((m) => m.orgRoleName === 'teacher');
   const students = members.filter((m) => m.orgRoleName === 'member');
-  const recentMembers = [...members]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  const recentMembers = members
+    .toSorted((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 5);
 
   return (

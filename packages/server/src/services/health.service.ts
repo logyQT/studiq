@@ -12,7 +12,7 @@ type HealthStatus = HealthStatusResponse;
 export class HealthService {
   private TIMEOUT_MS = 3000;
 
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async checkHealth(): Promise<HealthStatus> {
     const start = Date.now();
@@ -37,7 +37,7 @@ export class HealthService {
 
   private async checkSupabase(): Promise<boolean> {
     try {
-      const supabase = await this.createClient();
+      const supabase = await this.clientFactory();
 
       const { error } = await supabase.from('_health_check_').select('*').limit(1);
 

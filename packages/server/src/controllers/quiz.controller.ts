@@ -7,7 +7,7 @@ import { GenerateQuizSchema } from '@studiq/server/models/quiz.model';
 import { type QuizService, quizService } from '@studiq/server/services/quiz.service';
 
 export class QuizController {
-  constructor(private quizService: QuizService) {}
+  constructor(private service: QuizService) {}
 
   async generate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = GenerateQuizSchema.safeParse(body);
@@ -21,7 +21,7 @@ export class QuizController {
       };
     }
 
-    const result = await this.quizService.generateQuiz(parsed.data, ctx);
+    const result = await this.service.generateQuiz(parsed.data, ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

@@ -45,7 +45,7 @@ describe('SearchService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new SearchService(async () => mock);
+    service = new SearchService(() => Promise.resolve(mock));
   });
 
   describe('search', () => {

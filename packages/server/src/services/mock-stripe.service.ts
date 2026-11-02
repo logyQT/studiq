@@ -30,7 +30,7 @@ export type MockWebhookEvent = {
 
 export class MockStripeService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient>,
     private createAdminClient: () => SupabaseClient = createServiceClient,
   ) {}
 
@@ -45,7 +45,7 @@ export class MockStripeService {
   ): Promise<
     ServiceResult<{ isOrgPlan: boolean; planName: string; amount: number; currency: string }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: plan } = await supabase
       .from('subscription_plans')
@@ -72,7 +72,7 @@ export class MockStripeService {
   ): Promise<ServiceResult<void>> {
     if (!orgId) return failure('BAD_REQUEST');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: membership, error } = await supabase
       .from('org_members')
       .select('org_roles!inner(name)')
@@ -175,6 +175,7 @@ export class MockStripeService {
     return success(undefined);
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- service methods expose a Promise contract consumed via await.
   async createPortalSession(_userId: string): Promise<ServiceResult<{ url: string }>> {
     const baseUrl = getSiteUrl();
     return success({ url: `${baseUrl}/app/billing` });

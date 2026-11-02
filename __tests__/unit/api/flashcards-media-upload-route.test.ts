@@ -59,7 +59,7 @@ describe('POST /api/v1/flashcards/media/upload (#185)', () => {
   });
 
   it('returns 400 when the form has no file', async () => {
-    const res = await POST(fakeRequest({ formData: async () => new FormData() }));
+    const res = await POST(fakeRequest({ formData: () => Promise.resolve(new FormData()) }));
 
     expect(res.status).toBe(400);
     expect(res.headers.get('x-error-code')).toBe('BAD_REQUEST');
@@ -77,7 +77,9 @@ describe('POST /api/v1/flashcards/media/upload (#185)', () => {
     );
     const stored = formData.get('file');
 
-    const res = await POST(fakeRequest({ contentLength: '64', formData: async () => formData }));
+    const res = await POST(
+      fakeRequest({ contentLength: '64', formData: () => Promise.resolve(formData) }),
+    );
 
     expect(res.status).toBe(200);
     expect(uploadFileMock).toHaveBeenCalledWith('user-1', stored);

@@ -48,9 +48,9 @@ function chain(result: unknown, count?: number) {
 }
 
 /** A chain whose every terminal (await, `.single()`, `.maybeSingle()`) fails. */
-function failingChain(error: { code: string; message: string }) {
+function failingChain(failure: { code: string; message: string }) {
   const c = chain(null);
-  const resolved: QueryResult = { data: null, error };
+  const resolved: QueryResult = { data: null, error: failure };
   const promise = Promise.resolve(resolved);
   c.single = vi.fn().mockResolvedValue(resolved);
   c.maybeSingle = c.single;
@@ -81,6 +81,10 @@ function withOrgScope(): RequestContext {
   };
 }
 
+const owned = () => chain({ id: assignmentId, created_by: userId, organization_id: orgId });
+const ownedAssignment = () =>
+  chain({ id: assignmentId, created_by: userId, organization_id: orgId });
+
 describe('TeacherAssignmentService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: TeacherAssignmentService;
@@ -88,7 +92,7 @@ describe('TeacherAssignmentService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new TeacherAssignmentService(async () => mock);
+    service = new TeacherAssignmentService(() => Promise.resolve(mock));
   });
 
   function expectOwnershipCheck() {
@@ -624,8 +628,6 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('setTargets', () => {
-    const owned = () => chain({ id: assignmentId, created_by: userId, organization_id: orgId });
-
     it('sets group and student targets', async () => {
       mock.from
         .mockReturnValueOnce(owned())
@@ -885,13 +887,13 @@ describe('TeacherAssignmentService', () => {
     });
   });
 
-  describe('gradeAnswer', () => {
-    const baseSetup = () => {
-      mock.from.mockReturnValueOnce(
-        chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-      );
-    };
+  const baseSetup = () => {
+    mock.from.mockReturnValueOnce(
+      chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+    );
+  };
 
+  describe('gradeAnswer', () => {
     it('updates existing answer grade and recomputes the attempt score', async () => {
       const attemptChain = chain({ id: 'attempt-1' });
       const questionsChain = chain([
@@ -2193,9 +2195,6 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('exportAnswers', () => {
-    const ownedAssignment = () =>
-      chain({ id: assignmentId, created_by: userId, organization_id: orgId });
-
     it('maps every attempt to the results-view row', async () => {
       const attempts = [
         {

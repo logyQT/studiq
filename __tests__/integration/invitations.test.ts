@@ -27,6 +27,24 @@ import {
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
+async function inviteExists(id: string): Promise<boolean> {
+  const { data } = await createServiceClient()
+    .from('invitations')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle();
+  return data !== null;
+}
+
+async function inviteRole(id: string): Promise<string | null> {
+  const { data } = await createServiceClient()
+    .from('invitations')
+    .select('target_org_role_id')
+    .eq('id', id)
+    .maybeSingle();
+  return data?.target_org_role_id ?? null;
+}
+
 describe(`Invitations Integration`, () => {
   let fixture!: BeforeResult;
   let student!: TestUserFixture;
@@ -835,44 +853,26 @@ describe(`Invitations Integration`, () => {
     });
   });
 
+  async function seedInvite(): Promise<string> {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from('invitations')
+      .insert({
+        email: `cross-org-${suiteId}-${Date.now()}@example.com`,
+        target_org_role_id: adminRoleId,
+        expires_at: new Date(Date.now() + 86400000).toISOString(),
+        inviter_id: fixture.user.id,
+        organization_id: orgId,
+      })
+      .select('id')
+      .single();
+    if (error || !data) throw new Error(`Failed to insert invitation: ${error?.message}`);
+    return data.id;
+  }
+
   // MGR-INV-03: an invitation id must never be enough — the row has to belong
   // to the caller's verified active organization.
   describe('DELETE/PUT /api/v1/organization/invites/{id} cross-org scoping', () => {
-    async function seedInvite(): Promise<string> {
-      const supabase = createServiceClient();
-      const { data, error } = await supabase
-        .from('invitations')
-        .insert({
-          email: `cross-org-${suiteId}-${Date.now()}@example.com`,
-          target_org_role_id: adminRoleId,
-          expires_at: new Date(Date.now() + 86400000).toISOString(),
-          inviter_id: fixture.user.id,
-          organization_id: orgId,
-        })
-        .select('id')
-        .single();
-      if (error || !data) throw new Error(`Failed to insert invitation: ${error?.message}`);
-      return data.id;
-    }
-
-    async function inviteExists(id: string): Promise<boolean> {
-      const { data } = await createServiceClient()
-        .from('invitations')
-        .select('id')
-        .eq('id', id)
-        .maybeSingle();
-      return data !== null;
-    }
-
-    async function inviteRole(id: string): Promise<string | null> {
-      const { data } = await createServiceClient()
-        .from('invitations')
-        .select('target_org_role_id')
-        .eq('id', id)
-        .maybeSingle();
-      return data?.target_org_role_id ?? null;
-    }
-
     it("returns 404 and keeps the row when manager B deletes org A's invitation", async () => {
       const inviteId = await seedInvite();
       mockUser(foreignFixture.user);

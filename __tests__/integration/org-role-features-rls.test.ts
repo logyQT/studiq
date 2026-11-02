@@ -167,7 +167,7 @@ describe(`org_role_features RLS`, () => {
   });
 
   it('FeatureResolver uses the org-role entitlement for a non-seated member', async () => {
-    const resolver = new FeatureResolver(async () => memberSession);
+    const resolver = new FeatureResolver(() => Promise.resolve(memberSession));
     const ctx: RequestContext = {
       traceId: `rls-${suiteId}`,
       userId: memberId,
@@ -191,7 +191,7 @@ describe(`org_role_features RLS`, () => {
   });
 
   it('LimitsResolver resolves org capacity from a real member session (RLS path)', async () => {
-    const resolver = new LimitsResolver(async () => memberSession);
+    const resolver = new LimitsResolver(() => Promise.resolve(memberSession));
     const ctx: RequestContext = {
       traceId: `rls-limits-${suiteId}`,
       userId: memberId,
@@ -211,7 +211,7 @@ describe(`org_role_features RLS`, () => {
   });
 
   it('LimitsResolver cannot read a foreign org plan through RLS', async () => {
-    const resolver = new LimitsResolver(async () => outsiderSession);
+    const resolver = new LimitsResolver(() => Promise.resolve(outsiderSession));
     const ctx: RequestContext = {
       traceId: `rls-limits-outsider-${suiteId}`,
       userId: outsiderId,

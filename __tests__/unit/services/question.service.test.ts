@@ -70,7 +70,7 @@ describe('QuestionService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new QuestionService(async () => mock);
+  const service = new QuestionService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();

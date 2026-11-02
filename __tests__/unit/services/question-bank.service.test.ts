@@ -88,7 +88,7 @@ describe('QuestionBankService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new QuestionBankService(async () => mock);
+    service = new QuestionBankService(() => Promise.resolve(mock));
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,
       data: true,

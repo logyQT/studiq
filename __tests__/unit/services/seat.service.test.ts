@@ -61,7 +61,7 @@ describe('SeatService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new SeatService(async () => mock);
+  const service = new SeatService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();

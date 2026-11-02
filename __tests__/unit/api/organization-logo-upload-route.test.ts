@@ -82,7 +82,7 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
     mockCtx = { ...mockCtx, activeOrgId: 'org-2' };
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -96,7 +96,7 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
     mockCtx = { ...mockCtx, orgRoleId: null };
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -107,7 +107,7 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
 
   it('returns 422 MISSING_FIELDS when the form has no file', async () => {
     const res = await POST(
-      fakeRequest(async () => new FormData()),
+      fakeRequest(() => Promise.resolve(new FormData())),
       params,
     );
 
@@ -130,7 +130,7 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
     );
 
     const res = await POST(
-      fakeRequest(async () => formData),
+      fakeRequest(() => Promise.resolve(formData)),
       params,
     );
 
@@ -151,7 +151,7 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
     });
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -171,7 +171,7 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
     updateMock.mockResolvedValue({ success: true, statusCode: 200, data: { id: 'org-1' } });
 
     await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -185,30 +185,30 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
 // #281: replacing a logo uploads a new object and repoints the row, so the
 // previous object has to be deleted — but only after a successful update, only
 // inside this org's prefix, and never at the cost of the upload.
+function givenOrgWithLogo(logoUrl: string | null) {
+  getByIdMock.mockResolvedValue({
+    success: true,
+    statusCode: 200,
+    data: { id: 'org-1', logo_url: logoUrl },
+  });
+}
+
+function givenSuccessfulUpload() {
+  uploadToBucketMock.mockResolvedValue({ url: NEXT_URL });
+  updateMock.mockResolvedValue({
+    success: true,
+    statusCode: 200,
+    data: { id: 'org-1', logoUrl: NEXT_URL },
+  });
+}
+
 describe('POST /api/v1/organization/[id]/logo — replaced logo cleanup (#281)', () => {
-  function givenOrgWithLogo(logoUrl: string | null) {
-    getByIdMock.mockResolvedValue({
-      success: true,
-      statusCode: 200,
-      data: { id: 'org-1', logo_url: logoUrl },
-    });
-  }
-
-  function givenSuccessfulUpload() {
-    uploadToBucketMock.mockResolvedValue({ url: NEXT_URL });
-    updateMock.mockResolvedValue({
-      success: true,
-      statusCode: 200,
-      data: { id: 'org-1', logoUrl: NEXT_URL },
-    });
-  }
-
   it('deletes the previously referenced object after a successful update', async () => {
     givenOrgWithLogo(PREVIOUS_URL);
     givenSuccessfulUpload();
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -229,7 +229,7 @@ describe('POST /api/v1/organization/[id]/logo — replaced logo cleanup (#281)',
     givenSuccessfulUpload();
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -242,7 +242,7 @@ describe('POST /api/v1/organization/[id]/logo — replaced logo cleanup (#281)',
     givenSuccessfulUpload();
 
     await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -259,7 +259,7 @@ describe('POST /api/v1/organization/[id]/logo — replaced logo cleanup (#281)',
     });
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -273,7 +273,7 @@ describe('POST /api/v1/organization/[id]/logo — replaced logo cleanup (#281)',
     deleteObjectByPublicUrlMock.mockRejectedValue(new Error('storage exploded'));
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -293,7 +293,7 @@ describe('POST /api/v1/organization/[id]/logo — replaced logo cleanup (#281)',
     uploadToBucketMock.mockRejectedValue(new AppError('UNPROCESSABLE_ENTITY'));
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 
@@ -306,7 +306,7 @@ describe('POST /api/v1/organization/[id]/logo — replaced logo cleanup (#281)',
     getByIdMock.mockResolvedValue({ success: false, statusCode: 404, error: 'NOT_FOUND' });
 
     const res = await POST(
-      fakeRequest(async () => imageFormData()),
+      fakeRequest(() => Promise.resolve(imageFormData())),
       params,
     );
 

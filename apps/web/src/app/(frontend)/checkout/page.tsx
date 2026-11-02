@@ -49,6 +49,17 @@ function FullPageSpinner() {
   );
 }
 
+function formatCardNumber(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 16);
+  return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
+}
+
+function formatExpiry(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 4);
+  if (digits.length > 2) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return digits;
+}
+
 function CheckoutContent() {
   const ct = useTranslations('CheckoutPage');
   const pt = useTranslations('PricingPage');
@@ -105,17 +116,6 @@ function CheckoutContent() {
   const isCvcValid = cvc.length === 3;
   const isNameValid = cardName.trim().length > 0;
   const canSubmit = isCardValid && isExpiryValid && isCvcValid && isNameValid;
-
-  function formatCardNumber(value: string) {
-    const digits = value.replace(/\D/g, '').slice(0, 16);
-    return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
-  }
-
-  function formatExpiry(value: string) {
-    const digits = value.replace(/\D/g, '').slice(0, 4);
-    if (digits.length > 2) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    return digits;
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

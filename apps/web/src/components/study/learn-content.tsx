@@ -56,7 +56,6 @@ export function LearnContent() {
 
   const showDue = totalDue > 0;
   const showNew = !showDue && remainingNew > 0;
-  const _showAllCaughtUp = !showDue && !showNew;
   const hasAnyCards = showDue || showNew;
 
   function startReview() {

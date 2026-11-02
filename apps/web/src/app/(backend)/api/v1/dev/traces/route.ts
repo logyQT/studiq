@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   // The route type gate above is not an authorization gate: without a session
   // any anonymous caller in development could read every stored trace. The
   // proxy skips /api/*, so this route has to enforce the session itself (#189).
-  return withAuth(req, async () => {
+  return withAuth(req, () => {
     const { searchParams } = new URL(req.url);
 
     const rawSession = searchParams.get('serverSessionId') || 'current';
@@ -35,16 +35,18 @@ export async function GET(req: NextRequest) {
     const { events, total } = agentTraceService.getByFilters(filters);
     const dbStatus = agentTraceService.getStatus();
 
-    return new Response(
-      JSON.stringify(
-        { events, total, serverSessionId: SERVER_SESSION_ID, dbStatus, filters },
-        null,
-        2,
+    return Promise.resolve(
+      new Response(
+        JSON.stringify(
+          { events, total, serverSessionId: SERVER_SESSION_ID, dbStatus, filters },
+          null,
+          2,
+        ),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
       ),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      },
     );
   });
 }

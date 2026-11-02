@@ -222,7 +222,11 @@ async function ensureBank(page: Page): Promise<string> {
 }
 
 /** A mcq question with one correct and one wrong option (1 point when graded). */
-async function createQuestion(page: Page, bankId: string, content: string): Promise<string> {
+async function createQuestion(
+  page: Page,
+  bankId: string,
+  questionContent: string,
+): Promise<string> {
   const created = await call<QuestionRow>(
     page,
     'POST',
@@ -230,7 +234,7 @@ async function createQuestion(page: Page, bankId: string, content: string): Prom
     {
       bankId,
       type: 'mcq',
-      content,
+      content: questionContent,
       answers: [
         { content: 'Odpowiedź poprawna', isCorrect: true, orderIndex: 0 },
         { content: 'Odpowiedź błędna', isCorrect: false, orderIndex: 1 },
@@ -466,9 +470,9 @@ test.describe('@case:STU-34 @area:STU @prio:P2 student quiz list', () => {
 
       const studentList = await call<StudentAssignmentRow[]>(page, 'GET', '/api/v1/assignments');
       expect(
-        studentList.map((row) => row.id).sort(),
+        studentList.map((row) => row.id).toSorted(),
         'the student API returns only the group- and student-targeted quizzes',
-      ).toEqual([group.id, individual.id].sort());
+      ).toEqual([group.id, individual.id].toSorted());
 
       // ── Step 3: a started attempt has its own „W trakcie” section ─────────
       const started = await startAttempt(page, individual.id);

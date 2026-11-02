@@ -87,10 +87,10 @@ export default function FeatureFlagsPage() {
   const missingKeys = FEATURES.filter((key) => !existingKeys.has(key));
   const canCreate = !isLoading && !isError && missingKeys.length > 0;
 
-  function mapError(error: Error): string {
-    if (error.message === 'CONFLICT') return t('error_exists');
-    if (error.message === 'UNPROCESSABLE_ENTITY') return t('error_validation');
-    return t('save_failed', { code: error.message });
+  function mapError(err: Error): string {
+    if (err.message === 'CONFLICT') return t('error_exists');
+    if (err.message === 'UNPROCESSABLE_ENTITY') return t('error_validation');
+    return t('save_failed', { code: err.message });
   }
 
   const createMutation = useMutation({
@@ -101,7 +101,7 @@ export default function FeatureFlagsPage() {
       setForm(EMPTY_FORM);
       setFormError(null);
     },
-    onError: (error: Error) => setFormError(mapError(error)),
+    onError: (err: Error) => setFormError(mapError(err)),
   });
 
   const updateMutation = useMutation({
@@ -120,7 +120,7 @@ export default function FeatureFlagsPage() {
       setForm(EMPTY_FORM);
       setFormError(null);
     },
-    onError: (error: Error) => setFormError(mapError(error)),
+    onError: (err: Error) => setFormError(mapError(err)),
   });
 
   const deleteMutation = useMutation({

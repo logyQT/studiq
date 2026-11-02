@@ -463,10 +463,14 @@ async function resetPracticeState(tenant: QaTenant): Promise<void> {
   expect(userIds.length, `${CASE} tenant users`).toBeGreaterThan(0);
   const db = createQaSupabase();
 
-  const practice = await db.from('flashcard_practice').delete().in('user_id', userIds).select('id');
+  const practiceCleanup = await db
+    .from('flashcard_practice')
+    .delete()
+    .in('user_id', userIds)
+    .select('id');
   expect(
-    practice.error,
-    `delete ${CASE} practice rows: ${practice.error?.message ?? ''}`,
+    practiceCleanup.error,
+    `delete ${CASE} practice rows: ${practiceCleanup.error?.message ?? ''}`,
   ).toBeNull();
 
   const reviews = await db
@@ -602,8 +606,8 @@ test.describe('@case:EDU-ST-01 @area:EDU @prio:P2 educator content statistics', 
     await subjectSelect.click();
     const options = page.getByRole('option');
     await expect(options).toHaveCount(3);
-    expect((await options.allInnerTexts()).sort(), 'subject filter options').toEqual(
-      [COPY.allSubjects, BANKS.geografia, BANKS.historia].sort(),
+    expect((await options.allInnerTexts()).toSorted(), 'subject filter options').toEqual(
+      [COPY.allSubjects, BANKS.geografia, BANKS.historia].toSorted(),
     );
 
     const filtered = page.waitForRequest((request) => {

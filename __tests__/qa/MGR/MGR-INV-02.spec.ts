@@ -123,9 +123,13 @@ async function fillRow(page: Page, row: number, email: string, roleLabel: string
   await expect(page.locator(`#role-${row}`)).toHaveText(roleLabel);
 }
 
+/** Whether the URL is the bulk-invite endpoint. */
+function isBulk(url: string): boolean {
+  return new URL(url).pathname === BULK_PATH;
+}
+
 /** Click "Wyślij zaproszenia" and hand back both the request and the response. */
 async function send(page: Page) {
-  const isBulk = (url: string) => new URL(url).pathname === BULK_PATH;
   const requestPromise = page.waitForRequest((req) => req.method() === 'POST' && isBulk(req.url()));
   const responsePromise = page.waitForResponse(
     (res) => res.request().method() === 'POST' && isBulk(res.url()),

@@ -32,6 +32,16 @@ export function UserMenuHeader() {
 const PLAIN_ITEM_CLASS =
   'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors';
 
+async function handleLogout() {
+  try {
+    const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
+    if (!res.ok) throw new Error('Logout failed');
+    window.location.href = '/login';
+  } catch {
+    window.location.href = '/login';
+  }
+}
+
 interface MenuEntryProps {
   variant: UserMenuVariant;
   onSelect?: () => void;
@@ -197,16 +207,6 @@ export function UserMenuItems(props: UserMenuItemsProps) {
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const dashboardPrefix = dashboardHomeFor(accountType);
-
-  async function handleLogout() {
-    try {
-      const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
-      if (!res.ok) throw new Error('Logout failed');
-      window.location.href = '/login';
-    } catch {
-      window.location.href = '/login';
-    }
-  }
 
   return (
     <>

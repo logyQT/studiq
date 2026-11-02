@@ -167,7 +167,7 @@ function savedToast(page: Page): Locator {
 /** Persisted state, read back through the same API the editor loads. */
 async function storedQuiz(page: Page, quizId: string): Promise<QuizQuestionRow[]> {
   const quiz = await getData<QuizDetail>(page, `/api/v1/teacher/quizzes/${quizId}`);
-  return [...quiz.quiz_questions].sort((a, b) => a.order_index - b.order_index);
+  return [...quiz.quiz_questions].toSorted((a, b) => a.order_index - b.order_index);
 }
 
 /**

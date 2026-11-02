@@ -91,7 +91,7 @@ interface FlashcardListResult {
 interface PracticeCard {
   id: string;
   front: string;
-  reviewState: unknown | null;
+  reviewState: unknown;
 }
 
 interface StateBreakdown {
@@ -321,9 +321,9 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
       `/api/v1/flashcards/practice/prepare?deckIds=${main.id}`,
     );
     expect(
-      preparedBefore.map((card) => card.front).sort(),
+      preparedBefore.map((card) => card.front).toSorted(),
       'cram prepares the whole deck, due or not',
-    ).toEqual([...MAIN_FRONTS].sort());
+    ).toEqual([...MAIN_FRONTS].toSorted());
     expect(
       preparedBefore.every((card) => card.reviewState === null),
       'the cards have no SM-2 state yet',
@@ -370,9 +370,9 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
     // --- Step 3: rate every card and end the session ----------------------
     const firstRound = await rateWholeDeck(page, card, MAIN_FRONTS.length);
     expect(
-      [...firstRound].sort(),
+      [...firstRound].toSorted(),
       'the session showed every card of the deck, in any order',
-    ).toEqual([...MAIN_FRONTS].sort());
+    ).toEqual([...MAIN_FRONTS].toSorted());
 
     const dialog = summary(page);
     await expect(dialog, 'the completion summary opens').toBeVisible();
@@ -408,8 +408,8 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
     await expect(card, 'replay shows a card again').toBeVisible();
 
     const secondRound = await rateWholeDeck(page, card, MAIN_FRONTS.length);
-    expect([...secondRound].sort(), 'replay crams the same whole deck again').toEqual(
-      [...MAIN_FRONTS].sort(),
+    expect([...secondRound].toSorted(), 'replay crams the same whole deck again').toEqual(
+      [...MAIN_FRONTS].toSorted(),
     );
 
     await expect(dialog, 'the replay run ends with the summary').toBeVisible();
@@ -426,7 +426,7 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
       `/api/v1/flashcards/practice/prepare?deckIds=${main.id}`,
     );
     expect(
-      preparedAfter.every((card) => card.reviewState === null),
+      preparedAfter.every((preparedCard) => preparedCard.reviewState === null),
       'cram writes no review state',
     ).toBe(true);
     const states = await getData<StateBreakdown>(page, '/api/v1/flashcards/practice/states');

@@ -45,7 +45,7 @@ describe('OrganizationService', () => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
     service = new OrganizationService(
-      async () => mock,
+      () => Promise.resolve(mock),
       () => mock,
     );
   });
@@ -161,7 +161,7 @@ describe('OrganizationService', () => {
       const userClient = { rpc: vi.fn(), from: vi.fn() };
       const adminClient = { from: vi.fn() };
       service = new OrganizationService(
-        async () => userClient,
+        () => Promise.resolve(userClient),
         () => adminClient,
       );
 
@@ -180,7 +180,7 @@ describe('OrganizationService', () => {
       };
       const adminClient = { from: vi.fn() };
       service = new OrganizationService(
-        async () => userClient,
+        () => Promise.resolve(userClient),
         () => adminClient,
       );
 
@@ -202,7 +202,7 @@ describe('OrganizationService', () => {
       const adminClient = { from: vi.fn() };
       adminClient.from.mockReturnValueOnce(chain({ id: 'org-1' })).mockReturnValueOnce(chain(null));
       service = new OrganizationService(
-        async () => userClient,
+        () => Promise.resolve(userClient),
         () => adminClient,
       );
 

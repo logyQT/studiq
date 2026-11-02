@@ -740,7 +740,7 @@ describe(`Stats Integration`, () => {
       }
       // Worst-first within the fixture: the first two attempts answer correctly.
       const attemptIds = [...memberAttempts]
-        .sort((a, b) => (a.started_at as string).localeCompare(b.started_at as string))
+        .toSorted((a, b) => (a.started_at as string).localeCompare(b.started_at as string))
         .map((a) => a.id as string);
 
       const { data: extraAttempts, error: extraAttemptsError } = await service
@@ -911,7 +911,7 @@ describe(`Stats Integration`, () => {
       const rates = (body.data.subject.problematicQuestions as Array<{ correctRate: number }>).map(
         (q) => q.correctRate,
       );
-      expect(rates).toEqual([...rates].sort((a, b) => a - b));
+      expect(rates).toEqual([...rates].toSorted((a, b) => a - b));
     });
 
     it('narrows the list to the ?subjectId= bank', async () => {

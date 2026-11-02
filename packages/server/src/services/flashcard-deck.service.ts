@@ -7,6 +7,7 @@ import {
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -23,10 +24,10 @@ import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class FlashcardDeckService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async create(data: CreateDeckInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
     // A group-visible deck without a single share link is visible only to its creator (#139).
@@ -130,7 +131,7 @@ export class FlashcardDeckService {
   }
 
   private async getSuspendedDeckIds(ctx: RequestContext): Promise<Set<string>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data } = await supabase
       .from('suspended_decks')
       .select('deck_id')
@@ -142,10 +143,10 @@ export class FlashcardDeckService {
     ctx: RequestContext,
     queryParams?: Partial<DeckListQuery>,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.DECK_READ, 'deck');
-    if (filter._impossible)
+    if (isImpossibleFilter(filter))
       return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
@@ -239,12 +240,12 @@ export class FlashcardDeckService {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
 
     const filter = await accessibleFilter(ctx, Permission.DECK_READ, 'deck');
-    if (filter._impossible) return failure('NOT_FOUND');
+    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     let query = supabase
       .from('flashcard_decks')
@@ -275,7 +276,7 @@ export class FlashcardDeckService {
     data: UpdateDeckInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -415,7 +416,7 @@ export class FlashcardDeckService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -438,7 +439,7 @@ export class FlashcardDeckService {
     data: BulkCreateDeckInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const decks = data.decks.map((d) => ({
       name: d.name,
       description: d.description ?? null,
@@ -461,7 +462,7 @@ export class FlashcardDeckService {
     data: BatchDeleteDeckInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: decks, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -486,7 +487,7 @@ export class FlashcardDeckService {
     data: { deckIds: string[]; suspended: boolean },
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const deckIds = [...new Set(data.deckIds)];
 
     const guard = await this.assertDecksReadable(supabase, deckIds, ctx);

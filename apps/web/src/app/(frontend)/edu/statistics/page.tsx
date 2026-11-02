@@ -37,6 +37,7 @@ export default function EduStatsPage() {
       .then((r) => {
         setStats(r.data);
         setLoading(false);
+        return undefined;
       });
   }, [selectedSubject]);
 

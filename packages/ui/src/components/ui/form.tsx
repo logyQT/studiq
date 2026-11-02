@@ -132,7 +132,7 @@ function FormMessage({
 
   const globalErrTranslator = useTranslations('Errors');
 
-  const rawMessage = error ? String(error?.message ?? '') : undefined;
+  const rawMessage = error ? (error.message ?? '') : undefined;
 
   const activeTranslator = translator || globalErrTranslator;
 

@@ -34,7 +34,7 @@ interface QuestionBankCardProps {
 }
 
 export const QuestionBankCard = memo(
-  function QuestionBankCard({
+  function QuestionBankCardContent({
     bank,
     isSelecting,
     isSelected,

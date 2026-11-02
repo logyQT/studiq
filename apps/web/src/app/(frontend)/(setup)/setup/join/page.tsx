@@ -32,7 +32,7 @@ export default function JoinPage() {
     if (!code) {
       setInviteData(null);
       setVerifyState('idle');
-      return;
+      return undefined;
     }
 
     const timer = setTimeout(() => {

@@ -103,7 +103,7 @@ export function isUserOverrideActive(
 type FeatureRow = { feature_key: string; is_enabled?: boolean; expires_at?: string | null };
 
 export class FeatureResolver {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   /**
    * Resolve the feature set with the full precedence chain:
@@ -129,12 +129,10 @@ export class FeatureResolver {
    *      kill switch ("Stop now") regardless of any entitlement layer.
    */
   async resolveFeatures(ctx: RequestContext): Promise<FeatureResolution> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const enabled = new Set<FeatureKey>();
 
     // ── 1. Plan entitlement (base set) ───────────────────────────────────
-    let isOrgAdmin = false;
-
     if (ctx.activeOrgId) {
       // Load org-role features first (the role-based entitlement).
       let orgRoleFeatures: FeatureRow[] = [];
@@ -151,7 +149,7 @@ export class FeatureResolver {
       // privileges in ADMIN_ONLY_FEATURES through a seat; everyone else gets
       // them stripped once the seat plan is applied. (The personal layer is
       // bounded separately by ORG_SCOPED_FEATURES — see step 2 below.)
-      isOrgAdmin = orgRoleFeatures.some(
+      const isOrgAdmin = orgRoleFeatures.some(
         (r) => r.feature_key === 'org.manage' && r.is_enabled !== false,
       );
 

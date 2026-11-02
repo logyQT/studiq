@@ -15,7 +15,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 function resolveTimeZone(value: string | null): string | undefined {
   if (!value) return undefined;
   try {
-    new Intl.DateTimeFormat('en', { timeZone: value });
+    void new Intl.DateTimeFormat('en', { timeZone: value });
     return value;
   } catch {
     return undefined;

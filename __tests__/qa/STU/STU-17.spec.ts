@@ -249,9 +249,9 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
     // by the statistics breakdown.
     const queueBefore = await newCardQueue(page);
     expect(
-      queueBefore.map((card) => card.front).sort(),
+      queueBefore.map((card) => card.front).toSorted(),
       'the deck feeds the study queue before suspension',
-    ).toEqual([...CARD_FRONTS].sort());
+    ).toEqual([...CARD_FRONTS].toSorted());
     const statsBefore = await statistics(page);
     expect(statsBefore.totalCards, 'the cards are in the statistics before suspension').toBe(
       CARD_FRONTS.length,
@@ -388,9 +388,9 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
       })
       .toBe(CARD_FRONTS.length);
     expect(
-      (await newCardQueue(page)).map((card) => card.front).sort(),
+      (await newCardQueue(page)).map((card) => card.front).toSorted(),
       'the whole deck is offered for study again',
-    ).toEqual([...CARD_FRONTS].sort());
+    ).toEqual([...CARD_FRONTS].toSorted());
     expect((await statistics(page)).totalCards, 'the cards are counted again').toBe(
       CARD_FRONTS.length,
     );

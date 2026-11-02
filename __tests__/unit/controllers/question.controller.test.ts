@@ -52,6 +52,24 @@ const mockCtx: RequestContext = {
   permissionScopes: {},
 };
 
+function mockBankLookup(bankId: string) {
+  const queryChain: QueryChain = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    single: vi.fn().mockResolvedValue({
+      data: {
+        id: bankId,
+        created_by: mockCtx.userId,
+        organization_id: null,
+        visibility: 'personal',
+      },
+      error: null,
+    }),
+  };
+  const mockSupabase = { from: vi.fn().mockReturnValue(queryChain) };
+  vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as SupabaseClient);
+}
+
 describe('QuestionController', () => {
   let mockService: ReturnType<typeof createMockQuestionService>;
   let controller: QuestionController;
@@ -61,24 +79,6 @@ describe('QuestionController', () => {
     mockService = createMockQuestionService();
     controller = new QuestionController(mockService as unknown as QuestionService);
   });
-
-  function mockBankLookup(bankId: string) {
-    const queryChain: QueryChain = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({
-        data: {
-          id: bankId,
-          created_by: mockCtx.userId,
-          organization_id: null,
-          visibility: 'personal',
-        },
-        error: null,
-      }),
-    };
-    const mockSupabase = { from: vi.fn().mockReturnValue(queryChain) };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as SupabaseClient);
-  }
 
   describe('create', () => {
     const VALID_BANK_ID = '00000000-0000-4000-8020-000000000001';

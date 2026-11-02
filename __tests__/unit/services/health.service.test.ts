@@ -9,7 +9,7 @@ describe('HealthService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new HealthService(async () => mock);
+    service = new HealthService(() => Promise.resolve(mock));
   });
 
   describe('checkHealth', () => {

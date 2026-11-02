@@ -44,6 +44,16 @@ function render(element: ReactNode) {
   );
 }
 
+function question(id: string, totalAnswers: number): ProblematicQuestionStats {
+  return {
+    id,
+    content: `Question ${id}`,
+    type: 'mcq',
+    totalAnswers,
+    correctRate: 0.126,
+  };
+}
+
 describe('teacher dashboard cards', () => {
   it('shows no-data values separately from zero scores and excludes only null scores from the chart', () => {
     const data: TeacherGroupPerformance = {
@@ -146,13 +156,6 @@ describe('teacher dashboard cards', () => {
   });
 
   it('filters low answer counts before selecting five questions and rounds their rates', () => {
-    const question = (id: string, totalAnswers: number): ProblematicQuestionStats => ({
-      id,
-      content: `Question ${id}`,
-      type: 'mcq',
-      totalAnswers,
-      correctRate: 0.126,
-    });
     const questions = [
       question('too-few', 2),
       ...Array.from({ length: 6 }, (_, i) => question(String(i + 1), 3)),

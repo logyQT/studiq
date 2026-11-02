@@ -6,7 +6,7 @@ import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class OrgService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async listOrgs(ctx: RequestContext): Promise<
     ServiceResult<
@@ -21,7 +21,7 @@ export class OrgService {
       }[]
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: memberships, error: mError } = await supabase
       .from('org_members')
@@ -70,7 +70,7 @@ export class OrgService {
     userId: string,
     orgId: string,
   ): Promise<ServiceResult<{ organization_id: string }>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('org_members')

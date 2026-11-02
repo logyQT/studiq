@@ -81,7 +81,7 @@ export interface KeyEventLike {
  * browsers report instead).
  */
 export function isIgnorableKeyEvent(e: KeyEventLike): boolean {
-  return !!(e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing || e.key === 'Process');
+  return e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing || e.key === 'Process';
 }
 
 /** macOS and iOS show ⌘ and ⌥ where other platforms show Ctrl and Alt. */

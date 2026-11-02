@@ -4,7 +4,6 @@ import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import { Button, Card, Skeleton } from '@studiq/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { CheckSquare, Database, Plus, SearchX, SquarePen } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -31,6 +30,17 @@ interface QuestionBankManagementScreenProps {
 }
 
 const STORAGE_KEY = 'question_banks_filters';
+
+function persistFilters(o: string, gids: string[], sb: string, so: string) {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ owner: o, groupIds: gids, sortBy: sb, sortOrder: so }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
 
 interface PersistedBankFilters {
   owner: string;
@@ -72,7 +82,6 @@ function loadPersistedFilters(): PersistedBankFilters {
 }
 
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
-  const _router = useRouter();
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const permission = usePermission();
   const {
@@ -174,22 +183,11 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
 
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
     observer.observe(el);
     return () => observer.disconnect();
   }, [handleObserver]);
-
-  function persistFilters(o: string, gids: string[], sb: string, so: string) {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ owner: o, groupIds: gids, sortBy: sb, sortOrder: so }),
-      );
-    } catch {
-      /* ignore */
-    }
-  }
 
   /**
    * #360 — resets exactly the state the request is built from, including the
@@ -205,7 +203,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
   }
 
   useEffect(() => {
-    if (!isSelecting) return;
+    if (!isSelecting) return undefined;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();

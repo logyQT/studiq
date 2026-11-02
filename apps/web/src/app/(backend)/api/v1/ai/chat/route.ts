@@ -104,7 +104,7 @@ async function runAgentChat(
             stepNumber,
             messageCount: stepMessages.length,
             lastRole: lastMsg?.role,
-            promptPreview: String(preview ?? '').slice(-300),
+            promptPreview: (preview ?? '').slice(-300),
           },
         });
       },
@@ -147,19 +147,19 @@ async function runAgentChat(
         }
       },
 
-      onFinish: async (result) => {
+      onFinish: async (finish) => {
         enqueueTrace({
           conversationId,
           agentName: 'general',
           eventType: 'step',
           label: 'streamText finish',
           data: {
-            totalSteps: result.steps?.length ?? 0,
-            totalInputTokens: result.totalUsage?.inputTokens,
-            totalOutputTokens: result.totalUsage?.outputTokens,
-            totalTokens: result.totalUsage?.totalTokens,
-            finishReason: result.finishReason,
-            finalTextLength: result.text?.length ?? 0,
+            totalSteps: finish.steps?.length ?? 0,
+            totalInputTokens: finish.totalUsage?.inputTokens,
+            totalOutputTokens: finish.totalUsage?.outputTokens,
+            totalTokens: finish.totalUsage?.totalTokens,
+            finishReason: finish.finishReason,
+            finalTextLength: finish.text?.length ?? 0,
           },
         });
         // Awaited: `streamText` awaits `onFinish` before the stream closes, so
@@ -169,8 +169,8 @@ async function runAgentChat(
         try {
           await limitsResolver.trackTokenUsage(
             ctx,
-            result.totalUsage?.inputTokens ?? 0,
-            result.totalUsage?.outputTokens ?? 0,
+            finish.totalUsage?.inputTokens ?? 0,
+            finish.totalUsage?.outputTokens ?? 0,
           );
         } catch (error) {
           enqueueTrace({

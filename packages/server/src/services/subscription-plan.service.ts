@@ -26,12 +26,12 @@ export interface PlanInfo {
 }
 
 export class SubscriptionPlanService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   private async fetchLimitsByPlan(
     planKeys: string[],
   ): Promise<Map<string, Record<string, number>>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: planLimits } = await supabase
       .from('plan_limits')
       .select('plan_key, limit_key, limit_value')
@@ -69,7 +69,7 @@ export class SubscriptionPlanService {
   }
 
   async listActive(forAccountType?: string): Promise<ServiceResult<PlanInfo[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let query = supabase.from('subscription_plans').select('*').eq('is_active', true);
 
@@ -124,7 +124,7 @@ export class SubscriptionPlanService {
    * (#228), so the fallback is the manager's own free `launch` tier.
    */
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let planKey: string | null = null;
 
@@ -200,7 +200,7 @@ export class SubscriptionPlanService {
    * copied from.
    */
   async getPersonalPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -262,7 +262,7 @@ export class SubscriptionPlanService {
   }
 
   async getAllAdmin(): Promise<ServiceResult<PlanInfo[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: plans, error } = await supabase
       .from('subscription_plans')
@@ -298,7 +298,7 @@ export class SubscriptionPlanService {
   }
 
   async getByKey(key: string): Promise<ServiceResult<PlanInfo>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: plan, error } = await supabase
       .from('subscription_plans')
@@ -324,7 +324,7 @@ export class SubscriptionPlanService {
   }
 
   async getById(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('subscription_plans')
@@ -339,7 +339,7 @@ export class SubscriptionPlanService {
   }
 
   async create(input: CreateSubscriptionPlanInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('subscription_plans')
@@ -363,7 +363,7 @@ export class SubscriptionPlanService {
   }
 
   async update(id: string, input: UpdateSubscriptionPlanInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const updateData: Record<string, unknown> = {};
     if (input.key !== undefined) updateData.key = input.key;
@@ -389,7 +389,7 @@ export class SubscriptionPlanService {
   }
 
   async delete(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: exists } = await supabase
       .from('subscription_plans')

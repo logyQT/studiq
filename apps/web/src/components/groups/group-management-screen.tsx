@@ -361,6 +361,9 @@ function ManageMembersForm({
     return () => {
       cancelled = true;
     };
+    // The fetch URLs inside the async `run()` use `group.id`; the rule does not see deps that
+    // appear inside the nested async body, but switching group must refetch its members.
+    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- group.id is used inside run().
   }, [group.id]);
 
   async function handleSave() {

@@ -43,7 +43,7 @@ describe('PlanFeatureService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new PlanFeatureService(async () => mock);
+    service = new PlanFeatureService(() => Promise.resolve(mock));
   });
 
   describe('getAll', () => {

@@ -64,6 +64,9 @@ export function TopicDialogs({
   // closes or switches card, covering every close path.
   useEffect(() => {
     setTopicActionIds(null);
+    // Opening, closing or switching card must all clear the pending selection, so both values
+    // stay in the dependency list even though the body only calls a state setter.
+    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- reset on open/close/card switch.
   }, [manageTopicOpen, activeFlashcardId]);
 
   // Same keys the deck-detail screen invalidates after card mutations
@@ -279,12 +282,12 @@ export function TopicDialogs({
                             flashcards.find((f) => f.id === activeFlashcardId),
                           );
                           const newIds = [...new Set([...currentIds, topic.id])];
-                          const fc = flashcards.find((f) => f.id === activeFlashcardId);
-                          if (!fc) return;
+                          const linkedCard = flashcards.find((f) => f.id === activeFlashcardId);
+                          if (!linkedCard) return;
                           try {
-                            await apiPut(`/api/v1/flashcards/${fc.id}`, {
-                              front: fc.front,
-                              back: fc.back,
+                            await apiPut(`/api/v1/flashcards/${linkedCard.id}`, {
+                              front: linkedCard.front,
+                              back: linkedCard.back,
                               topicIds: newIds,
                             });
                             invalidateDeckCards();

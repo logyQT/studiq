@@ -100,7 +100,7 @@ function service(tables: Tables) {
   const client = mockSupabaseClient();
   client.from.mockImplementation(from);
   return {
-    service: new StudentOverviewService(async () => client),
+    service: new StudentOverviewService(() => Promise.resolve(client)),
     from,
     attemptQueue,
     builders,

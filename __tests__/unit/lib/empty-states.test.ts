@@ -50,7 +50,7 @@ describe('first-visit tips', () => {
   });
 
   it('every tip id has a screen that shows it', () => {
-    expect(HINT_SCREENS.map(([, id]) => id).sort()).toEqual([...FIRST_VISIT_HINTS].sort());
+    expect(HINT_SCREENS.map(([, id]) => id).toSorted()).toEqual([...FIRST_VISIT_HINTS].toSorted());
   });
 
   it('remembers each tip under its own key', () => {

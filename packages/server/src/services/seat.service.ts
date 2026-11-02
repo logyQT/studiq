@@ -42,14 +42,14 @@ const ROLE_TIER_MAP: Record<string, string> = {
 };
 
 export class SeatService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async listPools(
     ctx: RequestContext,
   ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }[]>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('org_seat_pools')
       .select('id, plan_key, total, assigned')
@@ -74,7 +74,7 @@ export class SeatService {
   ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Upsert: if a pool for this plan already exists, increment its total.
     const { data: existing } = await supabase
@@ -141,7 +141,7 @@ export class SeatService {
   ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('org_seat_pools')
       .update({ total: input.total })
@@ -176,7 +176,7 @@ export class SeatService {
   > {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('org_seat_assignments')
       .select(
@@ -224,7 +224,7 @@ export class SeatService {
   > {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Verify pool belongs to active org
     const { data: pool, error: poolErr } = await supabase
@@ -311,7 +311,7 @@ export class SeatService {
   async unassignSeat(ctx: RequestContext, assignmentId: string): Promise<ServiceResult<void>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { error } = await supabase
       .from('org_seat_assignments')

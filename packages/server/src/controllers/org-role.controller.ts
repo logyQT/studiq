@@ -15,10 +15,10 @@ import {
 import { type OrgRoleService, orgRoleService } from '@studiq/server/services/org-role.service';
 
 export class OrgRoleController {
-  constructor(private orgRoleService: OrgRoleService) {}
+  constructor(private service: OrgRoleService) {}
 
   async listRoles(ctx: RequestContext): Promise<ControllerResponse> {
-    const roles = await this.orgRoleService.listRoles(ctx);
+    const roles = await this.service.listRoles(ctx);
 
     if (isFailure(roles)) {
       return controllerResponse.error(roles.error);
@@ -33,7 +33,7 @@ export class OrgRoleController {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const role = await this.orgRoleService.getRole(ctx, paramsParsed.data.id);
+    const role = await this.service.getRole(ctx, paramsParsed.data.id);
 
     if (isFailure(role)) {
       return controllerResponse.error(role.error);
@@ -55,7 +55,7 @@ export class OrgRoleController {
       };
     }
 
-    const role = await this.orgRoleService.createRole(ctx, parsed.data);
+    const role = await this.service.createRole(ctx, parsed.data);
 
     if (isFailure(role)) {
       return controllerResponse.error(role.error);
@@ -82,7 +82,7 @@ export class OrgRoleController {
       };
     }
 
-    const role = await this.orgRoleService.updateRole(ctx, paramsParsed.data.id, parsed.data);
+    const role = await this.service.updateRole(ctx, paramsParsed.data.id, parsed.data);
 
     if (isFailure(role)) {
       return controllerResponse.error(role.error);
@@ -99,7 +99,7 @@ export class OrgRoleController {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const result = await this.orgRoleService.deleteRole(ctx, paramsParsed.data.id);
+    const result = await this.service.deleteRole(ctx, paramsParsed.data.id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -130,7 +130,7 @@ export class OrgRoleController {
       };
     }
 
-    const result = await this.orgRoleService.setPermissions(ctx, paramsParsed.data.id, parsed.data);
+    const result = await this.service.setPermissions(ctx, paramsParsed.data.id, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

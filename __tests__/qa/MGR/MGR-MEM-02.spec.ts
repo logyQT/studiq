@@ -167,10 +167,10 @@ test('a manager changes a member role to Teacher, keeps it across a reload, and 
 
   const roles = await fetchRoles(page);
   expect(
-    roles.map((role) => role.name).sort(),
+    roles.map((role) => role.name).toSorted(),
     'the tenant has the three system org roles',
   ).toEqual(['admin', 'member', 'teacher']);
-  expect(roles.map((role) => role.displayName).sort()).toEqual(['Admin', 'Student', 'Teacher']);
+  expect(roles.map((role) => role.displayName).toSorted()).toEqual(['Admin', 'Student', 'Teacher']);
 
   const initial = await fetchMember(page, student.email);
   expect(initial.id).toBe(student.id);
@@ -179,7 +179,7 @@ test('a manager changes a member role to Teacher, keeps it across a reload, and 
   // --- „Dostępne role to role organizacji”: picker === roles endpoint ------
   // Rendered in `order('name')`, labelled with `displayName`.
   const orderedLabels = [...roles]
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .toSorted((a, b) => a.name.localeCompare(b.name))
     .map((role) => role.displayName);
   expect(await openRolePicker(page, row), 'role picker options').toEqual(orderedLabels);
 

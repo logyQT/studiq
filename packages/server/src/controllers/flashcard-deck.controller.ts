@@ -20,7 +20,7 @@ import {
 } from '@studiq/server/services/flashcard-deck.service';
 
 export class FlashcardDeckController {
-  constructor(private flashcardDeckService: FlashcardDeckService) {}
+  constructor(private service: FlashcardDeckService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     if (!(await can(ctx, Permission.DECK_CREATE))) {
@@ -33,7 +33,7 @@ export class FlashcardDeckController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardDeckService.create(parsed.data, ctx);
+    const result = await this.service.create(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -49,7 +49,7 @@ export class FlashcardDeckController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardDeckService.list(ctx, parsed.data);
+    const result = await this.service.list(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -59,7 +59,7 @@ export class FlashcardDeckController {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.flashcardDeckService.getById(id, ctx);
+    const result = await this.service.getById(id, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -75,7 +75,7 @@ export class FlashcardDeckController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardDeckService.update(id, parsed.data, ctx);
+    const result = await this.service.update(id, parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -85,7 +85,7 @@ export class FlashcardDeckController {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.flashcardDeckService.delete(id, ctx);
+    const result = await this.service.delete(id, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -101,7 +101,7 @@ export class FlashcardDeckController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardDeckService.bulkCreate(parsed.data, ctx);
+    const result = await this.service.bulkCreate(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -117,7 +117,7 @@ export class FlashcardDeckController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardDeckService.batchDelete(parsed.data, ctx);
+    const result = await this.service.batchDelete(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -133,7 +133,7 @@ export class FlashcardDeckController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardDeckService.batchToggleSuspend(parsed.data, ctx);
+    const result = await this.service.batchToggleSuspend(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

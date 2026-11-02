@@ -79,10 +79,10 @@ function builder(result: QueryResult = { data: null, error: null }) {
   return b;
 }
 
-/** Reads the payload of a successful controller response, failing on an error response. */
-function dataOf<T>(response: ControllerResponse): T {
+/** Reads the export payload of a successful controller response, failing on an error response. */
+function exportFileOf(response: ControllerResponse): QuestionExportFile {
   if (!response.success) throw new Error(`expected success, got ${response.error}`);
-  return response.data as T;
+  return response.data as QuestionExportFile;
 }
 
 const ctx: RequestContext = {
@@ -111,11 +111,30 @@ const q = (over: Partial<TransferQuestion> = {}): TransferQuestion => ({
   ...over,
 });
 
+/** `total` is the query's exact count; it can exceed the rows PostgREST returned. */
+const listed = (rows: unknown[], total = rows.length) => {
+  vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }));
+  vi.mocked(questionService.listBankQuestions).mockResolvedValue(
+    success({ questions: rows, total }),
+  );
+};
+const row = (over: Record<string, unknown> = {}) => ({
+  type: 'mcq',
+  content: 'Q',
+  explanation: null,
+  topics: [],
+  question_answers: [
+    { content: 'A', is_correct: true, order_index: 0 },
+    { content: 'B', is_correct: false, order_index: 1 },
+  ],
+  ...over,
+});
+
 describe('QuestionTransferService.exportBank', () => {
   let service: QuestionTransferService;
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new QuestionTransferService(async () => ({}) as unknown as SupabaseClient);
+    service = new QuestionTransferService(() => Promise.resolve({} as unknown as SupabaseClient));
   });
 
   it('maps the questions of a readable bank, answers in their stored order', async () => {
@@ -159,25 +178,6 @@ describe('QuestionTransferService.exportBank', () => {
       ],
       notReimportable: 0,
     });
-  });
-
-  /** `total` is the query's exact count; it can exceed the rows PostgREST returned. */
-  const listed = (rows: unknown[], total = rows.length) => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }));
-    vi.mocked(questionService.listBankQuestions).mockResolvedValue(
-      success({ questions: rows, total }),
-    );
-  };
-  const row = (over: Record<string, unknown> = {}) => ({
-    type: 'mcq',
-    content: 'Q',
-    explanation: null,
-    topics: [],
-    question_answers: [
-      { content: 'A', is_correct: true, order_index: 0 },
-      { content: 'B', is_correct: false, order_index: 1 },
-    ],
-    ...over,
   });
 
   it('refuses a bank above the cap instead of shipping the clamped rows', async () => {
@@ -282,7 +282,9 @@ describe('QuestionTransferService.importQuestions', () => {
         return b;
       }),
     };
-    service = new QuestionTransferService(async () => supabase as unknown as SupabaseClient);
+    service = new QuestionTransferService(() =>
+      Promise.resolve(supabase as unknown as SupabaseClient),
+    );
     return supabase;
   }
 
@@ -504,7 +506,7 @@ describe('QuestionTransferController', () => {
     const response = await controller.exportBank('b', {}, ctx);
 
     expect(response).toMatchObject({ success: true });
-    const file = dataOf<QuestionExportFile>(response);
+    const file = exportFileOf(response);
     expect(file.notReimportable).toBe(0);
     expect(file.filename).toBe('questions-lodz-cwiczenia-1.csv');
     expect(file.contentType).toBe('text/csv; charset=utf-8');
@@ -515,7 +517,7 @@ describe('QuestionTransferController', () => {
     service.exportBank.mockResolvedValue(success({ bankName: 'B', questions: [q()] }));
 
     const response = await controller.exportBank('b', { format: 'json' }, ctx);
-    const file = dataOf<QuestionExportFile>(response);
+    const file = exportFileOf(response);
 
     expect(file.filename).toBe('questions-b.json');
     expect(JSON.parse(file.body)).toMatchObject({ version: 1, bank: 'B', questions: [q()] });

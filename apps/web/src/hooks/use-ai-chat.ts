@@ -286,7 +286,10 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
 
             if (isComplete) {
               pendingCards = flashcardArray;
-              pendingDeckName = String(outputMap?.deckName ?? 'Generated Flashcards');
+              pendingDeckName =
+                typeof outputMap?.deckName === 'string'
+                  ? outputMap.deckName
+                  : 'Generated Flashcards';
             }
           }
 
@@ -329,8 +332,8 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
                 thinkingTraces: [],
                 plan: steps.map((s: Record<string, unknown>, idx: number) => ({
                   index: idx,
-                  action: String(s.action ?? ''),
-                  rationale: String(s.rationale ?? ''),
+                  action: typeof s.action === 'string' ? s.action : '',
+                  rationale: typeof s.rationale === 'string' ? s.rationale : '',
                   dependsOn: s.dependsOn as string[] | undefined,
                 })),
                 planCompleted: false,
@@ -353,7 +356,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
               completedStepSet.add(stepAction.index);
             } else {
               const nextPending = [...Array(totalPlanSteps).keys()].find(
-                (i) => !completedStepSet.has(i),
+                (stepIndex) => !completedStepSet.has(stepIndex),
               );
               if (nextPending !== undefined) {
                 completedStepSet.add(nextPending);
@@ -396,7 +399,10 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
               });
               finalFlashcardsProcessed = true;
             }
-            const text = outputMap?.type === 'chat' ? String(outputMap?.content ?? '') : '';
+            const text =
+              outputMap?.type === 'chat' && typeof outputMap.content === 'string'
+                ? outputMap.content
+                : '';
             if (text) {
               mapped.push({
                 id: `${m.id}-finish-${i}`,

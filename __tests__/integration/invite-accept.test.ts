@@ -13,12 +13,29 @@ import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
+/** The system-role ids of one organization, keyed by role name. */
+async function roleIds(orgId: string) {
+  const supabase = createServiceClient();
+  const { data: roles } = await supabase
+    .from('org_roles')
+    .select('id, name')
+    .eq('organization_id', orgId)
+    .eq('is_system', true);
+  const byName = Object.fromEntries((roles ?? []).map((r) => [r.name, r.id]));
+  return {
+    adminRoleId: byName.admin as string,
+    teacherRoleId: byName.teacher as string,
+    memberRoleId: byName.member as string,
+  };
+}
+
 // Regression suite for the two onboarding blockers fixed in the seed flow:
 // - 422 on bulk invite (targetOrgRoleId was sent as the role NAME 'member',
 //   backend requires the org_role UUID)
 // - 429 on invite accept for freshly registered 'base'-plan students
 //   (getEffectiveLimit('max_students') returned 0 because the student has no
 //   active org — now resolved against the invitation's organization plan)
+
 describe(`Invite + accept regression (API-first)`, () => {
   const createdOrgIds: string[] = [];
 
@@ -32,21 +49,6 @@ describe(`Invite + accept regression (API-first)`, () => {
       await cleanupOrganizationDeep(orgId);
     }
   });
-
-  async function roleIds(orgId: string) {
-    const supabase = createServiceClient();
-    const { data: roles } = await supabase
-      .from('org_roles')
-      .select('id, name')
-      .eq('organization_id', orgId)
-      .eq('is_system', true);
-    const byName = Object.fromEntries((roles ?? []).map((r) => [r.name, r.id]));
-    return {
-      adminRoleId: byName.admin as string,
-      teacherRoleId: byName.teacher as string,
-      memberRoleId: byName.member as string,
-    };
-  }
 
   it('bulk invite accepts the member role uuid returned by org creation', async () => {
     const fixture = await before({ role: 'manager', org: true });
@@ -423,7 +425,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     // membership write is the unit test "claims the token before writing
     // membership …" / "rejects the accept when the token was already claimed
     // concurrently (GONE)".
-    const statuses = (await Promise.all([accept(), accept()])).map((r) => r.status).sort();
+    const statuses = (await Promise.all([accept(), accept()])).map((r) => r.status).toSorted();
     expect(statuses).toEqual([200, 410]);
 
     const { count } = await supabase

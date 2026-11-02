@@ -134,7 +134,11 @@ test('a manager without an organization creates it from /setup/org and lands on 
   const rolesBody = (await rolesResponse.json()) as {
     data: Array<{ name: string; isSystem: boolean; memberCount: number }>;
   };
-  expect(rolesBody.data.map((role) => role.name).sort()).toEqual(['admin', 'member', 'teacher']);
+  expect(rolesBody.data.map((role) => role.name).toSorted()).toEqual([
+    'admin',
+    'member',
+    'teacher',
+  ]);
   expect(rolesBody.data.every((role) => role.isSystem)).toBe(true);
   expect(rolesBody.data.find((role) => role.name === 'admin')?.memberCount).toBe(1);
 

@@ -9,7 +9,7 @@ import {
 } from '@studiq/server/services/mock-stripe.service';
 
 export class StripeController {
-  constructor(private mockStripeService: MockStripeService) {}
+  constructor(private service: MockStripeService) {}
 
   async createCheckoutSession(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
     const { planId, orgId } = body as Record<string, string | undefined>;
@@ -18,7 +18,7 @@ export class StripeController {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const result = await this.mockStripeService.createCheckoutSession(
+    const result = await this.service.createCheckoutSession(
       planId,
       ctx.accountType,
       ctx.userId,
@@ -49,7 +49,7 @@ export class StripeController {
     // the body `user_id`; the service gets the authenticated id instead.
     if (user_id !== ctx.userId) return controllerResponse.error('FORBIDDEN');
 
-    const result = await this.mockStripeService.handleWebhook(
+    const result = await this.service.handleWebhook(
       { type, session_id, plan_id, org_id },
       ctx.accountType,
       ctx.userId,
@@ -61,7 +61,7 @@ export class StripeController {
   }
 
   async createPortalSession(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.mockStripeService.createPortalSession(ctx.userId);
+    const result = await this.service.createPortalSession(ctx.userId);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

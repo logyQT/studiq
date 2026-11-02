@@ -21,7 +21,7 @@ describe('anon role grants (#191)', () => {
     const tables = Object.keys(spec.paths)
       .filter((p) => p !== '/' && !p.startsWith('/rpc/'))
       .map((p) => p.slice(1))
-      .sort();
+      .toSorted();
     expect(tables).toEqual(PUBLIC_TABLES);
   });
 

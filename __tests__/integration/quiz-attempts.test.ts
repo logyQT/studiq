@@ -214,7 +214,7 @@ describe(`Quiz Attempts Integration`, () => {
           expect(typeof option.is_correct).toBe('boolean');
         }
       }
-      for (const answer of Object.values(body.data.answers) as Array<Record<string, unknown>>) {
+      for (const answer of Object.values<Record<string, unknown>>(body.data.answers)) {
         expect(typeof answer.is_correct).toBe('boolean');
       }
     });
@@ -267,7 +267,7 @@ describe(`Quiz Attempts Integration`, () => {
       expect(response.status).toBe(200);
       expect(body.data.completed_at).not.toBeNull();
       expect(body.data.questions).toHaveLength(questionIds.length);
-      expect(Object.keys(body.data.answers).sort()).toEqual([...questionIds].sort());
+      expect(Object.keys(body.data.answers).toSorted()).toEqual([...questionIds].toSorted());
       expect(body.data.answers[gradedQuestionId].teacher_points).toBe(2);
       expect(body.data.answers[gradedQuestionId].teacher_feedback).toBe(
         'Dobrze, ale brakuje liberum veto.',
@@ -532,53 +532,53 @@ describe(`Quiz Attempts Integration`, () => {
     });
   });
 
+  async function loadAttemptAnswers() {
+    const supabase = createServiceClient();
+    const { data: attemptQuestions } = await supabase
+      .from('quiz_attempt_questions')
+      .select('question_id')
+      .eq('attempt_id', attemptId);
+    const questionIds = (attemptQuestions ?? []).map((q) => q.question_id);
+
+    const { data: options } = await supabase
+      .from('question_options')
+      .select('id, question_id')
+      .in('question_id', questionIds);
+
+    return { questionIds, options: options ?? [] };
+  }
+
+  function draftRequest(answers: unknown[]) {
+    return createNextRequestWithParams(
+      `http://localhost/api/v1/quiz/${attemptId}/answers`,
+      { attemptId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers }),
+      },
+    );
+  }
+
+  async function getAttempt() {
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/quiz/${attemptId}`,
+      { attemptId },
+    );
+    const response = await attemptGet(request, { params });
+    return { response, body: await response.json() };
+  }
+
+  async function countStudentAnswers() {
+    const supabase = createServiceClient();
+    const { count } = await supabase
+      .from('student_answers')
+      .select('id', { count: 'exact', head: true })
+      .eq('attempt_id', attemptId);
+    return count ?? 0;
+  }
+
   describe('PUT /api/v1/quiz/:attemptId/answers (#349)', () => {
-    async function loadAttemptAnswers() {
-      const supabase = createServiceClient();
-      const { data: attemptQuestions } = await supabase
-        .from('quiz_attempt_questions')
-        .select('question_id')
-        .eq('attempt_id', attemptId);
-      const questionIds = (attemptQuestions ?? []).map((q) => q.question_id);
-
-      const { data: options } = await supabase
-        .from('question_options')
-        .select('id, question_id')
-        .in('question_id', questionIds);
-
-      return { questionIds, options: options ?? [] };
-    }
-
-    function draftRequest(answers: unknown[]) {
-      return createNextRequestWithParams(
-        `http://localhost/api/v1/quiz/${attemptId}/answers`,
-        { attemptId },
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers }),
-        },
-      );
-    }
-
-    async function getAttempt() {
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/quiz/${attemptId}`,
-        { attemptId },
-      );
-      const response = await attemptGet(request, { params });
-      return { response, body: await response.json() };
-    }
-
-    async function countStudentAnswers() {
-      const supabase = createServiceClient();
-      const { count } = await supabase
-        .from('student_answers')
-        .select('id', { count: 'exact', head: true })
-        .eq('attempt_id', attemptId);
-      return count ?? 0;
-    }
-
     it('saves a draft and serves it back on resume without grading it', async () => {
       mockUser(student.user);
       const { options } = await loadAttemptAnswers();
@@ -704,7 +704,7 @@ describe(`Quiz Attempts Integration`, () => {
       expect((await attemptAnswersPut(request, { params })).status).toBe(200);
 
       const { body: getBody } = await getAttempt();
-      expect(Object.keys(getBody.data.answers).sort()).toEqual([...questionIds].sort());
+      expect(Object.keys(getBody.data.answers).toSorted()).toEqual([...questionIds].toSorted());
 
       // The review/submit payload is built from the resumed answers.
       const submitAnswers = questionIds.map((questionId) => ({

@@ -47,7 +47,7 @@ const stopLinkClick = (e: React.MouseEvent) => {
   if ((e.target as HTMLElement).closest('a')) e.stopPropagation();
 };
 
-export const FlashcardCard = memo(function FlashcardCard({
+export const FlashcardCard = memo(function FlashcardCardContent({
   fc,
   canUpdate,
   canDelete,

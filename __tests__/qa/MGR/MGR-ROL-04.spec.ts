@@ -194,9 +194,9 @@ test('a system role offers no delete control and the API refuses to delete it', 
   const before = await listRoles(page);
   const systemBefore = before.filter((role) => role.isSystem);
   expect(
-    systemBefore.map((role) => role.name).sort(),
+    systemBefore.map((role) => role.name).toSorted(),
     'the tenant has the three system roles',
-  ).toEqual([...SYSTEM_ROLES].sort());
+  ).toEqual([...SYSTEM_ROLES].toSorted());
 
   for (const name of SYSTEM_ROLES) {
     const row = roleRow(page, name);

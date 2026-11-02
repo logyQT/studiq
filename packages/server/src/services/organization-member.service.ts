@@ -6,10 +6,10 @@ import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class OrganizationMemberService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async getProfile(ctx: RequestContext) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -25,7 +25,7 @@ export class OrganizationMemberService {
   }
 
   async listMembers(ctx: RequestContext, roleFilter?: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -38,15 +38,15 @@ export class OrganizationMemberService {
       const groupIds = groupResult.data;
       if (groupIds.length === 0) return success([]);
 
-      const supabase = await this.createClient();
-      const { data: gmData } = await supabase
+      const groupSupabase = await this.clientFactory();
+      const { data: gmData } = await groupSupabase
         .from('group_members')
         .select('user_id')
         .in('group_id', groupIds);
       const userIds = [...new Set((gmData ?? []).map((gm) => gm.user_id))];
       if (userIds.length === 0) return success([]);
 
-      let query = supabase
+      let query = groupSupabase
         .from('org_members')
         .select(
           'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
@@ -62,7 +62,7 @@ export class OrganizationMemberService {
       if (error) return toDbFailure(error);
 
       const allUserIds = data.map((m) => m.user_id);
-      const { data: groupData, error: groupError } = await supabase
+      const { data: groupData, error: groupError } = await groupSupabase
         .from('group_members')
         .select('user_id, role, groups!inner(id, name)')
         .in('user_id', allUserIds)
@@ -161,7 +161,7 @@ export class OrganizationMemberService {
   }
 
   async changeRole(ctx: RequestContext, targetUserId: string, newOrgRoleId: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -197,7 +197,7 @@ export class OrganizationMemberService {
   }
 
   async removeMember(ctx: RequestContext, targetUserId: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');

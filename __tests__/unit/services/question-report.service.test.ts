@@ -61,7 +61,7 @@ describe('QuestionReportService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new QuestionReportService(async () => mock);
+    service = new QuestionReportService(() => Promise.resolve(mock));
   });
 
   describe('createReport', () => {

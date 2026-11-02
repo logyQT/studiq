@@ -181,7 +181,7 @@ test('uploads a logo, shows it in the org switcher without a reload, and keeps i
 
   // Marker proving the switcher update below happened without a document load.
   await page.evaluate(() => {
-    (window as Window & { __qaNoReload?: boolean }).__qaNoReload = true;
+    (window as Window & { qaNoReload?: boolean }).qaNoReload = true;
   });
 
   // --- Step 1: "Wgraj logo" → logo.png -----------------------------------
@@ -224,9 +224,7 @@ test('uploads a logo, shows it in the org switcher without a reload, and keeps i
   await expect(switcherImage(page)).toHaveAttribute('src', logoUrl, { timeout: 15_000 });
   await expect(switcherHeader(page).getByText(orgName, { exact: true })).toBeVisible();
   expect(
-    await page.evaluate(
-      () => (window as Window & { __qaNoReload?: boolean }).__qaNoReload ?? false,
-    ),
+    await page.evaluate(() => (window as Window & { qaNoReload?: boolean }).qaNoReload ?? false),
     'the switcher updated without a document reload',
   ).toBe(true);
   await expect(page).toHaveURL(/\/manage\/settings$/);

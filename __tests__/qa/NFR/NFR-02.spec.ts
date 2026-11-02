@@ -365,12 +365,12 @@ test.describe('NFR-02 — language switch PL ⇄ EN', () => {
     await expectMenuLocale(page, 'pl');
 
     await page.evaluate(() => {
-      (window as unknown as { __localeMarker?: string }).__localeMarker = 'alive';
+      (window as unknown as { qaLocaleMarker?: string }).qaLocaleMarker = 'alive';
     });
     await switchLanguage(page, student.email, 'English');
     // The switch is in place (`router.refresh()`), not a document reload.
     expect(
-      await page.evaluate(() => (window as unknown as { __localeMarker?: string }).__localeMarker),
+      await page.evaluate(() => (window as unknown as { qaLocaleMarker?: string }).qaLocaleMarker),
       'the user-menu switch keeps the document (no reload)',
     ).toBe('alive');
 

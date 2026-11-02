@@ -144,7 +144,7 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
               <BrowserItem
                 key={q.id}
                 question={q}
-                onAdd={(q) => onAdd([q])}
+                onAdd={(item) => onAdd([item])}
                 draggable={draggable}
               />
             ))}

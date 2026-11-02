@@ -193,9 +193,9 @@ test.describe('@case:STU-11 @area:STU @prio:P1 quiz review', () => {
     });
     expect(attempt.id, 'generated attempt id').toBeTruthy();
     expect(
-      attempt.questions.map((question) => question.id).sort(),
+      attempt.questions.map((question) => question.id).toSorted(),
       'the attempt contains exactly the bank questions',
-    ).toEqual([q1.id, q2.id, q3.id].sort());
+    ).toEqual([q1.id, q2.id, q3.id].toSorted());
 
     // One correct answer and two deliberately wrong ones, so the review has both
     // states to mark: Q1 → wrong option „1000”, Q2 → wrong „Fałsz”, Q3 → correct.

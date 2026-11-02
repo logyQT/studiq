@@ -19,7 +19,7 @@ interface ChatMessageProps {
 }
 
 export const ChatMessage = memo(
-  function ChatMessage({ message, onAnswer, deckTarget }: ChatMessageProps) {
+  function ChatMessageContent({ message, onAnswer, deckTarget }: ChatMessageProps) {
     const isUser = message.role === 'user';
     const isThought = message.role === 'thought';
     const isToolCall = message.role === 'tool_call';

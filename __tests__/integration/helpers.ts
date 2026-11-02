@@ -78,9 +78,9 @@ export function createServiceClient() {
 // require a mocked auth identity.
 // ============================================================
 export function useRealSupabase() {
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
-    return createRealClient();
-  });
+  vi.mocked(supabaseModule.createClient).mockImplementation(() =>
+    Promise.resolve(createRealClient()),
+  );
 }
 
 // ============================================================
@@ -99,7 +99,7 @@ export function mockUser(user: { id: string; role: string } | null) {
       }
     : null;
 
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => {
     // Use service_role client to bypass RLS — services use explicit permission
     // checks (eq 'created_by', etc.) instead of relying on RLS.
     const serviceClient = createClient(
@@ -109,11 +109,12 @@ export function mockUser(user: { id: string; role: string } | null) {
     );
     // `UserResponse` types `data.user` as non-null; an unauthenticated mock
     // still returns `null` here, which is the case services treat as "no user".
-    serviceClient.auth.getUser = async () => ({
-      data: { user: mockUserObj as User },
-      error: null,
-    });
-    return serviceClient;
+    serviceClient.auth.getUser = () =>
+      Promise.resolve({
+        data: { user: mockUserObj as User },
+        error: null,
+      });
+    return Promise.resolve(serviceClient);
   });
 }
 

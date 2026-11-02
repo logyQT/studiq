@@ -72,9 +72,13 @@ interface OrgMember {
   full_name: string | null;
 }
 
+/** Two-digit zero padding of a date field. */
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
 /** `YYYY-MM-DDTHH:mm` for a `datetime-local` input, in the runner's timezone. */
 function localDateTime(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
     date.getHours(),
   )}:${pad(date.getMinutes())}`;

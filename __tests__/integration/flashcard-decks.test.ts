@@ -187,22 +187,22 @@ describe(`Flashcard Decks Integration`, () => {
     });
   });
 
-  describe('POST /api/v1/flashcards/decks — group sharing authorization (#140)', () => {
-    const postDeck = async (body: Record<string, unknown>) => {
-      mockUser(teacher.user);
-      const req = createNextRequest(
-        'http://localhost/api/v1/flashcards/decks',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-        { active_org_id: teacher.orgId! },
-      );
-      const response = await POST(req);
-      return { response, body: await response.json() };
-    };
+  const postDeck = async (body: Record<string, unknown>) => {
+    mockUser(teacher.user);
+    const req = createNextRequest(
+      'http://localhost/api/v1/flashcards/decks',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      { active_org_id: teacher.orgId! },
+    );
+    const response = await POST(req);
+    return { response, body: await response.json() };
+  };
 
+  describe('POST /api/v1/flashcards/decks — group sharing authorization (#140)', () => {
     it('returns 403 and creates no row for a group the caller does not teach', async () => {
       const name = `deck-140-forbidden-${suiteId}`;
       const untaughtGroup = teacher.groups[1];
@@ -315,39 +315,39 @@ describe(`Flashcard Decks Integration`, () => {
     });
   });
 
+  const createGroupDeck = async (name: string, groupId: string): Promise<string> => {
+    mockUser(teacher.user);
+    const req = createNextRequest(
+      'http://localhost/api/v1/flashcards/decks',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, visibility: 'group', groupIds: [groupId] }),
+      },
+      { active_org_id: teacher.orgId! },
+    );
+    const res = await POST(req);
+    const body = await res.json();
+    expect(res.status).toBe(201);
+    return body.data.id as string;
+  };
+
+  const putGroupIds = async (deckId: string, groupIds: string[], activeOrgId: string) => {
+    mockUser(teacher.user);
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/flashcards/decks/${deckId}`,
+      { id: deckId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupIds }),
+      },
+      { active_org_id: activeOrgId },
+    );
+    return update(request, { params });
+  };
+
   describe('PUT /api/v1/flashcards/decks/:id — cross-org group guard (#140)', () => {
-    const createGroupDeck = async (name: string, groupId: string): Promise<string> => {
-      mockUser(teacher.user);
-      const req = createNextRequest(
-        'http://localhost/api/v1/flashcards/decks',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, visibility: 'group', groupIds: [groupId] }),
-        },
-        { active_org_id: teacher.orgId! },
-      );
-      const res = await POST(req);
-      const body = await res.json();
-      expect(res.status).toBe(201);
-      return body.data.id as string;
-    };
-
-    const putGroupIds = async (deckId: string, groupIds: string[], activeOrgId: string) => {
-      mockUser(teacher.user);
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/decks/${deckId}`,
-        { id: deckId },
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ groupIds }),
-        },
-        { active_org_id: activeOrgId },
-      );
-      return update(request, { params });
-    };
-
     it('returns 403 and keeps the org-A links when switching to a group the caller teaches in another org', async () => {
       const taughtGroup = teacher.groups[0];
       const deckId = await createGroupDeck(`deck-140-cross-put-${suiteId}`, taughtGroup);

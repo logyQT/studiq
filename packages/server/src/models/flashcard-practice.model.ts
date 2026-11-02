@@ -161,7 +161,8 @@ export interface CardStatsItem {
   front: string;
   back: string;
   createdAt: string;
-  state: 'new' | 'learning' | 'review' | 'relearning' | 'leech' | string;
+  /** One of `new`, `learning`, `review`, `relearning`, `leech`; open-ended because the DB column is free-form. */
+  state: string;
   totalAttempts: number;
   correctRate: number;
   lastPracticedAt: string | null;

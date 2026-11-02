@@ -139,34 +139,34 @@ async function createBank(page: Page, runTag: string): Promise<string> {
 async function createClosedQuestion(
   page: Page,
   bankId: string,
-  content: string,
+  questionContent: string,
   correctContent: string,
   wrongContent: string,
 ): Promise<CreatedQuestion> {
   const created = await postJson<CreatedQuestion>(page, '/api/v1/questions', {
     bankId,
     type: 'mcq',
-    content,
+    content: questionContent,
     answers: [
       { content: correctContent, isCorrect: true, orderIndex: 0 },
       { content: wrongContent, isCorrect: false, orderIndex: 1 },
     ],
   });
-  expect(created.status, `POST /api/v1/questions (${content})`).toBe(201);
+  expect(created.status, `POST /api/v1/questions (${questionContent})`).toBe(201);
   return created.body.data;
 }
 
 async function createOpenQuestion(
   page: Page,
   bankId: string,
-  content: string,
+  questionContent: string,
 ): Promise<CreatedQuestion> {
   const created = await postJson<CreatedQuestion>(page, '/api/v1/questions', {
     bankId,
     type: 'open',
-    content,
+    content: questionContent,
   });
-  expect(created.status, `POST /api/v1/questions (${content})`).toBe(201);
+  expect(created.status, `POST /api/v1/questions (${questionContent})`).toBe(201);
   return created.body.data;
 }
 

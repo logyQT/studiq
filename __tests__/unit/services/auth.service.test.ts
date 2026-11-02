@@ -12,6 +12,8 @@ function stubInvitationService() {
   };
 }
 
+const now = () => Math.floor(Date.now() / 1000);
+
 describe('AuthService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: AuthService;
@@ -19,7 +21,7 @@ describe('AuthService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new AuthService(async () => mock);
+    service = new AuthService(() => Promise.resolve(mock));
   });
 
   describe('register', () => {
@@ -137,7 +139,10 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       invites = stubInvitationService();
-      service = new AuthService(async () => mock, invites as unknown as InvitationService);
+      service = new AuthService(
+        () => Promise.resolve(mock),
+        invites as unknown as InvitationService,
+      );
     });
 
     it('leaves a plain registration untouched', async () => {
@@ -214,7 +219,10 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       invites = stubInvitationService();
-      service = new AuthService(async () => mock, invites as unknown as InvitationService);
+      service = new AuthService(
+        () => Promise.resolve(mock),
+        invites as unknown as InvitationService,
+      );
     });
 
     it('returns null without calling the invitation service when no token was carried', async () => {
@@ -334,7 +342,6 @@ describe('AuthService', () => {
 
   describe('updatePassword', () => {
     const user = { id: 'user-1', email: 'john@example.com' };
-    const now = () => Math.floor(Date.now() / 1000);
 
     it('verifies the current password before updating it', async () => {
       mock.auth.getUser.mockResolvedValueOnce({ data: { user }, error: null });

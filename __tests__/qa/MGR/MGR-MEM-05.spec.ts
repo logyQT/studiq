@@ -285,7 +285,7 @@ async function deckNames(page: Page): Promise<string[]> {
     page,
     '/api/v1/flashcards/decks?limit=100',
   );
-  return body.items.map((deck) => deck.name).sort();
+  return body.items.map((deck) => deck.name).toSorted();
 }
 
 /** The table row for one member, anchored on the unique seeded e-mail. */

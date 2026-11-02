@@ -63,7 +63,7 @@ function qb(result: QbResult = {}): QueryBuilder {
   for (const method of CHAIN_METHODS) {
     builder[method] = vi.fn(() => builder);
   }
-  builder.maybeSingle = vi.fn(async () => ({ data: resolved.data, error: resolved.error }));
+  builder.maybeSingle = vi.fn(() => ({ data: resolved.data, error: resolved.error }));
 
   const promise = Promise.resolve(resolved);
   builder.then = vi.fn(promise.then.bind(promise));
@@ -110,7 +110,7 @@ describe('UserAdminService', () => {
     adminMock.createUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     mock.from.mockReturnValue(qb({ data: [] }));
 
-    service = new UserAdminService(async () => mock);
+    service = new UserAdminService(() => Promise.resolve(mock));
   });
 
   afterEach(() => {
@@ -147,7 +147,7 @@ describe('UserAdminService', () => {
         });
         return builder;
       });
-      adminMock.deleteUser.mockImplementation(async () => {
+      adminMock.deleteUser.mockImplementation(() => {
         events.push('deleteUser');
         return { data: {}, error: null };
       });
@@ -221,7 +221,7 @@ describe('UserAdminService', () => {
         .mockReturnValueOnce(profile)
         .mockReturnValueOnce(seats)
         .mockReturnValueOnce(overrides);
-      adminMock.deleteUser.mockImplementation(async () => {
+      adminMock.deleteUser.mockImplementation(() => {
         events.push('deleteUser');
         return { data: {}, error: null };
       });
@@ -338,7 +338,7 @@ describe('UserAdminService', () => {
         return update;
       });
       mock.from.mockReturnValueOnce(profile).mockReturnValueOnce(update);
-      adminMock.updateUserById.mockImplementation(async () => {
+      adminMock.updateUserById.mockImplementation(() => {
         events.push('auth:unban');
         return { data: { user: {} }, error: null };
       });

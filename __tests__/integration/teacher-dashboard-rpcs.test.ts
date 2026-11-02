@@ -14,6 +14,15 @@ const OTHER_USER_ID = '00000000-0000-4000-8001-000000000001';
 const ORG = '00000000-0000-4000-8000-000000000001'; // WSB Merito, teacher1 is a member
 const FOREIGN_ORG = '00000000-0000-4000-8000-00000000000e'; // Akademia Górnicza: teacher1 is not a member
 
+const signIn = async (email: string) => {
+  const client = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error } = await client.auth.signInWithPassword({ email, password: 'pass' });
+  if (error) throw new Error(`sign-in failed: ${error.message}`);
+  return client;
+};
+
 describe('teacher dashboard RPCs (#654)', () => {
   let teacher: SupabaseClient;
 
@@ -169,15 +178,6 @@ describe('teacher dashboard organization isolation (#654 review)', () => {
     if (error) throw error;
     return data.organization_id;
   }
-
-  const signIn = async (email: string) => {
-    const client = createClient(url, anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const { error } = await client.auth.signInWithPassword({ email, password: 'pass' });
-    if (error) throw new Error(`sign-in failed: ${error.message}`);
-    return client;
-  };
 
   const finished = (
     organization_id: string | null,

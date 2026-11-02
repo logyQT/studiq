@@ -225,7 +225,7 @@ async function seedCaseContent(browser: Browser, baseURL: string): Promise<Seede
   }
 }
 
-function listIds<T extends { id: string }>(body: ApiEnvelope<{ items: T[] }>): string[] {
+function listIds(body: ApiEnvelope<{ items: Array<{ id: string }> }>): string[] {
   return body.data.items.map((item) => item.id);
 }
 

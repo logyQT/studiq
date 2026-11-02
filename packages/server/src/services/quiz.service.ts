@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { IN_PROGRESS_QUESTION_SELECT } from '@studiq/server/lib/question-view';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -10,16 +11,16 @@ import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class QuizService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async generateQuiz(
     config: GenerateQuizInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
-    if (filter._impossible) return success({ questions: [], attemptId: '' });
+    if (isImpossibleFilter(filter)) return success({ questions: [], attemptId: '' });
 
     // Daily practice-quiz quota: count only attempts started today that are not
     // part of a teacher assignment (assignment attempts are capped by
@@ -70,7 +71,7 @@ export class QuizService {
       return failure('NOT_FOUND');
     }
 
-    const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
+    const shuffled = [...allQuestions].toSorted(() => Math.random() - 0.5);
     const selectedQuestions = shuffled.slice(0, Math.min(config.questionCount, shuffled.length));
 
     const { data: attempt, error: attemptError } = await supabase

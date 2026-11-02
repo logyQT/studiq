@@ -12,10 +12,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * every review and answer of the window.
  */
 export class StudentInsightsService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async getInsights(ctx: RequestContext, days = 30): Promise<ServiceResult<StudentInsights>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase.rpc('get_student_insights', {
       p_user_id: ctx.userId,

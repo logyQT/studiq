@@ -322,8 +322,8 @@ describe(`Flashcard Practice Group Scoping`, () => {
       );
       const ownDeckBody = await ownDeckRes.json();
       expect(ownDeckRes.status).toBe(200);
-      expect(ownDeckBody.data.map((c: { id: string }) => c.id).sort()).toEqual(
-        [...ownCardIds].sort(),
+      expect(ownDeckBody.data.map((c: { id: string }) => c.id).toSorted()).toEqual(
+        [...ownCardIds].toSorted(),
       );
 
       // Learn badge / "N nowych kart": own new + group-shared new.

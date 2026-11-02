@@ -99,50 +99,113 @@ function expectSuccess<T>(result: ServiceResult<T>): T {
   return result.data;
 }
 
+async function mockAccessibleFilter(filter: Record<string, unknown>) {
+  const { accessibleFilter } = await import('@studiq/server/lib/authz');
+  vi.mocked(accessibleFilter).mockResolvedValueOnce(filter);
+}
+
+function lbChain(rows: Array<{ next_review_at: string }>): LookupChain {
+  const c: LookupChain = {
+    eq: vi.fn(() => c),
+    gte: vi.fn(() => c),
+    lt: vi.fn().mockResolvedValue({ data: rows, error: null }),
+  };
+  return c;
+}
+
 describe('FlashcardPracticeService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
-  const service = new FlashcardPracticeService(async () => mock);
+  const service = new FlashcardPracticeService(() => Promise.resolve(mock));
+
+  /** `pickLoadBalancedDate` is private; the load-balancing tests exercise it directly. */
+  function pickLoadBalancedDate(baseDate: Date, fuzzRangeDays: number): Promise<Date> {
+    const target = service as unknown as {
+      pickLoadBalancedDate(
+        ctx: RequestContext,
+        baseDate: Date,
+        fuzzRangeDays: number,
+      ): Promise<Date>;
+    };
+    return target.pickLoadBalancedDate(ctx, baseDate, fuzzRangeDays);
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
   });
 
-  describe('log', () => {
-    function setupMocks(practiceResult: unknown, existingState: unknown, upsertResult: unknown) {
-      const maybeSingleMock = vi.fn().mockResolvedValue({ data: existingState, error: null });
-      const getStateEq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
-      const getStateEq1Mock = vi.fn().mockReturnValue({ eq: getStateEq2Mock });
-      const getStateSelectMock = vi.fn().mockReturnValue({ eq: getStateEq1Mock });
+  function setupMocks(practiceResult: unknown, existingState: unknown, upsertResult: unknown) {
+    const maybeSingleMock = vi.fn().mockResolvedValue({ data: existingState, error: null });
+    const getStateEq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
+    const getStateEq1Mock = vi.fn().mockReturnValue({ eq: getStateEq2Mock });
+    const getStateSelectMock = vi.fn().mockReturnValue({ eq: getStateEq1Mock });
 
-      const upsertSingleMock = vi.fn().mockResolvedValue(upsertResult);
-      const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
-      const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
+    const upsertSingleMock = vi.fn().mockResolvedValue(upsertResult);
+    const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
+    const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
 
-      const practiceSingleMock = vi.fn().mockResolvedValue(practiceResult);
-      const practiceSelectMock = vi.fn().mockReturnValue({ single: practiceSingleMock });
-      const insertMock = vi.fn().mockReturnValue({ select: practiceSelectMock });
+    const practiceSingleMock = vi.fn().mockResolvedValue(practiceResult);
+    const practiceSelectMock = vi.fn().mockReturnValue({ single: practiceSingleMock });
+    const insertMock = vi.fn().mockReturnValue({ select: practiceSelectMock });
 
-      mock.from.mockImplementation((table: string) => {
-        if (table === 'flashcard_practice') return { insert: insertMock };
-        if (table === 'flashcard_review_state')
-          return { select: getStateSelectMock, upsert: upsertMock };
-        if (table === 'user_study_settings')
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi
-                .fn()
-                .mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue(defaultSettingsRow) }),
-            }),
-            update: vi
+    mock.from.mockImplementation((table: string) => {
+      if (table === 'flashcard_practice') return { insert: insertMock };
+      if (table === 'flashcard_review_state')
+        return { select: getStateSelectMock, upsert: upsertMock };
+      if (table === 'user_study_settings')
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi
               .fn()
-              .mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
-          };
-        return chain();
-      });
-      return upsertMock;
-    }
+              .mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue(defaultSettingsRow) }),
+          }),
+          update: vi
+            .fn()
+            .mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+        };
+      return chain();
+    });
+    return upsertMock;
+  }
 
+  function setupBatchMocks(
+    insertResults: Array<{ error: unknown }>,
+    upsertResults: Array<{ data: unknown; error: unknown }>,
+  ) {
+    let insertCall = 0;
+    const practiceInsert = vi.fn().mockImplementation(() => {
+      const res = insertResults[insertCall];
+      insertCall++;
+      return res;
+    });
+
+    let upsertCall = 0;
+    const upsertSingleMock = vi.fn().mockImplementation(() => {
+      const res = upsertResults[upsertCall];
+      upsertCall++;
+      return Promise.resolve(res);
+    });
+    const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
+    const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
+
+    const maybeSingleMock = vi.fn().mockResolvedValue({ data: null, error: null });
+    const eq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
+    const eq1Mock = vi.fn().mockReturnValue({ eq: eq2Mock });
+    const reviewSelectMock = vi.fn().mockReturnValue({ eq: eq1Mock });
+
+    mock.from.mockImplementation((table: string) => {
+      if (table === 'flashcard_practice') return { insert: practiceInsert };
+      if (table === 'flashcard_review_state')
+        return { select: reviewSelectMock, upsert: upsertMock };
+      if (table === 'user_study_settings') {
+        const c = settingsChain();
+        return { select: vi.fn(() => c), update: vi.fn(() => c) };
+      }
+      return chain();
+    });
+  }
+
+  describe('log', () => {
     it('inserts practice record and returns it with review state', async () => {
       const mockPractice = {
         id: 'p-1',
@@ -384,43 +447,6 @@ describe('FlashcardPracticeService', () => {
   });
 
   describe('batch', () => {
-    function setupBatchMocks(
-      insertResults: Array<{ error: unknown }>,
-      upsertResults: Array<{ data: unknown; error: unknown }>,
-    ) {
-      let insertCall = 0;
-      const practiceInsert = vi.fn().mockImplementation(() => {
-        const res = insertResults[insertCall];
-        insertCall++;
-        return res;
-      });
-
-      let upsertCall = 0;
-      const upsertSingleMock = vi.fn().mockImplementation(() => {
-        const res = upsertResults[upsertCall];
-        upsertCall++;
-        return Promise.resolve(res);
-      });
-      const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
-      const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
-
-      const maybeSingleMock = vi.fn().mockResolvedValue({ data: null, error: null });
-      const eq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
-      const eq1Mock = vi.fn().mockReturnValue({ eq: eq2Mock });
-      const reviewSelectMock = vi.fn().mockReturnValue({ eq: eq1Mock });
-
-      mock.from.mockImplementation((table: string) => {
-        if (table === 'flashcard_practice') return { insert: practiceInsert };
-        if (table === 'flashcard_review_state')
-          return { select: reviewSelectMock, upsert: upsertMock };
-        if (table === 'user_study_settings') {
-          const c = settingsChain();
-          return { select: vi.fn(() => c), update: vi.fn(() => c) };
-        }
-        return chain();
-      });
-    }
-
     it('returns results array with isLeech per card', async () => {
       setupBatchMocks(
         [{ error: null }, { error: null }],
@@ -777,11 +803,6 @@ describe('FlashcardPracticeService', () => {
   });
 
   describe('getAllCardStats (#343)', () => {
-    async function mockAccessibleFilter(filter: Record<string, unknown>) {
-      const { accessibleFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(accessibleFilter).mockResolvedValueOnce(filter);
-    }
-
     it('applies the resolved group filter so other groups/users are excluded', async () => {
       await mockAccessibleFilter({
         organization_id: 'org-1',
@@ -951,27 +972,6 @@ describe('FlashcardPracticeService', () => {
   });
 
   describe('pickLoadBalancedDate (SRS load balancing)', () => {
-    function lbChain(rows: Array<{ next_review_at: string }>): LookupChain {
-      const c: LookupChain = {
-        eq: vi.fn(() => c),
-        gte: vi.fn(() => c),
-        lt: vi.fn().mockResolvedValue({ data: rows, error: null }),
-      };
-      return c;
-    }
-
-    /** `pickLoadBalancedDate` is private; the load-balancing tests exercise it directly. */
-    function pickLoadBalancedDate(baseDate: Date, fuzzRangeDays: number): Promise<Date> {
-      const target = service as unknown as {
-        pickLoadBalancedDate(
-          ctx: RequestContext,
-          baseDate: Date,
-          fuzzRangeDays: number,
-        ): Promise<Date>;
-      };
-      return target.pickLoadBalancedDate(ctx, baseDate, fuzzRangeDays);
-    }
-
     it('keeps the base date when nothing else is scheduled nearby', async () => {
       mock.from.mockReturnValue({ select: vi.fn(() => lbChain([])) });
 

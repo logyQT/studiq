@@ -4,7 +4,7 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { wrapService } from '@studiq/server/lib/observability';
 
 export class PermissionsController {
-  async listMyPermissions(ctx: RequestContext): Promise<ControllerResponse> {
+  listMyPermissions(ctx: RequestContext): ControllerResponse {
     const permissions = { ...ctx.permissionScopes };
 
     for (const key of Object.keys(Permission)) {

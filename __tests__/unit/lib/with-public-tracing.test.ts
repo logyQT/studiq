@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Capture the span withPublicTracing creates so we can assert attributes/end.
 const { spanSpy, startSpanSpy } = vi.hoisted(() => {
-  const spanSpy = {
+  const span = {
     spanContext: () => ({ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), traceFlags: 1 }),
     setAttribute: vi.fn(),
     setAttributes: vi.fn(),
@@ -16,15 +16,13 @@ const { spanSpy, startSpanSpy } = vi.hoisted(() => {
     isRecording: () => true,
     end: vi.fn(),
   };
-  const startSpanSpy = vi.fn(
-    (_name: string, options?: { attributes?: Record<string, unknown> }) => {
-      for (const [key, value] of Object.entries(options?.attributes ?? {})) {
-        spanSpy.setAttribute(key, value);
-      }
-      return spanSpy;
-    },
-  );
-  return { spanSpy, startSpanSpy };
+  const startSpan = vi.fn((_name: string, options?: { attributes?: Record<string, unknown> }) => {
+    for (const [key, value] of Object.entries(options?.attributes ?? {})) {
+      span.setAttribute(key, value);
+    }
+    return span;
+  });
+  return { spanSpy: span, startSpanSpy: startSpan };
 });
 
 vi.mock('@opentelemetry/api', async (importOriginal) => {
@@ -56,8 +54,8 @@ describe('withPublicTracing — public request observability (#301)', () => {
   });
 
   it('returns x-trace-id and preserves the controller x-error-code', async () => {
-    const res = await withPublicTracing(request(), async () =>
-      toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' }),
+    const res = await withPublicTracing(request(), () =>
+      Promise.resolve(toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' })),
     );
 
     expect(res.status).toBe(401);
@@ -66,7 +64,7 @@ describe('withPublicTracing — public request observability (#301)', () => {
   });
 
   it('settles a 401 returned by the handler without requiring auth', async () => {
-    const handler = vi.fn(async () => new Response('nope', { status: 401 }));
+    const handler = vi.fn(() => Promise.resolve(new Response('nope', { status: 401 })));
 
     const res = await withPublicTracing(request(), handler);
 
@@ -76,8 +74,8 @@ describe('withPublicTracing — public request observability (#301)', () => {
   });
 
   it('logs 4xx as WARN with method, url and status', async () => {
-    await withPublicTracing(request(), async () =>
-      toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' }),
+    await withPublicTracing(request(), () =>
+      Promise.resolve(toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' })),
     );
 
     expect(logWarn).toHaveBeenCalledWith(
@@ -93,13 +91,13 @@ describe('withPublicTracing — public request observability (#301)', () => {
   });
 
   it('never calls createClient / getUser', async () => {
-    await withPublicTracing(request(), async () => new Response('ok', { status: 200 }));
+    await withPublicTracing(request(), () => Promise.resolve(new Response('ok', { status: 200 })));
 
     expect(vi.mocked(createClient)).not.toHaveBeenCalled();
   });
 
   it('maps a thrown AppError to its status, code and trace id', async () => {
-    const res = await withPublicTracing(request(), async () => {
+    const res = await withPublicTracing(request(), () => {
       throw new AppError('FORBIDDEN');
     });
 
@@ -127,7 +125,7 @@ describe('withPublicTracing — public request observability (#301)', () => {
   });
 
   it('maps a generic throw to 500 INTERNAL_SERVER with a trace id', async () => {
-    const res = await withPublicTracing(request(), async () => {
+    const res = await withPublicTracing(request(), () => {
       throw new Error('boom');
     });
 
@@ -144,7 +142,7 @@ describe('withPublicTracing — public request observability (#301)', () => {
   it('redacts one-time credentials from the span url and the error log', async () => {
     await withPublicTracing(
       request('http://localhost/api/v1/auth/callback?token_hash=SUPERSECRET&type=recovery'),
-      async () => new Response(null, { status: 401 }),
+      () => Promise.resolve(new Response(null, { status: 401 })),
     );
 
     expect(spanSpy.setAttribute).toHaveBeenCalledWith(

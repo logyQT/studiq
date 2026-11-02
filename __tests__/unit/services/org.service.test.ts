@@ -56,7 +56,7 @@ describe('OrgService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new OrgService(async () => mock);
+    service = new OrgService(() => Promise.resolve(mock));
   });
 
   describe('listOrgs', () => {

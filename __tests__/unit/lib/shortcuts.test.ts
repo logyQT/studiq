@@ -19,6 +19,8 @@ import {
 
 const nav = NAV_SHORTCUTS.app;
 
+const read = (path: string) => readFileSync(path, 'utf8');
+
 describe('createSequenceMatcher', () => {
   it('returns the href when the second key completes a sequence', () => {
     const m = createSequenceMatcher(nav);
@@ -93,16 +95,16 @@ describe('createSequenceMatcher', () => {
   });
 });
 
-describe('isTypingTarget', () => {
-  const el = (tag: string, attrs: Record<string, string> = {}) => {
-    const node = {
-      tagName: tag.toUpperCase(),
-      isContentEditable: attrs.contenteditable === 'true',
-      getAttribute: (name: string) => attrs[name] ?? null,
-    };
-    return node as unknown as Element;
+const el = (tag: string, attrs: Record<string, string> = {}) => {
+  const node = {
+    tagName: tag.toUpperCase(),
+    isContentEditable: attrs.contenteditable === 'true',
+    getAttribute: (name: string) => attrs[name] ?? null,
   };
+  return node as unknown as Element;
+};
 
+describe('isTypingTarget', () => {
   it.each(['input', 'textarea', 'select'])('is true for <%s>', (tag) => {
     expect(isTypingTarget(el(tag))).toBe(true);
   });
@@ -206,14 +208,14 @@ describe('isIgnorableKeyEvent (#665 review)', () => {
   });
 });
 
-describe('overlayOpen', () => {
-  // The unit environment has no DOM: a stand-in root answers the selector the way a page would.
-  const rootWith = (matches: string[]) =>
-    ({
-      querySelector: (selector: string) =>
-        matches.some((m) => selector.includes(m)) ? ({} as Element) : null,
-    }) as unknown as ParentNode;
+// The unit environment has no DOM: a stand-in root answers the selector the way a page would.
+const rootWith = (matches: string[]) =>
+  ({
+    querySelector: (selector: string) =>
+      matches.some((m) => selector.includes(m)) ? ({} as Element) : null,
+  }) as unknown as ParentNode;
 
+describe('overlayOpen', () => {
   it('asks for an open dialog, alert dialog or menu', () => {
     const asked: string[] = [];
     const root = {
@@ -252,8 +254,6 @@ describe('modifier labels per platform', () => {
 });
 
 describe('where the guards are wired (#665 QA)', () => {
-  const read = (path: string) => readFileSync(path, 'utf8');
-
   it('the study session ignores its keys while a layer is open', () => {
     const session = read('apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx');
     expect(session).toContain('if (overlayOpen()) return;');
@@ -343,10 +343,9 @@ describe('where the guards are wired (#665 QA)', () => {
   });
 });
 
-describe('the flashcard is keyboard operable (#674 review)', () => {
-  const read = (path: string) => readFileSync(path, 'utf8');
-  const flashcard = () => read('apps/web/src/components/flashcards/flashcard-flip.tsx');
+const flashcard = () => read('apps/web/src/components/flashcards/flashcard-flip.tsx');
 
+describe('the flashcard is keyboard operable (#674 review)', () => {
   it('is a focusable group, not a button: its faces contain markdown links', () => {
     const card = flashcard();
     expect(card).toContain('tabIndex={0}');

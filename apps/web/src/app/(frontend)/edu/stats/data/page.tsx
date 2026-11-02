@@ -76,6 +76,7 @@ export default function StatsDataPage() {
         // Flashcard tables are supplementary; only a shaped payload is stored.
         const data = f?.data ?? f;
         if (data?.summary) setFlashStats(data);
+        return undefined;
       })
       .catch(() => {
         // A failure leaves the flashcard tables hidden.
@@ -103,6 +104,7 @@ export default function StatsDataPage() {
         // load shows the loading text.
         setStats(parsed);
         setStatsError(false);
+        return undefined;
       })
       .catch(() => {
         // Aborted requests are superseded by a newer filter change.
@@ -114,6 +116,9 @@ export default function StatsDataPage() {
 
     // Aborting the stale request keeps rapid filter changes from applying out of order.
     return () => controller.abort();
+    // `reloadToken` is an explicit reload trigger: it must re-run this fetch even though the
+    // request URL only depends on `selectedSubject`.
+    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- reload trigger.
   }, [selectedSubject, reloadToken]);
 
   if (loading) {

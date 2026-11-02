@@ -363,7 +363,7 @@ async function listRows(page: Page, path: string): Promise<Array<Record<string, 
 }
 
 async function listIds(page: Page, path: string): Promise<string[]> {
-  return (await listRows(page, path)).map((row) => row.id as string).sort();
+  return (await listRows(page, path)).map((row) => row.id as string).toSorted();
 }
 
 interface RolePermission {
@@ -487,19 +487,19 @@ async function expectReaderContent(page: Page, context: CaseContext, scope: Scop
 
   // „Własne” → only own; „Grupa” → own + group; „Organizacja” → all org content.
   expect(await listIds(page, '/api/v1/flashcards/decks'), 'decks').toEqual(
-    expectedDecks.map((row) => row.id).sort(),
+    expectedDecks.map((row) => row.id).toSorted(),
   );
   expect(await listIds(page, '/api/v1/flashcards'), 'flashcards').toEqual(
-    expectedCards.map((row) => row.id).sort(),
+    expectedCards.map((row) => row.id).toSorted(),
   );
   expect(await listIds(page, '/api/v1/flashcards/topics'), 'topics').toEqual(
-    expectedTopics.map((row) => row.id).sort(),
+    expectedTopics.map((row) => row.id).toSorted(),
   );
   expect(await listIds(page, '/api/v1/questions/banks'), 'question banks').toEqual(
-    expectedBanks.map((row) => row.id).sort(),
+    expectedBanks.map((row) => row.id).toSorted(),
   );
   expect(await listIds(page, '/api/v1/questions'), 'questions').toEqual(
-    expectedQuestions.map((row) => row.id).sort(),
+    expectedQuestions.map((row) => row.id).toSorted(),
   );
 
   // The reader's deck page renders exactly the visible decks.

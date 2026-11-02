@@ -40,11 +40,13 @@ async function createInviteToken(page: Page, email: string) {
   const roleId = await getMemberRoleId(page);
 
   const body = await page.evaluate(
-    async ({ url, email, roleId }) => {
+    async ({ url, email: inviteEmail, roleId: targetRoleId }) => {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invitations: [{ email, targetOrgRoleId: roleId }] }),
+        body: JSON.stringify({
+          invitations: [{ email: inviteEmail, targetOrgRoleId: targetRoleId }],
+        }),
       });
       return { status: res.status, body: await res.json() };
     },

@@ -73,6 +73,8 @@ function qb(data: unknown, error: unknown = null) {
   return b;
 }
 
+const questionsQb = () => qb([{ question_id: 'q-1' }, { question_id: 'q-2' }]);
+
 describe('QuizAttemptService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: QuizAttemptService;
@@ -91,7 +93,7 @@ describe('QuizAttemptService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new QuizAttemptService(async () => mock);
+    service = new QuizAttemptService(() => Promise.resolve(mock));
   });
 
   describe('list', () => {
@@ -824,8 +826,6 @@ describe('QuizAttemptService', () => {
   });
 
   describe('saveDraft (#349)', () => {
-    const questionsQb = () => qb([{ question_id: 'q-1' }, { question_id: 'q-2' }]);
-
     it('stores the normalised draft map and reports the saved count', async () => {
       const updateQb = qb(null);
 

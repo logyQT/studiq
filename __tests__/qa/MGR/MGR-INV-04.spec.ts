@@ -97,7 +97,7 @@ interface CreatedInvitation {
 
 declare global {
   interface Window {
-    __qaToasts?: string[];
+    qaToasts?: string[];
   }
 }
 
@@ -154,9 +154,9 @@ async function resetCaseState(tenant: QaTenant): Promise<void> {
 /** Record every toast that appears, so a transient toast is still an assertion. */
 async function watchToasts(page: Page): Promise<void> {
   await page.evaluate(() => {
-    if (window.__qaToasts) return;
+    if (window.qaToasts) return;
     const recorded: string[] = [];
-    window.__qaToasts = recorded;
+    window.qaToasts = recorded;
     new MutationObserver(() => {
       for (const node of document.querySelectorAll('[data-sonner-toast]')) {
         const text = (node as HTMLElement).innerText.trim();
@@ -168,7 +168,7 @@ async function watchToasts(page: Page): Promise<void> {
 
 function expectToast(page: Page, text: string) {
   return expect
-    .poll(() => page.evaluate(() => window.__qaToasts ?? []), { timeout: 10_000 })
+    .poll(() => page.evaluate(() => window.qaToasts ?? []), { timeout: 10_000 })
     .toContain(text);
 }
 

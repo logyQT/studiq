@@ -108,7 +108,7 @@ describe('QuizTeacherService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new QuizTeacherService(async () => mock);
+    service = new QuizTeacherService(() => Promise.resolve(mock));
   });
 
   describe('create', () => {

@@ -5,6 +5,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createServiceClient } from '#test/integration/helpers';
 import { createTestUser } from '#test/helpers/test-user';
 
+/** ISO timestamp `offsetMs` away from now, in both directions. */
+function fromNow(offsetMs: number): string {
+  return new Date(Date.now() + offsetMs).toISOString();
+}
+
 // Issue #382: `user_feature_overrides.expires_at` must be honoured. This suite
 // exercises the real `timestamptz` round-trip — a unit mock can only prove the
 // JS filter, not that `expires_at` is actually selected and parsed — and pins
@@ -69,14 +74,9 @@ describe('User feature override expiry', () => {
     if (error) throw new Error(`override upsert failed: ${error.message}`);
   }
 
-  /** ISO timestamp `offsetMs` away from now, in both directions. */
-  function fromNow(offsetMs: number): string {
-    return new Date(Date.now() + offsetMs).toISOString();
-  }
-
   beforeEach(async () => {
     service = createServiceClient();
-    resolver = new FeatureResolver(async () => service);
+    resolver = new FeatureResolver(() => Promise.resolve(service));
     await clearOverrides();
   });
 

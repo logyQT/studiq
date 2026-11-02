@@ -162,8 +162,10 @@ function ImportDialog({ bankId, open, onOpenChange }: ImportDialogProps) {
   const [problems, setProblems] = useState<Problem[]>([]);
 
   const importMutation = useApiMutation<{ imported: number }, { questions: TransferQuestion[] }>({
-    mutationFn: ({ questions }) =>
-      apiPost<{ imported: number }>(`/api/v1/questions/banks/${bankId}/import`, { questions }),
+    mutationFn: ({ questions: rows }) =>
+      apiPost<{ imported: number }>(`/api/v1/questions/banks/${bankId}/import`, {
+        questions: rows,
+      }),
     invalidateKeys: [questionKeys.all],
     onError: (error) => {
       toast.error(

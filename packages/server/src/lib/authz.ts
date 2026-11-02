@@ -115,6 +115,8 @@ export function buildQueryFilter(
       return ctx.activeOrgId
         ? { created_by: ctx.userId, organization_id: ctx.activeOrgId }
         : { created_by: ctx.userId };
+    default:
+      return { _impossible: true };
   }
 }
 
@@ -201,6 +203,8 @@ export async function can(
 
       return (count ?? 0) > 0;
     }
+    default:
+      return false;
   }
 }
 
@@ -275,6 +279,8 @@ export async function resolveGroupResourceIds(
         .in('group_id', groupIds);
       return [...new Set((data ?? []).map((r) => r.topic_id as string))];
     }
+    default:
+      return [];
   }
 }
 
@@ -311,5 +317,7 @@ export async function accessibleFilter(
         or: `created_by.eq.${ctx.userId},id.in.(${resourceIds.join(',')})`,
       };
     }
+    default:
+      return { _impossible: true };
   }
 }

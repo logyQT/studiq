@@ -38,7 +38,7 @@ interface ListedQuestion {
  * update and lands completely or not at all; both stay in the bank's tenant, not the caller's.
  */
 export class QuestionTransferService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   /**
    * Every question of a bank the caller may read, in the shape both file formats use.
@@ -74,7 +74,7 @@ export class QuestionTransferService {
     if (rows.length < total) return failure('INTERNAL_SERVER');
 
     const questions = rows.map((row): TransferQuestion => {
-      const answers = [...(row.question_answers ?? [])].sort(
+      const answers = [...(row.question_answers ?? [])].toSorted(
         (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
       );
       return {
@@ -106,7 +106,7 @@ export class QuestionTransferService {
   ): Promise<ServiceResult<ImportQuestionsResult>> {
     if (!(await can(ctx, Permission.QUESTION_CREATE))) throw new AppError('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: bank } = await supabase
       .from('question_banks')

@@ -291,9 +291,9 @@ async function runStudentActivity(
       {},
     );
     expect(
-      started.questions.map((question) => question.id).sort(),
+      started.questions.map((question) => question.id).toSorted(),
       'the attempt holds the quiz questions',
-    ).toEqual(content.questions.map((question) => question.id).sort());
+    ).toEqual(content.questions.map((question) => question.id).toSorted());
     const submitted = await api<{ score: number; totalQuestions: number }>(
       page,
       'POST',

@@ -52,16 +52,16 @@ describe('weeklyWindowStart (#383)', () => {
   });
 });
 
-describe('attemptScoreDisplay (#321/#329/#619)', () => {
-  const attempt = (overrides: Partial<Parameters<typeof attemptScoreDisplay>[0]>) => ({
-    score: 0,
-    total_questions: 0,
-    total_points: null,
-    gradable_questions: 0,
-    assignment_id: null,
-    ...overrides,
-  });
+const attempt = (overrides: Partial<Parameters<typeof attemptScoreDisplay>[0]>) => ({
+  score: 0,
+  total_questions: 0,
+  total_points: null,
+  gradable_questions: 0,
+  assignment_id: null,
+  ...overrides,
+});
 
+describe('attemptScoreDisplay (#321/#329/#619)', () => {
   it('scores a practice attempt against its closed questions, not total_questions', () => {
     // The issue's headline case: 2 of 2 closed questions is 100 %, even though
     // the attempt contained a third, open question (pre-#619 it said 67 %).
@@ -154,19 +154,20 @@ describe('formatScorePercent (#619)', () => {
   });
 });
 
+const empty = () => ({
+  summary: {
+    activeStudents: { current: 0 },
+    totalPractices: { current: 0 },
+    totalQuizzes: { current: 0 },
+  },
+  dailyActivity: [
+    { reviews: 0, activeStudents: 0 },
+    { reviews: 0, activeStudents: 0 },
+  ],
+  students: [{ practices7d: 0, quizzes7d: 0 }],
+});
+
 describe('hasTeacherActivity (#209)', () => {
-  const empty = () => ({
-    summary: {
-      activeStudents: { current: 0 },
-      totalPractices: { current: 0 },
-      totalQuizzes: { current: 0 },
-    },
-    dailyActivity: [
-      { reviews: 0, activeStudents: 0 },
-      { reviews: 0, activeStudents: 0 },
-    ],
-    students: [{ practices7d: 0, quizzes7d: 0 }],
-  });
   type Data = ReturnType<typeof empty>;
 
   it('is false when every counter is zero', () => {

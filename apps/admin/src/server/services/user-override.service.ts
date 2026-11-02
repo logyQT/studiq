@@ -9,10 +9,10 @@ import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class UserOverrideService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async getAll() {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .select('*')
@@ -22,7 +22,7 @@ export class UserOverrideService {
   }
 
   async getById(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .select('*')
@@ -34,7 +34,7 @@ export class UserOverrideService {
   }
 
   async create(input: CreateUserFeatureOverrideInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .insert({
@@ -51,7 +51,7 @@ export class UserOverrideService {
   }
 
   async update(id: string, input: UpdateUserFeatureOverrideInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const updateData: Record<string, unknown> = {};
     if (input.isEnabled !== undefined) updateData.is_enabled = input.isEnabled;
     if (input.reason !== undefined) updateData.reason = input.reason;
@@ -68,7 +68,7 @@ export class UserOverrideService {
   }
 
   async delete(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: exists } = await supabase
       .from('user_feature_overrides')
       .select('id')

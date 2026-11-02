@@ -42,6 +42,7 @@ export default function NewAssignmentClient() {
           setTitle(json.data.name);
           setQuizName(json.data.name);
         }
+        return undefined;
       })
       .catch(() => {});
   }, [quizId]);

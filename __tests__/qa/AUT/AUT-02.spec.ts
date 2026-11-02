@@ -131,6 +131,11 @@ async function signIn(page: Page, email: string, destination: RegExp): Promise<v
   await expect(page).toHaveURL(destination, { timeout: 20_000 });
 }
 
+/** The chunk index Supabase appends to a split auth-token cookie (`0` for the head). */
+function cookieChunkIndex(name: string): number {
+  return Number(name.match(/\.(\d+)$/)?.[1] ?? 0);
+}
+
 /** The `account_type` claim carried by the session's access token. */
 async function tokenClaims(context: BrowserContext): Promise<{
   email?: string;
@@ -138,10 +143,7 @@ async function tokenClaims(context: BrowserContext): Promise<{
 }> {
   const chunks = (await context.cookies(APP_URL))
     .filter((cookie) => /^sb-.*-auth-token(\.\d+)?$/.test(cookie.name))
-    .sort((a, b) => {
-      const index = (name: string) => Number(name.match(/\.(\d+)$/)?.[1] ?? 0);
-      return index(a.name) - index(b.name);
-    });
+    .toSorted((a, b) => cookieChunkIndex(a.name) - cookieChunkIndex(b.name));
   expect(chunks.length, 'Supabase auth cookie').toBeGreaterThan(0);
 
   const raw = chunks

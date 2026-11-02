@@ -61,7 +61,7 @@ describe('FlashcardImportService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new FlashcardImportService(async () => mock);
+    service = new FlashcardImportService(() => Promise.resolve(mock));
   });
 
   describe('importCsv', () => {

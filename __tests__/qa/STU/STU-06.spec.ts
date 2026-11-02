@@ -160,8 +160,8 @@ async function ensureCards(page: Page, deckId: string): Promise<Map<string, stri
     byFront.set(front, body.data.id);
   }
 
-  expect([...byFront.keys()].sort(), 'the deck holds the case’s five cards').toEqual(
-    [...CARD_FRONTS].sort(),
+  expect([...byFront.keys()].toSorted(), 'the deck holds the case’s five cards').toEqual(
+    [...CARD_FRONTS].toSorted(),
   );
   return byFront;
 }
@@ -255,9 +255,9 @@ test.describe('@case:STU-06 @area:STU @prio:P2 study session keyboard shortcuts'
     await page.getByRole('button', { name: COPY.startLearning, exact: true }).click();
     const queue = (await (await queueResponse).json()) as ApiEnvelope<{ front: string }[]>;
     expect(
-      queue.data.map((card) => card.front).sort(),
+      queue.data.map((card) => card.front).toSorted(),
       'the session queue is exactly the tenant’s five new cards',
-    ).toEqual([...CARD_FRONTS].sort());
+    ).toEqual([...CARD_FRONTS].toSorted());
 
     await expect(page).toHaveURL(/\/app\/study\/session\/new/);
     await expect(rotatingCard(page)).toBeVisible();

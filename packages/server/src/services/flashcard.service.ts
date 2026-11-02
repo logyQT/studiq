@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -20,10 +21,10 @@ import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class FlashcardService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async create(data: CreateFlashcardInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const flashcardCount = await this.countOwned(supabase, ctx);
     await limitsResolver.checkLimit(ctx, 'max_flashcards', flashcardCount);
@@ -74,7 +75,7 @@ export class FlashcardService {
     data: BulkCreateFlashcardsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const cardCount = data.cards.length;
 
     const bulkFlashcardCount = await this.countOwned(supabase, ctx);
@@ -120,7 +121,7 @@ export class FlashcardService {
       limit?: number;
     },
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const pageSize = Math.min(filters?.limit ?? 50, 100);
 
     const hasDeckFilter = !!(filters?.deckIds && filters.deckIds.length > 0);
@@ -131,7 +132,7 @@ export class FlashcardService {
     const sortAsc = (filters?.sortOrder || 'desc') === 'asc';
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
 
     let query = supabase
       .from('flashcards')
@@ -196,10 +197,10 @@ export class FlashcardService {
   }
 
   async listByDeck(deckIds: string[], ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success([]);
+    if (isImpossibleFilter(filter)) return success([]);
 
     let query = supabase
       .from('flashcards')
@@ -223,10 +224,10 @@ export class FlashcardService {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return failure('NOT_FOUND');
+    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     let query = supabase
       .from('flashcards')
@@ -249,7 +250,7 @@ export class FlashcardService {
     data: UpdateFlashcardInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcards')
@@ -304,7 +305,7 @@ export class FlashcardService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcards')
@@ -327,7 +328,7 @@ export class FlashcardService {
     data: CopyFlashcardInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: original, error: fetchError } = await supabase
       .from('flashcards')
@@ -389,7 +390,7 @@ export class FlashcardService {
   }
 
   async batchDelete(data: BatchDeleteInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: flashcards, error: fetchError } = await supabase
       .from('flashcards')
@@ -411,7 +412,7 @@ export class FlashcardService {
   }
 
   async batchTopics(data: BatchTopicsInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: flashcards, error: fetchError } = await supabase
       .from('flashcards')
@@ -473,7 +474,7 @@ export class FlashcardService {
   }
 
   async batchMove(data: BatchMoveInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: flashcards, error: fetchError } = await supabase
       .from('flashcards')
@@ -506,7 +507,7 @@ export class FlashcardService {
   }
 
   async batchCopy(data: BatchCopyInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: originals, error: fetchError } = await supabase
       .from('flashcards')

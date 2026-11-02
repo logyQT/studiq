@@ -58,6 +58,21 @@ function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
   return b;
 }
 
+function planRow(key: string, forAccountType: string | null = null) {
+  return {
+    id: `p-${key}`,
+    key,
+    name: key,
+    description: null,
+    price_monthly: 0,
+    price_yearly: 0,
+    currency: 'PLN',
+    sort_order: 0,
+    is_active: true,
+    for_account_type: forAccountType,
+  };
+}
+
 describe('SubscriptionPlanService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: SubscriptionPlanService;
@@ -76,8 +91,17 @@ describe('SubscriptionPlanService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new SubscriptionPlanService(async () => mock);
+    service = new SubscriptionPlanService(() => Promise.resolve(mock));
   });
+
+  function mockTables(
+    tables: Record<string, unknown>,
+    errors: Record<string, { message: string }> = {},
+  ) {
+    mock.from.mockImplementation((table: string) =>
+      qb(tables[table] ?? null, errors[table] ?? null),
+    );
+  }
 
   describe('listActive', () => {
     it('returns active plans with features and limits', async () => {
@@ -152,30 +176,6 @@ describe('SubscriptionPlanService', () => {
   });
 
   describe('getMyPlan', () => {
-    function mockTables(
-      tables: Record<string, unknown>,
-      errors: Record<string, { message: string }> = {},
-    ) {
-      mock.from.mockImplementation((table: string) =>
-        qb(tables[table] ?? null, errors[table] ?? null),
-      );
-    }
-
-    function planRow(key: string, forAccountType: string | null = null) {
-      return {
-        id: `p-${key}`,
-        key,
-        name: key,
-        description: null,
-        price_monthly: 0,
-        price_yearly: 0,
-        currency: 'PLN',
-        sort_order: 0,
-        is_active: true,
-        for_account_type: forAccountType,
-      };
-    }
-
     it('returns the seat plan to a seated student in an active org (#270)', async () => {
       mockTables({
         org_seat_assignments: { pool_id: 'pool-1' },

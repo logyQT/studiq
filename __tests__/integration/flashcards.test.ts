@@ -23,6 +23,18 @@ import { GET, POST } from '@/app/(backend)/api/v1/flashcards/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
+function batchDeleteRequest(ids: string[]) {
+  return createNextRequestWithParams(
+    'http://localhost/api/v1/flashcards/batch/delete',
+    { action: 'delete' },
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    },
+  );
+}
+
 describe(`Flashcards Integration`, () => {
   let teacher!: BeforeResult;
   let student!: TestUserFixture;
@@ -296,41 +308,29 @@ describe(`Flashcards Integration`, () => {
     });
   });
 
+  async function createCards(count: number) {
+    mockUser(teacher.user);
+    const { request, params } = createNextRequestWithParams(
+      'http://localhost/api/v1/flashcards/batch/create',
+      { action: 'create' },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deckId,
+          cards: Array.from({ length: count }, (_, i) => ({
+            front: `fc-${suiteId}-delete-${i}`,
+            back: `A${i}`,
+          })),
+        }),
+      },
+    );
+    const response = await batchAction(request, { params });
+    const body = await response.json();
+    return (body.data as Array<{ id: string }>).map((fc) => fc.id);
+  }
+
   describe('POST /api/v1/flashcards/batch/delete', () => {
-    async function createCards(count: number) {
-      mockUser(teacher.user);
-      const { request, params } = createNextRequestWithParams(
-        'http://localhost/api/v1/flashcards/batch/create',
-        { action: 'create' },
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deckId,
-            cards: Array.from({ length: count }, (_, i) => ({
-              front: `fc-${suiteId}-delete-${i}`,
-              back: `A${i}`,
-            })),
-          }),
-        },
-      );
-      const response = await batchAction(request, { params });
-      const body = await response.json();
-      return (body.data as Array<{ id: string }>).map((fc) => fc.id);
-    }
-
-    function batchDeleteRequest(ids: string[]) {
-      return createNextRequestWithParams(
-        'http://localhost/api/v1/flashcards/batch/delete',
-        { action: 'delete' },
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids }),
-        },
-      );
-    }
-
     it('deletes own cards and returns 200', async () => {
       const ids = await createCards(2);
       mockUser(teacher.user);

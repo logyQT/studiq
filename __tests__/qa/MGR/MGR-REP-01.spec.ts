@@ -198,15 +198,19 @@ async function ensureBank(page: Page, name: string): Promise<string> {
  * the same seeded tenant keeps exactly one report per thread and a fresh reply
  * history instead of accumulating both.
  */
-async function recreateQuestion(page: Page, bankId: string, content: string): Promise<string> {
+async function recreateQuestion(
+  page: Page,
+  bankId: string,
+  questionContent: string,
+): Promise<string> {
   const questions = await apiData<QuestionRow[]>(page, `${QUESTIONS_URL}?bankId=${bankId}`);
-  for (const stale of questions.filter((question) => question.content === content)) {
+  for (const stale of questions.filter((question) => question.content === questionContent)) {
     const removed = await page.request.delete(`${QUESTIONS_URL}/${stale.id}`);
     expect(removed.status(), `DELETE ${QUESTIONS_URL}/${stale.id}`).toBe(200);
   }
 
   const created = await page.request.post(QUESTIONS_URL, {
-    data: { bankId, type: 'open', content, answers: [] },
+    data: { bankId, type: 'open', content: questionContent, answers: [] },
   });
   expect(created.status(), `POST ${QUESTIONS_URL}`).toBe(201);
   return ((await created.json()) as { data: { id: string } }).data.id;

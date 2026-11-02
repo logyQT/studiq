@@ -46,7 +46,7 @@ export function retentionSample(buckets: readonly RetentionBucket[]): number {
 export function visibleMastery(items: readonly TopicMasteryItem[], limit = 10): TopicMasteryItem[] {
   return items
     .filter((item) => item.quizAnswers + item.flashcardReviews > 0)
-    .sort(
+    .toSorted(
       (a, b) =>
         b.quizAnswers + b.flashcardReviews - (a.quizAnswers + a.flashcardReviews) ||
         a.name.localeCompare(b.name),

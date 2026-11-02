@@ -87,6 +87,40 @@ function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
   return b;
 }
 
+/** Invitation row as loadInvite() selects it. */
+function inviteRow(overrides: Record<string, unknown> = {}) {
+  return {
+    email: 'john@example.com',
+    inviter_id: 'manager-1',
+    is_accepted: false,
+    organization_id: 'uni-1',
+    target_org_role_id: 'role-member',
+    expires_at: new Date(Date.now() + 86400000).toISOString(),
+    organizations: { name: 'Test Uni' },
+    org_roles: { name: 'Member', organization_id: 'uni-1' },
+    ...overrides,
+  };
+}
+
+function adminClient() {
+  const from = vi.fn();
+  const rpc = vi.fn().mockResolvedValue({ data: true, error: null });
+  // Only `from`/`rpc` are stubbed; the rest of the client is never reached.
+  return { client: { from, rpc } as unknown as SupabaseClient, from, rpc };
+}
+
+/** Chain that answers the `org_members` seat count (`.neq(...)`). */
+function countQb(count: number | null, error: unknown = null) {
+  const c: FakeCountBuilder = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    neq: vi.fn().mockResolvedValue({ count, error }),
+  };
+  c.select.mockImplementation(() => c);
+  c.eq.mockImplementation(() => c);
+  return c;
+}
+
 describe('InvitationService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: InvitationService;
@@ -134,38 +168,38 @@ describe('InvitationService', () => {
     // insert; happy-path tests are allowed to grant by default.
     mock.rpc.mockResolvedValue({ data: true, error: null });
     service = new InvitationService(
-      async () => mock,
+      () => Promise.resolve(mock),
       () => mock,
     );
   });
 
-  describe('createInvitation', () => {
-    /**
-     * A successful create runs three reads/writes in order: membership,
-     * role-in-org, insert. Returns the builders so a test can assert the
-     * scoping and payload of each step.
-     */
-    function createBuilders({
-      membership = { organization_id: 'uni-1' },
-      role = { id: 'member' },
-      insert = { id: 'inv-1', token: 'abc123' },
-      insertError = null,
-    }: {
-      membership?: unknown;
-      role?: unknown;
-      insert?: unknown;
-      insertError?: DbError | null;
-    } = {}) {
-      const membershipQb = qb(membership);
-      const roleQb = qb(role);
-      const insertQb = qb(insert, insertError);
-      mock.from
-        .mockReturnValueOnce(membershipQb)
-        .mockReturnValueOnce(roleQb)
-        .mockReturnValueOnce(insertQb);
-      return { membershipQb, roleQb, insertQb };
-    }
+  /**
+   * A successful create runs three reads/writes in order: membership,
+   * role-in-org, insert. Returns the builders so a test can assert the
+   * scoping and payload of each step.
+   */
+  function createBuilders({
+    membership = { organization_id: 'uni-1' },
+    role = { id: 'member' },
+    insert = { id: 'inv-1', token: 'abc123' },
+    insertError = null,
+  }: {
+    membership?: unknown;
+    role?: unknown;
+    insert?: unknown;
+    insertError?: DbError | null;
+  } = {}) {
+    const membershipQb = qb(membership);
+    const roleQb = qb(role);
+    const insertQb = qb(insert, insertError);
+    mock.from
+      .mockReturnValueOnce(membershipQb)
+      .mockReturnValueOnce(roleQb)
+      .mockReturnValueOnce(insertQb);
+    return { membershipQb, roleQb, insertQb };
+  }
 
+  describe('createInvitation', () => {
     it('creates an invitation when organizationId matches a membership', async () => {
       const { membershipQb, roleQb, insertQb } = createBuilders();
 
@@ -538,7 +572,7 @@ describe('InvitationService', () => {
     // un-grantable role rejects the whole batch (all-or-nothing, like the 422).
     it('returns FORBIDDEN and writes nothing when the caller may not grant a target role (#189)', async () => {
       const { insertQb } = bulkBuilders();
-      mock.rpc.mockImplementation(async (_fn: string, args: { p_role_id: string }) => ({
+      mock.rpc.mockImplementation((_fn: string, args: { p_role_id: string }) => ({
         data: args.p_role_id === memberRole,
         error: null,
       }));
@@ -716,21 +750,6 @@ describe('InvitationService', () => {
     });
   });
 
-  /** Invitation row as loadInvite() selects it. */
-  function inviteRow(overrides: Record<string, unknown> = {}) {
-    return {
-      email: 'john@example.com',
-      inviter_id: 'manager-1',
-      is_accepted: false,
-      organization_id: 'uni-1',
-      target_org_role_id: 'role-member',
-      expires_at: new Date(Date.now() + 86400000).toISOString(),
-      organizations: { name: 'Test Uni' },
-      org_roles: { name: 'Member', organization_id: 'uni-1' },
-      ...overrides,
-    };
-  }
-
   describe('getInvitationByToken', () => {
     beforeEach(() => {
       mock.rpc.mockResolvedValue({ data: true, error: null });
@@ -788,7 +807,7 @@ describe('InvitationService', () => {
     // would run as `anon` and PostgREST rejects `public.invitations` with 42501.
     // The preview must resolve on the service-role client only.
     it('resolves the public preview on the admin client, never the request client (#236)', async () => {
-      const requestClient = vi.fn(async () => {
+      const requestClient = vi.fn(() => {
         throw new Error('request-scoped client must not be used for a public preview');
       });
       const admin = {
@@ -871,32 +890,13 @@ describe('InvitationService', () => {
     });
     const joiningCtx: RequestContext = { ...managerCtx, userId: 'joining-user' };
 
-    function adminClient() {
-      const from = vi.fn();
-      const rpc = vi.fn().mockResolvedValue({ data: true, error: null });
-      // Only `from`/`rpc` are stubbed; the rest of the client is never reached.
-      return { client: { from, rpc } as unknown as SupabaseClient, from, rpc };
-    }
-
-    /** Chain that answers the `org_members` seat count (`.neq(...)`). */
-    function countQb(count: number | null, error: unknown = null) {
-      const c: FakeCountBuilder = {
-        select: vi.fn(),
-        eq: vi.fn(),
-        neq: vi.fn().mockResolvedValue({ count, error }),
-      };
-      c.select.mockImplementation(() => c);
-      c.eq.mockImplementation(() => c);
-      return c;
-    }
-
     it('runs the whole accept flow on the admin client, not the joining user (#191)', async () => {
       const admin = adminClient();
       admin.from
         .mockReturnValueOnce(qb(invitation)) // invitation token lookup
         .mockReturnValueOnce(countQb(5)); // seat count
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
       vi.mocked(limitsResolver.checkOrgLimit).mockRejectedValueOnce(
@@ -924,7 +924,7 @@ describe('InvitationService', () => {
     it('adds the member when the organization is below its limit', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
       admin.from
@@ -952,7 +952,7 @@ describe('InvitationService', () => {
       const admin = adminClient();
       const notifier = { invitationAccepted: vi.fn().mockResolvedValue(undefined) };
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
         () => null,
         notifier as unknown as Notifier,
@@ -981,7 +981,7 @@ describe('InvitationService', () => {
       const admin = adminClient();
       const notifier = { invitationAccepted: vi.fn().mockResolvedValue(undefined) };
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
         () => null,
         notifier as unknown as Notifier,
@@ -1010,7 +1010,7 @@ describe('InvitationService', () => {
         .mockReturnValueOnce(qb({ id: 'group-1' }))
         .mockReturnValue(qb(null));
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
 
@@ -1039,7 +1039,7 @@ describe('InvitationService', () => {
         .mockReturnValueOnce(qb(invitation))
         .mockReturnValueOnce(countQb(null, { message: 'boom', code: 'XX000' }));
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
 
@@ -1054,7 +1054,7 @@ describe('InvitationService', () => {
       // Org is full with the caller already inside: 4 other members + the caller = 5/5.
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
       const memberQb = qb({ organization_id: 'org-1' });
@@ -1096,7 +1096,7 @@ describe('InvitationService', () => {
       admin.rpc.mockResolvedValue({ data: false, error: null });
       admin.from.mockReturnValueOnce(qb(invitation));
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
 
@@ -1118,7 +1118,7 @@ describe('InvitationService', () => {
       admin.rpc.mockResolvedValue({ data: null, error: { message: 'boom', code: 'XX000' } });
       admin.from.mockReturnValueOnce(qb(invitation));
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
 
@@ -1133,7 +1133,7 @@ describe('InvitationService', () => {
       const admin = adminClient();
       admin.from.mockReturnValueOnce(qb(inviteRow({ ...invitation, is_accepted: true })));
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
 
@@ -1151,7 +1151,7 @@ describe('InvitationService', () => {
         qb(inviteRow({ ...invitation, org_roles: { name: 'admin', organization_id: 'org-2' } })),
       );
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
 
@@ -1165,7 +1165,7 @@ describe('InvitationService', () => {
     it('claims the token before writing membership and never re-updates it afterwards', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
       const claimQb = qb({ id: 'inv-1' });
@@ -1211,7 +1211,7 @@ describe('InvitationService', () => {
       const code = 'c8a0b04e7082116c09a28ce717f83d5f';
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
       const lookupQb = qb(invitation);
@@ -1238,7 +1238,7 @@ describe('InvitationService', () => {
     it('returns NOT_FOUND without touching the DB for a link with no token', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
 
@@ -1252,7 +1252,7 @@ describe('InvitationService', () => {
     it('rejects the accept when the token was already claimed concurrently (GONE)', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
       // `.maybeSingle()` yields null when the conditional PATCH matched no row.
@@ -1276,7 +1276,7 @@ describe('InvitationService', () => {
     it('reports a DB failure when the claim itself fails', async () => {
       const admin = adminClient();
       service = new InvitationService(
-        async () => mock,
+        () => Promise.resolve(mock),
         () => admin.client,
       );
       const memberQb = qb({ organization_id: 'org-1' });

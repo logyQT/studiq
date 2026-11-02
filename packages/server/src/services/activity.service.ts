@@ -13,13 +13,13 @@ import type {
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class ActivityService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async getClassActivity(
     ctx: RequestContext,
     query: ActivityQuery,
   ): Promise<ServiceResult<ClassActivityResponse>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const orgId = ctx.activeOrgId;
 
     if (!orgId) return failure('FORBIDDEN');
@@ -214,8 +214,6 @@ export class ActivityService {
       entry.quizzes += r.quizzes_count;
       studentActivityMap.set(r.user_id, entry);
     }
-
-    const _dayCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     return studentIds.map((id) => {
       const profile = profileMap.get(id);

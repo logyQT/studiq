@@ -24,7 +24,7 @@ import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route
 const BASE_URL = 'http://localhost';
 
 const service = createServiceClient();
-const resolver = new LimitsResolver(async () => service);
+const resolver = new LimitsResolver(() => Promise.resolve(service));
 
 let manager: TestUserFixture;
 let boughtOrgId: string;

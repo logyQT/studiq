@@ -90,7 +90,7 @@ describe('FlashcardStatsService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new FlashcardStatsService(async () => mock);
+    service = new FlashcardStatsService(() => Promise.resolve(mock));
   });
 
   describe('getTeacherStats', () => {

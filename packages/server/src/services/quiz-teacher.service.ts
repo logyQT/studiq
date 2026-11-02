@@ -13,7 +13,7 @@ import type {
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class QuizTeacherService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async create(data: CreateQuizInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     // quizzes.organization_id is NOT NULL: without a verified active org there is no tenant to
@@ -21,7 +21,7 @@ export class QuizTeacherService {
     // the wrong contract for an authenticated caller that simply has no active org (#148).
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: quiz, error } = await supabase
       .from('quizzes')
@@ -39,7 +39,7 @@ export class QuizTeacherService {
   }
 
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Quizzes are strictly org-scoped, and postgrest serialises a null value as
     // `eq.null`, which Postgres rejects for a uuid column (22P02 → 500). A caller
@@ -60,7 +60,7 @@ export class QuizTeacherService {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: quiz, error } = await supabase
       .from('quizzes')
@@ -80,7 +80,7 @@ export class QuizTeacherService {
     data: BulkSaveQuizInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: quiz, error: fetchError } = await supabase
       .from('quizzes')
@@ -135,7 +135,7 @@ export class QuizTeacherService {
     data: UpdateQuizInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: quiz, error } = await supabase
       .from('quizzes')
@@ -164,7 +164,7 @@ export class QuizTeacherService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: quiz, error } = await supabase
       .from('quizzes')
@@ -186,7 +186,7 @@ export class QuizTeacherService {
     data: AddQuizQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: quiz, error: quizError } = await supabase
       .from('quizzes')
@@ -244,7 +244,7 @@ export class QuizTeacherService {
     questionId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: quiz, error: quizError } = await supabase
       .from('quizzes')
@@ -271,7 +271,7 @@ export class QuizTeacherService {
     data: ReorderQuizQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: quiz, error: quizError } = await supabase
       .from('quizzes')
@@ -298,7 +298,7 @@ export class QuizTeacherService {
   }
 
   async createAssignment(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // 1. Get quiz with questions
     const { data: quiz, error: quizError } = await supabase

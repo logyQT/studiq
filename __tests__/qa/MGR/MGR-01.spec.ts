@@ -194,7 +194,7 @@ test('counts members by org role and links the quick actions and the recent list
   // Same comparator the card uses (newest profile first, at most five rows), so
   // the expectation is derived from the tenant's own members, not a fixture list.
   const expectedRecent = [...members]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .toSorted((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 5);
   expect(expectedRecent.length, 'the tenant has at most five members').toBe(EXPECTED.total);
 

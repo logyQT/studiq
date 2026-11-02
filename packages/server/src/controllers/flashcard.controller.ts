@@ -20,7 +20,7 @@ import {
 import { type FlashcardService, flashcardService } from '@studiq/server/services/flashcard.service';
 
 export class FlashcardController {
-  constructor(private flashcardService: FlashcardService) {}
+  constructor(private service: FlashcardService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     if (!(await can(ctx, Permission.FLASHCARD_CREATE))) {
@@ -33,7 +33,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.create(parsed.data, ctx);
+    const result = await this.service.create(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -60,7 +60,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.list(ctx, parsed.data);
+    const result = await this.service.list(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -80,7 +80,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.bulkCreate(parsed.data, ctx);
+    const result = await this.service.bulkCreate(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -90,7 +90,7 @@ export class FlashcardController {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.flashcardService.getById(id, ctx);
+    const result = await this.service.getById(id, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -106,7 +106,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.update(id, parsed.data, ctx);
+    const result = await this.service.update(id, parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -116,7 +116,7 @@ export class FlashcardController {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.flashcardService.delete(id, ctx);
+    const result = await this.service.delete(id, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -132,7 +132,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.copy(id, parsed.data, ctx);
+    const result = await this.service.copy(id, parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -148,7 +148,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.batchDelete(parsed.data, ctx);
+    const result = await this.service.batchDelete(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -164,7 +164,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.batchTopics(parsed.data, ctx);
+    const result = await this.service.batchTopics(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -180,7 +180,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.batchMove(parsed.data, ctx);
+    const result = await this.service.batchMove(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -196,7 +196,7 @@ export class FlashcardController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardService.batchCopy(parsed.data, ctx);
+    const result = await this.service.batchCopy(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

@@ -109,6 +109,7 @@ export default function InvitationsPage() {
         if (res.success && Array.isArray(res.data)) {
           setOrgRoles(res.data);
         }
+        return undefined;
       });
   }, []);
 
@@ -123,6 +124,7 @@ export default function InvitationsPage() {
         } else {
           setLoadError(true);
         }
+        return undefined;
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));

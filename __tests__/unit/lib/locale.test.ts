@@ -46,7 +46,7 @@ describe('resolveLocale', () => {
 
   it('falls back to the default locale for anything unsupported', () => {
     for (const value of ['fr', '', '  ', null, undefined, 42, {}, ['en']]) {
-      expect(resolveLocale(value), String(value)).toBe(DEFAULT_LOCALE);
+      expect(resolveLocale(value), JSON.stringify(value) ?? 'undefined').toBe(DEFAULT_LOCALE);
     }
   });
 });

@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, buildQueryFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -60,7 +61,7 @@ type ReviewStateRow = {
 };
 
 export class FlashcardPracticeService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async log(
     flashcardId: string,
@@ -77,7 +78,7 @@ export class FlashcardPracticeService {
     // completeSession() (flashcard_study_sessions.mode = 'cram').
     if (mode === 'cram') return success({ practice: null, reviewState: null });
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: practice, error } = await supabase
       .from('flashcard_practice')
@@ -114,7 +115,7 @@ export class FlashcardPracticeService {
     // no daily-budget burn" acceptance true by construction, not by filtering.
     if (data.mode === 'cram') return success({ success: true, results: [] });
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const results: Array<{ flashcardId: string; isLeech: boolean }> = [];
 
     for (const item of data.items) {
@@ -148,7 +149,7 @@ export class FlashcardPracticeService {
     flashcardId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<ReviewStateRow | null>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data } = await supabase
       .from('flashcard_review_state')
@@ -161,7 +162,7 @@ export class FlashcardPracticeService {
   }
 
   private async ensureStudySettings(ctx: RequestContext): Promise<ServiceResult<StudySettingsRow>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing } = await supabase
       .from('user_study_settings')
@@ -182,7 +183,7 @@ export class FlashcardPracticeService {
   }
 
   private async resetDailyIfNeeded(ctx: RequestContext): Promise<ServiceResult<StudySettingsRow>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const settingsResult = await this.ensureStudySettings(ctx);
     if (!settingsResult.success) return settingsResult;
     const settings = settingsResult.data;
@@ -211,7 +212,7 @@ export class FlashcardPracticeService {
     const actualNew = await this.countNewCards(ctx);
 
     // Today's reviews, for the daily goal's progress (same UTC day the daily reset uses).
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: daily } = await supabase
       .from('user_daily_activity')
       .select('reviews_count')
@@ -240,7 +241,7 @@ export class FlashcardPracticeService {
     const ensured = await this.ensureStudySettings(ctx);
     if (!ensured.success) return ensured;
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { error } = await supabase
       .from('user_study_settings')
       .update({ daily_review_goal: input.dailyReviewGoal })
@@ -252,11 +253,11 @@ export class FlashcardPracticeService {
 
   private async countNewCards(ctx: RequestContext): Promise<number> {
     const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return 0;
+    if (isImpossibleFilter(filter)) return 0;
 
     const { filterType, organizationId } = resolveFilterType(filter, ctx);
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.rpc('count_new_cards', {
       p_user_id: ctx.userId,
       p_filter_type: filterType,
@@ -273,7 +274,7 @@ export class FlashcardPracticeService {
     confidenceLevel: number | undefined,
     ctx: RequestContext,
   ): Promise<ServiceResult<ReviewStateRow>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const existingResult = await this.getReviewState(flashcardId, ctx);
     if (!existingResult.success) return existingResult;
@@ -358,7 +359,7 @@ export class FlashcardPracticeService {
     baseDate: Date,
     fuzzRangeDays: number,
   ): Promise<Date> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const windowStart = new Date(baseDate);
     windowStart.setUTCDate(windowStart.getUTCDate() - fuzzRangeDays);
@@ -405,10 +406,10 @@ export class FlashcardPracticeService {
     limit: number = 20,
     newOnly: boolean = false,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success([]);
+    if (isImpossibleFilter(filter)) return success([]);
 
     const { filterType, organizationId } = resolveFilterType(filter, ctx);
 
@@ -435,10 +436,10 @@ export class FlashcardPracticeService {
   }
 
   async getDueBreakdown(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible)
+    if (isImpossibleFilter(filter))
       return success({ total: 0, nextReviewAt: null, byTopic: {}, byDeck: {} });
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
@@ -471,10 +472,10 @@ export class FlashcardPracticeService {
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const rbac = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (rbac._impossible) return success({ count: 0 });
+    if (isImpossibleFilter(rbac)) return success({ count: 0 });
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
@@ -489,7 +490,7 @@ export class FlashcardPracticeService {
   }
 
   async getStatsAll(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const suspendedCardIds = await this.getSuspendedCardIds(ctx);
 
     let practiceQuery = supabase
@@ -534,11 +535,11 @@ export class FlashcardPracticeService {
   }
 
   async getStateBreakdown(ctx: RequestContext): Promise<ServiceResult<StateBreakdown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
 
-    if (filter._impossible) {
+    if (isImpossibleFilter(filter)) {
       return success({ ...EMPTY_STATE_BREAKDOWN });
     }
 
@@ -559,7 +560,7 @@ export class FlashcardPracticeService {
     flashcardId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempts, error } = await supabase
       .from('flashcard_practice')
@@ -599,7 +600,7 @@ export class FlashcardPracticeService {
       cursor?: string;
     },
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Group scope needs the resolved member-of-group card ids; the synchronous
     // `buildQueryFilter` only signals `_useRpc` and would fall back to an
@@ -609,7 +610,8 @@ export class FlashcardPracticeService {
 
     let query = supabase.from('flashcards').select('id, front, back, created_at');
 
-    if (cardFilter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (isImpossibleFilter(cardFilter))
+      return success({ items: [], nextCursor: null, hasMore: false });
     if (cardFilter.or) {
       query = query.or(cardFilter.or);
     }
@@ -730,12 +732,12 @@ export class FlashcardPracticeService {
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
   ): Promise<string[]> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase.from('flashcards').select('id');
 
-    if (filter._impossible) return [];
+    if (isImpossibleFilter(filter)) return [];
     if (filter.or) {
       query = query.or(filter.or);
     }
@@ -767,7 +769,7 @@ export class FlashcardPracticeService {
   }
 
   private async getSuspendedCardIds(ctx: RequestContext): Promise<string[]> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: suspendedDecks } = await supabase
       .from('suspended_decks')
@@ -789,7 +791,7 @@ export class FlashcardPracticeService {
     data: CompleteSessionInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { error } = await supabase.from('flashcard_study_sessions').insert({
       id: data.sessionId,
@@ -812,10 +814,10 @@ export class FlashcardPracticeService {
     ctx: RequestContext,
     filters: { deckIds?: string[]; topicIds?: string[] },
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success([]);
+    if (isImpossibleFilter(filter)) return success([]);
 
     const matchingIds = await this.getMatchingFlashcardIds(ctx, filters);
 
@@ -888,7 +890,7 @@ function resolveFilterType(
   filter: Record<string, unknown>,
   ctx: RequestContext,
 ): { filterType: string; organizationId: string | null } {
-  if (filter._useRpc) {
+  if ('_useRpc' in filter) {
     return { filterType: 'university', organizationId: ctx.activeOrgId ?? null };
   }
   if (filter.created_by) {

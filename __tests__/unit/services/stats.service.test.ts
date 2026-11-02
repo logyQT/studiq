@@ -62,7 +62,7 @@ describe('StatsService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new StatsService(async () => mock);
+  const service = new StatsService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();

@@ -35,13 +35,13 @@ interface SqliteDatabase {
 
 export class AgentTraceService {
   private db: SqliteDatabase | null = null;
-  private _dbInit: Promise<SqliteDatabase | null> | null = null;
+  private dbInit: Promise<SqliteDatabase | null> | null = null;
 
   private async getDb(): Promise<SqliteDatabase | null> {
     if (this.db) return this.db;
-    if (this._dbInit) return this._dbInit;
-    this._dbInit = this.initDb();
-    return this._dbInit;
+    if (this.dbInit) return this.dbInit;
+    this.dbInit = this.initDb();
+    return this.dbInit;
   }
 
   private async initDb(): Promise<SqliteDatabase | null> {
@@ -150,7 +150,7 @@ export class AgentTraceService {
         id: String(r.id),
         timestamp: String(r.timestamp),
         serverSessionId: String(r.serverSessionId),
-        conversationId: r.conversationId != null ? String(r.conversationId) : undefined,
+        conversationId: typeof r.conversationId === 'string' ? r.conversationId : undefined,
         agentName: String(r.agentName),
         iteration: r.iteration != null ? Number(r.iteration) : undefined,
         eventType: r.eventType as TraceEvent['eventType'],

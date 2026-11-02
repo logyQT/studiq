@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -13,18 +14,18 @@ import type {
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class FlashcardStatsService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async getTeacherStats(
     ctx: RequestContext,
     filters?: TeacherFlashcardStatsQuery,
   ): Promise<ServiceResult<TeacherFlashcardStatsResponse>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // `accessibleFilter` resolves group membership into `or: created_by|id.in`
     // instead of leaving an org-wide read (#343).
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) {
+    if (isImpossibleFilter(filter)) {
       return success(emptyResponse);
     }
 
@@ -62,10 +63,10 @@ export class FlashcardStatsService {
     ctx: RequestContext,
     bucket: DifficultyBucket,
   ): Promise<ServiceResult<DifficultyFlashcardDetail[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success([]);
+    if (isImpossibleFilter(filter)) return success([]);
 
     let flashcardQuery = supabase.from('flashcards').select('id, front, back');
     if (filter.or) {

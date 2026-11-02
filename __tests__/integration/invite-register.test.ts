@@ -15,6 +15,41 @@ import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
+function uniqueEmail(label: string) {
+  return `invite-register-${suiteId}-${label}-${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2, 8)}@example.com`;
+}
+
+function register(body: Record<string, unknown>) {
+  return registerPost(
+    createNextRequest('http://localhost/api/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+/** Make the activation callback verify an already-created user. */
+function mockActivation(user: { id: string; user_metadata: Record<string, unknown> }) {
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => {
+    const client = createServiceClient();
+    client.auth.verifyOtp = (() =>
+      Promise.resolve({
+        data: { user, session: null },
+        error: null,
+      })) as never;
+    return Promise.resolve(client as never);
+  });
+}
+
+async function profileByEmail(email: string) {
+  const supabase = createServiceClient();
+  const { data } = await supabase.from('profiles').select('id').eq('email', email).maybeSingle();
+  return data;
+}
+
 // #311 / ONB-08: registering from /join?token=… must end with the new user as a
 // member of the inviting organization (with the invited role) once the e-mail is
 // verified — not a standalone account with a permanently pending invitation.
@@ -61,12 +96,6 @@ describe(`Invite-link registration`, () => {
     useRealSupabase();
   });
 
-  function uniqueEmail(label: string) {
-    return `invite-register-${suiteId}-${label}-${Date.now()}-${Math.random()
-      .toString(16)
-      .slice(2, 8)}@example.com`;
-  }
-
   /** Manager creates an invitation through the real API; returns its token. */
   async function invite(email: string): Promise<string> {
     mockUser(fixture.user);
@@ -92,34 +121,6 @@ describe(`Invite-link registration`, () => {
       .single();
     expect(invitation).toBeTruthy();
     return invitation!.token;
-  }
-
-  function register(body: Record<string, unknown>) {
-    return registerPost(
-      createNextRequest('http://localhost/api/v1/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }),
-    );
-  }
-
-  /** Make the activation callback verify an already-created user. */
-  function mockActivation(user: { id: string; user_metadata: Record<string, unknown> }) {
-    vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
-      const client = createServiceClient();
-      client.auth.verifyOtp = (async () => ({
-        data: { user, session: null },
-        error: null,
-      })) as never;
-      return client as never;
-    });
-  }
-
-  async function profileByEmail(email: string) {
-    const supabase = createServiceClient();
-    const { data } = await supabase.from('profiles').select('id').eq('email', email).maybeSingle();
-    return data;
   }
 
   it('adds the invitee to the organization after activation', async () => {

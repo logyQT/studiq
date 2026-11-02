@@ -43,7 +43,7 @@ describe('UserOverrideService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new UserOverrideService(async () => mock);
+    service = new UserOverrideService(() => Promise.resolve(mock));
   });
 
   describe('getAll', () => {

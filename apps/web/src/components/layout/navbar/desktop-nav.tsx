@@ -54,7 +54,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
   useEffect(() => {
     const nav = navRef.current;
     const parent = nav?.parentElement;
-    if (!nav || !parent || links.length === 0) return;
+    if (!nav || !parent || links.length === 0) return undefined;
 
     const update = () => {
       const children = Array.from(nav.children).filter(

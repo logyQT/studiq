@@ -305,7 +305,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     await dialog.getByRole('combobox').click();
     const groupOptions = page.locator('[data-slot="popover-content"] [role="option"]');
     await expect(groupOptions).toHaveCount(2);
-    expect((await groupOptions.allInnerTexts()).sort(), 'group picker options').toEqual([
+    expect((await groupOptions.allInnerTexts()).toSorted(), 'group picker options').toEqual([
       GROUP_1,
       GROUP_2,
     ]);
@@ -469,7 +469,7 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     await groupSelect.click();
     const groupFilterOptions = page.locator('[data-slot="popover-content"] [role="option"]');
     await expect(groupFilterOptions).toHaveCount(2);
-    expect((await groupFilterOptions.allInnerTexts()).sort(), 'group filter options').toEqual([
+    expect((await groupFilterOptions.allInnerTexts()).toSorted(), 'group filter options').toEqual([
       GROUP_1,
       GROUP_2,
     ]);
@@ -501,10 +501,10 @@ test.describe('@case:EDU-Q-01 @area:EDU @prio:P2 group question bank', () => {
     ).toHaveCount(0);
 
     // „Moje grupy” selects G1 + G2: both group banks stay, the personal one does not.
-    const bothGroups = [GROUP_1_ID, GROUP_2_ID].sort().join(',');
+    const bothGroups = [GROUP_1_ID, GROUP_2_ID].toSorted().join(',');
     const mineGroupsRequest = bankListRequest(
       page,
-      (params) => (params.get('groups') ?? '').split(',').sort().join(',') === bothGroups,
+      (params) => (params.get('groups') ?? '').split(',').toSorted().join(',') === bothGroups,
     );
     await mineGroups.click();
     await mineGroupsRequest;

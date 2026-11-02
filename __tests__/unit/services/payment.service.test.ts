@@ -34,7 +34,7 @@ describe('PaymentService.listMine (#392)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new PaymentService(async () => mock);
+    service = new PaymentService(() => Promise.resolve(mock));
   });
 
   it('maps payment rows to camelCase, newest first', async () => {

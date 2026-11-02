@@ -114,7 +114,7 @@ test.describe('@case:MGR-ROL-01 @area:MGR @prio:P2 role builder plan gate', () =
       ).toBeVisible();
     }
     const roles = await getData<OrgRoleRow[]>(page, '/api/v1/organization/roles');
-    expect(roles.map((role) => role.name).sort(), 'system roles of this org').toEqual([
+    expect(roles.map((role) => role.name).toSorted(), 'system roles of this org').toEqual([
       'admin',
       'member',
       'teacher',

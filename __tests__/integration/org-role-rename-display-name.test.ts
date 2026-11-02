@@ -86,7 +86,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
   });
 
   it('updates name and display_name together on rename', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const newName = `Asystent Lektora ${tag}`;
 
     const result = await orgRoleService.updateRole(ctx(), customRoleId, { name: newName });
@@ -96,7 +96,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
   });
 
   it('serves the renamed label through listRoles (what the member pickers read)', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const newName = `Asystent Lektora ${tag}`;
 
     const result = await orgRoleService.listRoles(ctx());
@@ -108,7 +108,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
   });
 
   it('leaves display_name untouched on a description-only update', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const newName = `Asystent Lektora ${tag}`;
     const before = await labelsOf(customRoleId);
 

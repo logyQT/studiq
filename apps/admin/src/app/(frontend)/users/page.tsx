@@ -130,7 +130,7 @@ export default function UsersPage() {
 
   // Auto-clear the action banner so a stale failure does not linger forever.
   useEffect(() => {
-    if (!actionError) return;
+    if (!actionError) return undefined;
     const timer = setTimeout(() => setActionError(null), ACTION_ERROR_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [actionError]);
@@ -139,8 +139,8 @@ export default function UsersPage() {
     setActionError(null);
   }
 
-  function failAction(error: Error) {
-    setActionError(error.message);
+  function failAction(err: Error) {
+    setActionError(err.message);
   }
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -174,10 +174,10 @@ export default function UsersPage() {
       setCreateForm(EMPTY_CREATE_FORM);
       setCreateError(null);
     },
-    onError: (error: Error) => {
+    onError: (err: Error) => {
       // The create dialog stays open on failure, so the inline message is the
       // primary feedback; a second page-level banner would just duplicate it.
-      setCreateError(error.message);
+      setCreateError(err.message);
     },
   });
 

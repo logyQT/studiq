@@ -33,7 +33,9 @@ const stats: PlatformStats = {
 describe('PlatformStatsService', () => {
   const rpc = vi.fn();
   // Only `rpc` is stubbed; the rest of the client is never reached.
-  const service = new PlatformStatsService(async () => ({ rpc }) as unknown as SupabaseClient);
+  const service = new PlatformStatsService(() =>
+    Promise.resolve({ rpc } as unknown as SupabaseClient),
+  );
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -176,9 +178,9 @@ describe('total', () => {
   });
 });
 
-describe('stats review round (#663)', () => {
-  const read = (path: string) => readFileSync(path, 'utf8');
+const read = (path: string) => readFileSync(path, 'utf8');
 
+describe('stats review round (#663)', () => {
   it('formats sizes with the locale decimal mark', () => {
     expect(formatBytes(2674, 'pl')).toBe('2,6 KB');
     expect(formatBytes(2674, 'en')).toBe('2.6 KB');

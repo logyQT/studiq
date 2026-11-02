@@ -357,6 +357,13 @@ async function expectAnswerKept(page: Page, content: string): Promise<void> {
   }
 }
 
+/** Id of the option whose content is `label` in a question of the attempt. */
+function correctOptionId(question: QuestionRow, label: string): string {
+  const option = question.question_answers?.find((answer) => answer.content === label);
+  if (!option) throw new Error(`question “${question.content}” has no “${label}” option`);
+  return option.id;
+}
+
 test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
   test('starts an attempt, keeps answers, uploads a photo and submits', async ({
     page,
@@ -473,11 +480,6 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     if (!mcqQuestion || !trueFalseQuestion || !openQuestion) {
       throw new Error('the attempt does not expose all three questions');
     }
-    const correctOptionId = (question: QuestionRow, label: string): string => {
-      const option = question.question_answers?.find((answer) => answer.content === label);
-      if (!option) throw new Error(`question “${question.content}” has no “${label}” option`);
-      return option.id;
-    };
     const mcqOptionId = correctOptionId(mcqQuestion, QUESTIONS.mcq.correct);
     const trueFalseOptionId = correctOptionId(trueFalseQuestion, QUESTIONS.trueFalse.correct);
 

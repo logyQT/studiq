@@ -105,7 +105,7 @@ describe('getFieldErrorCode', () => {
     expect(getFieldErrorCode(error, 'name')).toBe('VALIDATION_NAME_INVALID_FORMAT');
   });
 
-  it('returns undefined for an unknown field', async () => {
+  it('returns undefined for an unknown field', () => {
     const error = new ApiError('UNPROCESSABLE_ENTITY', 422, issueBody.issues);
 
     expect(getFieldErrorCode(error, 'email')).toBeUndefined();

@@ -63,7 +63,7 @@ describe('QuestionService.list pagination', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new QuestionService(async () => mock);
+  const service = new QuestionService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -207,10 +207,10 @@ describe('QuestionListQuerySchema', () => {
   });
 });
 
-describe('QuestionListQuerySchema topicIds', () => {
-  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-  const parse = (topicIds?: string) => QuestionListQuerySchema.safeParse({ topicIds });
+const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const parse = (topicIds?: string) => QuestionListQuerySchema.safeParse({ topicIds });
 
+describe('QuestionListQuerySchema topicIds', () => {
   it('is an empty list when absent', () => {
     const parsed = parse();
     expect(parsed.success && parsed.data.topicIds).toEqual([]);

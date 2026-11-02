@@ -44,6 +44,9 @@ export function notificationHref(
     }
     case 'invitation_accepted':
       return area === 'manage' ? '/manage/members' : null;
+    default:
+      // Unreachable for the closed `NotificationItem['type']` union.
+      return null;
   }
 }
 
@@ -59,6 +62,9 @@ export function notificationParams(
       return { name: text(item.payload.senderName) };
     case 'invitation_accepted':
       return { name: text(item.payload.memberName) };
+    default:
+      // Unreachable for the closed `NotificationItem['type']` union.
+      return {};
   }
 }
 

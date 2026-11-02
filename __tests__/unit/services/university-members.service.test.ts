@@ -58,7 +58,7 @@ describe('OrganizationMemberService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new OrganizationMemberService(async () => mock);
+  const service = new OrganizationMemberService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();

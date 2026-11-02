@@ -26,12 +26,15 @@ function statCardValue(page: import('@playwright/test').Page, title: RegExp) {
     .locator('xpath=following-sibling::p[1]');
 }
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const completedStatPattern = (message: string) =>
+  message.split('{days}').map(escapeRegExp).join('\\d+');
+
 /** The "Attempts ({days} days)" title in both locales, with the number left open. */
 function completedStatTitle() {
-  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = (message: string) => message.split('{days}').map(escape).join('\\d+');
   return new RegExp(
-    `${pattern(en.EduOverviewPage.completed_stat)}|${pattern(pl.EduOverviewPage.completed_stat)}`,
+    `${completedStatPattern(en.EduOverviewPage.completed_stat)}|${completedStatPattern(pl.EduOverviewPage.completed_stat)}`,
     'i',
   );
 }

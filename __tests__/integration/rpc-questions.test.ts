@@ -23,7 +23,7 @@ function sortedIds(rows: unknown): string[] {
   return rows
     .map((row) => (typeof row === 'object' && row !== null ? readId(row) : undefined))
     .filter((id): id is string => typeof id === 'string')
-    .sort();
+    .toSorted();
 }
 
 /** How many rows an RPC returned. */
@@ -209,7 +209,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       const ids = sortedIds(data);
-      expect(ids).toEqual([q1Id, q2Id].sort());
+      expect(ids).toEqual([q1Id, q2Id].toSorted());
     });
 
     it("p_scope='group' returns own + group-shared", async () => {
@@ -220,7 +220,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       const ids = sortedIds(data);
-      expect(ids).toEqual([q1Id, q2Id, q3Id].sort());
+      expect(ids).toEqual([q1Id, q2Id, q3Id].toSorted());
     });
 
     it("p_scope='organization' returns all questions in org", async () => {
@@ -231,7 +231,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       const ids = sortedIds(data);
-      expect(ids).toEqual([q1Id, q2Id, q3Id, q4Id].sort());
+      expect(ids).toEqual([q1Id, q2Id, q3Id, q4Id].toSorted());
     });
 
     it("p_scope='any' returns all questions in org", async () => {
@@ -242,7 +242,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       const ids = sortedIds(data);
-      expect(ids).toEqual([q1Id, q2Id, q3Id, q4Id].sort());
+      expect(ids).toEqual([q1Id, q2Id, q3Id, q4Id].toSorted());
     });
   });
 
@@ -258,7 +258,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       const ids = sortedIds(data);
-      expect(ids).toEqual([q3Id, q4Id].sort());
+      expect(ids).toEqual([q3Id, q4Id].toSorted());
     });
 
     it("p_scope='group' returns only own (no group access)", async () => {
@@ -270,7 +270,7 @@ describe(`get_accessible_questions RPC`, () => {
 
       // Student B has no group membership, so only own questions are returned
       const ids = sortedIds(data);
-      expect(ids).toEqual([q3Id, q4Id].sort());
+      expect(ids).toEqual([q3Id, q4Id].toSorted());
     });
 
     it("p_scope='organization' returns all questions", async () => {
@@ -342,7 +342,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       const ids = sortedIds(data);
-      expect(ids).toEqual([q1Id, q3Id].sort()); // Q1 and Q3 are in Bank1
+      expect(ids).toEqual([q1Id, q3Id].toSorted()); // Q1 and Q3 are in Bank1
     });
 
     it('p_type filters by type', async () => {
@@ -392,7 +392,7 @@ describe(`get_accessible_questions RPC`, () => {
 
       // No org filter — returns Student A's own questions from any org
       const ids = sortedIds(data);
-      expect(ids).toEqual([q1Id, q2Id].sort());
+      expect(ids).toEqual([q1Id, q2Id].toSorted());
     });
   });
 
@@ -408,7 +408,7 @@ describe(`get_accessible_questions RPC`, () => {
       });
 
       const ids = sortedIds(data);
-      expect(ids).toEqual([q1Id, q2Id].sort());
+      expect(ids).toEqual([q1Id, q2Id].toSorted());
     });
   });
 });

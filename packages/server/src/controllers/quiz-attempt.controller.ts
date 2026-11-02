@@ -13,10 +13,10 @@ import {
 } from '@studiq/server/services/quiz-attempt.service';
 
 export class QuizAttemptController {
-  constructor(private quizAttemptService: QuizAttemptService) {}
+  constructor(private service: QuizAttemptService) {}
 
   async list(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.quizAttemptService.list(ctx);
+    const result = await this.service.list(ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -24,7 +24,7 @@ export class QuizAttemptController {
   }
 
   async getDetails(attemptId: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.quizAttemptService.getById(attemptId, ctx);
+    const result = await this.service.getById(attemptId, ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -46,7 +46,7 @@ export class QuizAttemptController {
       };
     }
 
-    const result = await this.quizAttemptService.submit(parsed.data, ctx);
+    const result = await this.service.submit(parsed.data, ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -72,7 +72,7 @@ export class QuizAttemptController {
       };
     }
 
-    const result = await this.quizAttemptService.saveDraft(parsed.data, ctx);
+    const result = await this.service.saveDraft(parsed.data, ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

@@ -28,7 +28,7 @@ import {
   useSidebar,
 } from '@studiq/ui';
 import { GripVertical, Plus, ScrollText, Trash2 } from 'lucide-react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -200,7 +200,6 @@ function EmptyQuizDropzone({ label, description }: { label: string; description:
 export function EditQuizClient() {
   const t = useTranslations('EduQuizEditPage');
   const { id } = useParams<{ id: string }>();
-  const _router = useRouter();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -236,7 +235,7 @@ export function EditQuizClient() {
       initialLoaded.current = true;
       setName(quiz.name);
       setDescription(quiz.description ?? '');
-      setQuestions([...(quiz.quiz_questions ?? [])].sort((a, b) => a.order_index - b.order_index));
+      setQuestions((quiz.quiz_questions ?? []).toSorted((a, b) => a.order_index - b.order_index));
     }
   }, [quiz]);
 

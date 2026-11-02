@@ -184,9 +184,9 @@ async function prepareTenant(page: Page): Promise<CaseTenant> {
 
   const restored = await apiData<OrgMember[]>(page, MEMBERS_API);
   expect(
-    restored.map((member) => member.email).sort(),
+    restored.map((member) => member.email).toSorted(),
     'the case starts with exactly its three seeded members',
-  ).toEqual([manager.email, teacher.email, student.email].sort());
+  ).toEqual([manager.email, teacher.email, student.email].toSorted());
 
   return { roles: ids, manager, teacher, student };
 }
@@ -308,8 +308,8 @@ test.describe('@case:MGR-MEM-03 @area:MGR @prio:P1 self role change and self rem
       data: Array<{ id: string; orgRoleName: string }>;
     };
     expect(finalBody.success).toBe(true);
-    expect(finalBody.data.map((member) => member.id).sort()).toEqual(
-      [tenant.manager.id, tenant.teacher.id].sort(),
+    expect(finalBody.data.map((member) => member.id).toSorted()).toEqual(
+      [tenant.manager.id, tenant.teacher.id].toSorted(),
     );
     expect(finalBody.data.find((member) => member.id === tenant.teacher.id)?.orgRoleName).toBe(
       'member',

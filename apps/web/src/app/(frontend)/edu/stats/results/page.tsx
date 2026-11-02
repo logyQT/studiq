@@ -90,6 +90,7 @@ export default function StatsResultsPage() {
         setFlashStats(f.data ?? f);
         setProblematic(p);
         setLoading(false);
+        return undefined;
       })
       .catch(() => setLoading(false));
   }, []);
@@ -107,7 +108,7 @@ export default function StatsResultsPage() {
       flashStats.summary.difficultyBreakdown.new
     : 0;
 
-  const sortedProblematic = [...problematic].sort((a, b) => a.correctRate - b.correctRate);
+  const sortedProblematic = problematic.toSorted((a, b) => a.correctRate - b.correctRate);
 
   return (
     <div className="space-y-8">

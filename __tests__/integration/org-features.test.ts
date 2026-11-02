@@ -154,7 +154,7 @@ describe(`Org Features (trigger)`, () => {
 
   it('derives org limits from plan_limits (no snapshot)', async () => {
     const supabase = createServiceClient();
-    const resolver = new LimitsResolver(async () => supabase);
+    const resolver = new LimitsResolver(() => Promise.resolve(supabase));
 
     // The org defaults to the 'launch' plan. Limits are no longer copied into
     // an org_limits snapshot (#229) — they resolve live from the plan template.
@@ -194,7 +194,7 @@ describe(`Org Features (trigger)`, () => {
 
   it('resolves the org plan for a member even when ctx.orgRoleId is null', async () => {
     const supabase = createServiceClient();
-    const resolver = new LimitsResolver(async () => supabase);
+    const resolver = new LimitsResolver(() => Promise.resolve(supabase));
 
     // The org_members row — not the ctx role id — decides the org branch, so a
     // member whose ctx lost its role id must still resolve the org plan.

@@ -136,6 +136,15 @@ describe('assignment results grading invalidation (#168)', () => {
  * Suspending or restoring a deck changes which cards the statistics include, so the study
  * statistics must be invalidated together with the deck lists (#365).
  */
+function invalidatedAfterSuspend(keys: readonly (readonly unknown[])[]) {
+  const client = new QueryClient();
+  for (const key of keys) client.setQueryData([...key], 'cached');
+  for (const queryKey of flashcardKeys.afterDeckSuspend) {
+    void client.invalidateQueries({ queryKey: [...queryKey] });
+  }
+  return keys.map((key) => client.getQueryState([...key])?.isInvalidated);
+}
+
 describe('flashcardKeys.afterDeckSuspend (#365)', () => {
   const statsKeys = [
     [...flashcardKeys.all, 'practice', 'cards-stats', { state: 'all', sortBy: 'last_reviewed' }],
@@ -146,15 +155,6 @@ describe('flashcardKeys.afterDeckSuspend (#365)', () => {
     [...flashcardKeys.decks.paginated({ owner: 'all' }, 'org-a')],
     [...flashcardKeys.decks.options('org-a')],
   ];
-
-  function invalidatedAfterSuspend(keys: readonly (readonly unknown[])[]) {
-    const client = new QueryClient();
-    for (const key of keys) client.setQueryData([...key], 'cached');
-    for (const queryKey of flashcardKeys.afterDeckSuspend) {
-      void client.invalidateQueries({ queryKey: [...queryKey] });
-    }
-    return keys.map((key) => client.getQueryState([...key])?.isInvalidated);
-  }
 
   it('invalidates the statistics queries built from the deck cards', () => {
     expect(invalidatedAfterSuspend(statsKeys)).toEqual([true, true, true]);

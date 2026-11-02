@@ -22,7 +22,7 @@ function normalizeDescription<T extends { description?: string | null }>(data: T
 }
 
 export class GroupService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async listGroups(ctx: RequestContext): Promise<
     ServiceResult<
@@ -37,7 +37,7 @@ export class GroupService {
       }[]
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -84,7 +84,7 @@ export class GroupService {
   ): Promise<
     ServiceResult<{ id: string; name: string; description: string | null; created_at: string }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -114,7 +114,7 @@ export class GroupService {
   private async assertCanManage(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
     if (canManageAnyGroup(ctx)) return success(undefined);
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: group } = await supabase
       .from('groups')
       .select('created_by')
@@ -135,7 +135,7 @@ export class GroupService {
   ): Promise<
     ServiceResult<{ id: string; name: string; description: string | null; created_at: string }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -161,7 +161,7 @@ export class GroupService {
   }
 
   async deleteGroup(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -185,7 +185,7 @@ export class GroupService {
     ctx: RequestContext,
     groupId: string,
   ): Promise<ServiceResult<{ userId: string; role: string }[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -231,7 +231,7 @@ export class GroupService {
     const authCheck = await this.assertCanManage(ctx, groupId);
     if (isFailure(authCheck)) return authCheck;
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('org_members')
       .select('user_id, org_roles!inner(name), profiles!inner(id, email, full_name)')
@@ -263,7 +263,7 @@ export class GroupService {
     groupId: string,
     data: SetGroupMembersInput,
   ): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -304,7 +304,7 @@ export class GroupService {
   }
 
   async getUserGroupIds(ctx: RequestContext): Promise<ServiceResult<string[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.rpc('get_user_group_ids', {
       p_user_id: ctx.userId,
       p_org_id: ctx.activeOrgId ?? null,
@@ -314,7 +314,7 @@ export class GroupService {
   }
 
   async isTeacherInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('group_members')
       .select('id')
@@ -349,7 +349,7 @@ export class GroupService {
     if (unique.length === 0) return success(true);
     if (!contentOrgId) return success(false);
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('group_members')
       .select('group_id, groups!inner(organization_id)')
@@ -365,7 +365,7 @@ export class GroupService {
   }
 
   async isUserInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('group_members')
       .select('id')
@@ -383,7 +383,7 @@ export class GroupService {
       { id: string; name: string; organizationId: string; role: string; joinedAt: string }[]
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Scope to orgs the caller still belongs to: a group row is org data, and a
     // stale group_members row must not keep it visible after the user was

@@ -40,6 +40,7 @@ export default function ClassroomMembersPage() {
       .then((data) => {
         setMembers(data.data || []);
         setLoading(false);
+        return undefined;
       })
       .catch(() => setLoading(false));
   }, []);

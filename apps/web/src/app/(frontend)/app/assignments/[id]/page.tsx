@@ -72,7 +72,7 @@ export default function StudentAssignmentDetailPage() {
   };
 
   useEffect(() => {
-    if (!assignment?.start_time) return;
+    if (!assignment?.start_time) return undefined;
     const update = () => setCountdown(timeUntil(assignment.start_time!));
     update();
     const interval = setInterval(update, 10000);

@@ -136,6 +136,20 @@ describe('buildBreadcrumbs', () => {
   });
 });
 
+/** Static prefixes of a route, with dynamic segments normalised to `*`. */
+function staticPrefixes(route: string): string[] {
+  const walked: string[] = [];
+  const prefixes: string[] = [];
+
+  for (const segment of route.split('/').filter(Boolean)) {
+    walked.push(segment);
+    if (segment.startsWith('[')) continue;
+    prefixes.push(`/${walked.map((part) => (part.startsWith('[') ? '*' : part)).join('/')}`);
+  }
+
+  return prefixes;
+}
+
 describe('route coverage', () => {
   const appRoot = path.join(process.cwd(), 'apps/web/src/app/(frontend)');
 
@@ -154,20 +168,6 @@ describe('route coverage', () => {
 
     walk(path.join(appRoot, area));
     return routes;
-  }
-
-  /** Static prefixes of a route, with dynamic segments normalised to `*`. */
-  function staticPrefixes(route: string): string[] {
-    const walked: string[] = [];
-    const prefixes: string[] = [];
-
-    for (const segment of route.split('/').filter(Boolean)) {
-      walked.push(segment);
-      if (segment.startsWith('[')) continue;
-      prefixes.push(`/${walked.map((part) => (part.startsWith('[') ? '*' : part)).join('/')}`);
-    }
-
-    return prefixes;
   }
 
   const registered = new Set(Object.keys(PATH_LABELS));

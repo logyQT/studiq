@@ -192,7 +192,7 @@ async function ensureQuiz(api: APIRequestContext, questions: QuestionRow[]): Pro
 
   if (existing) {
     const detail = await getData<QuizDetail>(api, `${QUIZZES_URL}/${existing.id}`);
-    const stored = [...detail.quiz_questions].sort((a, b) => a.order_index - b.order_index);
+    const stored = [...detail.quiz_questions].toSorted((a, b) => a.order_index - b.order_index);
     const matches =
       stored.length === expectedIds.length &&
       stored.every(
@@ -335,7 +335,7 @@ test.describe('@case:EDU-QZ-05 @area:EDU @prio:P2 create an assignment from a qu
       expect(position, `„${QUESTION_CONTENTS[index]}” is listed`).toBeGreaterThanOrEqual(0);
     }
     expect(positions, 'the questions keep the quiz order').toEqual(
-      [...positions].sort((a, b) => a - b),
+      [...positions].toSorted((a, b) => a - b),
     );
 
     // The API confirms the questions were copied, not merely linked.
@@ -344,7 +344,7 @@ test.describe('@case:EDU-QZ-05 @area:EDU @prio:P2 create an assignment from a qu
     expect(assignment.quiz_id, 'the assignment remembers its source quiz').toBe(quiz.id);
     expect(assignment.question_count).toBe(QUESTION_CONTENTS.length);
     expect(assignment.total_points).toBe(QUESTION_CONTENTS.length * POINTS_PER_QUESTION);
-    const copied = [...assignment.assignment_questions].sort(
+    const copied = [...assignment.assignment_questions].toSorted(
       (a, b) => a.order_index - b.order_index,
     );
     expect(

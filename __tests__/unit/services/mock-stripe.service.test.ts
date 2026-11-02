@@ -84,7 +84,7 @@ describe('MockStripeService', () => {
     admin = mockSupabaseClient();
     admin.rpc.mockResolvedValue({ data: null, error: null });
     service = new MockStripeService(
-      async () => mock,
+      () => Promise.resolve(mock),
       () => admin,
     );
   });

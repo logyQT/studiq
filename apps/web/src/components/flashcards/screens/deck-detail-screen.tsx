@@ -189,7 +189,7 @@ export function DeckDetailScreen({
 
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
     observer.observe(el);
     return () => observer.disconnect();
@@ -551,7 +551,7 @@ export function DeckDetailScreen({
 
   useEffect(() => {
     const el = document.querySelector('main');
-    if (!el) return;
+    if (!el) return undefined;
     const onScroll = () => setShowBackToTop(el.scrollTop > 400);
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -559,7 +559,7 @@ export function DeckDetailScreen({
 
   useEffect(() => {
     const main = document.querySelector('main');
-    if (!main) return;
+    if (!main) return undefined;
     const update = () => {
       const rect = main.getBoundingClientRect();
       setBarStyle({ left: rect.left, width: rect.width });

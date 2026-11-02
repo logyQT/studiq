@@ -175,7 +175,7 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
     expect(planBefore.key, 'the case starts on the free Base plan').toBe('base');
     const baseCap = planBefore.limits.max_decks;
     expect(baseCap, 'Base caps decks at the LIM-01 value').toBe(10);
-    await expect((await decks(page)).items, 'the student starts with no decks').toHaveLength(0);
+    expect((await decks(page)).items, 'the student starts with no decks').toHaveLength(0);
 
     // --- Precondition: the tenant is already at the Base deck cap ----------
     for (let index = 1; index <= baseCap; index++) {

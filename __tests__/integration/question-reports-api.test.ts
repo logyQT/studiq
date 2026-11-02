@@ -74,7 +74,11 @@ async function signIn(email: string, user: TestUserFixture): Promise<Session> {
 
 /** Makes the app's `createClient()` resolve to the acting user's real session. */
 function actAs(session: Session) {
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => session.build());
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => Promise.resolve(session.build()));
+}
+
+function withId(id: string) {
+  return { params: Promise.resolve({ id }) };
 }
 
 describe('Question reports API — org-wide manager inbox (#276)', () => {
@@ -107,10 +111,6 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       },
       { active_org_id: orgId },
     );
-  }
-
-  function withId(id: string) {
-    return { params: Promise.resolve({ id }) };
   }
 
   beforeAll(async () => {

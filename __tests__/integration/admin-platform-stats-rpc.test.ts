@@ -40,7 +40,7 @@ describe('admin platform statistics RPCs (#663)', () => {
     expect(data.days).toBe(14);
     expect(data.items).toHaveLength(14);
     const dates: string[] = data.items.map((item: { date: string }) => item.date);
-    expect([...dates].sort()).toEqual(dates);
+    expect([...dates].toSorted()).toEqual(dates);
     expect(new Set(dates).size).toBe(14);
   });
 

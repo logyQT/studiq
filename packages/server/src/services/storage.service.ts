@@ -91,12 +91,12 @@ function throwStorageError(bucket: string, error: unknown): never {
 }
 
 export class StorageService {
-  constructor(private createClient: () => SupabaseClient = createServiceClient) {}
+  constructor(private clientFactory: () => SupabaseClient = createServiceClient) {}
 
   async uploadFile(userId: string, file: File): Promise<{ url: string }> {
     const mimeType = await validateUpload(file, UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES);
 
-    const supabase = this.createClient();
+    const supabase = this.clientFactory();
     // Path/extension/Content-Type all come from the sniffed bytes — never from
     // the attacker-controlled file name or declared type.
     const storagePath = `${userId}/${crypto.randomUUID()}.${extensionForMimeType(mimeType)}`;
@@ -121,7 +121,7 @@ export class StorageService {
   ): Promise<{ url: string }> {
     const mimeType = await validateUpload(file, IMAGE_MIME_TYPES, IMAGE_BUCKET_MAX_BYTES[bucket]);
 
-    const supabase = this.createClient();
+    const supabase = this.clientFactory();
     const storagePath = `${pathPrefix}/${crypto.randomUUID()}.${extensionForMimeType(mimeType)}`;
 
     const { error } = await supabase.storage.from(bucket).upload(storagePath, file, {
@@ -144,7 +144,7 @@ export class StorageService {
    */
   async deleteObject(bucket: ImageBucket, storagePath: string): Promise<boolean> {
     try {
-      const supabase = this.createClient();
+      const supabase = this.clientFactory();
       const { error } = await supabase.storage.from(bucket).remove([storagePath]);
 
       if (error) {

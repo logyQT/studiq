@@ -108,9 +108,11 @@ describe('FlashcardPracticeService settings', () => {
       user_study_settings: builder({ data: settingsRow, error: null }),
       user_daily_activity: builder({ data: { reviews_count: 12 }, error: null }),
     };
-    service = new FlashcardPracticeService(
-      async () =>
-        ({ from: vi.fn((table: string) => tables[table]), rpc }) as unknown as SupabaseClient,
+    service = new FlashcardPracticeService(() =>
+      Promise.resolve({
+        from: vi.fn((table: string) => tables[table]),
+        rpc,
+      } as unknown as SupabaseClient),
     );
   });
 

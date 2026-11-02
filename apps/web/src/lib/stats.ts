@@ -59,7 +59,7 @@ export function orderedQuestionTypeEntries(byType: Record<string, number>): Arra
     ...QUESTION_TYPE_ORDER.filter((key) => byType[key] !== undefined),
     ...Object.keys(byType)
       .filter((key) => !known.includes(key))
-      .sort((a, b) => a.localeCompare(b)),
+      .toSorted((a, b) => a.localeCompare(b)),
   ];
 
   return ordered.map((key) => ({ key, count: byType[key] }));

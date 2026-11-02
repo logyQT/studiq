@@ -42,7 +42,7 @@ describe('FeatureFlagService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new FeatureFlagService(async () => mock);
+    service = new FeatureFlagService(() => Promise.resolve(mock));
   });
 
   describe('getAll', () => {

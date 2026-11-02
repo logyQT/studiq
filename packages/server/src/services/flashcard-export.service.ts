@@ -12,13 +12,13 @@ type FlashcardWithAssignments = Flashcard & {
 };
 
 export class FlashcardExportService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   async exportCsv(
     ctx: RequestContext,
     filters?: { deckIds?: string[]; ids?: string[] },
   ): Promise<ServiceResult<string>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const listFilters: { deckIds?: string[] } = {};
     if (filters?.deckIds && filters.deckIds.length > 0) {

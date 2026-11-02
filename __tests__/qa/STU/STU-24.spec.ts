@@ -206,7 +206,7 @@ async function listCards(page: Page, deckId: string): Promise<FlashcardRow[]> {
 async function assignedTopicIds(page: Page, deckId: string): Promise<string[]> {
   const cards = await listCards(page, deckId);
   expect(cards, 'the deck holds exactly the case’s card').toHaveLength(1);
-  return (cards[0].flashcard_topic_assignments ?? []).map((a) => a.topic_id).sort();
+  return (cards[0].flashcard_topic_assignments ?? []).map((a) => a.topic_id).toSorted();
 }
 
 /**
@@ -347,7 +347,7 @@ test.describe('@case:STU-24 @area:STU @prio:P2 flashcard topics add/remove/view'
       'the existing topic is a badge on the card',
     ).toBeVisible();
     expect(await assignedTopicIds(page, deck.id), 'both topics are assigned to the card').toEqual(
-      [createdTopic.id, existingTopic.id].sort(),
+      [createdTopic.id, existingTopic.id].toSorted(),
     );
 
     // ── Step 3: „Zarządzaj Tematami” — remove one topic ─────────────────────

@@ -255,8 +255,8 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
       const expectedFeatures = plan.features.map(featureLabel);
       expect(features.length, `${plan.key} feature count`).toBeGreaterThan(0);
       expect(features.length, `${plan.key} has no duplicate features`).toBe(new Set(features).size);
-      expect([...features].sort(), `${plan.key} feature labels`).toEqual(
-        [...expectedFeatures].sort(),
+      expect([...features].toSorted(), `${plan.key} feature labels`).toEqual(
+        [...expectedFeatures].toSorted(),
       );
 
       // CTA: one link per card, specific to the plan, pointing an anonymous
@@ -296,7 +296,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
     );
 
     const limitKeys = visibleLimitKeys(plans);
-    const featureKeys = [...new Set(plans.flatMap((plan) => plan.features))].sort();
+    const featureKeys = [...new Set(plans.flatMap((plan) => plan.features))].toSorted();
     const rows = table.locator('tbody tr');
     await expect(rows).toHaveCount(featureKeys.length + limitKeys.length);
 

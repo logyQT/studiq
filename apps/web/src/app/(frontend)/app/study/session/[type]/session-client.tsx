@@ -488,6 +488,8 @@ export default function SessionClient(props: SessionClientProps) {
         processingRef.current = false;
       }
     },
+    /* eslint-disable react-hooks/memo-dependencies -- every dep below is read inside this
+       async callback; the rule mis-infers them as unused because they appear after `await`. */
     [
       currentCard,
       correctCount,
@@ -501,6 +503,7 @@ export default function SessionClient(props: SessionClientProps) {
       visibleCards,
       suspendedIds,
     ],
+    /* eslint-enable react-hooks/memo-dependencies */
   );
 
   useEffect(() => {
@@ -515,17 +518,10 @@ export default function SessionClient(props: SessionClientProps) {
           setSuspendedIds((prev) => new Set(prev).add(id));
           void advanceCard();
         }
+        return undefined;
       });
     }
-  }, [
-    isCram,
-    currentCard?.id,
-    currentCard,
-    cardState.isLeech,
-    leechDialogCardId,
-    showLeechDialog,
-    advanceCard,
-  ]);
+  }, [isCram, currentCard, cardState.isLeech, leechDialogCardId, showLeechDialog, advanceCard]);
 
   const backUrl = isCram ? '/app/study/cram' : '/app/study';
 
@@ -602,7 +598,7 @@ export default function SessionClient(props: SessionClientProps) {
       }
 
       if (e.key === 'p') {
-        const audio = document.querySelector('audio') as HTMLAudioElement | null;
+        const audio = document.querySelector<HTMLAudioElement>('audio');
         if (audio) {
           if (audio.paused) {
             void audio.play();
@@ -848,7 +844,7 @@ export default function SessionClient(props: SessionClientProps) {
                               rowIndex % 2 === 0 ? 'translate-x-8' : '',
                             )}
                           >
-                            {Array.from({ length: 24 }).map((_, colIndex) => (
+                            {Array.from({ length: 24 }).map((_col, colIndex) => (
                               <span
                                 key={colIndex}
                                 className="-rotate-45 text-5xl font-bold select-none"

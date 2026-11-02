@@ -68,7 +68,7 @@ describe('GroupService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new GroupService(async () => mock);
+    service = new GroupService(() => Promise.resolve(mock));
   });
 
   describe('listGroups', () => {

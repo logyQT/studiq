@@ -37,6 +37,7 @@ export default function TeacherQuizStats() {
       .then((data) => {
         setQuizzes(data.data || []);
         setLoading(false);
+        return undefined;
       })
       .catch(() => setLoading(false));
   }, []);

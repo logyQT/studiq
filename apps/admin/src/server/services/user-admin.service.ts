@@ -64,13 +64,13 @@ interface FilterableQuery<T> {
 }
 
 export class UserAdminService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
 
   /** Hard-deletes any account whose grace period has elapsed. Called at the
    * top of listUsers() (no cron infra in this repo yet) and exposed via its
    * own route for a future real scheduler. */
   async purgeExpired(): Promise<ServiceResult<PurgeExpiredResult>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: expired, error } = await supabase
       .from('profiles')
       .select('id')
@@ -207,7 +207,7 @@ export class UserAdminService {
   async listUsers(query: ListUsersQuery) {
     await this.purgeExpired();
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const offset = (query.page - 1) * query.perPage;
 
     const pagedQuery = this.applyListFilters(
@@ -238,7 +238,7 @@ export class UserAdminService {
   }
 
   async getUser(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: profile, error } = await supabase
       .from('profiles')
       .select(PROFILE_COLUMNS)
@@ -259,7 +259,7 @@ export class UserAdminService {
   }
 
   async createUser(input: CreateUserInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     // handle_new_user() validates account_type on INSERT. app_metadata
     // passed here isn't visible to the trigger in time (GoTrue applies it
     // in a separate step after the row exists), so account_type has to go
@@ -289,7 +289,7 @@ export class UserAdminService {
   }
 
   async updateAccountType(id: string, accountType: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: current, error: fetchError } = await supabase.auth.admin.getUserById(id);
 
     if (fetchError) {
@@ -315,7 +315,7 @@ export class UserAdminService {
   }
 
   async softDeleteUser(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: profile, error: readError } = await supabase
       .from('profiles')
@@ -360,7 +360,7 @@ export class UserAdminService {
   }
 
   async restoreUser(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: profile, error: readError } = await supabase
       .from('profiles')
@@ -404,7 +404,7 @@ export class UserAdminService {
    * soft-deleted account -- the "usuń trwale teraz" action in the trash
    * view, not a shortcut around soft-delete for active accounts. */
   async purgeNow(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('deleted_at')
