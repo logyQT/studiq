@@ -473,6 +473,7 @@ STACK_START_ATTEMPTED=0
 STACK_ADOPTED=0
 CLAIM_CREATED=0
 WEB_STARTED_BY_US=0
+WEB_STARTED_PID=""
 
 # A registry directory is only trustworthy when it is a real directory owned by
 # the current effective user (mode is enforced separately on write). On shared
@@ -1160,6 +1161,7 @@ start_web() {
   set +m
   printf '%s\n' "$pid" >"$WEB_PID_FILE"
   WEB_STARTED_BY_US=1
+  WEB_STARTED_PID=$pid
 
   if ! wait_for_web "$timeout" "$pid"; then
     printf '\n──── last 60 lines of %s ────\n' "$WEB_LOG" >&2
@@ -1172,11 +1174,20 @@ start_web() {
   info "Web server is ready (pid $pid, $mode) → $(web_url)"
 }
 
-stop_web() {
-  local pid
-  if ! pid=$(read_web_pid); then
-    rm -f "$WEB_PID_FILE"
-    warn "Web server is not running in this checkout."
+# Stop one specific web PID this checkout launched. Verifies the per-worktree
+# marker so a recycled PID is never killed, and clears the shared pid file only
+# when it still points at this PID (another invocation may have replaced it).
+terminate_web_pid() {
+  local pid=$1
+  if ! pid_alive "$pid"; then
+    warn "Web process $pid was already gone."
+    if [[ -f "$WEB_PID_FILE" && "$(tr -d '[:space:]' <"$WEB_PID_FILE")" == "$pid" ]]; then
+      rm -f "$WEB_PID_FILE"
+    fi
+    return 0
+  fi
+  if ! proc_has_marker "$pid"; then
+    warn "Web process $pid no longer belongs to this checkout; leaving it."
     return 0
   fi
 
@@ -1189,12 +1200,21 @@ stop_web() {
     if pid_alive "$pid"; then
       kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
     fi
-    rm -f "$WEB_PID_FILE"
     info "Stopped this checkout's web server (pid $pid)"
-  else
-    rm -f "$WEB_PID_FILE"
-    warn "Web process $pid was already gone."
   fi
+  if [[ -f "$WEB_PID_FILE" && "$(tr -d '[:space:]' <"$WEB_PID_FILE")" == "$pid" ]]; then
+    rm -f "$WEB_PID_FILE"
+  fi
+}
+
+stop_web() {
+  local pid
+  if ! pid=$(read_web_pid); then
+    rm -f "$WEB_PID_FILE"
+    warn "Web server is not running in this checkout."
+    return 0
+  fi
+  terminate_web_pid "$pid"
 }
 
 # ── Build lock ───────────────────────────────────────────────────────────────
@@ -1266,8 +1286,10 @@ cleanup() {
   # keeps its entry, a pre-existing claim is preserved, and a web server that
   # was already running before this command is left untouched.
   if (( STARTUP_CLAIM_ACTIVE == 1 && STARTUP_INCOMPLETE == 1 )); then
-    if (( WEB_STARTED_BY_US == 1 )); then
-      stop_web || true
+    if (( WEB_STARTED_BY_US == 1 )) && [[ -n "$WEB_STARTED_PID" ]]; then
+      # Stop the PID this invocation launched, not whatever the shared pid
+      # file happens to contain now.
+      terminate_web_pid "$WEB_STARTED_PID" || true
     fi
     if (( STACK_START_ATTEMPTED == 1 )); then
       stop_supabase_scoped || true
