@@ -76,7 +76,10 @@ jobs:
             git fetch --no-tags origin "$BASE_REF"
             changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
             echo "changed files:"; echo "$changed"
-            if ! echo "$changed" | grep -qvE '^(qa/|__tests__/|docs/)|\.md$'; then
+            # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
+            # the first match and the writer gets SIGPIPE (141), which flipped
+            # `app` to false and skipped the unit/integration/e2e jobs.
+            if ! grep -qvE '^(qa/|__tests__/|docs/)|\.md$' <<< "$changed"; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi

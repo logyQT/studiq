@@ -7,7 +7,7 @@ The project uses two testing frameworks:
 | Framework  | Purpose                    | Location                                    |
 | ---------- | -------------------------- | ------------------------------------------- |
 | Vitest     | Unit and integration tests | `__tests__/unit/`, `__tests__/integration/` |
-| Playwright | End-to-end tests           | `e2e/`                                      |
+| Playwright | End-to-end tests           | `__tests__/e2e/`                            |
 
 ## Unit Tests
 
@@ -54,21 +54,21 @@ Cross-test interference is a tenant leak, not a flake.
 
 **Covered flows today:** login and registration, student flashcard practice, teacher question
 management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/coverage.md) —
-195 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
+194 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
 
 ## Running Tests
 
 ```bash
-bun test              # Reset DB + run all tests
-bun test:unit         # Run unit tests only
-bun test:integration  # Run integration tests only
-bun test:watch        # Watch mode (re-runs on file changes)
-bun test:coverage     # Run with coverage report
+bun run test              # Run the full Vitest unit/integration suite
+bun run test:unit         # Run unit tests only
+bun run test:integration  # Run integration tests only
+bun run test:watch        # Watch mode (re-runs on file changes)
+bun run test:coverage     # Run with coverage report
 ```
 
 ## Manual QA (agent-driven)
 
-The manual test plan lives in [`qa/`](../qa/README.md) — 215 scenarios with
+The manual test plan lives in [`qa/`](../qa/README.md) — 214 scenarios with
 steps, expected results and prerequisite chains. Agents run them in a real
 browser against the observability stack (Tempo + Loki + Prometheus) so failures
 are reported with the underlying span/log evidence instead of a bare status code.
