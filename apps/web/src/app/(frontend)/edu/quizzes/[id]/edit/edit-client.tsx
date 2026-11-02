@@ -36,6 +36,7 @@ import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { parsePointsInput } from '@/lib/quiz-editor';
+import { apiPut } from '@/lib/api';
 import { quizKeys } from '@/lib/query-keys';
 
 interface QuizQuestion {
@@ -66,6 +67,19 @@ interface SaveData {
   name: string;
   description: string | null;
   questions: QuizQuestion[];
+}
+
+function isBrowseQuestion(value: unknown): value is BrowseQuestion {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'content' in value &&
+    typeof value.content === 'string' &&
+    'type' in value &&
+    typeof value.type === 'string'
+  );
 }
 
 function PointsInput({
@@ -240,24 +254,16 @@ export function EditQuizClient() {
   }, [quiz]);
 
   const saveMutation = useApiMutation<QuizDetail, SaveData>({
-    mutationFn: async (data) => {
-      const res = await fetch(`/api/v1/teacher/quizzes/${id}/bulk`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: data.name,
-          description: data.description ?? null,
-          questions: data.questions.map((q) => ({
-            question_id: q.question_id,
-            order_index: q.order_index,
-            points: q.points,
-          })),
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
-    },
+    mutationFn: async (data) =>
+      apiPut<QuizDetail>(`/api/v1/teacher/quizzes/${id}/bulk`, {
+        name: data.name,
+        description: data.description ?? null,
+        questions: data.questions.map((q) => ({
+          question_id: q.question_id,
+          order_index: q.order_index,
+          points: q.points,
+        })),
+      }),
     invalidateKeys: [quizKeys.all],
   });
 
@@ -332,7 +338,8 @@ export function EditQuizClient() {
 
   const handleDragStart = (event: DragStartEvent) => {
     if (event.active.data.current?.source === 'browser') {
-      setActiveDragItem(event.active.data.current.question as BrowseQuestion);
+      const question: unknown = event.active.data.current.question;
+      if (isBrowseQuestion(question)) setActiveDragItem(question);
     } else {
       const q = questions.find((qq) => qq.question_id === event.active.id);
       if (q) setActiveDragItem(q);
@@ -347,7 +354,11 @@ export function EditQuizClient() {
     }
 
     if (active.data.current?.source === 'browser') {
-      const question = active.data.current.question as BrowseQuestion;
+      const dragged: unknown = active.data.current.question;
+      if (!isBrowseQuestion(dragged)) {
+        setActiveDragItem(null);
+        return;
+      }
       setQuestions((prev) => {
         const overIndex = prev.findIndex((q) => q.question_id === over.id);
         // Empty quiz → the only droppable is the placeholder → append (= index 0).
@@ -355,10 +366,10 @@ export function EditQuizClient() {
           over.id === QUIZ_EMPTY_DROPZONE_ID || overIndex < 0 ? prev.length : overIndex;
         const next = [...prev];
         next.splice(insertIndex, 0, {
-          question_id: question.id,
+          question_id: dragged.id,
           order_index: insertIndex,
           points: 1,
-          question: { id: question.id, content: question.content, type: question.type },
+          question: { id: dragged.id, content: dragged.content, type: dragged.type },
         });
         next.forEach((q, i) => {
           q.order_index = i;

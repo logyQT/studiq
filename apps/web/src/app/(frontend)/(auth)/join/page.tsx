@@ -25,6 +25,7 @@ import { useTranslations } from 'next-intl';
 import { Suspense, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { translateErrorCode } from '@/lib/error-messages';
 
 function JoinSkeleton() {
@@ -84,18 +85,18 @@ function JoinContent() {
 
     async function verifyToken() {
       try {
-        const res = await fetch(`/api/v1/organization/invites?token=${token}`);
-        const result = await res.json();
+        const invitation = await apiGet<{ email: string }>(
+          `/api/v1/organization/invites?token=${token}`,
+        );
 
-        if (!res.ok || !result.success) {
-          toast.error(t('invite_invalid'));
-          router.replace('/register');
-          return;
-        }
-
-        form.setValue('email', result.data.email);
-      } catch {
-        toast.error(translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code));
+        form.setValue('email', invitation.email);
+      } catch (error) {
+        // A rejected token is the expected 4xx; anything else is a transport failure.
+        toast.error(
+          error instanceof ApiError
+            ? t('invite_invalid')
+            : translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code),
+        );
         router.replace('/register');
       } finally {
         setIsVerifying(false);
@@ -107,28 +108,22 @@ function JoinContent() {
 
   async function onSubmit(values: RegisterInput) {
     try {
-      const res = await fetch('/api/v1/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // The invitation token is what makes registration join the organization;
-        // the backend validates it and accepts it after e-mail verification (#311).
-        body: JSON.stringify({ ...values, inviteToken: token ?? undefined }),
-      });
-
-      const result = await res.json();
-
-      if (!result.success) {
-        toast.error(translateErrorCode(tErr, result.error || APP_ERRORS.INTERNAL_SERVER.code));
-        return;
-      }
+      // The invitation token is what makes registration join the organization;
+      // the backend validates it and accepts it after e-mail verification (#311).
+      await apiPost('/api/v1/auth/register', { ...values, inviteToken: token ?? undefined });
 
       toast.success(t('success_header'), {
         description: t('SUCCESS_ACTIVATION_LINK_SENT'),
       });
 
       router.push('/login');
-    } catch {
-      toast.error(translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code));
+    } catch (error) {
+      toast.error(
+        translateErrorCode(
+          tErr,
+          error instanceof ApiError ? error.code : APP_ERRORS.INTERNAL_SERVER.code,
+        ),
+      );
     }
   }
 

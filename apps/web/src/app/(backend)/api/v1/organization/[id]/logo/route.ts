@@ -6,6 +6,7 @@ import { error as logError } from '@studiq/server/lib/log';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { storageService } from '@studiq/server/services/storage.service';
 import { type NextRequest, NextResponse } from 'next/server';
+import { readStringField } from '@/lib/unknown-value';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(
@@ -35,8 +36,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return handleApiError(error, 'BAD_REQUEST');
       }
 
-      const file = formData.get('file') as File | null;
-      if (!file) {
+      const file = formData.get('file');
+      if (!(file instanceof File)) {
         return NextResponse.json({ success: false, error: 'MISSING_FIELDS' }, { status: 422 });
       }
 
@@ -48,9 +49,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const current = await organizationController.getById(id);
         if (!current.success) return toNextResponse(current);
 
-        const previous = (current.data as { logo_url?: unknown } | undefined)?.logo_url;
-        const previousLogoUrl =
-          typeof previous === 'string' && previous.length > 0 ? previous : null;
+        const previous = readStringField(current.data, 'logo_url');
+        const previousLogoUrl = previous && previous.length > 0 ? previous : null;
 
         const { url } = await storageService.uploadToBucket(ctx.userId, file, 'org-logos', id);
         const result = await organizationController.update(ctx, id, { logoUrl: url });

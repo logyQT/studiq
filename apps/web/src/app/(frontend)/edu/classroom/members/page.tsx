@@ -18,6 +18,7 @@ import { ArrowLeft, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 
 type Member = {
@@ -35,10 +36,9 @@ export default function ClassroomMembersPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/v1/organization/members')
-      .then((res) => res.json())
+    apiGet<Member[]>('/api/v1/organization/members')
       .then((data) => {
-        setMembers(data.data || []);
+        setMembers(data ?? []);
         setLoading(false);
         return undefined;
       })

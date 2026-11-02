@@ -24,6 +24,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { apiPost } from '@/lib/api';
 import { featureKeys, permissionKeys } from '@/lib/query-keys';
 import { SrLabel } from '@/components/shared/sr-label';
 
@@ -70,16 +71,10 @@ export default function ClassroomPage() {
     const values = form.getValues();
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: values.name }),
+      const org = await apiPost<{ memberRoleId?: string } | undefined>('/api/v1/organization', {
+        name: values.name,
       });
-
-      if (!res.ok) throw new Error();
-
-      const orgBody = await res.json();
-      const memberRoleId = orgBody.data?.memberRoleId as string | undefined;
+      const memberRoleId = org?.memberRoleId;
       if (!memberRoleId) throw new Error();
 
       // #305: the organization exists and is already the active org (the route
@@ -100,18 +95,12 @@ export default function ClassroomPage() {
 
       const filtered = values.invites.filter((i) => i.email.trim());
       if (filtered.length > 0) {
-        const bulkRes = await fetch('/api/v1/organization/invites/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            invitations: filtered.map((i) => ({
-              email: i.email,
-              targetOrgRoleId: memberRoleId,
-            })),
-          }),
+        await apiPost('/api/v1/organization/invites/bulk', {
+          invitations: filtered.map((i) => ({
+            email: i.email,
+            targetOrgRoleId: memberRoleId,
+          })),
         });
-
-        if (!bulkRes.ok) throw new Error();
       }
 
       setDone(true);

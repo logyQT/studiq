@@ -142,7 +142,9 @@ export function LearnContent() {
                 <ToggleGroup
                   type="single"
                   value={studyMode}
-                  onValueChange={(v) => v && setStudyMode(v as 'endless' | 'limited')}
+                  onValueChange={(v) => {
+                    if (v === 'endless' || v === 'limited') setStudyMode(v);
+                  }}
                 >
                   <ToggleGroupItem value="endless" className="flex-1">
                     {t('mode_endless')}

@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       agentName: searchParams.get('agentName') || undefined,
       limit: Math.min(parseInt(searchParams.get('limit') || '100', 10), 2000),
       offset: parseInt(searchParams.get('offset') || '0', 10),
-      sort: (searchParams.get('sort') as 'asc' | 'desc') || 'desc',
+      sort: searchParams.get('sort') === 'asc' ? 'asc' : 'desc',
     };
 
     const { events, total } = agentTraceService.getByFilters(filters);

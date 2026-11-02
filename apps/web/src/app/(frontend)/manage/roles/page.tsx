@@ -28,10 +28,11 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { useFeature } from '@/hooks/use-feature';
-import { useFeatures } from '@/hooks/use-features';
 import { SrLabel } from '@/components/shared/sr-label';
 import { EmptyState, ErrorState } from '@/components/shared/empty-state';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
+import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 
 const PERMISSION_GROUPS = [
   {
@@ -99,10 +100,7 @@ export default function RolesPage() {
     setLoading(true);
     setLoadError(false);
     try {
-      const res = await fetch('/api/v1/organization/roles');
-      const json = await res.json();
-      if (json.success) setData(json.data);
-      else setLoadError(true);
+      setData(await apiGet<OrgRole[]>('/api/v1/organization/roles'));
     } catch {
       setLoadError(true);
     } finally {
@@ -115,24 +113,13 @@ export default function RolesPage() {
   }, [load]);
 
   async function handleSave(role: { name: string; description?: string | null }, id?: string) {
-    const url = id ? `/api/v1/organization/roles/${id}` : '/api/v1/organization/roles';
-    const method = id ? 'PUT' : 'POST';
-
     try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(role),
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(id ? t('role_updated') : t('role_created'));
-        setEditing(null);
-        setCreating(false);
-        void load();
-      } else {
-        toast.error(t(id ? 'update_failed' : 'create_failed'));
-      }
+      if (id) await apiPut(`/api/v1/organization/roles/${id}`, role);
+      else await apiPost('/api/v1/organization/roles', role);
+      toast.success(id ? t('role_updated') : t('role_created'));
+      setEditing(null);
+      setCreating(false);
+      void load();
     } catch {
       toast.error(t(id ? 'update_failed' : 'create_failed'));
     }
@@ -140,36 +127,27 @@ export default function RolesPage() {
 
   async function handleDelete(id: string) {
     try {
-      const res = await fetch(`/api/v1/organization/roles/${id}`, {
-        method: 'DELETE',
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(t('role_deleted'));
-        setDeleting(null);
-        void load();
-      } else if (json.error === 'FORBIDDEN') {
+      await apiDelete(`/api/v1/organization/roles/${id}`);
+      toast.success(t('role_deleted'));
+      setDeleting(null);
+      void load();
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'FORBIDDEN') {
         toast.error(t('cant_delete_system'));
         setDeleting(null);
-      } else if (json.error === 'CONFLICT') {
+      } else if (error instanceof ApiError && error.code === 'CONFLICT') {
         toast.error(t('cant_delete_has_members'));
         setDeleting(null);
       } else {
         toast.error(t('delete_failed'));
       }
-    } catch {
-      toast.error(t('delete_failed'));
     }
   }
 
   async function openPermEditor(role: OrgRole) {
     try {
-      const res = await fetch(`/api/v1/organization/roles/${role.id}`);
-      const json = await res.json();
-      if (json.success) {
-        setPermRole(json.data);
-        setPermDialogOpen(true);
-      }
+      setPermRole(await apiGet<OrgRoleDetail>(`/api/v1/organization/roles/${role.id}`));
+      setPermDialogOpen(true);
     } catch {
       toast.error(t('perms_save_failed'));
     }
@@ -180,20 +158,11 @@ export default function RolesPage() {
     permissions: { permissionName: string; scope: string }[],
   ) {
     try {
-      const res = await fetch(`/api/v1/organization/roles/${roleId}/permissions`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permissions }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(t('perms_saved'));
-        setPermDialogOpen(false);
-        setPermRole(null);
-        void load();
-      } else {
-        toast.error(t('perms_save_failed'));
-      }
+      await apiPut(`/api/v1/organization/roles/${roleId}/permissions`, { permissions });
+      toast.success(t('perms_saved'));
+      setPermDialogOpen(false);
+      setPermRole(null);
+      void load();
     } catch {
       toast.error(t('perms_save_failed'));
     }

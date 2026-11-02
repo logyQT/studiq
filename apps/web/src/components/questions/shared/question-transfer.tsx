@@ -73,6 +73,23 @@ const TEMPLATE: TransferQuestion[] = [
 
 type Problem = { row: number; kind: 'type' | 'content' | 'answers' | 'correct' | 'other' };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** A JSON export is either the bare array or an object with a `questions` array. */
+function readQuestionsArray(value: unknown): unknown[] | undefined {
+  if (Array.isArray(value)) {
+    const items: unknown[] = value;
+    return items;
+  }
+  if (isRecord(value) && Array.isArray(value.questions)) {
+    const items: unknown[] = value.questions;
+    return items;
+  }
+  return undefined;
+}
+
 /**
  * Saves a body as a file. The anchor is attached while it is clicked and the object URL is
  * revoked on a later task, because Firefox and Safari cancel a download whose URL disappears
@@ -103,9 +120,10 @@ async function readFile(
 
   try {
     if (file.name.toLowerCase().endsWith('.json')) {
-      const json = JSON.parse(text);
-      raw = Array.isArray(json) ? json : json.questions;
-      if (!Array.isArray(raw)) return { error: 'unreadable' };
+      const json: unknown = JSON.parse(text);
+      const list = readQuestionsArray(json);
+      if (!list) return { error: 'unreadable' };
+      raw = list;
     } else {
       const Papa = (await import('papaparse')).default;
       const parsed = Papa.parse<Record<string, string>>(text, {

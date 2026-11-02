@@ -23,6 +23,7 @@ import { FlashcardFlip } from '@/components/flashcards/flashcard-flip';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
 import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { applyCramAction, cramActionForRating } from '@/lib/cram-queue';
 import { formatDateTime } from '@/lib/datetime';
 import { flashcardKeys } from '@/lib/query-keys';
@@ -62,17 +63,17 @@ function getCardStateInfo(
   if (!rs) return { label: t('card_state_new'), labelKey: 'card_state_new', isLeech: false };
 
   const isLeech = !!rs.isLeech;
+  const step = typeof rs.learningStep === 'number' ? rs.learningStep : undefined;
   if (isLeech) {
     return {
       label: t('card_state_leech'),
       labelKey: 'card_state_leech',
       isLeech: true,
-      step: rs.learningStep as number,
+      step,
     };
   }
 
-  const ls = rs.learningState as string;
-  const step = rs.learningStep as number;
+  const ls = typeof rs.learningState === 'string' ? rs.learningState : '';
 
   if (ls === 'learning')
     return {
@@ -112,27 +113,69 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-function mapCards(data: unknown[]): Flashcard[] {
-  return (data ?? []).map((item) => {
-    const fc = item as {
-      id: string;
-      front: string;
-      back: string;
-      createdAt?: string | null;
-      deckName?: string | null;
-      topicNames?: string[];
-      reviewState?: Record<string, unknown> | null;
-    };
-    return {
-      id: fc.id,
-      front: fc.front,
-      back: fc.back,
-      createdAt: fc.createdAt ?? null,
-      deckName: fc.deckName ?? null,
-      topicNames: fc.topicNames ?? [],
-      reviewState: fc.reviewState ?? null,
-    };
-  });
+/** Shape the practice endpoints return; only the required fields are checked below. */
+interface PracticeCard {
+  id: string;
+  front: string;
+  back: string;
+  createdAt?: string | null;
+  deckName?: string | null;
+  topicNames?: string[] | null;
+  reviewState?: Record<string, unknown> | null;
+}
+
+function isPracticeCard(value: unknown): value is PracticeCard {
+  if (typeof value !== 'object' || value === null) return false;
+  return (
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'front' in value &&
+    typeof value.front === 'string' &&
+    'back' in value &&
+    typeof value.back === 'string'
+  );
+}
+
+/** One row of the batch-practice response; `isLeech` marks a card that just became a leech. */
+interface PracticeResult {
+  flashcardId: string;
+  isLeech: boolean;
+}
+
+function isPracticeResult(value: unknown): value is PracticeResult {
+  if (typeof value !== 'object' || value === null) return false;
+  return (
+    'flashcardId' in value &&
+    typeof value.flashcardId === 'string' &&
+    'isLeech' in value &&
+    typeof value.isLeech === 'boolean'
+  );
+}
+
+/** `{ results: [...] }` from the batch-practice endpoint, narrowed without an assertion. */
+function practiceResults(body: unknown): PracticeResult[] {
+  if (typeof body !== 'object' || body === null || !('results' in body)) return [];
+  const { results } = body;
+  return Array.isArray(results) ? results.filter(isPracticeResult) : [];
+}
+
+function mapCards(data: unknown): Flashcard[] {
+  if (!Array.isArray(data)) return [];
+  return data.filter(isPracticeCard).map((fc) => ({
+    id: fc.id,
+    front: fc.front,
+    back: fc.back,
+    createdAt: fc.createdAt ?? null,
+    deckName: fc.deckName ?? null,
+    topicNames: fc.topicNames ?? [],
+    reviewState: fc.reviewState ?? null,
+  }));
+}
+
+type SessionType = keyof typeof SESSION_TYPE_CONFIG;
+
+function isSessionType(value: string): value is SessionType {
+  return Object.hasOwn(SESSION_TYPE_CONFIG, value);
 }
 
 interface SessionClientProps {
@@ -151,9 +194,9 @@ export default function SessionClient(props: SessionClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const config =
-    SESSION_TYPE_CONFIG[props.type as keyof typeof SESSION_TYPE_CONFIG] ??
-    SESSION_TYPE_CONFIG.review;
+  const config = isSessionType(props.type)
+    ? SESSION_TYPE_CONFIG[props.type]
+    : SESSION_TYPE_CONFIG.review;
   const mode = config.mode;
   const isCram = mode === 'cram';
   const isNew = props.type === 'new';
@@ -222,14 +265,11 @@ export default function SessionClient(props: SessionClientProps) {
       setError(null);
       try {
         if (isCram && props.deckId) {
-          const res = await fetch(`/api/v1/flashcards/practice/prepare?deckIds=${props.deckId}`);
-          if (!res.ok) {
-            setError('FETCH_FAILED');
-            return;
-          }
-          const body = await res.json();
+          const data = await apiGet<unknown>(
+            `/api/v1/flashcards/practice/prepare?deckIds=${props.deckId}`,
+          );
           if (cancelled) return;
-          const shuffled = shuffleArray(mapCards(body.data));
+          const shuffled = shuffleArray(mapCards(data));
           setCards(shuffled);
           setCramQueue(shuffled);
           setHasMore(false);
@@ -239,14 +279,11 @@ export default function SessionClient(props: SessionClientProps) {
           if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
           if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
           const endpoint = isNew ? 'new' : 'review';
-          const res = await fetch(`/api/v1/flashcards/practice/${endpoint}?${params.toString()}`);
-          if (!res.ok) {
-            setError('FETCH_FAILED');
-            return;
-          }
-          const body = await res.json();
+          const data = await apiGet<unknown>(
+            `/api/v1/flashcards/practice/${endpoint}?${params.toString()}`,
+          );
           if (cancelled) return;
-          const mapped = mapCards(body.data);
+          const mapped = mapCards(data);
           setCards(shuffleArray(mapped));
           setHasMore(mapped.length >= batchSize);
         }
@@ -278,10 +315,10 @@ export default function SessionClient(props: SessionClientProps) {
       if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
       if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
       const endpoint = isNew ? 'new' : 'review';
-      const res = await fetch(`/api/v1/flashcards/practice/${endpoint}?${params.toString()}`);
-      if (!res.ok) return [];
-      const body = await res.json();
-      return mapCards(body.data);
+      const data = await apiGet<unknown>(
+        `/api/v1/flashcards/practice/${endpoint}?${params.toString()}`,
+      );
+      return mapCards(data);
     } catch {
       return [];
     }
@@ -292,30 +329,23 @@ export default function SessionClient(props: SessionClientProps) {
     const batch = [...pendingUpdatesRef.current];
     pendingUpdatesRef.current = [];
     try {
-      const res = await fetch('/api/v1/flashcards/batch/practice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          // Request-level mode (#617): cram is side-effect-free server-side, so
-          // the request stays (defence in depth) but writes nothing.
-          mode,
-          items: batch.map((b) => ({ ...b, sessionId: sessionIdRef.current })),
-        }),
+      const body = await apiPost<unknown>('/api/v1/flashcards/batch/practice', {
+        // Request-level mode (#617): cram is side-effect-free server-side, so
+        // the request stays (defence in depth) but writes nothing.
+        mode,
+        items: batch.map((b) => ({ ...b, sessionId: sessionIdRef.current })),
       });
-      if (res.ok) {
-        const body = await res.json();
-        if (body.data?.results) {
-          for (const r of body.data.results) {
-            if (r.isLeech) {
-              leechedCardIdsRef.current.add(r.flashcardId);
-            }
-          }
+      for (const r of practiceResults(body)) {
+        if (r.isLeech) {
+          leechedCardIdsRef.current.add(r.flashcardId);
         }
-      } else {
-        console.error('[sendBatchUpdate] server returned', res.status);
-        pendingUpdatesRef.current.unshift(...batch);
       }
-    } catch {
+    } catch (err) {
+      // A non-2xx is the common failure here; log the status `fetch` used to expose.
+      console.error(
+        '[sendBatchUpdate] server returned',
+        err instanceof ApiError ? err.status : err,
+      );
       pendingUpdatesRef.current.unshift(...batch);
     }
   }, [mode]);
@@ -582,7 +612,7 @@ export default function SessionClient(props: SessionClientProps) {
       // Space and 1-4 rate and flip cards: never while a dialog or menu is on top (the shortcuts
       // list, a confirmation), where they would silently write a review.
       if (overlayOpen()) return;
-      const active = document.activeElement as HTMLElement | null;
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const tag = active?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable) return;
 

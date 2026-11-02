@@ -1,6 +1,5 @@
 'use client';
 
-import type { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
 import { BadgeCheck, Bell, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -16,7 +15,10 @@ import { cn } from '@/lib/utils';
 export function UserMenuHeader() {
   const { user } = useAuth();
   const t = useTranslations('DashboardLayout');
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
+  // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
+  const rawName: unknown = user?.user_metadata?.name;
+  const storedName = typeof rawName === 'string' ? rawName : '';
+  const userName = storedName || user?.email?.split('@')[0] || t('default_user');
 
   return (
     <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
@@ -110,7 +112,7 @@ export function handleUserMenuTab(
   if (event.key !== 'Tab') return;
 
   const content = event.currentTarget;
-  const active = document.activeElement as HTMLElement | null;
+  const active = document.activeElement;
   const language = content.querySelector<HTMLElement>('[role="combobox"]');
   const themeGroup = content.querySelector<HTMLElement>('[role="radiogroup"]');
   const items = [...content.querySelectorAll<HTMLElement>('[role="menuitem"]')];
@@ -205,7 +207,9 @@ export function UserMenuItems(props: UserMenuItemsProps) {
       <LanguageMenuRow variant="menu" />
     );
 
-  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
+  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
   const dashboardPrefix = dashboardHomeFor(accountType);
 
   return (

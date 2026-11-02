@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { ApiError, apiPost } from '@/lib/api';
 import { translateErrorCode } from '@/lib/error-messages';
 import { cn } from '@/lib/utils';
 
@@ -40,20 +41,7 @@ export default function PasswordUpdatePage() {
 
   async function onSubmit(data: UpdatePasswordInput) {
     try {
-      const response = await fetch('/api/v1/auth/password/update', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        toast.error(translateErrorCode(tErr, result.error || APP_ERRORS.UNPROCESSABLE_ENTITY.code));
-        return;
-      }
+      await apiPost('/api/v1/auth/password/update', data);
 
       toast.success(t('SUCCESS_PASSWORD_UPDATED'));
 
@@ -63,8 +51,13 @@ export default function PasswordUpdatePage() {
       // (STUDENT -> /app, EDUCATOR -> /edu, MANAGER -> /manage). `replace` so the
       // password form is not a back target.
       router.replace('/login');
-    } catch {
-      toast.error(translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code));
+    } catch (error) {
+      toast.error(
+        translateErrorCode(
+          tErr,
+          error instanceof ApiError ? error.code : APP_ERRORS.INTERNAL_SERVER.code,
+        ),
+      );
     }
   }
 

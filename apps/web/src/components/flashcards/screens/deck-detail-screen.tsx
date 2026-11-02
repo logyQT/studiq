@@ -382,17 +382,13 @@ export function DeckDetailScreen({
   async function handleCopy() {
     if (!d.activeFlashcardId || !d.copyTargetDeckId) return;
     try {
-      const res = await fetch(`${apiBase}/${d.activeFlashcardId}/copy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetDeckId: d.copyTargetDeckId }),
+      const copy = await apiPost<{ id: string }>(`${apiBase}/${d.activeFlashcardId}/copy`, {
+        targetDeckId: d.copyTargetDeckId,
       });
-      if (!res.ok) throw new Error();
-      const body = await res.json();
       setD((prev) => ({
         ...prev,
         copyOpen: false,
-        copyResult: { id: body.data.id, deckId: d.copyTargetDeckId! },
+        copyResult: { id: copy.id, deckId: d.copyTargetDeckId! },
       }));
       toast.success(t('flashcard_copied'));
     } catch {

@@ -53,12 +53,18 @@ const QUESTION_TYPE_KEYS = {
   open: 'type_open',
 } as const;
 
+type QuestionTypeKey = keyof typeof QUESTION_TYPE_KEYS;
+
+function isQuestionTypeKey(value: string): value is QuestionTypeKey {
+  return Object.hasOwn(QUESTION_TYPE_KEYS, value);
+}
+
 export default function QuizTakingPage() {
   const t = useTranslations('AppQuizTakingPage');
-  const params = useParams();
+  const params = useParams<{ attemptId: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const attemptId = params.attemptId as string;
+  const attemptId = params.attemptId;
 
   const [attempt, setAttempt] = useState<AttemptDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -189,8 +195,8 @@ export default function QuizTakingPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Badge variant="outline">
-              {QUESTION_TYPE_KEYS[currentQuestion.type as keyof typeof QUESTION_TYPE_KEYS]
-                ? t(QUESTION_TYPE_KEYS[currentQuestion.type as keyof typeof QUESTION_TYPE_KEYS])
+              {isQuestionTypeKey(currentQuestion.type)
+                ? t(QUESTION_TYPE_KEYS[currentQuestion.type])
                 : currentQuestion.type.replace('_', ' ')}
             </Badge>
           </div>

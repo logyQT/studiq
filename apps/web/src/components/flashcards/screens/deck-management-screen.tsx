@@ -430,10 +430,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             }
             onSelect={() => selection.setIsSelecting(true)}
             onToggleSuspend={() => handleToggleSuspend(deck)}
-            groupNames={
-              deck.groupIds?.map((id) => groupNameMap.get(id)).filter(Boolean) as
-                string[] | undefined
-            }
+            groupNames={deck.groupIds
+              ?.map((id) => groupNameMap.get(id))
+              .filter((name): name is string => Boolean(name))}
           />
         ))}
       </PageGrid>

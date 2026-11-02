@@ -40,11 +40,12 @@ export function KeyboardShortcutsPanel({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement)?.tagName;
+      const active = document.activeElement;
+      const tag = active?.tagName;
       if (
         tag === 'INPUT' ||
         tag === 'TEXTAREA' ||
-        (document.activeElement as HTMLElement)?.isContentEditable
+        (active instanceof HTMLElement && active.isContentEditable)
       )
         return;
 

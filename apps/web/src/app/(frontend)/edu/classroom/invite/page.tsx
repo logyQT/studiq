@@ -25,6 +25,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { SrLabel } from '@/components/shared/sr-label';
+import { apiPost } from '@/lib/api';
 
 const InviteFormSchema = z.object({
   name: z.string().nonempty().min(1).max(100),
@@ -45,15 +46,10 @@ export default function ClassroomInvitePage() {
     setIsPending(true);
     setInviteLink(null);
     try {
-      const res = await fetch('/api/v1/organization/invites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...values, role: AccountType.STUDENT }),
+      const data = await apiPost<{ inviteLink?: string }>('/api/v1/organization/invites', {
+        ...values,
+        role: AccountType.STUDENT,
       });
-
-      if (!res.ok) throw new Error('Failed to send invitation');
-
-      const data = await res.json();
       if (data.inviteLink) {
         setInviteLink(data.inviteLink);
       }

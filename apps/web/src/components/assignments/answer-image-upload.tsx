@@ -12,6 +12,10 @@ interface AnswerImageUploadProps {
   onUploadComplete?: (url: string) => void;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 export function AnswerImageUpload({
   assignmentId,
   attemptId,
@@ -33,9 +37,13 @@ export function AnswerImageUpload({
         method: 'POST',
         body: formData,
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      onUploadComplete?.(json.data?.image_url ?? '');
+      const json: unknown = await res.json();
+      const body: Record<string, unknown> = isRecord(json) ? json : {};
+      if (!res.ok) throw new Error(typeof body.error === 'string' ? body.error : 'UPLOAD_FAILED');
+      const uploaded = body.data;
+      const imageUrl =
+        isRecord(uploaded) && typeof uploaded.image_url === 'string' ? uploaded.image_url : '';
+      onUploadComplete?.(imageUrl);
     } finally {
       setUploading(false);
     }

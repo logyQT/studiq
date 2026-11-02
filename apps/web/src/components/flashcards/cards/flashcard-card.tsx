@@ -44,7 +44,7 @@ const COMPACT_MD =
 
 // Links open in a new tab; don't let their clicks also toggle card selection.
 const stopLinkClick = (e: React.MouseEvent) => {
-  if ((e.target as HTMLElement).closest('a')) e.stopPropagation();
+  if (e.target instanceof Element && e.target.closest('a')) e.stopPropagation();
 };
 
 export const FlashcardCard = memo(function FlashcardCardContent({

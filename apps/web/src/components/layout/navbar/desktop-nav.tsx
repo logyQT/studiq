@@ -29,8 +29,8 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
     if (!nav || !parent || links.length === 0) return;
 
     const children = Array.from(nav.children).filter(
-      (el) => !(el as HTMLElement).dataset.more,
-    ) as HTMLElement[];
+      (el): el is HTMLElement => el instanceof HTMLElement && !el.dataset.more,
+    );
 
     if (children.length === 0) return;
 
@@ -58,8 +58,8 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
 
     const update = () => {
       const children = Array.from(nav.children).filter(
-        (el) => !(el as HTMLElement).dataset.more,
-      ) as HTMLElement[];
+        (el): el is HTMLElement => el instanceof HTMLElement && !el.dataset.more,
+      );
 
       if (children.length === 0) return;
 

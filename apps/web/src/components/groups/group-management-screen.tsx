@@ -35,6 +35,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { useFeature } from '@/hooks/use-feature';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import {
   type AddableOrgMember,
   ensureMemberRoles,
@@ -77,10 +78,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
     setLoading(true);
     setLoadError(false);
     try {
-      const res = await fetch('/api/v1/organization/groups');
-      const json = await res.json();
-      if (json.success) setData(json.data);
-      else setLoadError(true);
+      setData(await apiGet<Group[]>('/api/v1/organization/groups'));
     } catch {
       setLoadError(true);
     } finally {
@@ -93,24 +91,16 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
   }, [load]);
 
   async function handleSave(group: { name: string; description?: string | null }, id?: string) {
-    const url = id ? `/api/v1/organization/groups/${id}` : '/api/v1/organization/groups';
-    const method = id ? 'PUT' : 'POST';
-
     try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(group),
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(id ? t('group_updated') : t('group_created'));
-        setEditing(null);
-        setCreating(false);
-        void load();
+      if (id) {
+        await apiPut<unknown>(`/api/v1/organization/groups/${id}`, group);
       } else {
-        toast.error(id ? t('update_failed') : t('create_failed'));
+        await apiPost<unknown>('/api/v1/organization/groups', group);
       }
+      toast.success(id ? t('group_updated') : t('group_created'));
+      setEditing(null);
+      setCreating(false);
+      void load();
     } catch {
       toast.error(id ? t('update_failed') : t('create_failed'));
     }
@@ -118,15 +108,10 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
 
   async function handleDelete(id: string) {
     try {
-      const res = await fetch(`/api/v1/organization/groups/${id}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(t('group_deleted'));
-        setDeleting(null);
-        void load();
-      } else {
-        toast.error(t('delete_failed'));
-      }
+      await apiDelete(`/api/v1/organization/groups/${id}`);
+      toast.success(t('group_deleted'));
+      setDeleting(null);
+      void load();
     } catch {
       toast.error(t('delete_failed'));
     }
@@ -334,25 +319,23 @@ function ManageMembersForm({
     async function run() {
       setLoading(true);
       try {
-        const [addableRes, currentRes] = await Promise.all([
-          fetch(`/api/v1/organization/groups/${group.id}/addable-members`),
-          fetch(`/api/v1/organization/groups/${group.id}/members`),
+        const [addable, current] = await Promise.all([
+          apiGet<AddableOrgMember[]>(`/api/v1/organization/groups/${group.id}/addable-members`),
+          apiGet<{ userId: string; role: GroupMemberRole }[]>(
+            `/api/v1/organization/groups/${group.id}/members`,
+          ),
         ]);
-        const addableJson = await addableRes.json();
-        const currentJson = await currentRes.json();
         if (cancelled) return;
 
-        if (addableJson.success) {
-          setOptions(toGroupMemberOptions(addableJson.data as AddableOrgMember[]));
+        setOptions(toGroupMemberOptions(addable));
+        const roles: Record<string, GroupMemberRole> = {};
+        for (const m of current) {
+          roles[m.userId] = m.role;
         }
-        if (currentJson.success) {
-          const roles: Record<string, GroupMemberRole> = {};
-          for (const m of currentJson.data as { userId: string; role: GroupMemberRole }[]) {
-            roles[m.userId] = m.role;
-          }
-          setRoleByUserId(roles);
-          setSelected(Object.keys(roles));
-        }
+        setRoleByUserId(roles);
+        setSelected(Object.keys(roles));
+      } catch {
+        // A failed roster fetch leaves the picker empty instead of rejecting the effect.
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -361,9 +344,8 @@ function ManageMembersForm({
     return () => {
       cancelled = true;
     };
-    // The fetch URLs inside the async `run()` use `group.id`; the rule does not see deps that
-    // appear inside the nested async body, but switching group must refetch its members.
-    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- group.id is used inside run().
+    // The fetch URLs inside the async `run()` use `group.id`; switching group must refetch its
+    // members even though the dependency is only visible inside the nested async body.
   }, [group.id]);
 
   async function handleSave() {
@@ -373,18 +355,9 @@ function ManageMembersForm({
         userId,
         role: roleByUserId[userId] ?? 'member',
       }));
-      const res = await fetch(`/api/v1/organization/groups/${group.id}/members`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ members }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(t('members_updated'));
-        onDone();
-      } else {
-        toast.error(t('members_update_failed'));
-      }
+      await apiPut<unknown>(`/api/v1/organization/groups/${group.id}/members`, { members });
+      toast.success(t('members_updated'));
+      onDone();
     } catch {
       toast.error(t('members_update_failed'));
     } finally {
@@ -428,9 +401,10 @@ function ManageMembersForm({
                   <span className="flex-1 truncate text-sm">{label}</span>
                   <Select
                     value={roleByUserId[userId] ?? 'member'}
-                    onValueChange={(value) =>
-                      setRoleByUserId((prev) => ({ ...prev, [userId]: value as GroupMemberRole }))
-                    }
+                    onValueChange={(value) => {
+                      if (value !== 'teacher' && value !== 'member') return;
+                      setRoleByUserId((prev) => ({ ...prev, [userId]: value }));
+                    }}
                   >
                     <SelectTrigger
                       className="w-32 h-8"

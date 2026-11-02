@@ -38,9 +38,14 @@ function extractText(node: ReactNode): string {
   if (typeof node === 'number') return String(node);
   if (node == null || typeof node === 'boolean') return '';
   if (Array.isArray(node)) return node.map(extractText).join('');
-  const el = node as React.ReactElement<{ children?: ReactNode }>;
-  if (typeof node === 'object' && el.props) return extractText(el.props.children);
+  if (isMarkdownElement(node)) return extractText(node.props.children);
   return '';
+}
+
+function isMarkdownElement(node: unknown): node is React.ReactElement<{ children?: ReactNode }> {
+  if (typeof node !== 'object' || node === null || !('props' in node)) return false;
+  const props = node.props;
+  return typeof props === 'object' && props !== null && 'children' in props;
 }
 
 function MarkdownH1({ children }: MarkdownElementProps<'h1'>) {
@@ -152,11 +157,11 @@ function MarkdownDeleted({ children }: MarkdownElementProps<'del'>) {
 }
 
 function MarkdownImage({ src, alt }: MarkdownElementProps<'img'>) {
-  if (!src) return null;
+  if (typeof src !== 'string' || !src) return null;
   return (
     <div className="relative max-w-full h-48 mx-auto">
       <Image
-        src={src as string}
+        src={src}
         alt={alt ?? ''}
         fill
         className="object-contain rounded-lg"

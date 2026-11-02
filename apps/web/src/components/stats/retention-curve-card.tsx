@@ -11,12 +11,13 @@ import {
   Skeleton,
 } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
+import type { ReactElement, SVGProps } from 'react';
 import {
   Bar,
   BarChart,
+  type BarProps,
   CartesianGrid,
   Rectangle,
-  type RectangleProps,
   Tooltip,
   XAxis,
   YAxis,
@@ -30,16 +31,34 @@ const DAYS = 30;
 /** Smallest bar drawn for a real 0 %, in pixels. */
 const MIN_BAR_PX = 4;
 
-interface BarShapeProps extends RectangleProps {
-  reviews?: number;
+/** recharts types bar coordinates as SVG values; they are numbers by the time a shape runs. */
+function toPx(value: number | string | undefined): number {
+  const parsed = typeof value === 'number' ? value : Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function RetentionBar(props: BarShapeProps) {
+function RetentionBar(props: BarProps & { reviews?: number }) {
   if (!props.reviews) return null;
-  const height = Math.max(props.height ?? 0, MIN_BAR_PX);
+  const height = Math.max(toPx(props.height), MIN_BAR_PX);
   return (
-    <Rectangle {...props} height={height} y={(props.y ?? 0) - (height - (props.height ?? 0))} />
+    <Rectangle
+      fill={props.fill}
+      radius={props.radius}
+      className={props.className}
+      x={toPx(props.x)}
+      y={toPx(props.y) - (height - toPx(props.height))}
+      width={toPx(props.width)}
+      height={height}
+    />
   );
+}
+
+/**
+ * recharts types `shape` as always returning an element, but a bucket without reviews must
+ * draw nothing — the component itself returns `null`, so the adapter carries the element type.
+ */
+function renderRetentionBar(props: BarProps): ReactElement<SVGProps<SVGPathElement>> {
+  return <RetentionBar {...props} />;
 }
 
 /**
@@ -96,8 +115,7 @@ export function RetentionCurveCard() {
                   dataKey="accuracy"
                   fill="var(--color-accuracy)"
                   radius={[6, 6, 0, 0]}
-                  // recharts types a shape as always returning an element; this one may draw nothing.
-                  shape={RetentionBar as never}
+                  shape={renderRetentionBar}
                 />
               </BarChart>
             </ChartContainer>

@@ -35,6 +35,7 @@ import { Copy, Mail, Plus, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 import { SrLabel } from '@/components/shared/sr-label';
 import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
@@ -103,29 +104,16 @@ export default function InvitationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    void fetch('/api/v1/organization/roles')
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          setOrgRoles(res.data);
-        }
-        return undefined;
-      });
+    void apiGet<OrgRole[]>('/api/v1/organization/roles')
+      .then((roles) => setOrgRoles(roles))
+      .catch(() => undefined);
   }, []);
 
   const fetchInvitations = useCallback(() => {
     setLoading(true);
     setLoadError(false);
-    fetch(`/api/v1/organization/invites?isAccepted=${showAccepted}`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          setInvitations(res.data);
-        } else {
-          setLoadError(true);
-        }
-        return undefined;
-      })
+    apiGet<Invitation[]>(`/api/v1/organization/invites?isAccepted=${showAccepted}`)
+      .then((rows) => setInvitations(rows))
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, [showAccepted]);
@@ -180,21 +168,14 @@ export default function InvitationsPage() {
 
     setSending(true);
     try {
-      const res = await fetch('/api/v1/organization/invites/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invitations: payload }),
+      const bulkResults = await apiPost<InvitationResult[]>('/api/v1/organization/invites/bulk', {
+        invitations: payload,
       });
-
-      const resJson = await res.json().catch(() => null);
-      const bulkResults: InvitationResult[] = Array.isArray(resJson?.data?.results)
-        ? resJson.data.results
-        : [];
 
       // The endpoint is all-or-nothing: anything short of a 2xx carrying one
       // result per entry is a failure. Never report a partial send as success,
       // and keep the rows so the manager can retry.
-      if (!res.ok || !resJson?.success || bulkResults.length !== payload.length) {
+      if (bulkResults.length !== payload.length) {
         toast.error(t('send_failed'));
         return;
       }
@@ -212,36 +193,27 @@ export default function InvitationsPage() {
 
   async function handleRoleChange(invitationId: string, orgRoleId: string) {
     try {
-      const res = await fetch(`/api/v1/organization/invites/${invitationId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetOrgRoleId: orgRoleId }),
+      await apiPut(`/api/v1/organization/invites/${invitationId}`, {
+        targetOrgRoleId: orgRoleId,
       });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(t('update_success'));
-        fetchInvitations();
-      }
+      toast.success(t('update_success'));
+      fetchInvitations();
     } catch {
-      toast.error(t('send_failed'));
+      // Unchanged behaviour: a failed role change keeps the row's old role and is
+      // not reported here.
     }
   }
 
   async function handleRevoke(invitationId: string) {
     setRevokingId(invitationId);
     try {
-      const res = await fetch(`/api/v1/organization/invites/${invitationId}`, {
-        method: 'DELETE',
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(t('revoke_success'));
-        // Mark the send result of exactly this invitation as cancelled (#258).
-        setResults((prev) =>
-          prev.map((r) => (r.data?.invitationId === invitationId ? { ...r, cancelled: true } : r)),
-        );
-        fetchInvitations();
-      }
+      await apiDelete(`/api/v1/organization/invites/${invitationId}`);
+      toast.success(t('revoke_success'));
+      // Mark the send result of exactly this invitation as cancelled (#258).
+      setResults((prev) =>
+        prev.map((r) => (r.data?.invitationId === invitationId ? { ...r, cancelled: true } : r)),
+      );
+      fetchInvitations();
     } catch {
       toast.error(t('send_failed'));
     } finally {

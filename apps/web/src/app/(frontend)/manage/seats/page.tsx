@@ -33,6 +33,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
+import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 
 interface Pool {
@@ -126,14 +127,14 @@ export default function ManageSeatsPage() {
   const loadData = useCallback(() => {
     setLoading(true);
     Promise.all([
-      fetch('/api/v1/organization/seats/pools').then((r) => r.json()),
-      fetch('/api/v1/organization/seats/assignments').then((r) => r.json()),
-      fetch('/api/v1/organization/members').then((r) => r.json()),
+      apiGet<Pool[]>('/api/v1/organization/seats/pools'),
+      apiGet<Assignment[]>('/api/v1/organization/seats/assignments'),
+      apiGet<Member[]>('/api/v1/organization/members'),
     ])
-      .then(([poolsRes, assignmentsRes, membersRes]) => {
-        if (poolsRes.success) setPools(poolsRes.data);
-        if (assignmentsRes.success) setAssignments(assignmentsRes.data);
-        if (membersRes.success) setMembers(membersRes.data);
+      .then(([poolRows, assignmentRows, memberRows]) => {
+        setPools(poolRows);
+        setAssignments(assignmentRows);
+        setMembers(memberRows);
         setLoading(false);
         return undefined;
       })
@@ -151,25 +152,22 @@ export default function ManageSeatsPage() {
     if (!selectedUserId || !selectedPoolId) return;
     setAssigning(true);
     try {
-      const res = await fetch('/api/v1/organization/seats/assignments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: selectedUserId, poolId: selectedPoolId }),
+      await apiPost('/api/v1/organization/seats/assignments', {
+        userId: selectedUserId,
+        poolId: selectedPoolId,
       });
-
-      const data = await res.json();
-      if (!data.success) {
-        toast.error(data.error === 'USAGE_LIMIT_EXCEEDED' ? t('pool_full') : t('assign_failed'));
-        return;
-      }
 
       toast.success(t('assign_success'));
       setAssignDialogOpen(false);
       setSelectedUserId('');
       setSelectedPoolId('');
       loadData();
-    } catch {
-      toast.error(t('assign_failed'));
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError && error.code === 'USAGE_LIMIT_EXCEEDED'
+          ? t('pool_full')
+          : t('assign_failed'),
+      );
     } finally {
       setAssigning(false);
     }
@@ -200,27 +198,22 @@ export default function ManageSeatsPage() {
     if (!purchasePlanKey || !qtyValid) return;
     setPurchasing(true);
     try {
-      const res = await fetch('/api/v1/organization/seats/pools', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: purchasePlanKey, quantity: purchaseQty }),
+      await apiPost('/api/v1/organization/seats/pools', {
+        planKey: purchasePlanKey,
+        quantity: purchaseQty,
       });
-
-      const data = await res.json();
-      if (!data.success) {
-        toast.error(
-          data.error === 'UNPROCESSABLE_ENTITY' ? t('quantity_too_large') : t('purchase_failed'),
-        );
-        return;
-      }
 
       toast.success(t('purchase_success'));
       setPurchaseDialogOpen(false);
       setPurchasePlanKey('');
       setPurchaseQtyInput('1');
       loadData();
-    } catch {
-      toast.error(t('purchase_failed'));
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError && error.code === 'UNPROCESSABLE_ENTITY'
+          ? t('quantity_too_large')
+          : t('purchase_failed'),
+      );
     } finally {
       setPurchasing(false);
     }

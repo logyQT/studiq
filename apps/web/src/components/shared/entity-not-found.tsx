@@ -21,7 +21,9 @@ type Props = {
 export function EntityNotFound({ titleKey, descriptionKey, fallback }: Props) {
   const t = useTranslations('EntityNotFound');
   const { user } = useAuth();
-  const href = fallback?.href ?? dashboardHomeFor(user?.app_metadata?.account_type);
+  const accountType: unknown = user?.app_metadata?.account_type;
+  const href =
+    fallback?.href ?? dashboardHomeFor(typeof accountType === 'string' ? accountType : null);
   const RecoveryIcon = fallback ? Layers : Home;
 
   return (

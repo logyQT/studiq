@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiMutation } from '@/hooks/use-api';
+import { apiPost } from '@/lib/api';
 import { quizKeys } from '@/lib/query-keys';
 
 export function NewQuizClient() {
@@ -23,16 +24,7 @@ export function NewQuizClient() {
   const [description, setDescription] = useState('');
 
   const createMutation = useApiMutation<{ id: string }, { name: string; description?: string }>({
-    mutationFn: async (data) => {
-      const res = await fetch('/api/v1/teacher/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
-    },
+    mutationFn: async (data) => apiPost<{ id: string }>('/api/v1/teacher/quizzes', data),
     invalidateKeys: [quizKeys.all],
   });
 

@@ -96,7 +96,10 @@ export default function AppOverviewPage() {
     [locale],
   );
 
-  const userName = user?.user_metadata?.name.split(' ')[0] || user?.user_metadata.name;
+  // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
+  const rawName: unknown = user?.user_metadata?.name;
+  const fullName = typeof rawName === 'string' ? rawName : '';
+  const userName = fullName.split(' ')[0] || fullName;
 
   return (
     <div className="space-y-8">

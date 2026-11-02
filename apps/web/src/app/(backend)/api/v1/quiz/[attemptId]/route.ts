@@ -19,7 +19,7 @@ export async function POST(
 ) {
   return withAuth(req, async (ctx) => {
     const { attemptId } = await params;
-    const body = await req.json();
+    const body: unknown = await req.json();
     return toNextResponse(await quizAttemptController.submit(body, attemptId, ctx));
   });
 }

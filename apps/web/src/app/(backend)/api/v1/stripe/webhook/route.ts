@@ -8,7 +8,7 @@ import type { NextRequest } from 'next/server';
 // authenticates the caller itself.
 export async function POST(req: NextRequest) {
   return withAuth(req, async (ctx) => {
-    const body = await req.json();
+    const body: unknown = await req.json();
     return toNextResponse(await stripeController.handleWebhook(ctx, body));
   });
 }

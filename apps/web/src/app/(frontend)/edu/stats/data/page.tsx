@@ -55,6 +55,30 @@ interface FlashcardStats {
   }>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** The stats endpoints answer `{ success, data }`; an unwrapped payload is accepted too. */
+function unwrapData(body: unknown): unknown {
+  return isRecord(body) && 'data' in body ? body.data : body;
+}
+
+/** Only a payload shaped like the flashcard summary is stored; a failure keeps the tables hidden. */
+function isFlashcardStats(value: unknown): value is FlashcardStats {
+  if (!isRecord(value) || !isRecord(value.summary)) return false;
+  const summary = value.summary;
+  return (
+    typeof summary.totalDecks === 'number' &&
+    typeof summary.totalFlashcards === 'number' &&
+    typeof summary.totalPractices === 'number' &&
+    typeof summary.practicingStudents === 'number' &&
+    (summary.rosterStudents === null || typeof summary.rosterStudents === 'number') &&
+    Array.isArray(value.byDeck) &&
+    Array.isArray(value.byTopic)
+  );
+}
+
 export default function StatsDataPage() {
   const t = useTranslations('StatsDataPage');
   const tc = useTranslations('Common');
@@ -68,14 +92,15 @@ export default function StatsDataPage() {
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/v1/flashcards/stats/teacher', { signal: controller.signal })
-      .then((r) => {
+      .then(async (r) => {
         if (!r.ok) throw new Error(`flashcard stats request failed: ${r.status}`);
-        return r.json();
+        const body: unknown = await r.json();
+        return body;
       })
       .then((f) => {
         // Flashcard tables are supplementary; only a shaped payload is stored.
-        const data = f?.data ?? f;
-        if (data?.summary) setFlashStats(data);
+        const data = unwrapData(f);
+        if (isFlashcardStats(data)) setFlashStats(data);
         return undefined;
       })
       .catch(() => {
@@ -92,10 +117,11 @@ export default function StatsDataPage() {
         : `/api/v1/stats/teacher?subjectId=${encodeURIComponent(selectedSubject)}`;
 
     fetch(url, { signal: controller.signal })
-      .then((r) => {
+      .then(async (r) => {
         // Every 4xx/5xx is a JSON envelope; without this check it would land in state.
         if (!r.ok) throw new Error(`stats request failed: ${r.status}`);
-        return r.json();
+        const body: unknown = await r.json();
+        return body;
       })
       .then((body) => {
         const parsed = parseTeacherStatsResponse(body);

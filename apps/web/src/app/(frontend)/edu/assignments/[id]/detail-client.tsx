@@ -55,7 +55,7 @@ import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
-import { apiPost } from '@/lib/api';
+import { apiPost, apiPut } from '@/lib/api';
 import { dbToDatetimeLocal } from '@/lib/datetime';
 import { assignmentKeys, groupKeys, questionKeys, topicKeys } from '@/lib/query-keys';
 
@@ -215,7 +215,7 @@ export default function AssignmentDetailClient() {
     url: '/api/v1/questions/banks?limit=100',
   });
 
-  const banksList = (banks as PaginatedBanks)?.items ?? [];
+  const banksList = banks?.items ?? [];
 
   const groupOptions = (groups ?? []).map((g) => ({ label: g.name, value: g.id }));
   const studentOptions = (students ?? []).map((s) => ({
@@ -272,14 +272,7 @@ export default function AssignmentDetailClient() {
       const body: Record<string, string | undefined> = {};
       if (deadline) body.deadline = deadline;
       if (startTime) body.startTime = startTime;
-      const res = await fetch(`/api/v1/teacher/assignments/${id}/publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
+      return apiPost<unknown>(`/api/v1/teacher/assignments/${id}/publish`, body);
     },
     invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
   });
@@ -289,14 +282,7 @@ export default function AssignmentDetailClient() {
       const body: Record<string, string[]> = {};
       if (targetGroupIds.length > 0) body.groupIds = targetGroupIds;
       if (targetStudentIds.length > 0) body.studentIds = targetStudentIds;
-      const res = await fetch(`/api/v1/teacher/assignments/${id}/targets`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
+      return apiPut<unknown>(`/api/v1/teacher/assignments/${id}/targets`, body);
     },
     invalidateKeys: [assignmentKeys.detail(id)],
   });

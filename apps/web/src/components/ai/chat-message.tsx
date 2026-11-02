@@ -2,7 +2,11 @@
 
 import { AlertCircle, FileText, Loader2, Sparkles } from 'lucide-react';
 import { memo, useState } from 'react';
-import { type DeckTarget, FlashcardBlock } from '@/components/ai/flashcard-block';
+import {
+  type DeckTarget,
+  type FlashcardData,
+  FlashcardBlock,
+} from '@/components/ai/flashcard-block';
 import { PlanBlock } from '@/components/ai/plan-block';
 import { QuestionBlock } from '@/components/ai/question-block';
 import { ThinkingBlock } from '@/components/ai/thinking-block';
@@ -16,6 +20,19 @@ interface ChatMessageProps {
   message: ChatMessageType;
   onAnswer?: (text: string) => void;
   deckTarget?: DeckTarget | null;
+}
+
+/** The chat payload is `unknown` until it has been shaped like a card. */
+function isFlashcardData(value: unknown): value is FlashcardData {
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('front' in value) || typeof value.front !== 'string') return false;
+  if (!('back' in value) || typeof value.back !== 'string') return false;
+  return true;
+}
+
+function toFlashcardData(value: unknown): FlashcardData[] {
+  const items: unknown[] = Array.isArray(value) ? value : [];
+  return items.filter(isFlashcardData);
 }
 
 export const ChatMessage = memo(
@@ -60,7 +77,7 @@ export const ChatMessage = memo(
             <ToolCallBlock
               toolName={message.toolName || ''}
               label={message.label || ''}
-              status={message.status as 'running' | 'complete'}
+              status={message.status === 'running' ? 'running' : 'complete'}
               args={message.args}
               result={message.toolResult}
               durationMs={message.durationMs}
@@ -77,6 +94,8 @@ export const ChatMessage = memo(
 
     const hasThinkingTraces = message.thinkingTraces.length > 0;
     const isFlashcardResult = message.result?.type === 'flashcards';
+    const result = message.result;
+    const flashcardCards = toFlashcardData(result?.data);
     const isComplete = message.status === 'complete';
 
     return (
@@ -117,30 +136,21 @@ export const ChatMessage = memo(
           )}
 
           {isFlashcardResult &&
-            Array.isArray(message.result!.data) &&
-            (message.result!.data.length === 0 ? (
+            result &&
+            Array.isArray(result.data) &&
+            (flashcardCards.length === 0 ? (
               <FlashcardBlock
                 loading
-                count={message.result!.count}
-                deckName={
-                  typeof message.result!.deckName === 'string'
-                    ? message.result!.deckName
-                    : undefined
-                }
-                readOnly={message.result!.readOnly}
+                count={result.count}
+                deckName={typeof result.deckName === 'string' ? result.deckName : undefined}
+                readOnly={result.readOnly}
                 targetDeck={deckTarget}
               />
             ) : (
               <FlashcardBlock
-                flashcards={
-                  message.result!.data as Array<{ front: string; back: string; topic?: string }>
-                }
-                deckName={
-                  typeof message.result!.deckName === 'string'
-                    ? message.result!.deckName
-                    : undefined
-                }
-                readOnly={message.result!.readOnly}
+                flashcards={flashcardCards}
+                deckName={typeof result.deckName === 'string' ? result.deckName : undefined}
+                readOnly={result.readOnly}
                 targetDeck={deckTarget}
               />
             ))}

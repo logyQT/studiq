@@ -28,7 +28,7 @@ export async function PUT(
     req,
     async (ctx) => {
       const { id, studentId } = await params;
-      const body = await req.json();
+      const body: unknown = await req.json();
       return toNextResponse(
         await teacherAssignmentController.gradeAnswer(id, studentId, body, ctx),
       );

@@ -20,9 +20,16 @@ import { AlertCircle, CheckCircle2, FileText, Loader2, Upload } from 'lucide-rea
 import type { useTranslations } from 'next-intl';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { ApiError, apiPost } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 
 type CsvPreviewRow = Record<string, string>;
+
+interface ImportResult {
+  total: number;
+  imported: number;
+  errors: Array<{ row: number; error: string }>;
+}
 
 interface ImportDialogProps {
   open: boolean;
@@ -48,11 +55,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
     deck: null,
   });
   const [columns, setColumns] = useState<string[]>([]);
-  const [importResult, setImportResult] = useState<{
-    total: number;
-    imported: number;
-    errors: Array<{ row: number; error: string }>;
-  } | null>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   const reset = useCallback(() => {
     setStep('upload');
@@ -147,29 +150,17 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
       } else {
         body.defaultDeckName = t('imported_deck_default_name');
       }
-      const res = await fetch('/api/v1/flashcards/import/csv', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const result = await apiPost<ImportResult>('/api/v1/flashcards/import/csv', body);
 
-      const json = await res.json();
-
-      if (!res.ok) {
-        toast.error(json.error ?? t('import_failed'));
-        setStep('preview');
-        return;
-      }
-
-      setImportResult(json.data);
+      setImportResult(result);
       setStep('done');
 
       if (deckId) {
         void queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
       }
       void queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
-    } catch {
-      toast.error(t('import_failed'));
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t('import_failed'));
       setStep('preview');
     }
   }, [columnMap, parsedRows, deckId, t, queryClient]);

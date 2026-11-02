@@ -59,9 +59,7 @@ export function languageOption(code: Locale): LanguageOption {
 export function resolveLocale(value: unknown): Locale {
   if (typeof value !== 'string') return DEFAULT_LOCALE;
   const normalized = value.trim().toLowerCase();
-  return (LOCALES as readonly string[]).includes(normalized)
-    ? (normalized as Locale)
-    : DEFAULT_LOCALE;
+  return isSupportedLocale(normalized) ? normalized : DEFAULT_LOCALE;
 }
 
 /** The exact cookie payload — pure, so the contract can be unit-tested. */

@@ -1,3 +1,5 @@
+import { isRecord } from '@/lib/unknown-value';
+
 /**
  * `DefaultChatTransport` turns a non-2xx reply into `new Error(await response.text())`,
  * so the raw API body — `{"success":false,"error":"USAGE_LIMIT_EXCEEDED"}` — ends up
@@ -11,8 +13,9 @@ export function parseAiChatErrorCode(error: Error | undefined): string | null {
   if (!error) return null;
 
   try {
-    const body = JSON.parse(error.message) as { error?: unknown } | null;
-    return typeof body?.error === 'string' ? body.error : null;
+    const body: unknown = JSON.parse(error.message);
+    if (!isRecord(body) || typeof body.error !== 'string') return null;
+    return body.error;
   } catch {
     return null;
   }

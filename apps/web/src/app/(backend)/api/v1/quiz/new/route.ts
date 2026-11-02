@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server';
 
 export async function POST(req: NextRequest) {
   return withAuth(req, async (ctx) => {
-    const body = await req.json();
+    const body: unknown = await req.json();
     return toNextResponse(await quizController.generate(body, ctx));
   });
 }

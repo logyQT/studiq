@@ -91,7 +91,8 @@ export function useOrgs() {
       if (!navigate) return;
 
       const switchedOrg = orgs.find((o) => o.id === orgId);
-      const jwtAccountType = user?.app_metadata?.account_type as string | undefined;
+      const rawAccountType: unknown = user?.app_metadata?.account_type;
+      const jwtAccountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
       const ROLE_TO_ACCOUNT_TYPE: Record<string, string> = {
         admin: 'manager',
         teacher: 'educator',
@@ -106,7 +107,8 @@ export function useOrgs() {
   });
 
   const activeOrg = orgs.find((o) => o.isActive) || null;
-  const jwtAccountType = user?.app_metadata?.account_type as string | undefined;
+  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const jwtAccountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
   const needsOnboarding = resolveNeedsOnboarding({
     orgsCount: orgs.length,
     isPending,

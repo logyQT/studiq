@@ -51,6 +51,10 @@ interface PersistedBankFilters {
   legacyMine: boolean;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function loadPersistedFilters(): PersistedBankFilters {
   const defaults: PersistedBankFilters = {
     owner: 'all',
@@ -63,7 +67,8 @@ function loadPersistedFilters(): PersistedBankFilters {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const stored: unknown = JSON.parse(raw);
+      const parsed: Record<string, unknown> = isRecord(stored) ? stored : {};
       const groupIds = Array.isArray(parsed.groupIds)
         ? parsed.groupIds.filter((value): value is string => typeof value === 'string')
         : [];
@@ -437,10 +442,9 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             onEdit={() => openEdit(bank)}
             onDelete={() => setDeleteId(bank.id)}
             onSelect={() => setIsSelecting(true)}
-            groupNames={
-              bank.groupIds?.map((id) => groupNameMap.get(id)).filter(Boolean) as
-                string[] | undefined
-            }
+            groupNames={bank.groupIds
+              ?.map((id) => groupNameMap.get(id))
+              .filter((name): name is string => Boolean(name))}
           />
         ))}
       </PageGrid>

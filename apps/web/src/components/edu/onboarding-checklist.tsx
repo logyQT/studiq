@@ -11,6 +11,27 @@ import { SrLabel } from '@/components/shared/sr-label';
 
 const DISMISS_KEY = 'onboarding_dismissed';
 
+/** The endpoints answer `{ success, data }`; an unwrapped body is accepted too. */
+function envelopeData(body: unknown): unknown {
+  return typeof body === 'object' && body !== null && 'data' in body ? body.data : body;
+}
+
+function countOf(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+/** `totalQuestions + totalFlashcards` from the teacher stats payload, missing fields as 0. */
+function contentTotal(data: unknown): number {
+  if (typeof data !== 'object' || data === null) return 0;
+  const questions =
+    'totalQuestions' in data && typeof data.totalQuestions === 'number' ? data.totalQuestions : 0;
+  const flashcards =
+    'totalFlashcards' in data && typeof data.totalFlashcards === 'number'
+      ? data.totalFlashcards
+      : 0;
+  return questions + flashcards;
+}
+
 type ChecklistItem = {
   key: string;
   labelKey: string;
@@ -39,24 +60,33 @@ export function OnboardingChecklist() {
     // orgRoleName is the org_roles row name ('admin'/'teacher'/'member'),
     // a different concept from account_type ('educator'/'manager') — only
     // account_type is meaningful to compare against those two literals.
-    const accountType = user?.app_metadata?.account_type;
+    // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+    const rawAccountType: unknown = user?.app_metadata?.account_type;
+    const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
     if (accountType !== 'educator' && accountType !== 'manager') return undefined;
 
     const controller = new AbortController();
 
     fetch('/api/v1/organization/members', { signal: controller.signal })
-      .then((r) => r.json())
-      .then((d) => setMemberCount(d.data?.length || 0))
+      .then(async (r) => {
+        const body: unknown = await r.json();
+        return body;
+      })
+      .then((d) => setMemberCount(countOf(envelopeData(d))))
       .catch(() => {});
     fetch('/api/v1/organization/groups', { signal: controller.signal })
-      .then((r) => r.json())
-      .then((d) => setGroupCount(d.data?.length || 0))
+      .then(async (r) => {
+        const body: unknown = await r.json();
+        return body;
+      })
+      .then((d) => setGroupCount(countOf(envelopeData(d))))
       .catch(() => {});
     fetch('/api/v1/stats/teacher', { signal: controller.signal })
-      .then((r) => r.json())
-      .then((d) =>
-        setHasContent((d.data?.totalQuestions ?? 0) + (d.data?.totalFlashcards ?? 0) > 0),
-      )
+      .then(async (r) => {
+        const body: unknown = await r.json();
+        return body;
+      })
+      .then((d) => setHasContent(contentTotal(envelopeData(d)) > 0))
       .catch(() => {});
 
     return () => controller.abort();

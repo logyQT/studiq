@@ -22,9 +22,9 @@ export async function POST(req: NextRequest) {
       return handleApiError(error, 'BAD_REQUEST');
     }
 
-    const file = formData.get('file') as File | null;
+    const file = formData.get('file');
 
-    if (!file) {
+    if (!(file instanceof File)) {
       return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
     }
 

@@ -125,7 +125,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     }: {
       id: string;
       name: string;
-      visibility?: string;
+      visibility?: Topic['visibility'];
       groupIds?: string[];
     }) => apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data),
     invalidateKeys: [topicKeys.all],
@@ -133,7 +133,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       await queryClient.cancelQueries({ queryKey: topicKeys.all });
       const prev = queryClient.getQueryData<Topic[]>(topicKeys.all);
       queryClient.setQueryData<Topic[]>(topicKeys.all, (old) =>
-        old?.map((topic) => (topic.id === id ? ({ ...topic, ...data } as Topic) : topic)),
+        old?.map((topic) => (topic.id === id ? { ...topic, ...data } : topic)),
       );
       return { previous: prev };
     },
