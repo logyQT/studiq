@@ -227,21 +227,34 @@ function printEntry(entry: Entry, format: 'json' | 'tsv'): void {
  */
 function withEntryLock<T>(file: string, fn: () => T): T {
   const lock = `${file}.lock`;
+  // Unique ownership token: the finally block only removes the lock if it
+  // still contains this token (a stale reclaimer may have replaced it).
+  const token = `${process.pid}:${randomBytes(8).toString('hex')}`;
   const deadline = Date.now() + 15_000;
   for (;;) {
     try {
-      writeFileSync(lock, `${process.pid}\n`, { flag: 'wx', mode: 0o600 });
+      writeFileSync(lock, `${token}\n`, { flag: 'wx', mode: 0o600 });
       break;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== 'EEXIST') fail(`cannot lock ${lock}: ${(error as Error).message}`);
       try {
-        if (Date.now() - statSync(lock).mtimeMs > 5_000) {
-          rmSync(lock, { force: true });
-          continue;
+        const observed = statSync(lock);
+        if (Date.now() - observed.mtimeMs > 5_000) {
+          // Recheck identity before reclaiming: never unlink a lock another
+          // process created after our first stat.
+          const again = statSync(lock);
+          if (
+            again.dev === observed.dev &&
+            again.ino === observed.ino &&
+            again.mtimeMs === observed.mtimeMs
+          ) {
+            rmSync(lock, { force: true });
+            continue;
+          }
         }
       } catch {
-        /* lock vanished; retry */
+        /* lock vanished or changed; retry */
       }
       if (Date.now() > deadline) fail(`timed out waiting for ${lock}`);
       Bun.sleepSync(20);
@@ -250,7 +263,11 @@ function withEntryLock<T>(file: string, fn: () => T): T {
   try {
     return fn();
   } finally {
-    rmSync(lock, { force: true });
+    try {
+      if (readFileSync(lock, 'utf8').trim() === token) rmSync(lock, { force: true });
+    } catch {
+      /* already gone or replaced */
+    }
   }
 }
 
@@ -294,21 +311,36 @@ function writeEntry(args: Args): void {
   const file = entryPath(dir, projectId);
   const payload = `${JSON.stringify(entry, null, 2)}\n`;
 
+  // Record write failures instead of exiting inside the lock: withEntryLock's
+  // finally must release the lock first, then the caller handles the failure.
+  let collision = false;
+  let writeError: Error | null = null;
+
   withEntryLock(file, () => {
-    if (args.values.exclusive === '1') {
-      // Atomic claim: O_EXCL fails when another checkout already owns the entry.
-      try {
+    try {
+      if (args.values.exclusive === '1') {
+        // Atomic claim: O_EXCL fails when another checkout already owns the entry.
         writeFileSync(file, payload, { mode: 0o600, flag: 'wx' });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'EEXIST') process.exit(2);
-        fail(`cannot create ${file}: ${(error as Error).message}`);
+        return;
       }
-    } else {
       const tmp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
-      writeFileSync(tmp, payload, { mode: 0o600, flag: 'wx' });
-      renameSync(tmp, file);
+      try {
+        writeFileSync(tmp, payload, { mode: 0o600, flag: 'wx' });
+        renameSync(tmp, file);
+      } finally {
+        rmSync(tmp, { force: true });
+      }
+    } catch (error) {
+      if (args.values.exclusive === '1' && (error as NodeJS.ErrnoException).code === 'EEXIST') {
+        collision = true;
+      } else {
+        writeError = error as Error;
+      }
     }
   });
+
+  if (collision) process.exit(2);
+  if (writeError) fail(`cannot write ${file}: ${writeError.message}`);
   printEntry(entry, args.format);
 }
 
