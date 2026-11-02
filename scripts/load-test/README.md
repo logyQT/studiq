@@ -35,12 +35,12 @@ Both run directly with Bun (no build step) and are dependency-free.
   | `APP_URL`                   | `http://localhost:${APP_PORT}` (default `3000`)           |
   | `LOADTEST_DIR`              | `.dev/load-test`                                          |
   | `LOADTEST_PASSWORD`         | `Password123!`                                            |
+  | `LOADTEST_EMAIL_DOMAIN`     | `loadtest.studiq.local`                                   |
 
   `SUPABASE_API_PORT` resolves from the environment, then from the port
   `scripts/dev` recorded in the generated `supabase/.env`, then
   `SUPABASE_PORT_BASE + 1` (base `54320`) — so a non-default checkout block is
   picked up without hardcoding it.
-  | `LOADTEST_EMAIL_DOMAIN` | `loadtest.studiq.local` |
 
 > `.dev/` is git-ignored, so generated pools and reports never get committed.
 

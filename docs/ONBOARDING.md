@@ -241,12 +241,12 @@ cp .env.example .env
 ```
 
 Root `.env` is the only hand-edited env file. Every value is optional: the
-checkout gets a unique `SUPABASE_PROJECT_ID` (derived from its path) and its own
-port block (`SUPABASE_PORT_BASE=54320` → API `:54321`, DB `:54322`, Studio
-`:54323`, Mail `:54324`). When another developer or agent is already running a
-stack, set `APP_PORT`, `SUPABASE_PROJECT_ID` and `SUPABASE_PORT_BASE`
-explicitly — see the examples at the bottom of `.env.example` and
-`bun dev:ports --suggest` for a free block.
+checkout gets a unique `SUPABASE_PROJECT_ID` (derived from its path), but every
+checkout defaults to the same port block (`SUPABASE_PORT_BASE=54320` → API
+`:54321`, DB `:54322`, Studio `:54323`, Mail `:54324`). When another developer
+or agent is already running a stack, set `APP_PORT`, `SUPABASE_PROJECT_ID` and
+`SUPABASE_PORT_BASE` explicitly — see the examples at the bottom of
+`.env.example` and `bun dev:ports --suggest` for a free block.
 
 ### 3. Start the stack
 
@@ -422,15 +422,16 @@ git commit -m "migration: migration_name"
 
 ```bash
 git pull
-bun dev:up                 # this checkout's Supabase (+ web); applies migrations automatically
-bun dev:reset-db           # (optional) reloads fresh seed data, this checkout only
+bun dev:up                      # this checkout's Supabase (+ web); does NOT migrate a running stack
+bunx supabase db push --local   # apply new migrations to the running stack
+bun dev:reset-db                # (optional) reloads fresh seed data, this checkout only
 ```
 
-Every checkout gets its own `SUPABASE_PROJECT_ID` and port block. If another
-developer/agent already runs a stack, set `APP_PORT`, `SUPABASE_PROJECT_ID` and
-`SUPABASE_PORT_BASE` in this checkout's `.env` first (`bun dev:ports --suggest`
-prints a free block). Never run `supabase stop --all`; `bun dev:down --all` only
-stops this checkout's stack.
+Every checkout gets its own `SUPABASE_PROJECT_ID`; ports default to the same
+block. If another developer/agent already runs a stack, set `APP_PORT`,
+`SUPABASE_PROJECT_ID` and `SUPABASE_PORT_BASE` in this checkout's `.env` first
+(`bun dev:ports --suggest` prints a free block). Never run
+`supabase stop --all`; `bun dev:down --all` only stops this checkout's stack.
 
 ---
 
