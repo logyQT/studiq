@@ -1280,11 +1280,12 @@ build_app() {
 }
 
 # Next inlines NEXT_PUBLIC_* at build time, so a build reused across port
-# blocks would keep the old Supabase/site URLs. Record the values next to the
-# build and rebuild when they change (or when the record is missing).
+# blocks (or key rotations) would keep the old Supabase URL/site URL/anon key.
+# Record the values next to the build and rebuild when they change (or when
+# the record is missing).
 build_fingerprint() {
-  printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SITE_URL=%s\n' \
-    "${NEXT_PUBLIC_SUPABASE_URL:-}" "${NEXT_PUBLIC_SITE_URL:-}"
+  printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SITE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\n' \
+    "${NEXT_PUBLIC_SUPABASE_URL:-}" "${NEXT_PUBLIC_SITE_URL:-}" "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}"
 }
 
 build_is_current() {
@@ -1308,7 +1309,7 @@ ensure_prod_build() {
     return 0
   fi
   if [[ -f "$REPO_ROOT/apps/web/.next/BUILD_ID" ]]; then
-    warn "Production build was made with different NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SITE_URL; rebuilding."
+    warn "Production build was made with different NEXT_PUBLIC_* values; rebuilding."
   else
     header "No production build for this checkout — building once"
   fi
@@ -1434,7 +1435,11 @@ cmd_serve() {
     if supabase_healthy && load_supabase_status; then
       merge_supabase_env
       render_web_env
-    elif [[ ! -f "$WEB_ENV_FILE" ]]; then
+    elif [[ -f "$WEB_ENV_FILE" ]]; then
+      # Stack stopped: load the generated keys so the build fingerprint (and
+      # any rebuild) uses them, not just the `next start` child.
+      load_web_env_fallback
+    else
       fail "No generated apps/web/.env and no running stack for this checkout.
   Run 'bun dev:up' (or 'bun dev:build') first."
     fi
