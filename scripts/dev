@@ -602,6 +602,8 @@ suggest_free_block() {
   entries=$(registry_list)
 
   for ((app = 3000; app <= 3999; app++)); do
+    # :3010 is reserved for the shared QA app (guard_qa_stack rejects it).
+    (( app == 3010 )) && continue
     port_in_use "$app" && continue
     entry_for_port_in "$entries" "$app" >/dev/null && continue
     break
@@ -609,6 +611,8 @@ suggest_free_block() {
   (( app <= 3999 )) || fail "No free APP_PORT found in 3000-3999."
 
   for ((base = 54320; base <= 62000; base += 100)); do
+    # 54420 → API 54421, the shared QA stack block that guard_qa_stack rejects.
+    (( base == 54420 )) && continue
     ok=1
     for offset in "${offsets[@]}"; do
       check=$((base + offset))

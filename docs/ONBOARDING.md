@@ -287,9 +287,10 @@ Optional local e-mail delivery uses the Inbucket container
 `supabase/config.toml` first (and offset it per parallel checkout). Without it
 the copyable invite link is the only delivery path.
 
-OpenTelemetry: telemetry is ON by default. Leave `OTEL_SDK_DISABLED` unset to
-ship traces/metrics/logs to the local collector (`docker compose up -d`). Set
-`OTEL_SDK_DISABLED=true` only to turn telemetry off entirely.
+OpenTelemetry: `.env.example` ships `OTEL_SDK_DISABLED=true`, so the standard
+`cp .env.example .env` setup leaves telemetry **off**. Remove or comment out
+that line to ship traces/metrics/logs to the local collector
+(`docker compose up -d`).
 
 ### 5. (Optional) Set up LLM / AI Provider
 
@@ -435,28 +436,30 @@ stops this checkout's stack.
 
 ## Useful Commands
 
-| Command                              | Description                                        |
-| ------------------------------------ | -------------------------------------------------- |
-| `bun dev:up`                         | Start this checkout's stack + web server           |
-| `bun dev:up --prod`                  | Production build (if missing) + `next start`       |
-| `bun dev:serve`                      | `next start` on `APP_PORT` (no dev server)         |
-| `bun dev:status`                     | Health, project id, ports, owner (`--json`)        |
-| `bun dev:down [--all]`               | Stop this checkout's web (+ Supabase with `--all`) |
-| `bun dev:reset-db`                   | Reset this checkout's DB + load seeds              |
-| `bun dev:doctor`                     | Explain missing / owned / colliding state          |
-| `bun dev:ports --suggest`            | Print a free `APP_PORT` / `SUPABASE_PORT_BASE`     |
-| `bunx supabase status -o env`        | This checkout's URLs and keys                      |
-| `bunx supabase db diff -f <name>`    | Generate migration from current changes            |
-| `bunx supabase migration new <name>` | Create an empty migration manually                 |
-| `bunx supabase db push`              | Push migrations to database                        |
-| `bun dev`                            | Next.js dev server (agents should not use it)      |
-| `bun test`                           | Reset DB + run all tests                           |
-| `bun test:unit`                      | Run unit tests only                                |
-| `bun test:integration`               | Run integration tests only                         |
-| `bun lint`                           | Type check + lint                                  |
-| `gh auth status`                     | Check GitHub CLI authentication                    |
-| `scripts/pr`                         | Create a PR from current branch via `gh`           |
-| `scripts/spin <branch>`              | Create worktree + branch for isolated work         |
+| Command                              | Description                                                     |
+| ------------------------------------ | --------------------------------------------------------------- |
+| `bun dev:up`                         | Start this checkout's stack + web server                        |
+| `bun dev:up --prod`                  | Production build (if missing) + `next start`                    |
+| `bun dev:serve`                      | `next start` on `APP_PORT` (no dev server)                      |
+| `bun dev:status`                     | Health, project id, ports, owner (`--json`)                     |
+| `bun dev:down [--all]`               | Stop this checkout's web (+ Supabase with `--all`)              |
+| `bun dev:reset-db`                   | Reset this checkout's DB + load seeds                           |
+| `bun dev:doctor`                     | Explain missing / owned / colliding state                       |
+| `bun dev:ports --suggest`            | Print a free `APP_PORT` / `SUPABASE_PORT_BASE`                  |
+| `bunx supabase status -o env`        | This checkout's URLs and keys                                   |
+| `bunx supabase db diff -f <name>`    | Generate migration from current changes                         |
+| `bunx supabase migration new <name>` | Create an empty migration manually                              |
+| `bunx supabase db push`              | Push migrations to database                                     |
+| `bun dev`                            | Next.js dev server (agents should not use it)                   |
+| `bun test`                           | Bun's built-in test runner — **not** Vitest; use `bun run test` |
+| `bun run test`                       | Vitest: all unit + integration tests (no DB reset)              |
+| `bun test:unit`                      | Run unit tests only                                             |
+| `bun test:integration`               | Run integration tests only                                      |
+| `bun lint`                           | Lint + import/migration/URL guards (does **not** type-check)    |
+| `bun lint:all`                       | Type-check + lint                                               |
+| `gh auth status`                     | Check GitHub CLI authentication                                 |
+| `scripts/pr`                         | Create a PR from current branch via `gh`                        |
+| `scripts/spin <branch>`              | Create worktree + branch for isolated work                      |
 
 > Plain `bunx supabase start|stop|status|db ...` follows this checkout because
 > `scripts/dev` renders `supabase/.env`. Prefer the `bun dev:*` commands — they
@@ -479,9 +482,10 @@ stops this checkout's stack.
 | Loki (logs API)         | http://localhost:3100          |
 | OTLP intake (collector) | http://localhost:4318          |
 
-A second checkout escalates the block (`SUPABASE_PORT_BASE=54420` → API
-`:54421`, DB `:54422`, …) and picks a free `APP_PORT`. `bun dev:status` prints
-the authoritative URLs for the checkout you are in.
+A second checkout escalates the block (`SUPABASE_PORT_BASE=54520` → API
+`:54521`, DB `:54522`, …; `54420` is reserved for the shared QA stack) and
+picks a free `APP_PORT`. `bun dev:status` prints the authoritative URLs for the
+checkout you are in.
 
 ---
 
