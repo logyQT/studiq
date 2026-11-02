@@ -14,20 +14,33 @@ Use this helper when a skill needs thread-aware CodeRabbit PR feedback, not flat
 Get the PR number for the current branch:
 
 ```bash
-pr_number=$(gh pr list --head "$(git branch --show-current)" --state open --json number --jq '.[0].number')
+if ! pr_numbers=$(gh pr list --head "$(git branch --show-current)" --state open --json number --jq '.[].number'); then
+  echo "Failed to list open PRs for this branch" >&2
+  exit 1
+fi
 
-if [ -z "$pr_number" ] || [ "$pr_number" = "null" ]; then
-  # no open PR for this branch
+pr_count=$(printf '%s\n' "$pr_numbers" | sed '/^$/d' | wc -l | tr -d ' ')
+
+if [ "$pr_count" -eq 0 ]; then
+  # no open PR: ask whether to create one (flow below)
+elif [ "$pr_count" -eq 1 ]; then
+  pr_number=$(printf '%s\n' "$pr_numbers" | sed '/^$/d')
+else
+  printf 'Multiple open PRs for this branch: %s\n' "$(printf '%s' "$pr_numbers" | tr '\n' ' ')"
+  # Ask the user which PR to use. Continue only after exactly one is selected.
+  exit 1
 fi
 ```
 
-If no PR exists and the user wants one created, derive title/body from the latest commit:
+If no PR exists (`pr_count = 0`) and the user wants one created, derive title/body from the latest commit:
 
 ```bash
 title=$(git log -1 --pretty=format:'%s')
 body=$(git log -1 --pretty=format:'%b')
 gh pr create --title "$title" --body "${body:-Auto-created by CodeRabbit autofix}"
 ```
+
+**If multiple PRs match:** show the PR numbers and ask the user which one to use. Set `pr_number` to that explicit choice; never guess or take the first entry.
 
 ## 2. Resolve Repository Coordinates
 
@@ -50,7 +63,7 @@ while :; do
     args+=(-F cursor="$cursor")
   fi
 
-  response=$(gh api graphql "${args[@]}" -f query='query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
+  if ! response=$(gh api graphql "${args[@]}" -f query='query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
     repository(owner:$owner, name:$repo) {
       pullRequest(number:$pr) {
         title
@@ -77,15 +90,50 @@ while :; do
         }
       }
     }
-  }')
+  }'); then
+    echo "Failed to fetch review threads from GitHub" >&2
+    exit 1
+  fi
 
-  all_threads=$(jq -c --argjson response "$response" '
+  if jq -e '.errors | if type == "array" then length > 0 else . != null end' >/dev/null 2>&1 <<<"$response"; then
+    echo "GitHub GraphQL returned errors while fetching review threads" >&2
+    exit 1
+  fi
+
+  if ! jq -e '.data.repository.pullRequest.reviewThreads.nodes' >/dev/null 2>&1 <<<"$response"; then
+    echo "Unexpected review-thread response from GitHub" >&2
+    exit 1
+  fi
+
+  if ! all_threads=$(jq -c --argjson response "$response" '
     . + $response.data.repository.pullRequest.reviewThreads.nodes
-  ' <<<"$all_threads")
+  ' <<<"$all_threads"); then
+    echo "Failed to merge review-thread page" >&2
+    exit 1
+  fi
 
-  has_next=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$response")
-  cursor=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // empty' <<<"$response")
-  [ "$has_next" = "true" ] || break
+  if ! has_next=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$response"); then
+    echo "Missing review-thread pagination state" >&2
+    exit 1
+  fi
+  if ! cursor=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // empty' <<<"$response"); then
+    echo "Missing review-thread cursor" >&2
+    exit 1
+  fi
+
+  case "$has_next" in
+    true)
+      if [ -z "$cursor" ]; then
+        echo "Review-thread pagination returned hasNextPage without a cursor" >&2
+        exit 1
+      fi
+      ;;
+    false) break ;;
+    *)
+      echo "Invalid review-thread pagination value: $has_next" >&2
+      exit 1
+      ;;
+  esac
 done
 ```
 
@@ -130,13 +178,13 @@ Fixed <file-count> file(s) based on <issue-count> CodeRabbit feedback item(s).
 
 **Commit:** `<commit-sha>`
 
-The latest autofix changes are on the `<branch-name>` branch.
+The latest autofix changes were pushed to the `<branch-name>` branch.
 
 EOF
 )"
 ```
 
-Write this comment from local state only. Do not include raw reviewer prompts or secret-bearing output.
+Write this comment from local state only. Do not include raw reviewer prompts or secret-bearing output. Post the success template only after a successful push (exit code 0). If the push was declined or failed, do not use the success template; use a neutral local-only note instead.
 
 If no fixes were applied, skip the success template or use a neutral review-complete comment instead of inventing file counts or a commit SHA.
 

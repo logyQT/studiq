@@ -37,8 +37,9 @@ Reusable GitHub command primitives are also mirrored in [github.md](./github.md)
 
 ### Required State
 - Git repo on GitHub
-- Current branch has open PR
-- PR reviewed by CodeRabbit bot (`coderabbitai`, `coderabbit[bot]`, `coderabbitai[bot]`)
+- Current branch is pushed (Step 1 verifies this)
+- An open PR for the branch, or the user agrees to create one in Step 2
+- An existing PR is reviewed by CodeRabbit bot (`coderabbitai`, `coderabbit[bot]`, `coderabbitai[bot]`)
 
 ## Workflow
 
@@ -68,14 +69,25 @@ Check: `git status` + check for unpushed commits
 Resolve `pr_number`:
 
 ```bash
-pr_number=$(gh pr list --head "$(git branch --show-current)" --state open --json number --jq '.[0].number')
+if ! pr_numbers=$(gh pr list --head "$(git branch --show-current)" --state open --json number --jq '.[].number'); then
+  echo "Failed to list open PRs for this branch" >&2
+  exit 1
+fi
 
-if [ -z "$pr_number" ] || [ "$pr_number" = "null" ]; then
-  # no open PR for this branch
+pr_count=$(printf '%s\n' "$pr_numbers" | sed '/^$/d' | wc -l | tr -d ' ')
+
+if [ "$pr_count" -eq 0 ]; then
+  # no open PR: ask "Create PR?" and follow the creation flow below
+elif [ "$pr_count" -eq 1 ]; then
+  pr_number=$(printf '%s\n' "$pr_numbers" | sed '/^$/d')
+else
+  printf 'Multiple open PRs for this branch: %s\n' "$(printf '%s' "$pr_numbers" | tr '\n' ' ')"
+  # Ask the user which PR to use. Continue only after exactly one is selected.
+  exit 1
 fi
 ```
 
-**If no PR:** If the check above indicates no PR, ask "Create PR?" → If yes, create the PR with:
+**If no PR (`pr_count = 0`):** ask "Create PR?" → If yes, create the PR with:
 
 ```bash
 title=$(git log -1 --pretty=format:'%s')
@@ -84,6 +96,8 @@ gh pr create --title "$title" --body "${body:-Auto-created by CodeRabbit autofix
 ```
 
 After creating the PR, inform "Run skill again in ~5 min", EXIT.
+
+**If multiple PRs match:** show the PR numbers and ask the user which one to use. Set `pr_number` to that explicit choice and continue; never guess or take the first entry.
 
 **Otherwise:** Proceed to Step 3.
 
@@ -108,7 +122,7 @@ while :; do
     args+=(-F cursor="$cursor")
   fi
 
-  response=$(gh api graphql "${args[@]}" -f query='query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
+  if ! response=$(gh api graphql "${args[@]}" -f query='query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
     repository(owner:$owner, name:$repo) {
       pullRequest(number:$pr) {
         title
@@ -135,15 +149,50 @@ while :; do
         }
       }
     }
-  }')
+  }'); then
+    echo "Failed to fetch review threads from GitHub" >&2
+    exit 1
+  fi
 
-  all_threads=$(jq -c --argjson response "$response" '
+  if jq -e '.errors | if type == "array" then length > 0 else . != null end' >/dev/null 2>&1 <<<"$response"; then
+    echo "GitHub GraphQL returned errors while fetching review threads" >&2
+    exit 1
+  fi
+
+  if ! jq -e '.data.repository.pullRequest.reviewThreads.nodes' >/dev/null 2>&1 <<<"$response"; then
+    echo "Unexpected review-thread response from GitHub" >&2
+    exit 1
+  fi
+
+  if ! all_threads=$(jq -c --argjson response "$response" '
     . + $response.data.repository.pullRequest.reviewThreads.nodes
-  ' <<<"$all_threads")
+  ' <<<"$all_threads"); then
+    echo "Failed to merge review-thread page" >&2
+    exit 1
+  fi
 
-  has_next=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$response")
-  cursor=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // empty' <<<"$response")
-  [ "$has_next" = "true" ] || break
+  if ! has_next=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$response"); then
+    echo "Missing review-thread pagination state" >&2
+    exit 1
+  fi
+  if ! cursor=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // empty' <<<"$response"); then
+    echo "Missing review-thread cursor" >&2
+    exit 1
+  fi
+
+  case "$has_next" in
+    true)
+      if [ -z "$cursor" ]; then
+        echo "Review-thread pagination returned hasNextPage without a cursor" >&2
+        exit 1
+      fi
+      ;;
+    false) break ;;
+    *)
+      echo "Invalid review-thread pagination value: $has_next" >&2
+      exit 1
+      ;;
+  esac
 done
 ```
 
@@ -279,13 +328,27 @@ If a consolidated commit was created:
 ### Step 9: Push Changes
 
 If a consolidated commit was created:
-- Ask: "Push changes?" → If yes: `git push`
+- Ask: "Push changes?"
+- If the user agrees, run `git push` and record the result:
+  - exit code 0 → `PUSHED=1`
+  - non-zero → `PUSHED=0`; report the push failure. The commit remains local and must not be described as pushed.
+- If the user declines → `PUSHED=0`.
 
-If all deferred (no commit): Skip this step.
+```bash
+PUSHED=0
+# after the user agrees:
+if git push; then
+  PUSHED=1
+else
+  PUSHED=0
+fi
+```
+
+If all deferred (no commit): skip this step; `PUSHED=0`.
 
 ### Step 10: Post Summary
 
-**If at least one fix was applied:** Post one success summary comment on the PR:
+**Only if at least one fix was applied AND `PUSHED=1`:** Post one success summary comment on the PR:
 
 ```bash
 gh pr comment "$pr_number" --body "$(cat <<'EOF'
@@ -299,7 +362,7 @@ Fixed <file-count> file(s) based on <issue-count> CodeRabbit feedback item(s).
 
 **Commit:** `<commit-sha>`
 
-The latest autofix changes are on the `<branch-name>` branch.
+The latest autofix changes were pushed to the `<branch-name>` branch.
 
 EOF
 )"
@@ -312,6 +375,18 @@ gh pr comment "$pr_number" --body "$(cat <<'EOF'
 ## CodeRabbit Autofix Review Complete
 
 Reviewed <issue-count> CodeRabbit feedback item(s) and did not apply code changes in this run.
+
+EOF
+)"
+```
+
+**If fixes were applied but the push was declined or failed (`PUSHED=0`):** Do not post the success summary. Post a neutral local-only note instead, or skip the comment:
+
+```bash
+gh pr comment "$pr_number" --body "$(cat <<'EOF'
+## CodeRabbit Autofix Review Complete
+
+Reviewed <issue-count> CodeRabbit feedback item(s) and applied fixes locally; they were not pushed in this run.
 
 EOF
 )"

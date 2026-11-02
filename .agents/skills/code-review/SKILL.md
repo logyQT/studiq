@@ -84,7 +84,13 @@ Default scope includes committed, staged, and tracked unstaged changes; raw untr
 
 Read `--agent` as NDJSON, not a single JSON document. Preserve the returned `critical`, `major`, `minor`, `trivial`, `info`, or `none` severity; do not relabel findings as Warning. Use `fileName`, `codegenInstructions`, and `suggestions` when available, falling back to the comment when fix instructions are absent.
 
-A heartbeat indicates liveness, not completion. Wait for completion and inspect its status. `complete` with `status: review_skipped` and zero findings means no review ran; it is not evidence that analyzed code is clean. Errors or interrupted output also cannot establish a clean review.
+A heartbeat indicates liveness, not completion. Wait for the terminal result and require all of the following before reporting a complete review:
+
+- the review command exited with code 0;
+- the final `complete` event reports `status: complete` with a successful `outcome`;
+- `unreviewedFileCount` is 0 (or absent on CLI versions that do not emit it).
+
+Treat `status: review_skipped`, a failed/non-success `outcome`, a positive `unreviewedFileCount`, errors, or interrupted output as an incomplete review. Never use an incomplete review as evidence that the analyzed code is clean; report the incomplete status and stop.
 
 Create a task list for issues found that need to be addressed.
 
