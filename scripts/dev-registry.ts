@@ -53,6 +53,7 @@ const FIELDS = [
   'shared',
   'sharedOwner',
   'mode',
+  'claimId',
 ] as const;
 
 type Field = (typeof FIELDS)[number];
@@ -74,6 +75,8 @@ interface Entry {
   shared: boolean;
   sharedOwner: string | null;
   mode: 'dev' | 'prod';
+  /** Identity of the invocation that created the claim; null on old entries. */
+  claimId: string | null;
 }
 
 interface Args {
@@ -178,6 +181,7 @@ function readEntry(file: string): Entry | null {
       sharedOwner:
         typeof parsed.sharedOwner === 'string' && parsed.sharedOwner ? parsed.sharedOwner : null,
       mode: parsed.mode === 'prod' ? 'prod' : 'dev',
+      claimId: typeof parsed.claimId === 'string' && parsed.claimId ? parsed.claimId : null,
     };
   } catch {
     return null;
@@ -237,6 +241,7 @@ function writeEntry(args: Args): void {
     shared: args.values.shared === '1',
     sharedOwner: args.values['shared-owner'] || null,
     mode: args.values.mode === 'prod' ? 'prod' : 'dev',
+    claimId: args.values['claim-id'] || null,
   };
 
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -329,7 +334,7 @@ function main(): void {
           'write-only ports/PID flags: --app-port --api-port --db-port --studio-port',
           '  --mail-port --shadow-port --pooler-port --analytics-port',
           '  --edge-inspector-port --owner-pid --started-at --shared 0|1',
-          '  --shared-owner NAME --mode dev|prod --exclusive 1',
+          '  --shared-owner NAME --mode dev|prod --exclusive 1 --claim-id TOKEN',
         ].join('\n'),
       );
       break;

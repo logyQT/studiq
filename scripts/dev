@@ -462,7 +462,7 @@ note_missing_env_file() {
 }
 
 # ── Registry ─────────────────────────────────────────────────────────────────
-REGISTRY_FIELDS=(projectId worktree appPort apiPort dbPort studioPort mailPort shadowPort poolerPort analyticsPort edgeInspectorPort ownerPid startedAt shared sharedOwner mode)
+REGISTRY_FIELDS=(projectId worktree appPort apiPort dbPort studioPort mailPort shadowPort poolerPort analyticsPort edgeInspectorPort ownerPid startedAt shared sharedOwner mode claimId)
 BUILD_LOCK_HELD=0
 BUILD_LOCK_MODE=""
 BUILD_LOCK_DIR=""
@@ -472,6 +472,7 @@ STARTUP_INCOMPLETE=0
 STACK_START_ATTEMPTED=0
 STACK_ADOPTED=0
 CLAIM_CREATED=0
+CLAIM_ID=""
 WEB_STARTED_BY_US=0
 WEB_STARTED_PID=""
 
@@ -549,6 +550,15 @@ registry_write_entry() {
   # A claim is held while the startup runs; without a web pid yet, record this
   # shell so concurrent checkouts see a live owner.
   if (( exclusive == 1 )) && [[ -z "$pid" ]]; then pid=$$; fi
+  # Preserve the existing claim id on non-claim updates; only claim_project
+  # generates a new one (and cleanup removes only that id).
+  local claim_id=${CLAIM_ID:-} existing=""
+  if [[ -z "$claim_id" ]]; then
+    existing=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || existing=""
+    if [[ -n "$existing" ]]; then
+      claim_id=$(entry_field "$existing" claimId 2>/dev/null) || claim_id=""
+    fi
+  fi
   ensure_registry_dir
   local -a write_args=(
     write
@@ -569,6 +579,7 @@ registry_write_entry() {
     --shared "$SHARED"
     --shared-owner "$SHARED_OWNER"
     --mode "$mode"
+    --claim-id "$claim_id"
   )
   if (( exclusive == 1 )); then write_args+=(--exclusive 1); fi
   bun "$REGISTRY_HELPER" "${write_args[@]}" >/dev/null
@@ -577,6 +588,20 @@ registry_write_entry() {
 registry_remove_entry() {
   registry_dir_trusted || return 0
   bun "$REGISTRY_HELPER" remove --dir "$REGISTRY_DIR" --project-id "$SUPABASE_PROJECT_ID" 2>/dev/null || true
+}
+
+# Failed-startup cleanup: remove the entry only while it still carries the
+# claim id this invocation created. Another invocation that replaced the claim
+# is preserved, even if this one created an entry earlier.
+remove_claim_if_ours() {
+  (( CLAIM_CREATED == 1 )) || return 0
+  [[ -n "$CLAIM_ID" ]] || return 0
+  local entry claim_id
+  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
+  [[ -n "$entry" ]] || return 0
+  claim_id=$(entry_field "$entry" claimId 2>/dev/null) || claim_id=""
+  [[ "$claim_id" == "$CLAIM_ID" ]] || return 0
+  registry_remove_entry || true
 }
 
 entry_for_port_in() {
@@ -641,6 +666,9 @@ claim_project() {
     registry_remove_entry
   fi
 
+  # Unique identity for this claim; cleanup removes the entry only while it
+  # still records this id.
+  CLAIM_ID="$$-$(date +%s)-$RANDOM"
   ensure_registry_dir
   if registry_write_entry "$mode" 1; then
     CLAIM_CREATED=1
@@ -1293,11 +1321,11 @@ cleanup() {
     fi
     if (( STACK_START_ATTEMPTED == 1 )); then
       stop_supabase_scoped || true
-      if (( CLAIM_CREATED == 1 )); then registry_remove_entry || true; fi
+      remove_claim_if_ours
     elif (( STACK_ADOPTED == 1 )); then
       : # adopted stack still running; keep ownership
-    elif (( CLAIM_CREATED == 1 )); then
-      registry_remove_entry || true
+    else
+      remove_claim_if_ours
     fi
   fi
   return 0
