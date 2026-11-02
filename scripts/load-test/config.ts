@@ -10,6 +10,7 @@
  * env var of the same name; otherwise the value recorded by `scripts/dev` in
  * `supabase/.env`, or the well-known local Supabase defaults, are used.
  */
+import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
@@ -135,6 +136,46 @@ function registryEntry(projectId: string): RegistryEntry | null {
 export type ImplicitTargetCheck = { ok: true } | { ok: false; reason: string };
 
 /**
+ * Prove the recorded stack is actually running here: `docker ps` (running
+ * containers only) must list a container with the project label and the
+ * recorded API port mapping. Fail closed when Docker cannot answer.
+ */
+function liveStackPublishes(projectId: string, apiPort: number): ImplicitTargetCheck {
+  let ports: string;
+  try {
+    ports = String(
+      execFileSync(
+        'docker',
+        ['ps', '--filter', `label=com.supabase.cli.project=${projectId}`, '--format', '{{.Ports}}'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
+      ),
+    );
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      ok: false,
+      reason:
+        code === 'ENOENT'
+          ? 'docker is not installed, so a running stack cannot be verified'
+          : 'docker could not inspect running containers, so the stack cannot be verified',
+    };
+  }
+  if (!ports.trim()) {
+    return {
+      ok: false,
+      reason: `no running container carries project label ${projectId} (is the stack up?)`,
+    };
+  }
+  if (!ports.includes(`:${apiPort}->`)) {
+    return {
+      ok: false,
+      reason: `no running ${projectId} container publishes the recorded API port :${apiPort}`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Seeding writes accounts, so an implicit target taken from the generated
  * `supabase/.env` must be proven to belong to this checkout. Explicit targets
  * (`SUPABASE_URL`, `SUPABASE_API_PORT`, `--supabase-url`) skip the check.
@@ -177,7 +218,7 @@ export function implicitTargetOwnership(): ImplicitTargetCheck {
       reason: `registry records :${entry.apiPort} but supabase/.env records :${apiPort}`,
     };
   }
-  return { ok: true };
+  return liveStackPublishes(projectId, apiPort);
 }
 
 /**
