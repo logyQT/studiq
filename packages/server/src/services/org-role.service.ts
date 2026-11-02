@@ -9,9 +9,10 @@ import type {
   UpdateOrgRoleInput,
 } from '@studiq/server/models/org-role.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class OrgRoleService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async listRoles(ctx: RequestContext): Promise<
     ServiceResult<
@@ -56,7 +57,8 @@ export class OrgRoleService {
           name: r.name,
           displayName: r.display_name,
           description: r.description,
-          isSystem: r.is_system,
+          // `is_system` is nullable (`DEFAULT false`); a role without the flag is a custom one.
+          isSystem: r.is_system ?? false,
           memberCount,
           permissionCount,
         };
@@ -102,7 +104,8 @@ export class OrgRoleService {
       name: data.name,
       displayName: data.display_name,
       description: data.description,
-      isSystem: data.is_system,
+      // `is_system` is nullable (`DEFAULT false`); treat a missing flag as custom.
+      isSystem: data.is_system ?? false,
       permissions:
         (data.org_role_permissions as unknown as { permission_name: string; scope: string }[])?.map(
           (p) => ({ permissionName: p.permission_name, scope: p.scope }),
@@ -141,7 +144,8 @@ export class OrgRoleService {
       name: role.name,
       displayName: role.display_name,
       description: role.description,
-      isSystem: role.is_system,
+      // `is_system` is nullable (`DEFAULT false`); createRole always writes `false`.
+      isSystem: role.is_system ?? false,
     });
   }
 
@@ -171,7 +175,7 @@ export class OrgRoleService {
       return failure('FORBIDDEN');
     }
 
-    const update: Record<string, string | null> = {};
+    const update: Database['public']['Tables']['org_roles']['Update'] = {};
     if (data.name !== undefined) update.name = data.name;
     if (data.display_name !== undefined) {
       update.display_name = data.display_name;
@@ -202,7 +206,8 @@ export class OrgRoleService {
       name: role.name,
       displayName: role.display_name,
       description: role.description,
-      isSystem: role.is_system,
+      // `is_system` is nullable (`DEFAULT false`); treat a missing flag as custom.
+      isSystem: role.is_system ?? false,
     });
   }
 

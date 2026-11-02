@@ -5,6 +5,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import type { Flashcard } from '@studiq/server/models/flashcard.model';
 import { flashcardService } from '@studiq/server/services/flashcard.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 type FlashcardWithAssignments = Flashcard & {
   flashcard_topic_assignments: Array<{ topic_id: string }>;
@@ -12,7 +13,7 @@ type FlashcardWithAssignments = Flashcard & {
 };
 
 export class FlashcardExportService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async exportCsv(
     ctx: RequestContext,

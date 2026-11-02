@@ -12,6 +12,7 @@ import type {
 } from '@studiq/server/models/question.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /** Shape of the `question_topic_assignments(topic_id, topics(id, name))` embed. */
 type QuestionTopicLink = {
@@ -61,7 +62,7 @@ function escapeLike(term: string): string {
 }
 
 export class QuestionService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(
     data: CreateQuestionInput,
@@ -73,7 +74,11 @@ export class QuestionService {
     const questionCount = await this.countOwned(supabase, ctx);
     await limitsResolver.checkLimit(ctx, 'max_questions', questionCount);
 
-    const visibility = bankVisibility ?? 'personal';
+    // `questions.visibility` is the two-value `visibility_type` enum. The bank's
+    // visibility arrives as a plain string; anything but `group` means the
+    // personal default this insert always used.
+    const visibility: Database['public']['Enums']['visibility_type'] =
+      bankVisibility === 'group' ? 'group' : 'personal';
 
     const { data: question, error: qError } = await supabase
       .from('questions')
@@ -245,7 +250,7 @@ export class QuestionService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['questions']['Update'] = {};
     if (data.type) updateFields.type = data.type;
     if (data.content) updateFields.content = data.content;
     if (data.explanation !== undefined) updateFields.explanation = data.explanation;
@@ -281,8 +286,10 @@ export class QuestionService {
     }
 
     if (data.bankId !== undefined) {
-      const bFields: Record<string, unknown> = { bank_id: data.bankId };
-      if (bankVisibility !== undefined) bFields.visibility = bankVisibility;
+      const bFields: Database['public']['Tables']['questions']['Update'] = { bank_id: data.bankId };
+      if (bankVisibility !== undefined) {
+        bFields.visibility = bankVisibility === 'group' ? 'group' : 'personal';
+      }
       const { error: bError } = await supabase.from('questions').update(bFields).eq('id', id);
       if (bError) return toDbFailure(bError);
     }
@@ -323,7 +330,10 @@ export class QuestionService {
    * count is scoped to content owned by the caller **in that org**, so
    * personal-space questions never consume the org plan's capacity.
    */
-  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+  private async countOwned(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<number> {
     let query = supabase
       .from('questions')
       .select('*', { count: 'exact', head: true })

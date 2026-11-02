@@ -4,9 +4,10 @@ import { failure, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class OrganizationMemberService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getProfile(ctx: RequestContext) {
     const supabase = await this.clientFactory();
@@ -71,7 +72,7 @@ export class OrganizationMemberService {
 
       const groupsByUserId: Record<string, { id: string; name: string; role: string }[]> = {};
       for (const gm of groupData ?? []) {
-        const group = gm.groups as unknown as { id: string; name: string };
+        const group = gm.groups;
         if (!groupsByUserId[gm.user_id]) groupsByUserId[gm.user_id] = [];
         groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
       }
@@ -129,7 +130,7 @@ export class OrganizationMemberService {
 
     const groupsByUserId: Record<string, { id: string; name: string; role: string }[]> = {};
     for (const gm of groupData ?? []) {
-      const group = gm.groups as unknown as { id: string; name: string };
+      const group = gm.groups;
       if (!groupsByUserId[gm.user_id]) groupsByUserId[gm.user_id] = [];
       groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
     }

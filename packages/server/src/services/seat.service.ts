@@ -11,6 +11,7 @@ import {
   type UpdatePoolInput,
 } from '@studiq/server/models/seat.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * Maps plan_key → compatible account tier. Used for role-aware seat
@@ -42,7 +43,7 @@ const ROLE_TIER_MAP: Record<string, string> = {
 };
 
 export class SeatService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async listPools(
     ctx: RequestContext,
@@ -170,7 +171,8 @@ export class SeatService {
         planKey: string;
         userEmail: string;
         userFullName: string | null;
-        assignedAt: string;
+        /** Nullable column (`DEFAULT now()`): an assignment can lack it. */
+        assignedAt: string | null;
       }[]
     >
   > {
@@ -196,7 +198,7 @@ export class SeatService {
         id: a.id,
         userId: a.user_id,
         poolId: a.pool_id,
-        planKey: (a.pool as unknown as { plan_key: string }).plan_key,
+        planKey: a.pool.plan_key,
         // Left join: `profiles` is RLS-narrowed to the caller's own row and the
         // rows of users who share an organization with them. An assignment that
         // outlived the membership (historical removals) must still be listed so
@@ -219,7 +221,8 @@ export class SeatService {
       poolId: string;
       planKey: string;
       userEmail: string;
-      assignedAt: string;
+      /** Nullable column (`DEFAULT now()`): an assignment can lack it. */
+      assignedAt: string | null;
     }>
   > {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');

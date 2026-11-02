@@ -22,9 +22,10 @@ import type {
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class FlashcardDeckService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(data: CreateDeckInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
@@ -89,7 +90,7 @@ export class FlashcardDeckService {
    * Fails closed: unknown/unreadable ids are rejected rather than silently skipped.
    */
   private async assertFlashcardsUpdatable(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ids: string[],
     ctx: RequestContext,
   ): Promise<ServiceResult<never> | null> {
@@ -112,7 +113,7 @@ export class FlashcardDeckService {
    * Fails closed: unknown ids are NOT_FOUND, unreadable ids throw FORBIDDEN from `check`.
    */
   private async assertDecksReadable(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ids: string[],
     ctx: RequestContext,
   ): Promise<ServiceResult<never> | null> {
@@ -347,7 +348,7 @@ export class FlashcardDeckService {
       if (denied) return denied;
     }
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['flashcard_decks']['Update'] = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.description !== undefined) updateFields.description = data.description;
     if (data.visibility !== undefined) updateFields.visibility = data.visibility;
@@ -390,9 +391,8 @@ export class FlashcardDeckService {
     }
 
     if (data.flashcardIds !== undefined) {
-      // First unset deck_id for all flashcards currently in this deck
-      await supabase.from('flashcards').update({ deck_id: null }).eq('deck_id', id);
-      // Then set deck_id for the specified flashcards
+      // `flashcards.deck_id` is NOT NULL, so cards cannot be detached by writing
+      // NULL; only cards explicitly listed below are re-parented into this deck.
       if (data.flashcardIds.length > 0) {
         const { error: fcError } = await supabase
           .from('flashcards')
@@ -440,14 +440,16 @@ export class FlashcardDeckService {
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
-    const decks = data.decks.map((d) => ({
-      name: d.name,
-      description: d.description ?? null,
-      created_by: ctx.userId,
-      organization_id: ctx.activeOrgId,
-      // Bulk create cannot assign groups, so it can only produce personal decks (#139).
-      visibility: 'personal',
-    }));
+    const decks: Database['public']['Tables']['flashcard_decks']['Insert'][] = data.decks.map(
+      (d) => ({
+        name: d.name,
+        description: d.description ?? null,
+        created_by: ctx.userId,
+        organization_id: ctx.activeOrgId,
+        // Bulk create cannot assign groups, so it can only produce personal decks (#139).
+        visibility: 'personal',
+      }),
+    );
 
     const { data: created, error } = await supabase
       .from('flashcard_decks')
@@ -520,7 +522,10 @@ export class FlashcardDeckService {
    * is scoped to content owned by the caller **in that org**, so personal-space
    * decks never consume the org plan's capacity.
    */
-  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+  private async countOwned(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<number> {
     let query = supabase
       .from('flashcard_decks')
       .select('*', { count: 'exact', head: true })

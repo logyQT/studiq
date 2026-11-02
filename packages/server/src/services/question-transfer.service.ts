@@ -16,6 +16,7 @@ import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import { questionService } from '@studiq/server/services/question.service';
 import { questionBankService } from '@studiq/server/services/question-bank.service';
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * Questions are removed 100 ids per request: one `in (…)` with the whole import (500 UUIDs)
@@ -38,7 +39,7 @@ interface ListedQuestion {
  * update and lands completely or not at all; both stay in the bank's tenant, not the caller's.
  */
 export class QuestionTransferService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /**
    * Every question of a bank the caller may read, in the shape both file formats use.
@@ -211,7 +212,7 @@ export class QuestionTransferService {
    * the rollback left behind.
    */
   private async removeCreated(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ids: string[],
   ): Promise<{ error: PostgrestError | null; remaining: number }> {
     for (let i = 0; i < ids.length; i += ROLLBACK_BATCH_SIZE) {
@@ -226,7 +227,7 @@ export class QuestionTransferService {
 
   /** Name (lower case) -> topic id for every topic the file mentions; missing ones are created. */
   private async resolveTopics(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ctx: RequestContext,
     questions: TransferQuestion[],
     organizationId: string | null,
@@ -246,7 +247,7 @@ export class QuestionTransferService {
       : existing.is('organization_id', null);
     const { data: own, error } = await existing;
     if (error) return toDbFailure(error);
-    for (const topic of own ?? []) byName.set((topic.name as string).toLowerCase(), topic.id);
+    for (const topic of own ?? []) byName.set(topic.name.toLowerCase(), topic.id);
 
     const missing = [...wanted].filter(([key]) => !byName.has(key)).map(([, name]) => name);
     if (missing.length > 0) {
@@ -262,7 +263,7 @@ export class QuestionTransferService {
         )
         .select('id, name');
       if (createError) return toDbFailure(createError);
-      for (const topic of created ?? []) byName.set((topic.name as string).toLowerCase(), topic.id);
+      for (const topic of created ?? []) byName.set(topic.name.toLowerCase(), topic.id);
     }
 
     return success(byName);

@@ -12,7 +12,6 @@ import type {
   DueBreakdownResponse,
   DueCountResponse,
   DueFlashcardItem,
-  FlashcardRow,
   PracticeMode,
   PracticeSummary,
   StateBreakdown,
@@ -25,6 +24,31 @@ import type {
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import type { UpdateStudySettingsInput } from '@studiq/server/models/study-settings.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database, Json } from '../types/database';
+
+/** Narrow a free-form `text` column to the SRS learning-state union. */
+function toLearningState(value: string): LearningState {
+  switch (value) {
+    case 'new':
+    case 'learning':
+    case 'review':
+    case 'relearning':
+      return value;
+    // `calculateNextReview` falls through to `handleReview` for unknown values.
+    default:
+      return 'review';
+  }
+}
+
+/**
+ * `supabase.rpc` types every `RETURNS json` function as the generated `Json`
+ * union, which erases the payload shape the SQL function actually returns.
+ * The caller knows the shape (see the migration for each RPC), so re-assert it
+ * here instead of sprinkling `as unknown as` at every call site.
+ */
+function parseRpcJson<T>(value: Json): T {
+  return value as T;
+}
 
 /** Zero envelope for `getStateBreakdown` when the call is impossible or the RPC fails. */
 const EMPTY_STATE_BREAKDOWN: StateBreakdown = {
@@ -51,7 +75,8 @@ type StudySettingsRow = {
 
 /** The columns of `flashcard_review_state` this service reads. */
 type ReviewStateRow = {
-  learning_state: LearningState;
+  /** Free-form `text` column; narrowed to `LearningState` at the SRS boundary. */
+  learning_state: string;
   learning_step: number;
   easiness_factor: number;
   interval_days: number;
@@ -61,7 +86,7 @@ type ReviewStateRow = {
 };
 
 export class FlashcardPracticeService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async log(
     flashcardId: string,
@@ -261,11 +286,12 @@ export class FlashcardPracticeService {
     const { data, error } = await supabase.rpc('count_new_cards', {
       p_user_id: ctx.userId,
       p_filter_type: filterType,
-      p_organization_id: organizationId,
+      // The SQL parameter defaults to NULL; omitting it is equivalent.
+      p_organization_id: organizationId ?? undefined,
     });
 
     if (error) return 0;
-    return (data as number) ?? 0;
+    return data ?? 0;
   }
 
   private async upsertReviewState(
@@ -286,7 +312,7 @@ export class FlashcardPracticeService {
     const rating = Math.min(Math.max(confidenceLevel ?? 3, 1), 4) as Rating;
 
     const result = flashcardSpacedRepetitionService.calculateNextReview({
-      learningState: existing?.learning_state ?? 'new',
+      learningState: toLearningState(existing?.learning_state ?? 'new'),
       currentStep: existing?.learning_step ?? 0,
       learningSteps: settings.learning_steps,
       rating,
@@ -421,10 +447,10 @@ export class FlashcardPracticeService {
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_due_flashcards', {
       p_user_id: ctx.userId,
       p_filter_type: filterType,
-      p_organization_id: organizationId,
+      p_organization_id: organizationId ?? undefined,
       p_limit: newOnly ? Math.min(limit, newCardLimit) : limit,
-      p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
-      p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
+      p_deck_ids: filters.deckIds?.length ? filters.deckIds : undefined,
+      p_topic_ids: filters.topicIds?.length ? filters.topicIds : undefined,
       p_new_card_limit: newCardLimit,
       p_new_only: newOnly,
     });
@@ -444,15 +470,15 @@ export class FlashcardPracticeService {
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: filter.created_by ?? null,
-      p_organization_id: ctx.activeOrgId ?? null,
-      p_topic_ids: null,
-      p_deck_ids: null,
+      p_created_by: filter.created_by ?? undefined,
+      p_organization_id: ctx.activeOrgId ?? undefined,
+      p_topic_ids: undefined,
+      p_deck_ids: undefined,
     });
 
     if (error) return toDbFailure(error);
 
-    const rpcResult = data as DueBreakdownResponse;
+    const rpcResult = parseRpcJson<DueBreakdownResponse>(data);
 
     const byTopic: Record<string, number> = {};
     for (const t of rpcResult.byTopic ?? []) byTopic[t.topic_id] = t.count;
@@ -479,14 +505,14 @@ export class FlashcardPracticeService {
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: rbac.created_by ?? null,
-      p_organization_id: ctx.activeOrgId ?? null,
-      p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
-      p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
+      p_created_by: rbac.created_by ?? undefined,
+      p_organization_id: ctx.activeOrgId ?? undefined,
+      p_topic_ids: filters.topicIds?.length ? filters.topicIds : undefined,
+      p_deck_ids: filters.deckIds?.length ? filters.deckIds : undefined,
     });
 
     if (error) return toDbFailure(error);
-    return success({ count: (data as DueCountResponse).total });
+    return success({ count: parseRpcJson<DueCountResponse>(data).total });
   }
 
   async getStatsAll(ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -545,15 +571,15 @@ export class FlashcardPracticeService {
 
     const { data, error } = await supabase.rpc('get_practice_state_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: filter.created_by ?? null,
-      p_organization_id: ctx.activeOrgId ?? null,
+      p_created_by: filter.created_by ?? undefined,
+      p_organization_id: ctx.activeOrgId ?? undefined,
     });
 
     if (error) {
       return success({ ...EMPTY_STATE_BREAKDOWN });
     }
 
-    return success(data as StateBreakdown);
+    return success(parseRpcJson<StateBreakdown>(data));
   }
 
   async getStatsForFlashcard(
@@ -665,6 +691,8 @@ export class FlashcardPracticeService {
 
     const practiceByCard = new Map<string, PracticeSummary>();
     for (const row of practiceRows ?? []) {
+      // The query filters on `flashcard_id`, so NULLs cannot appear here.
+      if (!row.flashcard_id) continue;
       const entry = practiceByCard.get(row.flashcard_id) ?? {
         total: 0,
         correct: 0,
@@ -842,17 +870,20 @@ export class FlashcardPracticeService {
     if (error) return toDbFailure(error);
 
     return success(
-      (flashcards ?? []).map((fc: FlashcardRow) => {
+      (flashcards ?? []).map((fc) => {
         const state = stateByCard.get(fc.id);
         return {
           id: fc.id,
           front: fc.front,
           back: fc.back,
           createdAt: fc.created_at ?? null,
-          deckName: fc.deck_name ?? null,
+          // The query only joins topic assignments, so no deck name is available.
+          deckName: null,
           topicNames:
             fc.flashcard_topic_assignments?.flatMap((a) => {
-              const name = a.topics?.[0]?.name;
+              // The generated types model `topics(name)` as a to-one embed
+              // (object); tolerate the array shape too, as before.
+              const name = Array.isArray(a.topics) ? a.topics[0]?.name : undefined;
               return name ? [name] : [];
             }) ?? [],
           reviewState: state

@@ -14,6 +14,7 @@ import type {
   UpdateTeacherAssignmentInput,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 import {
   type Notifier,
   noopNotifier,
@@ -78,7 +79,7 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 
 export class TeacherAssignmentService {
   constructor(
-    private clientFactory: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     /** Tells students about a published assignment and a first grade; none in unit tests. */
     private notifier: Notifier = noopNotifier,
   ) {}
@@ -89,7 +90,7 @@ export class TeacherAssignmentService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const insertData: Record<string, unknown> = {
+    const insertData: Database['public']['Tables']['teacher_assignments']['Insert'] = {
       organization_id: ctx.activeOrgId,
       created_by: ctx.userId,
       title: data.title,
@@ -199,7 +200,7 @@ export class TeacherAssignmentService {
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {};
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.deadline !== undefined) updateData.deadline = data.deadline;
@@ -287,7 +288,7 @@ export class TeacherAssignmentService {
       .eq('id', id)
       .single();
 
-    const updateData: Record<string, unknown> = {
+    const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {
       status: 'published',
       updated_at: new Date().toISOString(),
     };
@@ -839,8 +840,7 @@ export class TeacherAssignmentService {
       if (a.created_by === ctx.userId) return true;
       const targets = a.assignment_targets ?? [];
       return targets.some(
-        (t: { group_id?: string; student_id?: string }) =>
-          (t.group_id && groupIds.includes(t.group_id)) || t.student_id === ctx.userId,
+        (t) => (t.group_id && groupIds.includes(t.group_id)) || t.student_id === ctx.userId,
       );
     });
 
@@ -862,7 +862,7 @@ export class TeacherAssignmentService {
 
     const result = filtered.map((a) => ({
       ...a,
-      ...this.summarizeAttempts(attemptsByAssignment.get(a.id) ?? [], a.show_results === true),
+      ...this.summarizeAttempts(attemptsByAssignment.get(a.id) ?? [], a.show_results),
     }));
 
     return success(result);
@@ -897,7 +897,7 @@ export class TeacherAssignmentService {
       ...assignment,
       ...this.summarizeAttempts(
         (attempts ?? []) as StudentAttemptSummaryRow[],
-        assignment.show_results === true,
+        assignment.show_results,
       ),
     });
   }
@@ -971,13 +971,14 @@ export class TeacherAssignmentService {
     // questions change later (same reasoning as total_questions).
     const totalPoints = orderedQuestions.reduce((sum, q) => sum + (q.points ?? 1), 0);
 
+    // `assignment_questions.question_id` is nullable (`ON DELETE SET NULL`); a row
+    // whose question is gone has nothing to load, so it is left out of the read.
+    const questionIds = orderedQuestions.flatMap((q) => (q.question_id ? [q.question_id] : []));
+
     const { data: fullQuestions, error: questionsError } = await supabase
       .from('questions')
       .select(IN_PROGRESS_QUESTION_SELECT)
-      .in(
-        'id',
-        orderedQuestions.map((q) => q.question_id),
-      );
+      .in('id', questionIds);
 
     if (questionsError) return toDbFailure(questionsError);
 
@@ -1020,11 +1021,11 @@ export class TeacherAssignmentService {
       return toDbFailure(attemptError);
     }
 
-    const attemptQuestions = orderedQuestions.map((q, i) => ({
-      attempt_id: attempt.id,
-      question_id: q.question_id,
-      order_index: i,
-    }));
+    // Same nullable `question_id`: a link row without a question would be
+    // rejected by the insert, so it is skipped and the original order kept.
+    const attemptQuestions = orderedQuestions.flatMap((q, i) =>
+      q.question_id ? [{ attempt_id: attempt.id, question_id: q.question_id, order_index: i }] : [],
+    );
 
     const { error: linkError } = await supabase
       .from('quiz_attempt_questions')

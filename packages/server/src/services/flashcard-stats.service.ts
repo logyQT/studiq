@@ -12,9 +12,19 @@ import type {
   TeacherFlashcardStatsResponse,
 } from '@studiq/server/models/flashcard-stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
+
+/**
+ * The generated RPC arg types represent nullable SQL parameters as optional
+ * (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
+ * keep sending it: callers/tests rely on the parameter being present as NULL.
+ */
+function nullableRpcArg<T>(value: T | null): T {
+  return value as T;
+}
 
 export class FlashcardStatsService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getTeacherStats(
     ctx: RequestContext,
@@ -50,8 +60,8 @@ export class FlashcardStatsService {
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_teacher_stats', {
       p_flashcard_ids: flashcardIds,
       p_user_id: ctx.userId,
-      p_deck_id: filters?.deckId ?? null,
-      p_organization_id: ctx.activeOrgId ?? null,
+      p_deck_id: nullableRpcArg(filters?.deckId ?? null),
+      p_organization_id: nullableRpcArg(ctx.activeOrgId ?? null),
     });
 
     if (rpcError) return toDbFailure(rpcError);
@@ -142,6 +152,8 @@ export class FlashcardStatsService {
 
     const cardPracticeTotals = new Map<string, { correct: number; total: number }>();
     for (const row of practiceRows ?? []) {
+      // The query filters on `flashcard_id`, so NULLs cannot appear here.
+      if (!row.flashcard_id) continue;
       const entry = cardPracticeTotals.get(row.flashcard_id) ?? { correct: 0, total: 0 };
       entry.total++;
       if (row.was_correct) entry.correct++;
@@ -150,6 +162,8 @@ export class FlashcardStatsService {
 
     const cardStudentCounts = new Map<string, Set<string>>();
     for (const row of practiceRows ?? []) {
+      // Both columns are nullable FKs; rows reachable here always have both.
+      if (!row.flashcard_id || !row.user_id) continue;
       if (!cardStudentCounts.has(row.flashcard_id))
         cardStudentCounts.set(row.flashcard_id, new Set());
       cardStudentCounts.get(row.flashcard_id)!.add(row.user_id);

@@ -9,10 +9,11 @@ import type {
   UpdateOrganizationInput,
 } from '@studiq/server/models/organization.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class OrganizationService {
   constructor(
-    private clientFactory: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     // RLS makes `organizations` / `groups` / `group_members` / `org_members`
     // invisible until the caller is a member of the org, so the provisioning
     // sequence (and org deletion, which has no DELETE policy at all) has to run
@@ -256,7 +257,12 @@ export class OrganizationService {
         teacher_count: teacherCountMap[g.id] ?? 0,
       })),
       roles: (rolesResult.data ?? []).map(
-        (r: { id: string; name: string; description: string | null; is_system: boolean }) => ({
+        (r: {
+          id: string;
+          name: string;
+          description: string | null;
+          is_system: boolean | null;
+        }) => ({
           id: r.id,
           name: r.name,
           description: r.description,
@@ -303,7 +309,7 @@ export class OrganizationService {
       'rls_caller_is_org_manager',
       { p_organization_id: id },
     );
-    if (managerError || isManager !== true) return failure('FORBIDDEN');
+    if (managerError || !isManager) return failure('FORBIDDEN');
 
     const supabase = this.createAdminClient();
 

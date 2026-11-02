@@ -11,9 +11,10 @@ import type {
   StudentActivityRow,
 } from '@studiq/server/models/activity.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class ActivityService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getClassActivity(
     ctx: RequestContext,
@@ -179,7 +180,7 @@ export class ActivityService {
   }
 
   private async computeStudentActivity(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     studentIds: string[],
     profileMap: Map<string, { id: string; email: string; full_name: string | null }>,
     currentRows: Array<{

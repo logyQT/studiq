@@ -9,9 +9,10 @@ import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { GenerateQuizInput } from '@studiq/server/models/quiz.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class QuizService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async generateQuiz(
     config: GenerateQuizInput,
@@ -80,7 +81,7 @@ export class QuizService {
         user_id: ctx.userId,
         score: 0,
         total_questions: selectedQuestions.length,
-        config: config as unknown as Record<string, unknown>,
+        config,
         completed_at: null,
       })
       .select()

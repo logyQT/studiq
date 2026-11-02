@@ -19,9 +19,10 @@ import type {
 } from '@studiq/server/models/flashcard.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class FlashcardService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(data: CreateFlashcardInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
@@ -29,7 +30,7 @@ export class FlashcardService {
     const flashcardCount = await this.countOwned(supabase, ctx);
     await limitsResolver.checkLimit(ctx, 'max_flashcards', flashcardCount);
 
-    let deckVisibility: string | undefined;
+    let deckVisibility: Database['public']['Enums']['visibility_type'] | undefined;
     if (data.deckId) {
       const { data: deck } = await supabase
         .from('flashcard_decks')
@@ -98,7 +99,7 @@ export class FlashcardService {
     const { data: flashcards, error } = await supabase.rpc('bulk_create_flashcards', {
       p_cards: data.cards.map((c) => ({ front: c.front, back: c.back })),
       p_user_id: ctx.userId,
-      p_organization_id: ctx.activeOrgId,
+      p_organization_id: ctx.activeOrgId ?? undefined,
       p_visibility: visibility,
       p_deck_ids: data.deckId ? [data.deckId] : [],
       p_topic_ids: data.topicIds ?? [],
@@ -261,7 +262,7 @@ export class FlashcardService {
     if (fetchError || !existing) return failure('NOT_FOUND');
     await check(ctx, Permission.FLASHCARD_UPDATE, existing);
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['flashcards']['Update'] = {};
     if (data.front) updateFields.front = data.front;
     if (data.back) updateFields.back = data.back;
 

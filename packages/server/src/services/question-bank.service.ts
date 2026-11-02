@@ -22,9 +22,10 @@ import type {
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class QuestionBankService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(
     data: CreateQuestionBankInput,
@@ -214,7 +215,7 @@ export class QuestionBankService {
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['question_banks']['Update'] = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.description !== undefined) updateFields.description = data.description;
     if (data.visibility !== undefined) updateFields.visibility = data.visibility;
@@ -257,9 +258,9 @@ export class QuestionBankService {
     }
 
     if (data.questionIds !== undefined) {
-      // First unset bank_id for all questions currently in this bank
-      await supabase.from('questions').update({ bank_id: null }).eq('bank_id', id);
-      // Then set bank_id for the specified questions
+      // `questions.bank_id` is NOT NULL (enforce_fk_not_null migration), so a
+      // question cannot be detached from its bank; assigning the listed ones is
+      // the whole operation.
       if (data.questionIds.length > 0) {
         const { error: aError } = await supabase
           .from('questions')

@@ -5,6 +5,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 // Canonical flat feature keys — the single source of truth for both the
 // application AND the database. `feature_flags`, `plan_features`,
@@ -103,7 +104,7 @@ export function isUserOverrideActive(
 type FeatureRow = { feature_key: string; is_enabled?: boolean; expires_at?: string | null };
 
 export class FeatureResolver {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /**
    * Resolve the feature set with the full precedence chain:
@@ -233,9 +234,10 @@ export class FeatureResolver {
       .from('feature_flags')
       .select('key, is_enabled, rollout_percentage');
 
-    const flagMap = new Map<string, { is_enabled: boolean; rollout_percentage: number | null }>(
-      (flags ?? []).map((f) => [f.key, f]),
-    );
+    const flagMap = new Map<
+      string,
+      { is_enabled: boolean | null; rollout_percentage: number | null }
+    >((flags ?? []).map((f) => [f.key, f]));
     const rollout: FeatureResolution['rollout'] = {};
 
     for (const key of Array.from(enabled)) {

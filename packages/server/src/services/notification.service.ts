@@ -10,7 +10,11 @@ import type {
   NotificationList,
   NotificationType,
 } from '@studiq/server/models/notification.model';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type {
+  SupabaseClient,
+  SupabaseClient as UntypedSupabaseClient,
+} from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * What the rest of the server tells the notification centre. Every method is best effort and
@@ -97,7 +101,7 @@ function toItem(row: NotificationRow): NotificationItem {
 
 export class NotificationService implements Notifier {
   constructor(
-    private clientFactory: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     /** Writes and the lookups of recipients: a user can read only their own rows. */
     private createAdminClient: () => SupabaseClient = createServiceClient,
   ) {}
@@ -108,7 +112,10 @@ export class NotificationService implements Notifier {
     ctx: RequestContext,
     options: { limit: number; unread: boolean },
   ): Promise<ServiceResult<NotificationList>> {
-    const supabase = await this.clientFactory();
+    // `notifications` is missing from the generated `Database` type (the table is
+    // newer than the type dump), so — like health.service.ts — this read goes
+    // through the untyped client. `NotificationRow` keeps the projection honest.
+    const supabase: UntypedSupabaseClient = await this.clientFactory();
 
     let items = supabase
       .from('notifications')
@@ -140,7 +147,8 @@ export class NotificationService implements Notifier {
 
   /** Marks one of the caller's notifications read; reading it again is not an error. */
   async markRead(ctx: RequestContext, id: string): Promise<ServiceResult<null>> {
-    const supabase = await this.clientFactory();
+    // Same as `list`: the table is not in the generated `Database` type yet.
+    const supabase: UntypedSupabaseClient = await this.clientFactory();
     const { data: own, error } = await supabase
       .from('notifications')
       .select('id')

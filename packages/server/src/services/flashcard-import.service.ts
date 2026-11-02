@@ -6,9 +6,10 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { CsvImportInput, CsvImportResult } from '@studiq/server/models/flashcard-import.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class FlashcardImportService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async importCsv(
     data: CsvImportInput,
@@ -133,14 +134,20 @@ export class FlashcardImportService {
     }
 
     const allDeckId = allDeckIds.length > 0 ? allDeckIds[0] : null;
-    const cardsToInsert = data.cards.map((c) => ({
-      front: c.front,
-      back: c.back,
-      created_by: ctx.userId,
-      organization_id: ctx.activeOrgId,
-      visibility: 'personal',
-      deck_id: allDeckId,
-    }));
+    // `flashcards.deck_id` is NOT NULL: every import path above resolves or
+    // creates a deck, so a missing one is an internal inconsistency.
+    if (!allDeckId) return failure('INTERNAL_SERVER');
+
+    const cardsToInsert: Database['public']['Tables']['flashcards']['Insert'][] = data.cards.map(
+      (c) => ({
+        front: c.front,
+        back: c.back,
+        created_by: ctx.userId,
+        organization_id: ctx.activeOrgId,
+        visibility: 'personal',
+        deck_id: allDeckId,
+      }),
+    );
 
     const { data: flashcards, error: insertError } = await supabase
       .from('flashcards')

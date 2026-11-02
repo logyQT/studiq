@@ -7,6 +7,16 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SearchResult } from '@studiq/server/models/search.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
+
+/**
+ * The generated RPC arg types represent nullable SQL parameters as optional
+ * (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
+ * keep sending it: the search RPC treats an absent value as "no filter".
+ */
+function nullableRpcArg<T>(value: T | null): T {
+  return value as T;
+}
 
 type RpcRow = {
   id: string;
@@ -18,7 +28,7 @@ type RpcRow = {
 };
 
 export class SearchService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async search(q: string, ctx: RequestContext, limit = 10): Promise<ServiceResult<SearchResult[]>> {
     const supabase = await this.clientFactory();
@@ -26,6 +36,8 @@ export class SearchService {
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (isImpossibleFilter(filter)) return success([]);
 
+    // The search RPC's parameters are nullable with a SQL `DEFAULT NULL`, so the
+    // `null` that means "no filter" is kept (see `nullableRpcArg`).
     let p_user_id: string | null = null;
     let p_organization_id: string | null = null;
 
@@ -40,8 +52,8 @@ export class SearchService {
     const { data, error } = await supabase.rpc('search_flashcards', {
       search_query: q,
       result_limit: limit,
-      p_user_id,
-      p_organization_id,
+      p_user_id: nullableRpcArg(p_user_id),
+      p_organization_id: nullableRpcArg(p_organization_id),
     });
 
     if (error) return toDbFailure(error);

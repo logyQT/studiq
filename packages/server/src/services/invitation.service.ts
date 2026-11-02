@@ -13,6 +13,7 @@ import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 import type { ZodIssue } from 'zod';
 import {
   type Notifier,
@@ -68,7 +69,7 @@ interface LoadedInvite {
 
 export class InvitationService {
   constructor(
-    private clientFactory: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     private createAdminClient: () => SupabaseClient = createServiceClient,
     /** Null when no mail adapter is configured: the copyable link is then the only delivery path. */
     private mailerFactory: () => Mailer | null = () => null,
@@ -213,7 +214,7 @@ export class InvitationService {
    * `activeOrgId`).
    */
   private async resolveTargetOrganization(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ctx: RequestContext,
     requestedOrganizationId?: string,
   ): Promise<ServiceResult<string>> {
@@ -239,7 +240,7 @@ export class InvitationService {
 
   /** An invite may only grant a role that belongs to the target organization. */
   private async assertRoleBelongsToOrganization(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     organizationId: string,
     orgRoleId: string,
   ): Promise<ServiceResult<void>> {
@@ -442,7 +443,7 @@ export class InvitationService {
 
     if (roleError) return toDbFailure(roleError);
 
-    const foundRoleIds = new Set((orgRoles ?? []).map((role) => role.id as string));
+    const foundRoleIds = new Set((orgRoles ?? []).map((role) => role.id));
     const roleIssues: ZodIssue[] = [];
     invitations.forEach((invite, index) => {
       if (!foundRoleIds.has(invite.targetOrgRoleId)) {
@@ -487,7 +488,7 @@ export class InvitationService {
     // interchangeable (each still gets its own row and token).
     const createdByEmail = new Map<string, Array<{ id: string; token: string }>>();
     for (const row of created) {
-      const key = row.email as string;
+      const key = row.email;
       const bucket = createdByEmail.get(key) ?? [];
       bucket.push({ id: row.id, token: row.token });
       createdByEmail.set(key, bucket);
@@ -719,7 +720,7 @@ export class InvitationService {
         email: string;
         targetOrgRoleId: string;
         orgRoleName: string;
-        isAccepted: boolean;
+        isAccepted: boolean | null;
         expiresAt: string;
         createdAt: string;
       }>
@@ -783,7 +784,7 @@ export class InvitationService {
     if (!invite) return failure('NOT_FOUND');
     if (invite.is_accepted) return failure('FORBIDDEN');
 
-    const updateData: Record<string, string> = {};
+    const updateData: Database['public']['Tables']['invitations']['Update'] = {};
 
     if (data.targetOrgRoleId) {
       // A role from another organization would let the acceptor inherit that

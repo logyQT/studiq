@@ -21,9 +21,10 @@ import type {
 } from '@studiq/server/models/topic.model';
 import { groupService } from '@studiq/server/services/group.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class TopicService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(data: CreateTopicInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
@@ -189,7 +190,7 @@ export class TopicService {
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['topics']['Update'] = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.visibility !== undefined) updateFields.visibility = data.visibility;
 

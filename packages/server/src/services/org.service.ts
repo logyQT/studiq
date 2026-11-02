@@ -4,9 +4,10 @@ import { failure, type ServiceResult, success } from '@studiq/server/lib/service
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class OrgService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async listOrgs(ctx: RequestContext): Promise<
     ServiceResult<

@@ -6,6 +6,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export type MockCheckoutSession = {
   id: string;
@@ -30,7 +31,7 @@ export type MockWebhookEvent = {
 
 export class MockStripeService {
   constructor(
-    private clientFactory: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     private createAdminClient: () => SupabaseClient = createServiceClient,
   ) {}
 

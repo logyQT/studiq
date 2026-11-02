@@ -16,10 +16,14 @@ import type {
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-interface DraftAnswer {
+/**
+ * One entry of the `draft_answers` jsonb column. Declared as a type alias (not
+ * an interface) so it is assignable to the generated `Json` type on write.
+ */
+type DraftAnswer = {
   selected_answer_id: string | null;
   text_answer: string | null;
-}
+};
 
 /**
  * Normalise the `draft_answers` jsonb column into the answer map served to the
@@ -63,7 +67,7 @@ export type QuizAttemptListItem = Omit<
 > & { score: number | null; gradable_questions: number };
 
 export class QuizAttemptService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async list(ctx: RequestContext): Promise<ServiceResult<QuizAttemptListItem[]>> {
     const supabase = await this.clientFactory();
@@ -184,6 +188,10 @@ export class QuizAttemptService {
     > = {};
     if (isCompleted) {
       (answers ?? []).forEach((a) => {
+        // `student_answers.question_id` is nullable (`ON DELETE SET NULL`); a row
+        // whose question is gone cannot be keyed, and `question_id = NULL`
+        // never reached a client answer before either.
+        if (!a.question_id) return;
         answerObj[a.question_id] = {
           selected_answer_id: a.selected_option_id,
           text_answer: a.text_answer,
@@ -308,6 +316,9 @@ export class QuizAttemptService {
 
       if (pointsError) return toDbFailure(pointsError);
       for (const row of rows ?? []) {
+        // `question_id` is nullable (`ON DELETE SET NULL`); a row without a
+        // question cannot award points to any answer.
+        if (!row.question_id) continue;
         assignmentPoints.set(row.question_id, row.points ?? 0);
       }
     }

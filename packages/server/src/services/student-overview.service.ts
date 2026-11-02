@@ -11,6 +11,7 @@ import type {
   StudentOverview,
 } from '@studiq/server/models/student-overview.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** An unfinished practice quiz older than this is abandoned, not something to resume. */
@@ -79,7 +80,7 @@ function scorePercent(row: CompletedAttemptRow, gradable: number | undefined): n
  * request client so RLS stays the floor.
  */
 export class StudentOverviewService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getOverview(
     ctx: RequestContext,

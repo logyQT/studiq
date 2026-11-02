@@ -9,6 +9,7 @@ import type {
 } from '@studiq/server/models/subscription-plan.model';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export interface PlanInfo {
   id: string;
@@ -26,7 +27,7 @@ export interface PlanInfo {
 }
 
 export class SubscriptionPlanService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   private async fetchLimitsByPlan(
     planKeys: string[],
@@ -365,7 +366,7 @@ export class SubscriptionPlanService {
   async update(id: string, input: UpdateSubscriptionPlanInput) {
     const supabase = await this.clientFactory();
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: Database['public']['Tables']['subscription_plans']['Update'] = {};
     if (input.key !== undefined) updateData.key = input.key;
     if (input.name !== undefined) updateData.name = input.name;
     if (input.description !== undefined) updateData.description = input.description;

@@ -11,9 +11,10 @@ import type {
   UpdateQuizInput,
 } from '@studiq/server/models/quiz.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class QuizTeacherService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(data: CreateQuizInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     // quizzes.organization_id is NOT NULL: without a verified active org there is no tenant to
@@ -147,7 +148,7 @@ export class QuizTeacherService {
     if (!quiz) return failure('NOT_FOUND');
     if (quiz.organization_id !== ctx.activeOrgId) return failure('NOT_FOUND');
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: Database['public']['Tables']['quizzes']['Update'] = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
     updateData.updated_at = new Date().toISOString();

@@ -11,6 +11,7 @@ import type {
   UpdateQuestionReportInput,
 } from '@studiq/server/models/question-report.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 import {
   type Notifier,
   noopNotifier,
@@ -59,7 +60,7 @@ function reportVisibilityFilter(ctx: RequestContext, orgScope: string | null): s
 
 export class QuestionReportService {
   constructor(
-    private clientFactory: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     /** Tells the other participant about a new message; none in unit tests. */
     private notifier: Notifier = noopNotifier,
   ) {}
@@ -86,6 +87,9 @@ export class QuestionReportService {
       if (questionError) return toDbFailure(questionError);
       if (!question) return failure('NOT_FOUND');
       if (question.created_by === ctx.userId) return failure('BAD_REQUEST');
+      // A question without an author has nobody to report it to (the column is
+      // nullable, though the profile FK cascades the row away in practice).
+      if (!question.created_by) return failure('NOT_FOUND');
 
       organizationId = question.organization_id;
       recipientId = question.created_by;
@@ -256,7 +260,7 @@ export class QuestionReportService {
 
     // Resolve is recipient-only (plus the #276 org admin); either participant
     // (plus the org admin) may reopen. The UI must not re-derive this.
-    const isParticipant = isReportParticipant(report as ReportRow, ctx.userId);
+    const isParticipant = isReportParticipant(report, ctx.userId);
     const canResolve = (report as ReportRow).teacher_id === ctx.userId || access.orgScope !== null;
     const canReopen = isParticipant || access.orgScope !== null;
 
@@ -293,7 +297,7 @@ export class QuestionReportService {
     if (report.status === data.status) return success(report);
 
     const now = new Date().toISOString();
-    const patch: Record<string, unknown> =
+    const patch: Database['public']['Tables']['question_reports']['Update'] =
       data.status === 'resolved'
         ? { status: 'resolved', resolved_at: now, resolved_by: ctx.userId, updated_at: now }
         : { status: 'open', resolved_at: null, resolved_by: null, updated_at: now };
@@ -301,8 +305,11 @@ export class QuestionReportService {
     // Never write the other participant's receipt, and never write any receipt
     // for a non-participant org admin (same rule as `markRead` above).
     if (isParticipant) {
-      patch[report.reported_by === ctx.userId ? 'reporter_last_read_at' : 'teacher_last_read_at'] =
-        now;
+      const receiptColumn =
+        report.reported_by === ctx.userId
+          ? ('reporter_last_read_at' as const)
+          : ('teacher_last_read_at' as const);
+      patch[receiptColumn] = now;
     }
 
     const { data: updated, error } = await supabase
@@ -372,13 +379,12 @@ export class QuestionReportService {
     // participants' read receipts — that would clear the teacher's unread badge.
     if (!isReportParticipant(report, ctx.userId)) return success(null);
 
-    const column =
-      report.reported_by === ctx.userId ? 'reporter_last_read_at' : 'teacher_last_read_at';
+    const patch: Database['public']['Tables']['question_reports']['Update'] =
+      report.reported_by === ctx.userId
+        ? { reporter_last_read_at: new Date().toISOString() }
+        : { teacher_last_read_at: new Date().toISOString() };
 
-    const { error } = await supabase
-      .from('question_reports')
-      .update({ [column]: new Date().toISOString() })
-      .eq('id', id);
+    const { error } = await supabase.from('question_reports').update(patch).eq('id', id);
 
     if (error) return toDbFailure(error);
     return success(null);
@@ -419,13 +425,13 @@ export class QuestionReportService {
       .single();
 
     if (!report) return null;
-    if (isReportParticipant(report as ReportRow, ctx.userId)) {
-      return { report: report as ReportRow, orgScope: null };
+    if (isReportParticipant(report, ctx.userId)) {
+      return { report: report, orgScope: null };
     }
 
     const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
     if (!orgScope || report.organization_id !== orgScope) return null;
-    return { report: report as ReportRow, orgScope };
+    return { report: report, orgScope };
   }
 
   private async fetchAccessibleReport(id: string, ctx: RequestContext) {
@@ -439,7 +445,7 @@ export class QuestionReportService {
    */
   private async resolveOrgWideReportScope(
     ctx: RequestContext,
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
   ): Promise<string | null> {
     if (ctx.accountType !== AccountType.MANAGER) return null;
     const orgId = ctx.activeOrgId;

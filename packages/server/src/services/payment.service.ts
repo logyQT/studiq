@@ -4,6 +4,7 @@ import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export interface PaymentHistoryItem {
   id: string;
@@ -21,7 +22,7 @@ export interface PaymentHistoryItem {
  * own-row SELECT policy and no write policy).
  */
 export class PaymentService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async listMine(ctx: RequestContext): Promise<ServiceResult<PaymentHistoryItem[]>> {
     const supabase = await this.clientFactory();
@@ -36,12 +37,12 @@ export class PaymentService {
 
     return success(
       (data ?? []).map((payment) => ({
-        id: payment.id as string,
-        planKey: payment.plan_key as string,
-        planName: payment.plan_name as string,
-        amount: payment.amount as number,
-        currency: payment.currency as string,
-        paidAt: payment.paid_at as string,
+        id: payment.id,
+        planKey: payment.plan_key,
+        planName: payment.plan_name,
+        amount: payment.amount,
+        currency: payment.currency,
+        paidAt: payment.paid_at,
       })),
     );
   }

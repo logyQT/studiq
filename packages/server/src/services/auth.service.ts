@@ -11,6 +11,7 @@ import {
   type InvitationService,
 } from '@studiq/server/services/invitation.service';
 import type { AuthError, Session, SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * GoTrue reports a sign-up for an existing e-mail as `user_already_exists`
@@ -34,7 +35,7 @@ export class AuthService {
   private static readonly OTP_SESSION_MAX_AGE_SECONDS = 30 * 60;
 
   constructor(
-    private clientFactory: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     private invitationService: InvitationService = defaultInvitationService,
   ) {}
 
@@ -251,7 +252,7 @@ export class AuthService {
    * long an old OTP session can be replayed. Fails closed when the claim is
    * missing or carries no timestamp.
    */
-  private async isFreshOtpSession(supabase: SupabaseClient): Promise<boolean> {
+  private async isFreshOtpSession(supabase: SupabaseClient<Database>): Promise<boolean> {
     const { data, error } = await supabase.auth.getClaims();
 
     if (error || !data?.claims) {

@@ -16,6 +16,16 @@ import {
   type TeacherStatsResponse,
 } from '@studiq/server/models/stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
+
+/**
+ * The generated RPC arg types represent nullable SQL parameters as optional
+ * (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
+ * keep sending it: callers/tests rely on the parameter being present as NULL.
+ */
+function nullableRpcArg<T>(value: T | null): T {
+  return value as T;
+}
 
 /**
  * Single rounding rule for per-attempt percentages. `avgScore` in
@@ -58,7 +68,7 @@ const EMPTY_GROUP_PERFORMANCE: TeacherGroupPerformance = {
 };
 
 export class StatsService {
-  constructor(private clientFactory: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /**
    * Returns the caller's content counts and question statistics, scoped to the active
@@ -140,8 +150,8 @@ export class StatsService {
       'get_teacher_problematic_questions',
       {
         p_user_id: ctx.userId,
-        p_organization_id: ctx.activeOrgId ?? null,
-        p_bank_id: subjectId ?? null,
+        p_organization_id: nullableRpcArg(ctx.activeOrgId),
+        p_bank_id: nullableRpcArg(subjectId ?? null),
       },
     );
 
@@ -289,12 +299,20 @@ export class StatsService {
       totalDecks: decksCount ?? 0,
       totalFlashcards: flashcardsCount ?? 0,
       dueToday: dueCount ?? 0,
-      attemptsOverTime: gradedAttempts.map(({ attempt, total }) => ({
-        date: attempt.started_at,
-        score: attempt.score,
-        total,
-        percentage: percentageOf(attempt, total),
-      })),
+      // `started_at` has a `DEFAULT now()` but the column is nullable; an attempt
+      // without a date cannot be plotted, so it is left out of the series.
+      attemptsOverTime: gradedAttempts.flatMap(({ attempt, total }) =>
+        attempt.started_at
+          ? [
+              {
+                date: attempt.started_at,
+                score: attempt.score,
+                total,
+                percentage: percentageOf(attempt, total),
+              },
+            ]
+          : [],
+      ),
     });
   }
 
@@ -333,7 +351,7 @@ export class StatsService {
 
     if (membersError) return toDbFailure(membersError);
 
-    const studentIds = (members ?? []).map((m) => m.user_id as string);
+    const studentIds = (members ?? []).map((m) => m.user_id);
     if (studentIds.length === 0) return success([]);
 
     const { data, error } = await supabase
@@ -520,11 +538,14 @@ export class StatsService {
 
     const deckMap = new Map<string, { name: string; total: number; correct: number }>();
     for (const p of practice ?? []) {
+      // `flashcard_practice.flashcard_id` is nullable (`ON DELETE SET NULL`); no
+      // card means no deck to blame, which is what the missing map entry gave.
+      if (!p.flashcard_id) continue;
       const decks = cardToDecks.get(p.flashcard_id) ?? [];
       for (const d of decks) {
         const entry = deckMap.get(d.deckId) ?? { name: d.name, total: 0, correct: 0 };
         entry.total++;
-        if (p.was_correct === true || p.was_correct === 'true') entry.correct++;
+        if (p.was_correct) entry.correct++;
         deckMap.set(d.deckId, entry);
       }
     }
@@ -565,11 +586,14 @@ export class StatsService {
 
     const topicMap = new Map<string, { name: string; total: number; correct: number }>();
     for (const p of practice ?? []) {
+      // `flashcard_practice.flashcard_id` is nullable (`ON DELETE SET NULL`); no
+      // card means no topic to blame, which is what the missing map entry gave.
+      if (!p.flashcard_id) continue;
       const topics = cardToTopics.get(p.flashcard_id) ?? [];
       for (const t of topics) {
         const entry = topicMap.get(t.topicId) ?? { name: t.name, total: 0, correct: 0 };
         entry.total++;
-        if (p.was_correct === true || p.was_correct === 'true') entry.correct++;
+        if (p.was_correct) entry.correct++;
         topicMap.set(t.topicId, entry);
       }
     }
