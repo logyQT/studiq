@@ -1,6 +1,6 @@
 import { t } from '#test/e2e/utils';
 import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
-import { json } from '#test/helpers/json';
+import { asJson, json } from '#test/helpers/json';
 
 /**
  * Regression for #323 (STU-09 step 2): the „Nowy quiz” form had no subject
@@ -80,11 +80,11 @@ test.describe('Standalone quiz subject selector (#323)', () => {
     await expect(generate).toBeEnabled({ timeout: 30_000 });
     await generate.click();
 
-    const requestBody = await json<{
+    const requestBody = asJson<{
       questionTypes?: string[];
       questionCount?: number;
       topicIds?: string[];
-    }>(await generateRequest);
+    }>((await generateRequest).postDataJSON());
     expect(requestBody.topicIds).toEqual([chosenTopic.id]);
 
     const generated = await generateResponse;

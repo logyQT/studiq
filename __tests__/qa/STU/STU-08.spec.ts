@@ -217,7 +217,7 @@ function countBadge(card: Locator, label: string): Locator {
  * with an inline `perspective`; it stays mounted for the whole session.
  */
 function sessionCard(page: Page): Locator {
-  return page.locator('div[style*="perspective"]');
+  return page.locator('[style*="perspective"]');
 }
 
 /** The front shown by the current session card, or `null` mid-transition. */

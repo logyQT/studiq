@@ -168,9 +168,11 @@ export default function InvitationsPage() {
 
     setSending(true);
     try {
-      const bulkResults = await apiPost<InvitationResult[]>('/api/v1/organization/invites/bulk', {
-        invitations: payload,
-      });
+      const body = await apiPost<{ results?: InvitationResult[] }>(
+        '/api/v1/organization/invites/bulk',
+        { invitations: payload },
+      );
+      const bulkResults = Array.isArray(body.results) ? body.results : [];
 
       // The endpoint is all-or-nothing: anything short of a 2xx carrying one
       // result per entry is a failure. Never report a partial send as success,

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
-import { json } from '#test/helpers/json';
+import { asJson, json } from '#test/helpers/json';
 
 const PASSWORD = 'pass';
 const MEMBERS_URL = '/api/v1/organization/members';
@@ -118,7 +118,9 @@ test.describe('Manage members — role change confirmation (#246)', () => {
         await route.continue();
         return;
       }
-      putBodies.push(await json<{ targetUserId: string; newOrgRoleId: string }>(route.request()));
+      putBodies.push(
+        asJson<{ targetUserId: string; newOrgRoleId: string }>(route.request().postDataJSON()),
+      );
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

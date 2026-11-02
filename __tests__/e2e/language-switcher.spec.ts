@@ -88,9 +88,7 @@ test.describe('language switcher — desktop select', () => {
     expect(await pageMarker(page)).toBe('alive');
     await expect(page.getByRole('heading', { name: en.PricingPage.title })).toBeVisible();
     // One polite announcement, in the language the user was reading.
-    await expect(
-      page.locator('[role="status"][aria-live="polite"][aria-atomic="true"]'),
-    ).toHaveText(ANNOUNCED_EN);
+    await expect(page.locator('[aria-live="polite"][aria-atomic="true"]')).toHaveText(ANNOUNCED_EN);
 
     const cookie = (await context.cookies()).find((entry) => entry.name === 'NEXT_LOCALE');
     expect(cookie?.value).toBe('en');

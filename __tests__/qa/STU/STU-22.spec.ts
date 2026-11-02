@@ -271,7 +271,7 @@ test.describe.skip('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
     await page.goto(`/app/study/session/cram?deckId=${deck.id}`);
     await expect(page).toHaveURL(new RegExp(`/app/study/session/cram\\?deckId=${deck.id}$`));
 
-    const flip = page.locator('div[style*="perspective"]').first();
+    const flip = page.locator('[style*="perspective"]').first();
     await expect(flip, 'the session shows the card').toBeVisible();
     const faces = flip.locator('> div > div');
     await expect(faces, 'the card has a question and an answer face').toHaveCount(2);

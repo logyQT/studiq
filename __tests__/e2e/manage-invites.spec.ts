@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
-import { json } from '#test/helpers/json';
+import { asJson, json } from '#test/helpers/json';
 
 const PASSWORD = 'pass';
 const BULK_INVITES_URL = '/api/v1/organization/invites/bulk';
@@ -108,7 +108,9 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     const postedBodies: { invitations: { email: string; targetOrgRoleId: string }[] }[] = [];
     await page.route(`**${BULK_INVITES_URL}`, async (route) => {
       postedBodies.push(
-        await json<{ invitations: { email: string; targetOrgRoleId: string }[] }>(route.request()),
+        asJson<{ invitations: { email: string; targetOrgRoleId: string }[] }>(
+          route.request().postDataJSON(),
+        ),
       );
       await route.fulfill({
         status: 200,
