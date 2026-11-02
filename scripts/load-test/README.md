@@ -98,7 +98,9 @@ bun scripts/load-test/seed.ts --count 1000
   override deliberately. Only `--reset` also compares the generated port with
   the current `SUPABASE_PORT_BASE` (`staleGeneratedTarget`): ordinary seeding
   reuses the generated port, which may be the old one if the base changed while
-  the previous stack is still running. Run `bun dev:up` after changing it.
+  the previous stack is still running. After changing it, stop the existing
+  stack with `bun dev:down --all` (this checkout only — never
+  `supabase stop --all`) and then run `bun dev:up`.
 - Accounts are created with `email_confirm: true`, so they can log in
   immediately even though local GoTrue has `enable_confirmations = true`.
 - The `handle_new_user` DB trigger creates the matching `profiles` row and
