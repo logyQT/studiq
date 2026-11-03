@@ -46,7 +46,11 @@ env:
 
 jobs:
   # Cheapest first, in the order a failure is cheapest to explain: lint, types.
-  # Everything else waits on this.
+  # This job is a merge gate, not a fan-out gate: the test jobs below wait only
+  # on `scope` (7 s), because a runner that boots Supabase, builds and installs
+  # browsers does not need to sit idle for 28 s behind lint. The trade-off is
+  # deliberate — a lint failure no longer stops the test jobs before they start,
+  # so it also burns their runners.
   # A QA-suite PR only touches qa/** (plus, occasionally, __tests__ helpers).
   # The app, its unit/integration tests and the e2e matrix cannot change there,
   # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
@@ -174,6 +178,8 @@ jobs:
           print("qa_shards=" + json.dumps(selected))
           PY
 
+  # The required check that no test job waits on any more: a lint/type failure
+  # still blocks the merge, it just no longer holds the runners back first.
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -226,7 +232,7 @@ jobs:
         run: bun run typecheck:all
 
   unit:
-    needs: [checks, scope]
+    needs: [scope]
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -248,7 +254,7 @@ jobs:
       - run: bun run test:unit
 
   integration:
-    needs: [checks, scope]
+    needs: [scope]
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -296,9 +302,8 @@ jobs:
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
   # job `__tests__/qa/**` would never run in CI.
   qa-suite:
-    needs: [checks, scope]
-    # Still runs when `unit` was skipped for a tests-only diff.
-    if: needs.checks.result == 'success' && needs.scope.outputs.qa_shards != '[]'
+    needs: [scope]
+    if: needs.scope.outputs.qa_shards != '[]'
     # Sharded by area, one runner per shard. The suite is one long serial job
     # (~12 min at 140 specs, growing), so splitting is what buys wall-clock time
     # now — not more workers: the runner is 4 vCPU and raising QA_WORKERS only
@@ -496,7 +501,7 @@ jobs:
   # `scope` still decides the work: when no app code changed every step below is
   # skipped and the leg reports success immediately.
   e2e:
-    needs: [checks, scope]
+    needs: [scope]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
