@@ -52,6 +52,24 @@ export interface StripeClient {
       params?: Stripe.SubscriptionRetrieveParams,
       options?: StripeRequestOptions,
     ): Promise<Stripe.Subscription>;
+    update(
+      id: string,
+      params: Stripe.SubscriptionUpdateParams,
+      options?: StripeRequestOptions,
+    ): Promise<Stripe.Subscription>;
+  };
+  subscriptionSchedules: {
+    create(
+      params: Stripe.SubscriptionScheduleCreateParams,
+      options?: StripeRequestOptions,
+    ): Promise<Stripe.SubscriptionSchedule>;
+    retrieve(id: string): Promise<Stripe.SubscriptionSchedule>;
+    update(
+      id: string,
+      params: Stripe.SubscriptionScheduleUpdateParams,
+      options?: StripeRequestOptions,
+    ): Promise<Stripe.SubscriptionSchedule>;
+    release(id: string): Promise<Stripe.SubscriptionSchedule>;
   };
   billingPortal: {
     sessions: {
@@ -93,6 +111,13 @@ export function createStripeClient(secretKey: string): StripeClient {
     },
     subscriptions: {
       retrieve: (id, params, options) => stripe.subscriptions.retrieve(id, params, options),
+      update: (id, params, options) => stripe.subscriptions.update(id, params, options),
+    },
+    subscriptionSchedules: {
+      create: (params, options) => stripe.subscriptionSchedules.create(params, options),
+      retrieve: (id) => stripe.subscriptionSchedules.retrieve(id),
+      update: (id, params, options) => stripe.subscriptionSchedules.update(id, params, options),
+      release: (id) => stripe.subscriptionSchedules.release(id),
     },
     billingPortal: {
       sessions: {

@@ -78,22 +78,32 @@ export interface PortalSessionResult {
 }
 
 export interface ChangePlanInput {
-  userId: string;
-  accountType: AccountType;
-  /** Target organization for an organization plan. */
-  orgId?: string;
+  /** Resolved from `RequestContext` by `BillingService`, never a request body. */
+  owner: PaymentOwner;
+  customerId: string;
+  subscriptionId: string;
+  currentPlanKey: string;
   targetPlanKey: string;
+  targetPriceId: string;
+  direction: 'upgrade' | 'downgrade';
   idempotencyKey: string;
 }
 
 export interface ChangePlanResult {
-  status: 'applied' | 'scheduled';
+  /**
+   * `pending_payment` means Stripe created the update but the immediate invoice
+   * still needs payment/authentication (e.g. 3DS); the plan changes only after
+   * the invoice is paid.
+   */
+  status: 'applied' | 'scheduled' | 'pending_payment';
+  /** Present for `pending_payment`: where the customer completes the payment. */
+  hostedInvoiceUrl?: string | null;
 }
 
 export interface CancelAtPeriodEndInput {
-  userId: string;
-  accountType: AccountType;
-  orgId?: string;
+  owner: PaymentOwner;
+  customerId: string;
+  subscriptionId: string;
   /** `true` schedules cancellation, `false` reactivates before it takes effect. */
   cancel: boolean;
 }
@@ -132,7 +142,9 @@ export interface PaymentGateway {
   /** Upgrade (apply now) or downgrade (schedule at period end). */
   changePlan(input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>>;
 
-  cancelAtPeriodEnd(input: CancelAtPeriodEndInput): Promise<ServiceResult<void>>;
+  cancelAtPeriodEnd(
+    input: CancelAtPeriodEndInput,
+  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>>;
 
   handleWebhook(envelope: PaymentWebhookEnvelope): Promise<ServiceResult<WebhookOutcome>>;
 }

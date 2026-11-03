@@ -37,10 +37,14 @@ const view: BillingSubscriptionView = {
 };
 
 function createMockBilling() {
-  return { getSubscription: vi.fn() };
+  return {
+    getSubscription: vi.fn(),
+    changePlan: vi.fn(),
+    cancelSubscription: vi.fn(),
+  };
 }
 
-describe('BillingController.getSubscription', () => {
+describe('BillingController', () => {
   let billing: ReturnType<typeof createMockBilling>;
   let controller: BillingController;
 
@@ -50,22 +54,126 @@ describe('BillingController.getSubscription', () => {
     controller = new BillingController(asService<BillingService>(billing));
   });
 
-  it('returns the shared read model for the authenticated caller', async () => {
-    billing.getSubscription.mockResolvedValueOnce(success(view));
+  describe('getSubscription', () => {
+    it('returns the shared read model for the authenticated caller', async () => {
+      billing.getSubscription.mockResolvedValueOnce(success(view));
 
-    const response = await controller.getSubscription(ctx);
+      const response = await controller.getSubscription(ctx);
 
-    expect(response).toEqual({ success: true, statusCode: 200, data: view });
-    expect(billing.getSubscription).toHaveBeenCalledWith(ctx);
+      expect(response).toEqual({ success: true, statusCode: 200, data: view });
+      expect(billing.getSubscription).toHaveBeenCalledWith(ctx);
+    });
+
+    it('maps a service failure to its status code', async () => {
+      billing.getSubscription.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
+
+      await expect(controller.getSubscription(ctx)).resolves.toMatchObject({
+        success: false,
+        statusCode: 404,
+        error: 'NOT_FOUND',
+      });
+    });
   });
 
-  it('maps a service failure to its status code', async () => {
-    billing.getSubscription.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
+  describe('changePlan', () => {
+    it('returns 422 without a plan key', async () => {
+      const response = await controller.changePlan(ctx, {});
 
-    await expect(controller.getSubscription(ctx)).resolves.toMatchObject({
-      success: false,
-      statusCode: 404,
-      error: 'NOT_FOUND',
+      expect(response).toMatchObject({
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+      });
+      expect(billing.changePlan).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty or oversized plan key', async () => {
+      await expect(controller.changePlan(ctx, { planKey: '' })).resolves.toMatchObject({
+        success: false,
+        statusCode: 422,
+      });
+      await expect(controller.changePlan(ctx, { planKey: 'x'.repeat(65) })).resolves.toMatchObject({
+        success: false,
+        statusCode: 422,
+      });
+      expect(billing.changePlan).not.toHaveBeenCalled();
+    });
+
+    it('delegates only the target plan key', async () => {
+      billing.changePlan.mockResolvedValueOnce(success({ status: 'scheduled' }));
+
+      const response = await controller.changePlan(ctx, { planKey: 'ace' });
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: { status: 'scheduled' } });
+      expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'ace');
+    });
+
+    it('maps forbidden and not-found failures', async () => {
+      billing.changePlan.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
+      await expect(controller.changePlan(ctx, { planKey: 'hub' })).resolves.toMatchObject({
+        success: false,
+        statusCode: 403,
+      });
+
+      billing.changePlan.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
+      await expect(controller.changePlan(ctx, { planKey: 'ace' })).resolves.toMatchObject({
+        success: false,
+        statusCode: 404,
+      });
+    });
+  });
+
+  describe('cancelSubscription', () => {
+    it('returns 422 without the cancel flag', async () => {
+      const response = await controller.cancelSubscription(ctx, {});
+
+      expect(response).toMatchObject({
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+      });
+      expect(billing.cancelSubscription).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-boolean cancel flag', async () => {
+      const response = await controller.cancelSubscription(ctx, { cancel: 'true' });
+
+      expect(response).toMatchObject({ success: false, statusCode: 422 });
+      expect(billing.cancelSubscription).not.toHaveBeenCalled();
+    });
+
+    it('maps not-found failures', async () => {
+      billing.cancelSubscription.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
+
+      await expect(controller.cancelSubscription(ctx, { cancel: true })).resolves.toMatchObject({
+        success: false,
+        statusCode: 404,
+        error: 'NOT_FOUND',
+      });
+    });
+
+    it('delegates cancel and reactivate', async () => {
+      billing.cancelSubscription.mockResolvedValueOnce(success({ cancelAtPeriodEnd: true }));
+      await controller.cancelSubscription(ctx, { cancel: true });
+      expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, true);
+
+      billing.cancelSubscription.mockResolvedValueOnce(success({ cancelAtPeriodEnd: false }));
+      const response = await controller.cancelSubscription(ctx, { cancel: false });
+      expect(response).toEqual({
+        success: true,
+        statusCode: 200,
+        data: { cancelAtPeriodEnd: false },
+      });
+      expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, false);
+    });
+
+    it('maps forbidden failures', async () => {
+      billing.cancelSubscription.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
+
+      await expect(controller.cancelSubscription(ctx, { cancel: true })).resolves.toMatchObject({
+        success: false,
+        statusCode: 403,
+      });
     });
   });
 });

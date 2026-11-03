@@ -63,7 +63,9 @@ export class MockPaymentGateway implements PaymentGateway {
     return Promise.resolve(failure('NOT_FOUND'));
   }
 
-  cancelAtPeriodEnd(_input: CancelAtPeriodEndInput): Promise<ServiceResult<void>> {
+  cancelAtPeriodEnd(
+    _input: CancelAtPeriodEndInput,
+  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>> {
     return Promise.resolve(failure('NOT_FOUND'));
   }
 

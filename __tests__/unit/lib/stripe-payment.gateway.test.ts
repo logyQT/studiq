@@ -33,7 +33,13 @@ function createClient() {
       },
     },
     prices: { retrieve: vi.fn() },
-    subscriptions: { retrieve: vi.fn() },
+    subscriptions: { retrieve: vi.fn(), update: vi.fn() },
+    subscriptionSchedules: {
+      create: vi.fn(),
+      retrieve: vi.fn(),
+      update: vi.fn(),
+      release: vi.fn(),
+    },
     billingPortal: { sessions: { create: vi.fn() } },
     webhooks: { constructEvent: vi.fn() },
   });
@@ -63,6 +69,7 @@ function createRepository(
         currency: 'PLN',
         isActive: true,
         forAccountType: 'student',
+        sortOrder: 1,
       }),
     ),
     isOrgAdmin: vi.fn(),
@@ -78,6 +85,7 @@ function createRepository(
     findPriceById: vi.fn().mockResolvedValue(success(listedPrice())),
     findListedPrice: vi.fn(),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
+    setPendingPlan: vi.fn().mockResolvedValue(success(undefined)),
     ...overrides,
   });
 }
@@ -95,6 +103,25 @@ function personalInput(overrides: Record<string, unknown> = {}) {
     idempotencyKey: 'checkout-key',
     ...overrides,
   };
+}
+
+function subscriptionFixture(overrides: Record<string, unknown> = {}) {
+  return asJson<Stripe.Subscription>({
+    id: 'sub_1',
+    customer: 'cus_1',
+    schedule: null,
+    items: {
+      data: [
+        {
+          id: 'si_1',
+          price: { id: 'price_spark' },
+          current_period_start: 1_800_000_000,
+          current_period_end: 1_802_592_000,
+        },
+      ],
+    },
+    ...overrides,
+  });
 }
 
 describe('StripePaymentGateway', () => {
@@ -207,6 +234,7 @@ describe('StripePaymentGateway', () => {
         currency: 'PLN',
         isActive: true,
         forAccountType: 'manager',
+        sortOrder: 2,
       }),
     );
     vi.mocked(repository.getCustomerDetails).mockResolvedValueOnce(
@@ -383,23 +411,380 @@ describe('StripePaymentGateway', () => {
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
   });
 
-  it('keeps plan changes unwired for phase 4', async () => {
-    await expect(
-      gateway.changePlan({
-        userId: 'u-1',
-        accountType: AccountType.STUDENT,
-        targetPlanKey: 'ace',
-        idempotencyKey: 'change',
-      }),
-    ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+  describe('changePlan', () => {
+    const changePlanInput = {
+      owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
+      customerId: 'cus_1',
+      subscriptionId: 'sub_1',
+      currentPlanKey: 'spark',
+      targetPlanKey: 'ace',
+      targetPriceId: 'price_ace',
+      direction: 'upgrade' as const,
+      idempotencyKey: 'change-key',
+    };
 
-    await expect(
-      gateway.cancelAtPeriodEnd({
-        userId: 'u-1',
-        accountType: AccountType.STUDENT,
-        cancel: true,
-      }),
-    ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+    it('resets the anchor and charges the proration immediately on upgrade', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+
+      const result = await gateway.changePlan(changePlanInput);
+
+      expect(result).toEqual(success({ status: 'applied' }));
+      expect(client.subscriptions.update).toHaveBeenCalledWith(
+        'sub_1',
+        {
+          items: [{ id: 'si_1', price: 'price_ace' }],
+          billing_cycle_anchor: { type: 'now' },
+          proration_behavior: 'always_invoice',
+          payment_behavior: 'pending_if_incomplete',
+          expand: ['latest_invoice'],
+        },
+        { idempotencyKey: 'change-key' },
+      );
+      expect(client.subscriptionSchedules.create).not.toHaveBeenCalled();
+      expect(client.subscriptions.retrieve).toHaveBeenCalledWith('sub_1');
+    });
+
+    it('releases a pending schedule before changing plan', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sched_old' }),
+      );
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+
+      await gateway.changePlan(changePlanInput);
+
+      expect(client.subscriptionSchedules.release).toHaveBeenCalledWith('sched_old');
+    });
+
+    it('releases an expanded schedule object before the mutation', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: { id: 'sched_expanded' } }),
+      );
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+
+      await gateway.changePlan(changePlanInput);
+
+      expect(client.subscriptionSchedules.release).toHaveBeenCalledWith('sched_expanded');
+      expect(
+        vi.mocked(client.subscriptionSchedules.release).mock.invocationCallOrder[0],
+      ).toBeLessThan(vi.mocked(client.subscriptions.update).mock.invocationCallOrder[0]);
+    });
+
+    it('treats an already-released schedule as benign', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sched_old' }),
+      );
+      vi.mocked(client.subscriptionSchedules.release).mockRejectedValueOnce({
+        type: 'StripeInvalidRequestError',
+        message: 'This subscription schedule has already been released.',
+      });
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual(
+        success({ status: 'applied' }),
+      );
+      expect(client.subscriptions.update).toHaveBeenCalled();
+    });
+
+    it('applies nothing when Stripe already bills the target price', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+
+      const result = await gateway.changePlan({
+        ...changePlanInput,
+        targetPriceId: 'price_spark',
+      });
+
+      expect(result).toEqual(success({ status: 'applied' }));
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+      expect(client.subscriptionSchedules.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a subscription that belongs to another customer', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ customer: 'cus_other' }),
+      );
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'FORBIDDEN',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a stale mirror whose plan does not match the live price', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(repository.findPriceById).mockResolvedValueOnce(
+        success(listedPrice({ planKey: 'ace', stripePriceId: 'price_spark' })),
+      );
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'CONFLICT',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('fails closed for a multi-item subscription', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({
+          items: {
+            data: [
+              {
+                id: 'si_1',
+                price: { id: 'price_spark' },
+                current_period_start: 1,
+                current_period_end: 2,
+              },
+              {
+                id: 'si_2',
+                price: { id: 'price_addon' },
+                current_period_start: 1,
+                current_period_end: 2,
+              },
+            ],
+          },
+        }),
+      );
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'SERVICE_UNAVAILABLE',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('reports a pending payment instead of claiming the upgrade applied', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(
+        subscriptionFixture({
+          pending_update: { billing_cycle_anchor: 'now' },
+          latest_invoice: { hosted_invoice_url: 'https://invoice.stripe.com/i/3ds' },
+        }),
+      );
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual(
+        success({
+          status: 'pending_payment',
+          hostedInvoiceUrl: 'https://invoice.stripe.com/i/3ds',
+        }),
+      );
+    });
+
+    it('maps a schedule creation failure', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptionSchedules.create).mockRejectedValueOnce({
+        type: 'StripeRateLimitError',
+      });
+
+      await expect(
+        gateway.changePlan({ ...changePlanInput, direction: 'downgrade' }),
+      ).resolves.toEqual({ success: false, error: 'RATE_LIMITED' });
+    });
+
+    it('maps a schedule update failure', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptionSchedules.create).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }),
+      );
+      vi.mocked(client.subscriptionSchedules.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1', status: 'active' }),
+      );
+      vi.mocked(client.subscriptionSchedules.update).mockRejectedValueOnce(new Error('outage'));
+
+      await expect(
+        gateway.changePlan({ ...changePlanInput, direction: 'downgrade' }),
+      ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+    });
+
+    it('maps a non-benign release failure', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sched_old' }),
+      );
+      vi.mocked(client.subscriptionSchedules.release).mockRejectedValueOnce(new Error('outage'));
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'SERVICE_UNAVAILABLE',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('schedules a downgrade at the current period end', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptionSchedules.create).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }),
+      );
+      vi.mocked(client.subscriptionSchedules.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1', status: 'active' }),
+      );
+      vi.mocked(client.subscriptionSchedules.update).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }),
+      );
+
+      const result = await gateway.changePlan({ ...changePlanInput, direction: 'downgrade' });
+
+      expect(result).toEqual(success({ status: 'scheduled' }));
+      expect(client.subscriptionSchedules.create).toHaveBeenCalledWith(
+        { from_subscription: 'sub_1' },
+        { idempotencyKey: 'change-key:schedule' },
+      );
+      expect(client.subscriptionSchedules.update).toHaveBeenCalledWith(
+        'sched_1',
+        {
+          phases: [
+            {
+              start_date: 1_800_000_000,
+              end_date: 1_802_592_000,
+              items: [{ price: 'price_spark', quantity: 1 }],
+              metadata: undefined,
+            },
+            {
+              start_date: 1_802_592_000,
+              items: [{ price: 'price_ace', quantity: 1 }],
+              metadata: undefined,
+            },
+          ],
+        },
+        { idempotencyKey: 'change-key:phases:sched_1' },
+      );
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('replaces a replayed schedule that was released', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptionSchedules.create)
+        .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_released' }))
+        .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_new' }));
+      vi.mocked(client.subscriptionSchedules.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_released', status: 'released' }),
+      );
+      vi.mocked(client.subscriptionSchedules.update).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_new' }),
+      );
+
+      await expect(
+        gateway.changePlan({ ...changePlanInput, direction: 'downgrade' }),
+      ).resolves.toEqual(success({ status: 'scheduled' }));
+
+      expect(client.subscriptionSchedules.create).toHaveBeenNthCalledWith(
+        2,
+        { from_subscription: 'sub_1' },
+        { idempotencyKey: 'change-key:schedule:sched_released' },
+      );
+      expect(client.subscriptionSchedules.update).toHaveBeenCalledWith(
+        'sched_new',
+        expect.any(Object),
+        { idempotencyKey: 'change-key:phases:sched_new' },
+      );
+    });
+
+    it('fails closed when the subscription has no item', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ items: { data: [] } }),
+      );
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'SERVICE_UNAVAILABLE',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when a downgrade has no period boundary', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({
+          items: {
+            data: [
+              {
+                id: 'si_1',
+                price: { id: 'price_spark' },
+                current_period_start: 1_800_000_000,
+                current_period_end: null,
+              },
+            ],
+          },
+        }),
+      );
+
+      await expect(
+        gateway.changePlan({ ...changePlanInput, direction: 'downgrade' }),
+      ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+      expect(client.subscriptionSchedules.create).not.toHaveBeenCalled();
+    });
+
+    it('maps provider failures through the shared Stripe mapping', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockRejectedValueOnce({
+        type: 'StripeInvalidRequestError',
+        code: 'resource_missing',
+      });
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'NOT_FOUND',
+      });
+    });
+  });
+
+  describe('cancelAtPeriodEnd', () => {
+    const cancelInput = {
+      owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
+      customerId: 'cus_1',
+      subscriptionId: 'sub_1',
+      cancel: true,
+    };
+
+    it("schedules cancellation and returns Stripe's authoritative value", async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(
+        asJson<Stripe.Subscription>({ id: 'sub_1', cancel_at_period_end: true }),
+      );
+
+      await expect(gateway.cancelAtPeriodEnd(cancelInput)).resolves.toEqual(
+        success({ cancelAtPeriodEnd: true, releasedSchedule: false }),
+      );
+      expect(client.subscriptions.update).toHaveBeenCalledWith('sub_1', {
+        cancel_at_period_end: true,
+      });
+    });
+
+    it('reactivates before the period ends', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(
+        asJson<Stripe.Subscription>({ id: 'sub_1', cancel_at_period_end: false }),
+      );
+
+      await expect(gateway.cancelAtPeriodEnd({ ...cancelInput, cancel: false })).resolves.toEqual(
+        success({ cancelAtPeriodEnd: false, releasedSchedule: false }),
+      );
+
+      expect(client.subscriptions.update).toHaveBeenCalledWith('sub_1', {
+        cancel_at_period_end: false,
+      });
+    });
+
+    it('releases a pending schedule before scheduling cancellation', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sched_old' }),
+      );
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(
+        asJson<Stripe.Subscription>({ id: 'sub_1', cancel_at_period_end: true }),
+      );
+
+      await gateway.cancelAtPeriodEnd(cancelInput);
+
+      expect(client.subscriptionSchedules.release).toHaveBeenCalledWith('sched_old');
+    });
+
+    it('maps a generic provider failure', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptions.update).mockRejectedValueOnce(new Error('outage'));
+
+      await expect(gateway.cancelAtPeriodEnd(cancelInput)).resolves.toEqual({
+        success: false,
+        error: 'SERVICE_UNAVAILABLE',
+      });
+    });
   });
 
   it('refuses a mock webhook envelope on the Stripe driver', async () => {

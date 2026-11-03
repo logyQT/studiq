@@ -42,3 +42,18 @@ export function checkoutExpiresAt(nowMs: number = Date.now()): number {
   const bucketEndMs = (Math.floor(nowMs / CHECKOUT_BUCKET_MS) + 1) * CHECKOUT_BUCKET_MS;
   return Math.floor((bucketEndMs + CHECKOUT_BUCKET_MS) / 1000) + CHECKOUT_EXPIRY_MARGIN_SECONDS;
 }
+
+/**
+ * Deterministic key for an upgrade/downgrade. It is derived from the exact
+ * mutation identity (subscription, target plan/price and the current period
+ * boundary) rather than the clock, so a double-click collapses onto one Stripe
+ * mutation while a genuine retry after the period rolled gets a new key.
+ */
+export function changePlanIdempotencyKey(
+  subscriptionId: string,
+  targetPlanKey: string,
+  targetPriceId: string,
+  currentPeriodEnd: string | null,
+): string {
+  return `change-plan:${subscriptionId}:${targetPlanKey}:${targetPriceId}:${currentPeriodEnd ?? 'none'}`;
+}

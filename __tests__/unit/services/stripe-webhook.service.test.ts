@@ -25,6 +25,7 @@ const CATALOG: Record<string, CatalogPlan> = {
     currency: 'PLN',
     isActive: true,
     forAccountType: 'student',
+    sortOrder: 1,
   },
   ace: {
     key: 'ace',
@@ -33,6 +34,7 @@ const CATALOG: Record<string, CatalogPlan> = {
     currency: 'PLN',
     isActive: true,
     forAccountType: 'student',
+    sortOrder: 2,
   },
   hub: {
     key: 'hub',
@@ -41,6 +43,7 @@ const CATALOG: Record<string, CatalogPlan> = {
     currency: 'PLN',
     isActive: true,
     forAccountType: 'manager',
+    sortOrder: 3,
   },
 };
 
