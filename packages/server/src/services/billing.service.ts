@@ -514,7 +514,22 @@ export class BillingService {
     });
     if (isFailure(result)) return result;
 
-    return success(result.data);
+    // A released schedule means a previously scheduled downgrade will no longer
+    // happen; clear the display marker that described it. A `pending_payment`
+    // upgrade has no schedule, so its marker stays.
+    if (result.data.releasedSchedule) {
+      const marker = await this.repository.setPendingPlan(
+        activeResult.data.stripeSubscriptionId,
+        null,
+      );
+      if (isFailure(marker)) {
+        logWarn('billing.pending_plan_marker_failed', {
+          subscriptionId: activeResult.data.stripeSubscriptionId,
+        });
+      }
+    }
+
+    return success({ cancelAtPeriodEnd: result.data.cancelAtPeriodEnd });
   }
 }
 

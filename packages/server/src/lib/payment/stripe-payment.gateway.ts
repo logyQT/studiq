@@ -330,10 +330,7 @@ export class StripePaymentGateway implements PaymentGateway {
         return failure('SERVICE_UNAVAILABLE');
       }
 
-      const schedule = await this.client.subscriptionSchedules.create(
-        { from_subscription: input.subscriptionId },
-        { idempotencyKey: `${input.idempotencyKey}:schedule` },
-      );
+      const schedule = await this.createSchedule(input);
 
       // Phases replace the whole phase object, so carry our owner metadata into
       // both phases instead of letting Stripe unset it on the active one.
@@ -356,7 +353,7 @@ export class StripePaymentGateway implements PaymentGateway {
             },
           ],
         },
-        { idempotencyKey: `${input.idempotencyKey}:phases` },
+        { idempotencyKey: `${input.idempotencyKey}:phases:${schedule.id}` },
       );
 
       return success({ status: 'scheduled' });
@@ -365,9 +362,31 @@ export class StripePaymentGateway implements PaymentGateway {
     }
   }
 
+  /**
+   * Create a schedule, reusing the deterministic idempotency key. A replay
+   * inside Stripe's 24 h window can return a schedule that was subsequently
+   * released (e.g. a downgrade followed by cancel); that snapshot cannot be
+   * updated, so read the live state and create a replacement under a key that
+   * includes the stale id.
+   */
+  private async createSchedule(input: ChangePlanInput): Promise<Stripe.SubscriptionSchedule> {
+    const created = await this.client.subscriptionSchedules.create(
+      { from_subscription: input.subscriptionId },
+      { idempotencyKey: `${input.idempotencyKey}:schedule` },
+    );
+
+    const live = await this.client.subscriptionSchedules.retrieve(created.id);
+    if (live.status !== 'released' && live.status !== 'canceled') return created;
+
+    return this.client.subscriptionSchedules.create(
+      { from_subscription: input.subscriptionId },
+      { idempotencyKey: `${input.idempotencyKey}:schedule:${created.id}` },
+    );
+  }
+
   async cancelAtPeriodEnd(
     input: CancelAtPeriodEndInput,
-  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean }>> {
+  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>> {
     try {
       const subscription = await this.client.subscriptions.retrieve(input.subscriptionId);
       const customerId = customerIdOf(subscription.customer);
@@ -380,27 +399,31 @@ export class StripePaymentGateway implements PaymentGateway {
 
       // A scheduled downgrade must not keep its own phase-level cancel flag;
       // release it first so cancel/reactivate has one authoritative source.
-      await this.releaseSchedule(subscription);
+      const releasedSchedule = await this.releaseSchedule(subscription);
 
       const updated = await this.client.subscriptions.update(input.subscriptionId, {
         cancel_at_period_end: input.cancel,
       });
 
       // Return Stripe's authoritative value, not the requested one.
-      return success({ cancelAtPeriodEnd: updated.cancel_at_period_end });
+      return success({
+        cancelAtPeriodEnd: updated.cancel_at_period_end,
+        releasedSchedule,
+      });
     } catch (error) {
       return stripeFailure(error);
     }
   }
 
   /** Detach a pending schedule created by an earlier downgrade, if any. */
-  private async releaseSchedule(subscription: Stripe.Subscription): Promise<void> {
+  private async releaseSchedule(subscription: Stripe.Subscription): Promise<boolean> {
     const schedule = subscription.schedule;
     const scheduleId = typeof schedule === 'string' ? schedule : schedule?.id;
-    if (!scheduleId) return;
+    if (!scheduleId) return false;
 
     try {
       await this.client.subscriptionSchedules.release(scheduleId);
+      return true;
     } catch (error) {
       // Two concurrent changes can both observe the same schedule; the loser
       // sees "already released". That is benign, not a failed change.
@@ -413,7 +436,7 @@ export class StripePaymentGateway implements PaymentGateway {
       const type = isRecord(error) ? readString(error, 'type') : undefined;
       if (type === 'StripeInvalidRequestError' && /released/i.test(message)) {
         logWarn('billing.schedule_already_released', { scheduleId });
-        return;
+        return true;
       }
       throw error;
     }

@@ -144,7 +144,7 @@ export interface PaymentGateway {
 
   cancelAtPeriodEnd(
     input: CancelAtPeriodEndInput,
-  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean }>>;
+  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>>;
 
   handleWebhook(envelope: PaymentWebhookEnvelope): Promise<ServiceResult<WebhookOutcome>>;
 }

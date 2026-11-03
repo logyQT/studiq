@@ -63,6 +63,7 @@ export interface StripeClient {
       params: Stripe.SubscriptionScheduleCreateParams,
       options?: StripeRequestOptions,
     ): Promise<Stripe.SubscriptionSchedule>;
+    retrieve(id: string): Promise<Stripe.SubscriptionSchedule>;
     update(
       id: string,
       params: Stripe.SubscriptionScheduleUpdateParams,
@@ -114,6 +115,7 @@ export function createStripeClient(secretKey: string): StripeClient {
     },
     subscriptionSchedules: {
       create: (params, options) => stripe.subscriptionSchedules.create(params, options),
+      retrieve: (id) => stripe.subscriptionSchedules.retrieve(id),
       update: (id, params, options) => stripe.subscriptionSchedules.update(id, params, options),
       release: (id) => stripe.subscriptionSchedules.release(id),
     },

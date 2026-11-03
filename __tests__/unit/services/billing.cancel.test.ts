@@ -64,7 +64,7 @@ function createRepository(
     findPriceById: vi.fn(),
     findListedPrice: vi.fn(),
     findActiveSubscription: vi.fn().mockResolvedValue(success(activeSubscription())),
-    setPendingPlan: vi.fn(),
+    setPendingPlan: vi.fn().mockResolvedValue(success(undefined)),
     ...overrides,
   });
 }
@@ -171,6 +171,22 @@ describe('BillingService.cancelSubscription', () => {
       success: false,
       error: 'SERVICE_UNAVAILABLE',
     });
+  });
+
+  it('clears a scheduled-downgrade marker when the gateway released the schedule', async () => {
+    vi.mocked(gateway.cancelAtPeriodEnd).mockResolvedValueOnce(
+      success({ cancelAtPeriodEnd: true, releasedSchedule: true }),
+    );
+
+    await service.cancelSubscription(studentCtx, true);
+
+    expect(repository.setPendingPlan).toHaveBeenCalledWith('sub_1', null);
+  });
+
+  it('keeps the pending-payment marker when no schedule was released', async () => {
+    await service.cancelSubscription(studentCtx, true);
+
+    expect(repository.setPendingPlan).not.toHaveBeenCalled();
   });
 
   it('never writes a plan or entitlement from the API route', async () => {

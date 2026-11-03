@@ -36,6 +36,7 @@ function createClient() {
     subscriptions: { retrieve: vi.fn(), update: vi.fn() },
     subscriptionSchedules: {
       create: vi.fn(),
+      retrieve: vi.fn(),
       update: vi.fn(),
       release: vi.fn(),
     },
@@ -585,6 +586,9 @@ describe('StripePaymentGateway', () => {
       vi.mocked(client.subscriptionSchedules.create).mockResolvedValueOnce(
         asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }),
       );
+      vi.mocked(client.subscriptionSchedules.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1', status: 'active' }),
+      );
       vi.mocked(client.subscriptionSchedules.update).mockRejectedValueOnce(new Error('outage'));
 
       await expect(
@@ -610,6 +614,9 @@ describe('StripePaymentGateway', () => {
       vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
       vi.mocked(client.subscriptionSchedules.create).mockResolvedValueOnce(
         asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }),
+      );
+      vi.mocked(client.subscriptionSchedules.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1', status: 'active' }),
       );
       vi.mocked(client.subscriptionSchedules.update).mockResolvedValueOnce(
         asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }),
@@ -639,9 +646,37 @@ describe('StripePaymentGateway', () => {
             },
           ],
         },
-        { idempotencyKey: 'change-key:phases' },
+        { idempotencyKey: 'change-key:phases:sched_1' },
       );
       expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('replaces a replayed schedule that was released', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptionSchedules.create)
+        .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_released' }))
+        .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_new' }));
+      vi.mocked(client.subscriptionSchedules.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_released', status: 'released' }),
+      );
+      vi.mocked(client.subscriptionSchedules.update).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_new' }),
+      );
+
+      await expect(
+        gateway.changePlan({ ...changePlanInput, direction: 'downgrade' }),
+      ).resolves.toEqual(success({ status: 'scheduled' }));
+
+      expect(client.subscriptionSchedules.create).toHaveBeenNthCalledWith(
+        2,
+        { from_subscription: 'sub_1' },
+        { idempotencyKey: 'change-key:schedule:sched_released' },
+      );
+      expect(client.subscriptionSchedules.update).toHaveBeenCalledWith(
+        'sched_new',
+        expect.any(Object),
+        { idempotencyKey: 'change-key:phases:sched_new' },
+      );
     });
 
     it('fails closed when the subscription has no item', async () => {
@@ -706,7 +741,7 @@ describe('StripePaymentGateway', () => {
       );
 
       await expect(gateway.cancelAtPeriodEnd(cancelInput)).resolves.toEqual(
-        success({ cancelAtPeriodEnd: true }),
+        success({ cancelAtPeriodEnd: true, releasedSchedule: false }),
       );
       expect(client.subscriptions.update).toHaveBeenCalledWith('sub_1', {
         cancel_at_period_end: true,
@@ -720,7 +755,7 @@ describe('StripePaymentGateway', () => {
       );
 
       await expect(gateway.cancelAtPeriodEnd({ ...cancelInput, cancel: false })).resolves.toEqual(
-        success({ cancelAtPeriodEnd: false }),
+        success({ cancelAtPeriodEnd: false, releasedSchedule: false }),
       );
 
       expect(client.subscriptions.update).toHaveBeenCalledWith('sub_1', {
