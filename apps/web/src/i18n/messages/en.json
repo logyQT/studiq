@@ -671,7 +671,11 @@
     "mock_billing_note": "Simulated billing is handled by StudiQ.",
     "no_manage_permission": "Organization billing is managed by an organization administrator.",
     "change_plan_pending_link": "Complete the payment",
-    "invoice_history": "Payment history"
+    "invoice_history": "Payment history",
+    "keep_current_plan": "Keep current plan",
+    "keep_current_plan_success": "Scheduled change removed",
+    "keep_current_plan_none": "There is no scheduled change to remove",
+    "keep_current_plan_failed": "Could not remove the scheduled change"
   },
   "UpgradePrompt": {
     "title": "Upgrade to access this feature",

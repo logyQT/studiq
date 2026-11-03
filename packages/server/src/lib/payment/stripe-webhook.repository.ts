@@ -156,6 +156,17 @@ export interface StripeWebhookRepository {
     status: string,
     lastEventCreated: number,
   ): Promise<ServiceResult<void>>;
+  /**
+   * Clear the display-only pending marker when the plan it described actually
+   * landed. Conditional on the marker still equalling `planKey`, so a newer
+   * scheduled change is never discarded. Never touches `last_event_created`.
+   */
+  clearPendingPlanIfApplied(
+    stripeSubscriptionId: string,
+    planKey: string,
+  ): Promise<ServiceResult<void>>;
+  /** Clear any marker for a subscription that no longer exists. */
+  clearPendingPlan(stripeSubscriptionId: string): Promise<ServiceResult<void>>;
   findActiveSubscription(
     owner: { type: 'user'; userId: string } | { type: 'org'; orgId: string },
     livemode: boolean,
@@ -488,6 +499,32 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     const { error } = await supabase
       .from('billing_subscriptions')
       .update({ status, last_event_created: lastEventCreated })
+      .eq('stripe_subscription_id', stripeSubscriptionId);
+
+    if (error) return toDbFailure(error);
+    return success(undefined);
+  }
+
+  async clearPendingPlanIfApplied(
+    stripeSubscriptionId: string,
+    planKey: string,
+  ): Promise<ServiceResult<void>> {
+    const supabase = this.createAdminClient();
+    const { error } = await supabase
+      .from('billing_subscriptions')
+      .update({ pending_plan_key: null })
+      .eq('stripe_subscription_id', stripeSubscriptionId)
+      .eq('pending_plan_key', planKey);
+
+    if (error) return toDbFailure(error);
+    return success(undefined);
+  }
+
+  async clearPendingPlan(stripeSubscriptionId: string): Promise<ServiceResult<void>> {
+    const supabase = this.createAdminClient();
+    const { error } = await supabase
+      .from('billing_subscriptions')
+      .update({ pending_plan_key: null })
       .eq('stripe_subscription_id', stripeSubscriptionId);
 
     if (error) return toDbFailure(error);

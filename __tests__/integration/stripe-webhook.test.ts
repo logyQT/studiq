@@ -1,6 +1,7 @@
 import { STRIPE_API_VERSION, createStripeClient } from '@studiq/server/lib/payment/stripe-client';
 import type { StripeClient } from '@studiq/server/lib/payment/stripe-client';
 import { SupabaseStripeWebhookRepository } from '@studiq/server/lib/payment/stripe-webhook.repository';
+import { success } from '@studiq/server/lib/service-result';
 import { EntitlementService } from '@studiq/server/services/entitlement.service';
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
@@ -328,6 +329,70 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     );
 
     expect(await profilePlan(student.id)).toBe('base');
+  });
+
+  it('clears the pending marker only when it matches and preserves freshness', async () => {
+    const repository = new SupabaseStripeWebhookRepository(() => service);
+    const stripeCustomerId = tagId('cus_marker');
+    const stripeSubscriptionId = tagId('sub_marker');
+    customerIds.push(stripeCustomerId);
+    subscriptionIds.push(stripeSubscriptionId);
+
+    const { data: customer, error: customerError } = await service
+      .from('billing_customers')
+      .insert({
+        user_id: student.id,
+        organization_id: null,
+        stripe_customer_id: stripeCustomerId,
+        livemode: false,
+      })
+      .select('id')
+      .single();
+    if (customerError || !customer) {
+      throw new Error(customerError?.message ?? 'customer insert failed');
+    }
+
+    const { error: subscriptionError } = await service.from('billing_subscriptions').insert({
+      stripe_subscription_id: stripeSubscriptionId,
+      billing_customer_id: customer.id,
+      user_id: student.id,
+      plan_key: 'spark',
+      price_id: 'price_marker_test',
+      status: 'active',
+      pending_plan_key: 'ace',
+      last_event_created: 4242,
+      livemode: false,
+    });
+    if (subscriptionError) throw new Error(subscriptionError.message);
+
+    async function markerRow() {
+      const { data, error } = await service
+        .from('billing_subscriptions')
+        .select('pending_plan_key, last_event_created')
+        .eq('stripe_subscription_id', stripeSubscriptionId)
+        .single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    // A different target must not be discarded by a stale release request.
+    await expect(
+      repository.clearPendingPlanIfApplied(stripeSubscriptionId, 'spark'),
+    ).resolves.toEqual(success(undefined));
+    expect(await markerRow()).toMatchObject({
+      pending_plan_key: 'ace',
+      last_event_created: 4242,
+    });
+
+    // Matching target clears, and the freshness value is untouched (the clear
+    // must never masquerade as a newer Stripe event).
+    await expect(
+      repository.clearPendingPlanIfApplied(stripeSubscriptionId, 'ace'),
+    ).resolves.toEqual(success(undefined));
+    expect(await markerRow()).toMatchObject({
+      pending_plan_key: null,
+      last_event_created: 4242,
+    });
   });
 
   it('writes one payments row per paid invoice, even on replay', async () => {

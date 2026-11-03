@@ -612,6 +612,32 @@ export class StripeWebhookService {
         input.forceDowngrade,
       );
       if (isFailure(entitlement)) throw new Error('entitlement write failed');
+
+      // The pending marker is display-only and now describes the applied plan
+      // (a scheduled downgrade reached its phase, or the upgrade price landed).
+      // A terminal status / a subscription with no schedule or pending update
+      // cannot still carry a meaningful marker, so clear it outright; when the
+      // provider still shows a pending change, clear conditionally so a newer
+      // target is not discarded. This write deliberately does not touch
+      // `last_event_created`.
+      const terminal = Boolean(input.forceDowngrade) || DOWNGRADE_STATUSES.has(status);
+      const entitlementWasWritten = terminal || ENTITLED_STATUSES.has(status);
+      const providerStillPending =
+        Boolean(subscription.schedule) || Boolean(subscription.pending_update);
+      const cleared = !entitlementWasWritten
+        ? success(undefined)
+        : terminal || !providerStillPending
+          ? await this.repository.clearPendingPlan(subscription.id)
+          : await this.repository.clearPendingPlanIfApplied(subscription.id, resolved.plan.key);
+      if (isFailure(cleared)) {
+        // The entitlement already landed; a marker cleanup failure must not
+        // turn a successful event into a retry.
+        logWarn('billing.pending_plan_clear_failed', {
+          eventId: input.eventId,
+          subscriptionId: subscription.id,
+        });
+      }
+
       return { ignored: false, entitlementApplied: true };
     }
 

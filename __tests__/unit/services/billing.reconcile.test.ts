@@ -36,6 +36,7 @@ function createGateway(driver: 'mock' | 'stripe' = 'stripe'): PaymentGateway {
     reconcileCheckout: vi
       .fn<PaymentGateway['reconcileCheckout']>()
       .mockResolvedValue(success({ activated: true })),
+    releaseScheduledPlan: vi.fn<PaymentGateway['releaseScheduledPlan']>(),
     handleWebhook: vi.fn<PaymentGateway['handleWebhook']>(),
   };
 }
@@ -53,6 +54,7 @@ function createRepository(
     findListedPrice: vi.fn(),
     findActiveSubscription: vi.fn(),
     setPendingPlan: vi.fn(),
+    clearPendingPlanIfApplied: vi.fn().mockResolvedValue(success(undefined)),
     ...overrides,
   });
 }

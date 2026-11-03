@@ -16,6 +16,8 @@ import type {
   PortalSessionResult,
   ReconcileCheckoutInput,
   ReconcileCheckoutResult,
+  ReleaseScheduledPlanInput,
+  ReleaseScheduledPlanResult,
   WebhookOutcome,
 } from '@studiq/server/lib/payment/payment-gateway';
 import type { StripeConfig } from '@studiq/server/lib/payment/payment-gateway.factory';
@@ -101,8 +103,8 @@ function stripeFailure(error: unknown): ServiceResult<never> {
  *
  * Owns provider I/O for checkout and the Billing Portal: customer
  * create/reuse, Price validation, the hosted Checkout Session and the hosted
- * portal session. Webhooks are delegated to `StripeWebhookService`; plan
- * changes and cancellation are added in phase 4 and fail until then.
+ * portal session, plan changes and cancellation. Webhooks are delegated to
+ * `StripeWebhookService`; the entitlement is never written here.
  */
 export class StripePaymentGateway implements PaymentGateway {
   readonly driver = 'stripe' as const;
@@ -421,6 +423,51 @@ export class StripePaymentGateway implements PaymentGateway {
     }
   }
 
+  async releaseScheduledPlan(
+    input: ReleaseScheduledPlanInput,
+  ): Promise<ServiceResult<ReleaseScheduledPlanResult>> {
+    try {
+      const subscription = await this.client.subscriptions.retrieve(input.subscriptionId);
+
+      // Defence in depth: the subscription must belong to the customer the
+      // service resolved from the authenticated owner.
+      const customerId = customerIdOf(subscription.customer);
+      if (!customerId || customerId !== input.customerId) {
+        logError('billing.subscription_owner_mismatch', {
+          subscriptionId: input.subscriptionId,
+        });
+        return failure('FORBIDDEN');
+      }
+
+      // The mirror may lag a webhook. If a scheduled phase already applied,
+      // releasing the remaining schedule would tell the user they kept the old
+      // plan while Stripe charges the new one; fail closed instead.
+      const livePriceId = subscription.items?.data?.[0]?.price?.id;
+      if (!livePriceId) {
+        logError('billing.release_scheduled_plan_missing_price', {
+          subscriptionId: input.subscriptionId,
+        });
+        return failure('SERVICE_UNAVAILABLE');
+      }
+
+      const livePrice = await this.repository.findPriceById(livePriceId, this.livemode);
+      if (isFailure(livePrice)) return livePrice;
+      if (livePrice.data?.planKey !== input.currentPlanKey) {
+        logError('billing.subscription_plan_mismatch', {
+          subscriptionId: input.subscriptionId,
+          expected: input.currentPlanKey,
+          actual: livePrice.data?.planKey ?? null,
+        });
+        return failure('CONFLICT');
+      }
+
+      const released = await this.releaseSchedule(subscription);
+      return success({ released });
+    } catch (error) {
+      return stripeFailure(error);
+    }
+  }
+
   /** Detach a pending schedule created by an earlier downgrade, if any. */
   private async releaseSchedule(subscription: Stripe.Subscription): Promise<boolean> {
     const schedule = subscription.schedule;
@@ -440,7 +487,7 @@ export class StripePaymentGateway implements PaymentGateway {
             ? (readString(error, 'message') ?? '')
             : '';
       const type = isRecord(error) ? readString(error, 'type') : undefined;
-      if (type === 'StripeInvalidRequestError' && /released/i.test(message)) {
+      if (type === 'StripeInvalidRequestError' && /already (?:been )?released/i.test(message)) {
         logWarn('billing.schedule_already_released', { scheduleId });
         return true;
       }

@@ -52,6 +52,18 @@ export class BillingController {
     return controllerResponse.success(result.data);
   }
 
+  /**
+   * Revert a scheduled downgrade ("keep current plan"). The body carries
+   * nothing: the owner, customer and subscription come from the context and
+   * the mirror, never from the client.
+   */
+  async releaseScheduledPlan(ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.billing.releaseScheduledChange(ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
+  }
+
   async reconcileCheckout(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
     const parsed = ReconcileCheckoutSchema.safeParse(body);
     if (!parsed.success) {
