@@ -189,28 +189,35 @@ jobs:
       # run is what refreshes it. One writer means no concurrent reserve races
       # for the same key.
       #
-      # On main this only looks the key up: `restore-keys` would otherwise seed
-      # the directory with the previous generation's tarballs, and the save
-      # below would carry every superseded package version into the new cache.
-      # PRs keep the fallback restore.
-      - name: Restore bun install cache
-        id: bun-cache
+      # A main run restores the exact key but never the fallback: `restore-keys`
+      # would seed the directory with the previous generation's tarballs and the
+      # save would carry every superseded package version into the new cache.
+      # PR jobs may fall back, because they never write.
+      - name: Restore bun install cache (exact)
+        id: bun-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore bun install cache (fallback)
+        id: bun-cache-pr
+        if: github.ref != 'refs/heads/main'
         uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
           key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
           restore-keys: |
             bun-ubuntu-24.04-
-          lookup-only: ${{ github.ref == 'refs/heads/main' }}
       - run: bun install --frozen-lockfile
       - name: Save bun install cache
         # A cache write is an optimisation: never let it fail the gate.
         continue-on-error: true
-        if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/main' && steps.bun-cache-main.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: ~/.bun/install/cache
-          key: ${{ steps.bun-cache.outputs.cache-primary-key }}
+          key: ${{ steps.bun-cache-main.outputs.cache-primary-key }}
       - name: Format
         run: bun run format:check
       - name: Lint
@@ -473,19 +480,25 @@ jobs:
             echo "OTEL_SDK_DISABLED=true"
           } > apps/web/.env
 
-      - name: Restore Playwright browsers
-        id: pw-cache
-        if: needs.scope.outputs.app == 'true'
+      # Same reason as the bun cache: Playwright never deletes previous browser
+      # revisions, so a main run restores only its exact key and saves a set
+      # that contains just the current one. PRs may fall back.
+      - name: Restore Playwright browsers (exact)
+        id: pw-cache-main
+        if: needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-24.04-${{ matrix.project }}-${{ hashFiles('bun.lock') }}
+      - name: Restore Playwright browsers (fallback)
+        id: pw-cache-pr
+        if: needs.scope.outputs.app == 'true' && github.ref != 'refs/heads/main'
         uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-ubuntu-24.04-${{ matrix.project }}-${{ hashFiles('bun.lock') }}
           restore-keys: |
             playwright-ubuntu-24.04-${{ matrix.project }}-
-          # Same reason as the bun cache: Playwright never deletes previous
-          # browser revisions, so a main run must save a set that contains only
-          # the current one. PRs still fall back to the previous restore.
-          lookup-only: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install browsers
         run: bunx playwright install --with-deps ${{ matrix.project }}
@@ -494,11 +507,11 @@ jobs:
       - name: Save Playwright browsers
         # A cache write is an optimisation: never let it fail the job.
         continue-on-error: true
-        if: matrix.project != 'admin-api' && needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
+        if: matrix.project != 'admin-api' && needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main' && steps.pw-cache-main.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ steps.pw-cache.outputs.cache-primary-key }}
+          key: ${{ steps.pw-cache-main.outputs.cache-primary-key }}
 
       # Same shape as `qa-suite`: the workflow starts the app and seeds, and
       # Playwright only drives the browser. Before this, the build hid inside
