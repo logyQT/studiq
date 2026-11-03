@@ -392,13 +392,27 @@ async function reset(): Promise<void> {
 
 /* ---------------------------------------------------------------------- main */
 
+/** `--name value` or `--name=value`; `undefined` when the flag is absent. */
+function option(args: string[], name: string): string | undefined {
+  const inline = args.find((arg) => arg.startsWith(`--${name}=`));
+  if (inline) return inline.slice(`--${name}=`.length);
+  const index = args.indexOf(`--${name}`);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : undefined;
   // A browser leg seeds only its own tenants: keys include the project, and each
   // leg has its own Supabase instance, so the other project's tenants would be
   // pure waste (~135 orgs and ~270 users).
-  const project = args.includes('--project') ? args[args.indexOf('--project') + 1] : undefined;
+  const projectFlag = args.some((arg) => arg === '--project' || arg.startsWith('--project='));
+  const project = option(args, 'project');
+  // Without a value `--project` would fall through to "no filter" and seed every
+  // project — after `--reset` has already deleted the tenants.
+  if (projectFlag && !project?.trim()) {
+    throw new Error('--project needs a project name (e.g. --project chromium)');
+  }
 
   const wipe = args.includes('--reset');
 
