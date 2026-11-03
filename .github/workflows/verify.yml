@@ -188,6 +188,11 @@ jobs:
       # and this workflow never runs on a push to main, so the nightly/dispatch
       # run is what refreshes it. One writer means no concurrent reserve races
       # for the same key.
+      #
+      # On main this only looks the key up: `restore-keys` would otherwise seed
+      # the directory with the previous generation's tarballs, and the save
+      # below would carry every superseded package version into the new cache.
+      # PRs keep the fallback restore.
       - name: Restore bun install cache
         id: bun-cache
         uses: actions/cache/restore@v6
@@ -196,6 +201,7 @@ jobs:
           key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
           restore-keys: |
             bun-ubuntu-24.04-
+          lookup-only: ${{ github.ref == 'refs/heads/main' }}
       - run: bun install --frozen-lockfile
       - name: Save bun install cache
         # A cache write is an optimisation: never let it fail the gate.
@@ -476,6 +482,10 @@ jobs:
           key: playwright-ubuntu-24.04-${{ matrix.project }}-${{ hashFiles('bun.lock') }}
           restore-keys: |
             playwright-ubuntu-24.04-${{ matrix.project }}-
+          # Same reason as the bun cache: Playwright never deletes previous
+          # browser revisions, so a main run must save a set that contains only
+          # the current one. PRs still fall back to the previous restore.
+          lookup-only: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install browsers
         run: bunx playwright install --with-deps ${{ matrix.project }}
