@@ -180,7 +180,10 @@ export async function ensureAccounts(
  * created exactly as they are for an Admin-API signup.
  */
 export function createSqlAccountWriter(sql: SQL): AccountWriter {
-  const hashes = new Map<string, string>();
+  // Cache the *pending* query, not just its result: `runBounded` reaches this
+  // writer from several tenants at once, and a value-only cache lets every
+  // first-batch caller hash the same password again (8 bcrypts instead of 1).
+  const hashes = new Map<string, Promise<string>>();
 
   return async (accounts) => {
     const password = accounts[0]?.password;
@@ -188,12 +191,18 @@ export function createSqlAccountWriter(sql: SQL): AccountWriter {
       throw new Error('SQL account seeding needs one shared password per batch');
     }
 
-    let hash = hashes.get(password);
-    if (!hash) {
-      const [row] = await sql`SELECT crypt(${password}, gen_salt('bf', 10)) AS hash`;
-      hash = row.hash as string;
-      hashes.set(password, hash);
+    let pending = hashes.get(password);
+    if (!pending) {
+      pending = sql`SELECT crypt(${password}, gen_salt('bf', 10)) AS hash`
+        .then(([row]) => row.hash as string)
+        .catch((error: unknown) => {
+          // A rejected query is not a result — the next tenant should retry it.
+          hashes.delete(password);
+          throw error;
+        });
+      hashes.set(password, pending);
     }
+    const hash = await pending;
 
     const ids = accounts.map((account) => account.id);
     const emails = accounts.map((account) => account.email);
