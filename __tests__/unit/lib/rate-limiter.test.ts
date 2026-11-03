@@ -58,19 +58,30 @@ describe('createRateLimiter', () => {
     expect(second.retryAfterMs!).toBeLessThan(first.retryAfterMs!);
   });
 
-  it('clears the whole map once it grows past 10,000 distinct keys', () => {
+  it('treats an entry exactly one window old as expired', () => {
     const limiter = createRateLimiter(60_000, 1);
     const now = 1_000_000;
 
+    limiter.check('user-1', now);
+    expect(limiter.check('user-1', now + 60_000).allowed).toBe(true);
+  });
+
+  it('prunes only stale keys once the map grows past 10,000', () => {
+    const limiter = createRateLimiter(60_000, 1);
+    const now = 1_000_000;
+
+    // A distinct key: the loop below also creates `user-0`…`user-9999`, and a
+    // duplicate would keep the map at 10,000 instead of crossing the threshold.
+    limiter.check('active-user', now);
     for (let i = 0; i < 10_000; i++) {
       limiter.check(`user-${i}`, now);
     }
-    // user-1 already used its one allowed request above.
-    expect(limiter.check('user-1', now + 1).allowed).toBe(false);
 
-    // Crossing the 10,000 threshold clears the map, so a key that was
-    // previously rate-limited is allowed again.
-    limiter.check('user-10000', now + 2);
-    expect(limiter.check('user-1', now + 3).allowed).toBe(true);
+    // `active-user` is still inside its window: the map cleanup must not clear it.
+    expect(limiter.check('active-user', now + 1).allowed).toBe(false);
+
+    // After a full window every key is stale and is pruned, so it is allowed
+    // again.
+    expect(limiter.check('active-user', now + 60_001).allowed).toBe(true);
   });
 });

@@ -57,6 +57,7 @@ describe('PaymentService.listMine (#392)', () => {
         amount: 1999,
         currency: 'PLN',
         paid_at: '2026-10-25T10:00:00.000Z',
+        provider: 'stripe',
         hosted_invoice_url: 'https://invoice.stripe.test/in_2',
       },
       {
@@ -66,6 +67,7 @@ describe('PaymentService.listMine (#392)', () => {
         amount: 999,
         currency: 'PLN',
         paid_at: '2026-09-01T10:00:00.000Z',
+        provider: 'mock',
         hosted_invoice_url: null,
       },
     ]);
@@ -75,7 +77,7 @@ describe('PaymentService.listMine (#392)', () => {
 
     expect(mock.from).toHaveBeenCalledWith('payments');
     expect(query.select).toHaveBeenCalledWith(
-      'id, plan_key, plan_name, amount, currency, paid_at, hosted_invoice_url',
+      'id, plan_key, plan_name, amount, currency, paid_at, provider, hosted_invoice_url',
     );
     expect(query.eq).toHaveBeenCalledWith('user_id', 'u-1');
     expect(query.order).toHaveBeenCalledWith('paid_at', { ascending: false });
@@ -89,6 +91,7 @@ describe('PaymentService.listMine (#392)', () => {
           amount: 1999,
           currency: 'PLN',
           paidAt: '2026-10-25T10:00:00.000Z',
+          provider: 'stripe',
           hostedInvoiceUrl: 'https://invoice.stripe.test/in_2',
         },
         {
@@ -98,6 +101,42 @@ describe('PaymentService.listMine (#392)', () => {
           amount: 999,
           currency: 'PLN',
           paidAt: '2026-09-01T10:00:00.000Z',
+          provider: 'mock',
+          hostedInvoiceUrl: null,
+        },
+      ],
+    });
+  });
+
+  it('keeps a Stripe row with no hosted invoice URL at null', async () => {
+    mock.from.mockReturnValueOnce(
+      qb([
+        {
+          id: 'p-3',
+          plan_key: 'pro',
+          plan_name: 'StudiQ Pro',
+          amount: 2999,
+          currency: 'PLN',
+          paid_at: '2026-10-31T10:00:00.000Z',
+          provider: 'stripe',
+          hosted_invoice_url: null,
+        },
+      ]),
+    );
+
+    const result = await service.listMine(ctx);
+
+    expect(result).toEqual({
+      success: true,
+      data: [
+        {
+          id: 'p-3',
+          planKey: 'pro',
+          planName: 'StudiQ Pro',
+          amount: 2999,
+          currency: 'PLN',
+          paidAt: '2026-10-31T10:00:00.000Z',
+          provider: 'stripe',
           hostedInvoiceUrl: null,
         },
       ],

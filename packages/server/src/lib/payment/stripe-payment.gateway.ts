@@ -210,6 +210,11 @@ export class StripePaymentGateway implements PaymentGateway {
           // idempotency key, so a retry sends identical parameters.
           expires_at: input.expiresAt ?? checkoutExpiresAt(this.now().getTime()),
           allow_promotion_codes: false,
+          // Some accounts have Stripe Managed Payments (merchant of record)
+          // enabled by default, which rejects `automatic_tax: false`. We are
+          // the merchant of record and collect no tax at launch (D8), so
+          // disable it explicitly for this session.
+          managed_payments: { enabled: false },
           automatic_tax: { enabled: false },
           tax_id_collection: { enabled: false },
         },

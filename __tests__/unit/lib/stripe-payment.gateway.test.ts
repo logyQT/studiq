@@ -232,6 +232,7 @@ describe('StripePaymentGateway', () => {
       line_items: [{ price: 'price_spark', quantity: 1 }],
       client_reference_id: 'u-1',
       allow_promotion_codes: false,
+      managed_payments: { enabled: false },
       automatic_tax: { enabled: false },
       tax_id_collection: { enabled: false },
       locale: 'pl',
