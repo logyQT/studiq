@@ -90,21 +90,46 @@ jobs:
           python3 - "${BASE_REF:-}" <<'PY' >> "$GITHUB_OUTPUT"
           import json, subprocess, sys
 
-          # Balanced on the last observed shard times (7 / 6 / 6 / 5 min): STU is the
-          # slowest area, so it carries the two light ones (LIM, NFR); AUT joins the
-          # SEC/PUB/BIL group it used to sit next to in the old four-area shard.
+          # Balanced on measured per-area test time, sampled from the per-spec
+          # durations of run 41569902675 (all four shards, no retries):
+          # STU 762 s, EDU 711, MGR 499, AUT 171, SEC 152, NFR 100, ONB 99,
+          # BIL 87, LIM 63, PUB 48 — 2692 s of tests, so the ideal shard is
+          # 673 s (~168 s of wall clock at QA_WORKERS=4).
+          #
+          # The old grouping (stu-lim-nfr / edu / aut-sec-pub-bil / mgr-onb)
+          # measured 244 / 185 / 165 / 136 s — a 108 s spread.
+          #
+          # STU (762) and EDU (711) are above the ideal on their own, and an
+          # area is not split across shards (`scope` narrows a PR to the shards
+          # whose areas it touches), so `stu` and `edu` stay single-area and the
+          # other eight divide as MGR+SEC+BIL / AUT+NFR+ONB+PUB+LIM. Measured in
+          # run 41569902675: 199 / 195 / 195 / 131 s.
+          #
+          # Equalising the sums instead (MGR+PUB+LIM 610 vs AUT+SEC+NFR+ONB+BIL
+          # 609) was tried in run 41570914752 and measured worse at the only
+          # number that gates the pipeline: the five-area shard took 215 s and
+          # used 2.83 of 4 workers, where this layout's shards use 3.7-3.8.
+          # Packing more areas into one runner costs worker efficiency faster
+          # than the extra balance buys, so this grouping keeps the lower max.
+          #
+          # ~199 s is the floor: STU alone is 28% of the suite. Going below it
+          # needs a split area (a PR touching STU would then run two shards) or
+          # a fifth runner — the operator's call, not a default.
           shards = [
               {"name": "edu", "paths": "__tests__/qa/EDU", "areas": ["EDU"]},
-              {"name": "mgr-onb", "paths": "__tests__/qa/MGR __tests__/qa/ONB", "areas": ["MGR", "ONB"]},
+              {"name": "stu", "paths": "__tests__/qa/STU", "areas": ["STU"]},
               {
-                  "name": "stu-lim-nfr",
-                  "paths": "__tests__/qa/STU __tests__/qa/LIM __tests__/qa/NFR",
-                  "areas": ["STU", "LIM", "NFR"],
+                  "name": "mgr-sec-bil",
+                  "paths": "__tests__/qa/MGR __tests__/qa/SEC __tests__/qa/BIL",
+                  "areas": ["MGR", "SEC", "BIL"],
               },
               {
-                  "name": "aut-sec-pub-bil",
-                  "paths": "__tests__/qa/AUT __tests__/qa/SEC __tests__/qa/PUB __tests__/qa/BIL",
-                  "areas": ["AUT", "SEC", "PUB", "BIL"],
+                  "name": "aut-nfr-onb-pub-lim",
+                  "paths": (
+                      "__tests__/qa/AUT __tests__/qa/NFR __tests__/qa/ONB "
+                      "__tests__/qa/PUB __tests__/qa/LIM"
+                  ),
+                  "areas": ["AUT", "NFR", "ONB", "PUB", "LIM"],
               },
           ]
 
