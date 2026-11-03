@@ -197,7 +197,9 @@ export class StripePaymentGateway implements PaymentGateway {
             // which the phase-4 upgrade (reset + unused-time credit) requires.
             billing_mode: { type: 'classic' },
           },
-          success_url: `${this.siteUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+          success_url: `${this.siteUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}${
+            input.owner.type === 'org' ? `&org_id=${input.owner.orgId}` : ''
+          }`,
           cancel_url: `${this.siteUrl()}/checkout?plan_id=${input.planKey}&canceled=1`,
           locale: input.locale === 'en' ? 'en' : 'pl',
           // BillingService derives this from the same snapshot as the
@@ -458,10 +460,21 @@ export class StripePaymentGateway implements PaymentGateway {
     try {
       const session = await this.client.checkout.sessions.retrieve(input.sessionId);
 
+      if (session.livemode !== this.livemode) {
+        logError('billing.reconcile_livemode_mismatch', {
+          sessionId: session.id,
+          sessionLivemode: session.livemode,
+          expectedLivemode: this.livemode,
+        });
+        return failure('BAD_REQUEST');
+      }
+
       // Session ids are unguessable, but ownership is still mandatory (#662
       // §9.2): a leaked/forwarded success URL must not activate a plan.
       if (!this.checkoutBelongsTo(session, input.owner)) {
-        logError('billing.reconcile_owner_mismatch', { sessionId: session.id });
+        // A user replaying a foreign/expired success URL is expected noise, not
+        // an infrastructure error.
+        logWarn('billing.reconcile_owner_mismatch', { sessionId: session.id });
         return failure('FORBIDDEN');
       }
 

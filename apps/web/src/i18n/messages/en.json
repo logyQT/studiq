@@ -619,7 +619,9 @@
     "activated_description": "Your {plan} plan is active now.",
     "processing_title": "Payment is processing",
     "processing_description": "This can take a few seconds. Refresh if it does not update.",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "timeout_title": "Payment is still processing",
+    "timeout_description": "We have not seen the activation yet. Refresh in a moment; the subscription activates automatically once the payment is confirmed."
   },
   "BillingPage": {
     "title": "Billing",
@@ -672,7 +674,6 @@
     "cancel_success": "The subscription will be canceled at the end of the period.",
     "resume_success": "The subscription has been resumed.",
     "cancel_failed": "Could not update the subscription.",
-    "seats_used_label": "{used} of {total} seats used",
     "plan_change_title": "Change plan"
   },
   "UpgradePrompt": {

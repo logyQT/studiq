@@ -90,6 +90,16 @@ describe('BillingService.reconcileCheckout', () => {
     });
   });
 
+  it('falls back to the personal owner when a manager has no active org', async () => {
+    await service.reconcileCheckout({ ...managerCtx, activeOrgId: null }, 'cs_1');
+
+    expect(repository.isOrgAdmin).not.toHaveBeenCalled();
+    expect(gateway.reconcileCheckout).toHaveBeenCalledWith({
+      owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      sessionId: 'cs_1',
+    });
+  });
+
   it('refuses a non-admin organization caller', async () => {
     vi.mocked(repository.isOrgAdmin).mockResolvedValueOnce(success(false));
 
@@ -118,13 +128,14 @@ describe('BillingService.reconcileCheckout', () => {
     });
   });
 
-  it('reports NOT_FOUND for the mock driver', async () => {
+  it('reports NOT_FOUND for the mock driver without an org admin lookup', async () => {
     gateway = createGateway('mock');
     service = new BillingService(gateway, repository);
 
-    await expect(service.reconcileCheckout(studentCtx, 'cs_1')).resolves.toEqual({
+    await expect(service.reconcileCheckout(managerCtx, 'cs_1')).resolves.toEqual({
       success: false,
       error: 'NOT_FOUND',
     });
+    expect(repository.isOrgAdmin).not.toHaveBeenCalled();
   });
 });

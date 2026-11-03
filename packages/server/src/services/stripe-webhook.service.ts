@@ -71,6 +71,8 @@ interface DispatchResult {
    * for `invoice.paid`) must still happen.
    */
   stale?: boolean;
+  /** True only when this call actually applied a plan entitlement. */
+  entitlementApplied?: boolean;
 }
 
 function objectId(value: string | { id: string } | null | undefined): string | null {
@@ -309,6 +311,19 @@ export class StripeWebhookService {
       return { ignored: true };
     }
 
+    // Read the mirror *before* retrieving the subscription. A webhook that wins
+    // the race after this read makes the freshness CAS below reject our older
+    // snapshot (`lte(last_event_created, eventCreated)`), so reconcile can never
+    // rewind a newer plan.
+    let eventCreated = source.eventCreated;
+    let mirror: SubscriptionMirror | null | undefined;
+    if (eventCreated === null) {
+      const existing = await this.repository.getSubscriptionByStripeId(subscriptionId);
+      if (isFailure(existing)) throw new Error('subscription mirror read failed');
+      mirror = existing.data;
+      eventCreated = mirror?.lastEventCreated ?? 0;
+    }
+
     const subscription = await this.retrieveSubscription(subscriptionId, null);
     if (!subscription) {
       logError('billing.subscription_unresolved', {
@@ -325,17 +340,13 @@ export class StripeWebhookService {
       return { ignored: true };
     }
 
-    // A webhook supplies its own event timestamp. Reconcile has no event: read
-    // the mirror first and reuse its freshness value, so reconcile never makes
-    // a real event look stale (and vice versa).
-    let eventCreated = source.eventCreated;
-    let mirror: SubscriptionMirror | null | undefined;
-    if (eventCreated === null) {
-      const existing = await this.repository.getSubscriptionByStripeId(subscription.id);
-      if (isFailure(existing)) throw new Error('subscription mirror read failed');
-      mirror = existing.data;
-      eventCreated = mirror?.lastEventCreated ?? 0;
-    }
+    const paid =
+      session.payment_status === 'paid' || session.payment_status === 'no_payment_required';
+    // A webhook may downgrade from a `canceled` checkout snapshot; reconcile is
+    // **activate-only**, so a historical success URL can never wipe a newer or
+    // manually comped entitlement.
+    const applyEntitlement =
+      paid && (source.eventId !== null || ENTITLED_STATUSES.has(subscription.status));
 
     const applied = await this.syncSubscription({
       eventId: source.eventId,
@@ -346,17 +357,14 @@ export class StripeWebhookService {
       resolved,
       mirror,
       checkoutSessionId: session.id,
-      // A Checkout Session can complete before the payment settles (delayed
-      // methods, 3DS on the first invoice); only a paid session activates.
-      applyEntitlement:
-        session.payment_status === 'paid' || session.payment_status === 'no_payment_required',
+      applyEntitlement,
     });
 
     if (applied.ignored) return applied;
 
     // `checkout.session.completed` never writes a payments row: `invoice.paid`
     // owns the history, so the first charge is not duplicated (§6.3).
-    return { ignored: false };
+    return applied;
   }
 
   /**
@@ -380,9 +388,13 @@ export class StripeWebhookService {
         claimToken: null,
       });
 
-      // `stale` means a newer webhook already wrote this subscription, so the
-      // activation happened elsewhere; report it as activated.
-      return success({ activated: !result.ignored || result.stale === true });
+      // `stale` means a newer webhook already wrote this subscription; report
+      // it as activated. Otherwise only a real entitlement write counts — an
+      // activate-only reconcile must not claim a canceled/incomplete session
+      // activated anything.
+      return success({
+        activated: result.entitlementApplied === true || result.stale === true,
+      });
     } catch (error) {
       logError('billing.reconcile_failed', {
         sessionId: session.id,
@@ -600,6 +612,7 @@ export class StripeWebhookService {
         input.forceDowngrade,
       );
       if (isFailure(entitlement)) throw new Error('entitlement write failed');
+      return { ignored: false, entitlementApplied: true };
     }
 
     return { ignored: false };

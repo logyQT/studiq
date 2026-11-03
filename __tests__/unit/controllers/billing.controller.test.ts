@@ -136,6 +136,13 @@ describe('BillingController', () => {
       expect(billing.reconcileCheckout).not.toHaveBeenCalled();
     });
 
+    it('rejects an oversized session id', async () => {
+      const response = await controller.reconcileCheckout(ctx, { sessionId: 'x'.repeat(256) });
+
+      expect(response).toMatchObject({ success: false, statusCode: 422 });
+      expect(billing.reconcileCheckout).not.toHaveBeenCalled();
+    });
+
     it('delegates the session id', async () => {
       billing.reconcileCheckout.mockResolvedValueOnce(success({ activated: true }));
 

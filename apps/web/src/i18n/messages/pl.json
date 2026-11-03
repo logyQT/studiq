@@ -601,7 +601,9 @@
     "activated_description": "Twój plan {plan} jest już aktywny.",
     "processing_title": "Płatność jest przetwarzana",
     "processing_description": "Może to potrwać kilka sekund. Odśwież, jeśli status się nie zmieni.",
-    "refresh": "Odśwież"
+    "refresh": "Odśwież",
+    "timeout_title": "Płatność jest nadal przetwarzana",
+    "timeout_description": "Nie widzimy jeszcze aktywacji. Odśwież za chwilę; subskrypcja aktywuje się automatycznie po potwierdzeniu płatności."
   },
   "BillingPage": {
     "title": "Rozliczenia",
@@ -654,7 +656,6 @@
     "cancel_success": "Subskrypcja zostanie anulowana na koniec okresu.",
     "resume_success": "Subskrypcja została wznowiona.",
     "cancel_failed": "Nie udało się zmienić subskrypcji.",
-    "seats_used_label": "Wykorzystano {used} z {total} miejsc",
     "plan_change_title": "Zmiana planu"
   },
   "UpgradePrompt": {

@@ -132,6 +132,7 @@ function sessionFixture(overrides: Record<string, unknown> = {}) {
     customer: 'cus_1',
     subscription: 'sub_1',
     payment_status: 'paid',
+    livemode: false,
     metadata: {
       studiq_owner_type: 'user',
       studiq_user_id: 'u-1',
@@ -306,6 +307,9 @@ describe('StripePaymentGateway', () => {
     );
 
     const [params] = vi.mocked(client.checkout.sessions.create).mock.calls[0];
+    expect(params.success_url).toBe(
+      'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}&org_id=org-1',
+    );
     expect(params.client_reference_id).toBe('org-1');
     expect(params.metadata).toMatchObject({
       studiq_owner_type: 'org',
@@ -530,6 +534,115 @@ describe('StripePaymentGateway', () => {
         withWebhooks.reconcileCheckout({ owner: orgOwner, sessionId: 'cs_org' }),
       ).resolves.toEqual({ success: false, error: 'FORBIDDEN' });
       expect(reconcileCheckout).not.toHaveBeenCalled();
+    });
+
+    it('accepts an organization session whose reference and metadata match', async () => {
+      const orgOwner = {
+        type: 'org' as const,
+        orgId: 'org-1',
+        userId: 'u-9',
+        accountType: AccountType.MANAGER,
+      };
+      const session = sessionFixture({
+        client_reference_id: 'org-1',
+        metadata: {
+          studiq_owner_type: 'org',
+          studiq_user_id: 'u-9',
+          studiq_org_id: 'org-1',
+        },
+      });
+      vi.mocked(client.checkout.sessions.retrieve).mockResolvedValueOnce(session);
+      const { gateway: withWebhooks, reconcileCheckout } = createGatewayWithWebhooks(
+        client,
+        repository,
+      );
+
+      await expect(
+        withWebhooks.reconcileCheckout({ owner: orgOwner, sessionId: 'cs_org' }),
+      ).resolves.toEqual(success({ activated: true }));
+      expect(reconcileCheckout).toHaveBeenCalledWith(session);
+    });
+
+    it('refuses a personal session flagged as an organization purchase', async () => {
+      vi.mocked(client.checkout.sessions.retrieve).mockResolvedValueOnce(
+        sessionFixture({
+          metadata: {
+            studiq_owner_type: 'org',
+            studiq_user_id: 'u-1',
+            studiq_org_id: 'org-1',
+          },
+        }),
+      );
+      const { gateway: withWebhooks, reconcileCheckout } = createGatewayWithWebhooks(
+        client,
+        repository,
+      );
+
+      await expect(
+        withWebhooks.reconcileCheckout({ owner: personalOwner, sessionId: 'cs_1' }),
+      ).resolves.toEqual({ success: false, error: 'FORBIDDEN' });
+      expect(reconcileCheckout).not.toHaveBeenCalled();
+    });
+
+    it('refuses a session without owner metadata or a reference id', async () => {
+      vi.mocked(client.checkout.sessions.retrieve)
+        .mockResolvedValueOnce(sessionFixture({ metadata: null }))
+        .mockResolvedValueOnce(sessionFixture({ client_reference_id: null }));
+      const { gateway: withWebhooks, reconcileCheckout } = createGatewayWithWebhooks(
+        client,
+        repository,
+      );
+
+      await expect(
+        withWebhooks.reconcileCheckout({ owner: personalOwner, sessionId: 'cs_1' }),
+      ).resolves.toEqual({ success: false, error: 'FORBIDDEN' });
+      await expect(
+        withWebhooks.reconcileCheckout({ owner: personalOwner, sessionId: 'cs_2' }),
+      ).resolves.toEqual({ success: false, error: 'FORBIDDEN' });
+      expect(reconcileCheckout).not.toHaveBeenCalled();
+    });
+
+    it('treats no_payment_required as paid', async () => {
+      vi.mocked(client.checkout.sessions.retrieve).mockResolvedValueOnce(
+        sessionFixture({ payment_status: 'no_payment_required' }),
+      );
+      const { gateway: withWebhooks, reconcileCheckout } = createGatewayWithWebhooks(
+        client,
+        repository,
+      );
+
+      await expect(
+        withWebhooks.reconcileCheckout({ owner: personalOwner, sessionId: 'cs_1' }),
+      ).resolves.toEqual(success({ activated: true }));
+      expect(reconcileCheckout).toHaveBeenCalled();
+    });
+
+    it('refuses a session from the other Stripe mode', async () => {
+      vi.mocked(client.checkout.sessions.retrieve).mockResolvedValueOnce(
+        sessionFixture({ livemode: true }),
+      );
+      const { gateway: withWebhooks, reconcileCheckout } = createGatewayWithWebhooks(
+        client,
+        repository,
+      );
+
+      await expect(
+        withWebhooks.reconcileCheckout({ owner: personalOwner, sessionId: 'cs_1' }),
+      ).resolves.toEqual({ success: false, error: 'BAD_REQUEST' });
+      expect(reconcileCheckout).not.toHaveBeenCalled();
+    });
+
+    it('maps a thrown activation error to SERVICE_UNAVAILABLE', async () => {
+      vi.mocked(client.checkout.sessions.retrieve).mockResolvedValueOnce(sessionFixture());
+      const { gateway: withWebhooks, reconcileCheckout } = createGatewayWithWebhooks(
+        client,
+        repository,
+      );
+      reconcileCheckout.mockRejectedValueOnce(new Error('outage'));
+
+      await expect(
+        withWebhooks.reconcileCheckout({ owner: personalOwner, sessionId: 'cs_1' }),
+      ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
     });
 
     it('does not activate an unpaid session', async () => {

@@ -956,7 +956,56 @@ describe('StripeWebhookService', () => {
       expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
     });
   });
+
   describe('reconcileCheckout', () => {
+    it('never downgrades a canceled subscription from a historical session', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(
+        makeSubscription({ status: 'canceled' }),
+      );
+
+      const result = await harness.service.reconcileCheckout(
+        asJson<Stripe.Checkout.Session>(makeSession()),
+      );
+
+      expect(result).toEqual({ success: true, data: { activated: false } });
+      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+    });
+
+    it('reports activated:false when the duplicate-subscription guard refuses it', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
+      vi.mocked(harness.repository.findActiveSubscription).mockResolvedValueOnce(
+        success({ stripeSubscriptionId: 'sub_other', planKey: 'ace' }),
+      );
+
+      await expect(
+        harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),
+      ).resolves.toEqual({ success: true, data: { activated: false } });
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+    });
+
+    it('never consults or completes the event claim', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
+
+      await harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession()));
+
+      expect(harness.repository.isClaimOwner).not.toHaveBeenCalled();
+      expect(harness.repository.finishEvent).not.toHaveBeenCalled();
+    });
+
+    it('maps a mirror read failure to SERVICE_UNAVAILABLE', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValueOnce(
+        failure('INTERNAL_SERVER'),
+      );
+
+      await expect(
+        harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),
+      ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+    });
     it('activates a paid personal session without claiming an event row', async () => {
       const harness = createHarness();
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
@@ -1021,6 +1070,33 @@ describe('StripeWebhookService', () => {
       await expect(
         harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),
       ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+    });
+  });
+
+  describe('webhook refactor regression guards', () => {
+    it('still fences checkout.session.completed on the event claim', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
+      vi.mocked(harness.repository.isClaimOwner).mockResolvedValueOnce(success(false));
+
+      await sign(harness, makeEvent('checkout.session.completed', makeSession()));
+
+      expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+    });
+
+    it('writes the event timestamp as the subscription mirror freshness', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_123,
+      });
+
+      await sign(harness, event);
+
+      const upsert = vi.mocked(harness.repository.upsertSubscription).mock.calls[0][0];
+      expect(upsert.eventCreated).toBe(1_700_000_123);
+      expect(upsert.lastEventCreated).toBe(1_700_000_123);
     });
   });
 });
