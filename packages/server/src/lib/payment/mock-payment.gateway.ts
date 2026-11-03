@@ -20,16 +20,15 @@ import {
  * narrow lets tests pass a plain fake and stops the adapter from reaching into
  * the mock service's private rules.
  */
-export type MockStripePort = Pick<
-  MockStripeService,
-  'createCheckoutSession' | 'createPortalSession' | 'handleWebhook'
->;
+export type MockStripePort = Pick<MockStripeService, 'createCheckoutSession' | 'handleWebhook'>;
 
 /**
  * The simulation adapter. Behaviour is intentionally identical to the old
- * controller → `MockStripeService` path: the fake checkout URL, the fake
- * portal URL and the authenticated webhook all delegate to the same service.
+ * controller → `MockStripeService` path: the fake checkout URL and the
+ * authenticated webhook delegate to the same service.
  *
+ * The Billing Portal is not simulated: `BillingService` builds the
+ * account-type-aware local billing page and the adapter returns it unchanged.
  * Plan changes and cancellation only exist once a real provider owns a
  * subscription, so the mock reports `NOT_FOUND` rather than pretending.
  */
@@ -55,9 +54,9 @@ export class MockPaymentGateway implements PaymentGateway {
   createPortalSession(
     input: CreatePortalSessionInput,
   ): Promise<ServiceResult<PortalSessionResult>> {
-    // The mock portal always returns the caller's billing page; identity is
-    // accepted for contract parity and deliberately unused.
-    return this.stripe.createPortalSession(input.userId);
+    // There is no hosted portal in the simulation. `BillingService` already
+    // built the account-type-aware page, so the mock "portal" is that page.
+    return Promise.resolve(success({ url: input.returnUrl }));
   }
 
   changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {

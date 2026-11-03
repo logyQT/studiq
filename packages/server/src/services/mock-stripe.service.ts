@@ -176,12 +176,6 @@ export class MockStripeService {
 
     return success(undefined);
   }
-
-  // eslint-disable-next-line @typescript-eslint/require-await -- service methods expose a Promise contract consumed via await.
-  async createPortalSession(_userId: string): Promise<ServiceResult<{ url: string }>> {
-    const baseUrl = getSiteUrl();
-    return success({ url: `${baseUrl}/app/billing` });
-  }
 }
 export const mockStripeService = wrapService(
   new MockStripeService(createClient),

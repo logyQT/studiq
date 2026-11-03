@@ -18,7 +18,7 @@ function createMockGateway() {
 }
 
 function createMockBilling() {
-  return { startCheckout: vi.fn() };
+  return { startCheckout: vi.fn(), createPortalSession: vi.fn() };
 }
 
 let gateway: ReturnType<typeof createMockGateway>;
@@ -200,17 +200,48 @@ describe('StripeController', () => {
   });
 
   describe('createPortalSession', () => {
-    it('passes the authenticated identity and active org to the gateway', async () => {
-      gateway.createPortalSession.mockResolvedValueOnce({
+    it('resolves the owner server-side and passes the default locale', async () => {
+      billing.createPortalSession.mockResolvedValueOnce({
         success: true,
-        data: { url: '/app/billing' },
+        data: { url: 'https://billing.stripe.com/session' },
       });
-      const response = await controller.createPortalSession(mockCtx);
+
+      const response = await controller.createPortalSession(mockCtx, {});
+
       expect(response.success).toBe(true);
-      expect(gateway.createPortalSession).toHaveBeenCalledWith({
-        userId: 'u-1',
-        accountType: 'student',
-        activeOrgId: null,
+      expect(billing.createPortalSession).toHaveBeenCalledWith(mockCtx, 'pl');
+      expect(gateway.createPortalSession).not.toHaveBeenCalled();
+    });
+
+    it('forwards a validated locale', async () => {
+      billing.createPortalSession.mockResolvedValueOnce({
+        success: true,
+        data: { url: 'https://billing.stripe.com/session' },
+      });
+
+      await controller.createPortalSession(mockCtx, { locale: 'en' });
+
+      expect(billing.createPortalSession).toHaveBeenCalledWith(mockCtx, 'en');
+    });
+
+    it('rejects an unknown locale with 422 instead of forwarding it', async () => {
+      const response = await controller.createPortalSession(mockCtx, { locale: 'de' });
+
+      expect(response).toMatchObject({ success: false, statusCode: 422 });
+      expect(billing.createPortalSession).not.toHaveBeenCalled();
+    });
+
+    it('maps a missing billing account to 404 and a foreign owner to 403', async () => {
+      billing.createPortalSession.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
+      await expect(controller.createPortalSession(mockCtx, {})).resolves.toMatchObject({
+        success: false,
+        statusCode: 404,
+      });
+
+      billing.createPortalSession.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
+      await expect(controller.createPortalSession(mockCtx, {})).resolves.toMatchObject({
+        success: false,
+        statusCode: 403,
       });
     });
   });

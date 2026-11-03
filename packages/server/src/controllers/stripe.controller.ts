@@ -7,6 +7,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway';
 import { getPaymentGateway } from '@studiq/server/lib/payment/payment-gateway.factory';
 import { isFailure } from '@studiq/server/lib/service-result';
+import { BillingPortalQuerySchema } from '@studiq/server/models/billing.model';
 import {
   CreateCheckoutSessionSchema,
   MockWebhookEventSchema,
@@ -81,12 +82,15 @@ export class StripeController {
     return controllerResponse.success(result.data);
   }
 
-  async createPortalSession(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.gateway.createPortalSession({
-      userId: ctx.userId,
-      accountType: ctx.accountType,
-      activeOrgId: ctx.activeOrgId,
-    });
+  async createPortalSession(ctx: RequestContext, query: unknown): Promise<ControllerResponse> {
+    const parsed = BillingPortalQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    // The owner is resolved from `ctx` inside BillingService; the portal call
+    // re-checks org admin membership and the customer mapping there.
+    const result = await this.billing.createPortalSession(ctx, parsed.data.locale ?? 'pl');
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
