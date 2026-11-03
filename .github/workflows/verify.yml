@@ -271,7 +271,7 @@ jobs:
         env:
           APP_URL: http://localhost:3000
           SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
       - name: Write root .env
         # vitest's loadEnv() reads the repo root; integration imports the route
         # handlers directly, so no app server is needed.
@@ -334,7 +334,7 @@ jobs:
           # without it the QA e-mails carry relative callback links.
           APP_URL: http://localhost:3010
           SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
 
       - name: Write env files
         # The app reads apps/web/.env, but the QA seeder and the specs that seed
@@ -462,9 +462,19 @@ jobs:
         env:
           APP_URL: http://localhost:3000
           SUPABASE_URL: http://localhost:54321
-        # studio/logflare/vector/edge-runtime are not used by the app; skipping
-        # them saves ~4 GB of pulls and a couple of minutes.
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+        # None of these services is reachable from the app, and each `-x` entry
+        # skips its docker pull too (`Start Supabase` is mostly download time on
+        # a cold runner):
+        #   studio + postgres-meta  Studio/tooling only — the API and the QA
+        #                           specs talk to PostgREST, not pg-meta
+        #   realtime                no client: nothing in apps/ or packages/
+        #                           calls `.channel()` (the `supabase_realtime`
+        #                           publication is a plain Postgres object and
+        #                           still exists without the container)
+        #   imgproxy/logflare/vector/edge-runtime  unused, ~4 GB together
+        # `storage-api` stays: QA `EDU-ASG-08` uploads and the integration
+        # storage suites need it.
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
 
       - name: Write env files
         if: needs.scope.outputs.app == 'true'
@@ -590,7 +600,7 @@ jobs:
         env:
           APP_URL: http://localhost:3000
           SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
       - name: Write admin env
         run: |
           eval "$(bunx supabase status -o env)"
