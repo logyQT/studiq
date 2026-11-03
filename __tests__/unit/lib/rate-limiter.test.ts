@@ -70,16 +70,18 @@ describe('createRateLimiter', () => {
     const limiter = createRateLimiter(60_000, 1);
     const now = 1_000_000;
 
-    limiter.check('user-1', now);
+    // A distinct key: the loop below also creates `user-0`…`user-9999`, and a
+    // duplicate would keep the map at 10,000 instead of crossing the threshold.
+    limiter.check('active-user', now);
     for (let i = 0; i < 10_000; i++) {
       limiter.check(`user-${i}`, now);
     }
 
-    // user-1 is still inside its window: the map cleanup must not clear it.
-    expect(limiter.check('user-1', now + 1).allowed).toBe(false);
+    // `active-user` is still inside its window: the map cleanup must not clear it.
+    expect(limiter.check('active-user', now + 1).allowed).toBe(false);
 
-    // After a full window every key is stale and is pruned, so user-1 is
-    // allowed again.
-    expect(limiter.check('user-1', now + 60_001).allowed).toBe(true);
+    // After a full window every key is stale and is pruned, so it is allowed
+    // again.
+    expect(limiter.check('active-user', now + 60_001).allowed).toBe(true);
   });
 });

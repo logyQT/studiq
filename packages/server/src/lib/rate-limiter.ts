@@ -14,10 +14,14 @@ export interface RateLimitResult {
 
 export function createRateLimiter(windowMs: number, maxRequests: number) {
   const requestLog = new Map<string, number[]>();
+  let lastPruneAt = -Infinity;
 
   return {
     check(key: string, now: number = Date.now()): RateLimitResult {
-      if (requestLog.size > 10_000) {
+      // At most one O(n) prune per window: running it on every call while the
+      // map stays above the threshold would turn the limiter into the bottleneck.
+      if (requestLog.size > 10_000 && now - lastPruneAt >= windowMs) {
+        lastPruneAt = now;
         // Prune only keys with no request left in the current window. Clearing
         // the whole map would hand every active user a fresh budget at exactly
         // the traffic level the limiter exists to bound.
