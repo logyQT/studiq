@@ -10,6 +10,11 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** `true` for an array; the caller names the element type it expects. */
+export function isArrayOf<T>(value: unknown): value is T[] {
+  return Array.isArray(value);
+}
+
 /** Reads a string field of an untyped payload; `undefined` when absent or not a string. */
 export function readStringField(data: unknown, field: string): string | undefined {
   if (!isRecord(data) || !(field in data)) return undefined;

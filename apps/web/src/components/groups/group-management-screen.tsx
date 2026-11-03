@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { useFeature } from '@/hooks/use-feature';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { isArrayOf } from '@/lib/unknown-value';
 import {
   type AddableOrgMember,
   ensureMemberRoles,
@@ -78,7 +79,8 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
     setLoading(true);
     setLoadError(false);
     try {
-      setData(await apiGet<Group[]>('/api/v1/organization/groups'));
+      const groups: unknown = await apiGet('/api/v1/organization/groups');
+      setData(isArrayOf<Group>(groups) ? groups : []);
     } catch {
       setLoadError(true);
     } finally {

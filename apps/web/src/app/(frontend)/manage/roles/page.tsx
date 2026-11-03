@@ -33,6 +33,7 @@ import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { isArrayOf } from '@/lib/unknown-value';
 
 const PERMISSION_GROUPS = [
   {
@@ -100,7 +101,8 @@ export default function RolesPage() {
     setLoading(true);
     setLoadError(false);
     try {
-      setData(await apiGet<OrgRole[]>('/api/v1/organization/roles'));
+      const roles: unknown = await apiGet('/api/v1/organization/roles');
+      setData(isArrayOf<OrgRole>(roles) ? roles : []);
     } catch {
       setLoadError(true);
     } finally {

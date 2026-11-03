@@ -39,6 +39,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiDelete, apiGet, apiPut } from '@/lib/api';
+import { isArrayOf } from '@/lib/unknown-value';
 import { formatDate } from '@/lib/datetime';
 import { SrLabel } from '@/components/shared/sr-label';
 import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
@@ -101,13 +102,13 @@ export default function MembersPage() {
     setLoadError(false);
     try {
       const [memberRows, groupRows, roleRows] = await Promise.all([
-        apiGet<Member[]>('/api/v1/organization/members'),
-        apiGet<OrgGroup[]>('/api/v1/organization/groups'),
-        apiGet<OrgRole[]>('/api/v1/organization/roles'),
+        apiGet<unknown>('/api/v1/organization/members'),
+        apiGet<unknown>('/api/v1/organization/groups'),
+        apiGet<unknown>('/api/v1/organization/roles'),
       ]);
-      setMembers(memberRows);
-      setOrgGroups(groupRows);
-      setRoles(roleRows);
+      setMembers(isArrayOf<Member>(memberRows) ? memberRows : []);
+      setOrgGroups(isArrayOf<OrgGroup>(groupRows) ? groupRows : []);
+      setRoles(isArrayOf<OrgRole>(roleRows) ? roleRows : []);
     } catch {
       // A failed list is an error with a retry, never "no members".
       setLoadError(true);

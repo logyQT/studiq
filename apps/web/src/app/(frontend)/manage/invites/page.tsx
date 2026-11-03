@@ -37,6 +37,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import { isArrayOf } from '@/lib/unknown-value';
 import { SrLabel } from '@/components/shared/sr-label';
 import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
 import { resolveListEmptyView } from '@/lib/list-empty-view';
@@ -104,16 +105,16 @@ export default function InvitationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    void apiGet<OrgRole[]>('/api/v1/organization/roles')
-      .then((roles) => setOrgRoles(roles))
+    void apiGet<unknown>('/api/v1/organization/roles')
+      .then((roles) => setOrgRoles(isArrayOf<OrgRole>(roles) ? roles : []))
       .catch(() => undefined);
   }, []);
 
   const fetchInvitations = useCallback(() => {
     setLoading(true);
     setLoadError(false);
-    apiGet<Invitation[]>(`/api/v1/organization/invites?isAccepted=${showAccepted}`)
-      .then((rows) => setInvitations(rows))
+    apiGet<unknown>(`/api/v1/organization/invites?isAccepted=${showAccepted}`)
+      .then((rows) => setInvitations(isArrayOf<Invitation>(rows) ? rows : []))
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, [showAccepted]);
@@ -201,8 +202,7 @@ export default function InvitationsPage() {
       toast.success(t('update_success'));
       fetchInvitations();
     } catch {
-      // Unchanged behaviour: a failed role change keeps the row's old role and is
-      // not reported here.
+      toast.error(t('send_failed'));
     }
   }
 
