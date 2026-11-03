@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiMutation } from '@/hooks/use-api';
+import { apiGet, apiPost } from '@/lib/api';
 import { assignmentKeys } from '@/lib/query-keys';
 
 export default function NewAssignmentClient() {
@@ -35,28 +36,18 @@ export default function NewAssignmentClient() {
 
   useEffect(() => {
     if (!quizId) return;
-    fetch(`/api/v1/teacher/quizzes/${quizId}`)
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success && json.data) {
-          setTitle(json.data.name);
-          setQuizName(json.data.name);
-        }
+    apiGet<{ id: string; name: string }>(`/api/v1/teacher/quizzes/${quizId}`)
+      .then((quiz) => {
+        setTitle(quiz.name);
+        setQuizName(quiz.name);
+        return undefined;
       })
       .catch(() => {});
   }, [quizId]);
 
   const createMutation = useApiMutation({
-    mutationFn: async (body: Record<string, unknown>) => {
-      const res = await fetch('/api/v1/teacher/assignments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
-    },
+    mutationFn: async (body: Record<string, unknown>) =>
+      apiPost<{ id: string }>('/api/v1/teacher/assignments', body),
     invalidateKeys: [assignmentKeys.all],
   });
 

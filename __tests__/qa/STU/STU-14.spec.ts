@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 import { tenantId } from '#test/helpers/tenant-seed';
 
@@ -95,7 +96,7 @@ interface ApiEnvelope<T> {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -174,7 +175,7 @@ async function createDeckAs(
 ): Promise<DeckRow> {
   const response = await page.request.post('/api/v1/flashcards/decks', { data });
   expect(response.status(), `POST /api/v1/flashcards/decks (${data.name})`).toBe(201);
-  const body = (await response.json()) as { data: DeckRow };
+  const body = await json<{ data: DeckRow }>(response);
   return body.data;
 }
 
@@ -309,14 +310,14 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
     const mine = await page.request.get('/api/v1/flashcards/decks?owner=mine');
     expect(mine.status(), 'GET decks?owner=mine').toBe(200);
     expect(
-      ((await mine.json()) as DeckListBody).data.items.map((deck) => deck.id),
+      (await json<DeckListBody>(mine)).data.items.map((deck) => deck.id),
       'owner=mine returns exactly the student’s own deck',
     ).toEqual([personalDeck.id]);
 
     const byGroup = await page.request.get(`/api/v1/flashcards/decks?groups=${groupG1.id}`);
     expect(byGroup.status(), 'GET decks?groups=O1G1').toBe(200);
     expect(
-      ((await byGroup.json()) as DeckListBody).data.items.map((deck) => deck.id),
+      (await json<DeckListBody>(byGroup)).data.items.map((deck) => deck.id),
       'groups=O1G1 returns exactly the deck shared with that group',
     ).toEqual([groupDeck.id]);
 
@@ -324,7 +325,7 @@ test.describe('STU-14 @area:STU @prio:P2 deck list filters', () => {
     const foreignGroup = await page.request.get(`/api/v1/flashcards/decks?groups=${GROUP_G2_ID}`);
     expect(foreignGroup.status(), 'GET decks?groups=O1G2').toBe(200);
     expect(
-      ((await foreignGroup.json()) as DeckListBody).data.items,
+      (await json<DeckListBody>(foreignGroup)).data.items,
       'the other group’s deck id never leaks',
     ).toHaveLength(0);
 

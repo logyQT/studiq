@@ -158,7 +158,7 @@ export default function StudentGradingClient() {
 
       <div className="space-y-6">
         {attempt.quiz_attempt_questions
-          ?.sort((a, b) => a.order_index - b.order_index)
+          ?.toSorted((a, b) => a.order_index - b.order_index)
           .map((aq) => {
             const studentAnswer = attempt.quiz_answers?.find(
               (a) => a.question_id === aq.question_id,

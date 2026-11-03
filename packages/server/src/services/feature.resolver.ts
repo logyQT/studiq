@@ -5,6 +5,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 // Canonical flat feature keys — the single source of truth for both the
 // application AND the database. `feature_flags`, `plan_features`,
@@ -103,7 +104,7 @@ export function isUserOverrideActive(
 type FeatureRow = { feature_key: string; is_enabled?: boolean; expires_at?: string | null };
 
 export class FeatureResolver {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /**
    * Resolve the feature set with the full precedence chain:
@@ -129,12 +130,10 @@ export class FeatureResolver {
    *      kill switch ("Stop now") regardless of any entitlement layer.
    */
   async resolveFeatures(ctx: RequestContext): Promise<FeatureResolution> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const enabled = new Set<FeatureKey>();
 
     // ── 1. Plan entitlement (base set) ───────────────────────────────────
-    let isOrgAdmin = false;
-
     if (ctx.activeOrgId) {
       // Load org-role features first (the role-based entitlement).
       let orgRoleFeatures: FeatureRow[] = [];
@@ -151,7 +150,7 @@ export class FeatureResolver {
       // privileges in ADMIN_ONLY_FEATURES through a seat; everyone else gets
       // them stripped once the seat plan is applied. (The personal layer is
       // bounded separately by ORG_SCOPED_FEATURES — see step 2 below.)
-      isOrgAdmin = orgRoleFeatures.some(
+      const isOrgAdmin = orgRoleFeatures.some(
         (r) => r.feature_key === 'org.manage' && r.is_enabled !== false,
       );
 
@@ -235,9 +234,10 @@ export class FeatureResolver {
       .from('feature_flags')
       .select('key, is_enabled, rollout_percentage');
 
-    const flagMap = new Map<string, { is_enabled: boolean; rollout_percentage: number | null }>(
-      (flags ?? []).map((f) => [f.key, f]),
-    );
+    const flagMap = new Map<
+      string,
+      { is_enabled: boolean | null; rollout_percentage: number | null }
+    >((flags ?? []).map((f) => [f.key, f]));
     const rollout: FeatureResolution['rollout'] = {};
 
     for (const key of Array.from(enabled)) {
@@ -280,7 +280,7 @@ export class FeatureResolver {
   private async addPlanFeatures(
     enabled: Set<FeatureKey>,
     planKey: string,
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
   ): Promise<void> {
     const { data: pf } = await supabase
       .from('plan_features')

@@ -8,7 +8,9 @@ import {
   NotificationListQuerySchema,
 } from '@studiq/server/models/notification.model';
 import { NotificationService, noopNotifier } from '@studiq/server/services/notification.service';
+import { isRecord } from '@studiq/server/lib/record';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/log', () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
@@ -28,29 +30,83 @@ const ctx: RequestContext = {
   permissionScopes: {},
 };
 
+type ChainMock = ReturnType<typeof vi.fn>;
+
+const CHAIN_METHODS = [
+  'select',
+  'eq',
+  'in',
+  'is',
+  'order',
+  'limit',
+  'range',
+  'update',
+  'insert',
+] as const;
+
+/** The chain surface the service walks on a fake builder. */
+interface Builder {
+  select: ChainMock;
+  eq: ChainMock;
+  in: ChainMock;
+  is: ChainMock;
+  order: ChainMock;
+  limit: ChainMock;
+  range: ChainMock;
+  update: ChainMock;
+  insert: ChainMock;
+  maybeSingle: ChainMock;
+  single: ChainMock;
+  then: (onfulfilled?: (value: unknown) => unknown) => Promise<unknown>;
+}
+
 /** A thenable query builder that records what was chained and resolves to `result`. */
-function builder(result: Record<string, unknown> = { data: null, error: null }) {
-  const b: any = {};
-  for (const m of ['select', 'eq', 'in', 'is', 'order', 'limit', 'range', 'update', 'insert']) {
-    b[m] = vi.fn(() => b);
+function builder(result: Record<string, unknown> = { data: null, error: null }): Builder {
+  const fake: Builder = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    is: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    range: vi.fn(),
+    update: vi.fn(),
+    insert: vi.fn(),
+    maybeSingle: vi.fn(),
+    single: vi.fn(),
+    then: () => Promise.resolve(result),
+  };
+  for (const method of CHAIN_METHODS) {
+    fake[method] = vi.fn(() => fake);
   }
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.single = b.maybeSingle;
-  b.then = (onfulfilled: any) => Promise.resolve(result).then(onfulfilled);
-  return b;
+  fake.maybeSingle = vi.fn().mockResolvedValue(result);
+  fake.single = fake.maybeSingle;
+  fake.then = (onfulfilled) => Promise.resolve(result).then(onfulfilled);
+  return fake;
 }
 
 /** A client whose `from(table)` hands out the next queued builder for that table. */
 function client(queues: Record<string, Array<ReturnType<typeof builder>>>) {
   const calls: Record<string, Array<ReturnType<typeof builder>>> = {};
-  return {
-    calls,
-    from: vi.fn((table: string) => {
-      const next = queues[table]?.shift() ?? builder();
-      (calls[table] ??= []).push(next);
-      return next;
-    }),
-  };
+  const fake = mockSupabaseClient();
+  fake.from.mockImplementation((table: string) => {
+    const next = queues[table]?.shift() ?? builder();
+    (calls[table] ??= []).push(next);
+    return next;
+  });
+  return Object.assign(fake, { calls });
+}
+
+/** The rows a mocked `insert()` was handed, narrowed for property reads. */
+function insertedRows(mock: ChainMock): Array<Record<string, unknown>> {
+  const payload: unknown = mock.mock.calls[0]?.[0];
+  return Array.isArray(payload) ? payload.filter(isRecord) : [];
+}
+
+/** The string-array argument a mocked chain method was handed (`.in(column, ids)`). */
+function insertedIds(mock: ChainMock, argIndex: number): string[] {
+  const value: unknown = mock.mock.calls[0]?.[argIndex];
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
 const row = (over: Record<string, unknown> = {}) => ({
@@ -72,8 +128,8 @@ describe('NotificationService: reading', () => {
     const unread = builder({ data: null, count: 7, error: null });
     const user = client({ notifications: [list, unread] });
     const service = new NotificationService(
-      async () => user as any,
-      () => ({}) as any,
+      () => Promise.resolve(user),
+      () => mockSupabaseClient(),
     );
 
     const result = await service.list(ctx, { limit: 15, unread: false });
@@ -101,8 +157,8 @@ describe('NotificationService: reading', () => {
     const list = builder({ data: [], error: null });
     const user = client({ notifications: [list, builder({ count: 0, error: null })] });
     const service = new NotificationService(
-      async () => user as any,
-      () => ({}) as any,
+      () => Promise.resolve(user),
+      () => mockSupabaseClient(),
     );
 
     await service.list(ctx, { limit: 5, unread: true });
@@ -118,8 +174,8 @@ describe('NotificationService: reading', () => {
       ],
     });
     const service = new NotificationService(
-      async () => user as any,
-      () => ({}) as any,
+      () => Promise.resolve(user),
+      () => mockSupabaseClient(),
     );
 
     expect((await service.list(ctx, { limit: 15, unread: false })).success).toBe(false);
@@ -133,15 +189,16 @@ describe('NotificationService: marking read', () => {
     const update = builder({ data: null, error: null });
     const admin = client({ notifications: [update] });
     const service = new NotificationService(
-      async () => user as any,
-      () => admin as any,
+      () => Promise.resolve(user),
+      () => admin,
     );
 
     const result = await service.markRead(ctx, 'n1');
 
     expect(result.success).toBe(true);
     expect(own.eq).toHaveBeenCalledWith('user_id', 'user-1');
-    expect(update.update).toHaveBeenCalledWith({ read_at: expect.any(String) });
+    const anyReadAt: unknown = expect.any(String);
+    expect(update.update).toHaveBeenCalledWith({ read_at: anyReadAt });
     expect(update.eq).toHaveBeenCalledWith('id', 'n1');
     expect(update.eq).toHaveBeenCalledWith('user_id', 'user-1');
     expect(update.is).toHaveBeenCalledWith('read_at', null);
@@ -151,8 +208,8 @@ describe('NotificationService: marking read', () => {
     const user = client({ notifications: [builder({ data: null, error: null })] });
     const admin = client({});
     const service = new NotificationService(
-      async () => user as any,
-      () => admin as any,
+      () => Promise.resolve(user),
+      () => admin,
     );
 
     const result = await service.markRead(ctx, 'not-mine');
@@ -165,8 +222,8 @@ describe('NotificationService: marking read', () => {
     const update = builder({ data: null, error: null });
     const admin = client({ notifications: [update] });
     const service = new NotificationService(
-      async () => ({}) as any,
-      () => admin as any,
+      () => Promise.resolve(mockSupabaseClient()),
+      () => admin,
     );
 
     const result = await service.markAllRead(ctx);
@@ -188,8 +245,8 @@ describe('NotificationService: producers', () => {
     return {
       admin,
       service: new NotificationService(
-        async () => ({}) as any,
-        () => admin as any,
+        () => Promise.resolve(mockSupabaseClient()),
+        () => admin,
       ),
     };
   }
@@ -223,8 +280,8 @@ describe('NotificationService: producers', () => {
 
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
-    const rows = insert.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
-    expect(rows.map((r) => r.user_id).sort()).toEqual(['a', 'b', 'extra']);
+    const rows = insertedRows(insert.insert);
+    expect(rows.map((r) => r.user_id).toSorted()).toEqual(['a', 'b', 'extra']);
     expect(rows[0]).toMatchObject({
       organization_id: 'org-1',
       type: 'assignment_published',
@@ -272,7 +329,7 @@ describe('NotificationService: producers', () => {
 
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
-    const rows = insert.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const rows = insertedRows(insert.insert);
     expect(rows.map((r) => r.user_id)).toEqual(['a']);
     expect(admin.calls.org_members[0].eq).toHaveBeenCalledWith('organization_id', 'org-1');
   });
@@ -312,13 +369,11 @@ describe('NotificationService: producers', () => {
 
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
-    expect(inserts.map((b) => (b.insert.mock.calls[0]?.[0] as unknown[]).length)).toEqual([
-      500, 500, 200,
-    ]);
+    expect(inserts.map((b) => insertedRows(b.insert).length)).toEqual([500, 500, 200]);
     expect(admin.calls.group_members).toHaveLength(3);
     expect(admin.calls.org_members).toHaveLength(6);
     for (const chunk of admin.calls.org_members) {
-      const ids = chunk.in.mock.calls[0][1] as string[];
+      const ids = insertedIds(chunk.in, 1);
       expect(ids.length).toBeLessThanOrEqual(200);
     }
   });
@@ -340,8 +395,8 @@ describe('NotificationService: producers', () => {
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
     expect(admin.calls.group_members).toHaveLength(2);
-    expect((admin.calls.group_members[0].in.mock.calls[0][1] as string[]).length).toBe(200);
-    expect((admin.calls.group_members[1].in.mock.calls[0][1] as string[]).length).toBe(50);
+    expect(insertedIds(admin.calls.group_members[0].in, 1)).toHaveLength(200);
+    expect(insertedIds(admin.calls.group_members[1].in, 1)).toHaveLength(50);
     expect(insert.insert).toHaveBeenCalledOnce();
   });
 
@@ -366,7 +421,7 @@ describe('NotificationService: producers', () => {
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
     expect(admin.calls.assignment_targets).toHaveLength(2);
-    const rows = insert.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const rows = insertedRows(insert.insert);
     expect(rows.map((r) => r.user_id)).toContain('last');
   });
 
@@ -534,8 +589,11 @@ describe('notification schemas', () => {
 });
 
 describe('NotificationController', () => {
-  const notifications = { list: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn() };
-  const controller = new NotificationController(notifications as any);
+  const notifications = Object.assign(
+    new NotificationService(() => Promise.reject(new Error('unused'))),
+    { list: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn() },
+  );
+  const controller = new NotificationController(notifications);
 
   beforeEach(() => vi.clearAllMocks());
 

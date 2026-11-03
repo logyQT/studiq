@@ -1,14 +1,21 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { check } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardService } from '@studiq/server/services/flashcard.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
+
 vi.mock('@studiq/server/lib/authz', () => {
-  const check = vi.fn().mockResolvedValue(undefined);
+  const checkMock = vi.fn().mockResolvedValue(undefined);
   return {
-    check,
+    check: checkMock,
     accessibleFilter: vi.fn().mockResolvedValue({}),
     can: vi.fn().mockResolvedValue(true),
     Permission: {
@@ -24,25 +31,61 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
-function chain(result: any, count?: number) {
-  const resolved =
+type ChainResult = { data: unknown; count?: number; error: null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  eq: Mock;
+  in: Mock;
+  or: Mock;
+  order: Mock;
+  filter: Mock;
+  limit: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  upsert: Mock;
+  then: Promise<T>['then'];
+}
+
+function chain(result: unknown, count?: number): FakeQueryBuilder<ChainResult> {
+  const resolved: ChainResult =
     count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
+  const promise = Promise.resolve(resolved);
   const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  const c: FakeQueryBuilder<ChainResult> = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    or: vi.fn(),
+    order: vi.fn(),
+    filter: vi.fn(),
+    limit: vi.fn(),
+    single: terminal,
+    maybeSingle: terminal,
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    upsert: vi.fn(),
+    then: promise.then.bind(promise),
+  };
+  for (const method of [
+    c.select,
+    c.eq,
+    c.in,
+    c.or,
+    c.order,
+    c.filter,
+    c.limit,
+    c.insert,
+    c.update,
+    c.delete,
+    c.upsert,
+  ]) {
+    method.mockImplementation(() => c);
+  }
   return c;
 }
 
@@ -59,7 +102,7 @@ describe('FlashcardService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new FlashcardService(async () => mock as any);
+  const service = new FlashcardService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,7 +119,7 @@ describe('FlashcardService', () => {
       const result = await service.create({ front: 'Q', back: 'A' }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(mockFlashcard);
+      expect(expectSuccess(result)).toEqual(mockFlashcard);
       expect(mock.from).toHaveBeenCalledWith('flashcards');
     });
 
@@ -90,7 +133,7 @@ describe('FlashcardService', () => {
       const result = await service.create({ front: 'Q', back: 'A' }, orgCtx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(mockFlashcard);
+      expect(expectSuccess(result)).toEqual(mockFlashcard);
     });
 
     it('counts only the caller content in the active org (#233)', async () => {
@@ -153,7 +196,7 @@ describe('FlashcardService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(flashcards);
+      expect(expectSuccess(result)).toEqual(flashcards);
     });
 
     it('counts only the caller content in the active org on the bulk path (#233)', async () => {
@@ -202,7 +245,7 @@ describe('FlashcardService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(flashcards);
+      expect(expectSuccess(result)).toEqual(flashcards);
       expect(mock.rpc).toHaveBeenCalledWith(
         'bulk_create_flashcards',
         expect.objectContaining({ p_topic_ids: ['t-1'] }),
@@ -219,7 +262,7 @@ describe('FlashcardService', () => {
       const result = await service.list(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.items).toEqual(flashcards);
+      expect(expectSuccess(result).items).toEqual(flashcards);
     });
 
     it('filters by topicIds when provided', async () => {
@@ -230,7 +273,7 @@ describe('FlashcardService', () => {
       const result = await service.list(ctx, { topicIds: ['t-1'] });
 
       expect(result.success).toBe(true);
-      expect(result.data.items).toEqual(flashcards);
+      expect(expectSuccess(result).items).toEqual(flashcards);
     });
 
     it('filters by deckIds when provided', async () => {
@@ -241,7 +284,7 @@ describe('FlashcardService', () => {
       const result = await service.list(ctx, { deckIds: ['d-1'] });
 
       expect(result.success).toBe(true);
-      expect(result.data.items).toEqual(flashcards);
+      expect(expectSuccess(result).items).toEqual(flashcards);
     });
   });
 
@@ -254,7 +297,7 @@ describe('FlashcardService', () => {
       const result = await service.getById('fc-1', ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(flashcard);
+      expect(expectSuccess(result)).toEqual(flashcard);
     });
 
     it('returns NOT_FOUND when flashcard does not exist', async () => {
@@ -278,7 +321,7 @@ describe('FlashcardService', () => {
       const result = await service.update('fc-1', { front: 'Updated' }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(expectSuccess(result)).toBeDefined();
     });
 
     it('returns NOT_FOUND when flashcard does not exist', async () => {
@@ -302,7 +345,7 @@ describe('FlashcardService', () => {
       const result = await service.update('fc-1', { front: 'Updated', topicIds: ['t-1'] }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(expectSuccess(result)).toBeDefined();
     });
 
     it('updates deck_id when deckId provided', async () => {
@@ -316,7 +359,7 @@ describe('FlashcardService', () => {
       const result = await service.update('fc-1', { front: 'Updated', deckId: 'd-1' }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(expectSuccess(result)).toBeDefined();
     });
 
     it('clears topic assignments when topicIds is empty array', async () => {
@@ -330,7 +373,7 @@ describe('FlashcardService', () => {
       const result = await service.update('fc-1', { topicIds: [] }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(expectSuccess(result)).toBeDefined();
     });
   });
 
@@ -354,7 +397,7 @@ describe('FlashcardService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ moved: 2 });
+      expect(expectSuccess(result)).toEqual({ moved: 2 });
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', ownCard);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', teacherCard);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'deck.update', targetDeck);
@@ -409,7 +452,7 @@ describe('FlashcardService', () => {
       const result = await service.batchDelete({ ids: ['fc-own', 'fc-other'] }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ deleted: 2 });
+      expect(expectSuccess(result)).toEqual({ deleted: 2 });
       expect(vi.mocked(check)).toHaveBeenCalledTimes(2);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.delete', ownCard);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.delete', otherCard);

@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -71,7 +72,7 @@ interface CreatedInvitation {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.status(), `GET ${url} → ${await response.text()}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -116,7 +117,7 @@ async function createInvitation(
     },
   });
   expect(created.status(), `POST ${INVITES_URL} → ${await created.text()}`).toBe(201);
-  const body = (await created.json()) as ApiEnvelope<CreatedInvitation>;
+  const body = await json<ApiEnvelope<CreatedInvitation>>(created);
   expect(body.success).toBe(true);
   expect(body.data.inviteCode, 'the invitation has a 32-hex join code').toMatch(/^[0-9a-f]{32}$/);
   expect(body.data.inviteLink).toContain(`/join?token=${body.data.inviteCode}`);

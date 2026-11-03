@@ -7,19 +7,20 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 
 export class PlanLimitService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getByPlanKey(planKey: string): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.from('plan_limits').select('*').eq('plan_key', planKey);
     if (error) return toDbFailure(error);
     return success(data);
   }
 
   async getAll(): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('plan_limits')
       .select('*')
@@ -29,7 +30,7 @@ export class PlanLimitService {
   }
 
   async create(input: CreatePlanLimitInput): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('plan_limits')
       .insert({
@@ -44,7 +45,7 @@ export class PlanLimitService {
   }
 
   async update(id: string, input: UpdatePlanLimitInput): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('plan_limits')
       .update({ limit_value: input.limitValue })
@@ -56,7 +57,7 @@ export class PlanLimitService {
   }
 
   async delete(id: string): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: exists } = await supabase
       .from('plan_limits')
       .select('id')

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   return withAuth(req, async (ctx) => {
-    const body = await req.json().catch(() => null);
+    const body: unknown = await req.json().catch(() => null);
     return toNextResponse(await flashcardPracticeController.updateSettings(body, ctx));
   });
 }

@@ -1,7 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { flashcardService } from '@studiq/server/services/flashcard.service';
 import { FlashcardExportService } from '@studiq/server/services/flashcard-export.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 vi.mock('@studiq/server/services/flashcard.service', () => ({
   flashcardService: {
@@ -9,23 +9,38 @@ vi.mock('@studiq/server/services/flashcard.service', () => ({
   },
 }));
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+type DbError = { message?: string; code?: string };
+type QueryResult<T> = { data: T | null; error: DbError | null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  in: Mock;
+  then: Promise<QueryResult<T>>['then'];
+  catch: Promise<QueryResult<T>>['catch'];
+  finally: Promise<QueryResult<T>>['finally'];
+}
+
+function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
+  const result: QueryResult<T> = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const b: FakeQueryBuilder<T> = {
+    select: vi.fn(),
+    in: vi.fn(),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
+  b.select.mockImplementation(() => b);
+  b.in.mockImplementation(() => b);
   return b;
 }
 
 describe('FlashcardExportService', () => {
   let service: FlashcardExportService;
-  let mockCreateClient: any;
+  let mockCreateClient: Mock;
   const ctx: RequestContext = {
     userId: 'user-1',
-    accountType: 'student' as any,
+    accountType: AccountType.STUDENT,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -46,7 +61,7 @@ describe('FlashcardExportService', () => {
       vi.mocked(flashcardService.list).mockResolvedValueOnce({
         success: true,
         data: { items: [], hasMore: false, nextCursor: null },
-      } as any);
+      });
 
       const result = await service.exportCsv(ctx);
 
@@ -68,7 +83,7 @@ describe('FlashcardExportService', () => {
       vi.mocked(flashcardService.list).mockResolvedValueOnce({
         success: true,
         data: { items: flashcards, hasMore: false, nextCursor: null },
-      } as any);
+      });
 
       const mock = { from: vi.fn() };
       mockCreateClient.mockResolvedValue(mock);
@@ -101,7 +116,7 @@ describe('FlashcardExportService', () => {
       vi.mocked(flashcardService.list).mockResolvedValueOnce({
         success: true,
         data: { items: flashcards, hasMore: false, nextCursor: null },
-      } as any);
+      });
 
       const mock = { from: vi.fn() };
       mockCreateClient.mockResolvedValue(mock);
@@ -119,7 +134,7 @@ describe('FlashcardExportService', () => {
       vi.mocked(flashcardService.list).mockResolvedValueOnce({
         success: false,
         error: 'INTERNAL_SERVER',
-      } as any);
+      });
 
       const result = await service.exportCsv(ctx);
 
@@ -137,12 +152,12 @@ describe('FlashcardExportService', () => {
       vi.mocked(flashcardService.list).mockResolvedValueOnce({
         success: true,
         data: { items: page1, hasMore: true, nextCursor: 'cursor1' },
-      } as any);
+      });
 
       vi.mocked(flashcardService.list).mockResolvedValueOnce({
         success: true,
         data: { items: [], hasMore: false, nextCursor: null },
-      } as any);
+      });
 
       const mock = { from: vi.fn() };
       mockCreateClient.mockResolvedValue(mock);
@@ -167,7 +182,7 @@ describe('FlashcardExportService', () => {
       vi.mocked(flashcardService.list).mockResolvedValueOnce({
         success: true,
         data: { items: flashcards, hasMore: false, nextCursor: null },
-      } as any);
+      });
 
       const mock = { from: vi.fn() };
       mockCreateClient.mockResolvedValue(mock);

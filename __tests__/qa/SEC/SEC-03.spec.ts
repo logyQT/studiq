@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -99,9 +100,9 @@ interface MyOrg {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.status(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(200);
-  const body = (await response.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
-  return body.data as T;
+  return asJson<T>(body.data);
 }
 
 async function listDecks(page: Page): Promise<ListResult<Deck>> {
@@ -133,7 +134,7 @@ async function expectHidden(
     ? await page.request.put(url, { data: init.data })
     : await page.request.get(url);
   expect(response.status(), `${init?.method ?? 'GET'} ${url} as the no-org student`).toBe(404);
-  const body = (await response.json()) as Envelope<unknown>;
+  const body = await json<Envelope<unknown>>(response);
   expect(body.success, `${url} must fail`).toBe(false);
   expect(body.error, `${url} error code`).toBe('NOT_FOUND');
   expect(body.data, `${url} must not leak a payload`).toBeUndefined();
@@ -160,7 +161,7 @@ async function ensureDeck(
 
   const response = await page.request.post(DECKS_URL, { data: { name, ...input } });
   expect(response.status(), `POST ${DECKS_URL} (${name}) → ${await response.text()}`).toBe(201);
-  return ((await response.json()) as Envelope<Deck>).data as Deck;
+  return asJson<Deck>((await json<Envelope<Deck>>(response)).data);
 }
 
 async function ensureCards(page: Page, deck: Deck): Promise<Flashcard[]> {
@@ -193,7 +194,7 @@ async function ensureBank(
 
   const response = await page.request.post(BANKS_URL, { data: { name, ...input } });
   expect(response.status(), `POST ${BANKS_URL} (${name}) → ${await response.text()}`).toBe(201);
-  return ((await response.json()) as Envelope<QuestionBank>).data as QuestionBank;
+  return asJson<QuestionBank>((await json<Envelope<QuestionBank>>(response)).data);
 }
 
 /**

@@ -59,7 +59,7 @@ export function orderedQuestionTypeEntries(byType: Record<string, number>): Arra
     ...QUESTION_TYPE_ORDER.filter((key) => byType[key] !== undefined),
     ...Object.keys(byType)
       .filter((key) => !known.includes(key))
-      .sort((a, b) => a.localeCompare(b)),
+      .toSorted((a, b) => a.localeCompare(b)),
   ];
 
   return ordered.map((key) => ({ key, count: byType[key] }));
@@ -84,19 +84,25 @@ export function parseTeacherStatsResponse(body: unknown): TeacherStatsPayload | 
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
 
   const payload = candidate as Partial<TeacherStatsPayload>;
-  const byType = payload.subject?.byType;
-  if (
-    typeof payload.totalQuestions !== 'number' ||
-    typeof payload.totalFlashcards !== 'number' ||
-    !byType ||
-    typeof byType !== 'object' ||
-    Array.isArray(byType) ||
-    !Array.isArray(payload.bySubject)
-  ) {
+  if (typeof payload.totalQuestions !== 'number' || typeof payload.totalFlashcards !== 'number') {
     return null;
   }
 
-  return payload as TeacherStatsPayload;
+  const subject = payload.subject;
+  if (!subject?.byType) return null;
+  if (typeof subject.byType !== 'object' || Array.isArray(subject.byType)) return null;
+
+  const bySubject = payload.bySubject;
+  if (!Array.isArray(bySubject)) return null;
+
+  // Rebuilt from the validated members instead of asserted, so the return type is
+  // proven by the checks above rather than claimed.
+  return {
+    totalQuestions: payload.totalQuestions,
+    totalFlashcards: payload.totalFlashcards,
+    subject,
+    bySubject,
+  };
 }
 
 export interface AttemptScore {

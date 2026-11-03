@@ -14,7 +14,9 @@ export default function SetupLandingPage() {
   const { user } = useAuth();
   const { orgs, isPending, isFetching } = useOrgs();
   const gate = resolveSetupGate({ orgsCount: orgs.length, isPending, isFetching });
-  const accountType = user?.app_metadata?.account_type as string | undefined;
+  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
 
   useEffect(() => {
     if (gate !== 'dashboard') return;

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -91,7 +92,7 @@ interface FlashcardListResult {
 interface PracticeCard {
   id: string;
   front: string;
-  reviewState: unknown | null;
+  reviewState: unknown;
 }
 
 interface StateBreakdown {
@@ -108,7 +109,7 @@ interface StateBreakdown {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -143,7 +144,7 @@ async function ensureDeck(page: Page, name: string): Promise<DeckListItem> {
     response.status(),
     `POST ${DECKS_URL} (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<DeckListItem>;
+  const body = await json<ApiEnvelope<DeckListItem>>(response);
   expect(body.success, `POST ${DECKS_URL} (${name}) success flag`).toBe(true);
   return body.data;
 }
@@ -165,7 +166,7 @@ async function ensureCard(
     response.status(),
     `POST ${CARDS_URL} (${front}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<FlashcardRow>;
+  const body = await json<ApiEnvelope<FlashcardRow>>(response);
   expect(body.success, `POST ${CARDS_URL} (${front}) success flag`).toBe(true);
 }
 
@@ -216,7 +217,7 @@ function countBadge(card: Locator, label: string): Locator {
  * with an inline `perspective`; it stays mounted for the whole session.
  */
 function sessionCard(page: Page): Locator {
-  return page.locator('div[style*="perspective"]');
+  return page.locator('[style*="perspective"]');
 }
 
 /** The front shown by the current session card, or `null` mid-transition. */
@@ -237,7 +238,7 @@ async function readQuestion(card: Locator): Promise<string | null> {
 async function currentQuestion(card: Locator): Promise<string> {
   const question = await readQuestion(card);
   expect(question, 'exactly one cram card is on screen').not.toBeNull();
-  return question as string;
+  return question!;
 }
 
 /**
@@ -321,9 +322,9 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
       `/api/v1/flashcards/practice/prepare?deckIds=${main.id}`,
     );
     expect(
-      preparedBefore.map((card) => card.front).sort(),
+      preparedBefore.map((card) => card.front).toSorted(),
       'cram prepares the whole deck, due or not',
-    ).toEqual([...MAIN_FRONTS].sort());
+    ).toEqual([...MAIN_FRONTS].toSorted());
     expect(
       preparedBefore.every((card) => card.reviewState === null),
       'the cards have no SM-2 state yet',
@@ -370,9 +371,9 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
     // --- Step 3: rate every card and end the session ----------------------
     const firstRound = await rateWholeDeck(page, card, MAIN_FRONTS.length);
     expect(
-      [...firstRound].sort(),
+      [...firstRound].toSorted(),
       'the session showed every card of the deck, in any order',
-    ).toEqual([...MAIN_FRONTS].sort());
+    ).toEqual([...MAIN_FRONTS].toSorted());
 
     const dialog = summary(page);
     await expect(dialog, 'the completion summary opens').toBeVisible();
@@ -408,8 +409,8 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
     await expect(card, 'replay shows a card again').toBeVisible();
 
     const secondRound = await rateWholeDeck(page, card, MAIN_FRONTS.length);
-    expect([...secondRound].sort(), 'replay crams the same whole deck again').toEqual(
-      [...MAIN_FRONTS].sort(),
+    expect([...secondRound].toSorted(), 'replay crams the same whole deck again').toEqual(
+      [...MAIN_FRONTS].toSorted(),
     );
 
     await expect(dialog, 'the replay run ends with the summary').toBeVisible();
@@ -426,7 +427,7 @@ test.describe('@case:STU-08 @area:STU @prio:P2 cram study mode', () => {
       `/api/v1/flashcards/practice/prepare?deckIds=${main.id}`,
     );
     expect(
-      preparedAfter.every((card) => card.reviewState === null),
+      preparedAfter.every((preparedCard) => preparedCard.reviewState === null),
       'cram writes no review state',
     ).toBe(true);
     const states = await getData<StateBreakdown>(page, '/api/v1/flashcards/practice/states');

@@ -9,7 +9,7 @@ export async function GET() {
 
 export async function PUT(request: Request, { params }: RouteContext) {
   const { id } = await params;
-  const body = await request.json();
+  const body: unknown = await request.json();
   return toNextResponse(await planLimitController.update(id, body));
 }
 

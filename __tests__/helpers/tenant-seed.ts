@@ -193,8 +193,8 @@ export function createSqlAccountWriter(sql: SQL): AccountWriter {
 
     let pending = hashes.get(password);
     if (!pending) {
-      pending = sql`SELECT crypt(${password}, gen_salt('bf', 10)) AS hash`
-        .then(([row]) => row.hash as string)
+      pending = sql<{ hash: string }[]>`SELECT crypt(${password}, gen_salt('bf', 10)) AS hash`
+        .then(([row]) => row.hash)
         .catch((error: unknown) => {
           // A rejected query is not a result — the next tenant should retry it.
           hashes.delete(password);

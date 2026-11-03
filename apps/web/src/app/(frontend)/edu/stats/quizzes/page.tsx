@@ -17,6 +17,7 @@ import {
 import { Brain } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { apiGet } from '@/lib/api';
 
 type QuizData = {
   id: string;
@@ -32,11 +33,11 @@ export default function TeacherQuizStats() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/v1/stats/teacher/quizzes')
-      .then((r) => r.json())
+    apiGet<QuizData[]>('/api/v1/stats/teacher/quizzes')
       .then((data) => {
-        setQuizzes(data.data || []);
+        setQuizzes(data ?? []);
         setLoading(false);
+        return undefined;
       })
       .catch(() => setLoading(false));
   }, []);

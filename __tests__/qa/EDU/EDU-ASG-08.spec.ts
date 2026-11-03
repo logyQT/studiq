@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -105,7 +106,7 @@ async function postJson<T>(
   data: unknown,
 ): Promise<{ status: number; body: ApiEnvelope<T> }> {
   const response = await page.request.post(url, { data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   return { status: response.status(), body };
 }
 
@@ -115,14 +116,14 @@ async function putJson<T>(
   data: unknown,
 ): Promise<{ status: number; body: ApiEnvelope<T> | { success: false; error: string } }> {
   const response = await page.request.put(url, { data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   return { status: response.status(), body };
 }
 
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -139,34 +140,34 @@ async function createBank(page: Page, runTag: string): Promise<string> {
 async function createClosedQuestion(
   page: Page,
   bankId: string,
-  content: string,
+  questionContent: string,
   correctContent: string,
   wrongContent: string,
 ): Promise<CreatedQuestion> {
   const created = await postJson<CreatedQuestion>(page, '/api/v1/questions', {
     bankId,
     type: 'mcq',
-    content,
+    content: questionContent,
     answers: [
       { content: correctContent, isCorrect: true, orderIndex: 0 },
       { content: wrongContent, isCorrect: false, orderIndex: 1 },
     ],
   });
-  expect(created.status, `POST /api/v1/questions (${content})`).toBe(201);
+  expect(created.status, `POST /api/v1/questions (${questionContent})`).toBe(201);
   return created.body.data;
 }
 
 async function createOpenQuestion(
   page: Page,
   bankId: string,
-  content: string,
+  questionContent: string,
 ): Promise<CreatedQuestion> {
   const created = await postJson<CreatedQuestion>(page, '/api/v1/questions', {
     bankId,
     type: 'open',
-    content,
+    content: questionContent,
   });
-  expect(created.status, `POST /api/v1/questions (${content})`).toBe(201);
+  expect(created.status, `POST /api/v1/questions (${questionContent})`).toBe(201);
   return created.body.data;
 }
 
@@ -299,7 +300,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
       const started = await studentPage.request.post(`/api/v1/assignments/${assignment.id}/start`);
       expect(started.status(), 'POST /api/v1/assignments/:id/start').toBe(200);
-      const attemptId = ((await started.json()) as ApiEnvelope<{ id: string }>).data.id;
+      const attemptId = (await json<ApiEnvelope<{ id: string }>>(started)).data.id;
 
       const uploaded = await studentPage.request.post(
         `/api/v1/assignments/${assignment.id}/upload-image`,
@@ -312,8 +313,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
         },
       );
       expect(uploaded.status(), 'POST /api/v1/assignments/:id/upload-image').toBe(200);
-      uploadedImageUrl = ((await uploaded.json()) as ApiEnvelope<{ imageUrl: string }>).data
-        .imageUrl;
+      uploadedImageUrl = (await json<ApiEnvelope<{ imageUrl: string }>>(uploaded)).data.imageUrl;
       expect(uploadedImageUrl, 'the uploaded photo has a public URL').toContain(
         'assignment-images',
       );
@@ -339,7 +339,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await page.goto(`/edu/assignments/${assignment.id}/results`);
     await expect(page).toHaveURL(new RegExp(`/edu/assignments/${assignment.id}/results$`));
 
-    const row = resultRow(page, student!.email);
+    const row = resultRow(page, student.email);
     await expect(row, 'the submitted attempt is listed').toBeVisible();
     // One point for the correctly answered closed question, three in total.
     await expect(row.locator('td').nth(2), 'the score before grading').toHaveText('1/3');
@@ -348,7 +348,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
 
     await row.getByRole('link', { name: COPY.grade, exact: true }).click();
     await expect(page).toHaveURL(
-      new RegExp(`/edu/assignments/${assignment.id}/results/${student!.id}$`),
+      new RegExp(`/edu/assignments/${assignment.id}/results/${student.id}$`),
     );
 
     // ── Step 2: „Oceń ucznia” shows the answers and the uploaded photo ───────
@@ -403,7 +403,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await expect(saveButton, '„Zapisz ocenę” is inactive without points').toBeDisabled();
 
     // ── Step 3: points outside 0…max are rejected, never sent ────────────────
-    const gradingPath = `/api/v1/teacher/assignments/${assignment.id}/results/${student!.id}`;
+    const gradingPath = `/api/v1/teacher/assignments/${assignment.id}/results/${student.id}`;
     let gradeRequests = 0;
     page.on('request', (request) => {
       if (request.method() === 'PUT' && new URL(request.url()).pathname === gradingPath) {
@@ -448,7 +448,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await page.getByRole('link', { name: COPY.backToResults }).click();
     await expect(page).toHaveURL(new RegExp(`/edu/assignments/${assignment.id}/results$`));
 
-    const gradedRow = resultRow(page, student!.email);
+    const gradedRow = resultRow(page, student.email);
     await expect(gradedRow.getByText(COPY.graded, { exact: true })).toBeVisible();
     await expect(gradedRow.getByText(COPY.submitted, { exact: true })).toHaveCount(0);
     await expect(gradedRow.locator('td').nth(2), 'the score after grading').toHaveText('2/3');

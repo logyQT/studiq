@@ -57,27 +57,27 @@ export function useOrgs() {
       queryClient.setQueryData<OrgMembership[]>(['orgs'], (prev) =>
         prev?.map((o) => ({ ...o, isActive: o.id === orgId })),
       );
-      queryClient.invalidateQueries({ queryKey: ['orgs'] });
+      void queryClient.invalidateQueries({ queryKey: ['orgs'] });
 
       // Permission scopes and plan features are resolved from the active org
       // on the server and both hooks cache for 5 minutes.
-      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
 
       // The effective AI token budget is resolved from the seat/personal/org
       // plan (`limitsResolver.getEffectiveLimit`), so the cached daily counter
       // belongs to the previous org (#379).
-      queryClient.invalidateQueries({ queryKey: aiKeys.all });
+      void queryClient.invalidateQueries({ queryKey: aiKeys.all });
 
       // Managers resolve `/api/v1/me/plan` from the active org; students and
       // educators get their seat plan when seated in the org, otherwise their
       // personal plan (#181, #270). Still invalidate so switching orgs refreshes
       // the plan shown on billing/settings.
-      queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
+      void queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
 
       // Report rows are scoped to the active org for an org admin, so the
       // previous org's inbox (`staleTime: Infinity`) must not survive a switch.
-      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+      void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
 
       // Org-keyed query entries are intentionally not invalidated here: at this
       // point the observed org key may still be the previous one, so an active
@@ -91,7 +91,8 @@ export function useOrgs() {
       if (!navigate) return;
 
       const switchedOrg = orgs.find((o) => o.id === orgId);
-      const jwtAccountType = user?.app_metadata?.account_type as string | undefined;
+      const rawAccountType: unknown = user?.app_metadata?.account_type;
+      const jwtAccountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
       const ROLE_TO_ACCOUNT_TYPE: Record<string, string> = {
         admin: 'manager',
         teacher: 'educator',
@@ -106,7 +107,8 @@ export function useOrgs() {
   });
 
   const activeOrg = orgs.find((o) => o.isActive) || null;
-  const jwtAccountType = user?.app_metadata?.account_type as string | undefined;
+  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const jwtAccountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
   const needsOnboarding = resolveNeedsOnboarding({
     orgsCount: orgs.length,
     isPending,

@@ -1,5 +1,6 @@
 import { t } from '#test/e2e/utils';
 import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
+import { asJson } from '#test/helpers/json';
 
 /**
  * Regression for #320 (STU-09 steps 4–5): a standalone quiz that contains an
@@ -77,9 +78,9 @@ test.describe('Standalone quiz with an open answer (#320)', () => {
     await page.getByRole('button', { name: t('AppQuizPage.submit') }).click();
 
     const response = await submitted;
-    const body = (await response.request().postDataJSON()) as {
-      answers: Array<Record<string, unknown>>;
-    };
+    const body = asJson<{ answers: Array<Record<string, unknown>> }>(
+      response.request().postDataJSON(),
+    );
 
     // Pre-#406: the free text landed in `selectedAnswerId` and the server replied 422
     // with `VALIDATION_UUID_INVALID`.

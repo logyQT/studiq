@@ -7,6 +7,7 @@ import { isLimitKey, LIMITS, type LimitKey } from '@studiq/server/services/limit
 import { personalPlanApplies } from '@studiq/server/services/personal-plan';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export interface UsageInfo {
   current: number;
@@ -33,11 +34,11 @@ export const AI_TOKENS_LIMIT_KEY: LimitKey = 'max_ai_tokens_per_day';
  * missing `plan_limits` row is `0` (blocked) in every path; `-1` is unlimited.
  */
 export class LimitsResolver {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /** Effective limit for the caller's current context (see the class rule). */
   async getEffectiveLimit(ctx: RequestContext, limitKey: LimitKey): Promise<number> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!isLimitKey(limitKey)) {
       warn('limits.resolver: unknown limit key', { limitKey });
@@ -131,9 +132,9 @@ export class LimitsResolver {
     limitKey: LimitKey,
     currentCount: number,
     increment = 1,
-    client?: SupabaseClient,
+    client?: SupabaseClient<Database>,
   ): Promise<void> {
-    const supabase = client ?? (await this.createClient());
+    const supabase = client ?? (await this.clientFactory());
 
     const orgPlanKey = await this.orgPlanKey(supabase, organizationId);
     if (!orgPlanKey) throw new AppError('NOT_FOUND');
@@ -153,7 +154,7 @@ export class LimitsResolver {
     tomorrow.setUTCHours(0, 0, 0, 0);
     const resetsAt = tomorrow.toISOString();
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: activity } = await supabase
       .from('user_daily_activity')
       .select('ai_input_tokens, ai_output_tokens')
@@ -179,7 +180,7 @@ export class LimitsResolver {
     outputTokens: number,
   ): Promise<void> {
     const today = new Date().toISOString().slice(0, 10);
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing } = await supabase
       .from('user_daily_activity')
@@ -209,7 +210,7 @@ export class LimitsResolver {
 
   /** `profiles.personal_plan_key` → `plan_limits`; a missing plan blocks (`0`). */
   private async personalLimit(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     userId: string,
     limitKey: LimitKey,
   ): Promise<number> {
@@ -230,7 +231,7 @@ export class LimitsResolver {
 
   /** `organizations.plan` for the given org, or `null` when the org is unknown. */
   private async orgPlanKey(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     organizationId: string,
   ): Promise<string | null> {
     const { data: org } = await supabase
@@ -243,7 +244,7 @@ export class LimitsResolver {
   }
 
   private async isMember(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     organizationId: string,
     userId: string,
   ): Promise<boolean> {
@@ -259,7 +260,7 @@ export class LimitsResolver {
 
   /** One plan's value for a key. A missing row is `0` (blocked) — never unlimited. */
   private async planLimit(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     planKey: string,
     limitKey: LimitKey,
   ): Promise<number> {

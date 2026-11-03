@@ -1,24 +1,47 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null, count?: number) {
-  const result =
+type QueryResult = { data: unknown; error: unknown; count?: number };
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  delete: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  then: Promise<QueryResult>['then'];
+  catch: Promise<QueryResult>['catch'];
+  finally: Promise<QueryResult>['finally'];
+};
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
+
+function qb(data: unknown, error: unknown = null, count?: number) {
+  const result: QueryResult =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: QueryChain = {
+    select: vi.fn(() => b),
+    insert: vi.fn(() => b),
+    update: vi.fn(() => b),
+    delete: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    order: vi.fn(() => b),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -27,7 +50,7 @@ describe('OrgRoleService', () => {
   let service: OrgRoleService;
   const ctx: RequestContext = {
     userId: 'test-user-id',
-    accountType: 'educator' as any,
+    accountType: AccountType.EDUCATOR,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -40,7 +63,7 @@ describe('OrgRoleService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new OrgRoleService(async () => mock as any);
+    service = new OrgRoleService(() => Promise.resolve(mock));
   });
 
   describe('listRoles', () => {
@@ -68,9 +91,9 @@ describe('OrgRoleService', () => {
       const result = await service.listRoles(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].memberCount).toBe(3);
-      expect(result.data[0].permissionCount).toBe(5);
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].memberCount).toBe(3);
+      expect(expectSuccess(result)[0].permissionCount).toBe(5);
     });
 
     it('returns error on DB failure', async () => {
@@ -104,7 +127,7 @@ describe('OrgRoleService', () => {
       const result = await service.getRole(ctx, 'r-1');
 
       expect(result.success).toBe(true);
-      expect(result.data.permissions).toHaveLength(1);
+      expect(expectSuccess(result).permissions).toHaveLength(1);
     });
 
     it('returns error on DB failure', async () => {
@@ -218,7 +241,7 @@ describe('OrgRoleService', () => {
         name: 'Asystent Lektora',
         display_name: 'Asystent Lektora',
       });
-      expect(result.data.displayName).toBe('Asystent Lektora');
+      expect(expectSuccess(result).displayName).toBe('Asystent Lektora');
     });
 
     it('does not touch display_name on a description-only update', async () => {
@@ -333,16 +356,16 @@ describe('OrgRoleService', () => {
     });
   });
 
+  function mockRoleLookup() {
+    const roleQb = qb({ id: 'r-1' });
+    mock.from.mockReturnValueOnce(roleQb);
+    return roleQb;
+  }
+
   describe('setPermissions', () => {
     // setPermissions requires a verified membership for the active org
     // (orgRoleId is only set when with-auth found a real org_members row).
     const permCtx: RequestContext = { ...ctx, activeOrgId: 'org-1', orgRoleId: 'r-caller' };
-
-    function mockRoleLookup() {
-      const roleQb = qb({ id: 'r-1' });
-      mock.from.mockReturnValueOnce(roleQb);
-      return roleQb;
-    }
 
     it('returns FORBIDDEN when no activeOrgId', async () => {
       const result = await service.setPermissions({ ...permCtx, activeOrgId: null }, 'r-1', {

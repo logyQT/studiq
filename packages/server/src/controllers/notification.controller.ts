@@ -15,7 +15,7 @@ import {
 } from '@studiq/server/services/notification.service';
 
 export class NotificationController {
-  constructor(private notificationService: NotificationService) {}
+  constructor(private service: NotificationService) {}
 
   async list(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = NotificationListQuerySchema.safeParse(query ?? {});
@@ -23,7 +23,7 @@ export class NotificationController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.notificationService.list(ctx, parsed.data);
+    const result = await this.service.list(ctx, parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -34,13 +34,13 @@ export class NotificationController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.notificationService.markRead(ctx, parsed.data.id);
+    const result = await this.service.markRead(ctx, parsed.data.id);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async markAllRead(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.notificationService.markAllRead(ctx);
+    const result = await this.service.markAllRead(ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

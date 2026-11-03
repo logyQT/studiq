@@ -1,17 +1,29 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import { before, createTestUser } from '#test/helpers/test-user';
-import {
-  useRealSupabase,
-  cleanupOrganizationDeep,
-  createServiceClient,
-  mockUser,
-} from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { useRealSupabase, cleanupOrganizationDeep, mockUser } from '#test/integration/helpers';
+import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
 import { POST as acceptPost } from '@/app/(backend)/api/v1/organization/invites/accept/route';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** The system-role ids of one organization, keyed by role name. */
+async function roleIds(orgId: string) {
+  const supabase = createTypedServiceClient();
+  const { data: roles } = await supabase
+    .from('org_roles')
+    .select('id, name')
+    .eq('organization_id', orgId)
+    .eq('is_system', true);
+  const byName = Object.fromEntries((roles ?? []).map((r) => [r.name, r.id] as const));
+  return {
+    adminRoleId: byName.admin,
+    teacherRoleId: byName.teacher,
+    memberRoleId: byName.member,
+  };
+}
 
 // Regression suite for the two onboarding blockers fixed in the seed flow:
 // - 422 on bulk invite (targetOrgRoleId was sent as the role NAME 'member',
@@ -19,6 +31,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 // - 429 on invite accept for freshly registered 'base'-plan students
 //   (getEffectiveLimit('max_students') returned 0 because the student has no
 //   active org — now resolved against the invitation's organization plan)
+
 describe(`Invite + accept regression (API-first)`, () => {
   const createdOrgIds: string[] = [];
 
@@ -32,21 +45,6 @@ describe(`Invite + accept regression (API-first)`, () => {
       await cleanupOrganizationDeep(orgId);
     }
   });
-
-  async function roleIds(orgId: string) {
-    const supabase = createServiceClient();
-    const { data: roles } = await supabase
-      .from('org_roles')
-      .select('id, name')
-      .eq('organization_id', orgId)
-      .eq('is_system', true);
-    const byName = Object.fromEntries((roles ?? []).map((r) => [r.name, r.id]));
-    return {
-      adminRoleId: byName.admin as string,
-      teacherRoleId: byName.teacher as string,
-      memberRoleId: byName.member as string,
-    };
-  }
 
   it('bulk invite accepts the member role uuid returned by org creation', async () => {
     const fixture = await before({ role: 'manager', org: true });
@@ -73,12 +71,14 @@ describe(`Invite + accept regression (API-first)`, () => {
     );
 
     const response = await bulkPost(req);
-    const body = await response.json();
+    const body = await json<{ success: boolean; data: { results: Array<{ success: boolean }> } }>(
+      response,
+    );
 
     expect(response.ok).toBe(true);
     expect(body.success).toBe(true);
     expect(body.data.results).toHaveLength(2);
-    expect(body.data.results.every((r: { success: boolean }) => r.success)).toBe(true);
+    expect(body.data.results.every((r) => r.success)).toBe(true);
   });
 
   it('fresh base-plan student can accept an invite and joins org + default group', async () => {
@@ -103,7 +103,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     const inviteRes = await invitePost(inviteReq);
     expect(inviteRes.status).toBe(201);
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const { data: invite } = await supabase
       .from('invitations')
       .select('token')
@@ -119,7 +119,7 @@ describe(`Invite + accept regression (API-first)`, () => {
       body: JSON.stringify({ token: invite!.token }),
     });
     const acceptRes = await acceptPost(acceptReq);
-    const acceptBody = await acceptRes.json();
+    const acceptBody = await json<{ success: boolean }>(acceptRes);
 
     expect(acceptRes.status).toBe(200);
     expect(acceptBody.success).toBe(true);
@@ -162,8 +162,8 @@ describe(`Invite + accept regression (API-first)`, () => {
       ),
     );
     expect(inviteRes.status).toBe(201);
-    const inviteBody = await inviteRes.json();
-    const inviteLink = inviteBody.data.inviteLink as string;
+    const inviteBody = await json<{ data: { inviteLink: string } }>(inviteRes);
+    const inviteLink = inviteBody.data.inviteLink;
     expect(inviteLink).toContain('/join?token=');
 
     mockUser(student);
@@ -177,7 +177,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     );
     expect(acceptRes.status).toBe(200);
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const { data: membership } = await supabase
       .from('org_members')
       .select('organization_id, user_id')
@@ -215,7 +215,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     );
     expect(inviteRes.status).toBe(201);
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const { data: invite } = await supabase
       .from('invitations')
       .select('token')
@@ -241,7 +241,7 @@ describe(`Invite + accept regression (API-first)`, () => {
 
     // 2. Reusing the same token is rejected (was 200 before the fix).
     const second = await accept();
-    const secondBody = await second.json();
+    const secondBody = await json<{ success: boolean }>(second);
     expect(second.status).toBe(410);
     expect(secondBody.success).toBe(false);
 
@@ -253,7 +253,7 @@ describe(`Invite + accept regression (API-first)`, () => {
       .eq('user_id', student.id);
 
     const third = await accept();
-    const thirdBody = await third.json();
+    const thirdBody = await json<{ success: boolean }>(third);
     expect(third.status).toBe(410);
     expect(thirdBody.success).toBe(false);
 
@@ -279,7 +279,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     const student = await createTestUser({ role: 'student' });
     const { memberRoleId } = await roleIds(fixture.orgId!);
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const token = `legacy-null-${suiteId}-${Date.now()}`;
     // Pre-#256 rows carry `is_accepted = NULL` (the column default was never
     // backfilled). `.eq('is_accepted', false)` never matched them, so such a
@@ -310,7 +310,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     expect((await accept()).status).toBe(200);
 
     const second = await accept();
-    const body = await second.json();
+    const body = await json<{ success: boolean }>(second);
     expect(second.status).toBe(410);
     expect(body.success).toBe(false);
 
@@ -343,7 +343,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     );
     expect(inviteRes.status).toBe(201);
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const { data: invite } = await supabase
       .from('invitations')
       .select('token')
@@ -397,7 +397,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     );
     expect(inviteRes.status).toBe(201);
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const { data: invite } = await supabase
       .from('invitations')
       .select('token')
@@ -423,7 +423,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     // membership write is the unit test "claims the token before writing
     // membership …" / "rejects the accept when the token was already claimed
     // concurrently (GONE)".
-    const statuses = (await Promise.all([accept(), accept()])).map((r) => r.status).sort();
+    const statuses = (await Promise.all([accept(), accept()])).map((r) => r.status).toSorted();
     expect(statuses).toEqual([200, 410]);
 
     const { count } = await supabase
@@ -459,7 +459,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     );
     expect(inviteRes.status).toBe(201);
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const { data: invite } = await supabase
       .from('invitations')
       .select('token')
@@ -507,7 +507,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     );
     expect(inviteRes.status).toBe(201);
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const { data: invite } = await supabase
       .from('invitations')
       .select('token')

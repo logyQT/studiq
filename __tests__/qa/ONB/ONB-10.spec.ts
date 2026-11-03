@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -31,7 +32,7 @@ interface ApiEnvelope<T> {
 
 async function getJson<T>(page: Page, url: string): Promise<ApiEnvelope<T>> {
   const res = await page.request.get(url);
-  const body = (await res.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(res);
   expect(res.ok(), `GET ${url} → ${res.status()} ${JSON.stringify(body)}`).toBe(true);
   return body;
 }
@@ -53,9 +54,9 @@ async function fillInviteRow(
 function inviteCodeFor(rows: string[], email: string): string {
   const row = rows.find((text) => text.includes(email));
   expect(row, `no invitation result row for ${email}`).toBeTruthy();
-  const code = row?.match(/[0-9a-f]{32}/)?.[0];
+  const code = row?.match(/[0-9a-f]{32}/)?.[0] ?? '';
   expect(code, `no invite code in the result row "${row}"`).toMatch(/^[0-9a-f]{32}$/);
-  return code as string;
+  return code;
 }
 
 /** Accept an invitation through `/app/join` and return the accept response. */
@@ -150,7 +151,7 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
 
     const accept1 = await acceptInvite(page, token1);
     expect(accept1.status(), 'the first acceptance must succeed').toBe(200);
-    const accept1Body = (await accept1.json()) as ApiEnvelope<{ id: string }>;
+    const accept1Body = await json<ApiEnvelope<{ id: string }>>(accept1);
     expect(accept1Body.success, JSON.stringify(accept1Body)).toBe(true);
     expect(accept1Body.data.id).toBe(org.id);
 
@@ -172,7 +173,7 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
 
     const accept2 = await acceptInvite(page, token2);
     expect(accept2.status(), 'the second acceptance must be refused by the plan limit').toBe(429);
-    const accept2Body = (await accept2.json()) as ApiEnvelope<unknown>;
+    const accept2Body = await json<ApiEnvelope<unknown>>(accept2);
     expect(accept2Body.success).toBe(false);
     expect(accept2Body.error).toBe('USAGE_LIMIT_EXCEEDED');
 

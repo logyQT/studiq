@@ -54,7 +54,7 @@ export function isTypingTarget(element: Element | null | undefined): boolean {
   if (!element) return false;
   const tag = element.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if ((element as HTMLElement).isContentEditable) return true;
+  if ('isContentEditable' in element && element.isContentEditable) return true;
   const role = element.getAttribute('role');
   return role === 'textbox' || role === 'combobox' || role === 'searchbox';
 }
@@ -81,7 +81,7 @@ export interface KeyEventLike {
  * browsers report instead).
  */
 export function isIgnorableKeyEvent(e: KeyEventLike): boolean {
-  return !!(e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing || e.key === 'Process');
+  return e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing || e.key === 'Process';
 }
 
 /** macOS and iOS show ⌘ and ⌥ where other platforms show Ctrl and Alt. */

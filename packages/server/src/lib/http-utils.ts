@@ -35,6 +35,7 @@ export function toNextResponse<T>(response: ControllerResponse<T>): NextResponse
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/require-await -- async keeps the Promise<NextResponse> contract for await-ing callers.
 export async function handleApiError(
   error: unknown,
   fallback: AppErrorCode = 'INTERNAL_SERVER',

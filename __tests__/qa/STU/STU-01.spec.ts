@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 
@@ -73,7 +74,7 @@ async function createPracticedCards(page: Page, tenant: QaTenant): Promise<strin
     data: { name: `STU-01 dashboard ${suffix}` },
   });
   expect(deckResponse.status(), 'POST /api/v1/flashcards/decks').toBe(201);
-  const deck = (await deckResponse.json()) as { data: { id: string } };
+  const deck = await json<{ data: { id: string } }>(deckResponse);
 
   const cardIds: string[] = [];
   for (let index = 1; index <= 5; index += 1) {
@@ -85,7 +86,7 @@ async function createPracticedCards(page: Page, tenant: QaTenant): Promise<strin
       },
     });
     expect(cardResponse.status(), `POST /api/v1/flashcards (card ${index})`).toBe(201);
-    cardIds.push(((await cardResponse.json()) as { data: { id: string } }).data.id);
+    cardIds.push((await json<{ data: { id: string } }>(cardResponse)).data.id);
   }
 
   for (const cardId of cardIds) {
@@ -130,8 +131,8 @@ test.describe('STU-01 — student dashboard', () => {
 
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status(), 'GET /api/v1/auth/me').toBe(200);
-    const name = ((await me.json()) as { data: { user: { user_metadata: { name: string } } } }).data
-      .user.user_metadata.name;
+    const name = (await json<{ data: { user: { user_metadata: { name: string } } } }>(me)).data.user
+      .user_metadata.name;
     const firstName = name.split(' ')[0];
     await expect(
       page.getByRole('heading', { level: 1 }),

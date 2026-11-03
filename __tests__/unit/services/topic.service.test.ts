@@ -8,25 +8,66 @@ vi.mock('@studiq/server/services/group.service', () => ({
   groupService: { canShareContentToGroups: vi.fn() },
 }));
 
-function qb(data: any, error: any = null) {
+type ChainMock = ReturnType<typeof vi.fn>;
+
+/** A thenable PostgREST builder stand-in: every chain method returns itself. */
+interface QueryBuilder {
+  select: ChainMock;
+  insert: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  eq: ChainMock;
+  in: ChainMock;
+  order: ChainMock;
+  limit: ChainMock;
+  or: ChainMock;
+  single: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
+const CHAIN_METHODS = [
+  'select',
+  'insert',
+  'update',
+  'delete',
+  'eq',
+  'in',
+  'order',
+  'limit',
+  'or',
+] as const;
+
+function qb(data: unknown, error: unknown = null): QueryBuilder {
   const result = { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.or = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
-  return b;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    or: vi.fn(),
+    single: vi.fn(),
+    maybeSingle: vi.fn(),
+    then: vi.fn(),
+    catch: vi.fn(),
+    finally: vi.fn(),
+  };
+  for (const method of CHAIN_METHODS) {
+    builder[method] = vi.fn(() => builder);
+  }
+  builder.single = vi.fn().mockResolvedValue(result);
+  builder.maybeSingle = vi.fn().mockResolvedValue(result);
+  builder.then = vi.fn(promise.then.bind(promise));
+  builder.catch = vi.fn(promise.catch.bind(promise));
+  builder.finally = vi.fn(promise.finally.bind(promise));
+  return builder;
 }
 
 describe('TopicService', () => {
@@ -47,7 +88,7 @@ describe('TopicService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new TopicService(async () => mock as any);
+    service = new TopicService(() => Promise.resolve(mock));
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,
       data: true,
@@ -58,7 +99,8 @@ describe('TopicService', () => {
     it('inserts the topic and its group links when the caller teaches the groups', async () => {
       const topic = { id: 't-1', name: 'Topic', created_by: ctx.userId, visibility: 'group' };
       mock.from.mockReturnValueOnce(qb(topic)); // topics insert
-      mock.from.mockReturnValueOnce(qb(undefined)); // topic_groups insert
+      const insertLinks = qb(undefined); // topic_groups insert
+      mock.from.mockReturnValueOnce(insertLinks);
 
       const result = await service.create(
         { name: 'Topic', visibility: 'group', groupIds: ['g-1'] },
@@ -67,7 +109,7 @@ describe('TopicService', () => {
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
-      const insertCall = mock.from.mock.results[1].value.insert;
+      const insertCall = insertLinks.insert;
       expect(insertCall).toHaveBeenCalledWith([{ topic_id: 't-1', group_id: 'g-1' }]);
     });
 
@@ -212,14 +254,15 @@ describe('TopicService', () => {
       const linked = { id: 't-1', name: 'Topic', created_by: ctx.userId };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // delete links
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      const insertLinks = qb(undefined); // insert links
+      mock.from.mockReturnValueOnce(insertLinks);
       mock.from.mockReturnValueOnce(qb(linked)); // getById
 
       const result = await service.update('t-1', { groupIds: ['g-1'] }, ctx);
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
-      const insertCall = mock.from.mock.results[2].value.insert;
+      const insertCall = insertLinks.insert;
       expect(insertCall).toHaveBeenCalledWith([{ topic_id: 't-1', group_id: 'g-1' }]);
     });
 
@@ -261,7 +304,7 @@ describe('TopicService', () => {
       mock.from.mockReturnValueOnce(pageQb); // topics query builder
       mock.from.mockReturnValueOnce(qb([{ topic_id: 't-1' }])); // topic_groups
 
-      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+      const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('topic_groups');
@@ -273,7 +316,7 @@ describe('TopicService', () => {
       mock.from.mockReturnValueOnce(pageQb); // topics query builder
       mock.from.mockReturnValueOnce(qb([])); // topic_groups → no linked topics
 
-      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+      const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
@@ -284,7 +327,7 @@ describe('TopicService', () => {
       const pageQb = qb([]);
       mock.from.mockReturnValueOnce(pageQb);
 
-      await service.list(ctx, { owner: 'mine' } as any);
+      await service.list(ctx, { owner: 'mine' });
 
       expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
       expect(mock.from).not.toHaveBeenCalledWith('topic_groups');

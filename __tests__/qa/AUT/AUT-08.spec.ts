@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { json } from '#test/helpers/json';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -96,14 +97,14 @@ async function submitAndReadResponse(page: Page): Promise<{ status: number; body
   );
   await loginButton(page).click();
   const response = await pending;
-  return { status: response.status(), body: (await response.json()) as unknown };
+  return { status: response.status(), body: await json<unknown>(response) };
 }
 
 /** Caller-visible session state; `/auth/me` answers with `user: null` when signed out. */
 async function sessionUser(page: Page): Promise<{ email?: string } | null> {
   const response = await page.request.get('/api/v1/auth/me');
   expect(response.ok()).toBe(true);
-  const body = (await response.json()) as { data?: { user?: { email?: string } | null } };
+  const body = await json<{ data?: { user?: { email?: string } | null } }>(response);
   return body.data?.user ?? null;
 }
 

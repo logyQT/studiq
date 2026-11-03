@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -99,7 +100,24 @@ interface TwoOrgTenant extends QaTenant {
   };
 }
 
-const TENANT = loadTenant(CASE) as TwoOrgTenant;
+function isTwoOrgTenant(value: QaTenant): value is TwoOrgTenant {
+  return (
+    'manager' in value &&
+    'orgA' in value &&
+    'orgB' in value &&
+    !!value.users &&
+    'manager' in value.users &&
+    'studentA' in value.users &&
+    'teacherA' in value.users &&
+    'studentB' in value.users
+  );
+}
+
+const loadedTenant = loadTenant(CASE);
+if (!isTwoOrgTenant(loadedTenant)) {
+  throw new Error(`${CASE} needs the two-org tenant profile`);
+}
+const TENANT = loadedTenant;
 
 /** Org A's default group (the deck's first share) and its second group. */
 const GROUP_NAME = TENANT.orgA.groups[0];
@@ -163,7 +181,7 @@ function groupBadge(card: Locator, groupName: string): Locator {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -279,7 +297,7 @@ async function ensureOrgMember(
     created.status(),
     `POST /api/v1/organization/invites → ${created.status()} ${await created.text()}`,
   ).toBe(201);
-  const invitation = ((await created.json()) as ApiEnvelope<{ inviteCode: string }>).data;
+  const invitation = (await json<ApiEnvelope<{ inviteCode: string }>>(created)).data;
   expect(invitation.inviteCode, 'the invitation has a join code').toMatch(/^[0-9a-f]{32}$/);
 
   const accepted = await invitee.request.post('/api/v1/organization/invites/accept', {

@@ -1,6 +1,6 @@
 'use client';
 
-import { evaluateScope, type PermissionScope } from '@studiq/authz';
+import { evaluateScope } from '@studiq/authz';
 import { useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
@@ -22,7 +22,7 @@ export function usePermission() {
   const { activeOrg } = useOrgs();
   const { data } = usePermissions();
 
-  const pm = data?.permissions as Record<string, PermissionScope | null> | undefined;
+  const pm = data?.permissions;
 
   return useCallback(
     (permission: string, resource?: PermissionResource): boolean => {

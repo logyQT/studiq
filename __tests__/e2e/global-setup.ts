@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
  * consume the tenant's plan limits, so a long iteration starts failing with
  * USAGE_LIMIT_EXCEEDED — re-run the seeder with --reset instead.
  */
-export default async function globalSetup(): Promise<void> {
+export default function globalSetup(): void {
   if (process.env.E2E_SKIP_SEED === '1') {
     console.log('e2e seed: skipped (E2E_SKIP_SEED=1)');
     return;

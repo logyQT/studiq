@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -100,7 +101,7 @@ interface ReportListResult {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -111,7 +112,7 @@ async function postData<T>(page: Page, url: string, status: number, data: unknow
   expect(response.status(), `POST ${url} → ${response.status()} ${await response.text()}`).toBe(
     status,
   );
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -143,14 +144,18 @@ async function ensureBank(page: Page): Promise<BankListItem> {
 }
 
 /** An open question of the case, created once per tenant. */
-async function ensureQuestion(page: Page, bankId: string, content: string): Promise<QuestionItem> {
+async function ensureQuestion(
+  page: Page,
+  bankId: string,
+  questionContent: string,
+): Promise<QuestionItem> {
   const questions = await getData<QuestionItem[]>(page, `${QUESTIONS_URL}?bankId=${bankId}`);
-  const existing = questions.find((question) => question.content === content);
+  const existing = questions.find((question) => question.content === questionContent);
   if (existing) return existing;
   return postData<QuestionItem>(page, QUESTIONS_URL, 201, {
     bankId,
     type: 'open',
-    content,
+    content: questionContent,
     answers: [],
   });
 }

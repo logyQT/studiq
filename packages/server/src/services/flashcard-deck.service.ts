@@ -7,6 +7,8 @@ import {
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import type { FilterableBuilder } from '@studiq/server/lib/postgrest';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -14,19 +16,19 @@ import type {
   BatchDeleteDeckInput,
   BulkCreateDeckInput,
   CreateDeckInput,
-  Deck,
   DeckListQuery,
   UpdateDeckInput,
 } from '@studiq/server/models/flashcard-deck.model';
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class FlashcardDeckService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(data: CreateDeckInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
     // A group-visible deck without a single share link is visible only to its creator (#139).
@@ -88,7 +90,7 @@ export class FlashcardDeckService {
    * Fails closed: unknown/unreadable ids are rejected rather than silently skipped.
    */
   private async assertFlashcardsUpdatable(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ids: string[],
     ctx: RequestContext,
   ): Promise<ServiceResult<never> | null> {
@@ -111,7 +113,7 @@ export class FlashcardDeckService {
    * Fails closed: unknown ids are NOT_FOUND, unreadable ids throw FORBIDDEN from `check`.
    */
   private async assertDecksReadable(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ids: string[],
     ctx: RequestContext,
   ): Promise<ServiceResult<never> | null> {
@@ -130,7 +132,7 @@ export class FlashcardDeckService {
   }
 
   private async getSuspendedDeckIds(ctx: RequestContext): Promise<Set<string>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data } = await supabase
       .from('suspended_decks')
       .select('deck_id')
@@ -142,10 +144,10 @@ export class FlashcardDeckService {
     ctx: RequestContext,
     queryParams?: Partial<DeckListQuery>,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.DECK_READ, 'deck');
-    if (filter._impossible)
+    if (isImpossibleFilter(filter))
       return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
@@ -164,32 +166,40 @@ export class FlashcardDeckService {
     // Every filter (RBAC, suspended, owner, group, search) lives here and is shared by the page
     // query and the total-count query, so `total` always matches the visible set. The cursor and
     // limit are applied to the page query only, which keeps `total` stable while paging.
-    const buildFiltered = (select: string, options?: { count: 'exact'; head: true }) => {
-      let q = supabase.from('flashcard_decks').select(select, options);
+    const applyFilters = <T extends FilterableBuilder<T>>(q: T): T => {
+      let filtered = q;
 
-      if (filter.or) q = q.or(filter.or);
-      if (filter.created_by) q = q.eq('created_by', filter.created_by);
-      if (filter.organization_id) q = q.eq('organization_id', filter.organization_id);
+      if (filter.or) filtered = filtered.or(filter.or);
+      if (filter.created_by) filtered = filtered.eq('created_by', filter.created_by);
+      if (filter.organization_id) filtered = filtered.eq('organization_id', filter.organization_id);
 
       // Exclude suspended decks by default
       if (!includeSuspended && suspendedIds.size > 0) {
-        q = q.not('id', 'in', `(${[...suspendedIds].join(',')})`);
+        filtered = filtered.not('id', 'in', `(${[...suspendedIds].join(',')})`);
       }
 
       if (queryParams?.owner === 'mine') {
-        q = q.eq('created_by', ctx.userId);
+        filtered = filtered.eq('created_by', ctx.userId);
       }
 
-      if (groupIds) q = q.in('id', groupIds);
+      if (groupIds) filtered = filtered.in('id', groupIds);
 
       if (queryParams?.q) {
-        q = q.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
+        filtered = filtered.or(
+          `name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`,
+        );
       }
-      return q;
+      return filtered;
     };
 
-    let query = buildFiltered('*, flashcard_count:flashcards(count), deck_groups(group_id)');
-    const countQuery = buildFiltered('id', { count: 'exact', head: true });
+    let query = applyFilters(
+      supabase
+        .from('flashcard_decks')
+        .select('*, flashcard_count:flashcards(count), deck_groups(group_id)'),
+    );
+    const countQuery = applyFilters(
+      supabase.from('flashcard_decks').select('id', { count: 'exact', head: true }),
+    );
 
     // Apply sorting with tie-breaker
     const sortBy = queryParams?.sortBy ?? 'created_at';
@@ -213,38 +223,34 @@ export class FlashcardDeckService {
     if (error) return toDbFailure(error);
     if (countError) return toDbFailure(countError);
 
-    const rows = data as unknown as Array<Record<string, unknown>> | null;
-    const hasMore = (rows?.length ?? 0) > pageSize;
-    const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-    const items = sliced.map((item) => {
-      const countArr = item.flashcard_count as { count: number }[] | undefined;
-      const groups = item.deck_groups as { group_id: string }[] | undefined;
-      return {
-        ...item,
-        flashcard_count: countArr?.[0]?.count ?? 0,
-        groupIds: groups?.map((g) => g.group_id) ?? [],
-        suspended: suspendedIds.has(item.id as string),
-      };
-    });
+    const rows = data ?? [];
+    const hasMore = rows.length > pageSize;
+    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
+    const items = sliced.map((item) => ({
+      ...item,
+      flashcard_count: item.flashcard_count?.[0]?.count ?? 0,
+      groupIds: item.deck_groups?.map((g) => g.group_id) ?? [],
+      suspended: suspendedIds.has(item.id),
+    }));
     const nextCursor = hasMore
       ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
       : null;
 
     return success({
-      items: items as unknown as Deck[],
+      items,
       nextCursor,
       hasMore,
       total: count ?? 0,
-    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean; total: number });
+    });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
 
     const filter = await accessibleFilter(ctx, Permission.DECK_READ, 'deck');
-    if (filter._impossible) return failure('NOT_FOUND');
+    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     let query = supabase
       .from('flashcard_decks')
@@ -258,16 +264,12 @@ export class FlashcardDeckService {
     const { data: deck, error } = await query.single();
     if (error || !deck) return failure('NOT_FOUND');
 
-    const countArr = (deck as Record<string, unknown>).flashcard_count as
-      { count: number }[] | undefined;
-    const groups = (deck as Record<string, unknown>).deck_groups as
-      { group_id: string }[] | undefined;
     return success({
       ...deck,
-      flashcard_count: countArr?.[0]?.count ?? 0,
-      groupIds: groups?.map((g) => g.group_id) ?? [],
+      flashcard_count: deck.flashcard_count?.[0]?.count ?? 0,
+      groupIds: deck.deck_groups?.map((g) => g.group_id) ?? [],
       suspended: suspendedIds.has(id),
-    } as unknown as Deck);
+    });
   }
 
   async update(
@@ -275,7 +277,7 @@ export class FlashcardDeckService {
     data: UpdateDeckInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -346,7 +348,7 @@ export class FlashcardDeckService {
       if (denied) return denied;
     }
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['flashcard_decks']['Update'] = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.description !== undefined) updateFields.description = data.description;
     if (data.visibility !== undefined) updateFields.visibility = data.visibility;
@@ -389,9 +391,8 @@ export class FlashcardDeckService {
     }
 
     if (data.flashcardIds !== undefined) {
-      // First unset deck_id for all flashcards currently in this deck
-      await supabase.from('flashcards').update({ deck_id: null }).eq('deck_id', id);
-      // Then set deck_id for the specified flashcards
+      // `flashcards.deck_id` is NOT NULL, so cards cannot be detached by writing
+      // NULL; only cards explicitly listed below are re-parented into this deck.
       if (data.flashcardIds.length > 0) {
         const { error: fcError } = await supabase
           .from('flashcards')
@@ -415,7 +416,7 @@ export class FlashcardDeckService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -438,15 +439,17 @@ export class FlashcardDeckService {
     data: BulkCreateDeckInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
-    const decks = data.decks.map((d) => ({
-      name: d.name,
-      description: d.description ?? null,
-      created_by: ctx.userId,
-      organization_id: ctx.activeOrgId,
-      // Bulk create cannot assign groups, so it can only produce personal decks (#139).
-      visibility: 'personal',
-    }));
+    const supabase = await this.clientFactory();
+    const decks: Database['public']['Tables']['flashcard_decks']['Insert'][] = data.decks.map(
+      (d) => ({
+        name: d.name,
+        description: d.description ?? null,
+        created_by: ctx.userId,
+        organization_id: ctx.activeOrgId,
+        // Bulk create cannot assign groups, so it can only produce personal decks (#139).
+        visibility: 'personal',
+      }),
+    );
 
     const { data: created, error } = await supabase
       .from('flashcard_decks')
@@ -461,7 +464,7 @@ export class FlashcardDeckService {
     data: BatchDeleteDeckInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: decks, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -486,7 +489,7 @@ export class FlashcardDeckService {
     data: { deckIds: string[]; suspended: boolean },
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const deckIds = [...new Set(data.deckIds)];
 
     const guard = await this.assertDecksReadable(supabase, deckIds, ctx);
@@ -519,7 +522,10 @@ export class FlashcardDeckService {
    * is scoped to content owned by the caller **in that org**, so personal-space
    * decks never consume the org plan's capacity.
    */
-  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+  private async countOwned(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<number> {
     let query = supabase
       .from('flashcard_decks')
       .select('*', { count: 'exact', head: true })

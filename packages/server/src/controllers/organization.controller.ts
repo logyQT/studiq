@@ -5,6 +5,7 @@ import {
 } from '@studiq/server/lib/controller-response';
 import { requireFeature } from '@studiq/server/lib/features';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
   CreateOrganizationSchema,
@@ -17,7 +18,7 @@ import {
 } from '@studiq/server/services/organization.service';
 
 export class OrganizationController {
-  constructor(private organizationService: OrganizationService) {}
+  constructor(private service: OrganizationService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsedData = CreateOrganizationSchema.safeParse(body);
@@ -31,7 +32,7 @@ export class OrganizationController {
       };
     }
 
-    const result = await this.organizationService.create(ctx, parsedData.data);
+    const result = await this.service.create(ctx, parsedData.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -52,7 +53,7 @@ export class OrganizationController {
       };
     }
 
-    const result = await this.organizationService.createAndJoin(ctx, parsedData.data);
+    const result = await this.service.createAndJoin(ctx, parsedData.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -62,7 +63,7 @@ export class OrganizationController {
   }
 
   async getAll(): Promise<ControllerResponse> {
-    const organizations = await this.organizationService.getAll();
+    const organizations = await this.service.getAll();
 
     if (isFailure(organizations)) {
       return controllerResponse.error(organizations.error);
@@ -81,7 +82,7 @@ export class OrganizationController {
       };
     }
 
-    const organization = await this.organizationService.getById(parsedId.data.id);
+    const organization = await this.service.getById(parsedId.data.id);
 
     if (isFailure(organization)) {
       return controllerResponse.error(organization.error);
@@ -95,8 +96,7 @@ export class OrganizationController {
     // request when it actually carries branding fields. Checked on the raw
     // body (before validation) so a disabled feature fails closed rather than
     // leaking a 422 for a payload the org was never allowed to send.
-    const rawBody =
-      typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+    const rawBody = isRecord(body) ? body : {};
     if ('logoUrl' in rawBody || 'brandColor' in rawBody) {
       await requireFeature(ctx, 'branding');
     }
@@ -120,7 +120,7 @@ export class OrganizationController {
       };
     }
 
-    const result = await this.organizationService.update(parsedId.data.id, parsedData.data);
+    const result = await this.service.update(parsedId.data.id, parsedData.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -139,7 +139,7 @@ export class OrganizationController {
       };
     }
 
-    const detail = await this.organizationService.getByIdWithDetails(parsedId.data.id);
+    const detail = await this.service.getByIdWithDetails(parsedId.data.id);
 
     if (isFailure(detail)) {
       return controllerResponse.error(detail.error);
@@ -158,7 +158,7 @@ export class OrganizationController {
       };
     }
 
-    const result = await this.organizationService.delete(ctx, parsedId.data.id);
+    const result = await this.service.delete(ctx, parsedId.data.id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

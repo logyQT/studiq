@@ -58,11 +58,9 @@ export class PdfCacheService {
 
   private evictExpired(): void {
     const now = Date.now();
-    let _evicted = 0;
     for (const [key, entry] of this.cache) {
       if (now - entry.extractedAt.getTime() > this.ttlMs) {
         this.cache.delete(key);
-        _evicted++;
       }
     }
   }

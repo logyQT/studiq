@@ -86,7 +86,7 @@ export function DailyGoalCard() {
       onSuccess: () => {
         toast.success(goal === 0 ? t('goal_off') : t('goal_saved', { count: goal }));
         setEditing(false);
-        queryClient.invalidateQueries({ queryKey: settingsKey });
+        void queryClient.invalidateQueries({ queryKey: settingsKey });
       },
     });
   }

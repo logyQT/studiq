@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -111,7 +112,7 @@ function account(role: QaRole) {
 async function fetchPlans(page: Page, accountType: 'student' | 'educator'): Promise<PlanInfo[]> {
   const response = await page.request.get(`/api/v1/subscription-plans?for=${accountType}`);
   expect(response.status(), `GET /api/v1/subscription-plans?for=${accountType}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<PlanInfo[]>;
+  const body = await json<ApiEnvelope<PlanInfo[]>>(response);
   expect(body.success, `plans response for ${accountType}`).toBe(true);
   return body.data;
 }
@@ -123,7 +124,7 @@ async function fetchCurrentPlan(
 ): Promise<PlanInfo> {
   const response = await page.request.get(endpoint);
   expect(response.status(), `GET ${endpoint}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<PlanInfo>;
+  const body = await json<ApiEnvelope<PlanInfo>>(response);
   expect(body.success, `${endpoint} response`).toBe(true);
   return body.data;
 }

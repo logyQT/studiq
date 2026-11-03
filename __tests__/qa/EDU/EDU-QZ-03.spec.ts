@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -68,14 +69,14 @@ async function postJson<T>(
   data: unknown,
 ): Promise<{ status: number; body: ApiEnvelope<T> }> {
   const response = await page.request.post(url, { data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   return { status: response.status(), body };
 }
 
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -167,7 +168,7 @@ function savedToast(page: Page): Locator {
 /** Persisted state, read back through the same API the editor loads. */
 async function storedQuiz(page: Page, quizId: string): Promise<QuizQuestionRow[]> {
   const quiz = await getData<QuizDetail>(page, `/api/v1/teacher/quizzes/${quizId}`);
-  return [...quiz.quiz_questions].sort((a, b) => a.order_index - b.order_index);
+  return [...quiz.quiz_questions].toSorted((a, b) => a.order_index - b.order_index);
 }
 
 /**

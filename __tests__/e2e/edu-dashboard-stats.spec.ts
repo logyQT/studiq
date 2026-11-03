@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 
@@ -26,12 +27,15 @@ function statCardValue(page: import('@playwright/test').Page, title: RegExp) {
     .locator('xpath=following-sibling::p[1]');
 }
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const completedStatPattern = (message: string) =>
+  message.split('{days}').map(escapeRegExp).join('\\d+');
+
 /** The "Attempts ({days} days)" title in both locales, with the number left open. */
 function completedStatTitle() {
-  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = (message: string) => message.split('{days}').map(escape).join('\\d+');
   return new RegExp(
-    `${pattern(en.EduOverviewPage.completed_stat)}|${pattern(pl.EduOverviewPage.completed_stat)}`,
+    `${completedStatPattern(en.EduOverviewPage.completed_stat)}|${completedStatPattern(pl.EduOverviewPage.completed_stat)}`,
     'i',
   );
 }
@@ -45,19 +49,18 @@ test.describe('EDU dashboard stats (#133, #654)', () => {
     // content, hence the non-zero guards: with the envelope bug every card rendered 0.
     const overview = await page.request.get('/api/v1/stats/teacher');
     expect(overview.status()).toBe(200);
-    const { totalQuestions, totalFlashcards } = (await overview.json()).data as {
-      totalQuestions: number;
-      totalFlashcards: number;
-    };
+    const { totalQuestions, totalFlashcards } = (
+      await json<{ data: { totalQuestions: number; totalFlashcards: number } }>(overview)
+    ).data;
     expect(totalQuestions).toBeGreaterThan(0);
     expect(totalFlashcards).toBeGreaterThan(0);
 
     // Learners and attempts come from the group aggregate: distinct totals, never a row sum.
     const groups = await page.request.get('/api/v1/stats/teacher/groups?days=30');
     expect(groups.status()).toBe(200);
-    const { totals } = (await groups.json()).data as {
-      totals: { students: number; completedAttempts: number };
-    };
+    const { totals } = (
+      await json<{ data: { totals: { students: number; completedAttempts: number } } }>(groups)
+    ).data;
 
     await expect(statCardValue(page, t('EduOverviewPage.total_questions'))).toHaveText(
       String(totalQuestions),

@@ -7,7 +7,7 @@ import { CreateClassroomSchema } from '@studiq/server/models/classroom.model';
 import { type ClassroomService, classroomService } from '@studiq/server/services/classroom.service';
 
 export class ClassroomController {
-  constructor(private classroomService: ClassroomService) {}
+  constructor(private service: ClassroomService) {}
 
   async create(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
     const parsed = CreateClassroomSchema.safeParse(body);
@@ -21,7 +21,7 @@ export class ClassroomController {
       };
     }
 
-    const result = await this.classroomService.create(ctx, parsed.data);
+    const result = await this.service.create(ctx, parsed.data);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

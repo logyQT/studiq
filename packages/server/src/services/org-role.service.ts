@@ -9,9 +9,10 @@ import type {
   UpdateOrgRoleInput,
 } from '@studiq/server/models/org-role.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class OrgRoleService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async listRoles(ctx: RequestContext): Promise<
     ServiceResult<
@@ -26,7 +27,7 @@ export class OrgRoleService {
       }[]
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -48,15 +49,15 @@ export class OrgRoleService {
 
     return success(
       (data ?? []).map((r) => {
-        const memberCount = (r.org_members as unknown as { count: number }[])?.[0]?.count ?? 0;
-        const permissionCount =
-          (r.org_role_permissions as unknown as { count: number }[])?.[0]?.count ?? 0;
+        const memberCount = r.org_members?.[0]?.count ?? 0;
+        const permissionCount = r.org_role_permissions?.[0]?.count ?? 0;
         return {
           id: r.id,
           name: r.name,
           displayName: r.display_name,
           description: r.description,
-          isSystem: r.is_system,
+          // `is_system` is nullable (`DEFAULT false`); a role without the flag is a custom one.
+          isSystem: r.is_system ?? false,
           memberCount,
           permissionCount,
         };
@@ -77,7 +78,7 @@ export class OrgRoleService {
       permissions: { permissionName: string; scope: string }[];
     }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -102,11 +103,13 @@ export class OrgRoleService {
       name: data.name,
       displayName: data.display_name,
       description: data.description,
-      isSystem: data.is_system,
+      // `is_system` is nullable (`DEFAULT false`); treat a missing flag as custom.
+      isSystem: data.is_system ?? false,
       permissions:
-        (data.org_role_permissions as unknown as { permission_name: string; scope: string }[])?.map(
-          (p) => ({ permissionName: p.permission_name, scope: p.scope }),
-        ) ?? [],
+        data.org_role_permissions?.map((p) => ({
+          permissionName: p.permission_name,
+          scope: p.scope,
+        })) ?? [],
     });
   }
 
@@ -116,7 +119,7 @@ export class OrgRoleService {
   ): Promise<
     ServiceResult<{ id: string; name: string; description: string | null; isSystem: boolean }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -141,7 +144,8 @@ export class OrgRoleService {
       name: role.name,
       displayName: role.display_name,
       description: role.description,
-      isSystem: role.is_system,
+      // `is_system` is nullable (`DEFAULT false`); createRole always writes `false`.
+      isSystem: role.is_system ?? false,
     });
   }
 
@@ -152,7 +156,7 @@ export class OrgRoleService {
   ): Promise<
     ServiceResult<{ id: string; name: string; description: string | null; isSystem: boolean }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -171,7 +175,7 @@ export class OrgRoleService {
       return failure('FORBIDDEN');
     }
 
-    const update: Record<string, string | null> = {};
+    const update: Database['public']['Tables']['org_roles']['Update'] = {};
     if (data.name !== undefined) update.name = data.name;
     if (data.display_name !== undefined) {
       update.display_name = data.display_name;
@@ -202,12 +206,13 @@ export class OrgRoleService {
       name: role.name,
       displayName: role.display_name,
       description: role.description,
-      isSystem: role.is_system,
+      // `is_system` is nullable (`DEFAULT false`); treat a missing flag as custom.
+      isSystem: role.is_system ?? false,
     });
   }
 
   async deleteRole(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -252,7 +257,7 @@ export class OrgRoleService {
     id: string,
     data: SetRolePermissionsInput,
   ): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // active_org_id is a client-controlled cookie. orgRoleId is only set when
     // with-auth found a real org_members row for this exact org+user, so both

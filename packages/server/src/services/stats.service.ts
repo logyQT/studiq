@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { warn } from '@studiq/server/lib/log';
 import { hiddenResultAssignmentIds } from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -7,15 +8,28 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import {
   MIN_PROBLEM_QUESTION_ANSWERS,
-  type ProblematicQuestionStats,
+  ProblematicQuestionsSchema,
   type StudentStatsResponse,
   type TeacherFeedItem,
+  TeacherFeedSchema,
   type TeacherGroupPerformance,
+  TeacherGroupPerformanceSchema,
   type TeacherQuizStatsItem,
   type TeacherStatsQuery,
   type TeacherStatsResponse,
 } from '@studiq/server/models/stats.model';
+import { isRecord } from '@studiq/server/lib/record';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
+
+/**
+ * Single rounding rule for per-attempt percentages. `avgScore` in
+ * `getStudentStats` keeps its own expression on purpose — reusing this helper
+ * there would change its rounding and shift existing values by ±1.
+ */
+function percentageOf(attempt: { score: number | null }, total: number): number {
+  return Math.round(((attempt.score ?? 0) / total) * 100);
+}
 
 /**
  * Max score of an attempt: awarded points for assignment attempts, question
@@ -48,8 +62,20 @@ const EMPTY_GROUP_PERFORMANCE: TeacherGroupPerformance = {
   totals: { students: 0, completedAttempts: 0, awaitingGrade: 0 },
 };
 
+/** Reads a to-one embed (a to-many shape is tolerated) as an untyped record. */
+function toOne(value: unknown): Record<string, unknown> | null {
+  const first: unknown = Array.isArray(value) ? value[0] : value;
+  return isRecord(first) ? first : null;
+}
+
+/** `config` is a `json` column: the stored quiz title, when it has one. */
+function configTitle(config: unknown): string | null {
+  if (!isRecord(config)) return null;
+  return typeof config.title === 'string' && config.title !== '' ? config.title : null;
+}
+
 export class StatsService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /**
    * Returns the caller's content counts and question statistics, scoped to the active
@@ -61,7 +87,7 @@ export class StatsService {
     ctx: RequestContext,
     filters?: TeacherStatsQuery,
   ): Promise<ServiceResult<TeacherStatsResponse>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let questionsQuery = supabase
       .from('questions')
@@ -109,7 +135,7 @@ export class StatsService {
         subjectName: bankNames.get(bankId) ?? null,
         questionCount: countsByBank.get(bankId) ?? 0,
       }))
-      .sort((a, b) => {
+      .toSorted((a, b) => {
         if (a.subjectName === null) return b.subjectName === null ? 0 : 1;
         if (b.subjectName === null) return -1;
         return a.subjectName.localeCompare(b.subjectName, 'pl');
@@ -130,29 +156,38 @@ export class StatsService {
     const { data: problematicQuestions, error: problematicQuestionsError } = await supabase.rpc(
       'get_teacher_problematic_questions',
       {
+        // Explicit NULLs (never omitted): the RPC keys on their presence.
         p_user_id: ctx.userId,
-        p_organization_id: ctx.activeOrgId ?? null,
+        p_organization_id: ctx.activeOrgId,
         p_bank_id: subjectId ?? null,
       },
     );
 
     if (problematicQuestionsError) return toDbFailure(problematicQuestionsError);
 
+    const parsedProblematicQuestions = ProblematicQuestionsSchema.safeParse(problematicQuestions);
+    if (!parsedProblematicQuestions.success) {
+      warn('teacher problematic-questions RPC payload failed validation');
+    }
+    const problematicRows = parsedProblematicQuestions.success
+      ? parsedProblematicQuestions.data
+      : [];
+
     return success({
       totalQuestions: rows.length,
       totalFlashcards: flashcards?.length ?? 0,
       subject: {
         byType,
-        problematicQuestions: (
-          (problematicQuestions as ProblematicQuestionStats[] | null) ?? []
-        ).filter((question) => question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS),
+        problematicQuestions: problematicRows.filter(
+          (question) => question.totalAnswers >= MIN_PROBLEM_QUESTION_ANSWERS,
+        ),
       },
       bySubject,
     });
   }
 
   async getStudentStats(ctx: RequestContext): Promise<ServiceResult<StudentStatsResponse>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // quiz_attempts, flashcard_practice and flashcard_review_state carry no
     // organization_id of their own (they're pure user-activity logs keyed by
@@ -242,11 +277,6 @@ export class StatsService {
     if (dueError) return toDbFailure(dueError);
 
     const totalQuizzes = attempts?.length ?? 0;
-    // Single rounding rule for per-attempt percentages. avgScore below keeps its
-    // own expression on purpose — reusing the helper there would change its
-    // rounding and shift existing values by ±1.
-    const percentageOf = (attempt: { score: number | null }, total: number) =>
-      Math.round(((attempt.score ?? 0) / total) * 100);
     // `null` = no attempt had a gradable denominator, so there is no result to
     // report. The UI renders `—` instead of a fabricated 0 % (#619).
     const avgScore =
@@ -285,12 +315,20 @@ export class StatsService {
       totalDecks: decksCount ?? 0,
       totalFlashcards: flashcardsCount ?? 0,
       dueToday: dueCount ?? 0,
-      attemptsOverTime: gradedAttempts.map(({ attempt, total }) => ({
-        date: attempt.started_at,
-        score: attempt.score,
-        total,
-        percentage: percentageOf(attempt, total),
-      })),
+      // `started_at` has a `DEFAULT now()` but the column is nullable; an attempt
+      // without a date cannot be plotted, so it is left out of the series.
+      attemptsOverTime: gradedAttempts.flatMap(({ attempt, total }) =>
+        attempt.started_at
+          ? [
+              {
+                date: attempt.started_at,
+                score: attempt.score,
+                total,
+                percentage: percentageOf(attempt, total),
+              },
+            ]
+          : [],
+      ),
     });
   }
 
@@ -317,7 +355,7 @@ export class StatsService {
    * - `avgCompletionRate` — `round(completed / started * 100)`, integer 0–100
    */
   async getTeacherQuizStats(ctx: RequestContext): Promise<ServiceResult<TeacherQuizStatsItem[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId || !ctx.orgRoleId) return success([]);
 
@@ -329,7 +367,7 @@ export class StatsService {
 
     if (membersError) return toDbFailure(membersError);
 
-    const studentIds = (members ?? []).map((m) => m.user_id as string);
+    const studentIds = (members ?? []).map((m) => m.user_id);
     if (studentIds.length === 0) return success([]);
 
     const { data, error } = await supabase
@@ -403,12 +441,12 @@ export class StatsService {
     >();
 
     for (const row of attempts) {
-      const config = row.config as { title?: string } | null;
+      const config: unknown = row.config;
       // Precedence: an explicit stored title, then the quiz behind the
       // assignment, then the assignment title. Untitled rows stay null and the
       // UI supplies the localized label.
       const title =
-        config?.title ??
+        configTitle(config) ??
         (row.assignment_id ? assignmentNames.get(row.assignment_id) : undefined) ??
         null;
       const key = title ?? '';
@@ -447,7 +485,7 @@ export class StatsService {
     startDate?: string,
     endDate?: string,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let start: string;
     const end: string = endDate ?? new Date().toISOString().split('T')[0];
@@ -485,7 +523,7 @@ export class StatsService {
   }
 
   async getWeakPoints(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Step 1: Get all practice records for this user
     const { data: practice, error: practiceError } = await supabase
@@ -506,21 +544,23 @@ export class StatsService {
     const cardToDecks = new Map<string, Array<{ deckId: string; name: string }>>();
     for (const f of flashcardsWithDecks ?? []) {
       const decks = cardToDecks.get(f.id) ?? [];
-      const deckRaw = f.flashcard_decks as unknown;
-      const deckData = Array.isArray(deckRaw) ? deckRaw[0] : deckRaw;
-      if (deckData) {
-        decks.push({ deckId: f.deck_id, name: deckData.name ?? 'Unknown' });
+      const deck = toOne(f.flashcard_decks);
+      if (deck && typeof deck.name === 'string') {
+        decks.push({ deckId: f.deck_id, name: deck.name });
         cardToDecks.set(f.id, decks);
       }
     }
 
     const deckMap = new Map<string, { name: string; total: number; correct: number }>();
     for (const p of practice ?? []) {
+      // `flashcard_practice.flashcard_id` is nullable (`ON DELETE SET NULL`); no
+      // card means no deck to blame, which is what the missing map entry gave.
+      if (!p.flashcard_id) continue;
       const decks = cardToDecks.get(p.flashcard_id) ?? [];
       for (const d of decks) {
         const entry = deckMap.get(d.deckId) ?? { name: d.name, total: 0, correct: 0 };
         entry.total++;
-        if (p.was_correct === true || p.was_correct === 'true') entry.correct++;
+        if (p.was_correct) entry.correct++;
         deckMap.set(d.deckId, entry);
       }
     }
@@ -533,7 +573,7 @@ export class StatsService {
         totalAttempts: stats.total,
       }))
       .filter((d) => d.totalAttempts >= 5)
-      .sort((a, b) => a.accuracy - b.accuracy)
+      .toSorted((a, b) => a.accuracy - b.accuracy)
       .slice(0, 5);
 
     // Step 3: Build flashcard → topic lookup
@@ -550,22 +590,22 @@ export class StatsService {
     const cardToTopics = new Map<string, Array<{ topicId: string; name: string }>>();
     for (const a of topicAssignments ?? []) {
       const topics = cardToTopics.get(a.flashcard_id) ?? [];
-      const topicRaw = a.topics as unknown;
-      const topicName =
-        topicRaw && typeof topicRaw === 'object' && 'name' in (topicRaw as object)
-          ? (topicRaw as { name: string }).name
-          : ((topicRaw as Array<{ name: string }> | null)?.[0]?.name ?? 'Unknown');
+      const topic = toOne(a.topics);
+      const topicName = typeof topic?.name === 'string' ? topic.name : 'Unknown';
       topics.push({ topicId: a.topic_id, name: topicName });
       cardToTopics.set(a.flashcard_id, topics);
     }
 
     const topicMap = new Map<string, { name: string; total: number; correct: number }>();
     for (const p of practice ?? []) {
+      // `flashcard_practice.flashcard_id` is nullable (`ON DELETE SET NULL`); no
+      // card means no topic to blame, which is what the missing map entry gave.
+      if (!p.flashcard_id) continue;
       const topics = cardToTopics.get(p.flashcard_id) ?? [];
       for (const t of topics) {
         const entry = topicMap.get(t.topicId) ?? { name: t.name, total: 0, correct: 0 };
         entry.total++;
-        if (p.was_correct === true || p.was_correct === 'true') entry.correct++;
+        if (p.was_correct) entry.correct++;
         topicMap.set(t.topicId, entry);
       }
     }
@@ -578,7 +618,7 @@ export class StatsService {
         totalAttempts: stats.total,
       }))
       .filter((t) => t.totalAttempts >= 5)
-      .sort((a, b) => a.accuracy - b.accuracy)
+      .toSorted((a, b) => a.accuracy - b.accuracy)
       .slice(0, 5);
 
     return success({ weakDecks: weakDecksResult, weakTopics: weakTopicsResult });
@@ -598,7 +638,7 @@ export class StatsService {
   ): Promise<ServiceResult<TeacherGroupPerformance>> {
     if (!ctx.activeOrgId) return success(EMPTY_GROUP_PERFORMANCE);
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.rpc('get_teacher_group_performance', {
       p_user_id: ctx.userId,
       p_organization_id: ctx.activeOrgId,
@@ -606,7 +646,9 @@ export class StatsService {
     });
 
     if (error) return toDbFailure(error);
-    return success((data as TeacherGroupPerformance | null) ?? EMPTY_GROUP_PERFORMANCE);
+    const parsed = TeacherGroupPerformanceSchema.safeParse(data);
+    if (!parsed.success) warn('teacher group-performance RPC payload failed validation');
+    return success(parsed.success ? parsed.data : EMPTY_GROUP_PERFORMANCE);
   }
 
   /**
@@ -621,7 +663,7 @@ export class StatsService {
   ): Promise<ServiceResult<TeacherFeedItem[]>> {
     if (!ctx.activeOrgId) return success([]);
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase.rpc('get_teacher_activity_feed', {
       p_user_id: ctx.userId,
       p_organization_id: ctx.activeOrgId,
@@ -629,7 +671,9 @@ export class StatsService {
     });
 
     if (error) return toDbFailure(error);
-    return success((data as TeacherFeedItem[] | null) ?? []);
+    const parsed = TeacherFeedSchema.safeParse(data);
+    if (!parsed.success) warn('teacher activity-feed RPC payload failed validation');
+    return success(parsed.success ? parsed.data : []);
   }
 }
 export const statsService = wrapService(new StatsService(createClient), 'stats.service');

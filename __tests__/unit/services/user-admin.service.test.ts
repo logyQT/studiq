@@ -12,40 +12,74 @@ interface QbResult {
   count?: number | null;
 }
 
+type ChainMock = ReturnType<typeof vi.fn>;
+
+const CHAIN_METHODS = [
+  'select',
+  'order',
+  'range',
+  'not',
+  'is',
+  'lt',
+  'limit',
+  'eq',
+  'or',
+  'update',
+  'delete',
+] as const;
+
+/** The chain surface the service walks on a fake builder. */
+interface QueryBuilder {
+  select: ChainMock;
+  order: ChainMock;
+  range: ChainMock;
+  not: ChainMock;
+  is: ChainMock;
+  lt: ChainMock;
+  limit: ChainMock;
+  eq: ChainMock;
+  or: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
 /**
  * Chainable PostgREST builder stand-in. Every method returns the builder and
  * awaiting the builder resolves `{ data, error, count }`, so both
  * `.select().maybeSingle()` and `await .update().eq().select('id')` work.
  */
-function qb(result: QbResult = {}) {
+function qb(result: QbResult = {}): QueryBuilder {
   const resolved = {
     data: result.data ?? null,
     error: result.error ?? null,
     count: result.count ?? null,
   };
 
-  const builder: any = {};
-  for (const method of [
-    'select',
-    'order',
-    'range',
-    'not',
-    'is',
-    'lt',
-    'limit',
-    'eq',
-    'or',
-    'update',
-    'delete',
-  ]) {
-    builder[method] = vi.fn(() => builder);
-  }
-  builder.maybeSingle = vi.fn(async () => ({ data: resolved.data, error: resolved.error }));
-
   const promise = Promise.resolve(resolved);
-  builder.then = promise.then.bind(promise);
-  builder.catch = promise.catch.bind(promise);
-  builder.finally = promise.finally.bind(promise);
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    order: vi.fn(),
+    range: vi.fn(),
+    not: vi.fn(),
+    is: vi.fn(),
+    lt: vi.fn(),
+    limit: vi.fn(),
+    eq: vi.fn(),
+    or: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    maybeSingle: vi.fn(() => ({ data: resolved.data, error: resolved.error })),
+    then: vi.fn(promise.then.bind(promise)),
+    catch: vi.fn(promise.catch.bind(promise)),
+    finally: vi.fn(promise.finally.bind(promise)),
+  };
+  for (const method of CHAIN_METHODS) {
+    builder[method].mockReturnValue(builder);
+  }
 
   return builder;
 }
@@ -87,7 +121,7 @@ describe('UserAdminService', () => {
     adminMock.createUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     mock.from.mockReturnValue(qb({ data: [] }));
 
-    service = new UserAdminService(async () => mock as any);
+    service = new UserAdminService(() => Promise.resolve(mock));
   });
 
   afterEach(() => {
@@ -124,7 +158,7 @@ describe('UserAdminService', () => {
         });
         return builder;
       });
-      adminMock.deleteUser.mockImplementation(async () => {
+      adminMock.deleteUser.mockImplementation(() => {
         events.push('deleteUser');
         return { data: {}, error: null };
       });
@@ -198,7 +232,7 @@ describe('UserAdminService', () => {
         .mockReturnValueOnce(profile)
         .mockReturnValueOnce(seats)
         .mockReturnValueOnce(overrides);
-      adminMock.deleteUser.mockImplementation(async () => {
+      adminMock.deleteUser.mockImplementation(() => {
         events.push('deleteUser');
         return { data: {}, error: null };
       });
@@ -263,7 +297,7 @@ describe('UserAdminService', () => {
       expect(purgeAt).toBeGreaterThan(before + 29 * DAY_MS);
       expect(purgeAt).toBeLessThan(before + 31 * DAY_MS);
       expect(update.update).toHaveBeenCalledWith({
-        deleted_at: expect.any(String),
+        deleted_at: expect.any(String) as unknown,
         purge_at: result.data.purgeAt,
       });
     });
@@ -315,7 +349,7 @@ describe('UserAdminService', () => {
         return update;
       });
       mock.from.mockReturnValueOnce(profile).mockReturnValueOnce(update);
-      adminMock.updateUserById.mockImplementation(async () => {
+      adminMock.updateUserById.mockImplementation(() => {
         events.push('auth:unban');
         return { data: { user: {} }, error: null };
       });

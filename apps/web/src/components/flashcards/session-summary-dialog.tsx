@@ -31,6 +31,15 @@ interface SessionSummaryDialogProps {
   onBackToSetup: () => void;
 }
 
+const SESSION_MODES = ['review', 'cram', 'quick'] as const;
+
+type SessionModeKey = (typeof SESSION_MODES)[number];
+
+/** The summary payload carries the mode as a plain string; only known keys have labels. */
+function isSessionModeKey(value: string): value is SessionModeKey {
+  return SESSION_MODES.some((mode) => mode === value);
+}
+
 export function SessionSummaryDialog({
   data,
   queueExhausted = false,
@@ -38,7 +47,7 @@ export function SessionSummaryDialog({
   onBackToSetup,
 }: SessionSummaryDialogProps) {
   const t = useTranslations('AppFlashcardSessionPage');
-  const modeKey = data.mode as 'review' | 'cram' | 'quick';
+  const modeKey = isSessionModeKey(data.mode) ? data.mode : 'review';
   const practiceAgainLabel = t(`practice_again_${modeKey}` as const);
   const backLabel = t(`back_${modeKey}` as const);
   const showPracticeAgain = Boolean(onPracticeAgain) && !queueExhausted;

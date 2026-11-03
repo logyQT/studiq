@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -172,7 +173,7 @@ async function createQuestion(
   });
   const text = await response.text();
   expect(response.status(), `POST /api/v1/questions (${content}) → ${text}`).toBe(201);
-  const body = JSON.parse(text) as ApiEnvelope<{ id: string; type: string }>;
+  const body = await json<ApiEnvelope<{ id: string; type: string }>>(response);
   expect(body.data.type, `„${content}” keeps its type`).toBe(type);
 }
 
@@ -189,7 +190,7 @@ async function seedGroupBank(page: Page, tenant: QaTenant, spec: GroupBankSpec):
   const text = await response.text();
   expect(response.status(), `POST /api/v1/questions/banks (${spec.name}) → ${text}`).toBe(201);
   const bank = (
-    JSON.parse(text) as ApiEnvelope<{ id: string; visibility: string; groupIds: string[] }>
+    await json<ApiEnvelope<{ id: string; visibility: string; groupIds: string[] }>>(response)
   ).data;
   expect(bank.visibility, `„${spec.name}” is a group bank`).toBe('group');
   expect(bank.groupIds, `„${spec.name}” is shared with the tenant group`).toEqual([
@@ -402,7 +403,7 @@ test.describe('@case:STU-31 @area:STU @prio:P2 student question banks', () => {
     // ── Adjacent regression: the retired „Grupy” scope stays rejected ───────
     const retired = await page.request.get('/api/v1/questions/banks?groupFilter=mine');
     expect(retired.status(), 'GET /api/v1/questions/banks?groupFilter=mine').toBe(422);
-    const retiredBody = (await retired.json()) as { error?: string };
+    const retiredBody = await json<{ error?: string }>(retired);
     expect(retiredBody.error).toBe('UNPROCESSABLE_ENTITY');
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);

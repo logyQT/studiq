@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -65,8 +66,8 @@ async function openRegister(page: Page): Promise<void> {
   await page.goto('/register');
 
   expect(
-    ((await (await page.request.get('/api/v1/auth/me')).json()) as { data?: { user?: unknown } })
-      .data?.user ?? null,
+    (await json<{ data?: { user?: unknown } }>(await page.request.get('/api/v1/auth/me'))).data
+      ?.user ?? null,
     'AUT-05 prerequisite: no session',
   ).toBeNull();
 
@@ -159,9 +160,9 @@ test.describe('AUT-05 registration with an existing e-mail', () => {
       data: { email: STUDENT.email, password: STUDENT.password },
     });
     expect(login.status(), 'login with the original password').toBe(200);
-    const body = (await login.json()) as {
+    const body = await json<{
       data: { user: { id: string; email: string; user_metadata?: { account_type?: string } } };
-    };
+    }>(login);
     expect(body.data.user.id, 'the original user id').toBe(STUDENT.id);
     expect(body.data.user.email).toBe(STUDENT.email);
     expect(body.data.user.user_metadata?.account_type).toBe('student');
@@ -210,8 +211,8 @@ test.describe('AUT-05 registration with an existing e-mail', () => {
 
     expect(duplicate.status()).toBe(202);
     expect(fresh.status()).toBe(202);
-    const duplicateBody = await duplicate.json();
-    const freshBody = await fresh.json();
+    const duplicateBody = await json<unknown>(duplicate);
+    const freshBody = await json<unknown>(fresh);
     expect(duplicateBody).toEqual(NEUTRAL_BODY);
     expect(freshBody).toEqual(NEUTRAL_BODY);
     // Identical status and body: the response carries no hint whether the

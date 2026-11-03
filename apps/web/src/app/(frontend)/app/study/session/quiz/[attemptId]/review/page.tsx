@@ -55,9 +55,15 @@ const QUESTION_TYPE_KEYS = {
   open: 'type_open',
 } as const;
 
+type QuestionTypeKey = keyof typeof QUESTION_TYPE_KEYS;
+
+function isQuestionTypeKey(value: string): value is QuestionTypeKey {
+  return Object.hasOwn(QUESTION_TYPE_KEYS, value);
+}
+
 export default function QuizReviewPage() {
-  const params = useParams();
-  const attemptId = params.attemptId as string;
+  const params = useParams<{ attemptId: string }>();
+  const attemptId = params.attemptId;
   const locale = useLocale();
   const t = useTranslations('AppQuizReviewPage');
 
@@ -69,6 +75,7 @@ export default function QuizReviewPage() {
       .then((data) => {
         setAttempt(data);
         setLoading(false);
+        return undefined;
       })
       .catch(() => {
         toast.error(t('load_failed'));
@@ -95,8 +102,7 @@ export default function QuizReviewPage() {
     gradableCount > 0 ? Math.round((attempt.score / gradableCount) * 100) : 0;
 
   function typeLabel(type: string) {
-    const key = QUESTION_TYPE_KEYS[type as keyof typeof QUESTION_TYPE_KEYS];
-    return key ? t(key) : type.replace('_', ' ');
+    return isQuestionTypeKey(type) ? t(QUESTION_TYPE_KEYS[type]) : type.replace('_', ' ');
   }
 
   return (

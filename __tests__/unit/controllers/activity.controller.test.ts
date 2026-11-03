@@ -1,6 +1,8 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { ActivityController } from '@studiq/server/controllers/activity.controller';
+import type { ActivityService } from '@studiq/server/services/activity.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return { getClassActivity: vi.fn() };
@@ -12,7 +14,7 @@ let controller: ActivityController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'educator' as any,
+  accountType: AccountType.EDUCATOR,
   orgRoleId: null,
   activeOrgId: 'org-1',
   url: 'http://localhost',
@@ -25,7 +27,7 @@ describe('ActivityController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new ActivityController(mockService as any);
+    controller = new ActivityController(asService<ActivityService>(mockService));
   });
 
   describe('getActivity', () => {

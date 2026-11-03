@@ -215,7 +215,7 @@ describe('groupStudentAssignments (#368)', () => {
     expect(
       Object.values(buckets)
         .flat()
-        .map((a) => a.id),
+        .map((a: { id: string }) => a.id),
     ).toHaveLength(rows.length);
   });
 

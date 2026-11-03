@@ -1,20 +1,43 @@
 import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
 
-function qb(data: any, error: any = null) {
-  const result = { data: data ?? null, error };
-  const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+interface AssignmentRow {
+  id: string;
+  show_results: boolean;
+}
+
+interface DbError {
+  message: string;
+}
+
+/** A thenable chain implementing the `select().in()` subset the lookup uses. */
+interface FakeQueryBuilder {
+  select: Mock<() => FakeQueryBuilder>;
+  in: Mock<() => FakeQueryBuilder>;
+  then: Promise<{ data: AssignmentRow[] | null; error: DbError | null }>['then'];
+  catch: Promise<{ data: AssignmentRow[] | null; error: DbError | null }>['catch'];
+  finally: Promise<{ data: AssignmentRow[] | null; error: DbError | null }>['finally'];
+}
+
+function qb(data: AssignmentRow[] | null, error: DbError | null = null): FakeQueryBuilder {
+  const promise = Promise.resolve({ data, error });
+  const b: FakeQueryBuilder = {
+    select: vi.fn(),
+    in: vi.fn(),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
+  b.select.mockImplementation(() => b);
+  b.in.mockImplementation(() => b);
   return b;
 }
 
-function client(builder: any) {
-  return { from: vi.fn(() => builder) } as any;
+function client(builder: FakeQueryBuilder) {
+  // The lookup only touches `from().select().in()`; the rest of the client is
+  // never reached, so a partial double is enough.
+  return asSupabaseClient({ from: vi.fn(() => builder) });
 }
 
 describe('resultsHidden (#374)', () => {

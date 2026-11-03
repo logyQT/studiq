@@ -1,14 +1,20 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { can, check } from '@studiq/server/lib/authz';
 import { error as logError } from '@studiq/server/lib/log';
-import { QuestionTransferController } from '@studiq/server/controllers/question-transfer.controller';
+import {
+  type QuestionExportFile,
+  QuestionTransferController,
+} from '@studiq/server/controllers/question-transfer.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
 import type { TransferQuestion } from '@studiq/server/models/question-transfer.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import { questionService } from '@studiq/server/services/question.service';
 import { questionBankService } from '@studiq/server/services/question-bank.service';
 import { QuestionTransferService } from '@studiq/server/services/question-transfer.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { asService } from '#test/helpers/service-double';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
@@ -37,13 +43,71 @@ vi.mock('@studiq/server/lib/log', () => ({
 // validates against the database (bank, permission, plan limit) and lands completely or not
 // at all.
 
+type QueryResult = Record<string, unknown>;
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  is: Mock<(...args: unknown[]) => QueryChain>;
+  in: Mock<(...args: unknown[]) => QueryChain>;
+  insert: Mock<(rows: InsertedRow[]) => QueryChain>;
+  delete: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  then: Promise<QueryResult>['then'];
+};
+
+/** A row handed to `insert()`, as recorded by the `inserts` log. */
+type InsertedRow = {
+  id?: string;
+  question_id?: string;
+  content?: string;
+  is_correct?: boolean;
+  order_index?: number;
+};
+
 /** A thenable query builder that records what was asked and resolves to `result`. */
-function builder(result: Record<string, unknown> = { data: null, error: null }) {
-  const b: any = {};
-  for (const m of ['select', 'eq', 'is', 'in', 'insert', 'delete']) b[m] = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.then = (onfulfilled: any) => Promise.resolve(result).then(onfulfilled);
+function builder(result: QueryResult = { data: null, error: null }) {
+  const promise = Promise.resolve(result);
+  const b: QueryChain = {
+    select: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    is: vi.fn(() => b),
+    in: vi.fn(() => b),
+    insert: vi.fn(() => b),
+    delete: vi.fn(() => b),
+    single: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+  };
   return b;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isQuestionExportFile(value: unknown): value is QuestionExportFile {
+  return (
+    isRecord(value) &&
+    typeof value.body === 'string' &&
+    typeof value.contentType === 'string' &&
+    typeof value.filename === 'string' &&
+    (typeof value.notReimportable === 'number' || value.notReimportable === undefined)
+  );
+}
+
+/** Reads the export payload of a successful controller response, failing on an error response. */
+function exportFileOf(response: ControllerResponse): QuestionExportFile {
+  if (!response.success) throw new Error(`expected success, got ${response.error}`);
+  if (!isQuestionExportFile(response.data)) throw new Error('expected an export payload');
+  return response.data;
+}
+
+/** A recorded mock argument narrowed to the id list the test compares. */
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('expected a list argument');
+  return value.map((entry: unknown) => {
+    if (typeof entry !== 'string') throw new Error('expected a string entry');
+    return entry;
+  });
 }
 
 const ctx: RequestContext = {
@@ -72,15 +136,34 @@ const q = (over: Partial<TransferQuestion> = {}): TransferQuestion => ({
   ...over,
 });
 
+/** `total` is the query's exact count; it can exceed the rows PostgREST returned. */
+const listed = (rows: unknown[], total = rows.length) => {
+  vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }));
+  vi.mocked(questionService.listBankQuestions).mockResolvedValue(
+    success({ questions: rows, total }),
+  );
+};
+const row = (over: Record<string, unknown> = {}) => ({
+  type: 'mcq',
+  content: 'Q',
+  explanation: null,
+  topics: [],
+  question_answers: [
+    { content: 'A', is_correct: true, order_index: 0 },
+    { content: 'B', is_correct: false, order_index: 1 },
+  ],
+  ...over,
+});
+
 describe('QuestionTransferService.exportBank', () => {
   let service: QuestionTransferService;
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new QuestionTransferService(async () => ({}) as any);
+    service = new QuestionTransferService(() => Promise.resolve(asSupabaseClient({})));
   });
 
   it('maps the questions of a readable bank, answers in their stored order', async () => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'Fizyka' }) as any);
+    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'Fizyka' }));
     vi.mocked(questionService.listBankQuestions).mockResolvedValue(
       success({
         total: 2,
@@ -97,7 +180,7 @@ describe('QuestionTransferService.exportBank', () => {
           },
           { type: 'open', content: 'Q2', explanation: null, topics: [], question_answers: [] },
         ],
-      }) as any,
+      }),
     );
 
     const result = await service.exportBank(ctx, 'bank-1');
@@ -120,25 +203,6 @@ describe('QuestionTransferService.exportBank', () => {
       ],
       notReimportable: 0,
     });
-  });
-
-  /** `total` is the query's exact count; it can exceed the rows PostgREST returned. */
-  const listed = (rows: unknown[], total = rows.length) => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }) as any);
-    vi.mocked(questionService.listBankQuestions).mockResolvedValue(
-      success({ questions: rows, total }) as any,
-    );
-  };
-  const row = (over: Record<string, unknown> = {}) => ({
-    type: 'mcq',
-    content: 'Q',
-    explanation: null,
-    topics: [],
-    question_answers: [
-      { content: 'A', is_correct: true, order_index: 0 },
-      { content: 'B', is_correct: false, order_index: 1 },
-    ],
-    ...over,
   });
 
   it('refuses a bank above the cap instead of shipping the clamped rows', async () => {
@@ -187,7 +251,7 @@ describe('QuestionTransferService.exportBank', () => {
   });
 
   it('answers NOT_FOUND for a bank the caller cannot read, without listing questions', async () => {
-    vi.mocked(questionBankService.getById).mockResolvedValue(failure('NOT_FOUND') as any);
+    vi.mocked(questionBankService.getById).mockResolvedValue(failure('NOT_FOUND'));
 
     const result = await service.exportBank(ctx, 'foreign');
 
@@ -197,8 +261,8 @@ describe('QuestionTransferService.exportBank', () => {
 });
 
 describe('QuestionTransferService.importQuestions', () => {
-  let tables: Record<string, any>;
-  let inserts: Record<string, any[]>;
+  let tables: Record<string, QueryChain[]>;
+  let inserts: Record<string, InsertedRow[][]>;
   let service: QuestionTransferService;
 
   /** `from()` hands out one builder per call; each table may be asked for several times. */
@@ -235,7 +299,7 @@ describe('QuestionTransferService.importQuestions', () => {
         const result = queues[table]?.shift() ?? { data: null, error: null };
         const b = builder(result);
         const insert = b.insert;
-        b.insert = vi.fn((rows: unknown) => {
+        b.insert = vi.fn((rows: InsertedRow[]) => {
           (inserts[table] ??= []).push(rows);
           return insert(rows);
         });
@@ -243,14 +307,14 @@ describe('QuestionTransferService.importQuestions', () => {
         return b;
       }),
     };
-    service = new QuestionTransferService(async () => supabase as any);
+    service = new QuestionTransferService(() => Promise.resolve(asSupabaseClient(supabase)));
     return supabase;
   }
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(can).mockResolvedValue(true);
-    vi.mocked(check).mockResolvedValue(undefined as any);
+    vi.mocked(check).mockResolvedValue(undefined);
     vi.mocked(limitsResolver.checkLimit).mockResolvedValue(undefined);
   });
 
@@ -295,7 +359,7 @@ describe('QuestionTransferService.importQuestions', () => {
 
     expect(result.success && result.data).toEqual({ imported: 2 });
 
-    const questions = inserts.questions[0] as any[];
+    const questions = inserts.questions[0];
     expect(questions).toHaveLength(2);
     expect(questions[0]).toMatchObject({
       content: 'One',
@@ -307,7 +371,7 @@ describe('QuestionTransferService.importQuestions', () => {
     });
     expect(new Set(questions.map((r) => r.id)).size).toBe(2);
 
-    const options = inserts.question_options[0] as any[];
+    const options = inserts.question_options[0];
     expect(options).toEqual([
       { question_id: questions[0].id, content: 'A', is_correct: true, order_index: 0 },
       { question_id: questions[0].id, content: 'B', is_correct: false, order_index: 1 },
@@ -353,7 +417,7 @@ describe('QuestionTransferService.importQuestions', () => {
     expect(tables.questions[0].is).toHaveBeenCalledWith('organization_id', null);
     expect(tables.topics[0].is).toHaveBeenCalledWith('organization_id', null);
     // Counted and charged in the same bucket: the personal plan, not the selected org's.
-    expect(limitsResolver.checkLimit.mock.calls[0][0].activeOrgId).toBeNull();
+    expect(vi.mocked(limitsResolver.checkLimit).mock.calls[0][0].activeOrgId).toBeNull();
   });
 
   it('writes into the bank organisation even when no organisation is active', async () => {
@@ -365,7 +429,7 @@ describe('QuestionTransferService.importQuestions', () => {
     expect(inserts.topics[0][0]).toMatchObject({ name: 'Optyka', organization_id: 'org-1' });
     expect(tables.questions[0].eq).toHaveBeenCalledWith('organization_id', 'org-1');
     // ...and the org's plan counts it, even though no org is selected in the app.
-    expect(limitsResolver.checkLimit.mock.calls[0][0].activeOrgId).toBe('org-1');
+    expect(vi.mocked(limitsResolver.checkLimit).mock.calls[0][0].activeOrgId).toBe('org-1');
   });
 
   it('writes no option or topic rows for questions that have none', async () => {
@@ -381,10 +445,10 @@ describe('QuestionTransferService.importQuestions', () => {
     const result = await service.importQuestions(ctx, 'bank-1', [q(), q()]);
 
     expect(result.success).toBe(false);
-    const created = (inserts.questions[0] as any[]).map((r) => r.id);
+    const created = inserts.questions[0].map((r) => r.id);
     const cleanup = tables.questions.at(-1);
-    expect(cleanup.delete).toHaveBeenCalled();
-    expect(cleanup.in).toHaveBeenCalledWith('id', created);
+    expect(cleanup?.delete).toHaveBeenCalled();
+    expect(cleanup?.in).toHaveBeenCalledWith('id', created);
   });
 
   it('removes a failed import in batches of 100 ids', async () => {
@@ -394,9 +458,9 @@ describe('QuestionTransferService.importQuestions', () => {
     const result = await service.importQuestions(ctx, 'bank-1', many);
 
     expect(result.success).toBe(false);
-    const created = (inserts.questions[0] as any[]).map((r) => r.id);
+    const created = inserts.questions[0].map((r) => r.id);
     // One `in (…)` per 100 ids: the whole batch in one request is ~18 KB of query string.
-    const chunks = tables.questions.slice(2).map((b) => b.in.mock.calls[0][1] as string[]);
+    const chunks = tables.questions.slice(2).map((b) => stringList(b.in.mock.calls[0][1]));
     expect(chunks.map((ids) => ids.length)).toEqual([100, 100, 50]);
     expect(chunks.flat()).toEqual(created);
   });
@@ -449,7 +513,7 @@ describe('QuestionTransferService.importQuestions', () => {
 
 describe('QuestionTransferController', () => {
   const service = { exportBank: vi.fn(), importQuestions: vi.fn() };
-  const controller = new QuestionTransferController(service as any);
+  const controller = new QuestionTransferController(asService<QuestionTransferService>(service));
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -465,7 +529,7 @@ describe('QuestionTransferController', () => {
     const response = await controller.exportBank('b', {}, ctx);
 
     expect(response).toMatchObject({ success: true });
-    const file = (response as any).data;
+    const file = exportFileOf(response);
     expect(file.notReimportable).toBe(0);
     expect(file.filename).toBe('questions-lodz-cwiczenia-1.csv');
     expect(file.contentType).toBe('text/csv; charset=utf-8');
@@ -476,7 +540,7 @@ describe('QuestionTransferController', () => {
     service.exportBank.mockResolvedValue(success({ bankName: 'B', questions: [q()] }));
 
     const response = await controller.exportBank('b', { format: 'json' }, ctx);
-    const file = (response as any).data;
+    const file = exportFileOf(response);
 
     expect(file.filename).toBe('questions-b.json');
     expect(JSON.parse(file.body)).toMatchObject({ version: 1, bank: 'B', questions: [q()] });

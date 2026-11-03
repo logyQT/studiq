@@ -73,7 +73,7 @@ export function QuizDetailClient() {
     return <div className="p-6 text-center text-muted-foreground">{t('not_found')}</div>;
   }
 
-  const questions = (quiz.quiz_questions ?? []).sort((a, b) => a.order_index - b.order_index);
+  const questions = (quiz.quiz_questions ?? []).toSorted((a, b) => a.order_index - b.order_index);
   const totalPoints = questions.reduce((sum, q) => sum + q.points, 0);
 
   return (

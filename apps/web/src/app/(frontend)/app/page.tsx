@@ -24,7 +24,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ContinueCard } from '@/components/app/dashboard/continue-card';
 import { DueProgressCard } from '@/components/app/dashboard/due-progress-card';
 import { RecentActivityCard } from '@/components/app/dashboard/recent-activity-card';
@@ -46,6 +46,11 @@ interface StudentStats {
   totalDecks: number;
   totalFlashcards: number;
   dueToday: number;
+}
+
+/** next-intl rich-text tag renderer — hoisted so the reference stays stable across renders. */
+function renderStrongText(chunks: ReactNode) {
+  return <strong>{chunks}</strong>;
 }
 
 export default function AppOverviewPage() {
@@ -91,7 +96,10 @@ export default function AppOverviewPage() {
     [locale],
   );
 
-  const userName = user?.user_metadata?.name.split(' ')[0] || user?.user_metadata.name;
+  // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
+  const rawName: unknown = user?.user_metadata?.name;
+  const fullName = typeof rawName === 'string' ? rawName : '';
+  const userName = fullName.split(' ')[0] || fullName;
 
   return (
     <div className="space-y-8">
@@ -110,7 +118,7 @@ export default function AppOverviewPage() {
               <p className="text-sm text-muted-foreground mt-1">
                 {t.rich('due_today', {
                   count: stats.dueToday,
-                  strong: (chunks) => <strong>{chunks}</strong>,
+                  strong: renderStrongText,
                 })}
               </p>
             )}
@@ -169,8 +177,8 @@ export default function AppOverviewPage() {
           isLoading={isLoading || overviewLoading}
           isError={statsError || overviewError}
           onRetry={() => {
-            if (statsError) refetchStats();
-            if (overviewError) refetchOverview();
+            if (statsError) void refetchStats();
+            if (overviewError) void refetchOverview();
           }}
         />
         <UpcomingAssignmentsCard />

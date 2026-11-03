@@ -35,8 +35,9 @@ describe('notifications access (#664)', () => {
       .from('notifications')
       .insert({ user_id: STUDENT_ID, type: 'assignment_graded', payload: { title: MARKER } })
       .select('id')
-      .single();
-    if (error) throw error;
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
+    if (error || !data) throw error ?? new Error('[setup] notification not created');
     notificationId = data.id;
   });
 

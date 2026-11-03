@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -20,6 +21,29 @@ import {
 } from '@/app/(backend)/api/v1/flashcards/decks/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+interface DeckListItem {
+  id: string;
+  suspended: boolean;
+}
+
+/** `/api/v1/flashcards/decks` — list body. */
+interface DeckListBody {
+  success: boolean;
+  data: { items: DeckListItem[] };
+}
+
+/** A single deck: create/update response and `GET /decks/:id`. */
+interface DeckBody {
+  success: boolean;
+  data: { id: string; suspended: boolean };
+}
+
+/** `/api/v1/flashcards/decks/batch/[action]`. */
+interface BatchBody {
+  success: boolean;
+  data: { updated: number };
+}
 
 /**
  * #138: suspending a deck is a per-user preference (suspended_decks), so it must be
@@ -56,7 +80,7 @@ describe(`Flashcard Deck Suspend`, () => {
         { active_org_id: orgId },
       ),
     );
-    return { res, body: await res.json() };
+    return { res, body: await json<DeckListBody>(res) };
   }
 
   async function putFor(user: TestUserFixture, body: Record<string, unknown>) {
@@ -72,7 +96,7 @@ describe(`Flashcard Deck Suspend`, () => {
       { active_org_id: orgId },
     );
     const res = await update(request, { params });
-    return { res, body: await res.json() };
+    return { res, body: await json<DeckBody>(res) };
   }
 
   async function batchFor(
@@ -93,7 +117,7 @@ describe(`Flashcard Deck Suspend`, () => {
       { active_org_id: orgId },
     );
     const res = await batchAction(request, { params });
-    return { res, body: await res.json() };
+    return { res, body: await json<BatchBody>(res) };
   }
 
   beforeAll(async () => {
@@ -155,11 +179,11 @@ describe(`Flashcard Deck Suspend`, () => {
         { active_org_id: orgId },
       ),
     );
-    const deckBody = await deckRes.json();
+    const deckBody = await json<DeckBody>(deckRes);
     if (!deckRes.ok || !deckBody.success) {
       throw new Error(`[setup] deck creation failed: ${JSON.stringify(deckBody)}`);
     }
-    deckId = deckBody.data.id as string;
+    deckId = deckBody.data.id;
   });
 
   afterAll(async () => {
@@ -184,21 +208,21 @@ describe(`Flashcard Deck Suspend`, () => {
 
     const { res, body } = await listFor(teacher.user);
     expect(res.status).toBe(200);
-    const item = body.data.items.find((d: { id: string }) => d.id === deckId);
+    const item = body.data.items.find((d) => d.id === deckId);
     expect(item).toBeDefined();
-    expect(item.suspended).toBe(false);
+    expect(item!.suspended).toBe(false);
   });
 
   it('hides the deck from the suspender by default and returns it with includeSuspended', async () => {
     const hidden = await listFor(studentA);
     expect(hidden.res.status).toBe(200);
-    expect(hidden.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(false);
+    expect(hidden.body.data.items.some((d) => d.id === deckId)).toBe(false);
 
     const visible = await listFor(studentA, true);
     expect(visible.res.status).toBe(200);
-    const item = visible.body.data.items.find((d: { id: string }) => d.id === deckId);
+    const item = visible.body.data.items.find((d) => d.id === deckId);
     expect(item).toBeDefined();
-    expect(item.suspended).toBe(true);
+    expect(item!.suspended).toBe(true);
   });
 
   it('lets the member unsuspend the shared deck', async () => {
@@ -209,7 +233,7 @@ describe(`Flashcard Deck Suspend`, () => {
     expect(await suspensionRow(studentA.id)).toBe(false);
 
     const listed = await listFor(studentA);
-    expect(listed.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(true);
+    expect(listed.body.data.items.some((d) => d.id === deckId)).toBe(true);
   });
 
   it('still blocks content edits on a deck the member only reads', async () => {
@@ -235,7 +259,7 @@ describe(`Flashcard Deck Suspend`, () => {
     expect(await suspensionRow(studentB.id)).toBe(false);
 
     const listed = await listFor(studentB, true);
-    expect(listed.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(false);
+    expect(listed.body.data.items.some((d) => d.id === deckId)).toBe(false);
   });
 
   it('applies the same read gate to the batch endpoint for the group member', async () => {
@@ -278,7 +302,7 @@ describe(`Flashcard Deck Suspend`, () => {
       { active_org_id: orgId },
     );
     const res = await getById(request, { params });
-    const body = await res.json();
+    const body = await json<DeckBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data.suspended).toBe(true);

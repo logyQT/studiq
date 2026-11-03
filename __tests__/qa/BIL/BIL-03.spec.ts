@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -91,7 +92,7 @@ test.describe('BIL-03 — student plan purchase', () => {
 
     const planBefore = await page.request.get('/api/v1/me/personal-plan');
     expect(planBefore.status(), 'GET /api/v1/me/personal-plan before the purchase').toBe(200);
-    const basePlan = (await planBefore.json()).data as PlanResponse;
+    const basePlan = (await json<{ data: PlanResponse }>(planBefore)).data;
     expect(basePlan.key, 'the case starts on the free Base plan').toBe('base');
 
     // --- Step 1: pick Spark on /pricing/student -------------------------
@@ -188,7 +189,7 @@ test.describe('BIL-03 — student plan purchase', () => {
     // Expected result: the personal plan is now Spark, with its limits.
     const planAfter = await page.request.get('/api/v1/me/personal-plan');
     expect(planAfter.status(), 'GET /api/v1/me/personal-plan after the purchase').toBe(200);
-    const sparkPlan = (await planAfter.json()).data as PlanResponse;
+    const sparkPlan = (await json<{ data: PlanResponse }>(planAfter)).data;
     expect(sparkPlan.key, 'the student is on Spark').toBe('spark');
     expect(sparkPlan.name, 'Spark is the plan the summary showed').toBe(UI.sparkName);
     expect(sparkPlan.limits, 'the Spark limits from BIL-01').toMatchObject({

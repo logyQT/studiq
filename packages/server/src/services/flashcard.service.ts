@@ -2,6 +2,9 @@ import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import type { FilterableBuilderWithExtra } from '@studiq/server/lib/postgrest';
+import { readColumn } from '@studiq/server/lib/record';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -13,22 +16,39 @@ import type {
   BulkCreateFlashcardsInput,
   CopyFlashcardInput,
   CreateFlashcardInput,
-  FlashcardData,
+  FlashcardListQueryInput,
   UpdateFlashcardInput,
 } from '@studiq/server/models/flashcard.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
+
+const FLASHCARD_SELECT = `*, flashcard_topic_assignments(topic_id), deck_id` as const;
+const FLASHCARD_SELECT_BY_TOPIC =
+  `*, flashcard_topic_assignments!inner(topic_id), deck_id` as const;
+
+/** A flashcard row with the topic assignments `list()` embeds. */
+export type FlashcardListRow = Database['public']['Tables']['flashcards']['Row'] & {
+  flashcard_topic_assignments: { topic_id: string }[] | null;
+};
+
+/** One page of `FlashcardService.list`. */
+export interface FlashcardListPage {
+  items: FlashcardListRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
 
 export class FlashcardService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(data: CreateFlashcardInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const flashcardCount = await this.countOwned(supabase, ctx);
     await limitsResolver.checkLimit(ctx, 'max_flashcards', flashcardCount);
 
-    let deckVisibility: string | undefined;
+    let deckVisibility: Database['public']['Enums']['visibility_type'] | undefined;
     if (data.deckId) {
       const { data: deck } = await supabase
         .from('flashcard_decks')
@@ -74,7 +94,7 @@ export class FlashcardService {
     data: BulkCreateFlashcardsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const cardCount = data.cards.length;
 
     const bulkFlashcardCount = await this.countOwned(supabase, ctx);
@@ -97,7 +117,7 @@ export class FlashcardService {
     const { data: flashcards, error } = await supabase.rpc('bulk_create_flashcards', {
       p_cards: data.cards.map((c) => ({ front: c.front, back: c.back })),
       p_user_id: ctx.userId,
-      p_organization_id: ctx.activeOrgId,
+      p_organization_id: ctx.activeOrgId ?? undefined,
       p_visibility: visibility,
       p_deck_ids: data.deckId ? [data.deckId] : [],
       p_topic_ids: data.topicIds ?? [],
@@ -105,22 +125,14 @@ export class FlashcardService {
 
     if (error) return toDbFailure(error);
 
-    return success(flashcards as unknown as FlashcardData[]);
+    return success(flashcards);
   }
 
   async list(
     ctx: RequestContext,
-    filters?: {
-      topicIds?: string[];
-      deckIds?: string[];
-      q?: string;
-      sortBy?: string;
-      sortOrder?: string;
-      cursor?: string;
-      limit?: number;
-    },
-  ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    filters?: Partial<FlashcardListQueryInput>,
+  ): Promise<ServiceResult<FlashcardListPage>> {
+    const supabase = await this.clientFactory();
     const pageSize = Math.min(filters?.limit ?? 50, 100);
 
     const hasDeckFilter = !!(filters?.deckIds && filters.deckIds.length > 0);
@@ -131,44 +143,49 @@ export class FlashcardService {
     const sortAsc = (filters?.sortOrder || 'desc') === 'asc';
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
 
-    let query = supabase
-      .from('flashcards')
-      .select(
-        '*, ' +
-          `flashcard_topic_assignments${hasTopicFilter ? '!inner' : ''}(topic_id), ` +
-          `deck_id`,
-      );
+    // Both projections are literal constants: PostgREST only infers the row type
+    // from a literal, and `!inner` is required for the topic filter to narrow rows.
+    const applyFilters = <T extends FilterableBuilderWithExtra<T>>(q: T): T => {
+      let query = q;
 
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+      if (filter.or) query = query.or(filter.or);
+      if (filter.created_by) query = query.eq('created_by', filter.created_by);
+      if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
-    if (hasTopicFilter) {
-      if (filters!.topicIds!.length === 1) {
-        query = query.filter('flashcard_topic_assignments.topic_id', 'eq', filters!.topicIds![0]);
-      } else {
-        query = query.filter(
-          'flashcard_topic_assignments.topic_id',
-          'in',
-          `(${filters!.topicIds!.join(',')})`,
-        );
+      if (hasTopicFilter) {
+        if (filters.topicIds!.length === 1) {
+          query = query.filter('flashcard_topic_assignments.topic_id', 'eq', filters.topicIds![0]);
+        } else {
+          query = query.filter(
+            'flashcard_topic_assignments.topic_id',
+            'in',
+            `(${filters.topicIds!.join(',')})`,
+          );
+        }
       }
-    }
 
-    if (hasDeckFilter) {
-      if (filters!.deckIds!.length === 1) {
-        query = query.filter('deck_id', 'eq', filters!.deckIds![0]);
-      } else {
-        query = query.filter('deck_id', 'in', `(${filters!.deckIds!.join(',')})`);
+      if (hasDeckFilter) {
+        if (filters.deckIds!.length === 1) {
+          query = query.filter('deck_id', 'eq', filters.deckIds![0]);
+        } else {
+          query = query.filter('deck_id', 'in', `(${filters.deckIds!.join(',')})`);
+        }
       }
-    }
 
-    if (hasSearch) {
-      const searchTerm = `%${filters!.q}%`;
-      query = query.or(`front.ilike.${searchTerm},back.ilike.${searchTerm}`);
-    }
+      if (hasSearch) {
+        const searchTerm = `%${filters.q}%`;
+        query = query.or(`front.ilike.${searchTerm},back.ilike.${searchTerm}`);
+      }
+      return query;
+    };
+
+    let query = applyFilters(
+      supabase
+        .from('flashcards')
+        .select(hasTopicFilter ? FLASHCARD_SELECT_BY_TOPIC : FLASHCARD_SELECT),
+    );
 
     query = query.order(sortCol, { ascending: sortAsc }).order('id');
 
@@ -185,21 +202,20 @@ export class FlashcardService {
     const { data, error } = await query;
     if (error) return toDbFailure(error);
 
-    const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
-    const hasMore = (rows?.length ?? 0) > pageSize;
-    const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-    const nextCursor = hasMore
-      ? encodeCursor(items[items.length - 1][sortCol], items[items.length - 1].id)
-      : null;
+    const rows = data ?? [];
+    const hasMore = rows.length > pageSize;
+    const items = hasMore ? rows.slice(0, pageSize) : rows;
+    const lastRow = items[items.length - 1];
+    const nextCursor = hasMore ? encodeCursor(readColumn(lastRow, sortCol), lastRow.id) : null;
 
     return success({ items, nextCursor, hasMore });
   }
 
   async listByDeck(deckIds: string[], ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success([]);
+    if (isImpossibleFilter(filter)) return success([]);
 
     let query = supabase
       .from('flashcards')
@@ -219,14 +235,14 @@ export class FlashcardService {
 
     const { data, error } = await query;
     if (error) return toDbFailure(error);
-    return success((data ?? []) as unknown as FlashcardData[]);
+    return success(data ?? []);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return failure('NOT_FOUND');
+    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     let query = supabase
       .from('flashcards')
@@ -249,7 +265,7 @@ export class FlashcardService {
     data: UpdateFlashcardInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcards')
@@ -260,7 +276,7 @@ export class FlashcardService {
     if (fetchError || !existing) return failure('NOT_FOUND');
     await check(ctx, Permission.FLASHCARD_UPDATE, existing);
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['flashcards']['Update'] = {};
     if (data.front) updateFields.front = data.front;
     if (data.back) updateFields.back = data.back;
 
@@ -304,7 +320,7 @@ export class FlashcardService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcards')
@@ -327,7 +343,7 @@ export class FlashcardService {
     data: CopyFlashcardInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: original, error: fetchError } = await supabase
       .from('flashcards')
@@ -389,7 +405,7 @@ export class FlashcardService {
   }
 
   async batchDelete(data: BatchDeleteInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: flashcards, error: fetchError } = await supabase
       .from('flashcards')
@@ -411,7 +427,7 @@ export class FlashcardService {
   }
 
   async batchTopics(data: BatchTopicsInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: flashcards, error: fetchError } = await supabase
       .from('flashcards')
@@ -473,7 +489,7 @@ export class FlashcardService {
   }
 
   async batchMove(data: BatchMoveInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: flashcards, error: fetchError } = await supabase
       .from('flashcards')
@@ -506,7 +522,7 @@ export class FlashcardService {
   }
 
   async batchCopy(data: BatchCopyInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: originals, error: fetchError } = await supabase
       .from('flashcards')
@@ -575,7 +591,10 @@ export class FlashcardService {
    * is scoped to content owned by the caller **in that org**, so personal-space
    * cards (and cards from other orgs) never consume the org plan's capacity.
    */
-  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+  private async countOwned(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<number> {
     let query = supabase
       .from('flashcards')
       .select('*', { count: 'exact', head: true })

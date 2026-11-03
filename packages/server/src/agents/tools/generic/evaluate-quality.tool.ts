@@ -15,7 +15,7 @@ export const evaluateQualityTool = tool({
   inputSchema: z.object({
     content: z.string().optional().describe('The content to evaluate'),
   }),
-  execute: async ({ content }) => {
+  execute: ({ content }) => {
     const cid = conversationStorage.getStore()?.conversationId;
     enqueueTrace({
       conversationId: cid,

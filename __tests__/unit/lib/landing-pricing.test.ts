@@ -8,7 +8,20 @@ import { formatPlanPrice, pickLandingPlans } from '@/lib/landing-pricing';
 // real, DB-driven plans. It now picks real plans and formats them in the visitor locale.
 
 function plan(key: string, priceMonthly: number, currency = 'PLN'): PlanInfo {
-  return { key, name: `StudiQ ${key}`, priceMonthly, currency } as unknown as PlanInfo;
+  return {
+    id: `plan-${key}`,
+    key,
+    name: `StudiQ ${key}`,
+    description: null,
+    priceMonthly,
+    priceYearly: priceMonthly * 10,
+    currency,
+    features: [],
+    limits: {},
+    sortOrder: 0,
+    isActive: true,
+    forAccountType: null,
+  };
 }
 
 const student = [plan('base', 0), plan('spark', 999), plan('ace', 1999), plan('pro', 4999)];

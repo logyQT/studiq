@@ -1,5 +1,6 @@
 import { t } from '#test/e2e/utils';
 import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
+import { asJson, json } from '#test/helpers/json';
 
 /**
  * Regression for #323 (STU-09 step 2): the „Nowy quiz” form had no subject
@@ -27,7 +28,7 @@ test.describe('Standalone quiz subject selector (#323)', () => {
   test('defaults to All subjects and scopes generation to the chosen topic', async ({ page }) => {
     const topicsResponse = await page.request.get('/api/v1/topics?limit=100');
     expect(topicsResponse.status()).toBe(200);
-    const topicsBody = (await topicsResponse.json()) as { data: { items: TopicOption[] } };
+    const topicsBody = await json<{ data: { items: TopicOption[] } }>(topicsResponse);
     const topics = topicsBody.data.items;
     // The seeded Classroom org must expose both group topics.
     expect(topics.length).toBeGreaterThan(0);
@@ -60,7 +61,7 @@ test.describe('Standalone quiz subject selector (#323)', () => {
     // proven to be scoped instead of merely "some" questions.
     const baselineResponse = await page.request.get(`/api/v1/questions?topicIds=${chosenTopic.id}`);
     expect(baselineResponse.status()).toBe(200);
-    const baselineBody = (await baselineResponse.json()) as { data: Array<{ id: string }> };
+    const baselineBody = await json<{ data: Array<{ id: string }> }>(baselineResponse);
     const baselineIds = new Set(baselineBody.data.map((question) => question.id));
     expect(baselineIds.size).toBeGreaterThan(0);
 
@@ -79,18 +80,16 @@ test.describe('Standalone quiz subject selector (#323)', () => {
     await expect(generate).toBeEnabled({ timeout: 30_000 });
     await generate.click();
 
-    const requestBody = (await generateRequest).postDataJSON() as {
+    const requestBody = asJson<{
       questionTypes?: string[];
       questionCount?: number;
       topicIds?: string[];
-    };
+    }>((await generateRequest).postDataJSON());
     expect(requestBody.topicIds).toEqual([chosenTopic.id]);
 
     const generated = await generateResponse;
     expect(generated.status()).toBe(201);
-    const generatedBody = (await generated.json()) as {
-      data: { questions: Array<{ id: string }> };
-    };
+    const generatedBody = await json<{ data: { questions: Array<{ id: string }> } }>(generated);
     expect(generatedBody.data.questions.length).toBe(1);
     for (const question of generatedBody.data.questions) {
       expect(baselineIds.has(question.id)).toBe(true);

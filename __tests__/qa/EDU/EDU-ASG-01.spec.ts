@@ -68,8 +68,12 @@ function twoDaysFromNow(): Date {
   return new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
 }
 
+/** Two-digit zero padding of a date field. */
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
 function toDatetimeLocal(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
     date.getHours(),
   )}:${pad(date.getMinutes())}`;

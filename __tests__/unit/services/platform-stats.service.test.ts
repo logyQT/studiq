@@ -8,6 +8,7 @@ import { PlatformStatsService } from '@admin/server/services/platform-stats.serv
 import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { barHeights, formatBytes, formatCount, total } from '@admin/lib/stats-format';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 // #663: the admin dashboard's platform numbers. The SQL aggregates are service-role only; the
 // service forwards the call, the controller validates the window, and the pure helpers format
@@ -30,8 +31,10 @@ const stats: PlatformStats = {
 };
 
 describe('PlatformStatsService', () => {
-  const rpc = vi.fn();
-  const service = new PlatformStatsService(async () => ({ rpc }) as any);
+  // Only `rpc` is stubbed; the rest of the client is never reached.
+  const client = mockSupabaseClient();
+  const { rpc } = client;
+  const service = new PlatformStatsService(() => Promise.resolve(client));
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -81,8 +84,11 @@ describe('DailyStatsQuerySchema', () => {
 });
 
 describe('PlatformStatsController', () => {
-  const platform = { getPlatformStats: vi.fn(), getDailyStats: vi.fn() };
-  const controller = new PlatformStatsController(platform as any);
+  const platform = Object.assign(
+    new PlatformStatsService(() => Promise.reject(new Error('unused'))),
+    { getPlatformStats: vi.fn(), getDailyStats: vi.fn() },
+  );
+  const controller = new PlatformStatsController(platform);
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -174,9 +180,9 @@ describe('total', () => {
   });
 });
 
-describe('stats review round (#663)', () => {
-  const read = (path: string) => readFileSync(path, 'utf8');
+const read = (path: string) => readFileSync(path, 'utf8');
 
+describe('stats review round (#663)', () => {
   it('formats sizes with the locale decimal mark', () => {
     expect(formatBytes(2674, 'pl')).toBe('2,6 KB');
     expect(formatBytes(2674, 'en')).toBe('2.6 KB');

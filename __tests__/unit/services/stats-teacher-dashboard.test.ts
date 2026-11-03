@@ -4,7 +4,9 @@ import { failure, success } from '@studiq/server/lib/service-result';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { TeacherDashboardQuerySchema } from '@studiq/server/models/stats.model';
 import { StatsService } from '@studiq/server/services/stats.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
 
 // #654: the teacher dashboard reads two SQL aggregates (per-group results, activity feed). The
 // service only forwards the caller's identity and organization; the scoping lives in the RPCs.
@@ -23,7 +25,8 @@ const ctx: RequestContext = {
 
 describe('StatsService teacher dashboard', () => {
   const rpc = vi.fn();
-  const service = new StatsService(async () => ({ rpc }) as any);
+  // Only `rpc` is stubbed; the rest of the client is never reached.
+  const service = new StatsService(() => Promise.resolve(asSupabaseClient({ rpc })));
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -199,7 +202,7 @@ describe('StatsController teacher dashboard', () => {
     getTeacherGroupPerformance: vi.fn(),
     getTeacherActivityFeed: vi.fn(),
   };
-  const controller = new StatsController(statsService as any);
+  const controller = new StatsController(asService<StatsService>(statsService));
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -254,11 +257,16 @@ describe('StatsController teacher dashboard', () => {
 
 describe('problem questions floor (#654 review)', () => {
   it('keeps out a question answered fewer than three times', async () => {
-    const supabase: any = {
+    const supabase = {
       from: vi.fn(() => {
-        const c: any = {};
-        for (const m of ['select', 'eq', 'in', 'or', 'order', 'limit', 'is']) c[m] = vi.fn(() => c);
-        c.then = (onfulfilled: any) => Promise.resolve({ data: [], error: null }).then(onfulfilled);
+        const c: Record<string, Mock> = {
+          then: vi.fn((onfulfilled: (value: unknown) => unknown) =>
+            Promise.resolve({ data: [], error: null }).then(onfulfilled),
+          ),
+        };
+        for (const m of ['select', 'eq', 'in', 'or', 'order', 'limit', 'is']) {
+          c[m] = vi.fn(() => c);
+        }
         return c;
       }),
       rpc: vi.fn().mockResolvedValue({
@@ -269,7 +277,7 @@ describe('problem questions floor (#654 review)', () => {
         error: null,
       }),
     };
-    const service = new StatsService(async () => supabase);
+    const service = new StatsService(() => Promise.resolve(asSupabaseClient(supabase)));
 
     const result = await service.getTeacherStats(ctx);
 

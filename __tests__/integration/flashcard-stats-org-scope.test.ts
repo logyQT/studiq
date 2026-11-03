@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { json } from '#test/helpers/json';
 import { type BeforeResult, before, seedViaApi } from '#test/helpers/test-user';
 import {
   cleanupFlashcardDecks,
@@ -75,7 +76,9 @@ describe(`Flashcard Stats Org Scope`, () => {
         active_org_id: orgId,
       }),
     );
-    const body = await res.json();
+    const body = await json<{
+      data: { summary: { totalDecks: number }; byDeck: Array<{ deckId: string }> };
+    }>(res);
     expect(res.status).toBe(200);
     return body.data;
   }

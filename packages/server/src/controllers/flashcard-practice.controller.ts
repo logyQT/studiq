@@ -17,7 +17,7 @@ import {
 } from '@studiq/server/services/flashcard-practice.service';
 
 export class FlashcardPracticeController {
-  constructor(private flashcardPracticeService: FlashcardPracticeService) {}
+  constructor(private service: FlashcardPracticeService) {}
 
   async log(flashcardId: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = LogPracticeSchema.safeParse(body);
@@ -26,7 +26,7 @@ export class FlashcardPracticeController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardPracticeService.log(
+    const result = await this.service.log(
       flashcardId,
       parsed.data.wasCorrect,
       ctx,
@@ -50,7 +50,7 @@ export class FlashcardPracticeController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardPracticeService.batch(parsed.data, ctx);
+    const result = await this.service.batch(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -65,7 +65,7 @@ export class FlashcardPracticeController {
     limit: number = 20,
     newOnly: boolean = false,
   ): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getDueCards(ctx, filters, limit, newOnly);
+    const result = await this.service.getDueCards(ctx, filters, limit, newOnly);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -75,7 +75,7 @@ export class FlashcardPracticeController {
   }
 
   async getDueBreakdown(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getDueBreakdown(ctx);
+    const result = await this.service.getDueBreakdown(ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -88,7 +88,7 @@ export class FlashcardPracticeController {
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
   ): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getDueCount(ctx, filters);
+    const result = await this.service.getDueCount(ctx, filters);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -101,7 +101,7 @@ export class FlashcardPracticeController {
     flashcardId: string,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getStatsForFlashcard(flashcardId, ctx);
+    const result = await this.service.getStatsForFlashcard(flashcardId, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -111,7 +111,7 @@ export class FlashcardPracticeController {
   }
 
   async getStatsAll(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getStatsAll(ctx);
+    const result = await this.service.getStatsAll(ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -121,7 +121,7 @@ export class FlashcardPracticeController {
   }
 
   async getStateBreakdown(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getStateBreakdown(ctx);
+    const result = await this.service.getStateBreakdown(ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -142,7 +142,7 @@ export class FlashcardPracticeController {
       cursor?: string;
     },
   ): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getAllCardStats(ctx, filters);
+    const result = await this.service.getAllCardStats(ctx, filters);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -152,7 +152,7 @@ export class FlashcardPracticeController {
   }
 
   async getSettings(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getSettings(ctx);
+    const result = await this.service.getSettings(ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -168,7 +168,7 @@ export class FlashcardPracticeController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardPracticeService.updateSettings(ctx, parsed.data);
+    const result = await this.service.updateSettings(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -181,7 +181,7 @@ export class FlashcardPracticeController {
     ctx: RequestContext,
     filters: { deckIds?: string[]; topicIds?: string[] },
   ): Promise<ControllerResponse> {
-    const result = await this.flashcardPracticeService.getCardsForPractice(ctx, filters);
+    const result = await this.service.getCardsForPractice(ctx, filters);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -197,7 +197,7 @@ export class FlashcardPracticeController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardPracticeService.completeSession(parsed.data, ctx);
+    const result = await this.service.completeSession(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

@@ -5,6 +5,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 
 // Accounts are banned for this long once soft-deleted, so they can't sign
 // in during the grace window without needing our own session check.
@@ -21,7 +22,7 @@ export interface AdminUser {
   id: string;
   email: string;
   fullName: string | null;
-  createdAt: string;
+  createdAt: string | null;
   personalPlanKey: string | null;
   accountType: string | null;
   bannedUntil: string | null;
@@ -29,15 +30,11 @@ export interface AdminUser {
   purgeAt: string | null;
 }
 
-interface ProfileRow {
-  id: string;
-  email: string;
-  full_name: string | null;
-  created_at: string;
-  personal_plan_key: string | null;
-  deleted_at: string | null;
-  purge_at: string | null;
-}
+/** Exactly the columns `PROFILE_COLUMNS` projects, taken from the generated row type. */
+type ProfileRow = Pick<
+  Database['public']['Tables']['profiles']['Row'],
+  'id' | 'email' | 'full_name' | 'created_at' | 'personal_plan_key' | 'deleted_at' | 'purge_at'
+>;
 
 export interface PurgeExpiredResult {
   purged: number;
@@ -54,14 +51,23 @@ function sanitizeSearchTerm(term: string): string {
     .trim();
 }
 
+/** The slice of the PostgREST filter builder the list filters touch. Every
+ * method returns the same builder, so the caller keeps its concrete response
+ * type (`count` for the head query, the selected rows for the paged one). */
+interface FilterableQuery<T> {
+  is(column: string, value: boolean | null): T;
+  not(column: string, operator: string, value: unknown): T;
+  or(filters: string): T;
+}
+
 export class UserAdminService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /** Hard-deletes any account whose grace period has elapsed. Called at the
    * top of listUsers() (no cron infra in this repo yet) and exposed via its
    * own route for a future real scheduler. */
   async purgeExpired(): Promise<ServiceResult<PurgeExpiredResult>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: expired, error } = await supabase
       .from('profiles')
       .select('id')
@@ -106,7 +112,7 @@ export class UserAdminService {
    *   the account are ON DELETE CASCADE and disappear with the profile).
    */
   private async deleteAccount(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     id: string,
   ): Promise<ServiceResult<{ success: true }>> {
     const { error: seatError } = await supabase
@@ -142,7 +148,10 @@ export class UserAdminService {
     return success({ success: true });
   }
 
-  private async enrich(profiles: ProfileRow[], supabase: SupabaseClient): Promise<AdminUser[]> {
+  private async enrich(
+    profiles: ProfileRow[],
+    supabase: SupabaseClient<Database>,
+  ): Promise<AdminUser[]> {
     return Promise.all(
       profiles.map(async (p) => {
         const { data } = await supabase.auth.admin.getUserById(p.id);
@@ -154,7 +163,10 @@ export class UserAdminService {
           personalPlanKey: p.personal_plan_key,
           deletedAt: p.deleted_at,
           purgeAt: p.purge_at,
-          accountType: (data.user?.app_metadata?.account_type as string) ?? null,
+          accountType:
+            typeof data.user?.app_metadata?.account_type === 'string'
+              ? data.user.app_metadata.account_type
+              : null,
           bannedUntil: data.user?.banned_until ?? null,
         };
       }),
@@ -163,7 +175,7 @@ export class UserAdminService {
 
   /** Applies the list filters shared by the paged query and the count-only
    * fallback, so the two can never disagree about what "total" means. */
-  private applyListFilters(dbQuery: any, query: ListUsersQuery): any {
+  private applyListFilters<T extends FilterableQuery<T>>(dbQuery: T, query: ListUsersQuery): T {
     let filtered =
       query.status === 'deleted'
         ? dbQuery.not('deleted_at', 'is', null)
@@ -182,7 +194,7 @@ export class UserAdminService {
   }
 
   private async countUsers(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     query: ListUsersQuery,
   ): Promise<ServiceResult<number>> {
     const dbQuery = this.applyListFilters(
@@ -198,7 +210,7 @@ export class UserAdminService {
   async listUsers(query: ListUsersQuery) {
     await this.purgeExpired();
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const offset = (query.page - 1) * query.perPage;
 
     const pagedQuery = this.applyListFilters(
@@ -223,13 +235,13 @@ export class UserAdminService {
       return toDbFailure(error);
     }
 
-    const users = await this.enrich((profiles ?? []) as ProfileRow[], supabase);
+    const users = await this.enrich(profiles ?? [], supabase);
 
     return success({ users, total: count ?? 0, page: query.page, perPage: query.perPage });
   }
 
   async getUser(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: profile, error } = await supabase
       .from('profiles')
       .select(PROFILE_COLUMNS)
@@ -239,7 +251,7 @@ export class UserAdminService {
     if (error) return toDbFailure(error);
     if (!profile) return failure('NOT_FOUND');
 
-    const [user] = await this.enrich([profile as ProfileRow], supabase);
+    const [user] = await this.enrich([profile], supabase);
 
     const { data: memberships } = await supabase
       .from('org_members')
@@ -250,7 +262,7 @@ export class UserAdminService {
   }
 
   async createUser(input: CreateUserInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     // handle_new_user() validates account_type on INSERT. app_metadata
     // passed here isn't visible to the trigger in time (GoTrue applies it
     // in a separate step after the row exists), so account_type has to go
@@ -280,7 +292,7 @@ export class UserAdminService {
   }
 
   async updateAccountType(id: string, accountType: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: current, error: fetchError } = await supabase.auth.admin.getUserById(id);
 
     if (fetchError) {
@@ -306,7 +318,7 @@ export class UserAdminService {
   }
 
   async softDeleteUser(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: profile, error: readError } = await supabase
       .from('profiles')
@@ -351,7 +363,7 @@ export class UserAdminService {
   }
 
   async restoreUser(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: profile, error: readError } = await supabase
       .from('profiles')
@@ -395,7 +407,7 @@ export class UserAdminService {
    * soft-deleted account -- the "usuń trwale teraz" action in the trash
    * view, not a shortcut around soft-delete for active accounts. */
   async purgeNow(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('deleted_at')

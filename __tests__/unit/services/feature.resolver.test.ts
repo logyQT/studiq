@@ -55,7 +55,7 @@ describe('FeatureResolver', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    resolver = new FeatureResolver(async () => mock as any);
+    resolver = new FeatureResolver(() => Promise.resolve(mock));
   });
 
   describe('precedence chain', () => {
@@ -515,13 +515,14 @@ describe('FeatureResolver', () => {
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
         if (table === 'plan_features') return chain([{ feature_key: 'flashcards' }]);
         if (table === 'user_feature_overrides') {
-          const c = chain([]);
-          const originalSelect = c.select as ReturnType<typeof vi.fn>;
-          c.select = vi.fn((columns: string) => {
-            selected = columns;
-            return originalSelect(columns);
+          const overrides = chain([]);
+          // Record the projection the resolver asks for, then answer with the empty list.
+          return Object.assign(overrides, {
+            select: vi.fn((columns: string) => {
+              selected = columns;
+              return overrides;
+            }),
           });
-          return c;
         }
         if (table === 'feature_flags') return chain(allFlagsOn());
         return chain(null);

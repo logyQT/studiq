@@ -156,7 +156,7 @@ async function expectPanelChrome(page: Page, panel: Panel, tenant: QaTenant): Pr
   const bar = sidebar(page);
   await expect(bar).toHaveCount(1);
   await expect(bar).toBeVisible();
-  await expect(bar).toContainText(user!.email);
+  await expect(bar).toContainText(user.email);
   await expect(bar.locator(`a[href="${panel.root}"]`).first()).toBeVisible();
 
   // The dashboard header keeps the panel label, so the 404 renders inside the

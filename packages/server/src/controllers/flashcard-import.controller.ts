@@ -12,7 +12,7 @@ import {
 } from '@studiq/server/services/flashcard-import.service';
 
 export class FlashcardImportController {
-  constructor(private flashcardImportService: FlashcardImportService) {}
+  constructor(private service: FlashcardImportService) {}
 
   async importCsv(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = CsvImportSchema.safeParse(body);
@@ -21,7 +21,7 @@ export class FlashcardImportController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardImportService.importCsv(parsed.data, ctx);
+    const result = await this.service.importCsv(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

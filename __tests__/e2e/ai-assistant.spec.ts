@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { signIn } from '#test/e2e/fixtures/tenant';
+import { json } from '#test/helpers/json';
 import { t } from '#test/e2e/utils';
 
 const PASSWORD = 'pass';
@@ -20,7 +21,7 @@ async function login(page: Page, email: string, landing: RegExp) {
 async function aiChatEntitled(page: Page): Promise<boolean> {
   const res = await page.request.get('/api/v1/features/me');
   expect(res.status()).toBe(200);
-  const { features } = (await res.json()).data as { features: string[] };
+  const { features } = (await json<{ data: { features: string[] } }>(res)).data;
   return features.includes('ai.chat');
 }
 
@@ -178,7 +179,7 @@ test.describe('AI assistant routes (#134)', () => {
     // test stays valid whether or not the fixture account has ai.chat.
     const featuresResponse = await page.request.get('/api/v1/features/me');
     expect(featuresResponse.status()).toBe(200);
-    const { features } = (await featuresResponse.json()).data as { features: string[] };
+    const { features } = (await json<{ data: { features: string[] } }>(featuresResponse)).data;
 
     const aiNav = page.getByRole('link', { name: t('DashboardLayout.ai_chat') });
     if (features.includes('ai.chat')) {
@@ -310,7 +311,7 @@ test.describe('AI assistant deck context (#386)', () => {
 
     const featuresResponse = await page.request.get('/api/v1/features/me');
     expect(featuresResponse.status()).toBe(200);
-    const { features } = (await featuresResponse.json()).data as { features: string[] };
+    const { features } = (await json<{ data: { features: string[] } }>(featuresResponse)).data;
     test.skip(!features.includes('ai.chat'), 'ai.chat is not entitled for this fixture account');
 
     await page.goto(`/app/flashcards/${STUDENT_DECK_ID}`);
@@ -325,7 +326,7 @@ test.describe('AI assistant deck context (#386)', () => {
 
     const featuresResponse = await page.request.get('/api/v1/features/me');
     expect(featuresResponse.status()).toBe(200);
-    const { features } = (await featuresResponse.json()).data as { features: string[] };
+    const { features } = (await json<{ data: { features: string[] } }>(featuresResponse)).data;
     test.skip(!features.includes('ai.chat'), 'ai.chat is not entitled for this fixture account');
 
     await page.goto(`/edu/flashcards/${TEACHER_DECK_ID}`);

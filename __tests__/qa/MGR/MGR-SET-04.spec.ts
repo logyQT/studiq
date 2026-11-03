@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -79,7 +80,7 @@ function toasts(page: Page) {
 async function getOrg(page: Page, orgId: string): Promise<OrganizationDetail> {
   const response = await page.request.get(`/api/v1/organization/${orgId}`);
   expect(response.status(), 'GET /api/v1/organization/:id').toBe(200);
-  const body = (await response.json()) as ApiEnvelope<OrganizationDetail>;
+  const body = await json<ApiEnvelope<OrganizationDetail>>(response);
   expect(body.success, 'organization response').toBe(true);
   return body.data;
 }

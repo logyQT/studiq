@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, StatCard } from '@studiq/ui';
+import { apiGet } from '@/lib/api';
 import { orderedQuestionTypeEntries } from '@/lib/stats';
 import { FileText, Layers, TrendingDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -32,10 +33,15 @@ export default function EduStatsPage() {
       selectedSubject !== '__all__'
         ? `/api/v1/stats/teacher?subjectId=${selectedSubject}`
         : '/api/v1/stats/teacher';
-    fetch(url)
-      .then((r) => r.json())
-      .then((r) => {
-        setStats(r.data);
+    void apiGet<TeacherStats>(url)
+      .then((data) => {
+        setStats(data);
+        return undefined;
+      })
+      .catch(() => {
+        setStats(null);
+      })
+      .finally(() => {
         setLoading(false);
       });
   }, [selectedSubject]);

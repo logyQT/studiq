@@ -18,7 +18,7 @@ export const extractConceptsTool = tool({
     maxTerms: z.number().optional().describe('Maximum number of terms to extract'),
     terms: z.array(termSchema).describe('The extracted terms with definitions'),
   }),
-  execute: async ({ terms }) => {
+  execute: ({ terms }) => {
     const cid = conversationStorage.getStore()?.conversationId;
     enqueueTrace({
       conversationId: cid,

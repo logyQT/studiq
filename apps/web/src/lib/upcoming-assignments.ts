@@ -6,6 +6,10 @@ import {
 
 export type UpcomingAssignment<T> = T & { inProgress: boolean };
 
+function deadlineTime(a: StudentAssignmentTiming): number {
+  return a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY;
+}
+
 /**
  * The assignments a student can still do, soonest deadline first: those with a running attempt
  * and those not started. Scheduled (not open yet), closed and finished ones are left out, and an
@@ -21,7 +25,5 @@ export function upcomingAssignments<
     ...pending.map((a) => ({ ...a, inProgress: false })),
   ];
 
-  const time = (a: StudentAssignmentTiming) =>
-    a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY;
-  return open.sort((a, b) => time(a) - time(b)).slice(0, limit);
+  return open.toSorted((a, b) => deadlineTime(a) - deadlineTime(b)).slice(0, limit);
 }

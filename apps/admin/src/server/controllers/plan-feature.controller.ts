@@ -14,10 +14,10 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 
 export class PlanFeatureController {
-  constructor(private planFeatureService: PlanFeatureService) {}
+  constructor(private service: PlanFeatureService) {}
 
   async getAll(): Promise<ControllerResponse> {
-    const data = await this.planFeatureService.getAll();
+    const data = await this.service.getAll();
 
     if (isFailure(data)) {
       return controllerResponse.error(data.error);
@@ -37,7 +37,7 @@ export class PlanFeatureController {
       };
     }
 
-    const data = await this.planFeatureService.create(parsed.data);
+    const data = await this.service.create(parsed.data);
 
     if (isFailure(data)) {
       return controllerResponse.error(data.error);
@@ -52,7 +52,7 @@ export class PlanFeatureController {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const result = await this.planFeatureService.delete(parsed.data.id);
+    const result = await this.service.delete(parsed.data.id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

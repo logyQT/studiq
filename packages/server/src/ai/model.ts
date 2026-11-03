@@ -9,9 +9,16 @@ const baseURL = (process.env.LLM_BASE_URL || 'https://opencode.ai/inference/go/o
   '',
 );
 
+const REASONING_EFFORTS = ['low', 'medium', 'high'] as const;
+type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
+function isReasoningEffort(value: string): value is ReasoningEffort {
+  return (REASONING_EFFORTS as readonly string[]).includes(value);
+}
+
 const rawEffort = process.env.LLM_REASONING_EFFORT || '';
-export const reasoningEffort = ['low', 'medium', 'high'].includes(rawEffort)
-  ? (rawEffort as 'low' | 'medium' | 'high')
+export const reasoningEffort: ReasoningEffort | undefined = isReasoningEffort(rawEffort)
+  ? rawEffort
   : undefined;
 
 export const providerName = provider;

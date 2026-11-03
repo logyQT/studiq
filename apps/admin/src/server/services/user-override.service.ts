@@ -7,12 +7,13 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 
 export class UserOverrideService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getAll() {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .select('*')
@@ -22,7 +23,7 @@ export class UserOverrideService {
   }
 
   async getById(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .select('*')
@@ -34,7 +35,7 @@ export class UserOverrideService {
   }
 
   async create(input: CreateUserFeatureOverrideInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .insert({
@@ -51,8 +52,8 @@ export class UserOverrideService {
   }
 
   async update(id: string, input: UpdateUserFeatureOverrideInput) {
-    const supabase = await this.createClient();
-    const updateData: Record<string, unknown> = {};
+    const supabase = await this.clientFactory();
+    const updateData: Database['public']['Tables']['user_feature_overrides']['Update'] = {};
     if (input.isEnabled !== undefined) updateData.is_enabled = input.isEnabled;
     if (input.reason !== undefined) updateData.reason = input.reason;
     if (input.expiresAt !== undefined) updateData.expires_at = input.expiresAt;
@@ -68,7 +69,7 @@ export class UserOverrideService {
   }
 
   async delete(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: exists } = await supabase
       .from('user_feature_overrides')
       .select('id')

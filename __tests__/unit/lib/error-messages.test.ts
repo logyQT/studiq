@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type ErrorTranslator, translateErrorCode } from '@/lib/error-messages';
+import { translateErrorCode } from '@/lib/error-messages';
 
 const messages: Record<string, string> = {
   UNAUTHORIZED: 'bad credentials',
@@ -9,7 +9,7 @@ const messages: Record<string, string> = {
 
 const tErr = Object.assign((key: string) => messages[key] ?? `Errors.${key}`, {
   has: (key: string) => key in messages,
-}) as ErrorTranslator;
+});
 
 describe('translateErrorCode', () => {
   it('uses an unprefixed key when the catalog has it', () => {

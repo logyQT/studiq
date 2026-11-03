@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
+import { asJson } from '#test/helpers/json';
 
 // Regression tests for issue #191: the `anon` role (public key shipped to every
 // browser) could read AND write most public tables through PostgREST without a
@@ -17,11 +18,11 @@ const anon = createClient(url, anonKey, {
 describe('anon role grants (#191)', () => {
   it('exposes only the public pricing tables in the anon OpenAPI schema', async () => {
     const res = await fetch(`${url}/rest/v1/`, { headers: { apikey: anonKey } });
-    const spec = (await res.json()) as { paths: Record<string, unknown> };
+    const spec = asJson<{ paths: Record<string, unknown> }>(await res.json());
     const tables = Object.keys(spec.paths)
       .filter((p) => p !== '/' && !p.startsWith('/rpc/'))
       .map((p) => p.slice(1))
-      .sort();
+      .toSorted();
     expect(tables).toEqual(PUBLIC_TABLES);
   });
 
@@ -137,8 +138,8 @@ describe('anon role grants (#191)', () => {
     ],
     ['rls_caller_is_org_manager', { p_organization_id: '00000000-0000-4000-8000-00000000000e' }],
   ])('anon cannot execute the %s RPC', async (fn, args) => {
-    const { data, error } = await anon.rpc(fn as never, args as never);
-    expect(error?.code).toBe('42501');
-    expect(data).toBeNull();
+    const response = await anon.rpc(fn, args);
+    expect(response.error?.code).toBe('42501');
+    expect(response.data).toBeNull();
   });
 });

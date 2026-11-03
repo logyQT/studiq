@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -165,7 +166,7 @@ function fronts(page: Page) {
 async function clearRunState(page: Page): Promise<void> {
   const listResponse = await page.request.get(`${DECKS_URL}?limit=100`);
   expect(listResponse.status(), `GET ${DECKS_URL}`).toBe(200);
-  const list = (await listResponse.json()) as ApiEnvelope<{ items: Deck[] }>;
+  const list = await json<ApiEnvelope<{ items: Deck[] }>>(listResponse);
   for (const deck of list.data.items.filter((item) => item.name.startsWith(`${CASE} `))) {
     const deleted = await page.request.delete(`${DECKS_URL}/${deck.id}`);
     expect(deleted.status(), `DELETE ${DECKS_URL}/${deck.id} (${deck.name})`).toBe(200);
@@ -203,7 +204,7 @@ test.describe('STU-42 — student stats, content tab', () => {
 
     const deckResponse = await page.request.post(DECKS_URL, { data: { name: deckName } });
     expect(deckResponse.status(), `create deck ${deckName}`).toBe(201);
-    const deckId = ((await deckResponse.json()) as ApiEnvelope<{ id: string }>).data.id;
+    const deckId = (await json<ApiEnvelope<{ id: string }>>(deckResponse)).data.id;
 
     const cardIds = new Map<string, string>();
     for (const card of FIXTURE) {
@@ -211,7 +212,7 @@ test.describe('STU-42 — student stats, content tab', () => {
         data: { deckId, front: frontOf(card.label), back: `Odpowiedz ${frontOf(card.label)}` },
       });
       expect(created.status(), `create card ${frontOf(card.label)}`).toBe(201);
-      cardIds.set(card.label, ((await created.json()) as ApiEnvelope<{ id: string }>).data.id);
+      cardIds.set(card.label, (await json<ApiEnvelope<{ id: string }>>(created)).data.id);
     }
 
     // The practice rows a study session writes, one request per card, in order.

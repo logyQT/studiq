@@ -12,7 +12,7 @@ import {
 import { type AuthService, authService } from '@studiq/server/services/auth.service';
 
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private service: AuthService) {}
 
   async register(body: unknown): Promise<ControllerResponse> {
     const parsed = RegisterSchema.safeParse(body);
@@ -26,7 +26,7 @@ export class AuthController {
       };
     }
 
-    const result = await this.authService.register(parsed.data);
+    const result = await this.service.register(parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -47,7 +47,7 @@ export class AuthController {
       };
     }
 
-    const result = await this.authService.login(parsed.data);
+    const result = await this.service.login(parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -57,7 +57,7 @@ export class AuthController {
   }
 
   async logout(): Promise<ControllerResponse> {
-    const result = await this.authService.logout();
+    const result = await this.service.logout();
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -78,7 +78,7 @@ export class AuthController {
       };
     }
 
-    const result = await this.authService.requestPasswordReset(parsed.data.email);
+    const result = await this.service.requestPasswordReset(parsed.data.email);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -99,7 +99,7 @@ export class AuthController {
       };
     }
 
-    const result = await this.authService.updateProfile(parsed.data);
+    const result = await this.service.updateProfile(parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -120,7 +120,7 @@ export class AuthController {
       };
     }
 
-    const result = await this.authService.updatePassword({
+    const result = await this.service.updatePassword({
       currentPassword: parsed.data.currentPassword,
       password: parsed.data.password,
     });

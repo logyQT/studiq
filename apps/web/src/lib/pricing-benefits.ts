@@ -25,7 +25,7 @@ export function sortFeaturesByPriority(features: readonly string[]): string[] {
   const known = FEATURE_PRIORITY.filter((key) => unique.includes(key));
   const unknown = unique
     .filter((key) => !FEATURE_PRIORITY.includes(key))
-    .sort((a, b) => a.localeCompare(b));
+    .toSorted((a, b) => a.localeCompare(b));
   return [...known, ...unknown];
 }
 

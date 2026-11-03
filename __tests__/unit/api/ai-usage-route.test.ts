@@ -1,6 +1,7 @@
+import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const myUsageMock = vi.fn();
+const myUsageMock = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock('@studiq/server/controllers/ai-usage.controller', () => ({
   aiUsageController: {
@@ -39,7 +40,7 @@ describe('GET /api/v1/ai/usage', () => {
   });
 
   it('returns the usage envelope from the controller', async () => {
-    const res = await GET(new Request('http://localhost/api/v1/ai/usage') as never);
+    const res = await GET(new NextRequest('http://localhost/api/v1/ai/usage'));
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ success: true, data: usage });
@@ -49,7 +50,7 @@ describe('GET /api/v1/ai/usage', () => {
   });
 
   it('allows students and educators only (same audience as /api/v1/ai/chat)', async () => {
-    await GET(new Request('http://localhost/api/v1/ai/usage') as never);
+    await GET(new NextRequest('http://localhost/api/v1/ai/usage'));
 
     expect(capturedOptions?.allowedAccountTypes).toEqual(['student', 'educator']);
   });

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
@@ -135,7 +136,7 @@ test.describe('AUT-01 — student registration', () => {
 
     const meResponse = await page.request.get('/api/v1/auth/me');
     expect(meResponse.ok(), 'GET /api/v1/auth/me after activation').toBe(true);
-    const me = (await meResponse.json()) as { data?: { user?: { email?: string } | null } };
+    const me = await json<{ data?: { user?: { email?: string } | null } }>(meResponse);
     expect(me.data?.user?.email, 'the activated session belongs to the registered address').toBe(
       email,
     );
@@ -143,7 +144,7 @@ test.describe('AUT-01 — student registration', () => {
     // A standalone student: no organization, so nothing pushes the panel to /setup.
     const orgsResponse = await page.request.get('/api/v1/me/orgs');
     expect(orgsResponse.ok(), 'GET /api/v1/me/orgs').toBe(true);
-    expect(((await orgsResponse.json()) as { data?: unknown[] }).data).toEqual([]);
+    expect((await json<{ data?: unknown[] }>(orgsResponse)).data).toEqual([]);
 
     // --- Step 5: log in again with the step-2 credentials ----------------
     const logout = await page.request.post('/api/v1/auth/logout');

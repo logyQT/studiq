@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server';
 
 export async function POST(req: NextRequest) {
   return withPublicTracing(req, async () => {
-    const body = await req.json();
+    const body: unknown = await req.json();
     return toNextResponse(await authController.requestPasswordReset(body));
   });
 }

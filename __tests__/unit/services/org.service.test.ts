@@ -1,24 +1,56 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { OrgService } from '@studiq/server/services/org.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
-  return b;
+type ChainMock = ReturnType<typeof vi.fn>;
+
+/** A thenable PostgREST builder stand-in: every chain method returns itself. */
+interface QueryBuilder {
+  select: ChainMock;
+  insert: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  eq: ChainMock;
+  in: ChainMock;
+  order: ChainMock;
+  single: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
+const CHAIN_METHODS = ['select', 'insert', 'update', 'delete', 'eq', 'in', 'order'] as const;
+
+function qb(data: unknown, error: unknown = null): QueryBuilder {
+  const result = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: vi.fn(promise.then.bind(promise)),
+    catch: vi.fn(promise.catch.bind(promise)),
+    finally: vi.fn(promise.finally.bind(promise)),
+  };
+  for (const method of CHAIN_METHODS) {
+    builder[method].mockReturnValue(builder);
+  }
+  return builder;
+}
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
 }
 
 describe('OrgService', () => {
@@ -26,7 +58,7 @@ describe('OrgService', () => {
   let service: OrgService;
   const ctx: RequestContext = {
     userId: 'test-user-id',
-    accountType: 'student' as any,
+    accountType: AccountType.STUDENT,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -39,7 +71,7 @@ describe('OrgService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new OrgService(async () => mock as any);
+    service = new OrgService(() => Promise.resolve(mock));
   });
 
   describe('listOrgs', () => {
@@ -58,8 +90,8 @@ describe('OrgService', () => {
       const result = await service.listOrgs(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].name).toBe('Test Org');
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].name).toBe('Test Org');
     });
 
     it('surfaces org branding fields for the navbar (issue #108)', async () => {
@@ -84,8 +116,8 @@ describe('OrgService', () => {
       const result = await service.listOrgs(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data[0].logo_url).toBe('https://cdn.example.com/logo.png');
-      expect(result.data[0].brand_color).toBe('#FF6600');
+      expect(expectSuccess(result)[0].logo_url).toBe('https://cdn.example.com/logo.png');
+      expect(expectSuccess(result)[0].brand_color).toBe('#FF6600');
     });
 
     it('defaults branding fields to null when the org has none set', async () => {
@@ -103,8 +135,8 @@ describe('OrgService', () => {
       const result = await service.listOrgs(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data[0].logo_url).toBeNull();
-      expect(result.data[0].brand_color).toBeNull();
+      expect(expectSuccess(result)[0].logo_url).toBeNull();
+      expect(expectSuccess(result)[0].brand_color).toBeNull();
     });
 
     it('returns empty when no memberships', async () => {

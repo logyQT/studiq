@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -192,7 +193,7 @@ test.describe('AUT-07 — login for every account type', () => {
       // The session really belongs to this tenant's user of this account type.
       const meResponse = await page.request.get('/api/v1/auth/me');
       expect(meResponse.ok(), 'GET /api/v1/auth/me').toBe(true);
-      const me = (await meResponse.json()) as {
+      const me = await json<{
         data?: {
           user?: {
             email?: string;
@@ -200,9 +201,9 @@ test.describe('AUT-07 — login for every account type', () => {
             app_metadata?: { account_type?: string };
           } | null;
         };
-      };
+      }>(meResponse);
       const signedIn = me.data?.user;
-      expect(signedIn?.email, 'the session belongs to the tenant user').toBe(user!.email);
+      expect(signedIn?.email, 'the session belongs to the tenant user').toBe(user.email);
       expect(signedIn?.app_metadata?.account_type, 'account type of the signed-in user').toBe(
         role.accountType,
       );
@@ -238,7 +239,7 @@ test.describe('AUT-07 — login for every account type', () => {
       const userMenu = page.locator(USER_MENU);
       await expect(userMenu, 'user menu at the bottom of the sidebar').toBeVisible();
       await expect(userMenu, 'user menu shows the display name').toContainText(displayName!);
-      await expect(userMenu, 'user menu shows the e-mail').toContainText(user!.email);
+      await expect(userMenu, 'user menu shows the e-mail').toContainText(user.email);
       await expect(page.getByText(/ERROR_/)).toHaveCount(0);
 
       // --- Step „Wyloguj”: the user menu ends the session ------------------

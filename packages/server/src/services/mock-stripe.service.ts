@@ -6,6 +6,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export type MockCheckoutSession = {
   id: string;
@@ -30,8 +31,8 @@ export type MockWebhookEvent = {
 
 export class MockStripeService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
-    private createAdminClient: () => SupabaseClient = createServiceClient,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
+    private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
   ) {}
 
   /**
@@ -45,7 +46,7 @@ export class MockStripeService {
   ): Promise<
     ServiceResult<{ isOrgPlan: boolean; planName: string; amount: number; currency: string }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: plan } = await supabase
       .from('subscription_plans')
@@ -69,10 +70,10 @@ export class MockStripeService {
   private async assertOrgAdmin(
     orgId: string | undefined,
     userId: string,
-  ): Promise<ServiceResult<void>> {
+  ): Promise<ServiceResult<string>> {
     if (!orgId) return failure('BAD_REQUEST');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: membership, error } = await supabase
       .from('org_members')
       .select('org_roles!inner(name)')
@@ -85,7 +86,7 @@ export class MockStripeService {
     const role = membership?.org_roles as { name?: string } | { name?: string }[] | undefined;
     const roleName = Array.isArray(role) ? role[0]?.name : role?.name;
     if (!isOrgAdminRole(roleName)) return failure('FORBIDDEN');
-    return success(undefined);
+    return success(orgId);
   }
 
   async createCheckoutSession(
@@ -130,11 +131,12 @@ export class MockStripeService {
     if (purchasable.data.isOrgPlan) {
       const adminMembership = await this.assertOrgAdmin(event.org_id, userId);
       if (isFailure(adminMembership)) return adminMembership;
+      const orgId = adminMembership.data;
 
       // organizations.plan alone changes nothing: features and limits are
       // snapshots, so the DB function moves the plan and re-syncs them.
       const { error: planError } = await admin.rpc('apply_org_plan', {
-        p_org_id: event.org_id,
+        p_org_id: orgId,
         p_plan: event.plan_id,
       });
       if (planError) return toDbFailure(planError);
@@ -175,6 +177,7 @@ export class MockStripeService {
     return success(undefined);
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- service methods expose a Promise contract consumed via await.
   async createPortalSession(_userId: string): Promise<ServiceResult<{ url: string }>> {
     const baseUrl = getSiteUrl();
     return success({ url: `${baseUrl}/app/billing` });

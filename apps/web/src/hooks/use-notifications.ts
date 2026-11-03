@@ -29,7 +29,9 @@ export function useMarkNotificationRead() {
   const queryClient = useQueryClient();
   return useApiMutation<unknown, string>({
     mutationFn: (id) => apiPost(`/api/v1/notifications/${id}/read`, {}),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: notificationKeys.all }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: notificationKeys.all });
+    },
   });
 }
 
@@ -37,6 +39,8 @@ export function useMarkAllNotificationsRead() {
   const queryClient = useQueryClient();
   return useApiMutation<unknown, void>({
     mutationFn: () => apiPost('/api/v1/notifications/read-all', {}),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: notificationKeys.all }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: notificationKeys.all });
+    },
   });
 }

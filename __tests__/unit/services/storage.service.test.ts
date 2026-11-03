@@ -1,8 +1,8 @@
 import { StorageService } from '@studiq/server/services/storage.service';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-const logErrorMock = vi.fn();
+const logErrorMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/lib/log', () => ({
   log: vi.fn(),
   warn: vi.fn(),
@@ -13,8 +13,7 @@ const PNG_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0
 const PNG_MIME = 'image/png';
 
 function makeFile(bytes: number[], type: string, name = 'upload.png', sizeOverride?: number): File {
-  const file = new Blob([Uint8Array.from(bytes)], { type }) as unknown as File;
-  Object.defineProperty(file, 'name', { value: name });
+  const file = new File([Uint8Array.from(bytes)], name, { type });
   if (sizeOverride !== undefined) {
     Object.defineProperty(file, 'size', { value: sizeOverride });
   }
@@ -25,15 +24,26 @@ function createStorageClient(
   uploadResult: unknown = { data: { path: 'p' }, error: null },
   removeResult: unknown = { data: [{ name: 'removed' }], error: null },
 ) {
-  const upload = vi.fn().mockResolvedValue(uploadResult);
-  const remove = vi.fn().mockResolvedValue(removeResult);
+  const upload = vi
+    .fn<
+      (
+        path: string,
+        file: File,
+        options?: { contentType: string; upsert: boolean },
+      ) => Promise<unknown>
+    >()
+    .mockResolvedValue(uploadResult);
+  const remove = vi.fn<(paths: string[]) => Promise<unknown>>().mockResolvedValue(removeResult);
   const getPublicUrl = vi.fn((path: string) => ({
     data: { publicUrl: `https://storage.test/${path}` },
   }));
-  const from = vi.fn(() => ({ upload, getPublicUrl, remove }));
+  const from = vi.fn((_bucket: string) => ({ upload, getPublicUrl, remove }));
+  // The service only walks `storage.from()`; the fake shadows the real method.
+  const client = mockSupabaseClient();
+  Object.assign(client, { storage: { from } });
 
   return {
-    client: { storage: { from } } as unknown as SupabaseClient,
+    client,
     upload,
     remove,
     getPublicUrl,
@@ -278,13 +288,14 @@ describe('StorageService', () => {
     });
 
     it('never throws when the client itself blows up', async () => {
-      const throwingClient = {
+      const throwingClient = mockSupabaseClient();
+      Object.assign(throwingClient, {
         storage: {
-          from: () => ({
+          from: (_bucket: string) => ({
             remove: () => Promise.reject(new Error('network down')),
           }),
         },
-      } as unknown as SupabaseClient;
+      });
 
       const deleted = await new StorageService(() => throwingClient).deleteObject(
         'org-logos',

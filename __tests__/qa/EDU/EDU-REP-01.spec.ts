@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -109,7 +110,7 @@ interface ReportListResult {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -165,7 +166,7 @@ async function ensureBank(page: Page, groupId: string): Promise<BankRow> {
     response.status(),
     `POST ${BANKS_URL} (${BANK_NAME}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<BankRow>;
+  const body = await json<ApiEnvelope<BankRow>>(response);
   expect(body.success, `POST ${BANKS_URL} (${BANK_NAME}) success flag`).toBe(true);
   return body.data;
 }
@@ -192,7 +193,7 @@ async function ensureQuestion(page: Page, bankId: string): Promise<QuestionRow> 
     response.status(),
     `POST ${QUESTIONS_URL} (${QUESTION_CONTENT}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<QuestionRow>).data;
+  return (await json<ApiEnvelope<QuestionRow>>(response)).data;
 }
 
 /**
@@ -218,7 +219,7 @@ async function ensureReport(page: Page, tenant: QaTenant, questionId: string): P
     response.status(),
     `POST ${QUESTIONS_URL}/${questionId}/reports → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<{ id: string }>;
+  const body = await json<ApiEnvelope<{ id: string }>>(response);
   expect(body.success, 'report created').toBe(true);
 
   const created = await getData<ReportListResult>(page, `${REPORTS_URL}?limit=100`);
@@ -265,8 +266,8 @@ test.describe('@case:EDU-REP-01 @area:EDU @prio:P2 educator report inbox', () =>
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     const question = await prepareTenant(page, tenant);
-    const teacher = tenant.users.teacher!;
-    const student = tenant.users.student!;
+    const teacher = tenant.users.teacher;
+    const student = tenant.users.student;
 
     // --- The data behind the screen -----------------------------------------
     const reports = await getData<ReportListResult>(page, `${REPORTS_URL}?limit=100`);

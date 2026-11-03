@@ -11,20 +11,45 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null, count?: number) {
+type ChainMock = ReturnType<typeof vi.fn>;
+
+/** A thenable PostgREST builder stand-in: every chain method returns itself. */
+interface QueryBuilder {
+  select: ChainMock;
+  eq: ChainMock;
+  in: ChainMock;
+  single: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
+const CHAIN_METHODS = ['select', 'eq', 'in'] as const;
+
+function qb(data: unknown, error: unknown = null, count?: number): QueryBuilder {
   const result =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
-  return b;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    single: vi.fn(),
+    maybeSingle: vi.fn(),
+    then: vi.fn(),
+    catch: vi.fn(),
+    finally: vi.fn(),
+  };
+  for (const method of CHAIN_METHODS) {
+    builder[method] = vi.fn(() => builder);
+  }
+  builder.single = vi.fn().mockResolvedValue(result);
+  builder.maybeSingle = vi.fn().mockResolvedValue(result);
+  builder.then = vi.fn(promise.then.bind(promise));
+  builder.catch = vi.fn(promise.catch.bind(promise));
+  builder.finally = vi.fn(promise.finally.bind(promise));
+  return builder;
 }
 
 const baseCtx: RequestContext = {
@@ -168,7 +193,13 @@ describe('authz (unified lib)', () => {
           resource: { createdBy: 'u-2', orgId: null, activeOrgId: null },
         }),
       ).toBe(false);
-      expect(evaluate({ scope: null, userId: 'u-1', resource: {} as never })).toBe(false);
+      expect(
+        evaluate({
+          scope: null,
+          userId: 'u-1',
+          resource: { createdBy: 'u-1', orgId: null, activeOrgId: null },
+        }),
+      ).toBe(false);
     });
   });
 

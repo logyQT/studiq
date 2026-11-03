@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import { isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -11,39 +12,34 @@ import type {
   StudentOverview,
 } from '@studiq/server/models/student-overview.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** An unfinished practice quiz older than this is abandoned, not something to resume. */
 const RESUME_WINDOW_DAYS = 7;
 const ACTIVITY_LIMIT = 8;
 
-interface OpenAttemptRow {
-  id: string;
-  total_questions: number;
-  started_at: string;
-  config: { title?: unknown } | null;
-  draft_answers: unknown;
+/**
+ * The queries below filter on these timestamps (`started_at >= …`,
+ * `completed_at is not null`), so the predicates turn the nullable generated
+ * column into the non-null type the dashboard models use.
+ */
+function hasStartedAt<T extends { started_at: string | null }>(
+  row: T,
+): row is T & { started_at: string } {
+  return row.started_at !== null;
 }
 
-interface SessionRow {
-  completed_at: string;
-  cards_studied: number;
-  deck_ids: string[] | null;
+function hasCompletedAt<T extends { completed_at: string | null }>(
+  row: T,
+): row is T & { completed_at: string } {
+  return row.completed_at !== null;
 }
 
-interface CompletedAttemptRow {
-  id: string;
-  score: number | null;
-  total_questions: number;
-  total_points: number | null;
-  completed_at: string;
-  assignment_id: string | null;
-  config: { title?: unknown } | null;
-  teacher_assignments: { title: string; show_results: boolean } | null;
-}
-
-function configTitle(config: { title?: unknown } | null): string | null {
-  return typeof config?.title === 'string' && config.title !== '' ? config.title : null;
+function configTitle(config: unknown): string | null {
+  if (!isRecord(config)) return null;
+  const title = config.title;
+  return typeof title === 'string' && title !== '' ? title : null;
 }
 
 /**
@@ -51,10 +47,10 @@ function configTitle(config: { title?: unknown } | null): string | null {
  * `draft_answers` column (autosave); `student_answers` only gets rows when it is submitted.
  */
 export function countDraftAnswers(draft: unknown): number {
-  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return 0;
-  return Object.values(draft as Record<string, unknown>).filter((entry) => {
-    if (!entry || typeof entry !== 'object') return false;
-    const { selected_answer_id: selected, text_answer: text } = entry as Record<string, unknown>;
+  if (!isRecord(draft) || Array.isArray(draft)) return 0;
+  return Object.values(draft).filter((entry) => {
+    if (!isRecord(entry)) return false;
+    const { selected_answer_id: selected, text_answer: text } = entry;
     return (
       (typeof selected === 'string' && selected !== '') ||
       (typeof text === 'string' && text.trim() !== '')
@@ -67,7 +63,15 @@ export function countDraftAnswers(draft: unknown): number {
  * an assignment is in points, a practice quiz is correct answers over the closed (gradable)
  * questions (#329, #619). `null` when there is no denominator, instead of a made-up 0 %.
  */
-function scorePercent(row: CompletedAttemptRow, gradable: number | undefined): number | null {
+function scorePercent(
+  row: {
+    assignment_id: string | null;
+    total_points: number | null;
+    total_questions: number;
+    score: number | null;
+  },
+  gradable: number | undefined,
+): number | null {
   const max = row.assignment_id ? (row.total_points ?? row.total_questions ?? 0) : (gradable ?? 0);
   if (max <= 0) return null;
   return Math.round(Math.min(100, Math.max(0, ((row.score ?? 0) / max) * 100)));
@@ -79,13 +83,13 @@ function scorePercent(row: CompletedAttemptRow, gradable: number | undefined): n
  * request client so RLS stays the floor.
  */
 export class StudentOverviewService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getOverview(
     ctx: RequestContext,
     now = new Date(),
   ): Promise<ServiceResult<StudentOverview>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const today = now.toISOString().slice(0, 10);
     const resumeSince = new Date(now.getTime() - RESUME_WINDOW_DAYS * DAY_MS).toISOString();
 
@@ -128,7 +132,7 @@ export class StudentOverviewService {
       if (result.error) return toDbFailure(result.error);
     }
 
-    const openRow = ((open.data ?? []) as unknown as OpenAttemptRow[])[0];
+    const [openRow] = (open.data ?? []).filter(hasStartedAt);
     const quiz: ResumeQuiz | null = openRow
       ? {
           attemptId: openRow.id,
@@ -139,7 +143,7 @@ export class StudentOverviewService {
         }
       : null;
 
-    const sessionRows = (sessions.data ?? []) as SessionRow[];
+    const sessionRows = (sessions.data ?? []).filter(hasCompletedAt);
     const latestDeckId = sessionRows.find((s) => (s.deck_ids ?? []).length > 0)?.deck_ids?.[0];
     let deck: ResumeDeck | null = null;
     if (latestDeckId) {
@@ -155,7 +159,7 @@ export class StudentOverviewService {
       }
     }
 
-    const completedRows = (completed.data ?? []) as unknown as CompletedAttemptRow[];
+    const completedRows = (completed.data ?? []).filter(hasCompletedAt);
     const gradable = await gradableQuestionCounts(
       supabase,
       completedRows.filter((a) => a.assignment_id === null).map((a) => a.id),
@@ -185,7 +189,7 @@ export class StudentOverviewService {
         };
       }),
     ]
-      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .toSorted((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
       .slice(0, ACTIVITY_LIMIT);
 
     return success({

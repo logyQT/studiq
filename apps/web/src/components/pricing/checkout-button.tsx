@@ -4,6 +4,7 @@ import { Button } from '@studiq/ui';
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { apiPost } from '@/lib/api';
 
 interface CheckoutButtonProps {
   planId: string;
@@ -26,15 +27,10 @@ export function CheckoutButton({
   async function handleClick() {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/v1/stripe/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId, orgId }),
+      const data = await apiPost<{ url: string }>('/api/v1/stripe/create-checkout-session', {
+        planId,
+        orgId,
       });
-
-      if (!res.ok) throw new Error('Failed to create checkout session');
-
-      const { data } = await res.json();
       window.location.href = data.url;
     } catch {
       toast.error('Something went wrong. Please try again.');

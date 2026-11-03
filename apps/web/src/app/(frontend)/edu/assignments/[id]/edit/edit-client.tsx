@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { dbToDatetimeLocal } from '@/lib/datetime';
+import { apiPut } from '@/lib/api';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface AssignmentDetail {
@@ -70,16 +71,8 @@ export default function EditAssignmentClient() {
   }, [assignment]);
 
   const updateMutation = useApiMutation({
-    mutationFn: async (body: Record<string, unknown>) => {
-      const res = await fetch(`/api/v1/teacher/assignments/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
-    },
+    mutationFn: async (body: Record<string, unknown>) =>
+      apiPut<unknown>(`/api/v1/teacher/assignments/${id}`, body),
     invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
   });
 

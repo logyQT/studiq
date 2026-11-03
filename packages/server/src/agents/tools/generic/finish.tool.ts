@@ -18,7 +18,7 @@ export const finishTool = tool({
     deckName: z.string().optional().describe('Name of the flashcard deck'),
     flashcards: z.array(flashcardSchema).optional().describe('Generated flashcards'),
   }),
-  execute: async ({ type, message, deckName, flashcards }) => {
+  execute: ({ type, message, deckName, flashcards }) => {
     const cid = conversationStorage.getStore()?.conversationId;
     enqueueTrace({
       conversationId: cid,

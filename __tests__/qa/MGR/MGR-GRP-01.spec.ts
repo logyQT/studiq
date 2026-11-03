@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -59,7 +60,7 @@ interface GroupRow {
 async function listGroups(page: Page): Promise<GroupRow[]> {
   const response = await page.request.get('/api/v1/organization/groups');
   expect(response.status(), 'GET /api/v1/organization/groups').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: GroupRow[] };
+  const body = await json<{ success: boolean; data: GroupRow[] }>(response);
   expect(body.success).toBe(true);
   return body.data;
 }
@@ -213,9 +214,9 @@ test.describe('@case:MGR-GRP-01 @area:MGR @prio:P1 organization groups CRUD', ()
       'deleted group is gone from the API',
     ).toEqual([]);
     expect(
-      afterDelete.map((group) => group.id).sort(),
+      afterDelete.map((group) => group.id).toSorted(),
       'the two pre-existing groups are untouched',
-    ).toEqual([defaultGroup.id, secondGroup.id].sort());
+    ).toEqual([defaultGroup.id, secondGroup.id].toSorted());
     expect(afterDelete.find((group) => group.id === defaultGroup.id)?.memberCount).toBe(3);
 
     expect(pageErrors, 'uncaught page errors during groups CRUD').toEqual([]);

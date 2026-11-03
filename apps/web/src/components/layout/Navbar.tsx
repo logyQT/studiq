@@ -69,7 +69,11 @@ export function Navbar() {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const { logoUrl } = useBranding();
 
-  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
+  // `user_metadata` / `app_metadata` are untyped Supabase maps; narrow before use.
+  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
+  const rawName: unknown = user?.user_metadata?.name;
+  const userName = typeof rawName === 'string' ? rawName : undefined;
 
   const navLinks: NavLink[] = (() => {
     switch (accountType) {
@@ -151,7 +155,7 @@ export function Navbar() {
                     aria-label={t('user_menu')}
                     className="rounded-full transition hover:scale-105 active:scale-95"
                   >
-                    <UserAvatar name={user.user_metadata?.name} email={user.email} size={36} />
+                    <UserAvatar name={userName} email={user.email} size={36} />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent

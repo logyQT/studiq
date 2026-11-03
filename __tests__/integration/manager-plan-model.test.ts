@@ -1,11 +1,13 @@
+import { createClient } from '@supabase/supabase-js';
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
+import type { Database } from '@studiq/server/types/database';
 import type { NextRequest } from 'next/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { asJson, json } from '#test/helpers/json';
 import { createTestUser, seedViaApi, type TestUserFixture } from '#test/helpers/test-user';
 import {
   cleanupOrganizationDeep,
-  createServiceClient,
   mockUser,
   seedOrgMembership,
   seedOrganization,
@@ -23,8 +25,13 @@ import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route
  */
 const BASE_URL = 'http://localhost';
 
-const service = createServiceClient();
-const resolver = new LimitsResolver(async () => service);
+// Database-typed: `LimitsResolver` takes a factory that hands back the typed client.
+const service = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } },
+);
+const resolver = new LimitsResolver(() => Promise.resolve(service));
 
 let manager: TestUserFixture;
 let boughtOrgId: string;
@@ -58,8 +65,8 @@ async function planKey(handler: (req: NextRequest) => Promise<Response>, activeO
       activeOrgId ? { active_org_id: activeOrgId } : undefined,
     ),
   );
-  const body = await res.json();
-  return { status: res.status, key: body.data?.key as string | undefined };
+  const body = await json<{ data?: { key?: string } }>(res);
+  return { status: res.status, key: body.data?.key };
 }
 
 function managerCtx(activeOrgId: string | null): RequestContext {
@@ -89,7 +96,9 @@ describe('manager plan model (#228)', () => {
 
     // … and a second organization the manager administers, which stays on the
     // free `launch` plan.
-    const other = await seedOrganization(`mgr-228-other-${tag}`);
+    const other = asJson<{ org: { id: string }; adminRoleId: string }>(
+      await seedOrganization(`mgr-228-other-${tag}`),
+    );
     otherOrgId = other.org.id;
     createdOrgIds.push(otherOrgId);
     await seedOrgMembership({

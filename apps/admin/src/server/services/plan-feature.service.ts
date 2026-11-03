@@ -4,12 +4,13 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 
 export class PlanFeatureService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getAll(): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('plan_features')
       .select('*')
@@ -19,7 +20,7 @@ export class PlanFeatureService {
   }
 
   async getByPlanKey(planKey: string): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('plan_features')
       .select('*')
@@ -29,7 +30,7 @@ export class PlanFeatureService {
   }
 
   async create(input: CreatePlanFeatureInput): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('plan_features')
       .insert({
@@ -43,7 +44,7 @@ export class PlanFeatureService {
   }
 
   async delete(id: string): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: exists } = await supabase
       .from('plan_features')
       .select('id')

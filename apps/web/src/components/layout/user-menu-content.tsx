@@ -1,6 +1,5 @@
 'use client';
 
-import type { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
 import { BadgeCheck, Bell, CreditCard, LogOut, Palette, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -16,7 +15,10 @@ import { cn } from '@/lib/utils';
 export function UserMenuHeader() {
   const { user } = useAuth();
   const t = useTranslations('DashboardLayout');
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
+  // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
+  const rawName: unknown = user?.user_metadata?.name;
+  const storedName = typeof rawName === 'string' ? rawName : '';
+  const userName = storedName || user?.email?.split('@')[0] || t('default_user');
 
   return (
     <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
@@ -31,6 +33,16 @@ export function UserMenuHeader() {
 
 const PLAIN_ITEM_CLASS =
   'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors';
+
+async function handleLogout() {
+  try {
+    const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
+    if (!res.ok) throw new Error('Logout failed');
+    window.location.href = '/login';
+  } catch {
+    window.location.href = '/login';
+  }
+}
 
 interface MenuEntryProps {
   variant: UserMenuVariant;
@@ -100,7 +112,7 @@ export function handleUserMenuTab(
   if (event.key !== 'Tab') return;
 
   const content = event.currentTarget;
-  const active = document.activeElement as HTMLElement | null;
+  const active = document.activeElement;
   const language = content.querySelector<HTMLElement>('[role="combobox"]');
   const themeGroup = content.querySelector<HTMLElement>('[role="radiogroup"]');
   const items = [...content.querySelectorAll<HTMLElement>('[role="menuitem"]')];
@@ -195,18 +207,10 @@ export function UserMenuItems(props: UserMenuItemsProps) {
       <LanguageMenuRow variant="menu" />
     );
 
-  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
+  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
   const dashboardPrefix = dashboardHomeFor(accountType);
-
-  async function handleLogout() {
-    try {
-      const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
-      if (!res.ok) throw new Error('Logout failed');
-      window.location.href = '/login';
-    } catch {
-      window.location.href = '/login';
-    }
-  }
 
   return (
     <>
@@ -275,7 +279,7 @@ export function UserMenuItems(props: UserMenuItemsProps) {
       <MenuEntry
         variant={variant}
         onSelect={() => {
-          handleLogout();
+          void handleLogout();
           onItemClick?.();
         }}
         destructive

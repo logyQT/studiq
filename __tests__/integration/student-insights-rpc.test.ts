@@ -1,6 +1,8 @@
+import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createServiceClient } from '#test/integration/helpers';
+import { asJson } from '#test/helpers/json';
+import { createTypedServiceClient } from '#test/integration/test-utils';
 
 // #657: get_student_insights is SECURITY INVOKER and refuses to run for another user. A real seed
 // student signs in with the anon key, the path a browser takes.
@@ -11,11 +13,33 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const STUDENT_ID = '00000000-0000-4000-8001-000000000005'; // student1@dev.local
 const OTHER_USER_ID = '00000000-0000-4000-8001-000000000003';
 
+/** Shape of `get_student_insights` — only the fields these tests read. */
+type Insights = {
+  days: number;
+  studyTime: {
+    totalMs: number;
+    activeDays: number;
+    avgMsPerActiveDay: number;
+    byDay: Array<{ date: string; ms: number }>;
+    byWeekday: number[];
+  };
+  mastery: Array<{
+    topicId: string;
+    name: string;
+    quizAnswers: number;
+    quizAccuracy: number | null;
+    flashcardReviews: number;
+    flashcardAccuracy: number | null;
+    accuracy: number;
+  }>;
+  retention: Array<{ bucket: string; reviews: number; accuracy: number | null }>;
+};
+
 describe('get_student_insights (#657)', () => {
-  let student: SupabaseClient;
+  let student: SupabaseClient<Database>;
 
   beforeAll(async () => {
-    student = createClient(url, anonKey, {
+    student = createClient<Database>(url, anonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     const { error } = await student.auth.signInWithPassword({
@@ -32,10 +56,11 @@ describe('get_student_insights (#657)', () => {
     });
 
     expect(error).toBeNull();
-    expect(data.days).toBe(30);
-    expect(Array.isArray(data.mastery)).toBe(true);
-    expect(data.studyTime.byWeekday).toHaveLength(7);
-    expect(data.retention.map((b: { bucket: string }) => b.bucket)).toEqual([
+    const insightsData = asJson<Insights>(data);
+    expect(insightsData.days).toBe(30);
+    expect(Array.isArray(insightsData.mastery)).toBe(true);
+    expect(insightsData.studyTime.byWeekday).toHaveLength(7);
+    expect(insightsData.retention.map((b) => b.bucket)).toEqual([
       'd0',
       'd1',
       'd2_3',
@@ -48,10 +73,13 @@ describe('get_student_insights (#657)', () => {
 
   it('keeps the window between 1 and 365 days', async () => {
     const wide = await student.rpc('get_student_insights', { p_user_id: STUDENT_ID, p_days: 9999 });
-    const narrow = await student.rpc('get_student_insights', { p_user_id: STUDENT_ID, p_days: 0 });
+    const narrow = await student.rpc('get_student_insights', {
+      p_user_id: STUDENT_ID,
+      p_days: 0,
+    });
 
-    expect(wide.data.days).toBe(365);
-    expect(narrow.data.days).toBe(1);
+    expect(asJson<Insights>(wide.data).days).toBe(365);
+    expect(asJson<Insights>(narrow.data).days).toBe(1);
   });
 
   it('refuses to run for another user (42501)', async () => {
@@ -75,8 +103,14 @@ describe('get_student_insights (#657)', () => {
 //  * the weekday series is ISO (index 0 = Monday);
 //  * the retention curve buckets the gap to the previous review of the same card and anchors
 //    it to a review that may lie outside the window.
+
+/** ISO weekday index (0 = Monday) of a UTC date. */
+function weekday(date: Date): number {
+  return (date.getUTCDay() + 6) % 7;
+}
+
 describe('get_student_insights rules (#657 review)', () => {
-  const service = createServiceClient();
+  const service = createTypedServiceClient();
   const TEACHER_ID = '00000000-0000-4000-8001-000000000003';
   const ORG = '00000000-0000-4000-8000-000000000001';
   const MARK = `zz657-${Date.now()}`;
@@ -88,30 +122,13 @@ describe('get_student_insights rules (#657 review)', () => {
   // The most recent Monday at noon UTC; today when it is Monday and already past noon.
   const monday = new Date(now);
   monday.setUTCHours(12, 0, 0, 0);
-  const weekday = (date: Date) => (date.getUTCDay() + 6) % 7;
-  while (weekday(monday) !== 0 || monday > now) monday.setUTCDate(monday.getUTCDate() - 1);
+  let onMostRecentMonday = false;
+  while (!onMostRecentMonday) {
+    onMostRecentMonday = weekday(monday) === 0 && monday <= now;
+    if (!onMostRecentMonday) monday.setUTCDate(monday.getUTCDate() - 1);
+  }
 
-  type Insights = {
-    studyTime: {
-      totalMs: number;
-      activeDays: number;
-      avgMsPerActiveDay: number;
-      byDay: Array<{ date: string; ms: number }>;
-      byWeekday: number[];
-    };
-    mastery: Array<{
-      topicId: string;
-      name: string;
-      quizAnswers: number;
-      quizAccuracy: number | null;
-      flashcardReviews: number;
-      flashcardAccuracy: number | null;
-      accuracy: number;
-    }>;
-    retention: Array<{ bucket: string; reviews: number; accuracy: number | null }>;
-  };
-
-  let student: SupabaseClient;
+  let student: SupabaseClient<Database>;
   let studentId = '';
   let quizTopic = '';
   let cardTopic = '';
@@ -122,7 +139,7 @@ describe('get_student_insights rules (#657 review)', () => {
       p_days: 30,
     });
     expect(error).toBeNull();
-    return data as Insights;
+    return asJson<Insights>(data);
   };
   const daysAgo = (days: number) => new Date(now.getTime() - days * DAY).toISOString();
 
@@ -136,7 +153,7 @@ describe('get_student_insights rules (#657 review)', () => {
     if (userError || !created.user) throw new Error(`createUser failed: ${userError?.message}`);
     studentId = created.user.id;
 
-    student = createClient(url, anonKey, {
+    student = createClient<Database>(url, anonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     const { error: signInError } = await student.auth.signInWithPassword({
@@ -154,10 +171,12 @@ describe('get_student_insights rules (#657 review)', () => {
       ])
       .select('id, name');
     if (topicError) throw topicError;
-    quizTopic = topics!.find((topic) => topic.name === `${MARK} quiz`)!.id;
-    cardTopic = topics!.find((topic) => topic.name === `${MARK} cards`)!.id;
+    quizTopic = topics.find((topic) => topic.name === `${MARK} quiz`)!.id;
+    cardTopic = topics.find((topic) => topic.name === `${MARK} cards`)!.id;
 
-    const question = (type: 'mcq' | 'open') => ({
+    const question = (
+      type: 'mcq' | 'open',
+    ): Omit<Database['public']['Tables']['questions']['Insert'], 'bank_id'> => ({
       type,
       content: `${MARK}-${type}`,
       created_by: studentId,
@@ -177,8 +196,8 @@ describe('get_student_insights rules (#657 review)', () => {
       ])
       .select('id, type');
     if (qError) throw qError;
-    const mcq = questions!.find((q) => q.type === 'mcq')!.id;
-    const open = questions!.find((q) => q.type === 'open')!.id;
+    const mcq = questions.find((q) => q.type === 'mcq')!.id;
+    const open = questions.find((q) => q.type === 'open')!.id;
     await service
       .from('question_topic_assignments')
       .insert([mcq, open].map((question_id) => ({ question_id, topic_id: quizTopic })));
@@ -189,7 +208,7 @@ describe('get_student_insights rules (#657 review)', () => {
       .select('id')
       .single();
     if (deckError) throw deckError;
-    const card = (n: number) => ({
+    const card = (n: number): Database['public']['Tables']['flashcards']['Insert'] => ({
       created_by: studentId,
       deck_id: deck.id,
       front: `${MARK} ${n}`,
@@ -201,9 +220,9 @@ describe('get_student_insights rules (#657 review)', () => {
       .insert([card(1), card(2), card(3)])
       .select('id, front');
     if (cardError) throw cardError;
-    const cardA = cards!.find((c) => c.front === `${MARK} 1`)!.id;
-    const cardB = cards!.find((c) => c.front === `${MARK} 2`)!.id;
-    const cardC = cards!.find((c) => c.front === `${MARK} 3`)!.id;
+    const cardA = cards.find((c) => c.front === `${MARK} 1`)!.id;
+    const cardB = cards.find((c) => c.front === `${MARK} 2`)!.id;
+    const cardC = cards.find((c) => c.front === `${MARK} 3`)!.id;
     await service.from('flashcard_topic_assignments').insert([
       { flashcard_id: cardA, topic_id: quizTopic },
       { flashcard_id: cardB, topic_id: cardTopic },
@@ -216,7 +235,7 @@ describe('get_student_insights rules (#657 review)', () => {
         .select('id')
         .single();
       if (error) throw error;
-      return data.id as string;
+      return data.id;
     };
     const assignment = await createAssignment();
     // An assignment deleted after the attempt was taken: the FK nulls `assignment_id`, only
@@ -241,9 +260,9 @@ describe('get_student_insights rules (#657 review)', () => {
       ])
       .select('id, assignment_id, is_assignment_attempt');
     if (tError) throw tError;
-    const practice = attempts!.find((a) => !a.is_assignment_attempt)!.id;
-    const assignmentAttempt = attempts!.find((a) => a.assignment_id === assignment)!.id;
-    const orphan = attempts!.find((a) => a.assignment_id === deletedAssignment)!.id;
+    const practice = attempts.find((a) => !a.is_assignment_attempt)!.id;
+    const assignmentAttempt = attempts.find((a) => a.assignment_id === assignment)!.id;
+    const orphan = attempts.find((a) => a.assignment_id === deletedAssignment)!.id;
     const { error: sError } = await service.from('student_answers').insert([
       { attempt_id: practice, question_id: mcq, is_correct: true },
       { attempt_id: practice, question_id: open, is_correct: true }, // open answers never count
@@ -352,16 +371,17 @@ describe('get_student_insights rules (#657 review)', () => {
     ]);
   });
 
+  const select = () =>
+    service
+      .from('quiz_attempts')
+      .select('id, assignment_id, is_assignment_attempt')
+      .eq('config->>marker', MARK);
+
   it('keeps the assignment marker database-controlled, so a client cannot flip it', async () => {
-    const select = () =>
-      service
-        .from('quiz_attempts')
-        .select('id, assignment_id, is_assignment_attempt')
-        .eq('config->>marker', MARK);
     const { data: rows, error } = await select();
     if (error) throw error;
-    const practice = rows!.find((row) => !row.assignment_id && !row.is_assignment_attempt)!;
-    const assignmentAttempt = rows!.find((row) => row.is_assignment_attempt)!;
+    const practice = rows.find((row) => !row.assignment_id && !row.is_assignment_attempt)!;
+    const assignmentAttempt = rows.find((row) => row.is_assignment_attempt)!;
 
     // The student can update their own attempt through PostgREST (RLS FOR ALL); the trigger
     // keeps the stored provenance. `.select()` proves the write reached the row instead of

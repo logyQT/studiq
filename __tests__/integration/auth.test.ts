@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import { useRealSupabase, mockUser } from '#test/integration/helpers';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import { createNextRequest } from '#test/integration/test-utils';
@@ -9,6 +10,16 @@ import { POST as updatePasswordPost } from '@/app/(backend)/api/v1/auth/password
 import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** Success/error envelopes of the auth routes that the assertions below read. */
+interface AuthBody {
+  success: boolean;
+  error?: string;
+  data?: { message: string };
+  issues?: {
+    properties: Record<'name' | 'email' | 'password', { errors: string[] }>;
+  };
+}
 
 // Auth tests: register creates users with Date.now() emails (already unique).
 // Login/logout/reset use a seeded account (read-only).
@@ -45,7 +56,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await registerPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(202);
       expect(body.success).toBe(true);
@@ -64,7 +75,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await registerPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -84,7 +95,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await registerPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -149,7 +160,7 @@ describe(`Auth Integration`, () => {
           }),
         }),
       );
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(202);
       expect(body).toEqual({ success: true, data: { message: 'SUCCESS_ACTIVATION_LINK_SENT' } });
@@ -182,13 +193,13 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await registerPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
       expect(body.error).toBe('UNPROCESSABLE_ENTITY');
       // `toNextResponse` treeifies the issues (see seats.test.ts).
-      expect(body.issues.properties.name.errors).toContain('VALIDATION_NAME_REQUIRED');
+      expect(body.issues!.properties.name.errors).toContain('VALIDATION_NAME_REQUIRED');
     });
 
     it('stores the trimmed name in the created profile', async () => {
@@ -267,7 +278,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await loginPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -284,7 +295,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await loginPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -298,7 +309,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await loginPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -312,10 +323,10 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await loginPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(422);
-      expect(body.issues.properties.email.errors).toEqual(['VALIDATION_EMAIL_REQUIRED']);
+      expect(body.issues!.properties.email.errors).toEqual(['VALIDATION_EMAIL_REQUIRED']);
     });
   });
 
@@ -323,7 +334,7 @@ describe(`Auth Integration`, () => {
     it('returns 200 on logout', async () => {
       const req = createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' });
       const response = await logoutPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -343,7 +354,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await resetPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -357,7 +368,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await resetPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -378,7 +389,7 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await updatePasswordPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -397,11 +408,11 @@ describe(`Auth Integration`, () => {
       });
 
       const response = await updatePasswordPost(req);
-      const body = await response.json();
+      const body = await json<AuthBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.error).toBe('UNPROCESSABLE_ENTITY');
-      expect(body.issues.properties.password.errors).toEqual([
+      expect(body.issues!.properties.password.errors).toEqual([
         'VALIDATION_PASSWORD_MISSING_UPPERCASE',
         'VALIDATION_PASSWORD_MISSING_NUMBER',
       ]);

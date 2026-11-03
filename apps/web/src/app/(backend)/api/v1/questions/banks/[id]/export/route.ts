@@ -6,6 +6,22 @@ import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { type NextRequest, NextResponse } from 'next/server';
 
+/** The download descriptor the controller returns, checked before it is sent. */
+function isQuestionExportFile(value: unknown): value is QuestionExportFile {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'body' in value &&
+    typeof value.body === 'string' &&
+    'contentType' in value &&
+    typeof value.contentType === 'string' &&
+    'filename' in value &&
+    typeof value.filename === 'string' &&
+    'notReimportable' in value &&
+    typeof value.notReimportable === 'number'
+  );
+}
+
 /**
  * `GET /api/v1/questions/banks/:id/export?format=csv|json`. The file is built from the same
  * read access as the screen, so export is refused exactly where the bank is unreadable; it is
@@ -23,7 +39,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     );
     if (!response.success) return toNextResponse(response);
 
-    const file = response.data as QuestionExportFile;
+    const file = response.data;
+    if (!isQuestionExportFile(file)) {
+      return toNextResponse({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    }
+
     return new NextResponse(file.body, {
       status: 200,
       headers: {

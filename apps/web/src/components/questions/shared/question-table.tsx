@@ -64,6 +64,27 @@ interface QuestionTableProps {
   t: ReturnType<typeof useTranslations>;
 }
 
+interface SortHeaderProps {
+  field: string;
+  label: string;
+  sortBy: string;
+  onToggleSort: (field: string) => void;
+}
+
+function SortHeader({ field, label, sortBy, onToggleSort }: SortHeaderProps) {
+  const isActive = sortBy === field;
+  return (
+    <TableHead className="cursor-pointer select-none" onClick={() => onToggleSort(field)}>
+      <div className="flex items-center gap-1">
+        {label}
+        <ArrowUpDown
+          className={`h-3 w-3 ${isActive ? 'text-primary' : 'text-muted-foreground/50'}`}
+        />
+      </div>
+    </TableHead>
+  );
+}
+
 export function QuestionTable({
   questions,
   isLoading,
@@ -107,20 +128,6 @@ export function QuestionTable({
     }
   }
 
-  function SortHeader({ field, label }: { field: string; label: string }) {
-    const isActive = sortBy === field;
-    return (
-      <TableHead className="cursor-pointer select-none" onClick={() => toggleSort(field)}>
-        <div className="flex items-center gap-1">
-          {label}
-          <ArrowUpDown
-            className={`h-3 w-3 ${isActive ? 'text-primary' : 'text-muted-foreground/50'}`}
-          />
-        </div>
-      </TableHead>
-    );
-  }
-
   if (isLoading) {
     return (
       <Card>
@@ -143,6 +150,7 @@ export function QuestionTable({
           />
           {search && (
             <button
+              type="button"
               onClick={() => onSearchChange('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
@@ -167,8 +175,18 @@ export function QuestionTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <SortHeader field="content" label={t('question')} />
-              <SortHeader field="type" label={t('type')} />
+              <SortHeader
+                field="content"
+                label={t('question')}
+                sortBy={sortBy}
+                onToggleSort={toggleSort}
+              />
+              <SortHeader
+                field="type"
+                label={t('type')}
+                sortBy={sortBy}
+                onToggleSort={toggleSort}
+              />
               <TableHead>{t('topics')}</TableHead>
               <TableHead>{t('answers')}</TableHead>
               <TableHead className="text-right">{t('actions')}</TableHead>

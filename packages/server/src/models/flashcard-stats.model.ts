@@ -10,30 +10,36 @@ export const TeacherFlashcardStatsQuerySchema = registry.register(
 
 export type TeacherFlashcardStatsQuery = z.infer<typeof TeacherFlashcardStatsQuerySchema>;
 
-export type DeckStats = {
-  deckId: string;
-  deckName: string;
-  flashcardCount: number;
-  practiceCount: number;
-  correctCount: number;
-  accuracy: number;
-  avgEasinessFactor: number;
-};
+export const DeckStatsSchema = z.object({
+  deckId: z.string(),
+  deckName: z.string(),
+  flashcardCount: z.number(),
+  practiceCount: z.number(),
+  correctCount: z.number(),
+  accuracy: z.number(),
+  avgEasinessFactor: z.number(),
+});
 
-export type TopicStats = {
-  topicId: string;
-  topicName: string;
-  flashcardCount: number;
-  practiceCount: number;
-  accuracy: number;
-};
+export type DeckStats = z.infer<typeof DeckStatsSchema>;
 
-export type DifficultyBreakdown = {
-  easy: number;
-  medium: number;
-  hard: number;
-  new: number;
-};
+export const TopicStatsSchema = z.object({
+  topicId: z.string(),
+  topicName: z.string(),
+  flashcardCount: z.number(),
+  practiceCount: z.number(),
+  accuracy: z.number(),
+});
+
+export type TopicStats = z.infer<typeof TopicStatsSchema>;
+
+export const DifficultyBreakdownSchema = z.object({
+  easy: z.number(),
+  medium: z.number(),
+  hard: z.number(),
+  new: z.number(),
+});
+
+export type DifficultyBreakdown = z.infer<typeof DifficultyBreakdownSchema>;
 
 export const DifficultyCardsQuerySchema = registry.register(
   'DifficultyCardsQuery',
@@ -63,17 +69,20 @@ export type DifficultyFlashcardDetail = {
   topicNames: string[];
 };
 
-export type TeacherFlashcardStatsResponse = {
-  summary: {
-    totalDecks: number;
-    totalFlashcards: number;
-    totalPractices: number;
-    practicingStudents: number;
-    rosterStudents: number | null;
-    overallAccuracy: number;
-    averageEasinessFactor: number;
-    difficultyBreakdown: DifficultyBreakdown;
-  };
-  byDeck: DeckStats[];
-  byTopic: TopicStats[];
-};
+/** Payload of `get_teacher_stats` (a `json` column from PostgREST's point of view). */
+export const TeacherFlashcardStatsResponseSchema = z.object({
+  summary: z.object({
+    totalDecks: z.number(),
+    totalFlashcards: z.number(),
+    totalPractices: z.number(),
+    practicingStudents: z.number(),
+    rosterStudents: z.number().nullable(),
+    overallAccuracy: z.number(),
+    averageEasinessFactor: z.number(),
+    difficultyBreakdown: DifficultyBreakdownSchema,
+  }),
+  byDeck: z.array(DeckStatsSchema).default([]),
+  byTopic: z.array(TopicStatsSchema).default([]),
+});
+
+export type TeacherFlashcardStatsResponse = z.infer<typeof TeacherFlashcardStatsResponseSchema>;

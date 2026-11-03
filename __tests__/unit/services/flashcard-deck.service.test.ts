@@ -1,6 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { check } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardDeckService } from '@studiq/server/services/flashcard-deck.service';
 import { groupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,30 +20,96 @@ vi.mock('@studiq/server/services/group.service', () => ({
   groupService: { canShareContentToGroups: vi.fn() },
 }));
 
-function qb(data: any, error: any = null, count?: number) {
+type ChainMock = ReturnType<typeof vi.fn>;
+
+/** A thenable PostgREST builder stand-in: every chain method returns itself. */
+interface QueryBuilder {
+  select: ChainMock;
+  insert: ChainMock;
+  upsert: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  eq: ChainMock;
+  in: ChainMock;
+  order: ChainMock;
+  limit: ChainMock;
+  or: ChainMock;
+  not: ChainMock;
+  neq: ChainMock;
+  rpc: ChainMock;
+  single: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
+const CHAIN_METHODS = [
+  'select',
+  'insert',
+  'upsert',
+  'update',
+  'delete',
+  'eq',
+  'in',
+  'order',
+  'limit',
+  'or',
+  'not',
+  'neq',
+  'rpc',
+] as const;
+
+function qb(data: unknown, error: unknown = null, count?: number): QueryBuilder {
   const result =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.upsert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.or = vi.fn(() => b);
-  b.not = vi.fn(() => b);
-  b.neq = vi.fn(() => b);
-  b.rpc = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
-  return b;
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    upsert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    or: vi.fn(),
+    not: vi.fn(),
+    neq: vi.fn(),
+    rpc: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: vi.fn(promise.then.bind(promise)),
+    catch: vi.fn(promise.catch.bind(promise)),
+    finally: vi.fn(promise.finally.bind(promise)),
+  };
+  for (const method of CHAIN_METHODS) {
+    builder[method].mockReturnValue(builder);
+  }
+  return builder;
+}
+
+function isQueryBuilder(value: unknown): value is QueryBuilder {
+  return typeof value === 'object' && value !== null && 'select' in value && 'then' in value;
+}
+
+/** `list` answers `ServiceResult<unknown>`; this narrows the page shape the test reads. */
+function isDeckPage(
+  value: unknown,
+): value is { items: unknown[]; hasMore: boolean; total: number } {
+  return (
+    typeof value === 'object' && value !== null && 'items' in value && Array.isArray(value.items)
+  );
+}
+
+function pageData(result: ServiceResult<unknown>): {
+  items: unknown[];
+  hasMore: boolean;
+  total: number;
+} {
+  if (!result.success || !isDeckPage(result.data)) throw new Error('expected a deck page');
+  return result.data;
 }
 
 describe('FlashcardDeckService', () => {
@@ -60,10 +127,17 @@ describe('FlashcardDeckService', () => {
     permissionScopes: {},
   };
 
+  /** The builder `from()` returned on its `index`-th call. */
+  function builderAt(index: number): QueryBuilder {
+    const value: unknown = mock.from.mock.results[index]?.value;
+    if (!isQueryBuilder(value)) throw new Error(`from() call ${index} returned no query builder`);
+    return value;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new FlashcardDeckService(async () => mock as any);
+    service = new FlashcardDeckService(() => Promise.resolve(mock));
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,
       data: true,
@@ -90,7 +164,7 @@ describe('FlashcardDeckService', () => {
 
       expect(result.success).toBe(true);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', foreignCard);
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual([
         'flashcard_decks',
         'flashcards',
         'flashcard_decks',
@@ -110,7 +184,10 @@ describe('FlashcardDeckService', () => {
       ).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
       // The deck insert is never reached.
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual([
+        'flashcard_decks',
+        'flashcards',
+      ]);
     });
 
     it('rejects unknown card ids instead of silently skipping the guard', async () => {
@@ -124,7 +201,10 @@ describe('FlashcardDeckService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual([
+        'flashcard_decks',
+        'flashcards',
+      ]);
     });
 
     it('inserts deck and returns it', async () => {
@@ -221,7 +301,7 @@ describe('FlashcardDeckService', () => {
         'org-1',
       );
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
-      const insertCall = mock.from.mock.results[2].value.insert;
+      const insertCall = builderAt(2).insert;
       expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
     });
 
@@ -244,7 +324,7 @@ describe('FlashcardDeckService', () => {
         ['g-1'],
         'org-1',
       );
-      const insertCall = mock.from.mock.results[2].value.insert;
+      const insertCall = builderAt(2).insert;
       expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
     });
 
@@ -325,10 +405,10 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb(decks));
       mock.from.mockReturnValueOnce(qb(null, null, 57));
 
-      const result = await service.list(ctx, { limit: 2 } as any);
+      const result = await service.list(ctx, { limit: 2 });
 
       expect(result.success).toBe(true);
-      const data = result.data as { items: unknown[]; hasMore: boolean; total: number };
+      const data = pageData(result);
       expect(data.items).toHaveLength(2);
       expect(data.hasMore).toBe(true);
       expect(data.total).toBe(57);
@@ -349,9 +429,9 @@ describe('FlashcardDeckService', () => {
         q: 'bio',
         cursor,
         limit: 10,
-      } as any);
+      });
 
-      expect((result.data as { total: number }).total).toBe(4);
+      expect(pageData(result).total).toBe(4);
       expect(countQb.select).toHaveBeenCalledWith('id', { count: 'exact', head: true });
       // owner + search filters are applied to both queries
       expect(countQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
@@ -386,9 +466,9 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(pageQb);
       mock.from.mockReturnValueOnce(countQb);
 
-      await service.list(ctx, { groups: [] } as any);
+      await service.list(ctx, { groups: [] });
 
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual([
         'suspended_decks',
         'flashcard_decks',
         'flashcard_decks',
@@ -405,9 +485,12 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(pageQb);
       mock.from.mockReturnValueOnce(countQb);
 
-      const result = await service.list({ ...ctx, groupIds: ['g-1'] }, {
-        groups: ['g-1'],
-      } as any);
+      const result = await service.list(
+        { ...ctx, groupIds: ['g-1'] },
+        {
+          groups: ['g-1'],
+        },
+      );
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
@@ -420,9 +503,12 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
       mock.from.mockReturnValueOnce(qb([], null)); // deck_groups → no linked decks
 
-      const result = await service.list({ ...ctx, groupIds: ['g-1'] }, {
-        groups: ['g-1'],
-      } as any);
+      const result = await service.list(
+        { ...ctx, groupIds: ['g-1'] },
+        {
+          groups: ['g-1'],
+        },
+      );
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({
@@ -444,7 +530,7 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(pageQb);
       mock.from.mockReturnValueOnce(countQb);
 
-      await service.list({ ...ctx, groupIds: ['g-1'] }, { owner: 'mine', groups: ['g-1'] } as any);
+      await service.list({ ...ctx, groupIds: ['g-1'] }, { owner: 'mine', groups: ['g-1'] });
 
       expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
       expect(pageQb.in).toHaveBeenCalledWith('id', ['d-1']);
@@ -507,7 +593,10 @@ describe('FlashcardDeckService', () => {
         ['flashcard.update', foreignCard],
       ]);
       // Only the deck lookup and the card guard ran — no update statements.
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual([
+        'flashcard_decks',
+        'flashcards',
+      ]);
     });
 
     it('returns NOT_FOUND when deck does not exist', async () => {
@@ -566,7 +655,7 @@ describe('FlashcardDeckService', () => {
         ['g-1'],
         'org-1',
       );
-      const insertCall = mock.from.mock.results[2].value.insert;
+      const insertCall = builderAt(2).insert;
       expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
     });
 
@@ -705,11 +794,11 @@ describe('FlashcardDeckService', () => {
       expect(result.success).toBe(true);
       // No group list was sent, so there is nothing to authorize — the links are just dropped.
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
-      const linksBuilder = mock.from.mock.results[4].value;
+      const linksBuilder = builderAt(4);
       expect(linksBuilder.delete).toHaveBeenCalled();
       expect(linksBuilder.eq).toHaveBeenCalledWith('deck_id', 'd-1');
       expect(linksBuilder.insert).not.toHaveBeenCalled();
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual([
         'flashcard_decks',
         'flashcard_decks',
         'flashcards',
@@ -719,7 +808,7 @@ describe('FlashcardDeckService', () => {
         'flashcard_decks',
       ]);
       // The deck's cards follow the deck to personal.
-      expect(mock.from.mock.results[3].value.update).toHaveBeenCalledWith({
+      expect(builderAt(3).update).toHaveBeenCalledWith({
         visibility: 'personal',
       });
     });
@@ -749,7 +838,7 @@ describe('FlashcardDeckService', () => {
       expect(result.success).toBe(true);
       // Parity with create(): a personal deck never carries group links, so no share guard runs.
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
-      const linksBuilder = mock.from.mock.results[4].value;
+      const linksBuilder = builderAt(4);
       expect(linksBuilder.delete).toHaveBeenCalled();
       expect(linksBuilder.insert).not.toHaveBeenCalled();
     });
@@ -819,7 +908,7 @@ describe('FlashcardDeckService', () => {
       expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
         ['deck.read', sharedDeck],
       ]);
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual([
         'flashcard_decks',
         'suspended_decks',
         'suspended_decks',
@@ -827,12 +916,12 @@ describe('FlashcardDeckService', () => {
         'flashcard_decks',
         'flashcard_decks',
       ]);
-      expect(mock.from.mock.results[1].value.upsert).toHaveBeenCalledWith(
+      expect(builderAt(1).upsert).toHaveBeenCalledWith(
         { user_id: viewerCtx.userId, deck_id: 'd-1' },
         { onConflict: 'user_id,deck_id' },
       );
       // A suspend-only body must not reconcile share links (it only reads them for access).
-      expect(mock.from.mock.results[3].value.delete).not.toHaveBeenCalled();
+      expect(builderAt(3).delete).not.toHaveBeenCalled();
     });
 
     it('unsuspends a readable deck with the deck.read gate, scoped to the caller', async () => {
@@ -850,7 +939,7 @@ describe('FlashcardDeckService', () => {
       expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
         ['deck.read', sharedDeck],
       ]);
-      const deleteBuilder = mock.from.mock.results[1].value;
+      const deleteBuilder = builderAt(1);
       expect(deleteBuilder.delete).toHaveBeenCalled();
       expect(deleteBuilder.eq).toHaveBeenCalledWith('user_id', viewerCtx.userId);
       expect(deleteBuilder.eq).toHaveBeenCalledWith('deck_id', 'd-1');
@@ -913,7 +1002,7 @@ describe('FlashcardDeckService', () => {
         ['deck.read', deckA],
         ['deck.read', deckB],
       ]);
-      expect(mock.from.mock.results[1].value.upsert).toHaveBeenCalledWith(
+      expect(builderAt(1).upsert).toHaveBeenCalledWith(
         [
           { user_id: viewerCtx.userId, deck_id: 'd-1' },
           { user_id: viewerCtx.userId, deck_id: 'd-2' },
@@ -930,7 +1019,7 @@ describe('FlashcardDeckService', () => {
         service.batchToggleSuspend({ deckIds: ['d-1'], suspended: true }, viewerCtx),
       ).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks']);
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual(['flashcard_decks']);
     });
 
     it('returns NOT_FOUND and writes nothing for unknown deck ids', async () => {
@@ -943,7 +1032,7 @@ describe('FlashcardDeckService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
-      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks']);
+      expect(mock.from.mock.calls.map((c: unknown[]) => c[0])).toEqual(['flashcard_decks']);
     });
 
     it('unsuspends with the read guard and deletes rows scoped to the caller', async () => {
@@ -957,7 +1046,7 @@ describe('FlashcardDeckService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ updated: 2 });
-      const deleteBuilder = mock.from.mock.results[1].value;
+      const deleteBuilder = builderAt(1);
       expect(deleteBuilder.delete).toHaveBeenCalled();
       expect(deleteBuilder.eq).toHaveBeenCalledWith('user_id', viewerCtx.userId);
       expect(deleteBuilder.in).toHaveBeenCalledWith('deck_id', ['d-1', 'd-2']);

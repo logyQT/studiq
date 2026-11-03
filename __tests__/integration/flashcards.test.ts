@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -22,6 +23,52 @@ import { POST as batchAction } from '@/app/(backend)/api/v1/flashcards/batch/[ac
 import { GET, POST } from '@/app/(backend)/api/v1/flashcards/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+interface FlashcardItem {
+  id: string;
+  front: string;
+}
+
+/** Any flashcards response: failure paths only read `success`. */
+interface StatusBody {
+  success: boolean;
+}
+
+/** `GET /api/v1/flashcards` list body. */
+interface ListBody {
+  success: boolean;
+  data: { items: FlashcardItem[] };
+}
+
+/** A single flashcard (`POST`, `GET /:id`, `PUT`). */
+interface CardBody {
+  success: boolean;
+  data: FlashcardItem;
+}
+
+/** `POST /api/v1/flashcards/batch/create`. */
+interface CreateBatchBody {
+  success: boolean;
+  data: FlashcardItem[];
+}
+
+/** `POST /api/v1/flashcards/batch/delete`. */
+interface DeleteBatchBody {
+  success: boolean;
+  data: { deleted: number };
+}
+
+function batchDeleteRequest(ids: string[]) {
+  return createNextRequestWithParams(
+    'http://localhost/api/v1/flashcards/batch/delete',
+    { action: 'delete' },
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    },
+  );
+}
 
 describe(`Flashcards Integration`, () => {
   let teacher!: BeforeResult;
@@ -71,7 +118,7 @@ describe(`Flashcards Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<CardBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -93,7 +140,7 @@ describe(`Flashcards Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -109,7 +156,7 @@ describe(`Flashcards Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -125,7 +172,7 @@ describe(`Flashcards Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -141,7 +188,7 @@ describe(`Flashcards Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -154,10 +201,10 @@ describe(`Flashcards Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<ListBody>(response);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(body.data?.items)).toBe(true);
+      expect(Array.isArray(body.data.items)).toBe(true);
     });
 
     it('returns 401 when not authenticated', async () => {
@@ -165,7 +212,7 @@ describe(`Flashcards Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -189,11 +236,11 @@ describe(`Flashcards Integration`, () => {
 
       const req = createNextRequest(`http://localhost/api/v1/flashcards?topicIds=${topicId}`);
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<ListBody>(response);
 
       expect(response.status).toBe(200);
-      expect(body.data?.items?.length).toBe(1);
-      expect(body.data?.items?.[0]?.front).toBe(`fc-${suiteId}-Filtered Card`);
+      expect(body.data.items?.length).toBe(1);
+      expect(body.data.items?.[0]?.front).toBe(`fc-${suiteId}-Filtered Card`);
     });
 
     it('returns only own flashcards for student', async () => {
@@ -201,10 +248,10 @@ describe(`Flashcards Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<ListBody>(response);
 
       expect(response.status).toBe(200);
-      expect(body.data?.items).toEqual([]);
+      expect(body.data.items).toEqual([]);
     });
 
     it('returns flashcards list for student', async () => {
@@ -212,10 +259,10 @@ describe(`Flashcards Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<ListBody>(response);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(body.data?.items)).toBe(true);
+      expect(Array.isArray(body.data.items)).toBe(true);
     });
   });
 
@@ -239,7 +286,7 @@ describe(`Flashcards Integration`, () => {
         },
       );
       const response = await batchAction(request, { params });
-      const body = await response.json();
+      const body = await json<CreateBatchBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -269,8 +316,8 @@ describe(`Flashcards Integration`, () => {
 
       const listRequest = createNextRequest(`http://localhost/api/v1/flashcards?deckIds=${deckId}`);
       const listResponse = await GET(listRequest);
-      const listBody = await listResponse.json();
-      const fronts = (listBody.data?.items as Array<{ front: string }>).map((fc) => fc.front);
+      const listBody = await json<ListBody>(listResponse);
+      const fronts = listBody.data.items.map((fc) => fc.front);
 
       expect(listResponse.status).toBe(200);
       expect(fronts).toContain(front);
@@ -289,55 +336,43 @@ describe(`Flashcards Integration`, () => {
         },
       );
       const response = await batchAction(request, { params });
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
     });
   });
 
+  async function createCards(count: number) {
+    mockUser(teacher.user);
+    const { request, params } = createNextRequestWithParams(
+      'http://localhost/api/v1/flashcards/batch/create',
+      { action: 'create' },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deckId,
+          cards: Array.from({ length: count }, (_, i) => ({
+            front: `fc-${suiteId}-delete-${i}`,
+            back: `A${i}`,
+          })),
+        }),
+      },
+    );
+    const response = await batchAction(request, { params });
+    const body = await json<CreateBatchBody>(response);
+    return body.data.map((fc) => fc.id);
+  }
+
   describe('POST /api/v1/flashcards/batch/delete', () => {
-    async function createCards(count: number) {
-      mockUser(teacher.user);
-      const { request, params } = createNextRequestWithParams(
-        'http://localhost/api/v1/flashcards/batch/create',
-        { action: 'create' },
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deckId,
-            cards: Array.from({ length: count }, (_, i) => ({
-              front: `fc-${suiteId}-delete-${i}`,
-              back: `A${i}`,
-            })),
-          }),
-        },
-      );
-      const response = await batchAction(request, { params });
-      const body = await response.json();
-      return (body.data as Array<{ id: string }>).map((fc) => fc.id);
-    }
-
-    function batchDeleteRequest(ids: string[]) {
-      return createNextRequestWithParams(
-        'http://localhost/api/v1/flashcards/batch/delete',
-        { action: 'delete' },
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids }),
-        },
-      );
-    }
-
     it('deletes own cards and returns 200', async () => {
       const ids = await createCards(2);
       mockUser(teacher.user);
 
       const { request, params } = batchDeleteRequest(ids);
       const response = await batchAction(request, { params });
-      const body = await response.json();
+      const body = await json<DeleteBatchBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -358,7 +393,7 @@ describe(`Flashcards Integration`, () => {
 
       const { request, params } = batchDeleteRequest(ids);
       const response = await batchAction(request, { params });
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -384,7 +419,7 @@ describe(`Flashcards Integration`, () => {
         { id: flashcardId },
       );
       const response = await getById(request, { params });
-      const body = await response.json();
+      const body = await json<CardBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.id).toBe(flashcardId);
@@ -399,7 +434,7 @@ describe(`Flashcards Integration`, () => {
         { id: 'some-id' },
       );
       const response = await getById(request, { params });
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -421,7 +456,7 @@ describe(`Flashcards Integration`, () => {
         },
       );
       const response = await update(request, { params });
-      const body = await response.json();
+      const body = await json<CardBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.front).toBe('Updated');
@@ -441,7 +476,7 @@ describe(`Flashcards Integration`, () => {
         },
       );
       const response = await update(request, { params });
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -459,7 +494,7 @@ describe(`Flashcards Integration`, () => {
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -475,7 +510,7 @@ describe(`Flashcards Integration`, () => {
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });
-      const body = await response.json();
+      const body = await json<StatusBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);

@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -130,7 +131,7 @@ async function api<T>(
   data?: unknown,
 ): Promise<T> {
   const response = await request.fetch(url, { method, data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   if (!response.ok() || !body.success) {
     throw new Error(`${method} ${url} → ${response.status()} ${JSON.stringify(body)}`);
   }
@@ -221,7 +222,7 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
-    expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
     // ── Prerequisite: the bank „Fizyka”, in a state this execution owns ──────
     const bankId = await ensureBank(page);
@@ -342,7 +343,8 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
         `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${student.id}`,
       );
       const answer = answers.quiz_answers.find(
-        (row) => row.question_id === created!.id && row.text_answer === STUDENT_ANSWER,
+        (answerRow) =>
+          answerRow.question_id === created!.id && answerRow.text_answer === STUDENT_ANSWER,
       );
       expect(answer, 'the free text is stored as the student answer').toBeDefined();
       expect(answer!.selected_option_id, 'no option is selected for an open answer').toBeNull();
@@ -377,7 +379,9 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
         'GET',
         `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/results/${student.id}`,
       );
-      const gradedAnswer = graded.quiz_answers.find((row) => row.question_id === created!.id);
+      const gradedAnswer = graded.quiz_answers.find(
+        (answerRow) => answerRow.question_id === created!.id,
+      );
       expect(gradedAnswer!.teacher_points, 'the teacher’s points are stored').toBe(1);
       expect(graded.graded_at, 'the attempt is marked graded').not.toBeNull();
       expect(gradedAnswer!.text_answer, 'the student text is kept after grading').toBe(

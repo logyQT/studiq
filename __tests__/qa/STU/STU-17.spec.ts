@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -109,7 +110,7 @@ interface StateBreakdown {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -148,7 +149,7 @@ async function ensureDeck(page: Page): Promise<DeckListItem> {
     response.status(),
     `POST ${DECKS_URL} → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<DeckListItem>;
+  const body = await json<ApiEnvelope<DeckListItem>>(response);
   expect(body.success, `POST ${DECKS_URL} success flag`).toBe(true);
   return body.data;
 }
@@ -249,9 +250,9 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
     // by the statistics breakdown.
     const queueBefore = await newCardQueue(page);
     expect(
-      queueBefore.map((card) => card.front).sort(),
+      queueBefore.map((card) => card.front).toSorted(),
       'the deck feeds the study queue before suspension',
-    ).toEqual([...CARD_FRONTS].sort());
+    ).toEqual([...CARD_FRONTS].toSorted());
     const statsBefore = await statistics(page);
     expect(statsBefore.totalCards, 'the cards are in the statistics before suspension').toBe(
       CARD_FRONTS.length,
@@ -388,9 +389,9 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
       })
       .toBe(CARD_FRONTS.length);
     expect(
-      (await newCardQueue(page)).map((card) => card.front).sort(),
+      (await newCardQueue(page)).map((card) => card.front).toSorted(),
       'the whole deck is offered for study again',
-    ).toEqual([...CARD_FRONTS].sort());
+    ).toEqual([...CARD_FRONTS].toSorted());
     expect((await statistics(page)).totalCards, 'the cards are counted again').toBe(
       CARD_FRONTS.length,
     );

@@ -1,9 +1,12 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { QuestionReportController } from '@studiq/server/controllers/question-report.controller';
+import { QuestionReportService } from '@studiq/server/services/question-report.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new QuestionReportService(() => Promise.reject(new Error('unused'))), {
     createReport: vi.fn(),
     list: vi.fn(),
     setStatus: vi.fn(),
@@ -11,7 +14,7 @@ function createMockService() {
     addMessage: vi.fn(),
     markRead: vi.fn(),
     unreadCount: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -20,7 +23,7 @@ let controller: QuestionReportController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -33,7 +36,7 @@ describe('QuestionReportController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new QuestionReportController(mockService as any);
+    controller = new QuestionReportController(mockService);
   });
 
   describe('createReport', () => {
@@ -198,7 +201,7 @@ describe('QuestionReportController', () => {
       const response = await controller.unreadCount(mockCtx);
 
       expect(response.success).toBe(true);
-      expect((response as any).data.count).toBe(3);
+      expect(response).toHaveProperty('data.count', 3);
     });
 
     it('returns error on failure', async () => {

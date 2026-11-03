@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { asJson } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -100,9 +101,7 @@ async function call<T>(
           : await page.request.delete(url);
 
   const text = await response.text();
-  const body = text
-    ? (JSON.parse(text) as ApiEnvelope<T>)
-    : ({ success: true, data: undefined as T } as ApiEnvelope<T>);
+  const body = asJson<ApiEnvelope<T>>(text ? JSON.parse(text) : { success: true });
   expect(
     response.ok() && body.success,
     `${method} ${url} → ${response.status()} ${text.slice(0, 500)}`,

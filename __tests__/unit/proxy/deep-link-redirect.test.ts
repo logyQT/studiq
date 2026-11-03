@@ -99,7 +99,8 @@ describe('proxy — ?next= deep link (#458)', () => {
     expect(hop1.status).toBe(307);
     expect(hop1.location).toBe('http://localhost/app/study/quiz');
 
-    const hop2 = await call(new URL(hop1.location as string).pathname);
+    if (!hop1.location) throw new Error('expected a redirect location');
+    const hop2 = await call(new URL(hop1.location).pathname);
     expect(hop2.status).toBe(307);
     expect(hop2.location).toBe('http://localhost/edu');
   });
@@ -135,7 +136,8 @@ describe('proxy — /checkout requires auth (#225)', () => {
     const { status, location } = await call(checkout);
 
     expect(status).toBe(307);
-    const login = new URL(location as string);
+    if (!location) throw new Error('expected a redirect location');
+    const login = new URL(location);
     expect(login.pathname).toBe('/login');
     // The org id is what the page resolves the target organization from, so it
     // must survive the login round-trip.

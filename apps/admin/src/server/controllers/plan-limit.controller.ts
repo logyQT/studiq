@@ -12,12 +12,10 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 
 export class PlanLimitController {
-  constructor(private planLimitService: PlanLimitService) {}
+  constructor(private service: PlanLimitService) {}
 
   async getAll(planKey?: string): Promise<ControllerResponse> {
-    const data = planKey
-      ? await this.planLimitService.getByPlanKey(planKey)
-      : await this.planLimitService.getAll();
+    const data = planKey ? await this.service.getByPlanKey(planKey) : await this.service.getAll();
 
     if (isFailure(data)) {
       return controllerResponse.error(data.error);
@@ -37,7 +35,7 @@ export class PlanLimitController {
       };
     }
 
-    const data = await this.planLimitService.create(parsed.data);
+    const data = await this.service.create(parsed.data);
 
     if (isFailure(data)) {
       return controllerResponse.error(data.error);
@@ -61,7 +59,7 @@ export class PlanLimitController {
       };
     }
 
-    const data = await this.planLimitService.update(parsedId.data.id, parsed.data);
+    const data = await this.service.update(parsedId.data.id, parsed.data);
 
     if (isFailure(data)) {
       return controllerResponse.error(data.error);
@@ -76,7 +74,7 @@ export class PlanLimitController {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const result = await this.planLimitService.delete(parsed.data.id);
+    const result = await this.service.delete(parsed.data.id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

@@ -177,7 +177,7 @@ export function PricingContent({ accountType }: { accountType: string }) {
     { q: t('faq_q4'), a: t('faq_a4') },
   ];
 
-  const allFeatures = plans ? [...new Set(plans.flatMap((p) => p.features))].sort() : [];
+  const allFeatures = plans ? [...new Set(plans.flatMap((p) => p.features))].toSorted() : [];
 
   const visibleLimitKeys = getVisibleLimitKeys(plans, accountType);
 

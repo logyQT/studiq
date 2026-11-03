@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { asJson } from '#test/helpers/json';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -138,7 +139,7 @@ test('accepts the 8-character minimum when it has an uppercase letter and a digi
   // Passing validation is observable as the submitted request and the absence of
   // a password error; the request is intercepted, so no account is created.
   await expect.poll(() => bodies.length, { message: 'form submits a valid password' }).toBe(1);
-  expect(JSON.parse(bodies[0]).password).toBe(MIN_LENGTH_VALID);
+  expect(asJson<{ password: string }>(JSON.parse(bodies[0])).password).toBe(MIN_LENGTH_VALID);
   await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.successHeader);
   await expect(passwordMessage(page)).toHaveCount(0);
 });
@@ -160,7 +161,7 @@ test('accepts the 128-character maximum', async ({ page }) => {
   await page.getByRole('button', { name: COPY.submit }).click();
 
   await expect.poll(() => bodies.length, { message: 'form submits 128 characters' }).toBe(1);
-  expect(JSON.parse(bodies[0]).password).toBe(MAX_LENGTH_VALID);
+  expect(asJson<{ password: string }>(JSON.parse(bodies[0])).password).toBe(MAX_LENGTH_VALID);
   await expect(page.locator('[data-slot="card-title"]')).toHaveText(COPY.successHeader);
   await expect(passwordMessage(page)).toHaveCount(0);
 });

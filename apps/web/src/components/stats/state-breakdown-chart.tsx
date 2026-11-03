@@ -17,6 +17,11 @@ const COLORS = {
   leeched: 'oklch(0.577 0.245 27.325)',
 };
 
+/** Recharts legend label renderer — hoisted so the reference stays stable across renders. */
+function renderLegendValue(value: string) {
+  return <span className="text-foreground">{value}</span>;
+}
+
 export function StateBreakdownChart({ states }: StateBreakdownChartProps) {
   const t = useTranslations('AppStatsPage');
 
@@ -46,7 +51,7 @@ export function StateBreakdownChart({ states }: StateBreakdownChartProps) {
         <Tooltip content={<ChartTooltipContent />} />
         {/* Recharts sets the label span's colour inline to the slice colour (entry.fill).
             The inner span restores a readable token; the icon keeps the slice colour. */}
-        <Legend formatter={(value) => <span className="text-foreground">{value}</span>} />
+        <Legend formatter={renderLegendValue} />
         <Pie
           data={data}
           cx="50%"

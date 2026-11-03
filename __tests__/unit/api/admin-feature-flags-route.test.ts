@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getByIdMock = vi.fn();
-const updateMock = vi.fn();
-const deleteMock = vi.fn();
+const getByIdMock = vi.fn<(...args: unknown[]) => unknown>();
+const updateMock = vi.fn<(...args: unknown[]) => unknown>();
+const deleteMock = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock('@admin/server/controllers/feature-flag.controller', () => ({
   featureFlagController: {

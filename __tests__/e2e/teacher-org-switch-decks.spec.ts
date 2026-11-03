@@ -34,9 +34,9 @@ test.describe('Teacher organization switch', () => {
     const switcherText = await switcher.innerText();
     const activeOrg = Object.keys(ORG_DECK).find((name) => switcherText.includes(name));
     expect(activeOrg).toBeDefined();
-    const otherOrg = Object.keys(ORG_DECK).find((name) => name !== activeOrg) as string;
+    const otherOrg = Object.keys(ORG_DECK).find((name) => name !== activeOrg)!;
 
-    const activeDeck = ORG_DECK[activeOrg as string];
+    const activeDeck = ORG_DECK[activeOrg!];
     const otherDeck = ORG_DECK[otherOrg];
 
     // Full load: warms the deck query cache for the org we landed on.
@@ -74,8 +74,8 @@ test.describe('Teacher organization switch', () => {
     // previous entry is still cached (staleTime: Infinity), so this transition
     // is a pure cache re-read — only the content must match the active org.
     await switcher.click();
-    await page.getByRole('menuitem', { name: new RegExp(activeOrg as string) }).click();
-    await expect(switcher).toContainText(activeOrg as string);
+    await page.getByRole('menuitem', { name: new RegExp(activeOrg!) }).click();
+    await expect(switcher).toContainText(activeOrg!);
     await page.waitForURL(/\/edu$/);
 
     await page.getByRole('link', { name: t('DashboardLayout.flashcard_decks') }).click();

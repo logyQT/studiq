@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -56,9 +57,7 @@ function currentPath(page: Page): string {
  */
 async function openAnonymous(page: Page, path: string): Promise<void> {
   await page.context().addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: HOST, path: '/' }]);
-  const body = (await (await page.request.get('/api/v1/auth/me')).json()) as {
-    data?: { user?: unknown };
-  };
+  const body = await json<{ data?: { user?: unknown } }>(await page.request.get('/api/v1/auth/me'));
   expect(body.data?.user ?? null, `${CASE} prerequisite: no session`).toBeNull();
   await page.goto(path);
 }
@@ -97,16 +96,16 @@ test.describe('AUT-09 — login next parameter', () => {
     await expect(page.getByRole('button', { name: COPY.submit, exact: true })).toBeVisible();
 
     // Step 2: log in through the form and land exactly on the requested page.
-    await signInThroughForm(page, student!.email, student!.password);
+    await signInThroughForm(page, student.email, student.password);
     await expect(page).toHaveURL(/\/app\/flashcards$/, { timeout: 15_000 });
     expect(currentPath(page), 'post-login destination').toBe(DEEP_LINK);
     await expectFlashcardsPage(page);
 
     // The session is the tenant's student, not a leftover from another case.
-    const me = (await (await page.request.get('/api/v1/auth/me')).json()) as {
-      data?: { user?: { email?: string } | null };
-    };
-    expect(me.data?.user?.email).toBe(student!.email);
+    const me = await json<{ data?: { user?: { email?: string } | null } }>(
+      await page.request.get('/api/v1/auth/me'),
+    );
+    expect(me.data?.user?.email).toBe(student.email);
   });
 
   test('a signed-in user opening /login?next=… still lands on the deep link', async ({ page }) => {
@@ -132,7 +131,7 @@ test.describe('AUT-09 — login next parameter', () => {
     await openAnonymous(page, `/login?next=${encodeURIComponent(external)}`);
     expect(currentPath(page)).toBe(`/login?next=${encodeURIComponent(external)}`);
 
-    await signInThroughForm(page, student!.email, student!.password);
+    await signInThroughForm(page, student.email, student.password);
 
     // Only the same-origin dashboard is allowed — never the attacker's origin.
     await expect(page).toHaveURL(/\/app$/, { timeout: 15_000 });

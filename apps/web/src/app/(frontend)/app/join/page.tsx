@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { ApiError, apiPost } from '@/lib/api';
 import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 export default function AppJoinPage() {
@@ -33,22 +34,7 @@ export default function AppJoinPage() {
     setIsPending(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/organization/invites/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token.trim() }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).
-        if (err.error === 'USAGE_LIMIT_EXCEEDED' || err.error === 'ERROR_USAGE_LIMIT_EXCEEDED') {
-          toast.error(t('org_full'));
-          setError(t('org_full'));
-          return;
-        }
-        throw new Error(err.error || 'Invalid token');
-      }
+      await apiPost('/api/v1/organization/invites/accept', { token: token.trim() });
 
       // The accept route already set the `active_org_id` cookie, so only client
       // state is stale. Refresh it in place instead of a hard reload, which
@@ -56,14 +42,21 @@ export default function AppJoinPage() {
       toast.success(t('success'));
       setToken('');
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      queryClient.invalidateQueries({ queryKey: featureKeys.all });
-      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
       router.refresh();
-    } catch {
-      toast.error(t('invalid_token'));
-      // The toast is transient; keep the failure visible next to the field.
-      setError(t('invalid_token'));
+    } catch (err) {
+      // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).
+      const errorCode = err instanceof ApiError ? err.code : null;
+      if (errorCode === 'USAGE_LIMIT_EXCEEDED' || errorCode === 'ERROR_USAGE_LIMIT_EXCEEDED') {
+        toast.error(t('org_full'));
+        setError(t('org_full'));
+      } else {
+        toast.error(t('invalid_token'));
+        // The toast is transient; keep the failure visible next to the field.
+        setError(t('invalid_token'));
+      }
     } finally {
       setIsPending(false);
     }

@@ -2,20 +2,32 @@ import {
   MockStripeService,
   type MockWebhookEvent,
 } from '@studiq/server/services/mock-stripe.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { mockSupabaseClient, type MockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null) {
+type QueryResult = { data: unknown; error: unknown };
+
+/** A chainable Supabase query builder stub that is also awaitable. */
+type QueryBuilder = {
+  select: Mock;
+  update: Mock;
+  upsert: Mock;
+  eq: Mock;
+  maybeSingle: Mock;
+} & Pick<Promise<QueryResult>, 'then' | 'catch' | 'finally'>;
+
+function qb(data: unknown, error: unknown = null): QueryBuilder {
   const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.upsert = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: QueryBuilder = {
+    select: vi.fn(() => b),
+    update: vi.fn(() => b),
+    upsert: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    maybeSingle: vi.fn().mockResolvedValue({ data: data ?? null, error }),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -64,15 +76,16 @@ const event = {
 describe('MockStripeService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: MockStripeService;
-  let admin: { rpc: ReturnType<typeof vi.fn>; from: ReturnType<typeof vi.fn> };
+  let admin: MockSupabaseClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    admin = { rpc: vi.fn().mockResolvedValue({ data: null, error: null }), from: vi.fn() };
+    admin = mockSupabaseClient();
+    admin.rpc.mockResolvedValue({ data: null, error: null });
     service = new MockStripeService(
-      async () => mock as any,
-      () => admin as any,
+      () => Promise.resolve(mock),
+      () => admin,
     );
   });
 
@@ -241,12 +254,12 @@ describe('MockStripeService', () => {
 
       // A forged id can still arrive from JS or an untyped future caller; the
       // service must not have a code path that reads it.
-      const forged = {
+      const forged: MockWebhookEvent & { user_id: string } = {
         ...event,
         plan_id: 'campus',
         org_id: 'org-1',
         user_id: 'victim-9',
-      } as unknown as MockWebhookEvent;
+      };
       const result = await service.handleWebhook(forged, 'manager', 'u-1');
 
       expect(result.success).toBe(true);

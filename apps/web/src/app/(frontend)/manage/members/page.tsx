@@ -38,6 +38,8 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { apiDelete, apiGet, apiPut } from '@/lib/api';
+import { isArrayOf } from '@/lib/unknown-value';
 import { formatDate } from '@/lib/datetime';
 import { SrLabel } from '@/components/shared/sr-label';
 import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
@@ -71,6 +73,12 @@ interface OrgRole {
   displayName?: string;
 }
 
+/** One entry of `PUT /organization/groups/:id/members`. */
+interface GroupMember {
+  userId: string;
+  role: string;
+}
+
 export default function MembersPage() {
   const t = useTranslations('ManageMembersPage');
   const locale = useLocale();
@@ -93,27 +101,16 @@ export default function MembersPage() {
     setLoading(true);
     setLoadError(false);
     try {
-      const [membersRes, groupsRes, rolesRes] = await Promise.all([
-        fetch('/api/v1/organization/members'),
-        fetch('/api/v1/organization/groups'),
-        fetch('/api/v1/organization/roles'),
+      const [memberRows, groupRows, roleRows] = await Promise.all([
+        apiGet<unknown>('/api/v1/organization/members'),
+        apiGet<unknown>('/api/v1/organization/groups'),
+        apiGet<unknown>('/api/v1/organization/roles'),
       ]);
-      const membersJson = await membersRes.json();
-      const groupsJson = await groupsRes.json();
-      const rolesJson = await rolesRes.json();
-      if (membersJson.success && Array.isArray(membersJson.data)) {
-        setMembers(membersJson.data);
-      } else {
-        // A failed list is an error with a retry, never "no members".
-        setLoadError(true);
-      }
-      if (groupsJson.success && Array.isArray(groupsJson.data)) {
-        setOrgGroups(groupsJson.data);
-      }
-      if (rolesJson.success && Array.isArray(rolesJson.data)) {
-        setRoles(rolesJson.data);
-      }
+      setMembers(isArrayOf<Member>(memberRows) ? memberRows : []);
+      setOrgGroups(isArrayOf<OrgGroup>(groupRows) ? groupRows : []);
+      setRoles(isArrayOf<OrgRole>(roleRows) ? roleRows : []);
     } catch {
+      // A failed list is an error with a retry, never "no members".
       setLoadError(true);
     } finally {
       setLoading(false);
@@ -121,7 +118,7 @@ export default function MembersPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const filtered = members.filter((m) => {
@@ -177,11 +174,10 @@ export default function MembersPage() {
 
     try {
       for (const change of changedGroups) {
-        const res = await fetch(`/api/v1/organization/groups/${change.groupId}/members`);
-        const json = await res.json();
-        if (!json.success) throw new Error();
-
-        let currentMembers: { userId: string; role: string }[] = json.data ?? [];
+        let currentMembers: GroupMember[] =
+          (await apiGet<GroupMember[] | undefined>(
+            `/api/v1/organization/groups/${change.groupId}/members`,
+          )) ?? [];
 
         if (change.add) {
           const existing = currentMembers.find((cm) => cm.userId === managingMember.id);
@@ -194,18 +190,14 @@ export default function MembersPage() {
           currentMembers = currentMembers.filter((cm) => cm.userId !== managingMember.id);
         }
 
-        const updateRes = await fetch(`/api/v1/organization/groups/${change.groupId}/members`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ members: currentMembers }),
+        await apiPut(`/api/v1/organization/groups/${change.groupId}/members`, {
+          members: currentMembers,
         });
-        const updateJson = await updateRes.json();
-        if (!updateJson.success) throw new Error();
       }
 
       toast.success(t('group_membership_updated'));
       setManagingMember(null);
-      load();
+      void load();
     } catch {
       toast.error(t('group_membership_failed'));
     }
@@ -214,10 +206,7 @@ export default function MembersPage() {
   async function handleRemove() {
     if (!removeId) return;
     try {
-      const res = await fetch(`/api/v1/organization/members?userId=${removeId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error();
+      await apiDelete(`/api/v1/organization/members?userId=${removeId}`);
       setMembers(members.map((m) => (m.id === removeId ? { ...m, orgRoleName: 'member' } : m)));
       toast.success(t('member_removed'));
     } catch {
@@ -230,12 +219,10 @@ export default function MembersPage() {
     if (!changingRole) return;
     const { id, orgRoleId } = changingRole;
     try {
-      const res = await fetch('/api/v1/organization/members', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: id, newOrgRoleId: orgRoleId }),
+      await apiPut('/api/v1/organization/members', {
+        targetUserId: id,
+        newOrgRoleId: orgRoleId,
       });
-      if (!res.ok) throw new Error();
       const newRoleName = roles.find((r) => r.id === orgRoleId)?.name;
       setMembers((prev) =>
         prev.map((m) =>

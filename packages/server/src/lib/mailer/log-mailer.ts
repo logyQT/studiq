@@ -8,6 +8,7 @@ import type { InvitationMail, Mailer } from '@studiq/server/lib/mailer/mailer';
  * refused in production by `createMailerFromEnv`.
  */
 export class LogMailer implements Mailer {
+  // eslint-disable-next-line @typescript-eslint/require-await -- Mailer.sendInvitation is a Promise contract; this adapter has no I/O to await.
   async sendInvitation(mail: InvitationMail): Promise<void> {
     const { subject, text } = renderInvitationMail(mail);
     log('mail.log_driver', { to: mail.to, subject, text });

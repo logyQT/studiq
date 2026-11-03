@@ -40,11 +40,12 @@ export function KeyboardShortcutsPanel({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement)?.tagName;
+      const active = document.activeElement;
+      const tag = active?.tagName;
       if (
         tag === 'INPUT' ||
         tag === 'TEXTAREA' ||
-        (document.activeElement as HTMLElement)?.isContentEditable
+        (active instanceof HTMLElement && active.isContentEditable)
       )
         return;
 
@@ -72,6 +73,7 @@ export function KeyboardShortcutsPanel({
         <HoverCardTrigger asChild>
           {trigger === 'icon' ? (
             <button
+              type="button"
               className="h-12 w-12 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
               aria-label={t('shortcuts_panel_label')}
             >
@@ -79,6 +81,7 @@ export function KeyboardShortcutsPanel({
             </button>
           ) : (
             <button
+              type="button"
               className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
               aria-label={t('shortcuts_panel_label')}
             >
@@ -93,6 +96,7 @@ export function KeyboardShortcutsPanel({
           sideOffset={8}
           // The global/session guards recognize an open layer by role + data-state; this panel is
           // one, so its keys must not fall through to the card behind it.
+          // eslint-disable-next-line jsx-a11y/prefer-tag-over-role -- Radix renders a portal div; role=dialog is the layer contract above.
           role="dialog"
           aria-label={t('shortcuts_panel_label')}
           className="w-auto p-4 bg-background border shadow-md rounded-lg"

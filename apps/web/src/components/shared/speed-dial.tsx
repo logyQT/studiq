@@ -37,10 +37,10 @@ export function SpeedDial({ items }: SpeedDialProps) {
   }, [handleKeyDown]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('[data-speed-dial]')) {
+      const target = e.target;
+      if (!(target instanceof Element) || !target.closest('[data-speed-dial]')) {
         setOpen(false);
       }
     };

@@ -5,14 +5,18 @@ import type {
   HealthStatusResponse,
   ServiceStatus,
 } from '@studiq/server/models/health.model';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type {
+  SupabaseClient,
+  SupabaseClient as UntypedSupabaseClient,
+} from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 type HealthStatus = HealthStatusResponse;
 
 export class HealthService {
   private TIMEOUT_MS = 3000;
 
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async checkHealth(): Promise<HealthStatus> {
     const start = Date.now();
@@ -37,9 +41,13 @@ export class HealthService {
 
   private async checkSupabase(): Promise<boolean> {
     try {
-      const supabase = await this.createClient();
+      const supabase = await this.clientFactory();
 
-      const { error } = await supabase.from('_health_check_').select('*').limit(1);
+      // Deliberately probes a table that does not exist: PGRST205 proves the
+      // database answered. The generated `Database` type only knows real tables,
+      // so this one query goes through the untyped client.
+      const untyped: UntypedSupabaseClient = supabase;
+      const { error } = await untyped.from('_health_check_').select('*').limit(1);
 
       if (error) {
         return error.code === 'PGRST205';

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -79,7 +80,7 @@ test.describe('ONB-02 — teacher creates a class without invitations', () => {
 
     const created = await createResponse;
     expect(created.status(), 'POST /api/v1/organization').toBe(201);
-    const createdBody = (await created.json()) as { data?: { id?: string; name?: string } };
+    const createdBody = await json<{ data?: { id?: string; name?: string } }>(created);
     expect(createdBody.data?.name).toBe(ORG_NAME);
     const orgId = createdBody.data?.id;
     expect(orgId, 'created organization id').toBeTruthy();
@@ -104,9 +105,9 @@ test.describe('ONB-02 — teacher creates a class without invitations', () => {
     // Server state from the same session: exactly one org, active, admin role.
     const orgsResponse = await page.request.get('/api/v1/me/orgs');
     expect(orgsResponse.ok(), 'GET /api/v1/me/orgs').toBe(true);
-    const orgsBody = (await orgsResponse.json()) as {
+    const orgsBody = await json<{
       data?: Array<{ id: string; name: string; orgRoleName: string; isActive: boolean }>;
-    };
+    }>(orgsResponse);
     expect(orgsBody.data).toHaveLength(1);
     expect(orgsBody.data?.[0]).toMatchObject({
       id: orgId,

@@ -5,13 +5,23 @@ import { describe, expect, it, vi } from 'vitest';
 // through `open` state) left focus on <body>. The dialog now hands focus back to the element
 // that opened it, but only when nothing else has taken focus in the meantime.
 
-function fakeDocument(active: unknown) {
-  const body = {};
-  return { body, activeElement: active ?? body } as unknown as Document;
+/**
+ * The unit environment has no DOM, so the stubs below stand in for the members
+ * `restoreFocusIfLost` reads. This helper is the single place crossing that boundary.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- T names the DOM type the stub stands in for; it is the caller's only input
+function domStub<T>(node: object): T {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- no DOM in the unit env; the stub answers every member the code reads
+  return node as T;
 }
 
-function fakeElement(isConnected = true) {
-  return { isConnected, focus: vi.fn() } as unknown as HTMLElement;
+function fakeDocument(active: unknown): Document {
+  const body = {};
+  return domStub<Document>({ body, activeElement: active ?? body });
+}
+
+function fakeElement(isConnected = true): HTMLElement {
+  return domStub<HTMLElement>({ isConnected, focus: vi.fn() });
 }
 
 describe('restoreFocusIfLost', () => {

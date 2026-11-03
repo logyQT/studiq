@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -22,6 +23,37 @@ import { GET, POST } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { POST as createOrganization } from '@/app/(backend)/api/v1/organization/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** Fields of the deck payloads these tests read. */
+interface DeckPayload {
+  id: string;
+  name: string;
+  groupIds?: string[];
+}
+
+interface DeckEnvelope {
+  success: boolean;
+  data: DeckPayload;
+}
+
+interface DeckListPayload {
+  data: {
+    items: DeckPayload[];
+    total: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
+}
+
+/** Bodies where only the success flag is asserted. */
+interface ApiEnvelope {
+  success: boolean;
+}
+
+/** 422 body with the per-field validation error codes. */
+interface ValidationErrorEnvelope extends ApiEnvelope {
+  issues: { properties: { name: { errors: string[] } } };
+}
 
 describe(`Flashcard Decks Integration`, () => {
   let teacher!: BeforeResult;
@@ -55,19 +87,20 @@ describe(`Flashcard Decks Integration`, () => {
         body: JSON.stringify({ name: `deck-140-cross-org-${suiteId}` }),
       }),
     );
-    const orgBody = await orgRes.json();
+    const orgBody = await json<DeckEnvelope>(orgRes);
     if (orgRes.status !== 201) {
       throw new Error(`[deck-140] cross-org fixture failed: ${JSON.stringify(orgBody)}`);
     }
-    crossOrgId = orgBody.data.id as string;
+    crossOrgId = orgBody.data.id;
 
     const { data: crossGroup } = await createServiceClient()
       .from('groups')
       .select('id')
       .eq('organization_id', crossOrgId)
       .eq('is_default', true)
-      .single();
-    crossOrgGroupId = crossGroup!.id as string;
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
+    crossOrgGroupId = crossGroup!.id;
 
     // The API makes the creator an org admin (`deck.update` = organization scope),
     // which would 403 on a deck from the first org before the group guard runs.
@@ -79,7 +112,8 @@ describe(`Flashcard Decks Integration`, () => {
       .select('id')
       .eq('organization_id', crossOrgId)
       .eq('name', 'teacher')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     await service
       .from('org_members')
       .update({ org_role_id: teacherRole!.id })
@@ -110,7 +144,7 @@ describe(`Flashcard Decks Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<DeckEnvelope>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -127,7 +161,7 @@ describe(`Flashcard Decks Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -144,7 +178,7 @@ describe(`Flashcard Decks Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ValidationErrorEnvelope>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -164,7 +198,7 @@ describe(`Flashcard Decks Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<DeckEnvelope>(response);
 
       expect(response.status).toBe(201);
       expect(body.data.name).toBe('deck-Padded');
@@ -180,29 +214,29 @@ describe(`Flashcard Decks Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
     });
   });
 
-  describe('POST /api/v1/flashcards/decks — group sharing authorization (#140)', () => {
-    const postDeck = async (body: Record<string, unknown>) => {
-      mockUser(teacher.user);
-      const req = createNextRequest(
-        'http://localhost/api/v1/flashcards/decks',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-        { active_org_id: teacher.orgId! },
-      );
-      const response = await POST(req);
-      return { response, body: await response.json() };
-    };
+  const postDeck = async (body: Record<string, unknown>) => {
+    mockUser(teacher.user);
+    const req = createNextRequest(
+      'http://localhost/api/v1/flashcards/decks',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      { active_org_id: teacher.orgId! },
+    );
+    const response = await POST(req);
+    return { response, body: await json<DeckEnvelope>(response) };
+  };
 
+  describe('POST /api/v1/flashcards/decks — group sharing authorization (#140)', () => {
     it('returns 403 and creates no row for a group the caller does not teach', async () => {
       const name = `deck-140-forbidden-${suiteId}`;
       const untaughtGroup = teacher.groups[1];
@@ -281,9 +315,9 @@ describe(`Flashcard Decks Integration`, () => {
         { active_org_id: teacher.orgId! },
       );
       const createRes = await POST(createReq);
-      const created = await createRes.json();
+      const created = await json<DeckEnvelope>(createRes);
       expect(createRes.status).toBe(201);
-      const deckId = created.data.id as string;
+      const deckId = created.data.id;
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deckId}`,
@@ -296,7 +330,7 @@ describe(`Flashcard Decks Integration`, () => {
         { active_org_id: teacher.orgId! },
       );
       const updateRes = await update(request, { params });
-      const updateBody = await updateRes.json();
+      const updateBody = await json<ApiEnvelope>(updateRes);
 
       expect(updateRes.status).toBe(403);
       expect(updateBody.success).toBe(false);
@@ -308,52 +342,52 @@ describe(`Flashcard Decks Integration`, () => {
         { active_org_id: teacher.orgId! },
       );
       const getRes = await getById(getReq, { params: getParams });
-      const getBody = await getRes.json();
+      const getBody = await json<DeckEnvelope>(getRes);
 
       expect(getRes.status).toBe(200);
       expect(getBody.data.groupIds).toEqual([taughtGroup]);
     });
   });
 
+  const createGroupDeck = async (name: string, groupId: string): Promise<string> => {
+    mockUser(teacher.user);
+    const req = createNextRequest(
+      'http://localhost/api/v1/flashcards/decks',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, visibility: 'group', groupIds: [groupId] }),
+      },
+      { active_org_id: teacher.orgId! },
+    );
+    const res = await POST(req);
+    const body = await json<DeckEnvelope>(res);
+    expect(res.status).toBe(201);
+    return body.data.id;
+  };
+
+  const putGroupIds = async (deckId: string, groupIds: string[], activeOrgId: string) => {
+    mockUser(teacher.user);
+    const { request, params } = createNextRequestWithParams(
+      `http://localhost/api/v1/flashcards/decks/${deckId}`,
+      { id: deckId },
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupIds }),
+      },
+      { active_org_id: activeOrgId },
+    );
+    return update(request, { params });
+  };
+
   describe('PUT /api/v1/flashcards/decks/:id — cross-org group guard (#140)', () => {
-    const createGroupDeck = async (name: string, groupId: string): Promise<string> => {
-      mockUser(teacher.user);
-      const req = createNextRequest(
-        'http://localhost/api/v1/flashcards/decks',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, visibility: 'group', groupIds: [groupId] }),
-        },
-        { active_org_id: teacher.orgId! },
-      );
-      const res = await POST(req);
-      const body = await res.json();
-      expect(res.status).toBe(201);
-      return body.data.id as string;
-    };
-
-    const putGroupIds = async (deckId: string, groupIds: string[], activeOrgId: string) => {
-      mockUser(teacher.user);
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/decks/${deckId}`,
-        { id: deckId },
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ groupIds }),
-        },
-        { active_org_id: activeOrgId },
-      );
-      return update(request, { params });
-    };
-
     it('returns 403 and keeps the org-A links when switching to a group the caller teaches in another org', async () => {
       const taughtGroup = teacher.groups[0];
       const deckId = await createGroupDeck(`deck-140-cross-put-${suiteId}`, taughtGroup);
 
       const updateRes = await putGroupIds(deckId, [crossOrgGroupId], crossOrgId);
-      const updateBody = await updateRes.json();
+      const updateBody = await json<ApiEnvelope>(updateRes);
 
       expect(updateRes.status).toBe(403);
       expect(updateBody.success).toBe(false);
@@ -363,7 +397,8 @@ describe(`Flashcard Decks Integration`, () => {
       const { data: links } = await service
         .from('deck_groups')
         .select('group_id')
-        .eq('deck_id', deckId);
+        .eq('deck_id', deckId)
+        .overrideTypes<{ group_id: string }[], { merge: false }>();
       expect(links?.map((l) => l.group_id)).toEqual([taughtGroup]);
 
       const { request: getReq, params: getParams } = createNextRequestWithParams(
@@ -373,7 +408,7 @@ describe(`Flashcard Decks Integration`, () => {
         { active_org_id: teacher.orgId! },
       );
       const getRes = await getById(getReq, { params: getParams });
-      const getBody = await getRes.json();
+      const getBody = await json<DeckEnvelope>(getRes);
       expect(getRes.status).toBe(200);
       expect(getBody.data.groupIds).toEqual([taughtGroup]);
     });
@@ -385,7 +420,7 @@ describe(`Flashcard Decks Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/decks');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<DeckListPayload>(response);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data?.items)).toBe(true);
@@ -396,17 +431,17 @@ describe(`Flashcard Decks Integration`, () => {
     it('keeps total stable across pages (cursor does not shrink it)', async () => {
       mockUser(teacher.user);
 
-      const first = await (
-        await GET(createNextRequest('http://localhost/api/v1/flashcards/decks?limit=2'))
-      ).json();
+      const first = await json<DeckListPayload>(
+        await GET(createNextRequest('http://localhost/api/v1/flashcards/decks?limit=2')),
+      );
       expect(first.data.hasMore).toBe(true);
-      const second = await (
+      const second = await json<DeckListPayload>(
         await GET(
           createNextRequest(
             `http://localhost/api/v1/flashcards/decks?limit=2&cursor=${first.data.nextCursor}`,
           ),
-        )
-      ).json();
+        ),
+      );
 
       expect(second.data.total).toBe(first.data.total);
     });
@@ -416,7 +451,7 @@ describe(`Flashcard Decks Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/decks');
       const response = await GET(req);
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -433,7 +468,7 @@ describe(`Flashcard Decks Integration`, () => {
         { id: deckId },
       );
       const response = await getById(request, { params });
-      const body = await response.json();
+      const body = await json<DeckEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.id).toBe(deckId);
@@ -449,7 +484,7 @@ describe(`Flashcard Decks Integration`, () => {
         { id: deckId },
       );
       const response = await getById(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -471,7 +506,7 @@ describe(`Flashcard Decks Integration`, () => {
         },
       );
       const response = await update(request, { params });
-      const body = await response.json();
+      const body = await json<DeckEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.name).toBe('Updated');
@@ -491,7 +526,7 @@ describe(`Flashcard Decks Integration`, () => {
         },
       );
       const response = await update(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -509,7 +544,7 @@ describe(`Flashcard Decks Integration`, () => {
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -525,7 +560,7 @@ describe(`Flashcard Decks Integration`, () => {
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });
-      const body = await response.json();
+      const body = await json<ApiEnvelope>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);

@@ -37,7 +37,7 @@ export async function register() {
     instrumentations: [getNodeAutoInstrumentations()],
   });
 
-  await sdk.start();
+  sdk.start();
 
   // Flip the logger off its console fallback now that OTLP shipping is live.
   const { markLogsPipelineActive } = await import('@studiq/server/lib/log');

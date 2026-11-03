@@ -1,7 +1,24 @@
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
+import type { LearningState } from '@studiq/server/models/flashcard-spaced-repetition.model';
 import { type NextRequest, NextResponse } from 'next/server';
+import { isRecord } from '@/lib/unknown-value';
+
+/** The confidence rating the spaced-repetition service accepts (5 is a hazy "easy"). */
+function clampRating(value: number): 1 | 2 | 3 | 4 {
+  const clamped = Math.min(Math.max(value, 1), 4);
+  if (clamped >= 4) return 4;
+  if (clamped >= 3) return 3;
+  if (clamped >= 2) return 2;
+  return 1;
+}
+
+/** The stored `learning_state` is a plain string in the row type; map it to the model union. */
+function toLearningState(value: string | null | undefined): LearningState {
+  if (value === 'learning' || value === 'review' || value === 'relearning') return value;
+  return 'new';
+}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -18,7 +35,13 @@ export async function POST(req: NextRequest) {
   }
 
   return withAuth(req, async () => {
-    const { email, limit = 20 } = (await req.json()) as { email: string; limit?: number };
+    const raw: unknown = await req.json();
+    const body = isRecord(raw) ? raw : undefined;
+    if (!body || typeof body.email !== 'string') {
+      return NextResponse.json({ error: 'email is required' }, { status: 400 });
+    }
+    const email = body.email;
+    const limit = typeof body.limit === 'number' ? body.limit : 20;
 
     const supabase = createServiceClient();
 
@@ -139,10 +162,10 @@ export async function POST(req: NextRequest) {
 
       const existingState = stateByCard.get(fc.id);
 
-      const rating = Math.min(Math.max(confidenceLevel, 1), 4) as 1 | 2 | 3 | 4;
+      const rating = clampRating(confidenceLevel);
 
       const result = flashcardSpacedRepetitionService.calculateNextReview({
-        learningState: existingState?.learning_state ?? 'new',
+        learningState: toLearningState(existingState?.learning_state),
         currentStep: existingState?.learning_step ?? 0,
         learningSteps: [1, 10],
         rating,

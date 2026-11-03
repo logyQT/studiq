@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
 
@@ -66,7 +67,7 @@ async function openResetPage(page: Page): Promise<void> {
 async function currentUser(page: Page): Promise<unknown> {
   const response = await page.request.get('/api/v1/auth/me');
   expect(response.ok(), 'GET /api/v1/auth/me').toBe(true);
-  const body = (await response.json()) as { data?: { user?: unknown } };
+  const body = await json<{ data?: { user?: unknown } }>(response);
   return body.data?.user ?? null;
 }
 
@@ -148,7 +149,7 @@ test.describe('AUT-12 forgotten password — send the reset link', () => {
       data: { email: student.email, password: student.password },
     });
     expect(login.status(), 'login with the unchanged password').toBe(200);
-    const session = (await login.json()) as { data?: { user?: { id?: string } } };
+    const session = await json<{ data?: { user?: { id?: string } } }>(login);
     expect(session.data?.user?.id, 'the login belongs to the tenant student').toBe(student.id);
   });
 

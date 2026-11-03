@@ -19,6 +19,7 @@ import { Brain, ExternalLink, FileText, GraduationCap, Layers, TrendingUp } from
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { apiGet } from '@/lib/api';
 
 interface QuizSummary {
   id: string;
@@ -77,19 +78,20 @@ export default function StatsResultsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/stats/teacher/quizzes')
-        .then((r) => r.json())
-        .catch(() => ({ data: [] })),
-      fetch('/api/v1/flashcards/stats/teacher').then((r) => r.json()),
-      fetch('/api/v1/stats/teacher')
-        .then((r) => r.json())
-        .then((r) => (r.data ?? r)?.subject?.problematicQuestions ?? []),
+      apiGet<QuizSummary[]>('/api/v1/stats/teacher/quizzes').catch((): QuizSummary[] => []),
+      apiGet<FlashcardStats>('/api/v1/flashcards/stats/teacher').catch(() => null),
+      apiGet<{ subject?: { problematicQuestions?: ProblematicQuestion[] } }>(
+        '/api/v1/stats/teacher',
+      )
+        .then((r) => r.subject?.problematicQuestions ?? [])
+        .catch((): ProblematicQuestion[] => []),
     ])
       .then(([q, f, p]) => {
-        setQuizzes(q.data ?? []);
-        setFlashStats(f.data ?? f);
+        setQuizzes(q);
+        setFlashStats(f);
         setProblematic(p);
         setLoading(false);
+        return undefined;
       })
       .catch(() => setLoading(false));
   }, []);
@@ -107,7 +109,7 @@ export default function StatsResultsPage() {
       flashStats.summary.difficultyBreakdown.new
     : 0;
 
-  const sortedProblematic = [...problematic].sort((a, b) => a.correctRate - b.correctRate);
+  const sortedProblematic = problematic.toSorted((a, b) => a.correctRate - b.correctRate);
 
   return (
     <div className="space-y-8">
@@ -151,10 +153,7 @@ export default function StatsResultsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {difficultyConfig.map(({ key, labelKey, color }) => {
-              const count =
-                flashStats.summary.difficultyBreakdown[
-                  key as keyof typeof flashStats.summary.difficultyBreakdown
-                ];
+              const count = flashStats.summary.difficultyBreakdown[key];
               return (
                 <div key={key} className="flex items-center gap-3">
                   <span className="w-16 text-sm font-medium text-right">{t(labelKey)}</span>

@@ -126,6 +126,8 @@ export function CreateFromQuestionDialog({
                 value={newDeckName}
                 onChange={(e) => setNewDeckName(e.target.value)}
                 placeholder={t('new_deck_placeholder')}
+                // The field appears because the user chose "new deck"; typing is the next step.
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- see above.
                 autoFocus
               />
             )}

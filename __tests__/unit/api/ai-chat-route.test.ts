@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+import { isRecord, readNumber, readString } from '@studiq/server/lib/record';
+import { json } from '#test/helpers/json';
 
-const getUsageMock = vi.fn();
-const trackTokenUsageMock = vi.fn().mockResolvedValue(undefined);
+const getUsageMock = vi.fn<(...args: unknown[]) => unknown>();
+const trackTokenUsageMock = vi
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue(undefined);
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   AI_TOKENS_LIMIT_KEY: 'max_ai_tokens_per_day',
   limitsResolver: {
@@ -10,7 +15,9 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   },
 }));
 
-const rateLimitCheckMock = vi.fn().mockReturnValue({ allowed: true });
+const rateLimitCheckMock = vi
+  .fn<(...args: unknown[]) => unknown>()
+  .mockReturnValue({ allowed: true });
 vi.mock('@studiq/server/lib/rate-limiter', () => ({
   createRateLimiter: () => ({ check: (...args: unknown[]) => rateLimitCheckMock(...args) }),
 }));
@@ -44,8 +51,9 @@ vi.mock('@studiq/server/lib/with-auth', () => ({
     try {
       return await handler(mockCtx);
     } catch (error) {
-      const status = (error as { statusCode?: number })?.statusCode ?? 500;
-      const code = (error as { code?: string })?.code ?? 'INTERNAL_SERVER';
+      const record = isRecord(error) ? error : {};
+      const status = readNumber(record, 'statusCode') ?? 500;
+      const code = readString(record, 'code') ?? 'INTERNAL_SERVER';
       return new Response(JSON.stringify({ success: false, error: code }), { status });
     }
   },
@@ -55,11 +63,11 @@ import { conversationStorage } from '@studiq/server/lib/conversation-context';
 import { POST } from '@/app/(backend)/api/v1/ai/chat/route';
 
 function jsonRequest(body: unknown) {
-  return new Request('http://localhost/api/v1/ai/chat', {
+  return new NextRequest('http://localhost/api/v1/ai/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  }) as unknown as Parameters<typeof POST>[0];
+  });
 }
 
 describe('POST /api/v1/ai/chat — token budget enforcement', () => {
@@ -79,7 +87,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
     );
 
     expect(res.status).toBe(429);
-    const body = await res.json();
+    const body = await json<{ error: string; retryAfterMs?: number }>(res);
     expect(body.error).toBe('RATE_LIMITED');
     expect(body.retryAfterMs).toBe(5000);
     expect(getUsageMock).not.toHaveBeenCalled();
@@ -108,7 +116,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
     );
 
     expect(res.status).toBe(429);
-    const body = await res.json();
+    const body = await json<{ error: string }>(res);
     expect(body.error).toBe('USAGE_LIMIT_EXCEEDED');
     expect(streamTextMock).not.toHaveBeenCalled();
   });

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -114,7 +115,7 @@ async function postApi<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
   const text = await response.text();
   expect(response.ok(), `POST ${url} → ${response.status()} ${text}`).toBe(true);
-  const body = JSON.parse(text) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -123,7 +124,7 @@ async function getDeck(page: Page, deckId: string): Promise<DeckResponse> {
   const response = await page.request.get(`${DECKS_URL}/${deckId}`);
   const text = await response.text();
   expect(response.ok(), `GET ${DECKS_URL}/${deckId} → ${response.status()} ${text}`).toBe(true);
-  const body = JSON.parse(text) as ApiEnvelope<DeckResponse>;
+  const body = await json<ApiEnvelope<DeckResponse>>(response);
   expect(body.success, `GET ${DECKS_URL}/${deckId} success flag`).toBe(true);
   return body.data;
 }
@@ -134,7 +135,7 @@ async function getDeckCards(page: Page, deckId: string): Promise<FlashcardRespon
   const response = await page.request.get(url);
   const text = await response.text();
   expect(response.ok(), `GET ${url} → ${response.status()} ${text}`).toBe(true);
-  const body = JSON.parse(text) as ApiEnvelope<{ items: FlashcardResponse[] }>;
+  const body = await json<ApiEnvelope<{ items: FlashcardResponse[] }>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data.items;
 }
@@ -248,7 +249,7 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
       });
       cards.push(created.id);
     }
-    const picked = PICKED.map((index) => cards[index - 1]!);
+    const picked = PICKED.map((index) => cards[index - 1]);
     const untouched = cards.filter((id) => !picked.includes(id));
 
     await page.goto(`/app/flashcards/${deckA.id}`);
@@ -259,9 +260,9 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     }
 
     // --- Step 1: „Wybierz Fiszki”, 3 cards, „Zaznacz Wszystkie” ------------
-    await enterSelectionMode(page, picked[0]!);
+    await enterSelectionMode(page, picked[0]);
     await expect(
-      card(page, picked[0]!).getByRole('checkbox'),
+      card(page, picked[0]).getByRole('checkbox'),
       'the card whose menu entered selection mode starts selected',
     ).toBeChecked();
     await expect(page.getByText(COPY.selected(1), { exact: true })).toBeVisible();
@@ -338,7 +339,7 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     }
 
     // --- Step 2b: Kopiuj to deck B ------------------------------------------
-    await enterSelectionMode(page, picked[0]!);
+    await enterSelectionMode(page, picked[0]);
     await pickCards(page, picked.slice(1));
     await bulkBar(page).getByRole('button', { name: COPY.copy, exact: true }).click();
 
@@ -357,7 +358,7 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     expect((await getDeck(page, deckB.id)).flashcard_count, 'deck B received the 3 copies').toBe(3);
 
     // --- Step 2c: Przenieś to deck B ---------------------------------------
-    await enterSelectionMode(page, picked[0]!);
+    await enterSelectionMode(page, picked[0]);
     await pickCards(page, picked.slice(1));
     await bulkBar(page).getByRole('button', { name: COPY.move, exact: true }).click();
 
@@ -383,7 +384,7 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     expect((await getDeck(page, deckA.id)).flashcard_count, 'deck A holds the 2 left').toBe(2);
 
     // --- Step 2d: Usuń — cancel keeps the cards -----------------------------
-    await enterSelectionMode(page, untouched[0]!);
+    await enterSelectionMode(page, untouched[0]);
     await pickCards(page, untouched.slice(1));
     await expect(page.getByText(COPY.selected(2), { exact: true })).toBeVisible();
     await bulkBar(page).getByRole('button', { name: COPY.delete, exact: true }).click();
@@ -424,9 +425,9 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     const deckBCards = await getDeckCards(page, deckB.id);
     expect(deckBCards, 'deck B holds exactly the copies and the moved originals').toHaveLength(6);
     expect(
-      deckBCards.map((row) => row.front).sort(),
+      deckBCards.map((row) => row.front).toSorted(),
       'each picked card is present as a copy and as the moved original',
-    ).toEqual([...PICKED.map(cardFront), ...PICKED.map(cardFront)].sort());
+    ).toEqual([...PICKED.map(cardFront), ...PICKED.map(cardFront)].toSorted());
     for (const row of deckBCards) {
       await expect(card(page, row.id), 'every deck B card is rendered').toBeVisible();
     }

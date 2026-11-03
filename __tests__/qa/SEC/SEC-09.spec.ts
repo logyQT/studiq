@@ -1,4 +1,5 @@
 import type { Browser, Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import {
   expect,
   loadTenant,
@@ -242,9 +243,9 @@ async function call(
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.status(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(200);
-  const body = (await response.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
-  return body.data as T;
+  return asJson<T>(body.data);
 }
 
 /**
@@ -276,7 +277,7 @@ const ACCOUNT_TYPE: Partial<Record<QaRole, string>> = {
 
 async function expectSignedInAs(page: Page, tenant: QaTenant, role: QaRole): Promise<void> {
   const user = account(tenant, role);
-  const me = (await (await page.request.get(ME_URL)).json()) as Envelope<Me>;
+  const me = await json<Envelope<Me>>(await page.request.get(ME_URL));
   expect(me.data?.user?.id, `the signed-in user is the tenant's ${role}`).toBe(user.id);
   expect(me.data?.user?.app_metadata?.account_type, `the ${role} account type`).toBe(
     ACCOUNT_TYPE[role],
@@ -298,7 +299,7 @@ async function ensureClassroomOrg(page: Page, name: string, tenantOrgId: string)
   } else {
     const created = await call(page, 'POST', ORGANIZATIONS_URL, { name });
     expect(created.status, `POST ${ORGANIZATIONS_URL} → ${created.body}`).toBe(201);
-    const body = JSON.parse(created.body) as Envelope<{ id: string }>;
+    const body = asJson<Envelope<{ id: string }>>(JSON.parse(created.body));
     expect(body.success, 'the classroom organization was created').toBe(true);
     orgId = body.data!.id;
   }
@@ -341,9 +342,11 @@ async function ensureClassroomStudent(
     invitations: [{ email: student.email, targetOrgRoleId: memberRole!.id }],
   });
   expect(invite.status, `classroom teacher invites the student → ${invite.body}`).toBe(200);
-  const inviteBody = JSON.parse(invite.body) as Envelope<{
-    results: Array<{ data: { inviteCode: string } }>;
-  }>;
+  const inviteBody = asJson<
+    Envelope<{
+      results: Array<{ data: { inviteCode: string } }>;
+    }>
+  >(JSON.parse(invite.body));
   const code = inviteBody.data?.results[0]?.data.inviteCode;
   expect(code, 'the invitation carries its 32-hex code').toMatch(/^[0-9a-f]{32}$/);
 
@@ -372,7 +375,7 @@ async function ensureBank(page: Page, name: string): Promise<string> {
 
   const created = await call(page, 'POST', BANKS_URL, { name, description: 'SEC-09 kartkówka' });
   expect(created.status, `POST ${BANKS_URL} → ${created.body}`).toBe(201);
-  return (JSON.parse(created.body) as Envelope<Bank>).data!.id;
+  return asJson<Envelope<Bank>>(JSON.parse(created.body)).data!.id;
 }
 
 /** One multiple-choice question in the case's bank, reused on a retry. */
@@ -391,7 +394,7 @@ async function ensureQuestion(page: Page, bankId: string, content: string): Prom
     ],
   });
   expect(created.status, `POST ${QUESTIONS_URL} → ${created.body}`).toBe(201);
-  return (JSON.parse(created.body) as Envelope<Question>).data!;
+  return asJson<Envelope<Question>>(JSON.parse(created.body)).data!;
 }
 
 /**
@@ -411,7 +414,7 @@ async function ensurePublishedQuiz(
   if (!assignment) {
     const created = await call(page, 'POST', ASSIGNMENTS_URL, { title: params.title });
     expect(created.status, `POST ${ASSIGNMENTS_URL} → ${created.body}`).toBe(201);
-    assignment = (JSON.parse(created.body) as Envelope<AssignmentSummary>).data!;
+    assignment = asJson<Envelope<AssignmentSummary>>(JSON.parse(created.body)).data!;
   }
 
   const detail = await getData<AssignmentDetail>(page, `${ASSIGNMENTS_URL}/${assignment.id}`);
@@ -505,7 +508,7 @@ async function prepareTenant(browser: Browser, baseURL: string): Promise<CaseFix
     expect(started.status, `POST ${STUDENT_ASSIGNMENTS_URL}/<id>/start → ${started.body}`).toBe(
       200,
     );
-    const attempt = (JSON.parse(started.body) as Envelope<Attempt>).data!;
+    const attempt = asJson<Envelope<Attempt>>(JSON.parse(started.body)).data!;
     expect(attempt.user_id, 'the attempt belongs to the classroom student').toBe(
       classroomStudent.id,
     );

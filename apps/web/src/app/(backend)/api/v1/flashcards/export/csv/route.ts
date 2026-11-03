@@ -17,7 +17,10 @@ export async function GET(req: NextRequest) {
       return toNextResponse(response);
     }
 
-    const csv = response.data as string;
+    const csv = response.data;
+    if (typeof csv !== 'string') {
+      return toNextResponse({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    }
     const deckId = searchParams.get('deckId');
 
     return new NextResponse(csv, {

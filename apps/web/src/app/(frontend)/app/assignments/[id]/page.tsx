@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
+import { apiPost } from '@/lib/api';
 import {
   type AttemptSummary,
   attemptsLeft,
@@ -46,13 +47,8 @@ export default function StudentAssignmentDetailPage() {
   // The assignment title is the breadcrumb label; the raw UUID must never render.
   useBreadcrumbLabel(id, assignment?.title);
 
-  const startMutation = useApiMutation<unknown, void>({
-    mutationFn: async () => {
-      const res = await fetch(`/api/v1/assignments/${id}/start`, { method: 'POST' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
-    },
+  const startMutation = useApiMutation<{ id: string }, void>({
+    mutationFn: () => apiPost<{ id: string }>(`/api/v1/assignments/${id}/start`, undefined),
     // Starting/resuming changes `attempt`; without this the detail page keeps a
     // stale `attempt: null` and offers „Rozpocznij” after the student quits.
     invalidateKeys: [studentAssignmentKeys.all],
@@ -63,7 +59,7 @@ export default function StudentAssignmentDetailPage() {
     const deadline = assignment?.deadline
       ? `&deadline=${encodeURIComponent(assignment.deadline)}`
       : '';
-    router.push(`/app/assignments/${id}/take?attemptId=${(data as { id: string }).id}${deadline}`);
+    router.push(`/app/assignments/${id}/take?attemptId=${data.id}${deadline}`);
   };
 
   const formatDate = (dateStr: string | null) => {
@@ -72,7 +68,7 @@ export default function StudentAssignmentDetailPage() {
   };
 
   useEffect(() => {
-    if (!assignment?.start_time) return;
+    if (!assignment?.start_time) return undefined;
     const update = () => setCountdown(timeUntil(assignment.start_time!));
     update();
     const interval = setInterval(update, 10000);

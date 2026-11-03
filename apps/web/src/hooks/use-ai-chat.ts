@@ -2,13 +2,14 @@
 
 import { useChat } from '@ai-sdk/react';
 import { useQueryClient } from '@tanstack/react-query';
-import { DefaultChatTransport } from 'ai';
+import { DefaultChatTransport, type UIMessage } from 'ai';
 import { useCallback, useMemo } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { parseAiChatErrorCode } from '@/lib/ai-chat-error';
-import { type ChatStatus, resetChat } from '@/lib/ai-chat-reset';
+import { resetChat } from '@/lib/ai-chat-reset';
 import { aiKeys } from '@/lib/query-keys';
+import { countOf, isRecord, recordsOf, stringsOf } from '@/lib/unknown-value';
 
 interface ChatPart {
   type: string;
@@ -26,15 +27,50 @@ interface UiMessageRaw {
   parts?: ChatPart[];
 }
 
-interface UseChatResultRaw {
-  messages: UiMessageRaw[];
-  sendMessage: (data: { text: string }) => Promise<void>;
-  setMessages: (updater: (prev: UiMessageRaw[]) => UiMessageRaw[]) => void;
-  stop: () => void;
-  status: ChatStatus;
-  error: Error | undefined;
-  clearError: () => void;
-  regenerate: () => Promise<void>;
+/**
+ * One `UIMessage` part in the loose shape the transcript mapper works with: the
+ * mapper switches on `part.type` and reads the fields that belong to that kind.
+ * Dynamic tool parts are folded into the `tool-<name>` type so both spellings
+ * take the same branch.
+ */
+function toChatPart(part: UIMessage['parts'][number]): ChatPart {
+  const rawType: unknown = Reflect.get(part, 'type');
+  const type = typeof rawType === 'string' ? rawType : '';
+
+  let resolvedType = type;
+  if (type === 'dynamic-tool') {
+    const toolName: unknown = Reflect.get(part, 'toolName');
+    resolvedType = `tool-${typeof toolName === 'string' ? toolName : ''}`;
+  }
+
+  // The per-part fields are read as `unknown`: the SDK types this as a union of
+  // per-tool shapes, so only the value itself says which fields are present.
+  const chatPart: ChatPart = { type: resolvedType };
+
+  const text: unknown = Reflect.get(part, 'text');
+  if (typeof text === 'string') chatPart.text = text;
+
+  const toolCallId: unknown = Reflect.get(part, 'toolCallId');
+  if (typeof toolCallId === 'string') chatPart.toolCallId = toolCallId;
+
+  const state: unknown = Reflect.get(part, 'state');
+  if (typeof state === 'string') chatPart.state = state;
+
+  const input: unknown = Reflect.get(part, 'input');
+  if (isRecord(input)) chatPart.input = input;
+
+  const output: unknown = Reflect.get(part, 'output');
+  if (isRecord(output)) chatPart.output = output;
+
+  return chatPart;
+}
+
+function toUiMessageRaw(message: UIMessage): UiMessageRaw {
+  return {
+    id: message.id,
+    role: message.role,
+    parts: message.parts.map(toChatPart),
+  };
 }
 
 export interface QuestionData {
@@ -42,6 +78,27 @@ export interface QuestionData {
   question: string;
   options?: { label: string; value: string }[];
   answered?: boolean;
+}
+
+/** The `ask_user` tool output as a question card, when it carries one. */
+function toQuestionData(value: unknown): QuestionData | undefined {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.question !== 'string') {
+    return undefined;
+  }
+
+  const question: QuestionData = { id: value.id, question: value.question };
+
+  const options: { label: string; value: string }[] = [];
+  for (const option of recordsOf(value.options)) {
+    if (typeof option.label === 'string' && typeof option.value === 'string') {
+      options.push({ label: option.label, value: option.value });
+    }
+  }
+  if (options.length > 0) question.options = options;
+
+  if (typeof value.answered === 'boolean') question.answered = value.answered;
+
+  return question;
 }
 
 export interface PlanStep {
@@ -115,20 +172,20 @@ function toolLabel(toolName: string): string {
 }
 
 function toolResultLabel(toolName: string, output: unknown): string {
-  const o = output as Record<string, unknown> | undefined;
+  const o = isRecord(output) ? output : undefined;
   switch (toolName) {
     case 'create_plan':
-      return `📋 Created plan with ${(o?.steps as unknown[])?.length ?? 0} steps`;
+      return `📋 Created plan with ${countOf(o?.steps)} steps`;
     case 'fetch_material':
-      return `📝 Generated ${(o?.length as number) ?? 0} characters of material`;
+      return `📝 Generated ${typeof o?.length === 'number' ? o.length : 0} characters of material`;
     case 'webfetch':
-      return `🌐 Fetched ${(o?.length as number) ?? 0} chars`;
+      return `🌐 Fetched ${typeof o?.length === 'number' ? o.length : 0} chars`;
     case 'extract_concepts':
-      return `🔍 Found ${(o?.terms as unknown[])?.length ?? 0} key concepts`;
+      return `🔍 Found ${countOf(o?.terms)} key concepts`;
     case 'evaluate_quality':
       return o?.passed ? '✅ Quality check passed' : '❌ Quality check failed';
     case 'generate_flashcards':
-      return `📇 Generated ${(o?.flashcards as unknown[])?.length ?? 0} flashcards`;
+      return `📇 Generated ${countOf(o?.flashcards)} flashcards`;
     default:
       return `🏁 ${toolName} completed`;
   }
@@ -158,17 +215,16 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
     enabled: enabled && !!user,
   });
 
-  const chatResult = useChat({
+  const chat = useChat({
     transport: new DefaultChatTransport({ api: '/api/v1/ai/chat' }),
     onFinish: () => {
       // The chat route awaits `trackTokenUsage` before the stream closes, so
       // refetching here reads the post-message totals (#379). The SDK calls
       // `onFinish` from a `finally`, so a rejected send refetches too.
-      queryClient.invalidateQueries({ queryKey: aiKeys.usage });
+      void queryClient.invalidateQueries({ queryKey: aiKeys.usage });
     },
-  }) as unknown as UseChatResultRaw;
+  });
   const {
-    messages: uiMessages = [],
     sendMessage: sendChatMessage,
     setMessages,
     stop,
@@ -176,7 +232,11 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
     error: chatError,
     clearError,
     regenerate,
-  } = chatResult;
+  } = chat;
+
+  // The transcript mapper below works on a loose part shape (`tool-<name>`,
+  // optional `text`/`input`/`output`); convert the SDK's typed messages once here.
+  const uiMessages = useMemo(() => chat.messages.map(toUiMessageRaw), [chat.messages]);
 
   const messages: ChatMessage[] = useMemo(() => {
     const mapped: ChatMessage[] = [];
@@ -269,9 +329,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
 
             const outputMap: Record<string, unknown> | undefined = tp.output;
             const inputMap: Record<string, unknown> | undefined = tp.input;
-            const flashcardArray = Array.isArray(outputMap?.flashcards)
-              ? (outputMap.flashcards as Array<Record<string, unknown>>)
-              : [];
+            const flashcardArray = recordsOf(outputMap?.flashcards);
             const isComplete = state === 'output-available';
 
             if (process.env.NODE_ENV !== 'production') {
@@ -286,7 +344,10 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
 
             if (isComplete) {
               pendingCards = flashcardArray;
-              pendingDeckName = String(outputMap?.deckName ?? 'Generated Flashcards');
+              pendingDeckName =
+                typeof outputMap?.deckName === 'string'
+                  ? outputMap.deckName
+                  : 'Generated Flashcards';
             }
           }
 
@@ -311,8 +372,9 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
             const outputMap: Record<string, unknown> | undefined = tp.output;
             if (outputMap?.type === 'question' && outputMap?.question) {
               const existing = mapped[mapped.length - 1];
-              if (existing) {
-                existing.question = outputMap.question as QuestionData;
+              const question = toQuestionData(outputMap.question);
+              if (existing && question) {
+                existing.question = question;
               }
             }
           }
@@ -320,7 +382,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
           if (state === 'output-available' && toolName === 'create_plan') {
             const outputMap: Record<string, unknown> | undefined = tp.output;
             if (outputMap?.steps) {
-              const steps = outputMap.steps as Array<Record<string, unknown>>;
+              const steps = recordsOf(outputMap.steps);
               const planMsg: ChatMessage = {
                 id: `${m.id}-plan-${i}`,
                 role: 'plan',
@@ -329,9 +391,9 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
                 thinkingTraces: [],
                 plan: steps.map((s: Record<string, unknown>, idx: number) => ({
                   index: idx,
-                  action: String(s.action ?? ''),
-                  rationale: String(s.rationale ?? ''),
-                  dependsOn: s.dependsOn as string[] | undefined,
+                  action: typeof s.action === 'string' ? s.action : '',
+                  rationale: typeof s.rationale === 'string' ? s.rationale : '',
+                  dependsOn: stringsOf(s.dependsOn),
                 })),
                 planCompleted: false,
                 completedSteps: [],
@@ -353,7 +415,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
               completedStepSet.add(stepAction.index);
             } else {
               const nextPending = [...Array(totalPlanSteps).keys()].find(
-                (i) => !completedStepSet.has(i),
+                (stepIndex) => !completedStepSet.has(stepIndex),
               );
               if (nextPending !== undefined) {
                 completedStepSet.add(nextPending);
@@ -377,9 +439,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
               const cards =
                 pendingCards && pendingCards.length > 0
                   ? pendingCards
-                  : Array.isArray(outputMap.flashcards)
-                    ? (outputMap.flashcards as Array<Record<string, unknown>>)
-                    : [];
+                  : recordsOf(outputMap.flashcards);
               mapped.push({
                 id: `${m.id}-cards-${i}`,
                 role: 'assistant',
@@ -396,7 +456,10 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
               });
               finalFlashcardsProcessed = true;
             }
-            const text = outputMap?.type === 'chat' ? String(outputMap?.content ?? '') : '';
+            const text =
+              outputMap?.type === 'chat' && typeof outputMap.content === 'string'
+                ? outputMap.content
+                : '';
             if (text) {
               mapped.push({
                 id: `${m.id}-finish-${i}`,
@@ -456,7 +519,12 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
 
   const clearChat = useCallback(() => {
     // Aborts an in-flight answer and drops the error state before greeting (#378).
-    resetChat({ status, stop, resetMessages: () => setMessages(() => []), clearError });
+    resetChat({
+      status,
+      stop: () => void stop(),
+      resetMessages: () => setMessages(() => []),
+      clearError,
+    });
   }, [status, stop, setMessages, clearError]);
 
   const retry = useCallback(() => {
@@ -473,7 +541,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
     sendMessage: handleSend,
     sendLocalResponse,
     clearChat,
-    abort: stop,
+    abort: () => void stop(),
     errorCode: parseAiChatErrorCode(chatError),
     hasError: chatError !== undefined,
     clearError,

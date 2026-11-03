@@ -1,6 +1,7 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createServiceClient } from '#test/integration/helpers';
+import { asJson } from '#test/helpers/json';
 
 // #663: admin_platform_stats / admin_daily_stats read across every tenant, so they are granted to
 // the service role only. A signed-in teacher must not be able to call them.
@@ -8,14 +9,27 @@ import { createServiceClient } from '#test/integration/helpers';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
+/** Shape of `admin_platform_stats()` (supabase/migrations/20261027120000_admin_platform_stats.sql). */
+type PlatformStats = {
+  users: { total: number; deleted: number; newLast7Days: number; newLast30Days: number };
+  organizations: number;
+  groups: number;
+  storage: { bytes: number };
+  active: { last7Days: number; last30Days: number };
+};
+
+/** Shape of `admin_daily_stats(p_days)` — only the fields these tests read. */
+type DailyStats = { days: number; items: Array<{ date: string }> };
+
 describe('admin platform statistics RPCs (#663)', () => {
   const service = createServiceClient();
-  let teacher: SupabaseClient;
+  // Untyped on purpose: the table of RPC names below is dynamic, which the generated
+  // function signatures cannot narrow; the results are typed at the read sites.
+  const teacher = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 
   beforeAll(async () => {
-    teacher = createClient(url, anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
     const { error } = await teacher.auth.signInWithPassword({
       email: 'teacher1@dev.local',
       password: 'pass',
@@ -24,41 +38,45 @@ describe('admin platform statistics RPCs (#663)', () => {
   });
 
   it('answers the platform numbers to the service role', async () => {
-    const { data, error } = await service.rpc('admin_platform_stats');
+    const response = await service.rpc('admin_platform_stats');
+    const stats = asJson<PlatformStats>(response.data);
 
-    expect(error).toBeNull();
-    expect(data.users.total).toBeGreaterThan(0);
-    expect(data.organizations).toBeGreaterThan(0);
-    expect(typeof data.storage.bytes).toBe('number');
-    expect(data.active.last30Days).toBeGreaterThanOrEqual(data.active.last7Days);
+    expect(response.error).toBeNull();
+    expect(stats.users.total).toBeGreaterThan(0);
+    expect(stats.organizations).toBeGreaterThan(0);
+    expect(typeof stats.storage.bytes).toBe('number');
+    expect(stats.active.last30Days).toBeGreaterThanOrEqual(stats.active.last7Days);
   });
 
   it('answers every day of the window, in order, zeros included', async () => {
-    const { data, error } = await service.rpc('admin_daily_stats', { p_days: 14 });
+    const response = await service.rpc('admin_daily_stats', { p_days: 14 });
+    const stats = asJson<DailyStats>(response.data);
 
-    expect(error).toBeNull();
-    expect(data.days).toBe(14);
-    expect(data.items).toHaveLength(14);
-    const dates: string[] = data.items.map((item: { date: string }) => item.date);
-    expect([...dates].sort()).toEqual(dates);
+    expect(response.error).toBeNull();
+    expect(stats.days).toBe(14);
+    expect(stats.items).toHaveLength(14);
+    const dates = stats.items.map((item) => item.date);
+    expect([...dates].toSorted()).toEqual(dates);
     expect(new Set(dates).size).toBe(14);
   });
 
   it('keeps the window between 1 and 365 days', async () => {
-    const wide = await service.rpc('admin_daily_stats', { p_days: 9999 });
-    const narrow = await service.rpc('admin_daily_stats', { p_days: 0 });
+    const wide = asJson<DailyStats>(
+      (await service.rpc('admin_daily_stats', { p_days: 9999 })).data,
+    );
+    const narrow = asJson<DailyStats>((await service.rpc('admin_daily_stats', { p_days: 0 })).data);
 
-    expect(wide.data.items).toHaveLength(365);
-    expect(narrow.data.items).toHaveLength(1);
+    expect(wide.items).toHaveLength(365);
+    expect(narrow.items).toHaveLength(1);
   });
 
   it.each([
     ['admin_platform_stats', {}],
     ['admin_daily_stats', { p_days: 30 }],
-  ])('%s is not callable by a signed-in user', async (fn, args) => {
-    const { data, error } = await teacher.rpc(fn, args);
+  ] as const)('%s is not callable by a signed-in user', async (fn, args) => {
+    const response = await teacher.rpc(fn, args);
 
-    expect(data).toBeNull();
-    expect(error?.code).toBe('42501');
+    expect(response.data).toBeNull();
+    expect(asJson<{ code?: string } | null>(response.error)?.code).toBe('42501');
   });
 });

@@ -16,7 +16,7 @@ export default function GlobalError({ error, reset }: ErrorProps) {
 
   const copyDigest = () => {
     if (error.digest) {
-      navigator.clipboard.writeText(error.digest);
+      void navigator.clipboard.writeText(error.digest);
     }
   };
 
@@ -35,6 +35,7 @@ export default function GlobalError({ error, reset }: ErrorProps) {
             <div className="flex items-center justify-center gap-2">
               <code className="text-sm font-mono font-semibold">{error.digest}</code>
               <button
+                type="button"
                 onClick={copyDigest}
                 className="p-1 rounded hover:bg-accent transition-colors"
                 title="Copy Error ID"

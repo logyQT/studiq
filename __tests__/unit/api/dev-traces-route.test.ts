@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+import { json } from '#test/helpers/json';
 
-const getByFiltersMock = vi.fn();
-const getStatusMock = vi.fn();
+const getByFiltersMock = vi.fn<(...args: unknown[]) => unknown>();
+const getStatusMock = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock('@studiq/server/services/agent-trace.service', () => ({
   agentTraceService: {
@@ -41,7 +43,7 @@ describe('GET /api/v1/dev/traces (#189)', () => {
   it('returns 403 outside development without ever calling withAuth', async () => {
     vi.stubEnv('NODE_ENV', 'production');
 
-    const res = await GET(new Request('http://localhost/api/v1/dev/traces') as never);
+    const res = await GET(new NextRequest('http://localhost/api/v1/dev/traces'));
 
     expect(res.status).toBe(403);
     expect(withAuthCalls).toBe(0);
@@ -51,8 +53,8 @@ describe('GET /api/v1/dev/traces (#189)', () => {
   it('requires a session in development', async () => {
     vi.stubEnv('NODE_ENV', 'development');
 
-    const res = await GET(new Request('http://localhost/api/v1/dev/traces') as never);
-    const body = await res.json();
+    const res = await GET(new NextRequest('http://localhost/api/v1/dev/traces'));
+    const body = await json<{ total: number }>(res);
 
     expect(withAuthCalls).toBe(1);
     expect(res.status).toBe(200);

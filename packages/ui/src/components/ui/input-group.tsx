@@ -6,11 +6,10 @@ import { Button } from './button';
 import { Input } from './input';
 import { Textarea } from './textarea';
 
-function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
+function InputGroup({ className, ...props }: React.ComponentProps<'fieldset'>) {
   return (
-    <div
+    <fieldset
       data-slot="input-group"
-      role="group"
       className={cn(
         'group/input-group border-input dark:bg-input/30 relative flex w-full items-center rounded-md border shadow-xs transition-[color,box-shadow] outline-none',
         'h-9 has-[>textarea]:h-auto',
@@ -60,12 +59,13 @@ function InputGroupAddon({
 }: React.ComponentProps<'div'> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
     <div
-      role="group"
       data-slot="input-group-addon"
       data-align={align}
       className={cn(inputGroupAddonVariants({ align }), className)}
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest('button')) {
+      // Pointer-down (not click) keeps keyboard users out of a container that only forwards
+      // focus to the input: it matches how a native input focuses, and needs no tab stop.
+      onPointerDown={(e) => {
+        if (e.target instanceof Element && e.target.closest('button')) {
           return;
         }
         e.currentTarget.parentElement?.querySelector('input')?.focus();

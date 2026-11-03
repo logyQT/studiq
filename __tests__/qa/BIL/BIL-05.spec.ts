@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -76,13 +77,13 @@ interface PaymentHistoryItem {
 async function personalPlan(page: Page): Promise<PersonalPlan> {
   const res = await page.request.get('/api/v1/me/personal-plan');
   expect(res.status(), 'GET /api/v1/me/personal-plan').toBe(200);
-  return (await res.json()).data as PersonalPlan;
+  return (await json<{ data: PersonalPlan }>(res)).data;
 }
 
 async function paymentHistory(page: Page): Promise<PaymentHistoryItem[]> {
   const res = await page.request.get('/api/v1/me/payments');
   expect(res.status(), 'GET /api/v1/me/payments').toBe(200);
-  return (await res.json()).data as PaymentHistoryItem[];
+  return (await json<{ data: PaymentHistoryItem[] }>(res)).data;
 }
 
 test.describe('BIL-05 — plan must match the account type', () => {
@@ -147,7 +148,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
         type: 'checkout.session.completed',
         session_id: sessionId,
         plan_id: 'campus',
-        user_id: student!.id,
+        user_id: student.id,
       },
     });
     expect(webhook.status(), 'POST /api/v1/stripe/webhook (campus)').toBe(403);
@@ -193,7 +194,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
         type: 'checkout.session.completed',
         session_id: `${CASE}-lite-${crypto.randomUUID()}`,
         plan_id: 'lite',
-        user_id: student!.id,
+        user_id: student.id,
       },
     });
     expect(educatorWebhook.status(), 'POST /api/v1/stripe/webhook (lite)').toBe(403);
@@ -251,7 +252,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
         type: 'checkout.session.completed',
         session_id: `${CASE}-spark-${crypto.randomUUID()}`,
         plan_id: 'spark',
-        user_id: student!.id,
+        user_id: student.id,
       },
     });
     expect(ownWebhook.status(), 'POST /api/v1/stripe/webhook (spark)').toBe(200);

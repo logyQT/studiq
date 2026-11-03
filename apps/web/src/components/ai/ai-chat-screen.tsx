@@ -98,7 +98,10 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
     [deck, canSaveToDeck],
   );
 
-  const firstName = user?.user_metadata?.name?.split(' ')[0] ?? user?.email?.split('@')[0];
+  // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
+  const rawName: unknown = user?.user_metadata?.name;
+  const firstName =
+    (typeof rawName === 'string' ? rawName.split(' ')[0] : undefined) ?? user?.email?.split('@')[0];
 
   // The URL is the single source of truth for the target, so a same-route
   // replace keeps the chat state and restores correctly on back/forward.
@@ -128,7 +131,7 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
 
   const handleAnswer = useCallback(
     (text: string) => {
-      sendMessage(text);
+      void sendMessage(text);
     },
     [sendMessage],
   );

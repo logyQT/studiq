@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -102,7 +103,7 @@ interface PlanInfo {
 async function getPlan(page: Page): Promise<PlanInfo> {
   const response = await page.request.get('/api/v1/me/plan');
   expect(response.status(), 'GET /api/v1/me/plan').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: PlanInfo };
+  const body = await json<{ success: boolean; data: PlanInfo }>(response);
   expect(body.success, 'GET /api/v1/me/plan success flag').toBe(true);
   return body.data;
 }

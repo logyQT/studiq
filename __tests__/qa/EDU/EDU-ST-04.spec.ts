@@ -1,4 +1,5 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -97,7 +98,7 @@ function account(tenant: QaTenant, role: 'teacher' | 'student') {
 }
 
 async function expectApi<T>(response: APIResponse, label: string): Promise<T> {
-  const body = (await response.json().catch(() => null)) as Envelope<T> | null;
+  const body = await json<Envelope<T>>(response).catch(() => null);
   expect(response.status(), `${label} → ${response.status()} ${JSON.stringify(body)}`).toBeLessThan(
     300,
   );

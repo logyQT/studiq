@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { asJson } from '#test/helpers/json';
 import { describe, expect, it } from 'vitest';
 import { FIRST_VISIT_HINTS, hintStorageKey } from '@/lib/first-visit-hint';
 import { resolveListEmptyView } from '@/lib/list-empty-view';
@@ -50,7 +51,7 @@ describe('first-visit tips', () => {
   });
 
   it('every tip id has a screen that shows it', () => {
-    expect(HINT_SCREENS.map(([, id]) => id).sort()).toEqual([...FIRST_VISIT_HINTS].sort());
+    expect(HINT_SCREENS.map(([, id]) => id).toSorted()).toEqual([...FIRST_VISIT_HINTS].toSorted());
   });
 
   it('remembers each tip under its own key', () => {
@@ -64,8 +65,10 @@ describe('first-visit tips', () => {
   });
 
   it.each(['pl', 'en'])('%s: every tip and the dismiss label have a message', (locale) => {
-    const messages = JSON.parse(src(`i18n/messages/${locale}.json`));
-    const states = messages.EmptyStates as Record<string, string>;
+    const messages = asJson<{ EmptyStates: Record<string, string> }>(
+      JSON.parse(src(`i18n/messages/${locale}.json`)),
+    );
+    const states = messages.EmptyStates;
     expect(states.hint_dismiss).toBeTruthy();
     for (const id of FIRST_VISIT_HINTS) {
       expect(states[`hint_${id}`], `${locale}: EmptyStates.hint_${id}`).toBeTruthy();
@@ -113,7 +116,7 @@ describe('lists report a failed load', () => {
   });
 
   it('the shared empty state renders a real heading', () => {
-    expect(src('components/shared/empty-state.tsx')).toContain('role="heading" aria-level={3}');
+    expect(src('components/shared/empty-state.tsx')).toContain('<h3>');
   });
 
   it('the member and invitation search hand a no-results state instead of "no members"', () => {
@@ -166,10 +169,9 @@ describe('resolveListEmptyView', () => {
 
 describe('shared list messages', () => {
   it.each(['pl', 'en'])('%s has the error and no-results copy', (locale) => {
-    const states = JSON.parse(src(`i18n/messages/${locale}.json`)).EmptyStates as Record<
-      string,
-      string
-    >;
+    const states = asJson<{ EmptyStates: Record<string, string> }>(
+      JSON.parse(src(`i18n/messages/${locale}.json`)),
+    ).EmptyStates;
     for (const key of [
       'load_error',
       'load_error_desc',

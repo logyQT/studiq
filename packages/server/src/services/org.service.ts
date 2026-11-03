@@ -4,9 +4,10 @@ import { failure, type ServiceResult, success } from '@studiq/server/lib/service
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class OrgService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async listOrgs(ctx: RequestContext): Promise<
     ServiceResult<
@@ -21,7 +22,7 @@ export class OrgService {
       }[]
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: memberships, error: mError } = await supabase
       .from('org_members')
@@ -49,14 +50,14 @@ export class OrgService {
 
     return success(
       memberships.map((m) => {
-        const roles = Array.isArray(m.org_roles) ? m.org_roles : [m.org_roles];
+        const orgRole = m.org_roles;
         const org = orgMap.get(m.organization_id);
-        const roleName = roles[0]?.name ?? 'member';
+        const roleName = orgRole?.name ?? 'member';
         return {
           id: m.organization_id,
           name: org?.name ?? 'Unknown',
           orgRoleName: roleName,
-          orgRoleDisplayName: roles[0]?.display_name ?? roleName,
+          orgRoleDisplayName: orgRole?.display_name ?? roleName,
           orgRoleId: m.org_role_id,
           isActive: m.organization_id === ctx.activeOrgId,
           logo_url: org?.logo_url ?? null,
@@ -70,7 +71,7 @@ export class OrgService {
     userId: string,
     orgId: string,
   ): Promise<ServiceResult<{ organization_id: string }>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('org_members')

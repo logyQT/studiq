@@ -1,7 +1,10 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardPracticeController } from '@studiq/server/controllers/flashcard-practice.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { FlashcardPracticeService } from '@studiq/server/services/flashcard-practice.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockService() {
   return {
@@ -20,7 +23,7 @@ let controller: FlashcardPracticeController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -29,11 +32,20 @@ const mockCtx: RequestContext = {
   permissionScopes: {},
 };
 
+function dataOf<T>(response: ControllerResponse<T>): T | undefined {
+  return response.success ? response.data : undefined;
+}
+
+/** The failure branch of a controller response, so `error` / `details` are typed. */
+function failureOf(response: ControllerResponse) {
+  return response.success ? undefined : response;
+}
+
 describe('FlashcardPracticeController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardPracticeController(mockService as any);
+    controller = new FlashcardPracticeController(asService<FlashcardPracticeService>(mockService));
   });
 
   describe('log', () => {
@@ -49,7 +61,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
-      expect((response as any).data).toEqual(result);
+      expect(dataOf(response)).toEqual(result);
     });
 
     it('returns success with optional fields', async () => {
@@ -70,7 +82,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
-      expect((response as any).data).toEqual(result);
+      expect(dataOf(response)).toEqual(result);
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
@@ -78,7 +90,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -88,7 +100,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
 
     it('defaults the forwarded mode to "review" when the body omits it (#617)', async () => {
@@ -133,7 +145,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(dueCards);
+      expect(dataOf(response)).toEqual(dueCards);
     });
 
     it('returns error when service returns failure', async () => {
@@ -143,7 +155,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -160,7 +172,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(breakdown);
+      expect(dataOf(response)).toEqual(breakdown);
     });
 
     it('returns error when service returns failure', async () => {
@@ -170,7 +182,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -182,7 +194,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ count: 5 });
+      expect(dataOf(response)).toEqual({ count: 5 });
     });
   });
 
@@ -200,7 +212,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(stats);
+      expect(dataOf(response)).toEqual(stats);
     });
 
     it('returns error when service returns failure', async () => {
@@ -210,7 +222,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -228,7 +240,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(stats);
+      expect(dataOf(response)).toEqual(stats);
     });
 
     it('returns error when service returns failure', async () => {
@@ -238,7 +250,7 @@ describe('FlashcardPracticeController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 });

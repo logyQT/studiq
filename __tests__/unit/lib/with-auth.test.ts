@@ -17,7 +17,7 @@ function queryStub(result: { data: unknown; error?: unknown }) {
   const builder = {
     select: vi.fn(() => builder),
     eq: vi.fn(() => builder),
-    maybeSingle: vi.fn(async () => result),
+    maybeSingle: vi.fn(() => Promise.resolve(result)),
     then: (onFulfilled: (value: unknown) => unknown) => Promise.resolve(result).then(onFulfilled),
   };
   return builder;
@@ -67,9 +67,11 @@ describe('withAuth — trace id correlation', () => {
     });
     let seenTraceId: string | undefined;
 
-    const res = await withAuth(request(), async (ctx) => {
+    const res = await withAuth(request(), (ctx) => {
       seenTraceId = ctx.traceId;
-      return toNextResponse({ success: true, statusCode: 200, data: { ok: true } });
+      return Promise.resolve(
+        toNextResponse({ success: true, statusCode: 200, data: { ok: true } }),
+      );
     });
 
     expect(res.status).toBe(200);
@@ -81,7 +83,7 @@ describe('withAuth — trace id correlation', () => {
       data: { user: { id: 'u1', app_metadata: { account_type: AccountType.STUDENT } } },
     });
 
-    const res = await withAuth(request(), async () => {
+    const res = await withAuth(request(), () => {
       throw new Error('boom');
     });
 
@@ -111,9 +113,11 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
     );
 
     let ctx: RequestContext | undefined;
-    const res = await withAuth(request('org-1'), async (c) => {
+    const res = await withAuth(request('org-1'), (c) => {
       ctx = c;
-      return toNextResponse({ success: true, statusCode: 200, data: { ok: true } });
+      return Promise.resolve(
+        toNextResponse({ success: true, statusCode: 200, data: { ok: true } }),
+      );
     });
 
     expect(res.status).toBe(200);
@@ -127,9 +131,11 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
     mock.from.mockImplementation(stubTables({ membership: null, groups: [{ group_id: 'g1' }] }));
 
     let ctx: RequestContext | undefined;
-    await withAuth(request('org-1'), async (c) => {
+    await withAuth(request('org-1'), (c) => {
       ctx = c;
-      return toNextResponse({ success: true, statusCode: 200, data: { ok: true } });
+      return Promise.resolve(
+        toNextResponse({ success: true, statusCode: 200, data: { ok: true } }),
+      );
     });
 
     expect(ctx?.activeOrgId).toBeNull();
@@ -139,9 +145,11 @@ describe('withAuth — active_org_id membership gate (#186)', () => {
 
   it('leaves the context personal when no cookie is present', async () => {
     let ctx: RequestContext | undefined;
-    await withAuth(request(), async (c) => {
+    await withAuth(request(), (c) => {
       ctx = c;
-      return toNextResponse({ success: true, statusCode: 200, data: { ok: true } });
+      return Promise.resolve(
+        toNextResponse({ success: true, statusCode: 200, data: { ok: true } }),
+      );
     });
 
     expect(ctx?.activeOrgId).toBeNull();

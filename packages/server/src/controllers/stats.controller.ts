@@ -10,7 +10,7 @@ import {
 import { type StatsService, statsService } from '@studiq/server/services/stats.service';
 
 export class StatsController {
-  constructor(private statsService: StatsService) {}
+  constructor(private service: StatsService) {}
 
   async getTeacherStats(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = TeacherStatsQuerySchema.safeParse(query);
@@ -19,7 +19,7 @@ export class StatsController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.statsService.getTeacherStats(ctx, parsed.data);
+    const result = await this.service.getTeacherStats(ctx, parsed.data);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -27,7 +27,7 @@ export class StatsController {
   }
 
   async getStudentStats(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.statsService.getStudentStats(ctx);
+    const result = await this.service.getStudentStats(ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -35,7 +35,7 @@ export class StatsController {
   }
 
   async getTeacherQuizStats(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.statsService.getTeacherQuizStats(ctx);
+    const result = await this.service.getTeacherQuizStats(ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -48,7 +48,7 @@ export class StatsController {
     startDate?: string,
     endDate?: string,
   ): Promise<ControllerResponse> {
-    const result = await this.statsService.getActivity(ctx, range, startDate, endDate);
+    const result = await this.service.getActivity(ctx, range, startDate, endDate);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -56,7 +56,7 @@ export class StatsController {
   }
 
   async getWeakPoints(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.statsService.getWeakPoints(ctx);
+    const result = await this.service.getWeakPoints(ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -73,7 +73,7 @@ export class StatsController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.statsService.getTeacherGroupPerformance(ctx, parsed.data.days);
+    const result = await this.service.getTeacherGroupPerformance(ctx, parsed.data.days);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -87,7 +87,7 @@ export class StatsController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.statsService.getTeacherActivityFeed(ctx, parsed.data.limit);
+    const result = await this.service.getTeacherActivityFeed(ctx, parsed.data.limit);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
