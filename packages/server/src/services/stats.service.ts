@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { warn } from '@studiq/server/lib/log';
 import { hiddenResultAssignmentIds } from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -165,6 +166,9 @@ export class StatsService {
     if (problematicQuestionsError) return toDbFailure(problematicQuestionsError);
 
     const parsedProblematicQuestions = ProblematicQuestionsSchema.safeParse(problematicQuestions);
+    if (!parsedProblematicQuestions.success) {
+      warn('teacher problematic-questions RPC payload failed validation');
+    }
     const problematicRows = parsedProblematicQuestions.success
       ? parsedProblematicQuestions.data
       : [];
@@ -643,6 +647,7 @@ export class StatsService {
 
     if (error) return toDbFailure(error);
     const parsed = TeacherGroupPerformanceSchema.safeParse(data);
+    if (!parsed.success) warn('teacher group-performance RPC payload failed validation');
     return success(parsed.success ? parsed.data : EMPTY_GROUP_PERFORMANCE);
   }
 
@@ -667,6 +672,7 @@ export class StatsService {
 
     if (error) return toDbFailure(error);
     const parsed = TeacherFeedSchema.safeParse(data);
+    if (!parsed.success) warn('teacher activity-feed RPC payload failed validation');
     return success(parsed.success ? parsed.data : []);
   }
 }

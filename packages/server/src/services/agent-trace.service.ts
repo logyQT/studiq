@@ -227,10 +227,23 @@ export class AgentTraceService {
 
 const GLOBAL_KEY = '__agentTraceService';
 
+/**
+ * A dev-mode module reload creates a new class identity, so `instanceof` would
+ * reject the instance the previous module registered. Duck-type the one method
+ * the global is reused for instead.
+ */
+function isAgentTraceService(value: unknown): value is AgentTraceService {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof Reflect.get(value, 'getStatus') === 'function'
+  );
+}
+
 function getGlobalTraceService(): AgentTraceService {
   // Kept on `globalThis` so a dev-mode module reload reuses the same tracer.
   const existing: unknown = Reflect.get(globalThis, GLOBAL_KEY);
-  if (existing instanceof AgentTraceService) return existing;
+  if (isAgentTraceService(existing)) return existing;
 
   const service = new AgentTraceService();
   Reflect.set(globalThis, GLOBAL_KEY, service);

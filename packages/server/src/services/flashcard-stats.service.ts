@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { warn } from '@studiq/server/lib/log';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
@@ -16,11 +17,6 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
-/**
- * The generated RPC arg types represent nullable SQL parameters as optional
- * (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
- * keep sending it: callers/tests rely on the parameter being present as NULL.
- */
 /**
  * The `flashcard_decks!inner(...)` embed, read defensively: the generated types
  * model it as a to-one object, a to-many shape is tolerated too.
@@ -67,6 +63,9 @@ export class FlashcardStatsService {
 
     // #460: always call the RPC — a brand-new organization has no flashcards
     // yet, but the class roster (`rosterStudents`) must still be returned.
+    // The generated RPC arg types represent nullable SQL parameters as optional
+    // (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
+    // keep sending it: callers/tests rely on the parameter being present as NULL.
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_teacher_stats', {
       p_flashcard_ids: flashcardIds,
       p_user_id: ctx.userId,
@@ -78,6 +77,7 @@ export class FlashcardStatsService {
     if (rpcError) return toDbFailure(rpcError);
 
     const parsed = TeacherFlashcardStatsResponseSchema.safeParse(rpcResult);
+    if (!parsed.success) warn('flashcard stats RPC payload failed validation');
     return success(parsed.success ? parsed.data : emptyResponse);
   }
 

@@ -1,3 +1,4 @@
+import { AppError } from '@studiq/server/lib/errors';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { z } from '@studiq/server/lib/zod';
 
@@ -18,7 +19,16 @@ export function encodeCursor(value: unknown, id: unknown): string {
 }
 
 export function decodeCursor(cursor: string): { v: string | number; id: string } {
-  return CursorSchema.parse(JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
+  } catch {
+    throw new AppError('BAD_REQUEST');
+  }
+
+  const result = CursorSchema.safeParse(parsed);
+  if (!result.success) throw new AppError('BAD_REQUEST');
+  return result.data;
 }
 
 /**

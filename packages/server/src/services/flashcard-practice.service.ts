@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { warn } from '@studiq/server/lib/log';
 import { accessibleFilter, buildQueryFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
@@ -76,7 +77,11 @@ function toLearningState(value: string): LearningState {
  */
 function parseRpcJson<T>(schema: z.ZodType<T>, value: Json, fallback: T): T {
   const parsed = schema.safeParse(value);
-  return parsed.success ? parsed.data : fallback;
+  if (!parsed.success) {
+    warn('flashcard practice RPC payload failed validation');
+    return fallback;
+  }
+  return parsed.data;
 }
 
 /** Zero envelope for `getDueBreakdown`/`getDueCount` when the RPC returns nothing usable. */
