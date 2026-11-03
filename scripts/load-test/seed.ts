@@ -25,10 +25,12 @@ import {
   argBool,
   argNum,
   argStr,
+  implicitTargetOwnership,
   mapLimit,
   parseArgs,
   resolveConfig,
   sleep,
+  staleGeneratedTarget,
 } from './config';
 
 const FIRST_NAMES = [
@@ -262,6 +264,7 @@ function printSummary(accounts: AccountRecord[], outcomes: CreateOutcome[]): voi
 
 async function main(): Promise<void> {
   const args = parseArgs();
+  const explicitUrl = argStr(args, 'supabase-url', '');
   const config = resolveConfig({
     password: argStr(args, 'password', resolveConfig().password),
     emailDomain: argStr(args, 'domain', resolveConfig().emailDomain),
@@ -281,7 +284,7 @@ async function main(): Promise<void> {
   --domain <domain>    email domain (default loadtest.studiq.local)
   --supabase-url <url> Supabase API URL (default ${config.supabaseUrl})
   --reset              delete every account in the pool, then exit
-  --dry-run            print the plan without creating anything
+  --dry-run            print the plan without creating or deleting anything
   --help               show this help`);
     return;
   }
@@ -295,7 +298,37 @@ async function main(): Promise<void> {
   };
 
   if (argBool(args, 'reset')) {
-    console.log(`Resetting load-test pool (domain: @${config.emailDomain}) …`);
+    const stale = staleGeneratedTarget();
+    if (stale && !explicitUrl) {
+      console.error(
+        `  reset: refusing to target http://127.0.0.1:${stale.generated} — supabase/.env records :${stale.generated}, but this checkout's contract is :${stale.expected}.`,
+      );
+      console.error(
+        '  The generated file is stale (another checkout may own that port). Re-run a bun dev:* command to re-render it, or pass --supabase-url explicitly.',
+      );
+      process.exit(1);
+    }
+    // A matching port is not enough: an implicit target must still be owned by
+    // this checkout. Checked before --dry-run so a dry run reports it too.
+    if (!explicitUrl) {
+      const ownership = implicitTargetOwnership();
+      if (!ownership.ok) {
+        console.error(`  reset: refusing to use ${config.supabaseUrl} — ${ownership.reason}.`);
+        console.error(
+          '  Run a bun dev:* command to refresh the generated state, or pass --supabase-url explicitly.',
+        );
+        process.exit(1);
+      }
+    }
+    if (argBool(args, 'dry-run')) {
+      console.log(
+        `Dry run: would delete accounts in @${config.emailDomain} on ${config.supabaseUrl}; nothing deleted.`,
+      );
+      return;
+    }
+    console.log(
+      `Resetting load-test pool (domain: @${config.emailDomain}, target: ${config.supabaseUrl}) …`,
+    );
     const deleted = await resetPool(config.supabaseUrl, config.serviceRoleKey, config.emailDomain);
     console.log(`Deleted ${deleted} account(s).`);
     return;
@@ -307,6 +340,17 @@ async function main(): Promise<void> {
     printSummary(accounts, []);
     console.log('\n  dry-run: no users created.');
     return;
+  }
+
+  if (!explicitUrl) {
+    const ownership = implicitTargetOwnership();
+    if (!ownership.ok) {
+      console.error(`  seeding: refusing to use ${config.supabaseUrl} — ${ownership.reason}.`);
+      console.error(
+        '  Run a bun dev:* command to refresh the generated state, or pass --supabase-url explicitly.',
+      );
+      process.exit(1);
+    }
   }
 
   console.log(

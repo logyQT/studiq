@@ -114,11 +114,11 @@ suspicious = "warn"
 files = ["packages/**"]
 rules = { "no-restricted-imports" = "off" }
 
-# Scripts and root config files have no alias mapping. Root files are listed
-# explicitly: a glob without a slash matches the file name in every directory,
-# so `*.ts` would switch the rule off for the whole repo.
+# Scripts have no `@/` alias (it resolves to the consuming app's src) and use
+# intra-script relative imports (`seed.ts` -> `./config`). The import-path guard
+# (scripts/check-import-paths.ts) deliberately covers apps and tests only.
 [[lint.overrides]]
-files = ["scripts/**", "vitest.config.ts", "playwright.config.ts", "seed-data.js"]
+files = ["scripts/**"]
 rules = { "no-restricted-imports" = "off" }
 
 # Package entrypoints are the one allowed barrel file.
