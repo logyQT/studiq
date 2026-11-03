@@ -14,6 +14,14 @@
  * `scripts/e2e-seed.ts`, so seeding never runs while the suite is loading the app):
  *
  *   bun scripts/qa-tenant.ts --all --run "ci$GITHUB_RUN_ID"
+ *   bun scripts/qa-tenant.ts --all --areas STU,LIM,NFR --run "ci$GITHUB_RUN_ID"
+ *
+ * `--areas` narrows a batch to the areas one CI shard actually runs, so a shard
+ * does not pay for the 120 tenants it will never open. Cases inside a batch are
+ * seeded with bounded concurrency (`QA_SEED_CONCURRENCY`, default 8): one tenant
+ * costs ~6 sequential HTTP round-trips and the batch wall-clock is latency, not
+ * CPU, so a pool is what makes it fast. Tenants are disjoint — each owns its
+ * accounts, org, groups and memberships — so parallel cases cannot collide.
  *
  * All ids are deterministic from the case id. The spec builds its own
  * decks/banks/quizzes through the API, so nothing shared leaks between cases.
@@ -47,17 +55,29 @@
  * it still gets its own tenant.
  *
  * Writes `qa/.tenants/<CASEID>.json` for the spec/fixture to read.
+ *
+ * When `SUPABASE_DB_URL` is set (CI, and every checkout after `bun dev:up`
+ * renders `apps/web/.env`), auth users are inserted straight into `auth.users` in
+ * one statement — the shape `supabase/seeds/01_users.sql` used — instead of one
+ * GoTrue admin call per account. GoTrue hashes each created password with bcrypt
+ * (~64 ms of CPU per user); the SQL path hashes the batch's one shared password
+ * once. Without a direct Postgres URL the script falls back to the Admin API.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SQL } from 'bun';
 import { tenantKey } from '#test/e2e/fixtures/ids';
 import {
   buildAccount,
+  concurrencyFromEnv,
   createSeedDb,
-  ensureAccount,
+  createSqlAccountWriter,
+  ensureAccounts,
   randomTag,
+  runBounded,
   seedTenantGraph,
   tenantId,
+  type AccountWriter,
   type SeedAccount,
 } from '#test/helpers/tenant-seed';
 
@@ -81,12 +101,17 @@ function option(name: string): string | undefined {
 const caseArg = args.find(
   (arg, index) =>
     !arg.startsWith('--') &&
-    !['--profile', '--role', '--run', '--plan'].includes(args[index - 1] ?? ''),
+    !['--profile', '--role', '--run', '--plan', '--areas'].includes(args[index - 1] ?? ''),
 );
 const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
 const fresh = args.includes('--fresh');
 const all = args.includes('--all');
+/** `--areas STU,LIM,NFR` — restrict `--all` to the areas a CI shard runs. */
+const areas = (option('areas') ?? '')
+  .split(',')
+  .map((area) => area.trim().toUpperCase())
+  .filter(Boolean);
 const CASE_ID_PATTERN = /^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/;
 
 /** One account in a declarative tenant shape. */
@@ -121,7 +146,7 @@ interface ProfileShape {
 type ProfileEntry = string | ({ profile?: string; role?: string; plan?: string } & ProfileShape);
 
 const USAGE =
-  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--json] [--reset]';
+  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--json] [--reset]';
 
 /**
  * The CI seed contract: `__tests__/qa/profiles/<CASE>.json` declares the tenant shape
@@ -163,13 +188,34 @@ function declaredShape(entry: ProfileEntry | undefined): ProfileShape {
 /** The cases the suite actually runs: one spec file per case. */
 function specsOnDisk(): string[] {
   if (!existsSync(TESTS)) return [];
-  return readdirSync(TESTS, { withFileTypes: true })
-    .filter((dir) => dir.isDirectory())
-    .flatMap((dir) =>
-      readdirSync(join(TESTS, dir.name))
-        .filter((file) => file.endsWith('.spec.ts'))
-        .map((file) => file.slice(0, -'.spec.ts'.length)),
-    )
+  const byArea = new Map(
+    readdirSync(TESTS, { withFileTypes: true })
+      .filter((dir) => dir.isDirectory())
+      .map((dir) => [
+        dir.name,
+        readdirSync(join(TESTS, dir.name))
+          .filter((file) => file.endsWith('.spec.ts'))
+          .map((file) => file.slice(0, -'.spec.ts'.length)),
+      ]),
+  );
+
+  if (areas.length) {
+    // A typo in `--areas` would otherwise seed nothing and fail later as a
+    // missing tenant file inside a spec, which is much harder to read.
+    const unknown = areas.filter((area) => !byArea.get(area)?.length);
+    if (unknown.length) {
+      const known = [...byArea]
+        .filter(([, specs]) => specs.length)
+        .map(([area]) => area)
+        .sort()
+        .join(', ');
+      throw new Error(`unknown --areas ${unknown.join(',')}: expected a subset of ${known}`);
+    }
+  }
+
+  return [...byArea]
+    .filter(([area, specs]) => specs.length > 0 && (areas.length === 0 || areas.includes(area)))
+    .flatMap(([, specs]) => specs)
     .sort();
 }
 
@@ -208,6 +254,7 @@ async function seedTwoOrg(
   caseId: string,
   runSuffix: string,
   solo?: MemberSpec,
+  write?: AccountWriter,
 ) {
   const base = `${tenantKey(`qa/cases/${caseId}.md`, `${caseId}#${runSuffix}`, 'qa-shared')}::${runSuffix}`;
   const keyA = `${base}::org-a`;
@@ -224,15 +271,19 @@ async function seedTwoOrg(
     invite: { id: string; email: string };
   }) {
     const { key, name, groups, members, teacher, invite } = params;
-    const seeded = await seedTenantGraph(db, {
-      key,
-      org: { id: tenantId(key, 'org'), name },
-      defaultGroup: { id: tenantId(key, 'group:default'), name: groups[0], isDefault: true },
-      extraGroups: [{ id: tenantId(key, 'group:second'), name: groups[1], isDefault: false }],
-      owner: manager,
-      members,
-      ownerOrgRole: 'admin',
-    });
+    const seeded = await seedTenantGraph(
+      db,
+      {
+        key,
+        org: { id: tenantId(key, 'org'), name },
+        defaultGroup: { id: tenantId(key, 'group:default'), name: groups[0], isDefault: true },
+        extraGroups: [{ id: tenantId(key, 'group:second'), name: groups[1], isDefault: false }],
+        owner: manager,
+        members,
+        ownerOrgRole: 'admin',
+      },
+      write,
+    );
 
     // `seedTenantGraph` enrols every member with the org's `member` role; the case
     // needs one org with a teacher, so promote that tenant-local membership.
@@ -322,10 +373,13 @@ async function seedTwoOrg(
   });
 
   const soloAccount = solo
-    ? await ensureAccount(
-        db,
-        buildAccount(base, solo.key, solo.accountType, { name: solo.name ?? `QA ${solo.key}` }),
-      )
+    ? (
+        await ensureAccounts(
+          db,
+          [buildAccount(base, solo.key, solo.accountType, { name: solo.name ?? `QA ${solo.key}` })],
+          write,
+        )
+      )[0]
     : undefined;
 
   const tenant = {
@@ -358,11 +412,16 @@ async function seedTwoOrg(
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, `${caseId}.json`), JSON.stringify(tenant, null, 2));
   if (!jsonOnly) {
-    console.log(`qa tenant ${caseId} (two-org, run ${runSuffix})`);
-    console.log(`  org A    ${orgA.id}  ${orgA.name}`);
-    console.log(`  org B    ${orgB.id}  ${orgB.name}`);
-    console.log(`  manager  ${manager.email} / ${manager.password}`);
-    console.log(`  file     qa/.tenants/${caseId}.json`);
+    // One write: `--all` seeds cases concurrently (see the note on the batch).
+    console.log(
+      [
+        `qa tenant ${caseId} (two-org, run ${runSuffix})`,
+        `  org A    ${orgA.id}  ${orgA.name}`,
+        `  org B    ${orgB.id}  ${orgB.name}`,
+        `  manager  ${manager.email} / ${manager.password}`,
+        `  file     qa/.tenants/${caseId}.json`,
+      ].join('\n'),
+    );
   }
 }
 
@@ -372,6 +431,8 @@ interface CaseOptions {
   plan?: string;
   /** Shared batch suffix; one batch = one suite run. */
   runSuffix: string;
+  /** Batch account writer; omitted = one GoTrue admin call per account. */
+  write?: AccountWriter;
 }
 
 async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opts: CaseOptions) {
@@ -438,26 +499,29 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       return;
     }
 
-    console.log(
+    // One write per tenant: `--all` runs cases concurrently, so a block that is
+    // logged line by line interleaves with the other tenants seeded beside it.
+    const lines = [
       `qa tenant ${caseId} (${profile}${profile === 'bare' ? `/${role}` : ''}${runSuffix ? `, run ${runSuffix}` : ''})`,
-    );
+    ];
     if (tenant.org) {
       const org = tenant.org as { id: string; name: string };
-      console.log(`  org      ${org.id}  ${org.name}`);
+      lines.push(`  org      ${org.id}  ${org.name}`);
     } else {
-      console.log(`  org      none (first-run ${role})`);
+      lines.push(`  org      none (first-run ${role})`);
     }
-    if (tenant.plan) console.log(`  plan     ${String(tenant.plan)}`);
+    if (tenant.plan) lines.push(`  plan     ${String(tenant.plan)}`);
     for (const [name, user] of Object.entries(
       tenant.users as Record<string, { email: string; password: string }>,
     )) {
-      console.log(`  ${name.padEnd(8)} ${user.email} / ${user.password}`);
+      lines.push(`  ${name.padEnd(8)} ${user.email} / ${user.password}`);
     }
     if (tenant.group) {
       const group = tenant.group as { id: string; name: string };
-      console.log(`  group    ${group.id}  ${group.name}`);
+      lines.push(`  group    ${group.id}  ${group.name}`);
     }
-    console.log(`  file     qa/.tenants/${caseId}.json`);
+    lines.push(`  file     qa/.tenants/${caseId}.json`);
+    console.log(lines.join('\n'));
   }
 
   if (reset) {
@@ -484,22 +548,26 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
   }
 
   if (profile === 'two-org') {
-    await seedTwoOrg(db, caseId, runSuffix, shape.solo);
+    await seedTwoOrg(db, caseId, runSuffix, shape.solo, opts.write);
     return;
   }
 
   if (profile === 'bare') {
     // The account must exist before the membership sweep (FK), so create first and
     // then guarantee it belongs to no organization.
-    const seeded = await seedTenantGraph(db, {
-      key,
-      org: null,
-      defaultGroup: null,
-      extraGroups: [],
-      owner: bareAccount,
-      members: [],
-      ownerOrgRole: 'member',
-    });
+    const seeded = await seedTenantGraph(
+      db,
+      {
+        key,
+        org: null,
+        defaultGroup: null,
+        extraGroups: [],
+        owner: bareAccount,
+        members: [],
+        ownerOrgRole: 'member',
+      },
+      opts.write,
+    );
     await db.from('org_members').delete().eq('user_id', seeded.owner.id);
 
     writeTenant({
@@ -539,26 +607,30 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
           ...(member.orgRole ? { orgRole: member.orgRole } : {}),
         });
 
-      const seededOrg = await seedTenantGraph(db, {
-        key: orgKey,
-        org: { id: tenantId(orgKey, 'org'), name: `${orgName}${suffix}` },
-        defaultGroup: {
-          id: tenantId(orgKey, 'group:default'),
-          name: groupNames[0],
-          isDefault: true,
+      const seededOrg = await seedTenantGraph(
+        db,
+        {
+          key: orgKey,
+          org: { id: tenantId(orgKey, 'org'), name: `${orgName}${suffix}` },
+          defaultGroup: {
+            id: tenantId(orgKey, 'group:default'),
+            name: groupNames[0],
+            isDefault: true,
+          },
+          extraGroups: groupNames.slice(1).map((name, extraIndex) => ({
+            id: tenantId(orgKey, `group:${extraIndex + 2}`),
+            name,
+            isDefault: false,
+          })),
+          owner: toAccount({ ...orgSpec.owner, orgRole: orgSpec.owner.orgRole ?? 'admin' }),
+          members: (orgSpec.members ?? []).map((member) => ({
+            ...toAccount(member),
+            orgRole: member.orgRole ?? 'member',
+          })),
+          ownerOrgRole: orgSpec.owner.orgRole ?? 'admin',
         },
-        extraGroups: groupNames.slice(1).map((name, extraIndex) => ({
-          id: tenantId(orgKey, `group:${extraIndex + 2}`),
-          name,
-          isDefault: false,
-        })),
-        owner: toAccount({ ...orgSpec.owner, orgRole: orgSpec.owner.orgRole ?? 'admin' }),
-        members: (orgSpec.members ?? []).map((member) => ({
-          ...toAccount(member),
-          orgRole: member.orgRole ?? 'member',
-        })),
-        ownerOrgRole: orgSpec.owner.orgRole ?? 'admin',
-      });
+        opts.write,
+      );
 
       orgUsers[orgSpec.owner.key] = {
         id: seededOrg.owner.id,
@@ -613,23 +685,27 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       });
     const groupNames = shape.groups?.length ? shape.groups : ['G1'];
 
-    const seededShape = await seedTenantGraph(db, {
-      key,
-      org: { id: orgId, name: orgName },
-      defaultGroup: { id: groupId, name: groupNames[0], isDefault: true },
-      extraGroups: groupNames.slice(1).map((name, index) => ({
-        id: tenantId(key, `group:${index + 2}`),
-        name,
-        // `groups.is_default` is NOT NULL — every extra group must say `false`.
-        isDefault: false,
-      })),
-      owner: toAccount(ownerSpec),
-      members: memberSpecs.map((member) => ({
-        ...toAccount(member),
-        orgRole: member.orgRole ?? 'member',
-      })),
-      ownerOrgRole: ownerSpec.orgRole ?? 'admin',
-    });
+    const seededShape = await seedTenantGraph(
+      db,
+      {
+        key,
+        org: { id: orgId, name: orgName },
+        defaultGroup: { id: groupId, name: groupNames[0], isDefault: true },
+        extraGroups: groupNames.slice(1).map((name, index) => ({
+          id: tenantId(key, `group:${index + 2}`),
+          name,
+          // `groups.is_default` is NOT NULL — every extra group must say `false`.
+          isDefault: false,
+        })),
+        owner: toAccount(ownerSpec),
+        members: memberSpecs.map((member) => ({
+          ...toAccount(member),
+          orgRole: member.orgRole ?? 'member',
+        })),
+        ownerOrgRole: ownerSpec.orgRole ?? 'admin',
+      },
+      opts.write,
+    );
 
     if (plan) {
       const { error } = await db.rpc('apply_org_plan', { p_org_id: orgId, p_plan: plan });
@@ -652,11 +728,14 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       };
     });
     if (shape.solo) {
-      const solo = await ensureAccount(
+      const [solo] = await ensureAccounts(
         db,
-        buildAccount(key, shape.solo.key, shape.solo.accountType, {
-          name: shape.solo.name ?? `QA ${shape.solo.key}`,
-        }),
+        [
+          buildAccount(key, shape.solo.key, shape.solo.accountType, {
+            name: shape.solo.name ?? `QA ${shape.solo.key}`,
+          }),
+        ],
+        opts.write,
       );
       shapeUsers[shape.solo.key] = { id: solo.id, email: solo.email, password: solo.password };
     }
@@ -677,28 +756,37 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
   // Accounts that exist outside the org graph still go through the same seeder.
   const ensured: Partial<Record<'invitee1' | 'invitee2', SeedAccount>> = {};
   if (profile === 'org-limit') {
-    ensured.invitee1 = await ensureAccount(db, accounts.invitee1);
-    ensured.invitee2 = await ensureAccount(db, accounts.invitee2);
+    const [invitee1, invitee2] = await ensureAccounts(
+      db,
+      [accounts.invitee1, accounts.invitee2],
+      opts.write,
+    );
+    ensured.invitee1 = invitee1;
+    ensured.invitee2 = invitee2;
   }
 
-  const seeded = await seedTenantGraph(db, {
-    key,
-    org: { id: orgId, name: orgName },
-    defaultGroup: { id: groupId, name: 'G1', isDefault: true },
-    extraGroups: [],
-    owner: accounts.manager,
-    members:
-      profile === 'org-limit'
-        ? [
-            // Real org roles: the member-limit counter includes the admin and the
-            // teachers, so the fixture must have one of each.
-            { ...accounts.teacher, orgRole: 'teacher' as const },
-            accounts.teacher2,
-            accounts.student,
-          ]
-        : [accounts.teacher, accounts.student],
-    ownerOrgRole: 'admin',
-  });
+  const seeded = await seedTenantGraph(
+    db,
+    {
+      key,
+      org: { id: orgId, name: orgName },
+      defaultGroup: { id: groupId, name: 'G1', isDefault: true },
+      extraGroups: [],
+      owner: accounts.manager,
+      members:
+        profile === 'org-limit'
+          ? [
+              // Real org roles: the member-limit counter includes the admin and the
+              // teachers, so the fixture must have one of each.
+              { ...accounts.teacher, orgRole: 'teacher' as const },
+              accounts.teacher2,
+              accounts.student,
+            ]
+          : [accounts.teacher, accounts.student],
+      ownerOrgRole: 'admin',
+    },
+    opts.write,
+  );
 
   // A paid entitlement is part of the case's prerequisite, not a global plan
   // change: the RPC only touches this tenant's own organization (plan, role-feature
@@ -747,25 +835,69 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
 
 loadEnv();
 
+// A direct Postgres URL unlocks SQL account seeding (see `createSqlAccountWriter`).
+// `dev:up` renders it into `apps/web/.env` and CI exports it, but it stays
+// optional: without it accounts go through GoTrue's admin API.
+const seedSql = process.env.SUPABASE_DB_URL ? new SQL(process.env.SUPABASE_DB_URL) : undefined;
+const writeAccounts = seedSql ? createSqlAccountWriter(seedSql) : undefined;
+
+async function finish(code: number): Promise<never> {
+  if (seedSql) await seedSql.close();
+  process.exit(code);
+}
+
 if (all) {
-  const cases = specsOnDisk();
+  let cases: string[];
+  try {
+    cases = specsOnDisk();
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(2);
+  }
   if (cases.length === 0) {
-    console.error('--all found no specs under __tests__/qa/*/*.spec.ts');
+    console.error(
+      areas.length
+        ? `--areas ${areas.join(',')} matched no specs under __tests__/qa/<area>/*.spec.ts`
+        : '--all found no specs under __tests__/qa/*/*.spec.ts',
+    );
     process.exit(2);
   }
   // One suffix for the whole batch: a suite run is one tenant set, and every
   // spec still owns its own tenant inside it.
   const runSuffix = option('run') ?? `r${Date.now().toString(36)}${randomTag(4)}`;
   const db = createSeedDb();
-  for (const id of cases) {
+  // Every tenant is a handful of sequential round-trips, so cases are seeded with
+  // a bounded pool instead of one after another. Without `SUPABASE_DB_URL` the pool is
+  // also what keeps the per-account GoTrue calls off the critical path; with it,
+  // the graph writes are the only serial work left.
+  const failures: string[] = [];
+  const started = performance.now();
+
+  await runBounded(cases, concurrencyFromEnv('QA_SEED_CONCURRENCY'), async (id) => {
     if (!CASE_ID_PATTERN.test(id)) {
-      console.error(`skipping ${id}: not a case id`);
-      continue;
+      failures.push(`${id}: not a case id`);
+      return;
     }
-    await seedCase(db, id, { runSuffix });
+    try {
+      await seedCase(db, id, { runSuffix, write: writeAccounts });
+    } catch (error) {
+      failures.push(`${id}: ${(error as Error).message}`);
+    }
+  });
+
+  const seconds = ((performance.now() - started) / 1000).toFixed(1);
+  if (failures.length) {
+    for (const failure of failures) console.error(`seed failed: ${failure}`);
+    console.error(`qa tenants: ${failures.length}/${cases.length} cases failed after ${seconds}s`);
+    await finish(2);
   }
-  if (!jsonOnly) console.log(`qa tenants: seeded ${cases.length} cases (run ${runSuffix})`);
-  process.exit(0);
+  if (!jsonOnly) {
+    const scope = areas.length ? ` (${areas.join(',')})` : '';
+    console.log(
+      `qa tenants: seeded ${cases.length} cases${scope} in ${seconds}s (run ${runSuffix})`,
+    );
+  }
+  await finish(0);
 }
 
 if (!caseArg || !CASE_ID_PATTERN.test(caseArg)) {
@@ -783,8 +915,10 @@ try {
     role: option('role'),
     plan: option('plan'),
     runSuffix,
+    write: writeAccounts,
   });
 } catch (error) {
   console.error((error as Error).message);
   process.exit(2);
 }
+await finish(0);

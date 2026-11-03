@@ -310,6 +310,10 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            # Lets the seeder write auth users straight into Postgres (one
+            # statement, one bcrypt for the whole batch) instead of one GoTrue
+            # admin call per account. Optional: without a direct URL (e.g. a
+            # hosted project) it falls back to the Admin API.
             echo "SUPABASE_DB_URL=$DB_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3010"
             echo "OTEL_SDK_DISABLED=true"
@@ -336,12 +340,18 @@ jobs:
           done
           curl -sf -o /dev/null http://localhost:3010/login
 
-      - name: Seed every tenant once
+      - name: Seed this shard's tenants
         # Same shape as `scripts/e2e-seed.ts`: one process, one run suffix, before
         # Playwright starts. Seeding inside the run would stall the app and the
         # 4-worker suite against it; every spec still gets its own tenant because
         # the suffix is folded into each case's key.
-        run: bun scripts/qa-tenant.ts --all --run "ci${{ github.run_id }}"
+        #
+        # Only the areas this shard runs: a PR shard carries ~50 of the 170 cases,
+        # so seeding all of them is wall-clock spent on tenants nobody opens.
+        # `SUPABASE_DB_URL` (exported above) also lets the seeder write auth users with one
+        # SQL statement instead of one GoTrue admin call per account — GoTrue
+        # bcrypts every password it creates, which was most of the old 32 s.
+        run: bun scripts/qa-tenant.ts --all --areas "${{ join(matrix.shard.areas, ',') }}" --run "ci${{ github.run_id }}"
 
       - name: Run the QA suite
         run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line ${{ matrix.shard.paths }}
@@ -382,6 +392,10 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       # ubuntu-latest is 4 vCPU; one project saturates at ~4 workers.
       E2E_WORKERS: '4'
+      # The workflow owns both, in explicit steps below: it builds/starts the app
+      # and seeds this leg's tenants, so Playwright must not repeat either.
+      E2E_SKIP_WEB_WS: '1'
+      E2E_SKIP_SEED: '1'
     steps:
       - name: No app code changed
         if: needs.scope.outputs.app != 'true'
@@ -437,8 +451,28 @@ jobs:
         run: bunx playwright install --with-deps ${{ matrix.project }}
         if: matrix.project != 'admin-api' && needs.scope.outputs.app == 'true'
 
-      # Playwright's webServer builds and starts the app, so there is no
-      # separate build step to keep in sync.
+      # Same shape as `qa-suite`: the workflow starts the app and seeds, and
+      # Playwright only drives the browser. Before this, the build hid inside
+      # Playwright's `webServer` (~40 s of the "Run Playwright" step) and the
+      # seeding inside `globalSetup`, so neither was visible as a step.
+      - name: Build and start the app
+        if: needs.scope.outputs.app == 'true'
+        run: |
+          bun run build
+          (cd apps/web && bunx next start -p 3000 > /tmp/e2e-app.log 2>&1 &)
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/login && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3000/login
+
+      - name: Seed this leg's tenants
+        if: needs.scope.outputs.app == 'true'
+        # One tenant per test of this project. `--reset` keeps a re-run from
+        # inheriting the previous run's decks and quiz attempts — specs mutate
+        # their own tenant and spend its plan limits.
+        run: bun scripts/e2e-seed.ts --reset --project ${{ matrix.project }}
+
       - name: Run Playwright (${{ matrix.project }})
         if: needs.scope.outputs.app == 'true'
         run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line
