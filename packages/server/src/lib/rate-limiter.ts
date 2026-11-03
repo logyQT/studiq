@@ -17,7 +17,16 @@ export function createRateLimiter(windowMs: number, maxRequests: number) {
 
   return {
     check(key: string, now: number = Date.now()): RateLimitResult {
-      if (requestLog.size > 10_000) requestLog.clear();
+      if (requestLog.size > 10_000) {
+        // Prune only keys with no request left in the current window. Clearing
+        // the whole map would hand every active user a fresh budget at exactly
+        // the traffic level the limiter exists to bound.
+        for (const [entryKey, timestamps] of requestLog) {
+          const recent = timestamps.filter((t) => now - t < windowMs);
+          if (recent.length === 0) requestLog.delete(entryKey);
+          else requestLog.set(entryKey, recent);
+        }
+      }
 
       const recent = (requestLog.get(key) ?? []).filter((t) => now - t < windowMs);
 
