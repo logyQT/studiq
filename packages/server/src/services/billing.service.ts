@@ -268,7 +268,7 @@ export class BillingService {
     let planName = base.planName;
     let priceMonthly = base.priceMonthly;
     let currency = base.currency;
-    let billedPlanName: string;
+    let billedPlanName: string | null;
 
     if (!effectivePlan) {
       const catalog = await this.repository.getPlan(subscription.planKey);
@@ -277,7 +277,7 @@ export class BillingService {
       planName = catalog.data?.name ?? subscription.planKey;
       priceMonthly = catalog.data?.priceMonthly ?? 0;
       currency = catalog.data?.currency ?? 'PLN';
-      billedPlanName = planName;
+      billedPlanName = catalog.data?.name ?? null;
     } else if (effectivePlan.key === subscription.planKey) {
       billedPlanName = effectivePlan.name;
     } else {
@@ -285,7 +285,7 @@ export class BillingService {
       // Stripe actually bills for the success-page confirmation.
       const catalog = await this.repository.getPlan(subscription.planKey);
       if (isFailure(catalog)) return catalog;
-      billedPlanName = catalog.data?.name ?? subscription.planKey;
+      billedPlanName = catalog.data?.name ?? null;
     }
 
     const owner = ownerFromContext(ctx);

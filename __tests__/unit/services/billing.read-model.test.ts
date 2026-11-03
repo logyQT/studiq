@@ -384,6 +384,20 @@ describe('BillingService.getSubscription', () => {
     expect(repository.getPlan).toHaveBeenCalledWith('ace');
   });
 
+  it('leaves the billed name null when the billed catalogue row is missing', async () => {
+    plans = createPlans(failure('NOT_FOUND'));
+    reads = createReads({
+      findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
+    });
+    vi.mocked(repository.getPlan).mockResolvedValueOnce(success(null));
+    service = new BillingService(gateway, repository, reads, plans);
+
+    await expect(service.getSubscription(studentCtx)).resolves.toMatchObject({
+      success: true,
+      data: { billedPlanKey: 'spark', billedPlanName: null },
+    });
+  });
+
   it('propagates a catalog failure while falling back', async () => {
     plans = createPlans(failure('NOT_FOUND'));
     reads = createReads({
