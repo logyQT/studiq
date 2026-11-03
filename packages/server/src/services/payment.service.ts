@@ -13,6 +13,8 @@ export interface PaymentHistoryItem {
   amount: number;
   currency: string;
   paidAt: string;
+  /** Signed Stripe-hosted invoice URL; only present for the payment owner. */
+  hostedInvoiceUrl: string | null;
 }
 
 /**
@@ -29,7 +31,7 @@ export class PaymentService {
 
     const { data, error } = await supabase
       .from('payments')
-      .select('id, plan_key, plan_name, amount, currency, paid_at')
+      .select('id, plan_key, plan_name, amount, currency, paid_at, hosted_invoice_url')
       .eq('user_id', ctx.userId)
       .order('paid_at', { ascending: false });
 
@@ -43,6 +45,7 @@ export class PaymentService {
         amount: payment.amount,
         currency: payment.currency,
         paidAt: payment.paid_at,
+        hostedInvoiceUrl: payment.hosted_invoice_url,
       })),
     );
   }

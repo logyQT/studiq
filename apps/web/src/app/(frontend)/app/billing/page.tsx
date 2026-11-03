@@ -1,6 +1,8 @@
 'use client';
 
+import { AccountType } from '@studiq/authz';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
+import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import {
   Badge,
   Button,
@@ -13,16 +15,21 @@ import {
 } from '@studiq/ui';
 import { Loader2, Minus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+import { useQueryClient } from '@tanstack/react-query';
+import { BillingSubscriptionCard } from '@/components/billing/BillingSubscriptionCard';
 import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
 import { getVisibleLimitKeys } from '@/lib/pricing-limits';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
+import { invoiceHistoryPath } from '@/lib/billing-subscription';
+import { billingKeys } from '@/lib/query-keys';
 
 export default function AppBillingPage() {
   const t = useTranslations('BillingPage');
   const pt = useTranslations('PricingPage');
   const locale = useLocale();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
   const rawAccountType: unknown = user?.app_metadata?.account_type;
   const accountType =
@@ -31,6 +38,21 @@ export default function AppBillingPage() {
     queryKey: ['me', 'plan'],
     url: '/api/v1/me/plan',
     enabled: !!user,
+  });
+  const { data: plans } = useApiQuery<PlanInfo[]>({
+    queryKey: ['subscription-plans', 'active'],
+    url: '/api/v1/subscription-plans',
+    enabled: !!user,
+  });
+  const {
+    data: subscription,
+    isError: subscriptionError,
+    refetch: refetchSubscription,
+  } = useApiQuery<BillingSubscriptionView>({
+    queryKey: billingKeys.subscription(),
+    url: '/api/v1/billing/subscription',
+    enabled: !!user,
+    staleTime: 0,
   });
 
   if (isLoading || !plan) {
@@ -130,6 +152,26 @@ export default function AppBillingPage() {
           )}
         </CardContent>
       </Card>
+
+      {invoiceHistoryPath(AccountType.STUDENT) && (
+        <Button variant="link" className="px-0" asChild>
+          <a href={invoiceHistoryPath(AccountType.STUDENT) ?? '#'}>{t('invoice_history')}</a>
+        </Button>
+      )}
+
+      <BillingSubscriptionCard
+        subscription={subscription}
+        isError={subscriptionError}
+        onRetry={() => {
+          void refetchSubscription();
+        }}
+        plans={plans}
+        accountType={AccountType.STUDENT}
+        onChanged={() => {
+          void queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
+          void refetchSubscription();
+        }}
+      />
     </div>
   );
 }

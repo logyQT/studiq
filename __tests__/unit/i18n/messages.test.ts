@@ -481,6 +481,28 @@ describe('i18n message parity', () => {
     expect(Object.keys(en.AccountPage).toSorted()).toEqual(Object.keys(pl.AccountPage).toSorted());
   });
 
+  it('has the same BillingPage keys in en and pl', () => {
+    expect(Object.keys(en.BillingPage).toSorted()).toEqual(Object.keys(pl.BillingPage).toSorted());
+  });
+
+  it('has every billing status label in both locales', () => {
+    for (const status of [
+      'active',
+      'trialing',
+      'past_due',
+      'unpaid',
+      'canceled',
+      'incomplete',
+      'incomplete_expired',
+      'paused',
+      'free',
+      'none',
+    ]) {
+      expect(pl.BillingPage).toHaveProperty(`status_${status}`);
+      expect(en.BillingPage).toHaveProperty(`status_${status}`);
+    }
+  });
+
   /**
    * #360 — the bank grid renders the same namespace on `/app/questions` and
    * `/edu/questions`; a key present in only one locale would show a raw key.
