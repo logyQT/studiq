@@ -39,13 +39,13 @@ export function alternativePlans(
   accountType: AccountType,
 ): PlanInfo[] {
   const family = billingPlanFamily(accountType);
+  // The effective plan may be a seat plan; exclude what Stripe already bills.
+  const currentPlanKey = subscription.billedPlanKey ?? subscription.planKey;
 
   return (plans ?? [])
     .filter(
       (plan) =>
-        plan.priceMonthly > 0 &&
-        plan.forAccountType === family &&
-        plan.key !== subscription.planKey,
+        plan.priceMonthly > 0 && plan.forAccountType === family && plan.key !== currentPlanKey,
     )
     .toSorted((a, b) => a.priceMonthly - b.priceMonthly);
 }

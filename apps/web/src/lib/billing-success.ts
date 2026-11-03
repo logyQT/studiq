@@ -54,7 +54,10 @@ export async function pollBillingActivation(
 
     try {
       const view = await deps.readSubscription();
-      const planMatches = deps.expectedPlanKey === null || view.planKey === deps.expectedPlanKey;
+      // Compare the **billed** plan: `planKey` is the effective entitlement,
+      // which can be a seat plan while the checkout purchased another plan.
+      const planMatches =
+        deps.expectedPlanKey === null || view.billedPlanKey === deps.expectedPlanKey;
       if (!deps.isCancelled() && planMatches && isActivatedSubscription(view)) {
         return { state: 'activated', subscription: view };
       }

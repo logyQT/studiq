@@ -59,6 +59,12 @@ export interface BillingSubscriptionView {
   provider: PaymentDriver;
   planKey: string | null;
   planName: string | null;
+  /**
+   * The plan Stripe actually bills (the mirror row). `planKey` stays the
+   * **effective** entitlement (a seated student may hold a different plan), so
+   * the success page must match the purchased plan against this field.
+   */
+  billedPlanKey: string | null;
   status: BillingReadStatus;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
@@ -229,6 +235,7 @@ export class BillingService {
       provider: this.gateway.driver,
       planKey: effectivePlan?.key ?? null,
       planName: effectivePlan?.name ?? null,
+      billedPlanKey: null,
       status: effectivePlan ? (effectivePlan.priceMonthly > 0 ? 'active' : 'free') : 'none',
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
@@ -292,13 +299,15 @@ export class BillingService {
       ...base,
       planKey,
       planName,
+      billedPlanKey: subscription.planKey,
       status,
       currentPeriodEnd: subscription.currentPeriodEnd,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       // A scheduled change that already landed is history: the applied plan
-      // equals the marker, so never render "changing to the current plan".
+      // (what Stripe bills) equals the marker, so never render "changing to the
+      // current plan".
       pendingPlanKey:
-        subscription.pendingPlanKey && subscription.pendingPlanKey !== planKey
+        subscription.pendingPlanKey && subscription.pendingPlanKey !== subscription.planKey
           ? subscription.pendingPlanKey
           : null,
       priceMonthly,

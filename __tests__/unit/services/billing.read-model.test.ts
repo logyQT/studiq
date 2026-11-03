@@ -151,6 +151,7 @@ describe('BillingService.getSubscription', () => {
         provider: 'mock',
         planKey: 'spark',
         planName: 'StudiQ Spark',
+        billedPlanKey: null,
         status: 'active',
         currentPeriodEnd: null,
         cancelAtPeriodEnd: false,
@@ -242,6 +243,7 @@ describe('BillingService.getSubscription', () => {
         provider: 'stripe',
         planKey: 'spark',
         planName: 'StudiQ Spark',
+        billedPlanKey: 'spark',
         status: 'active',
         currentPeriodEnd: '2026-12-01T00:00:00.000Z',
         cancelAtPeriodEnd: false,
@@ -343,7 +345,13 @@ describe('BillingService.getSubscription', () => {
 
     await expect(service.getSubscription(studentCtx)).resolves.toMatchObject({
       success: true,
-      data: { planKey: 'ace', planName: 'StudiQ Ace', priceMonthly: 4999, status: 'active' },
+      data: {
+        planKey: 'ace',
+        planName: 'StudiQ Ace',
+        billedPlanKey: 'spark',
+        priceMonthly: 4999,
+        status: 'active',
+      },
     });
     expect(repository.getPlan).not.toHaveBeenCalled();
   });

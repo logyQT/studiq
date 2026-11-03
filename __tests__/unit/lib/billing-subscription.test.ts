@@ -20,6 +20,7 @@ function subscription(overrides: Partial<BillingSubscriptionView> = {}): Billing
     provider: 'stripe',
     planKey: 'spark',
     planName: 'StudiQ Spark',
+    billedPlanKey: 'spark',
     status: 'active',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
     cancelAtPeriodEnd: false,
@@ -75,6 +76,16 @@ describe('alternativePlans', () => {
     );
 
     expect(options.map((option) => option.key)).toEqual(['ace', 'pro']);
+  });
+
+  it('excludes the billed plan even when the effective plan is a seat plan', () => {
+    const options = alternativePlans(
+      [plan('spark', { priceMonthly: 999 }), plan('pro', { priceMonthly: 4999 })],
+      subscription({ planKey: 'ace', planName: 'StudiQ Ace', billedPlanKey: 'spark' }),
+      AccountType.STUDENT,
+    );
+
+    expect(options.map((option) => option.key)).toEqual(['pro']);
   });
 
   it('returns an empty list without a catalogue', () => {
