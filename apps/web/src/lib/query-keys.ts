@@ -164,3 +164,12 @@ export const statusKeys = {
   all: ['status'] as const,
   health: ['status', 'health'] as const,
 };
+
+// Billing endpoints resolve the owner from the request context (and, for a
+// manager, the `active_org_id` cookie). Keying the cache by the active org
+// prevents an org switch from serving the previous org's status/invoice (#135).
+export const billingKeys = {
+  all: ['billing'] as const,
+  subscription: (orgId?: string | null) => ['billing', 'subscription', orgId ?? null] as const,
+  seatPools: (orgId?: string | null) => ['organization', 'seats', 'pools', orgId ?? null] as const,
+};

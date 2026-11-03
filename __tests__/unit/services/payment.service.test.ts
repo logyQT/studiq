@@ -57,6 +57,7 @@ describe('PaymentService.listMine (#392)', () => {
         amount: 1999,
         currency: 'PLN',
         paid_at: '2026-10-25T10:00:00.000Z',
+        hosted_invoice_url: 'https://invoice.stripe.test/in_2',
       },
       {
         id: 'p-1',
@@ -65,6 +66,7 @@ describe('PaymentService.listMine (#392)', () => {
         amount: 999,
         currency: 'PLN',
         paid_at: '2026-09-01T10:00:00.000Z',
+        hosted_invoice_url: null,
       },
     ]);
     mock.from.mockReturnValueOnce(query);
@@ -72,7 +74,9 @@ describe('PaymentService.listMine (#392)', () => {
     const result = await service.listMine(ctx);
 
     expect(mock.from).toHaveBeenCalledWith('payments');
-    expect(query.select).toHaveBeenCalledWith('id, plan_key, plan_name, amount, currency, paid_at');
+    expect(query.select).toHaveBeenCalledWith(
+      'id, plan_key, plan_name, amount, currency, paid_at, hosted_invoice_url',
+    );
     expect(query.eq).toHaveBeenCalledWith('user_id', 'u-1');
     expect(query.order).toHaveBeenCalledWith('paid_at', { ascending: false });
     expect(result).toEqual({
@@ -85,6 +89,7 @@ describe('PaymentService.listMine (#392)', () => {
           amount: 1999,
           currency: 'PLN',
           paidAt: '2026-10-25T10:00:00.000Z',
+          hostedInvoiceUrl: 'https://invoice.stripe.test/in_2',
         },
         {
           id: 'p-1',
@@ -93,6 +98,7 @@ describe('PaymentService.listMine (#392)', () => {
           amount: 999,
           currency: 'PLN',
           paidAt: '2026-09-01T10:00:00.000Z',
+          hostedInvoiceUrl: null,
         },
       ],
     });
