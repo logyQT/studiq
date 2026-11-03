@@ -14,3 +14,33 @@ export const BillingPortalQuerySchema = registry.register(
 );
 
 export type BillingPortalQuery = z.infer<typeof BillingPortalQuerySchema>;
+
+/**
+ * `POST /api/v1/billing/change-plan` body (#662 §2.5). Only the target plan key
+ * is client-controlled: the owner, customer, subscription and price are all
+ * resolved server-side from the authenticated context and the catalog.
+ */
+export const ChangePlanSchema = registry.register(
+  'ChangePlanRequest',
+  z.object({
+    planKey: z
+      .string()
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .max(64, { error: ValidationErrorCode.TOO_LONG }),
+  }),
+);
+
+export type ChangePlanBody = z.infer<typeof ChangePlanSchema>;
+
+/**
+ * `POST /api/v1/billing/cancel` body (#662 §7.3): `cancel: true` schedules
+ * cancellation at period end, `false` reactivates before it takes effect.
+ */
+export const CancelSubscriptionSchema = registry.register(
+  'CancelSubscriptionRequest',
+  z.object({
+    cancel: z.boolean({ error: ValidationErrorCode.REQUIRED }),
+  }),
+);
+
+export type CancelSubscriptionBody = z.infer<typeof CancelSubscriptionSchema>;

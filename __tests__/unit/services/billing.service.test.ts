@@ -46,6 +46,7 @@ function plan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
     currency: 'PLN',
     isActive: true,
     forAccountType: 'student',
+    sortOrder: 1,
     ...overrides,
   };
 }
@@ -164,7 +165,12 @@ describe('BillingService.startCheckout', () => {
 
   it('returns CONFLICT when the owner already has a live subscription', async () => {
     vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(
-      success({ stripeSubscriptionId: 'sub_1', status: 'active' }),
+      success({
+        stripeSubscriptionId: 'sub_1',
+        status: 'active',
+        planKey: 'spark',
+        currentPeriodEnd: null,
+      }),
     );
 
     await expect(service.startCheckout(studentCtx, 'spark')).resolves.toEqual({

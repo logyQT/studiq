@@ -1,6 +1,6 @@
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import type Stripe from 'stripe';
-import { error as logError } from '@studiq/server/lib/log';
+import { error as logError, warn as logWarn } from '@studiq/server/lib/log';
 import { isRecord, readString } from '@studiq/server/lib/record';
 import { wrapService } from '@studiq/server/lib/observability';
 import { checkoutExpiresAt } from '@studiq/server/lib/payment/checkout-timing';
@@ -47,6 +47,11 @@ const METADATA_PREFIX = 'studiq';
 
 function ownerId(owner: PaymentOwner): string {
   return owner.type === 'user' ? owner.userId : owner.orgId;
+}
+
+function customerIdOf(customer: string | { id: string } | null | undefined): string | null {
+  if (!customer) return null;
+  return typeof customer === 'string' ? customer : customer.id;
 }
 
 function ownerMetadata(owner: PaymentOwner): Record<string, string> {
@@ -237,14 +242,181 @@ export class StripePaymentGateway implements PaymentGateway {
     }
   }
 
-  changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
-    // Phase 4 (#662 §2.5): anchor reset for upgrades, schedule for downgrades.
-    return Promise.resolve(failure('SERVICE_UNAVAILABLE'));
+  async changePlan(input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
+    try {
+      // Re-fetch so the item id, customer and period boundaries are the current
+      // ones; the mirror may lag a webhook by a few seconds.
+      const subscription = await this.client.subscriptions.retrieve(input.subscriptionId);
+
+      // Defence in depth: the subscription must belong to the customer the
+      // service resolved from the authenticated owner.
+      const customerId = customerIdOf(subscription.customer);
+      if (!customerId || customerId !== input.customerId) {
+        logError('billing.subscription_owner_mismatch', {
+          subscriptionId: input.subscriptionId,
+        });
+        return failure('FORBIDDEN');
+      }
+
+      // The MVP bills one plan item per subscription (D4). A second item means
+      // the local model cannot represent the subscription, so fail closed.
+      if (subscription.items.data.length !== 1) {
+        logError('billing.change_plan_multi_item', {
+          subscriptionId: input.subscriptionId,
+          itemCount: subscription.items.data.length,
+        });
+        return failure('SERVICE_UNAVAILABLE');
+      }
+
+      const item = subscription.items.data[0];
+      const livePriceId = item.price.id;
+
+      // A retry after the webhook already applied the target (or a stale
+      // mirror) must not reset the anchor and charge a second full period.
+      if (livePriceId === input.targetPriceId) {
+        return success({ status: 'applied' });
+      }
+
+      // The live price must still be the plan the caller/D B thought it was.
+      const currentPrice = await this.repository.findPriceById(livePriceId, this.livemode);
+      if (isFailure(currentPrice)) return currentPrice;
+      if (currentPrice.data?.planKey !== input.currentPlanKey) {
+        logError('billing.subscription_plan_mismatch', {
+          subscriptionId: input.subscriptionId,
+          expected: input.currentPlanKey,
+          actual: currentPrice.data?.planKey ?? null,
+        });
+        return failure('CONFLICT');
+      }
+
+      // A pending downgrade schedule would otherwise override this change at its
+      // next phase boundary. Release it before applying the new direction.
+      await this.releaseSchedule(subscription);
+
+      if (input.direction === 'upgrade') {
+        const updated = await this.client.subscriptions.update(
+          input.subscriptionId,
+          {
+            items: [{ id: item.id, price: input.targetPriceId }],
+            // Classic billing mode (#662 X1) is what makes this reset legal.
+            // stripe-node types the update form as `{ type: 'now' }` (the API
+            // accepts the same value as `billing_cycle_anchor=now`).
+            billing_cycle_anchor: { type: 'now' },
+            proration_behavior: 'always_invoice',
+            // A 3DS upgrade invoice must not apply the new price before payment.
+            payment_behavior: 'pending_if_incomplete',
+            expand: ['latest_invoice'],
+          },
+          { idempotencyKey: input.idempotencyKey },
+        );
+
+        if (updated.pending_update) {
+          // Stripe accepted the update but the immediate invoice is not paid;
+          // the price changes only after authentication. Surface the hosted
+          // invoice instead of pretending the plan is already applied.
+          const invoice = updated.latest_invoice;
+          const hostedInvoiceUrl =
+            typeof invoice === 'string' ? null : (invoice?.hosted_invoice_url ?? null);
+          return success({ status: 'pending_payment', hostedInvoiceUrl });
+        }
+
+        return success({ status: 'applied' });
+      }
+
+      const start = item.current_period_start;
+      const end = item.current_period_end;
+      if (typeof start !== 'number' || typeof end !== 'number' || !livePriceId) {
+        logError('billing.change_plan_missing_period', { subscriptionId: input.subscriptionId });
+        return failure('SERVICE_UNAVAILABLE');
+      }
+
+      const schedule = await this.client.subscriptionSchedules.create(
+        { from_subscription: input.subscriptionId },
+        { idempotencyKey: `${input.idempotencyKey}:schedule` },
+      );
+
+      // Phases replace the whole phase object, so carry our owner metadata into
+      // both phases instead of letting Stripe unset it on the active one.
+      const metadata = subscription.metadata ?? undefined;
+
+      await this.client.subscriptionSchedules.update(
+        schedule.id,
+        {
+          phases: [
+            {
+              start_date: start,
+              end_date: end,
+              items: [{ price: livePriceId, quantity: 1 }],
+              metadata,
+            },
+            {
+              start_date: end,
+              items: [{ price: input.targetPriceId, quantity: 1 }],
+              metadata,
+            },
+          ],
+        },
+        { idempotencyKey: `${input.idempotencyKey}:phases` },
+      );
+
+      return success({ status: 'scheduled' });
+    } catch (error) {
+      return stripeFailure(error);
+    }
   }
 
-  cancelAtPeriodEnd(_input: CancelAtPeriodEndInput): Promise<ServiceResult<void>> {
-    // Phase 4 (#662 §7.3).
-    return Promise.resolve(failure('SERVICE_UNAVAILABLE'));
+  async cancelAtPeriodEnd(
+    input: CancelAtPeriodEndInput,
+  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean }>> {
+    try {
+      const subscription = await this.client.subscriptions.retrieve(input.subscriptionId);
+      const customerId = customerIdOf(subscription.customer);
+      if (!customerId || customerId !== input.customerId) {
+        logError('billing.subscription_owner_mismatch', {
+          subscriptionId: input.subscriptionId,
+        });
+        return failure('FORBIDDEN');
+      }
+
+      // A scheduled downgrade must not keep its own phase-level cancel flag;
+      // release it first so cancel/reactivate has one authoritative source.
+      await this.releaseSchedule(subscription);
+
+      const updated = await this.client.subscriptions.update(input.subscriptionId, {
+        cancel_at_period_end: input.cancel,
+      });
+
+      // Return Stripe's authoritative value, not the requested one.
+      return success({ cancelAtPeriodEnd: updated.cancel_at_period_end });
+    } catch (error) {
+      return stripeFailure(error);
+    }
+  }
+
+  /** Detach a pending schedule created by an earlier downgrade, if any. */
+  private async releaseSchedule(subscription: Stripe.Subscription): Promise<void> {
+    const schedule = subscription.schedule;
+    const scheduleId = typeof schedule === 'string' ? schedule : schedule?.id;
+    if (!scheduleId) return;
+
+    try {
+      await this.client.subscriptionSchedules.release(scheduleId);
+    } catch (error) {
+      // Two concurrent changes can both observe the same schedule; the loser
+      // sees "already released". That is benign, not a failed change.
+      const message =
+        error instanceof Error
+          ? error.message
+          : isRecord(error)
+            ? (readString(error, 'message') ?? '')
+            : '';
+      const type = isRecord(error) ? readString(error, 'type') : undefined;
+      if (type === 'StripeInvalidRequestError' && /released/i.test(message)) {
+        logWarn('billing.schedule_already_released', { scheduleId });
+        return;
+      }
+      throw error;
+    }
   }
 
   async handleWebhook(envelope: PaymentWebhookEnvelope): Promise<ServiceResult<WebhookOutcome>> {

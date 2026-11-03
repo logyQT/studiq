@@ -131,17 +131,21 @@ describe('MockPaymentGateway', () => {
   it('reports NOT_FOUND for change plan and cancel (the mock has no subscription)', async () => {
     await expect(
       gateway.changePlan({
-        userId: 'u-1',
-        accountType: AccountType.STUDENT,
+        owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+        customerId: 'cus_1',
+        subscriptionId: 'sub_1',
+        currentPlanKey: 'spark',
         targetPlanKey: 'ace',
+        targetPriceId: 'price_ace',
+        direction: 'upgrade',
         idempotencyKey: 'change-key',
       }),
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
 
     await expect(
       gateway.cancelAtPeriodEnd({
-        userId: 'u-1',
-        accountType: AccountType.STUDENT,
+        owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+        subscriptionId: 'sub_1',
         cancel: true,
       }),
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });

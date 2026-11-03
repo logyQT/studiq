@@ -538,7 +538,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     const supabase = this.createAdminClient();
     const { data, error } = await supabase
       .from('subscription_plans')
-      .select('key, name, price_monthly, currency, is_active, for_account_type')
+      .select('key, name, price_monthly, currency, is_active, for_account_type, sort_order')
       .eq('key', planKey)
       .maybeSingle();
 
@@ -552,6 +552,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
       currency: data.currency ?? 'PLN',
       isActive: data.is_active ?? true,
       forAccountType: data.for_account_type,
+      sortOrder: data.sort_order ?? 0,
     });
   }
 

@@ -238,7 +238,7 @@ sequenceDiagram
     API->>B: changePlan()
     B->>DB: same account family? plan active? no pending schedule?
     alt upgrade
-        B->>S: subscriptions.update(id,{items:[{id, price:pro}], billing_cycle_anchor:{type:"now"}, proration_behavior:"create_prorations", payment_behavior:"pending_if_incomplete"})
+        B->>S: subscriptions.update(id,{items:[{id, price:pro}], billing_cycle_anchor:{type:"now"}, proration_behavior:"always_invoice", payment_behavior:"pending_if_incomplete"})
         S-->>B: subscription (pending_update if payment not yet confirmed)
         S->>W: invoice.paid (credit + full new period)
         W->>DB: re-fetch subscription → apply "pro"
@@ -258,7 +258,7 @@ POST /api/v1/billing/cancel {cancel:false} → subscriptions.update(id,{cancel_a
 
 The plan is **not** changed when cancel is scheduled. It is downgraded only on `customer.subscription.deleted` (period end) or an immediate ops cancel.
 
-SDK note: `billing_cycle_anchor` on `subscriptions.update` is `{ type: 'now' }` in `stripe-node` v23 (the docs' curl example encodes the same value as `billing_cycle_anchor=now`; the typed SDK requires the object form). `proration_behavior: 'create_prorations'` is what produces the unused-time credit; with a classic-mode anchor reset Stripe issues the invoice immediately.
+SDK note: `billing_cycle_anchor` on `subscriptions.update` is `{ type: 'now' }` in `stripe-node` v23 (the docs' curl example encodes the same value as `billing_cycle_anchor=now`; the typed SDK requires the object form). `proration_behavior: 'always_invoice'` issues the proration invoice immediately, including the unused-time credit; with a classic-mode anchor reset the new period starts today. `payment_behavior: 'pending_if_incomplete'` means a 3DS/declined upgrade invoice does **not** apply the new price until it is paid: Stripe returns a `pending_update`, the API reports `pending_payment` plus the hosted invoice URL, and the webhook applies the target when `invoice.paid` arrives. (The older `create_prorations` variant this design first sketched does not issue the invoice immediately and is not what the implementation uses.)
 
 ### 2.6 Webhook → entitlement (single responsibility per event)
 

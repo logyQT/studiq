@@ -63,6 +63,7 @@ function catalogPlan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
     currency: 'PLN',
     isActive: true,
     forAccountType: 'student',
+    sortOrder: 1,
     ...overrides,
   };
 }
@@ -276,6 +277,20 @@ describe('BillingService.getSubscription', () => {
         canChangePlan: true,
         canCancel: true,
       },
+    });
+  });
+
+  it('hides a pending marker that already equals the applied plan', async () => {
+    reads = createReads({
+      findSubscription: vi
+        .fn()
+        .mockResolvedValue(success(subscriptionRow({ planKey: 'spark', pendingPlanKey: 'spark' }))),
+    });
+    service = new BillingService(gateway, repository, reads, plans);
+
+    await expect(service.getSubscription(studentCtx)).resolves.toMatchObject({
+      success: true,
+      data: { planKey: 'spark', pendingPlanKey: null },
     });
   });
 

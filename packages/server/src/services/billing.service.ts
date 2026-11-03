@@ -1,6 +1,6 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { isAccountType } from '@studiq/server/lib/authz';
-import { error as logError } from '@studiq/server/lib/log';
+import { error as logError, warn as logWarn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import {
   billingReadRepository,
@@ -8,11 +8,13 @@ import {
 } from '@studiq/server/lib/payment/billing-read.repository';
 import { billingPath } from '@studiq/server/lib/payment/billing-paths';
 import {
+  changePlanIdempotencyKey,
   checkoutExpiresAt,
   checkoutIdempotencyKey,
 } from '@studiq/server/lib/payment/checkout-timing';
 import type {
   BillingLocale,
+  ChangePlanResult,
   CheckoutSessionResult,
   PaymentDriver,
   PaymentGateway,
@@ -292,7 +294,12 @@ export class BillingService {
       status,
       currentPeriodEnd: subscription.currentPeriodEnd,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-      pendingPlanKey: subscription.pendingPlanKey,
+      // A scheduled change that already landed is history: the applied plan
+      // equals the marker, so never render "changing to the current plan".
+      pendingPlanKey:
+        subscription.pendingPlanKey && subscription.pendingPlanKey !== planKey
+          ? subscription.pendingPlanKey
+          : null,
       priceMonthly,
       currency,
       canManagePortal: canManage,
@@ -340,6 +347,174 @@ export class BillingService {
       returnUrl,
       locale,
     });
+  }
+
+  /**
+   * Upgrade now (anchor reset + unused-time credit) or downgrade at period end
+   * (#662 §2.5). The entitlement is **not** written here: the webhook applies
+   * the target plan when Stripe reports the new price.
+   */
+  async changePlan(
+    ctx: RequestContext,
+    targetPlanKey: string,
+  ): Promise<ServiceResult<ChangePlanResult>> {
+    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
+
+    const targetResult = await this.repository.getPlan(targetPlanKey);
+    if (isFailure(targetResult)) return targetResult;
+
+    const target = targetResult.data;
+    if (!target || !target.isActive || target.priceMonthly <= 0) return failure('BAD_REQUEST');
+
+    const owner = ownerFromContext(ctx);
+    const targetIsOrgPlan = target.forAccountType === AccountType.MANAGER;
+
+    // A plan belongs to exactly one family; an organization plan can never be
+    // attached to a personal owner (and vice versa), even if a caller guesses
+    // the key.
+    if (targetIsOrgPlan !== (owner.type === 'org')) return failure('FORBIDDEN');
+    if (
+      !targetIsOrgPlan &&
+      target.forAccountType &&
+      (!isAccountType(target.forAccountType) || target.forAccountType !== ctx.accountType)
+    ) {
+      return failure('FORBIDDEN');
+    }
+
+    if (owner.type === 'org') {
+      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
+      if (isFailure(admin)) return admin;
+      if (!admin.data) return failure('FORBIDDEN');
+    }
+
+    const activeResult = await this.repository.findActiveSubscription(owner, this.gateway.livemode);
+    if (isFailure(activeResult)) return activeResult;
+    const active = activeResult.data;
+    if (!active) return failure('NOT_FOUND');
+    if (active.planKey === target.key) return failure('BAD_REQUEST');
+
+    const currentResult = await this.repository.getPlan(active.planKey);
+    if (isFailure(currentResult)) return currentResult;
+    const current = currentResult.data;
+    if (!current) return failure('NOT_FOUND');
+
+    // Money-affecting direction must not depend on a display-only sort order:
+    // require the catalog price and sort order to agree, and fail closed when a
+    // catalog edit makes them disagree.
+    const priceDirection =
+      target.priceMonthly > current.priceMonthly
+        ? 'upgrade'
+        : target.priceMonthly < current.priceMonthly
+          ? 'downgrade'
+          : null;
+    const sortDirection =
+      target.sortOrder > current.sortOrder
+        ? 'upgrade'
+        : target.sortOrder < current.sortOrder
+          ? 'downgrade'
+          : null;
+
+    if (!priceDirection && !sortDirection) return failure('BAD_REQUEST');
+    if (priceDirection && sortDirection && priceDirection !== sortDirection) {
+      logError('billing.plan_direction_mismatch', {
+        currentPlanKey: current.key,
+        targetPlanKey: target.key,
+      });
+      return failure('SERVICE_UNAVAILABLE');
+    }
+    const direction: 'upgrade' | 'downgrade' = priceDirection ?? sortDirection ?? 'upgrade';
+
+    const customer = await this.repository.findCustomer(owner, this.gateway.livemode);
+    if (isFailure(customer)) return customer;
+    if (!customer.data) return failure('NOT_FOUND');
+
+    const listed = await this.repository.findListedPrice(
+      target.key,
+      'monthly',
+      this.gateway.livemode,
+    );
+    if (isFailure(listed)) return listed;
+
+    const mismatch = validateListedPrice(target, listed.data);
+    if (mismatch) {
+      logError('billing.price_mismatch', { planKey: target.key, reason: mismatch });
+      return failure('SERVICE_UNAVAILABLE');
+    }
+
+    const result = await this.gateway.changePlan({
+      owner,
+      customerId: customer.data.stripeCustomerId,
+      subscriptionId: active.stripeSubscriptionId,
+      currentPlanKey: active.planKey,
+      targetPlanKey: target.key,
+      targetPriceId: listed.data!.stripePriceId,
+      direction,
+      idempotencyKey: changePlanIdempotencyKey(
+        active.stripeSubscriptionId,
+        target.key,
+        listed.data!.stripePriceId,
+        active.currentPeriodEnd,
+      ),
+    });
+    if (isFailure(result)) return result;
+
+    // `pending_plan_key` is a display marker for a scheduled phase or an
+    // upgrade invoice awaiting authentication. The plan key itself still
+    // changes only when the webhook applies the new price.
+    const pendingForNextPeriod =
+      result.data.status === 'scheduled' || result.data.status === 'pending_payment';
+    const marker = await this.repository.setPendingPlan(
+      active.stripeSubscriptionId,
+      pendingForNextPeriod ? target.key : null,
+    );
+    if (isFailure(marker)) {
+      // The provider change already succeeded; a failed marker must not invite
+      // a retry that would create a second schedule.
+      logWarn('billing.pending_plan_marker_failed', {
+        subscriptionId: active.stripeSubscriptionId,
+        planKey: target.key,
+      });
+    }
+
+    return success(result.data);
+  }
+
+  /**
+   * Cancel at period end, or reactivate before it takes effect (#662 §7.3).
+   * The mirror and the entitlement change only when the webhook arrives, so a
+   * cancelled subscription keeps access until `customer.subscription.deleted`.
+   */
+  async cancelSubscription(
+    ctx: RequestContext,
+    cancel: boolean,
+  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean }>> {
+    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
+
+    const owner = ownerFromContext(ctx);
+
+    if (owner.type === 'org') {
+      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
+      if (isFailure(admin)) return admin;
+      if (!admin.data) return failure('FORBIDDEN');
+    }
+
+    const activeResult = await this.repository.findActiveSubscription(owner, this.gateway.livemode);
+    if (isFailure(activeResult)) return activeResult;
+    if (!activeResult.data) return failure('NOT_FOUND');
+
+    const customer = await this.repository.findCustomer(owner, this.gateway.livemode);
+    if (isFailure(customer)) return customer;
+    if (!customer.data) return failure('NOT_FOUND');
+
+    const result = await this.gateway.cancelAtPeriodEnd({
+      owner,
+      customerId: customer.data.stripeCustomerId,
+      subscriptionId: activeResult.data.stripeSubscriptionId,
+      cancel,
+    });
+    if (isFailure(result)) return result;
+
+    return success(result.data);
   }
 }
 

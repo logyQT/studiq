@@ -21,6 +21,7 @@ export interface CatalogPlan {
   currency: string;
   isActive: boolean;
   forAccountType: string | null;
+  sortOrder: number;
 }
 
 export interface CustomerMapping {
@@ -44,6 +45,8 @@ export interface ListedPrice {
 export interface ActiveSubscription {
   stripeSubscriptionId: string;
   status: string;
+  planKey: string;
+  currentPeriodEnd: string | null;
 }
 
 /** Minimal plan shape needed to validate a mapped Price. */
@@ -97,6 +100,11 @@ export interface StripeBillingRepository {
     owner: PaymentOwner,
     livemode: boolean,
   ): Promise<ServiceResult<ActiveSubscription | null>>;
+  /** Display-only schedule marker; the webhook still owns the plan write. */
+  setPendingPlan(
+    stripeSubscriptionId: string,
+    planKey: string | null,
+  ): Promise<ServiceResult<void>>;
 }
 
 const ACTIVE_SUBSCRIPTION_STATUSES = ['active', 'trialing', 'past_due'];
@@ -128,7 +136,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     const supabase = this.createAdminClient();
     const { data, error } = await supabase
       .from('subscription_plans')
-      .select('key, name, price_monthly, currency, is_active, for_account_type')
+      .select('key, name, price_monthly, currency, is_active, for_account_type, sort_order')
       .eq('key', planKey)
       .maybeSingle();
 
@@ -142,6 +150,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
       currency: data.currency ?? 'PLN',
       isActive: data.is_active ?? true,
       forAccountType: data.for_account_type,
+      sortOrder: data.sort_order ?? 0,
     });
   }
 
@@ -289,7 +298,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     const supabase = this.createAdminClient();
     const base = supabase
       .from('billing_subscriptions')
-      .select('stripe_subscription_id, status')
+      .select('stripe_subscription_id, status, plan_key, current_period_end')
       .eq('livemode', livemode)
       .in('status', ACTIVE_SUBSCRIPTION_STATUSES);
 
@@ -305,7 +314,25 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     return success({
       stripeSubscriptionId: data.stripe_subscription_id,
       status: data.status,
+      planKey: data.plan_key,
+      currentPeriodEnd: data.current_period_end,
     });
+  }
+
+  async setPendingPlan(
+    stripeSubscriptionId: string,
+    planKey: string | null,
+  ): Promise<ServiceResult<void>> {
+    const supabase = this.createAdminClient();
+    const { data, error } = await supabase
+      .from('billing_subscriptions')
+      .update({ pending_plan_key: planKey })
+      .eq('stripe_subscription_id', stripeSubscriptionId)
+      .select('id');
+
+    if (error) return toDbFailure(error);
+    if (!data || data.length === 0) return failure('NOT_FOUND');
+    return success(undefined);
   }
 }
 
