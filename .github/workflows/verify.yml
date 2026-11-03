@@ -406,6 +406,36 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ steps.pw-cache-main.outputs.cache-primary-key }}
 
+      # `next build` is 36-46 s per job and six jobs build the same tree (four QA
+      # shards, two e2e legs). The `.next/cache` a build leaves behind is
+      # Turbopack's content-addressed module cache: restoring it turns most of
+      # that into cache hits (measured locally: 17.2 s cold -> 7.5 s with a
+      # restored cache, and 7.5 s after changing one source file). Only
+      # `.next/cache` is cached — never the whole `.next` — so no server chunk
+      # from another commit can be served.
+      #
+      # Key on the lockfile, not the commit: a per-sha key would add a ~250 MB
+      # entry to the 10 GB budget on every nightly (main is the only writer)
+      # and evict the bun/browser caches #988 just right-sized. Entries are
+      # content-addressed, so a cache from an older commit still hits for every
+      # unchanged module, and a lockfile bump (renovate) rotates it naturally.
+      - name: Restore Next build cache (exact)
+        id: next-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore Next build cache (fallback)
+        id: next-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            next-ubuntu-24.04-
+
       - name: Build and start the shared app
         run: |
           bun run build
@@ -415,6 +445,16 @@ jobs:
             sleep 2
           done
           curl -sf -o /dev/null http://localhost:3010/login
+
+      - name: Save Next build cache
+        # One writer, like the bun and browser caches: every building job
+        # restores, the `edu` shard writes.
+        continue-on-error: true
+        if: github.ref == 'refs/heads/main' && matrix.shard.name == 'edu' && steps.next-cache-main.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: apps/web/.next/cache
+          key: ${{ steps.next-cache-main.outputs.cache-primary-key }}
 
       - name: Seed this shard's tenants
         # Same shape as `scripts/e2e-seed.ts`: one process, one run suffix, before
@@ -561,6 +601,27 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.pw-cache-main.outputs.cache-primary-key }}
+
+      # Restore-only: the QA shard writes this cache (one writer, like the bun
+      # and browser caches). Same content as the QA build even though the two
+      # shape `NEXT_PUBLIC_SITE_URL` differently — Turbopack treats the env as an
+      # input of every module it inlines into, so a restore never leaks the
+      # other job's origin (verified: a build over a cache made with a different
+      # site URL contains none of the old value).
+      - name: Restore Next build cache (exact)
+        if: needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore Next build cache (fallback)
+        if: needs.scope.outputs.app == 'true' && github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            next-ubuntu-24.04-
 
       # Same shape as `qa-suite`: the workflow starts the app and seeds, and
       # Playwright only drives the browser. Before this, the build hid inside
