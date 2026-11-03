@@ -32,10 +32,6 @@ typeAware = true
 # The baseline is empty and every warning has been fixed; a new warning now
 # fails the run just like an error.
 maxWarnings = 0
-# While `eslint-suppressions.json` is being burned down, a suppression that no
-# longer matches (because the bug was fixed) must not fail the run. Run
-# `bun lint --prune-suppressions` to drop stale entries.
-passOnUnprunedSuppressions = true
 
 [lint.categories]
 # Bun's defaults already cover correctness (ESLint + typescript-eslint
@@ -49,6 +45,7 @@ suspicious = "warn"
 "@typescript-eslint/no-unused-vars" = "error"
 "@typescript-eslint/no-explicit-any" = "error"
 "react-hooks/exhaustive-deps" = "error"
+"react/no-danger" = "error"
 "oxc/no-barrel-file" = ["error", { threshold = 0 }]
 
 # --- Biome parity rules kept off for now ------------------------------
