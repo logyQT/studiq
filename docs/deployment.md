@@ -45,6 +45,95 @@ LLM_MODEL_NAME=gpt-4o-mini
 # OTEL_SDK_DISABLED=true
 ```
 
+### Stripe (optional — test mode first)
+
+`PAYMENT_DRIVER=mock` is the default and needs no Stripe configuration.
+Switching to `stripe` requires **all** of the following; boot validation
+(`parseStripeConfig`) refuses a partial or malformed configuration:
+
+```env
+PAYMENT_DRIVER=stripe
+STRIPE_SECRET_KEY=sk_test_...          # sk_live_... only in production
+STRIPE_WEBHOOK_SECRET=whsec_...        # per environment; stripe listen locally
+STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
+# STRIPE_ALLOW_LIVE=1                  # explicit escape hatch, never for the sandbox
+```
+
+#### Bootstrap (once per Stripe mode)
+
+```bash
+bun scripts/stripe-bootstrap.ts --check   # validate the catalog, no network/writes
+bun scripts/stripe-bootstrap.ts           # create/rotate products, prices, portal config
+# prints STRIPE_PORTAL_CONFIGURATION_ID=bpc_…
+```
+
+The script is idempotent, refuses a live key unless `--live` is passed **and**
+`NEXT_PUBLIC_SITE_URL` is an `https://` URL, never deletes a Stripe Price (it
+rotates the lookup key), and writes the `stripe_prices` rows. Price ids live in
+the database, never in git.
+
+#### Local webhook forwarding
+
+```bash
+stripe login
+stripe listen --forward-to localhost:$APP_PORT/api/v1/stripe/webhook \
+  --events checkout.session.completed,checkout.session.expired,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,invoice.paid,invoice.payment_failed,invoice.payment_action_required
+```
+
+Copy the printed `whsec_…` into `STRIPE_WEBHOOK_SECRET` and restart the server.
+The `stripe listen` secret is stable across restarts but **different** from a
+Dashboard endpoint secret — a mismatch is the most common signature failure.
+For preview/staging, create a Dashboard endpoint with the same event list and
+store its secret in that environment. One endpoint per environment is the
+default; sharing a staging endpoint across previews is an open decision (§12.1
+Q9).
+
+#### Portal configuration
+
+The bootstrap creates the `StudiQ` Billing Portal configuration: payment-method
+update, invoice history, cancel-at-period-end and tax-id update are enabled;
+**plan switching is deliberately disabled**, because upgrades/downgrades go
+through `/api/v1/billing/change-plan` (anchor reset / period-end schedule).
+Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
+
+#### Livemode separation
+
+- `livemode` is derived from the key prefix (`sk_live_`), stored on
+  `billing_customers`/`billing_subscriptions`/`stripe_prices`/
+  `stripe_webhook_events`, and filtered on every read. `payments` rows are
+  mode-agnostic (the invoice id is unique within a mode).
+- A live key outside `NODE_ENV=production` throws at boot unless
+  `STRIPE_ALLOW_LIVE=1`.
+- The webhook rejects an event from the other mode; the bootstrap refuses live
+  without `--live` + production.
+- Never mix test and live price ids in one `stripe_prices` row set.
+
+#### Rollback
+
+1. Set `PAYMENT_DRIVER=mock` and restart — new checkouts use the simulation.
+   **Entitlement syncing stops with the driver flip**: in mock mode
+   `/api/v1/stripe/webhook` is the authenticated mock branch, so real Stripe
+   events get 401/400 and subscriptions freeze at their last known value.
+2. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
+   `stripe_webhook_events` or `payments` rows.
+3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled while
+   the driver is `stripe` (or flip back to `stripe` deliberately) until the last
+   in-flight subscription is canceled.
+4. Cancel a Stripe subscription in the Dashboard and let
+   `customer.subscription.deleted` downgrade to free — with the driver back on
+   `stripe` long enough to receive it. Never hand-edit
+   `profiles.personal_plan_key` while the webhook is live.
+
+#### Operational notes
+
+- The reconcile endpoint has a **per-process** in-memory rate limit (20/min per
+  user). A scaled-out deployment still needs a shared counter for a hard quota.
+- Watch `billing.webhook_*`, `billing.duplicate_subscription`,
+  `billing.price_unmapped`, `billing.payments_no_attributable_user` and
+  `billing.reconcile_*` during a pilot.
+- Test cards: `4242 4242 4242 4242` succeeds, `4000 0000 0000 0002` declines,
+  `4000 0000 0000 0341` attaches but fails the renewal charge (dunning).
+
 ### Vercel Configuration
 
 1. Connect your GitHub repository to Vercel

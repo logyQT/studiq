@@ -2,9 +2,13 @@ import { AccountType } from '@studiq/authz';
 import { StripePaymentGateway } from '@studiq/server/lib/payment/stripe-payment.gateway';
 import { SupabaseStripeBillingRepository } from '@studiq/server/lib/payment/stripe-repository';
 import { createStripeClient } from '@studiq/server/lib/payment/stripe-client';
+import { SupabaseStripeWebhookRepository } from '@studiq/server/lib/payment/stripe-webhook.repository';
+import { EntitlementService } from '@studiq/server/services/entitlement.service';
+import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { asJson } from '#test/helpers/json';
 import { createServiceClient, TEST_USERS } from '#test/integration/helpers';
 
 /**
@@ -241,4 +245,523 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       await service.from('billing_customers').delete().eq('user_id', studentId);
     }
   });
+});
+
+/**
+ * Opt-in subscription lifecycle through real test clocks (#662 §10.3).
+ *
+ * Every case creates one clock, one customer and one subscription, advances at
+ * most two service periods, replays the resulting Stripe events through the
+ * **real** signed webhook path, and deletes the clock again. Limits from §8.5:
+ * max 3 customers / 3 subscriptions per clock.
+ *
+ * This suite is network- and sandbox-dependent; it is skipped without
+ * `RUN_STRIPE_TESTS=1` and must never run on fork PRs.
+ */
+const LIFECYCLE_WEBHOOK_SECRET = 'whsec_stripe_lifecycle_test';
+const LIFECYCLE_EVENTS = new Set([
+  'customer.subscription.created',
+  'customer.subscription.updated',
+  'customer.subscription.deleted',
+  'invoice.paid',
+  'invoice.payment_failed',
+  'invoice.payment_action_required',
+]);
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function eventSubscriptionId(event: Stripe.Event): string | null {
+  if (event.type.startsWith('customer.subscription.')) {
+    return asJson<Stripe.Subscription>(event.data.object).id;
+  }
+  if (event.type.startsWith('invoice.')) {
+    const invoice = asJson<Stripe.Invoice>(event.data.object);
+    const parent = invoice.parent?.subscription_details?.subscription;
+    if (typeof parent === 'string') return parent;
+    if (parent) return parent.id;
+
+    // The sandbox account may still emit the pre-2025 payload shape.
+    const legacy = asJson<{ subscription?: string | { id: string } | null }>(invoice).subscription;
+    if (typeof legacy === 'string') return legacy;
+    if (legacy) return legacy.id;
+
+    for (const line of invoice.lines?.data ?? []) {
+      const subscription = line.parent?.subscription_item_details?.subscription;
+      if (typeof subscription === 'string') return subscription;
+      const lineLegacy = asJson<{ subscription?: string | null }>(line).subscription;
+      if (typeof lineLegacy === 'string') return lineLegacy;
+    }
+  }
+  return null;
+}
+
+describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 §10.3)', () => {
+  const userId = TEST_USERS.STUDENT.id;
+  // Unique per run: makes clock names, customer emails and idempotency keys
+  // replay-safe even if a previous clock was leaked.
+  const tag = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+  type LifecyclePlan = { key: string; priceId: string; amount: number };
+
+  // Constructed in `beforeAll`, not in the suite body: `describe.skipIf` still
+  // runs the body to collect tests, and `new Stripe(undefined)` would fail the
+  // default integration run without Stripe env.
+  let stripe: Stripe;
+  let service: ReturnType<typeof createServiceClient>;
+  let webhookService: StripeWebhookService;
+  let gateway: StripePaymentGateway;
+  let plans: LifecyclePlan[];
+
+  beforeAll(async () => {
+    const secretKey = process.env.STRIPE_SECRET_KEY!;
+    expect(secretKey.startsWith('sk_test_')).toBe(true);
+
+    service = createServiceClient();
+    stripe = new Stripe(secretKey, { apiVersion: API_VERSION });
+    webhookService = new StripeWebhookService({
+      client: createStripeClient(secretKey),
+      webhookSecret: LIFECYCLE_WEBHOOK_SECRET,
+      livemode: false,
+      repository: new SupabaseStripeWebhookRepository(() => service),
+      entitlements: new EntitlementService(() => service),
+    });
+    gateway = new StripePaymentGateway({
+      client: createStripeClient(secretKey),
+      config: {
+        secretKey,
+        webhookSecret: LIFECYCLE_WEBHOOK_SECRET,
+        portalConfigurationId: process.env.STRIPE_PORTAL_CONFIGURATION_ID ?? 'bpc_lifecycle_test',
+        livemode: false,
+      },
+      repository: new SupabaseStripeBillingRepository(() => service),
+      siteUrl: () => 'https://studiq.test',
+    });
+
+    const { data, error } = await service
+      .from('subscription_plans')
+      .select('key, price_monthly')
+      .eq('is_active', true)
+      .gt('price_monthly', 0)
+      .eq('for_account_type', 'student')
+      .order('price_monthly', { ascending: true });
+    if (error) throw new Error(`subscription_plans: ${error.message}`);
+
+    plans = [];
+    for (const plan of data ?? []) {
+      const { data: price, error: priceError } = await service
+        .from('stripe_prices')
+        .select('stripe_price_id')
+        .eq('plan_key', plan.key)
+        .eq('billing_cycle', 'monthly')
+        .eq('livemode', false)
+        .eq('active', true)
+        .maybeSingle();
+      if (priceError) throw new Error(`stripe_prices for ${plan.key}: ${priceError.message}`);
+      if (price) {
+        plans.push({
+          key: plan.key,
+          priceId: price.stripe_price_id,
+          amount: plan.price_monthly ?? 0,
+        });
+      }
+    }
+
+    if (plans.length < 2) {
+      throw new Error(
+        'lifecycle tests need at least two mapped student plans; run scripts/stripe-bootstrap.ts',
+      );
+    }
+  }, 30_000);
+
+  function metadata(planKey: string) {
+    return {
+      studiq_owner_type: 'user',
+      studiq_user_id: userId,
+      studiq_org_id: '',
+      studiq_plan_key: planKey,
+      studiq_billing_cycle: 'monthly',
+      studiq_livemode: 'false',
+    };
+  }
+
+  async function resetBilling() {
+    await service.from('payments').delete().eq('user_id', userId);
+    await service.from('billing_subscriptions').delete().eq('user_id', userId);
+    await service.from('billing_customers').delete().eq('user_id', userId);
+    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', userId);
+  }
+
+  async function profilePlan(): Promise<string | null> {
+    const { data, error } = await service
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', userId)
+      .single();
+    if (error) throw new Error(error.message);
+    return data.personal_plan_key;
+  }
+
+  async function mirrorRow(stripeSubscriptionId: string) {
+    const { data, error } = await service
+      .from('billing_subscriptions')
+      .select('plan_key, status, pending_plan_key, current_period_end')
+      .eq('stripe_subscription_id', stripeSubscriptionId)
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async function paymentRows() {
+    const { data, error } = await service
+      .from('payments')
+      .select('stripe_invoice_id, amount, provider')
+      .eq('user_id', userId)
+      .order('paid_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }
+
+  async function createFixture(plan: LifecyclePlan) {
+    const frozenTime = Math.floor(Date.now() / 1000);
+    const since = frozenTime - 60;
+    const clock = await stripe.testHelpers.testClocks.create({
+      frozen_time: frozenTime,
+      name: `studiq-lifecycle-${plan.key}-${tag}`,
+    });
+
+    try {
+      const customer = await stripe.customers.create({
+        email: `stripe-lifecycle-${tag}@example.test`,
+        test_clock: clock.id,
+        payment_method: 'pm_card_visa',
+        invoice_settings: { default_payment_method: 'pm_card_visa' },
+        metadata: { studiq_owner_type: 'user', studiq_user_id: userId },
+      });
+
+      const subscription = await stripe.subscriptions.create({
+        customer: customer.id,
+        items: [{ price: plan.priceId, quantity: 1 }],
+        metadata: metadata(plan.key),
+        // The upgrade anchor reset (D5) is only legal in classic mode.
+        billing_mode: { type: 'classic' },
+      });
+
+      return { clock, customer, subscription, since };
+    } catch (error) {
+      // Never leak a clock/customer when the fixture cannot be completed.
+      await stripe.testHelpers.testClocks.del(clock.id).catch(() => {});
+      throw error;
+    }
+  }
+
+  async function advanceClock(clockId: string, frozenTime: number) {
+    await stripe.testHelpers.testClocks.advance(clockId, { frozen_time: frozenTime });
+
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      const clock = await stripe.testHelpers.testClocks.retrieve(clockId);
+      if (clock.status === 'ready') return;
+      await sleep(1_000);
+    }
+    throw new Error(`test clock ${clockId} did not become ready`);
+  }
+
+  /**
+   * Query one Stripe `type` at a time: `events.list` is account-wide and
+   * newest-first, so paging a single 1 000-event window on a busy sandbox can
+   * drop the oldest events that create the mirror.
+   */
+  async function eventsFor(
+    subscriptionId: string,
+    since: number,
+    types: readonly string[] = [...LIFECYCLE_EVENTS],
+  ) {
+    const lists = await Promise.all(
+      types.map((type) =>
+        stripe.events
+          .list({ created: { gte: since }, type, limit: 100 })
+          .autoPagingToArray({ limit: 500 }),
+      ),
+    );
+
+    return lists
+      .flat()
+      .filter((event) => eventSubscriptionId(event) === subscriptionId)
+      .toSorted((left, right) => left.created - right.created);
+  }
+
+  async function waitForPaidInvoices(subscriptionId: string, since: number, count: number) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const paid = new Set(
+        (await eventsFor(subscriptionId, since, ['invoice.paid'])).map(
+          (event) => asJson<Stripe.Invoice>(event.data.object).id,
+        ),
+      );
+      if (paid.size >= count) return;
+      await sleep(1_000);
+    }
+    throw new Error(`expected ${count} paid invoices for ${subscriptionId}`);
+  }
+
+  async function waitForEventType(subscriptionId: string, since: number, type: string) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const found = (await eventsFor(subscriptionId, since, [type])).length > 0;
+      if (found) return;
+      await sleep(1_000);
+    }
+    throw new Error(`expected ${type} for ${subscriptionId}`);
+  }
+
+  async function replay(subscriptionId: string, since: number) {
+    const events = await eventsFor(subscriptionId, since);
+    expect(events.length, `no lifecycle events for ${subscriptionId}`).toBeGreaterThan(0);
+
+    for (const event of events) {
+      const payload = JSON.stringify(event);
+      const header = Stripe.webhooks.generateTestHeaderString({
+        payload,
+        secret: LIFECYCLE_WEBHOOK_SECRET,
+      });
+      const result = await webhookService.handle(payload, header);
+      expect(result.success, `${event.type} ${event.id}`).toBe(true);
+    }
+  }
+
+  async function cleanup(clockId: string) {
+    await resetBilling();
+    try {
+      await stripe.testHelpers.testClocks.del(clockId);
+    } catch (error) {
+      // A leaked clock still counts against the sandbox budget; surface it.
+      console.warn(`could not delete test clock ${clockId}`, error);
+    }
+  }
+
+  it('renewal writes a second payments row and replay stays idempotent', async () => {
+    await resetBilling();
+    const fixture = await createFixture(plans[0]);
+
+    try {
+      await waitForPaidInvoices(fixture.subscription.id, fixture.since, 1);
+      await replay(fixture.subscription.id, fixture.since);
+
+      expect(await profilePlan()).toBe(plans[0].key);
+      const firstPayment = await paymentRows();
+      expect(firstPayment).toHaveLength(1);
+      expect(firstPayment[0]).toMatchObject({
+        amount: plans[0].amount,
+        provider: 'stripe',
+      });
+
+      await advanceClock(fixture.clock.id, fixture.since + 32 * 86_400 + 60);
+      await waitForPaidInvoices(fixture.subscription.id, fixture.since, 2);
+      await replay(fixture.subscription.id, fixture.since);
+
+      const payments = await paymentRows();
+      expect(payments).toHaveLength(2);
+      expect(new Set(payments.map((payment) => payment.stripe_invoice_id)).size).toBe(2);
+
+      // Replaying every event again must not add a third row.
+      await replay(fixture.subscription.id, fixture.since);
+      expect(await paymentRows()).toHaveLength(2);
+
+      // Force the handlers to re-run (a failed claim is retried) so the
+      // `stripe_invoice_id` unique guard — not just the event table — is
+      // exercised.
+      const paidEvents = await eventsFor(fixture.subscription.id, fixture.since, ['invoice.paid']);
+      const { error: resetError } = await service
+        .from('stripe_webhook_events')
+        .update({ status: 'failed' })
+        .in(
+          'id',
+          paidEvents.map((event) => event.id),
+        );
+      if (resetError) throw new Error(resetError.message);
+      await replay(fixture.subscription.id, fixture.since);
+      expect(await paymentRows()).toHaveLength(2);
+    } finally {
+      await cleanup(fixture.clock.id);
+    }
+  }, 240_000);
+
+  it('a failing renewal card marks the mirror past_due without changing the plan', async () => {
+    await resetBilling();
+    const fixture = await createFixture(plans[0]);
+
+    try {
+      await waitForPaidInvoices(fixture.subscription.id, fixture.since, 1);
+      await replay(fixture.subscription.id, fixture.since);
+      expect(await profilePlan()).toBe(plans[0].key);
+
+      // Raw card-data APIs are disabled on the account; this Stripe test token
+      // maps to 4000 0000 0000 0341 (attaches, fails the renewal charge).
+      const failingCard = await stripe.paymentMethods.create({
+        type: 'card',
+        card: { token: 'tok_chargeCustomerFail' },
+      });
+      await stripe.paymentMethods.attach(failingCard.id, { customer: fixture.customer.id });
+      await stripe.customers.update(fixture.customer.id, {
+        invoice_settings: { default_payment_method: failingCard.id },
+      });
+
+      await advanceClock(fixture.clock.id, fixture.since + 32 * 86_400 + 60);
+      await waitForEventType(fixture.subscription.id, fixture.since, 'invoice.payment_failed');
+      await replay(fixture.subscription.id, fixture.since);
+
+      expect(await profilePlan()).toBe(plans[0].key);
+      expect((await mirrorRow(fixture.subscription.id)).status).toBe('past_due');
+      // The failed renewal never writes a payments row.
+      expect(await paymentRows()).toHaveLength(1);
+    } finally {
+      await cleanup(fixture.clock.id);
+    }
+  }, 240_000);
+
+  it('cancel at period end deletes the subscription and downgrades to free', async () => {
+    await resetBilling();
+    const fixture = await createFixture(plans[0]);
+
+    try {
+      await waitForPaidInvoices(fixture.subscription.id, fixture.since, 1);
+      await replay(fixture.subscription.id, fixture.since);
+      expect(await profilePlan()).toBe(plans[0].key);
+
+      await stripe.subscriptions.update(fixture.subscription.id, {
+        cancel_at_period_end: true,
+      });
+      await advanceClock(fixture.clock.id, fixture.since + 32 * 86_400 + 60);
+      await waitForEventType(
+        fixture.subscription.id,
+        fixture.since,
+        'customer.subscription.deleted',
+      );
+      await replay(fixture.subscription.id, fixture.since);
+
+      expect(await profilePlan()).toBe('base');
+      expect((await mirrorRow(fixture.subscription.id)).status).toBe('canceled');
+    } finally {
+      await cleanup(fixture.clock.id);
+    }
+  }, 240_000);
+
+  it('upgrade resets the billing anchor and applies the target plan', async () => {
+    await resetBilling();
+    const from = plans[0];
+    const to = plans[plans.length - 1];
+    const fixture = await createFixture(from);
+
+    try {
+      await waitForPaidInvoices(fixture.subscription.id, fixture.since, 1);
+      await replay(fixture.subscription.id, fixture.since);
+      expect(await profilePlan()).toBe(from.key);
+
+      const before = await stripe.subscriptions.retrieve(fixture.subscription.id);
+      const beforeStart = before.items.data[0]?.current_period_start;
+      const beforeInvoice =
+        typeof before.latest_invoice === 'string'
+          ? before.latest_invoice
+          : before.latest_invoice?.id;
+      if (typeof beforeStart !== 'number') throw new Error('missing initial period start');
+
+      // Move partway through the cycle so a successful anchor reset is visible.
+      await advanceClock(fixture.clock.id, fixture.since + 5 * 86_400);
+
+      const result = await gateway.changePlan({
+        owner: { type: 'user', userId, accountType: AccountType.STUDENT },
+        customerId: fixture.customer.id,
+        subscriptionId: fixture.subscription.id,
+        currentPlanKey: from.key,
+        targetPlanKey: to.key,
+        targetPriceId: to.priceId,
+        direction: 'upgrade',
+        idempotencyKey: `lifecycle-upgrade-${tag}-${Date.now()}`,
+      });
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      if (!result.success) throw new Error('upgrade was not applied');
+      expect(result.data.status).toBe('applied');
+
+      const after = await stripe.subscriptions.retrieve(fixture.subscription.id);
+      const afterStart = after.items.data[0]?.current_period_start;
+      const afterInvoice =
+        typeof after.latest_invoice === 'string' ? after.latest_invoice : after.latest_invoice?.id;
+
+      expect(after.items.data[0]?.price.id).toBe(to.priceId);
+      if (typeof afterStart !== 'number') throw new Error('missing reset period start');
+      expect(afterStart).toBeGreaterThan(beforeStart);
+      // A new invoice (unused-time credit + full new period) must exist; the
+      // previous one is not proof. The exact credit is checked manually in the
+      // sandbox run (§10.4).
+      expect(afterInvoice).toBeTruthy();
+      expect(afterInvoice).not.toBe(beforeInvoice);
+
+      await waitForPaidInvoices(fixture.subscription.id, fixture.since, 2);
+      await replay(fixture.subscription.id, fixture.since);
+
+      expect(await profilePlan()).toBe(to.key);
+      expect((await mirrorRow(fixture.subscription.id)).plan_key).toBe(to.key);
+    } finally {
+      await cleanup(fixture.clock.id);
+    }
+  }, 240_000);
+
+  it('downgrade applies at the period boundary, not immediately', async () => {
+    await resetBilling();
+    const from = plans[plans.length - 1];
+    const to = plans[0];
+    const fixture = await createFixture(from);
+
+    try {
+      await waitForPaidInvoices(fixture.subscription.id, fixture.since, 1);
+      await replay(fixture.subscription.id, fixture.since);
+      expect(await profilePlan()).toBe(from.key);
+
+      const result = await gateway.changePlan({
+        owner: { type: 'user', userId, accountType: AccountType.STUDENT },
+        customerId: fixture.customer.id,
+        subscriptionId: fixture.subscription.id,
+        currentPlanKey: from.key,
+        targetPlanKey: to.key,
+        targetPriceId: to.priceId,
+        direction: 'downgrade',
+        idempotencyKey: `lifecycle-downgrade-${tag}-${Date.now()}`,
+      });
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      if (!result.success) throw new Error('downgrade was not scheduled');
+      expect(result.data.status).toBe('scheduled');
+
+      // The plan must not move before the phase boundary — neither locally nor
+      // on the live subscription.
+      expect(await profilePlan()).toBe(from.key);
+      const scheduled = await stripe.subscriptions.retrieve(fixture.subscription.id);
+      expect(scheduled.schedule).toBeTruthy();
+      expect(scheduled.items.data[0]?.price.id).toBe(from.priceId);
+      expect(scheduled.pending_update ?? null).toBeNull();
+      const periodEnd = scheduled.items.data[0]?.current_period_end;
+      if (typeof periodEnd !== 'number') throw new Error('missing downgrade period end');
+
+      await advanceClock(fixture.clock.id, periodEnd + 60);
+
+      // The phase boundary changes the live price; an invoice for the new
+      // period may lag it by a few seconds, so assert the plan transition (the
+      // contract) and then replay whatever events Stripe has produced.
+      let livePriceId = scheduled.items.data[0]?.price.id;
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const live = await stripe.subscriptions.retrieve(fixture.subscription.id);
+        livePriceId = live.items.data[0]?.price.id;
+        if (livePriceId === to.priceId) break;
+        await sleep(1_000);
+      }
+      expect(livePriceId).toBe(to.priceId);
+
+      await replay(fixture.subscription.id, fixture.since);
+
+      expect(await profilePlan()).toBe(to.key);
+      expect((await mirrorRow(fixture.subscription.id)).plan_key).toBe(to.key);
+    } finally {
+      await cleanup(fixture.clock.id);
+    }
+  }, 240_000);
 });

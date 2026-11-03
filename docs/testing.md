@@ -66,6 +66,43 @@ bun run test:watch        # Watch mode (re-runs on file changes)
 bun run test:coverage     # Run with coverage report
 ```
 
+## Stripe sandbox (opt-in)
+
+The real-Stripe suites need the network, a **test-mode** secret and a reachable
+local Supabase stack. They are skipped unless `RUN_STRIPE_TESTS=1`, and they
+must **never** run on PRs from forks.
+
+```bash
+# One-off, after scripts/stripe-bootstrap.ts and with this checkout's DB up:
+bun run test:stripe
+```
+
+Prerequisites (root `.env`):
+
+- `STRIPE_SECRET_KEY=sk_test_…` (never `sk_live_…` for this suite)
+- `STRIPE_PORTAL_CONFIGURATION_ID=bpc_…` and the catalog/prices created by
+  `bun scripts/stripe-bootstrap.ts`
+- `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for a reachable local
+  Supabase, plus the seeded `TEST_USERS` and at least two mapped student plans
+- `RUN_STRIPE_TESTS=1` (the script sets it)
+
+Run `bun run test:stripe` on its own, not as part of a full
+`bun run test:integration` run: the lifecycle cases use the seeded student and
+reset that user's billing rows.
+
+What it covers:
+
+- catalog/price/portal/checkout-session shape against the real sandbox;
+- subscription lifecycle via **test clocks**: renewal → second `payments` row
+  (replay stays idempotent), dunning with `4000 0000 0000 0341` → mirror
+  `past_due` + unchanged plan, cancel-at-period-end → `deleted` → free plan,
+  upgrade anchor reset, and downgrade applying at the period boundary.
+
+Test-clock limits: at most **3 customers per clock** and **3 subscriptions per
+customer**; advance at most two service periods at a time; clocks auto-delete
+after 30 days. Each case creates one clock/customer/subscription and deletes the
+clock again.
+
 ## Manual QA (agent-driven)
 
 The manual test plan lives in [`qa/`](../qa/README.md) — 214 scenarios with
