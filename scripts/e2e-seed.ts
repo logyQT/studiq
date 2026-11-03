@@ -401,9 +401,7 @@ async function main(): Promise<void> {
   const project = args.includes('--project') ? args[args.indexOf('--project') + 1] : undefined;
 
   const wipe = args.includes('--reset');
-  if (wipe) await reset();
 
-  const started = performance.now();
   const tests = only
     ? [
         {
@@ -421,6 +419,11 @@ async function main(): Promise<void> {
     );
   }
 
+  // Only after the request is known to be valid: `--reset` deletes every e2e
+  // tenant, so a typo in `--project` must fail before anything is destroyed.
+  if (wipe) await reset();
+
+  const started = performance.now();
   const tenants = [
     ...new Map(
       scoped.map((t) => {
