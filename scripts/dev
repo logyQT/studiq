@@ -1,33 +1,56 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# scripts/dev — one-command local development stack for @studiq/web + Supabase.
+# scripts/dev — one-command, multi-checkout-safe local stack for @studiq/web.
 #
-#   bun dev:up            start Supabase (if needed) + the web dev server
-#   bun dev:status        health / PIDs / URLs (`--json` for machines)
-#   bun dev:down          stop the web dev server
-#   bun dev:down --all    also stop Supabase (database volume is kept)
-#   bun dev:reset-db      destructive: `supabase db reset` (never run by dev:up)
-#   bun dev:build         explicit production build (never run by dev:up)
-#   bun dev:logs          follow the web log + recent Supabase container logs
-#   bun dev:prepull       pull Supabase images without leaving the stack running
+#   bun dev:up              Supabase (if needed) + web server (dev)
+#   bun dev:up --prod       Supabase + production build (if missing) + next start
+#   bun dev:build           explicit production build (registry-level build lock)
+#   bun dev:serve           `next start` for this checkout (no dev server)
+#   bun dev:status          health / PIDs / ports / owner (`--json` for machines)
+#   bun dev:down            stop only this checkout's web server
+#   bun dev:down --all      + stop only this checkout's Supabase (volume kept)
+#   bun dev:reset-db        destructive: `supabase db reset`, this checkout only
+#   bun dev:logs            follow the web log + this stack's container logs
+#   bun dev:doctor          explain missing / owned / colliding state
+#   bun dev:ports --suggest print a free APP_PORT / SUPABASE_PORT_BASE
+#   bun dev:prepull         pull Supabase images without leaving the stack running
 #
 # Contract:
 #   * root `.env` is the only hand-edited env file (copy `.env.example`)
-#   * `apps/web/.env` is generated from root `.env` + `supabase status -o env`
-#   * `dev:up` never installs, builds, or runs an explicit DB reset /
-#     migrations / seeds (only what `supabase start` does on a fresh volume)
-#   * fixed local ports: web 3000, API 54321, DB 54322, Mailpit 54324
-#   * the shared QA stack (:3010 / :54421) is refused unless DEV_ALLOW_SHARED=1
+#   * every value is resolved in one place from the env contract, with
+#     per-checkout defaults derived from the checkout path
+#   * `apps/web/.env` is generated (mode 600, Git-ignored) from root `.env` +
+#     `supabase status -o env`
+#   * `supabase/.env` is generated (mode 600, Git-ignored) so plain
+#     `bunx supabase ...` commands in this checkout target THIS checkout's stack
+#   * stacks are addressed by SUPABASE_PROJECT_ID; ports come from
+#     SUPABASE_PORT_BASE (API +1, DB +2, Studio +3, Mail +4, Analytics +7,
+#     Edge inspector +8, Pooler +9, Shadow +0)
+#   * ownership is recorded in a runtime registry outside the repo; a collision
+#     fails with the owning checkout and never stops another stack
+#   * destructive commands are scoped with `--project-id` and refuse shared mode
+#   * nothing is hardcoded to one machine/user/path; Docker is detected, not
+#     assumed, and `flock` is optional (mkdir lock with stale-PID detection)
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+if (( BASH_VERSINFO[0] < 4 )); then
+  printf '✘ scripts/dev needs bash >= 4 (found %s).\n' "$BASH_VERSION" >&2
+  printf '  macOS: brew install bash, then run `bun dev:up` with /opt/homebrew/bin in PATH\n' >&2
+  printf '  (or `bash scripts/dev up` with that bash explicitly).\n' >&2
+  exit 1
+fi
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd -P)
 DEV_DIR="$REPO_ROOT/.dev"
 WEB_LOG="$DEV_DIR/web.log"
 WEB_PID_FILE="$DEV_DIR/web.pid"
 WEB_ENV_FILE="$REPO_ROOT/apps/web/.env"
+SUPABASE_ENV_FILE="$REPO_ROOT/supabase/.env"
+BUILD_FINGERPRINT_FILE="$REPO_ROOT/apps/web/.next/studiq-build.env"
 ROOT_ENV_FILE="$REPO_ROOT/.env"
+REGISTRY_HELPER="$SCRIPT_DIR/dev-registry.ts"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -48,6 +71,7 @@ header() { printf "\n${CYAN}▸${NC} %s\n" "$*"; }
 # to execute shell code. Root `.env` wins over previously loaded fallbacks.
 declare -A ENV=()
 ENV_ORDER=()
+ENV_FILE_MISSING=0
 
 env_has() { [[ -n "${ENV[$1]+x}" ]]; }
 
@@ -66,10 +90,26 @@ trim() {
   printf '%s' "$value"
 }
 
+# Keys `scripts/dev` relies on internally (or that would break the shell if a
+# user `.env` exported them) are never loaded from a dotenv file.
+env_key_allowed() {
+  case "$1" in
+    ENV | ENV_ORDER | PROC_ENV | CONTRACT_KEYS | REGISTRY_FIELDS | SUPA) return 1 ;;
+    PATH | HOME | IFS | CDPATH | ENV_FILE_MISSING | BASH_ENV | BASHOPTS | SHELLOPTS) return 1 ;;
+    REPO_ROOT | SCRIPT_DIR | DEV_DIR | WEB_LOG | WEB_PID_FILE) return 1 ;;
+    WEB_ENV_FILE | SUPABASE_ENV_FILE | ROOT_ENV_FILE | REGISTRY_DIR | REGISTRY_HELPER) return 1 ;;
+  esac
+  return 0
+}
+
 load_env_file() {
   local file=$1 mode=${2:-keep}
   [[ -f "$file" ]] || return 0
 
+  # Two phases so duplicate keys are last-wins *within* the file, while `keep`
+  # still lets an already-exported process variable win over the file.
+  local -A file_env=()
+  local -a file_order=()
   local line key value
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%$'\r'}"
@@ -81,6 +121,7 @@ load_env_file() {
     key=$(trim "${line%%=*}")
     value=$(trim "${line#*=}")
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    env_key_allowed "$key" || continue
 
     if [[ "$value" == \"*\" && "$value" == *\" && ${#value} -ge 2 ]]; then
       value="${value:1:${#value}-2}"
@@ -92,34 +133,123 @@ load_env_file() {
       value=$(trim "$value")
     fi
 
-    env_set "$key" "$value" "$mode"
+    if ! [[ -n "${file_env[$key]+x}" ]]; then file_order+=("$key"); fi
+    file_env["$key"]="$value"
   done <"$file"
+
+  local apply
+  for apply in "${file_order[@]}"; do
+    if [[ "$mode" != "force" ]]; then
+      # An explicitly empty SUPABASE_START_EXCLUDE in the process environment
+      # means "start the full stack" and must beat a non-empty value from the
+      # file. Every other key keeps the existing blank-is-absent behaviour.
+      if [[ "$apply" == "SUPABASE_START_EXCLUDE" && -n "${PROC_ENV[$apply]+x}" ]]; then
+        continue
+      fi
+      if env_has "$apply" && [[ -n "${ENV[$apply]}" ]]; then continue; fi
+    fi
+    env_set "$apply" "${file_env[$apply]}" force
+  done
 }
 
-load_root_env() { load_env_file "$ROOT_ENV_FILE" force; }
+# Contract keys may be supplied by the process environment instead of `.env`
+# (CI jobs, `APP_PORT=3001 bun dev:up`, tests). Capture the real environment
+# before this script assigns anything, then mirror it into ENV first so the
+# file loader's `keep` mode never overwrites an explicit override.
+CONTRACT_KEYS=(
+  APP_PORT APP_URL NEXT_PUBLIC_SITE_URL
+  SUPABASE_PROJECT_ID SUPABASE_PORT_BASE SUPABASE_API_PORT SUPABASE_DB_PORT
+  SUPABASE_STUDIO_PORT SUPABASE_MAIL_PORT SUPABASE_ANALYTICS_PORT
+  SUPABASE_EDGE_INSPECTOR_PORT SUPABASE_SHADOW_PORT SUPABASE_POOLER_PORT
+  SUPABASE_URL SUPABASE_DB_URL SUPABASE_MAIL_URL SUPABASE_STUDIO_URL
+  SUPABASE_SHARED SUPABASE_SHARED_OWNER
+  NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY
+  STUDIQ_DEV_REGISTRY DEV_BUILD_MEMORY_MB SUPABASE_START_EXCLUDE
+)
+
+declare -A PROC_ENV=()
+for __key in "${CONTRACT_KEYS[@]}"; do
+  if [[ -n "${!__key+x}" ]]; then PROC_ENV["$__key"]="${!__key}"; fi
+done
+unset __key
+
+load_root_env() {
+  if [[ ! -f "$ROOT_ENV_FILE" ]]; then
+    ENV_FILE_MISSING=1
+  fi
+  seed_process_env
+  # `keep`: variables already exported in the process environment win over the
+  # file (standard dotenv precedence), which makes one-off overrides and CI
+  # explicit. Root `.env` still wins over previously loaded fallbacks.
+  load_env_file "$ROOT_ENV_FILE" keep
+}
+
+seed_process_env() {
+  local key
+  for key in "${CONTRACT_KEYS[@]}"; do
+    if [[ -z "${ENV[$key]+x}" && -n "${PROC_ENV[$key]+x}" ]]; then
+      ENV["$key"]="${PROC_ENV[$key]}"
+      ENV_ORDER+=("$key")
+    fi
+  done
+}
+
 load_web_env_fallback() { load_env_file "$WEB_ENV_FILE" keep; }
 
-# Local defaults for the fixed dev contract. Never override root `.env` values.
-apply_basic_defaults() {
-  env_set APP_URL "http://localhost:3000"
-  env_set NEXT_PUBLIC_SITE_URL "$(env_url "${ENV[APP_URL]}")"
-  env_set SUPABASE_URL "http://localhost:54321"
-  env_set SUPABASE_DB_URL "postgresql://postgres:postgres@localhost:54322/postgres"
-  env_set SUPABASE_MAIL_URL "http://localhost:54324"
+# ── Small portable helpers ───────────────────────────────────────────────────
+canon_path() {
+  local path=$1
+  (cd "$path" 2>/dev/null && pwd -P) || printf '%s' "$path"
 }
-
-normalize_localhost() { printf '%s' "$1" | sed -E 's#//127\.0\.0\.1([:/]|$)#//localhost\1#g'; }
 
 env_url() { printf '%s' "${1%/}"; }
 
-# ── Supabase status ──────────────────────────────────────────────────────────
-declare -A SUPA=()
-SUPA_LOADED=0
+normalize_localhost() { printf '%s' "$1" | sed -E 's#//127\.0\.0\.1([:/]|$)#//localhost\1#g'; }
 
-supabase_health_url() {
-  local base
-  base=$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")
-  printf '%s/auth/v1/health' "$base"
+is_loopback_url() {
+  [[ "$1" =~ ^[a-zA-Z][a-zA-Z0-9+.-]*://(localhost|127\.0\.0\.1|\[::1\])([:/]|$) ]]
+}
+
+url_port() {
+  local rest=${1#*://}
+  rest=${rest%%/*}
+  if [[ "$rest" =~ :([0-9]+)$ ]]; then printf '%s' "${BASH_REMATCH[1]}"; fi
+}
+
+# Effective port for the APP_URL comparison: an explicit port wins; a portless
+# URL uses its scheme default (http 80 / https 443), so it cannot bypass the
+# loopback mismatch check. Other/unknown schemes return empty (not checked).
+url_effective_port() {
+  local url=$1 port scheme
+  port=$(url_port "$url")
+  if [[ -n "$port" ]]; then
+    printf '%s' "$port"
+    return
+  fi
+  scheme=${url%%://*}
+  case "${scheme,,}" in
+    http) printf '80' ;;
+    https) printf '443' ;;
+  esac
+}
+
+json_escape() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+pid_alive() {
+  local pid=$1
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  # PID 0 is not a process: `kill -0 0` targets the caller's whole process
+  # group and would make ownerPid=0 registry entries look alive forever.
+  (( 10#$pid > 0 )) || return 1
+  kill -0 "$pid" 2>/dev/null
 }
 
 http_code() {
@@ -129,12 +259,696 @@ http_code() {
   printf '%s' "$code"
 }
 
+# ── Contract resolution ──────────────────────────────────────────────────────
+# Every derived value is computed once here and exported, so the CLI, Next and
+# the generated env files all agree. Globals are assigned by `resolve_contract`
+# (there are no hardcoded defaults at load time, which keeps process-env
+# overrides observable).
+
+# Local stack services the app does not use. `supabase start -x` skips them;
+# set SUPABASE_START_EXCLUDE= (empty) to start the full stack.
+DEFAULT_START_EXCLUDE="realtime,edge-runtime,imgproxy,logflare,vector,supavisor"
+
+sanitize_project_id() {
+  local value
+  value=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')
+  value=${value#-}
+  value=${value%-}
+  value=${value:0:48}
+  value=${value%-}
+  printf '%s' "$value"
+}
+
+derive_project_id() {
+  local root slug hash
+  root=$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null) || root=$REPO_ROOT
+  root=$(canon_path "$root")
+  slug=$(sanitize_project_id "$(basename "$root")")
+  # Keep the hash: truncate the directory part, never the unique suffix.
+  slug=${slug:0:30}
+  slug=${slug%-}
+  hash=$(printf '%s' "$root" | git hash-object --stdin 2>/dev/null | cut -c1-8)
+  if [[ -z "$hash" ]]; then
+    hash=$(printf '%s' "$root" | cksum 2>/dev/null | tr -d '[:space:]' | cut -c1-8)
+  fi
+  sanitize_project_id "studiq-${slug}-${hash}"
+}
+
+validate_port() {
+  local key=$1 value=$2
+  if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+    fail "$key='$value' is not a port number (1-65535)."
+  fi
+  local number=$((10#$value))
+  if (( number < 1 || number > 65535 )); then
+    fail "$key=$value is out of range (1-65535)."
+  fi
+  printf '%s' "$number"
+}
+
+resolve_contract() {
+  local strict=${1:-1}
+  local explicit runtime_dir
+
+  # Runtime registry: portable default outside the repository.
+  runtime_dir=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}
+  REGISTRY_DIR=${STUDIQ_DEV_REGISTRY:-"$runtime_dir/studiq-dev-$(id -u)"}
+  case "$REGISTRY_DIR" in
+    /*) ;;
+    *) REGISTRY_DIR="$REPO_ROOT/$REGISTRY_DIR" ;;
+  esac
+  REGISTRY_DIR=$(env_url "$REGISTRY_DIR")
+
+  # Shared mode is opt-in and must be exactly 0/1.
+  SHARED=${ENV[SUPABASE_SHARED]:-0}
+  case "$SHARED" in
+    1 | 0) ;;
+    *) fail "SUPABASE_SHARED must be 0 or 1 (got '$SHARED')." ;;
+  esac
+  SHARED_OWNER=${ENV[SUPABASE_SHARED_OWNER]:-}
+
+  # Lean stack: skip services the app does not use locally. An explicit empty
+  # value (`SUPABASE_START_EXCLUDE=`) starts the full stack.
+  if env_has SUPABASE_START_EXCLUDE; then
+    SUPABASE_START_EXCLUDE=${ENV[SUPABASE_START_EXCLUDE]}
+  else
+    SUPABASE_START_EXCLUDE=$DEFAULT_START_EXCLUDE
+  fi
+  SUPABASE_START_EXCLUDE=$(printf '%s' "$SUPABASE_START_EXCLUDE" | tr -d '[:space:]')
+
+  # Project id: explicit wins; blank/absent derives from this checkout.
+  explicit=${ENV[SUPABASE_PROJECT_ID]:-}
+  if [[ -n "$explicit" ]]; then
+    SUPABASE_PROJECT_ID=$(sanitize_project_id "$explicit")
+    [[ -n "$SUPABASE_PROJECT_ID" ]] || fail "SUPABASE_PROJECT_ID='$explicit' has no usable characters (allowed: a-z 0-9 -)."
+    if [[ "$SUPABASE_PROJECT_ID" != "$explicit" ]]; then
+      warn "SUPABASE_PROJECT_ID='$explicit' sanitized to '$SUPABASE_PROJECT_ID' (allowed: a-z 0-9 -)."
+    fi
+  else
+    SUPABASE_PROJECT_ID=$(derive_project_id)
+    [[ -n "$SUPABASE_PROJECT_ID" ]] || fail "Could not derive SUPABASE_PROJECT_ID; set it explicitly in $ROOT_ENV_FILE."
+  fi
+
+  # App port: explicit APP_PORT wins; otherwise the port in APP_URL; else 3000.
+  local app_port_raw=${ENV[APP_PORT]:-} url_app_port=""
+  if [[ -n "${ENV[APP_URL]:-}" ]]; then url_app_port=$(url_port "${ENV[APP_URL]}"); fi
+  if [[ -n "$app_port_raw" ]]; then
+    APP_PORT=$(validate_port APP_PORT "$app_port_raw")
+  elif [[ -n "$url_app_port" ]]; then
+    APP_PORT=$(validate_port APP_URL "$url_app_port")
+  else
+    APP_PORT=3000
+  fi
+
+  # Supabase ports: one base, explicit overrides win.
+  SUPABASE_PORT_BASE=$(validate_port SUPABASE_PORT_BASE "${ENV[SUPABASE_PORT_BASE]:-54320}")
+  SUPABASE_API_PORT=$(validate_port SUPABASE_API_PORT "${ENV[SUPABASE_API_PORT]:-$((SUPABASE_PORT_BASE + 1))}")
+  SUPABASE_DB_PORT=$(validate_port SUPABASE_DB_PORT "${ENV[SUPABASE_DB_PORT]:-$((SUPABASE_PORT_BASE + 2))}")
+  SUPABASE_STUDIO_PORT=$(validate_port SUPABASE_STUDIO_PORT "${ENV[SUPABASE_STUDIO_PORT]:-$((SUPABASE_PORT_BASE + 3))}")
+  SUPABASE_MAIL_PORT=$(validate_port SUPABASE_MAIL_PORT "${ENV[SUPABASE_MAIL_PORT]:-$((SUPABASE_PORT_BASE + 4))}")
+  SUPABASE_ANALYTICS_PORT=$(validate_port SUPABASE_ANALYTICS_PORT "${ENV[SUPABASE_ANALYTICS_PORT]:-$((SUPABASE_PORT_BASE + 7))}")
+  SUPABASE_EDGE_INSPECTOR_PORT=$(validate_port SUPABASE_EDGE_INSPECTOR_PORT "${ENV[SUPABASE_EDGE_INSPECTOR_PORT]:-$((SUPABASE_PORT_BASE + 8))}")
+  SUPABASE_SHADOW_PORT=$(validate_port SUPABASE_SHADOW_PORT "${ENV[SUPABASE_SHADOW_PORT]:-$((SUPABASE_PORT_BASE))}")
+  SUPABASE_POOLER_PORT=$(validate_port SUPABASE_POOLER_PORT "${ENV[SUPABASE_POOLER_PORT]:-$((SUPABASE_PORT_BASE + 9))}")
+
+  # Ports must be distinct; otherwise two services silently fight for one socket.
+  local -A claimed=()
+  local name port
+  for name in APP_PORT SUPABASE_API_PORT SUPABASE_DB_PORT SUPABASE_STUDIO_PORT SUPABASE_MAIL_PORT \
+    SUPABASE_ANALYTICS_PORT SUPABASE_EDGE_INSPECTOR_PORT SUPABASE_SHADOW_PORT SUPABASE_POOLER_PORT; do
+    port=${!name}
+    if [[ -n "${claimed[$port]:-}" ]]; then
+      fail "Port $port is assigned to both ${claimed[$port]} and $name. Adjust SUPABASE_PORT_BASE / explicit overrides."
+    fi
+    claimed[$port]=$name
+  done
+
+  # URLs: derive unless explicitly set. A stale localhost URL that disagrees
+  # with the derived port is replaced (with a warning) so a base change cannot
+  # leave the app pointing at another checkout's stack.
+  APP_URL=$(env_url "${ENV[APP_URL]:-http://localhost:$APP_PORT}")
+  local app_url_port
+  app_url_port=$(url_effective_port "$APP_URL")
+  if [[ -n "$app_url_port" && "$app_url_port" != "$APP_PORT" ]]; then
+    # A loopback APP_URL is served by this process, so a mismatched port only
+    # makes the health check time out later; reject it up front. Non-loopback
+    # URLs may be a proxy front end and are left as configured. Teardown
+    # (strict=0) still warns instead of blocking on an invalid contract.
+    if is_loopback_url "$APP_URL"; then
+      (( strict == 1 )) && fail "APP_URL=$APP_URL points at loopback port $app_url_port, but this checkout serves on APP_PORT=$APP_PORT.
+  Set APP_PORT=$app_url_port, or fix APP_URL (non-loopback proxy URLs are exempt)."
+    fi
+    warn "APP_URL port $app_url_port differs from APP_PORT $APP_PORT."
+  fi
+  NEXT_PUBLIC_SITE_URL=$(env_url "${ENV[NEXT_PUBLIC_SITE_URL]:-$APP_URL}")
+
+  local explicit_supabase_url=${ENV[SUPABASE_URL]:-}
+  if (( SHARED == 1 )); then
+    [[ -n "$explicit_supabase_url" ]] || fail "SUPABASE_SHARED=1 requires SUPABASE_URL in $ROOT_ENV_FILE."
+    SUPABASE_URL=$(env_url "$explicit_supabase_url")
+  elif [[ -n "$explicit_supabase_url" ]] && ! is_loopback_url "$explicit_supabase_url"; then
+    SUPABASE_URL=$(env_url "$explicit_supabase_url")
+  else
+    if [[ -n "$explicit_supabase_url" ]]; then
+      local explicit_api_port
+      explicit_api_port=$(url_port "$explicit_supabase_url")
+      if [[ -n "$explicit_api_port" && "$explicit_api_port" != "$SUPABASE_API_PORT" ]]; then
+        warn "SUPABASE_URL=$explicit_supabase_url does not match SUPABASE_API_PORT=$SUPABASE_API_PORT; using http://localhost:$SUPABASE_API_PORT."
+      fi
+    fi
+    SUPABASE_URL="http://localhost:$SUPABASE_API_PORT"
+  fi
+
+  if (( SHARED == 1 )); then
+    # A shared stack may live anywhere; only use explicit URLs.
+    SUPABASE_DB_URL=$(normalize_localhost "$(env_url "${ENV[SUPABASE_DB_URL]:-}")")
+    SUPABASE_MAIL_URL=$(normalize_localhost "$(env_url "${ENV[SUPABASE_MAIL_URL]:-}")")
+    SUPABASE_STUDIO_URL=$(normalize_localhost "$(env_url "${ENV[SUPABASE_STUDIO_URL]:-}")")
+  else
+    SUPABASE_DB_URL="postgresql://postgres:postgres@localhost:$SUPABASE_DB_PORT/postgres"
+    SUPABASE_MAIL_URL="http://localhost:$SUPABASE_MAIL_PORT"
+    SUPABASE_STUDIO_URL="http://localhost:$SUPABASE_STUDIO_PORT"
+  fi
+
+  # Export the resolved contract (force: derived values win over stale .env).
+  env_set SUPABASE_PROJECT_ID "$SUPABASE_PROJECT_ID" force
+  env_set APP_PORT "$APP_PORT" force
+  env_set APP_URL "$APP_URL" force
+  env_set NEXT_PUBLIC_SITE_URL "$NEXT_PUBLIC_SITE_URL" force
+  env_set SUPABASE_PORT_BASE "$SUPABASE_PORT_BASE" force
+  env_set SUPABASE_API_PORT "$SUPABASE_API_PORT" force
+  env_set SUPABASE_DB_PORT "$SUPABASE_DB_PORT" force
+  env_set SUPABASE_STUDIO_PORT "$SUPABASE_STUDIO_PORT" force
+  env_set SUPABASE_MAIL_PORT "$SUPABASE_MAIL_PORT" force
+  env_set SUPABASE_ANALYTICS_PORT "$SUPABASE_ANALYTICS_PORT" force
+  env_set SUPABASE_EDGE_INSPECTOR_PORT "$SUPABASE_EDGE_INSPECTOR_PORT" force
+  env_set SUPABASE_SHADOW_PORT "$SUPABASE_SHADOW_PORT" force
+  env_set SUPABASE_POOLER_PORT "$SUPABASE_POOLER_PORT" force
+  env_set SUPABASE_URL "$SUPABASE_URL" force
+  env_set NEXT_PUBLIC_SUPABASE_URL "$SUPABASE_URL" force
+  env_set SUPABASE_SHARED "$SHARED" force
+  env_set SUPABASE_START_EXCLUDE "$SUPABASE_START_EXCLUDE" force
+  if [[ -n "$SUPABASE_DB_URL" ]]; then env_set SUPABASE_DB_URL "$SUPABASE_DB_URL" force; fi
+  if [[ -n "$SUPABASE_MAIL_URL" ]]; then env_set SUPABASE_MAIL_URL "$SUPABASE_MAIL_URL" force; fi
+  if [[ -n "$SUPABASE_STUDIO_URL" ]]; then env_set SUPABASE_STUDIO_URL "$SUPABASE_STUDIO_URL" force; fi
+}
+
+note_missing_env_file() {
+  if (( ENV_FILE_MISSING == 1 )); then
+    warn "No root .env at $ROOT_ENV_FILE."
+    warn "  Using per-checkout defaults derived from this checkout. For stable parallel work:"
+    warn "    cp .env.example .env   # then set APP_PORT / SUPABASE_PROJECT_ID / SUPABASE_PORT_BASE"
+  fi
+}
+
+# ── Registry ─────────────────────────────────────────────────────────────────
+REGISTRY_FIELDS=(projectId worktree appPort apiPort dbPort studioPort mailPort shadowPort poolerPort analyticsPort edgeInspectorPort ownerPid startedAt shared sharedOwner mode claimId)
+BUILD_LOCK_HELD=0
+BUILD_LOCK_MODE=""
+BUILD_LOCK_DIR=""
+REGISTRY_WARNED=0
+STARTUP_CLAIM_ACTIVE=0
+STARTUP_INCOMPLETE=0
+STACK_START_ATTEMPTED=0
+STACK_ADOPTED=0
+CLAIM_CREATED=0
+CLAIM_ID=""
+WEB_STARTED_BY_US=0
+WEB_STARTED_PID=""
+
+# A registry directory is only trustworthy when it is a real directory owned by
+# the current effective user (mode is enforced separately on write). On shared
+# hosts the predictable ${TMPDIR:-/tmp} fallback can be precreated by another
+# local user, so reads ignore untrusted dirs and writes refuse them.
+registry_dir_trusted() {
+  [[ -d "$REGISTRY_DIR" && ! -L "$REGISTRY_DIR" && -O "$REGISTRY_DIR" ]]
+}
+
+warn_registry_untrusted() {
+  (( REGISTRY_WARNED == 1 )) && return 0
+  REGISTRY_WARNED=1
+  warn "Ignoring registry directory $REGISTRY_DIR: not a private directory owned by $(id -un).
+  Another local user may have precreated it. Remove it (or set STUDIQ_DEV_REGISTRY to a private path) and retry."
+}
+
+ensure_registry_dir() {
+  if [[ -L "$REGISTRY_DIR" ]]; then
+    fail "Registry path $REGISTRY_DIR is a symlink; refusing to use it."
+  fi
+  if [[ -e "$REGISTRY_DIR" && ! -d "$REGISTRY_DIR" ]]; then
+    fail "Registry path $REGISTRY_DIR exists and is not a directory."
+  fi
+  if [[ -d "$REGISTRY_DIR" ]]; then
+    [[ -O "$REGISTRY_DIR" ]] || fail "Registry directory $REGISTRY_DIR is not owned by $(id -un); refusing to write to it (set STUDIQ_DEV_REGISTRY to a private path)."
+  else
+    (umask 077 && mkdir -p -- "$REGISTRY_DIR") || fail "Cannot create registry directory $REGISTRY_DIR."
+  fi
+  chmod 700 "$REGISTRY_DIR" || fail "Cannot restrict permissions on registry directory $REGISTRY_DIR."
+}
+
+registry_list() {
+  if ! registry_dir_trusted; then
+    if [[ -e "$REGISTRY_DIR" || -L "$REGISTRY_DIR" ]]; then warn_registry_untrusted; fi
+    return 0
+  fi
+  bun "$REGISTRY_HELPER" list --dir "$REGISTRY_DIR" --format tsv 2>/dev/null || true
+}
+
+registry_get_entry() {
+  local project_id=$1
+  if ! registry_dir_trusted; then
+    if [[ -e "$REGISTRY_DIR" || -L "$REGISTRY_DIR" ]]; then warn_registry_untrusted; fi
+    return 1
+  fi
+  bun "$REGISTRY_HELPER" get --dir "$REGISTRY_DIR" --project-id "$project_id" --format tsv 2>/dev/null || return 1
+}
+
+entry_field() {
+  local entry=$1 key=$2 index=-1 i
+  for i in "${!REGISTRY_FIELDS[@]}"; do
+    if [[ "${REGISTRY_FIELDS[$i]}" == "$key" ]]; then
+      index=$((i + 1))
+      break
+    fi
+  done
+  (( index > 0 )) || return 1
+  printf '%s' "$(printf '%s' "$entry" | cut -f"$index")"
+}
+
+registry_write_entry() {
+  local mode=$1 exclusive=${2:-0} claim=${3:-0}
+  local api=$SUPABASE_API_PORT db=$SUPABASE_DB_PORT studio=$SUPABASE_STUDIO_PORT
+  local mail=$SUPABASE_MAIL_PORT shadow=$SUPABASE_SHADOW_PORT pooler=$SUPABASE_POOLER_PORT
+  local analytics=$SUPABASE_ANALYTICS_PORT edge=$SUPABASE_EDGE_INSPECTOR_PORT
+  if (( SHARED == 1 )); then
+    # A shared checkout owns only its app port; claiming the owner's Supabase
+    # ports would create false collisions.
+    api=0 db=0 studio=0 mail=0 shadow=0 pooler=0 analytics=0 edge=0
+  fi
+  local pid=""
+  pid=$(read_web_pid 2>/dev/null) || pid=""
+  # While a claim/startup is in flight, record this shell so concurrent
+  # checkouts see a live owner even before a web pid exists.
+  if (( exclusive == 1 || claim == 1 )) && [[ -z "$pid" ]]; then pid=$$; fi
+  # Always write this invocation's identity; claim_project generates it once
+  # per invocation (an overlapping invocation replaces it).
+  local claim_id=${CLAIM_ID:-}
+  ensure_registry_dir
+  local -a write_args=(
+    write
+    --dir "$REGISTRY_DIR"
+    --project-id "$SUPABASE_PROJECT_ID"
+    --worktree "$REPO_ROOT"
+    --app-port "$APP_PORT"
+    --api-port "$api"
+    --db-port "$db"
+    --studio-port "$studio"
+    --mail-port "$mail"
+    --shadow-port "$shadow"
+    --pooler-port "$pooler"
+    --analytics-port "$analytics"
+    --edge-inspector-port "$edge"
+    --owner-pid "${pid:-0}"
+    --started-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    --shared "$SHARED"
+    --shared-owner "$SHARED_OWNER"
+    --mode "$mode"
+    --claim-id "$claim_id"
+  )
+  if (( exclusive == 1 )); then write_args+=(--exclusive 1); fi
+  bun "$REGISTRY_HELPER" "${write_args[@]}" >/dev/null
+}
+
+registry_remove_entry() {
+  local expected=${1:-}
+  [[ -n "$expected" ]] || fail "Refusing to remove a registry entry without an expected claim id."
+  registry_dir_trusted || return 0
+  bun "$REGISTRY_HELPER" remove --dir "$REGISTRY_DIR" --project-id "$SUPABASE_PROJECT_ID" \
+    --expected-claim-id "$expected" 2>/dev/null || true
+}
+
+# Whether the current entry still carries this invocation's claim id.
+claim_is_current() {
+  [[ -n "$CLAIM_ID" ]] || return 1
+  local entry claim_id
+  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
+  [[ -n "$entry" ]] || return 1
+  claim_id=$(entry_field "$entry" claimId 2>/dev/null) || claim_id=""
+  [[ "$claim_id" == "$CLAIM_ID" ]]
+}
+
+# Failed-startup cleanup: the helper compares this invocation's claim id with
+# the on-disk entry under the registry lock, so a claim refreshed/replaced by
+# another invocation is never removed by this stale one.
+remove_claim_if_ours() {
+  (( CLAIM_CREATED == 1 )) || return 0
+  [[ -n "$CLAIM_ID" ]] || return 0
+  registry_remove_entry "$CLAIM_ID"
+}
+
+entry_for_port_in() {
+  local entries=$1 port=$2 entry field
+  local -a fields=(appPort apiPort dbPort studioPort mailPort shadowPort poolerPort analyticsPort edgeInspectorPort)
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    for field in "${fields[@]}"; do
+      if [[ "$(entry_field "$entry" "$field")" == "$port" ]]; then
+        printf '%s' "$entry"
+        return 0
+      fi
+    done
+  done <<<"$entries"
+  return 1
+}
+
+registry_entry_for_port() {
+  entry_for_port_in "$(registry_list)" "$1"
+}
+
+# A registry entry is live when its owner process, its containers or its app
+# port still exist. A stale entry may be reclaimed (with a warning), so a
+# reboot or /tmp cleanup never blocks a checkout forever.
+registry_entry_is_live() {
+  local entry=$1 pid project app
+  pid=$(entry_field "$entry" ownerPid)
+  project=$(entry_field "$entry" projectId)
+  app=$(entry_field "$entry" appPort)
+  [[ -n "$pid" ]] && pid_alive "$pid" && return 0
+  [[ -n "$project" && -n "$(docker_running_for "$project")" ]] && return 0
+  [[ -n "$app" && "$app" != "0" ]] && port_in_use "$app" && return 0
+  return 1
+}
+
+# Atomically claim the project before starting anything. The registry entry is
+# created with O_EXCL (never a last-writer-wins rename), so two checkouts cannot
+# both adopt the same project id. An entry we already own is fine; a live
+# foreign entry is refused; a stale one is reclaimed. Unregistered containers
+# are never adopted — explicit recovery is required.
+claim_project() {
+  local mode=$1 entry worktree
+  CLAIM_CREATED=0
+  # Every invocation gets a distinct identity, including overlapping runs that
+  # reuse an existing entry. Cleanup removes the entry only while it still
+  # carries this id.
+  CLAIM_ID="$$-$(date +%s)-$RANDOM"
+  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
+  if [[ -n "$entry" ]]; then
+    worktree=$(entry_field "$entry" worktree)
+    if [[ -n "$worktree" && "$(canon_path "$worktree")" == "$REPO_ROOT" ]]; then
+      # Existing entry is ours: refresh its identity for this invocation so an
+      # overlapping run's failed cleanup cannot remove the current entry.
+      registry_write_entry "$mode" 0 1
+      return 0
+    fi
+    if registry_entry_is_live "$entry"; then
+      fail "project id '$SUPABASE_PROJECT_ID' is owned by ${worktree:-another checkout} (registry: $REGISTRY_DIR)."
+    fi
+  fi
+
+  # Check containers before a stale entry can be deleted (or a new one
+  # created). No registry entry proves ownership of them, so adopting them is
+  # forbidden even when the entry looked stale.
+  unregistered_containers_error "claim"
+
+  if [[ -n "$entry" ]]; then
+    # Remove only if the entry still matches the stale one we inspected; a
+    # concurrent refresh by another invocation must win. An entry with no
+    # claim id cannot be compared, so reclaiming it requires manual cleanup.
+    local stale_claim
+    stale_claim=$(entry_field "$entry" claimId 2>/dev/null) || stale_claim=""
+    if [[ -z "$stale_claim" ]]; then
+      fail "Refusing to reclaim stale registry entry for '$SUPABASE_PROJECT_ID': no claim id recorded.
+  Inspect it with 'bun dev:doctor'. If you are sure it is stale, remove it manually:
+    bun scripts/dev-registry.ts remove --dir '$REGISTRY_DIR' --project-id '$SUPABASE_PROJECT_ID' --force 1"
+    fi
+    warn "Reclaiming stale registry entry for '$SUPABASE_PROJECT_ID' (was ${worktree:-unknown})."
+    registry_remove_entry "$stale_claim"
+  fi
+
+  ensure_registry_dir
+  if registry_write_entry "$mode" 1 1; then
+    CLAIM_CREATED=1
+    return 0
+  fi
+
+  # Lost the atomic claim: inspect the winner instead of overwriting it.
+  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
+  worktree=""
+  [[ -n "$entry" ]] && worktree=$(entry_field "$entry" worktree)
+  if [[ -n "$worktree" && "$(canon_path "$worktree")" == "$REPO_ROOT" ]]; then
+    return 0
+  fi
+  fail "project id '$SUPABASE_PROJECT_ID' was claimed by ${worktree:-another checkout} (registry: $REGISTRY_DIR)."
+}
+
+# ── Docker / ports ───────────────────────────────────────────────────────────
+have_docker() { command -v docker >/dev/null 2>&1; }
+
+docker_available() {
+  have_docker || return 1
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 10 docker info >/dev/null 2>&1
+  else
+    docker info >/dev/null 2>&1
+  fi
+}
+
+docker_containers_for() {
+  local project_id=$1
+  have_docker || return 0
+  docker ps -a --filter "label=com.supabase.cli.project=$project_id" --format '{{.Names}}' 2>/dev/null || true
+}
+
+docker_running_for() {
+  local project_id=$1
+  have_docker || return 0
+  docker ps --filter "label=com.supabase.cli.project=$project_id" --format '{{.Names}}' 2>/dev/null || true
+}
+
+docker_owner_of_port() {
+  local port=$1 project ports
+  have_docker || return 1
+  while IFS=$'\t' read -r project ports; do
+    [[ -n "$project" ]] || continue
+    if printf '%s' "$ports" | grep -qE "[:.]$port->"; then
+      printf '%s' "$project"
+      return 0
+    fi
+  done < <(docker ps --format '{{.Label "com.supabase.cli.project"}}{{"\t"}}{{.Ports}}' 2>/dev/null)
+  return 1
+}
+
+port_in_use() {
+  local port=$1
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    return 0
+  fi
+  if command -v nc >/dev/null 2>&1; then
+    nc -z 127.0.0.1 "$port" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
+port_owner_hint() {
+  local port=$1 project entry worktree
+  if have_docker; then
+    project=$(docker_owner_of_port "$port" 2>/dev/null) || project=""
+    if [[ -n "$project" ]]; then
+      entry=$(registry_get_entry "$project" 2>/dev/null) || entry=""
+      worktree=""
+      [[ -n "$entry" ]] && worktree=$(entry_field "$entry" worktree)
+      printf 'project %s%s' "$project" "${worktree:+ ($worktree)}"
+      return 0
+    fi
+  fi
+  if entry=$(registry_entry_for_port "$port"); then
+    printf 'project %s (%s)' "$(entry_field "$entry" projectId)" "$(entry_field "$entry" worktree)"
+    return 0
+  fi
+  return 1
+}
+
+suggest_free_block() {
+  local app base offset check entries
+  local -a offsets=(0 1 2 3 4 7 8 9)
+
+  entries=$(registry_list)
+
+  for ((app = 3000; app <= 3999; app++)); do
+    # :3010 is reserved for the shared QA app (guard_qa_stack rejects it).
+    (( app == 3010 )) && continue
+    port_in_use "$app" && continue
+    entry_for_port_in "$entries" "$app" >/dev/null && continue
+    break
+  done
+  (( app <= 3999 )) || fail "No free APP_PORT found in 3000-3999."
+
+  for ((base = 54320; base <= 62000; base += 100)); do
+    # 54420 → API 54421, the shared QA stack block that guard_qa_stack rejects.
+    (( base == 54420 )) && continue
+    ok=1
+    for offset in "${offsets[@]}"; do
+      check=$((base + offset))
+      if (( check == app )) || port_in_use "$check" || entry_for_port_in "$entries" "$check" >/dev/null; then
+        ok=0
+        break
+      fi
+    done
+    (( ok == 1 )) && break
+  done
+  (( ok == 1 )) || fail "No free SUPABASE_PORT_BASE block found in 54320-62000."
+
+  SUGGEST_APP_PORT=$app
+  SUGGEST_PORT_BASE=$base
+}
+
+print_suggestion() {
+  suggest_free_block
+  printf '  APP_PORT=%s\n' "$SUGGEST_APP_PORT"
+  printf '  SUPABASE_PORT_BASE=%s\n' "$SUGGEST_PORT_BASE"
+}
+
+# ── Ownership guards ─────────────────────────────────────────────────────────
+# Containers for this project without a registry entry are not ours to adopt or
+# stop: the registry may have been lost, or another checkout may have started
+# them manually with the same explicit id. Require explicit recovery.
+unregistered_containers_error() {
+  local action=$1 containers
+  containers=$(docker_containers_for "$SUPABASE_PROJECT_ID")
+  [[ -n "$containers" ]] || return 0
+  fail "Refusing to $action: containers exist for project '$SUPABASE_PROJECT_ID' but no registry entry proves this checkout owns them.
+  If you own them, stop them explicitly: bunx supabase stop --project-id '$SUPABASE_PROJECT_ID'
+  Then retry."
+}
+
+assert_stack_ownership() {
+  local action=$1 entry worktree
+  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
+  if [[ -n "$entry" ]]; then
+    worktree=$(entry_field "$entry" worktree)
+    if [[ "$(canon_path "$worktree")" != "$REPO_ROOT" ]]; then
+      fail "Refusing to $action: project id '$SUPABASE_PROJECT_ID' is owned by $worktree (registry: $REGISTRY_DIR)."
+    fi
+    return 0
+  fi
+  unregistered_containers_error "$action"
+  return 1
+}
+
+# Fails when a port we need is taken by something that is not this checkout.
+preflight_ports() {
+  local include_supabase=$1 spec kind port entry owner pid
+  local -a problems=()
+  local -a specs=("app:$APP_PORT")
+
+  if (( include_supabase == 1 )); then
+    specs+=(
+      "api:$SUPABASE_API_PORT"
+      "db:$SUPABASE_DB_PORT"
+      "studio:$SUPABASE_STUDIO_PORT"
+      "mail:$SUPABASE_MAIL_PORT"
+      "analytics:$SUPABASE_ANALYTICS_PORT"
+      "edge-inspector:$SUPABASE_EDGE_INSPECTOR_PORT"
+    )
+  fi
+
+  # A foreign registry entry for our project id is a hard failure while it is
+  # live; a stale entry (dead pid, no containers, free app port) is reclaimable.
+  if entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null); then
+    local worktree
+    worktree=$(entry_field "$entry" worktree)
+    if [[ -n "$worktree" && "$(canon_path "$worktree")" != "$REPO_ROOT" ]]; then
+      if registry_entry_is_live "$entry"; then
+        problems+=("project id '$SUPABASE_PROJECT_ID' is owned by $worktree")
+      else
+        warn "Reclaiming stale registry entry for '$SUPABASE_PROJECT_ID' (was $worktree)."
+      fi
+    fi
+  fi
+
+  for spec in "${specs[@]}"; do
+    kind=${spec%%:*}
+    port=${spec##*:}
+    port_in_use "$port" || continue
+
+    if [[ "$kind" == "app" ]]; then
+      if pid=$(read_web_pid 2>/dev/null) && [[ -n "$pid" ]]; then continue; fi
+    else
+      if [[ "$(docker_owner_of_port "$port" 2>/dev/null)" == "$SUPABASE_PROJECT_ID" ]]; then continue; fi
+    fi
+
+    owner=$(port_owner_hint "$port" 2>/dev/null) || owner=""
+    problems+=("$kind port $port is already in use${owner:+ by $owner}")
+  done
+
+  if (( ${#problems[@]} > 0 )); then
+    printf "${RED}✘${NC} Cannot start this checkout's stack:\n" >&2
+    for spec in "${problems[@]}"; do
+      printf '  - %s\n' "$spec" >&2
+    done
+    printf '\n  Nothing was stopped. Pick a free block in %s:\n' "$ROOT_ENV_FILE" >&2
+    print_suggestion >&2
+    exit 1
+  fi
+}
+
+guard_qa_stack() {
+  (( SHARED == 1 )) && return 0
+  [[ "${DEV_ALLOW_SHARED:-0}" == "1" ]] && return 0
+  local key value
+  for key in APP_URL NEXT_PUBLIC_SITE_URL SUPABASE_URL NEXT_PUBLIC_SUPABASE_URL; do
+    value=${ENV[$key]:-}
+    if [[ "$value" =~ :(3010|54421)(/|$) ]]; then
+      fail "$key=$value points at the shared QA stack (:3010 / :54421).
+  Use this checkout's derived ports, or set DEV_ALLOW_SHARED=1 to override."
+    fi
+  done
+}
+
+ensure_bun() {
+  command -v bun >/dev/null 2>&1 || fail "bun is not installed or not on PATH."
+}
+
+ensure_docker() {
+  command -v docker >/dev/null 2>&1 || fail "Docker is not installed (needed for Supabase)."
+  docker_available || fail "Docker is not reachable. Start Docker (or the Docker daemon) and retry."
+}
+
+require_env_key() {
+  local key=$1
+  env_has "$key" && [[ -n "${ENV[$key]}" ]] && return 0
+  if (( SHARED == 1 )); then
+    fail "Missing $key. SUPABASE_SHARED=1 reads the stack's URL/keys from $ROOT_ENV_FILE (copy .env.example and fill them in)."
+  fi
+  fail "Missing $key. Add it to $ROOT_ENV_FILE (copy .env.example) or start Supabase with 'bun dev:up'."
+}
+
+# ── Supabase ─────────────────────────────────────────────────────────────────
+declare -A SUPA=()
+SUPA_LOADED=0
+
+supa() { (cd "$REPO_ROOT" && bunx supabase "$@"); }
+
+# `supabase start` for the lean local stack. Services the app does not use are
+# skipped via `-x` (see SUPABASE_START_EXCLUDE); an empty list starts everything.
+supabase_start() {
+  local -a args=(start)
+  if [[ -n "${SUPABASE_START_EXCLUDE:-}" ]]; then
+    args+=(-x "$SUPABASE_START_EXCLUDE")
+  fi
+  supa "${args[@]}"
+}
+
+supabase_health_url() {
+  printf '%s/auth/v1/health' "$(normalize_localhost "$(env_url "$SUPABASE_URL")")"
+}
+
 supabase_healthy() { [[ "$(http_code "$(supabase_health_url)")" == "200" ]]; }
 
 load_supabase_status() {
   (( SUPA_LOADED == 0 )) || return 0
   local output line key value
-  output=$(cd "$REPO_ROOT" && bunx supabase status -o env 2>/dev/null) || return 1
+  output=$(supa status -o env 2>/dev/null) || return 1
 
   while IFS= read -r line; do
     line="${line%$'\r'}"
@@ -154,79 +968,81 @@ load_supabase_status() {
 }
 
 merge_supabase_env() {
-  local api_url=${SUPA[API_URL]:-http://localhost:54321}
   local anon=${SUPA[ANON_KEY]:-${SUPA[PUBLISHABLE_KEY]:-}}
   local service=${SUPA[SERVICE_ROLE_KEY]:-${SUPA[SECRET_KEY]:-}}
-
-  api_url=$(normalize_localhost "$(env_url "$api_url")")
-
-  # Root `.env` values always win — only fill the gaps.
-  env_set SUPABASE_URL "$api_url"
-  env_set NEXT_PUBLIC_SUPABASE_URL "${ENV[SUPABASE_URL]}"
   [[ -n "$anon" ]] && env_set NEXT_PUBLIC_SUPABASE_ANON_KEY "$anon"
   [[ -n "$service" ]] && env_set SUPABASE_SERVICE_ROLE_KEY "$service"
-
-  env_set SUPABASE_DB_URL "$(normalize_localhost "$(env_url "${SUPA[DB_URL]:-postgresql://postgres:postgres@localhost:54322/postgres}")")"
-  env_set SUPABASE_MAIL_URL "$(normalize_localhost "$(env_url "${SUPA[MAILPIT_URL]:-${SUPA[INBUCKET_URL]:-http://localhost:54324}}")")"
 }
 
-require_env_key() {
-  local key=$1
-  env_has "$key" && [[ -n "${ENV[$key]}" ]] && return 0
-  fail "Missing $key. Add it to $ROOT_ENV_FILE (copy .env.example) or start Supabase with 'bun dev:up'."
-}
+ensure_supabase_running() {
+  local ours
+  ours=$(docker_running_for "$SUPABASE_PROJECT_ID")
 
-# ── Guards ───────────────────────────────────────────────────────────────────
-guard_shared_stack() {
-  [[ "${DEV_ALLOW_SHARED:-0}" == "1" ]] && return 0
-  local key value
-  for key in APP_URL NEXT_PUBLIC_SITE_URL SUPABASE_URL NEXT_PUBLIC_SUPABASE_URL; do
-    value=${ENV[$key]:-}
-    if [[ "$value" =~ :(3010|54421)(/|$) ]]; then
-      fail "$key=$value points at the shared QA stack (:3010 / :54421).
-  Use the dev defaults (:3000 / :54321) or set DEV_ALLOW_SHARED=1 to override."
+  if supabase_healthy; then
+    if [[ -n "$ours" ]]; then
+      STACK_ADOPTED=1
+      info "Supabase already running (project $SUPABASE_PROJECT_ID) at $SUPABASE_URL"
+      return 0
     fi
-  done
-}
-
-ensure_bun() {
-  command -v bun >/dev/null 2>&1 || fail "bun is not installed or not on PATH."
-}
-
-ensure_docker() {
-  command -v docker >/dev/null 2>&1 || fail "Docker is not installed (needed for Supabase)."
-  local ok=0
-  if command -v timeout >/dev/null 2>&1; then
-    timeout 10 docker info >/dev/null 2>&1 && ok=1
-  else
-    docker info >/dev/null 2>&1 && ok=1
+    fail "SUPABASE_URL ($SUPABASE_URL) answers, but no container belongs to project '$SUPABASE_PROJECT_ID'.
+  That is another checkout's stack. Either:
+    * pick a free block (bun dev:ports --suggest), or
+    * set SUPABASE_SHARED=1 + SUPABASE_SHARED_OWNER and the stack's keys in $ROOT_ENV_FILE to reuse it deliberately."
   fi
-  (( ok == 1 )) || fail "Docker is not reachable. Start Docker (or the Docker daemon) and retry."
+
+  STACK_START_ATTEMPTED=1
+  header "Starting Supabase project '$SUPABASE_PROJECT_ID'${SUPABASE_START_EXCLUDE:+ (skipping: $SUPABASE_START_EXCLUDE)}"
+  supabase_start
+
+  local waited=0
+  while (( waited < 180 )); do
+    if supabase_healthy; then
+      info "Supabase is healthy ($SUPABASE_URL)"
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  fail "Supabase did not become healthy at $SUPABASE_URL. Check: bunx supabase status"
 }
 
-# ── apps/web/.env rendering ──────────────────────────────────────────────────
+stop_supabase_scoped() {
+  local running
+  running=$(docker_running_for "$SUPABASE_PROJECT_ID")
+  if [[ -z "$running" ]]; then
+    warn "Supabase stack for '$SUPABASE_PROJECT_ID' is not running."
+    return 0
+  fi
+  # Deliberately no `--no-backup`: on the pinned CLI that flag *deletes* the
+  # data volumes. The default stop keeps the database volume and data.
+  supa stop --project-id "$SUPABASE_PROJECT_ID"
+  info "Stopped Supabase project '$SUPABASE_PROJECT_ID' (database volume and registry ownership kept)"
+}
+
+# Refuse to read keys/URLs from a stack another checkout owns.
+assert_stack_is_ours_or_absent() {
+  (( SHARED == 1 )) && return 0
+  if supabase_healthy && [[ -z "$(docker_running_for "$SUPABASE_PROJECT_ID")" ]]; then
+    fail "SUPABASE_URL ($SUPABASE_URL) answers, but project '$SUPABASE_PROJECT_ID' has no containers here.
+  Refusing to use another checkout's stack. Set SUPABASE_SHARED=1 to reuse it deliberately."
+  fi
+}
+
+# ── Env rendering ────────────────────────────────────────────────────────────
 format_env_value() {
   local value=$1
   # dotenv-expand runs over every value; `\$` is the one escape it honours in
   # both bare and quoted values.
   local escaped=${value//\$/\\\$}
 
-  # No quoting needed (matches the previous behaviour): bare values keep
-  # backslashes verbatim through @next/env.
   if [[ "$value" != *[[:space:]\#\"\']* ]]; then
     printf '%s' "$escaped"
     return
   fi
-
-  # Prefer single quotes: @next/env keeps backslashes verbatim inside them, so
-  # literal `\n` / `\r` survive (double quotes turn them into newline / CR).
   if [[ "$value" != *"'"* ]]; then
     printf "'%s'" "$escaped"
     return
   fi
-
-  # An apostrophe cannot be escaped in a single-quoted value; double quotes are
-  # the only remaining option (rare for the generated web env).
   printf '"%s"' "$escaped"
 }
 
@@ -240,8 +1056,8 @@ render_web_env() {
   local tmp key
   tmp=$(mktemp "$DEV_DIR/web.env.XXXXXX")
   {
-    printf '# Generated by `bun dev:up` — do not edit, do not commit.\n'
-    printf '# Source of truth: root .env + `supabase status -o env`.\n\n'
+    printf '# Generated by `bun dev:*` — do not edit, do not commit.\n'
+    printf '# Source of truth: root .env + this checkout'"'"'s derived contract.\n\n'
     for key in "${ENV_ORDER[@]}"; do
       printf '%s=%s\n' "$key" "$(format_env_value "${ENV[$key]}")"
     done
@@ -251,41 +1067,77 @@ render_web_env() {
   chmod 600 "$WEB_ENV_FILE"
 }
 
+# `supabase/config.toml` reads everything through env(). The CLI loads
+# `supabase/.env` for plain `bunx supabase ...` invocations (process env still
+# wins), so bare CLI commands in this checkout follow this checkout's stack.
+render_supabase_env() {
+  mkdir -p "$REPO_ROOT/supabase"
+  local tmp
+  tmp=$(mktemp "$REPO_ROOT/supabase/.env.XXXXXX")
+  {
+    printf '# Generated by `bun dev:*` — do not edit, do not commit.\n'
+    if (( SHARED == 1 )); then
+      printf '# SUPABASE_SHARED=1: this checkout does not own the stack.\n'
+      printf '# Deliberately no local values, so a bare `supabase stop` cannot hit a local stack.\n'
+      printf '# Use `bun dev:*`; destructive commands are refused in shared mode.\n'
+    else
+      printf '# Plain `bunx supabase ...` in this checkout uses these values.\n'
+      printf 'SUPABASE_PROJECT_ID=%s\n' "$SUPABASE_PROJECT_ID"
+      printf 'SUPABASE_API_PORT=%s\n' "$SUPABASE_API_PORT"
+      printf 'SUPABASE_DB_PORT=%s\n' "$SUPABASE_DB_PORT"
+      printf 'SUPABASE_STUDIO_PORT=%s\n' "$SUPABASE_STUDIO_PORT"
+      printf 'SUPABASE_MAIL_PORT=%s\n' "$SUPABASE_MAIL_PORT"
+      printf 'SUPABASE_ANALYTICS_PORT=%s\n' "$SUPABASE_ANALYTICS_PORT"
+      printf 'SUPABASE_EDGE_INSPECTOR_PORT=%s\n' "$SUPABASE_EDGE_INSPECTOR_PORT"
+      printf 'SUPABASE_SHADOW_PORT=%s\n' "$SUPABASE_SHADOW_PORT"
+      printf 'SUPABASE_POOLER_PORT=%s\n' "$SUPABASE_POOLER_PORT"
+      printf 'SUPABASE_URL=%s\n' "$SUPABASE_URL"
+      printf 'APP_URL=%s\n' "$APP_URL"
+    fi
+  } >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$SUPABASE_ENV_FILE"
+  chmod 600 "$SUPABASE_ENV_FILE"
+}
+
 # ── Web process management ───────────────────────────────────────────────────
-web_url() { normalize_localhost "$(env_url "${ENV[APP_URL]:-http://localhost:3000}")"; }
+web_url() { normalize_localhost "$(env_url "$APP_URL")"; }
 
 web_code() { http_code "$(web_url)"; }
 
-pid_alive() {
-  local pid=$1
-  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
-  kill -0 "$pid" 2>/dev/null
+proc_has_marker() {
+  local pid=$1 env_dump
+  if [[ -r "/proc/$pid/environ" ]]; then
+    env_dump=$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null) || return 1
+    [[ "$env_dump" == *"STUDIQ_DEV_WORKTREE=$REPO_ROOT"* ]]
+    return
+  fi
+  env_dump=$(ps eww -p "$pid" 2>/dev/null) || return 1
+  [[ "$env_dump" == *"STUDIQ_DEV_WORKTREE=$REPO_ROOT"* ]]
 }
 
 read_web_pid() {
   [[ -f "$WEB_PID_FILE" ]] || return 1
-  local pid
+  local pid command
   pid=$(tr -d '[:space:]' <"$WEB_PID_FILE")
   pid_alive "$pid" || return 1
-  # A PID can be reused after a crash. Only trust it when its command line is
-  # still the web dev server, so `status` never reports and `down` never kills
-  # an unrelated process.
-  local command
   command=$(ps -o command= -p "$pid" 2>/dev/null) || return 1
-  if [[ "$command" == *"@studiq/web"* ]]; then
-    printf '%s' "$pid"
-    return 0
+
+  # The marker is inherited by the child processes, so a recycled PID from
+  # another checkout (or an unrelated process) never looks like ours.
+  if proc_has_marker "$pid"; then
+    if [[ "$command" == *next* || "$command" == *"@studiq/web"* ]]; then
+      printf '%s' "$pid"
+      return 0
+    fi
   fi
-  # The child `next dev` belongs to this checkout; do not trust another repo's.
-  if [[ "$command" == *"$REPO_ROOT"* && "$command" == *next* ]]; then
+  if [[ "$command" == *"$REPO_ROOT"* ]]; then
     printf '%s' "$pid"
     return 0
   fi
   return 1
 }
 
-# Wait for the HTTP health check. When a PID is supplied, stop early as soon as
-# that process exits instead of burning the whole timeout.
 wait_for_web() {
   local timeout=${1:-120} pid=${2:-} waited=0 code
   while (( waited < timeout )); do
@@ -303,9 +1155,9 @@ wait_for_web() {
 }
 
 start_web() {
+  local mode=${1:-dev} pid npm_script timeout current_code existing
   mkdir -p "$DEV_DIR"
 
-  local existing current_code
   if existing=$(read_web_pid); then
     if [[ "$(web_code)" == "200" ]]; then
       info "Web already running (pid $existing)"
@@ -321,45 +1173,65 @@ start_web() {
     fail "Web (pid $existing) did not become healthy. Check: bun dev:logs"
   fi
 
-  # A stale pid file is removed below; an external server still counts as ready.
+  rm -f "$WEB_PID_FILE"
+
   current_code=$(web_code)
-  if [[ "$current_code" == "200" ]]; then
-    rm -f "$WEB_PID_FILE"
-    info "Web already answers on $(web_url) (started outside dev:up)"
-    return 0
-  fi
   if [[ "$current_code" != "000" ]]; then
-    fail "Something already answers on $(web_url) with HTTP $current_code.
-  Stop it first, then run 'bun dev:up' again."
+    local owner
+    owner=$(port_owner_hint "$APP_PORT" 2>/dev/null) || owner=""
+    fail "$(web_url) already answers (HTTP $current_code)${owner:+ — owned by $owner}.
+  This checkout has no web server there. Stop it, or set a free APP_PORT (bun dev:ports --suggest)."
   fi
 
-  printf '\n===== %s dev:up =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$WEB_LOG"
+  if [[ "$mode" == "prod" ]]; then
+    # Shared boundary for `dev:up --prod` and `dev:serve`: reuse the build only
+    # when it was made with this checkout's current public URLs.
+    ensure_prod_build
+    npm_script=start
+    timeout=180
+  else
+    npm_script=dev
+    timeout=120
+  fi
+
+  printf '\n===== %s dev:%s (project %s, port %s) =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" \
+    "$npm_script" "$SUPABASE_PROJECT_ID" "$APP_PORT" >>"$WEB_LOG"
 
   # `set -m` makes the background job its own process group, so `dev:down` can
-  # take down next dev and every child it spawns with one signal.
+  # take down next dev/start and every child it spawns with one signal.
   set -m
-  (cd "$REPO_ROOT" && exec bun run --filter @studiq/web dev) >>"$WEB_LOG" 2>&1 </dev/null &
-  local pid=$!
+  (cd "$REPO_ROOT" && STUDIQ_DEV_WORKTREE="$REPO_ROOT" PORT="$APP_PORT" exec bun run --filter @studiq/web "$npm_script") >>"$WEB_LOG" 2>&1 </dev/null &
+  pid=$!
   set +m
   printf '%s\n' "$pid" >"$WEB_PID_FILE"
-  info "Started web dev server (pid $pid) → $WEB_LOG"
+  WEB_STARTED_BY_US=1
+  WEB_STARTED_PID=$pid
 
-  if ! wait_for_web 120 "$pid"; then
-    printf '\n──── last 40 lines of %s ────\n' "$WEB_LOG" >&2
-    tail -n 40 "$WEB_LOG" >&2 || true
+  if ! wait_for_web "$timeout" "$pid"; then
+    printf '\n──── last 60 lines of %s ────\n' "$WEB_LOG" >&2
+    tail -n 60 "$WEB_LOG" >&2 || true
     if ! pid_alive "$pid"; then
-      fail "Web dev server (pid $pid) exited during startup. See $WEB_LOG."
+      fail "Web server (pid $pid) exited during startup. See $WEB_LOG."
     fi
-    fail "Web did not answer on $(web_url) within 120s."
+    fail "Web did not answer on $(web_url) within ${timeout}s."
   fi
-  info "Web is ready (pid $pid)"
+  info "Web server is ready (pid $pid, $mode) → $(web_url)"
 }
 
-stop_web() {
-  local pid
-  if ! pid=$(read_web_pid); then
-    rm -f "$WEB_PID_FILE"
-    warn "Web dev server is not running."
+# Stop one specific web PID this checkout launched. Verifies the per-worktree
+# marker so a recycled PID is never killed, and clears the shared pid file only
+# when it still points at this PID (another invocation may have replaced it).
+terminate_web_pid() {
+  local pid=$1
+  if ! pid_alive "$pid"; then
+    warn "Web process $pid was already gone."
+    if [[ -f "$WEB_PID_FILE" && "$(tr -d '[:space:]' <"$WEB_PID_FILE")" == "$pid" ]]; then
+      rm -f "$WEB_PID_FILE"
+    fi
+    return 0
+  fi
+  if ! proc_has_marker "$pid"; then
+    warn "Web process $pid no longer belongs to this checkout; leaving it."
     return 0
   fi
 
@@ -372,76 +1244,312 @@ stop_web() {
     if pid_alive "$pid"; then
       kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
     fi
+    info "Stopped this checkout's web server (pid $pid)"
+  fi
+  if [[ -f "$WEB_PID_FILE" && "$(tr -d '[:space:]' <"$WEB_PID_FILE")" == "$pid" ]]; then
     rm -f "$WEB_PID_FILE"
-    info "Stopped web dev server (pid $pid)"
-  else
-    rm -f "$WEB_PID_FILE"
-    warn "Web process $pid was already gone."
   fi
 }
 
-# ── Supabase lifecycle ───────────────────────────────────────────────────────
-ensure_supabase_running() {
-  if supabase_healthy; then
-    info "Supabase already running at $(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]}")")"
+stop_web() {
+  local pid
+  if ! pid=$(read_web_pid); then
+    rm -f "$WEB_PID_FILE"
+    warn "Web server is not running in this checkout."
+    return 0
+  fi
+  terminate_web_pid "$pid"
+}
+
+# ── Build lock ───────────────────────────────────────────────────────────────
+acquire_build_lock() {
+  ensure_registry_dir
+  local lock="$REGISTRY_DIR/build.lock"
+
+  if [[ -L "$lock" ]]; then
+    fail "Build lock $lock is a symlink; refusing to open it."
+  fi
+  if [[ -e "$lock" && ! -f "$lock" ]]; then
+    fail "Build lock $lock is not a regular file."
+  fi
+
+  if command -v flock >/dev/null 2>&1; then
+    # Append, never truncate: the lock file's content is unused, and `>` would
+    # follow a symlink and truncate its target before flock runs.
+    exec 9>>"$lock"
+    if ! flock -n 9; then
+      warn "Another checkout is building (lock $lock); waiting…"
+      flock -w 1800 9 || fail "Timed out waiting for the build lock ($lock)."
+    fi
+    BUILD_LOCK_MODE=flock
+    BUILD_LOCK_HELD=1
     return 0
   fi
 
-  header "Starting Supabase"
-  (cd "$REPO_ROOT" && bunx supabase start)
-
-  local waited=0
-  while (( waited < 60 )); do
-    supabase_healthy && {
-      info "Supabase is healthy"
-      return 0
-    }
-    sleep 1
-    waited=$((waited + 1))
+  # Portable fallback: atomic mkdir + PID file with stale-owner detection.
+  local dir="$lock.d" owner waited=0
+  if [[ -L "$dir" ]]; then
+    fail "Build lock $dir is a symlink; refusing to use it."
+  fi
+  while ! mkdir "$dir" 2>/dev/null; do
+    owner=""
+    if [[ -f "$dir/pid" ]]; then owner=$(tr -d '[:space:]' <"$dir/pid"); fi
+    if [[ -n "$owner" ]] && ! pid_alive "$owner"; then
+      warn "Removing stale build lock from pid $owner"
+      rm -rf "$dir"
+      continue
+    fi
+    (( waited == 0 )) && warn "Another checkout is building (pid ${owner:-?}); waiting…"
+    sleep 2
+    waited=$((waited + 2))
+    (( waited < 1800 )) || fail "Timed out waiting for the build lock ($dir)."
   done
-  fail "Supabase did not become healthy. Check: bunx supabase status"
+  printf '%s\n' "$$" >"$dir/pid"
+  BUILD_LOCK_MODE=mkdir
+  BUILD_LOCK_DIR="$dir"
+  BUILD_LOCK_HELD=1
 }
 
-stop_supabase() {
-  if ! supabase_healthy; then
-    warn "Supabase is not running."
+release_build_lock() {
+  (( BUILD_LOCK_HELD == 1 )) || return 0
+  if [[ "$BUILD_LOCK_MODE" == "flock" ]]; then
+    # No stderr redirect here: redirections on `exec` persist in this shell and
+    # would mute every later warn/fail message. Closing an unopened fd is not
+    # an error in bash.
+    exec 9>&-
+  elif [[ "$BUILD_LOCK_MODE" == "mkdir" && -n "$BUILD_LOCK_DIR" ]]; then
+    rm -rf "$BUILD_LOCK_DIR"
+  fi
+  BUILD_LOCK_HELD=0
+}
+
+cleanup() {
+  release_build_lock || true
+  # A failed `dev:up` must not leave a web server (this invocation launched
+  # it), a *new* claim, or a freshly started stack behind. An adopted stack
+  # keeps its entry, a pre-existing claim is preserved, and a web server that
+  # was already running before this command is left untouched.
+  if (( STARTUP_CLAIM_ACTIVE == 1 && STARTUP_INCOMPLETE == 1 )); then
+    if (( WEB_STARTED_BY_US == 1 )) && [[ -n "$WEB_STARTED_PID" ]]; then
+      # Stop the PID this invocation launched, not whatever the shared pid
+      # file happens to contain now.
+      terminate_web_pid "$WEB_STARTED_PID" || true
+    fi
+    if (( STACK_START_ATTEMPTED == 1 )); then
+      # A later invocation may have refreshed the claim and be using the
+      # stack. Recheck ownership immediately before teardown; if the entry no
+      # longer carries this invocation's id, leave the stack and claim alone.
+      if claim_is_current; then
+        stop_supabase_scoped || true
+        remove_claim_if_ours
+      fi
+    elif (( STACK_ADOPTED == 1 )); then
+      : # adopted stack still running; keep ownership
+    else
+      remove_claim_if_ours
+    fi
+  fi
+  return 0
+}
+trap cleanup EXIT
+
+build_app() {
+  local pid mem node_options
+  if pid=$(read_web_pid); then
+    fail "The web server is running (pid $pid). Run 'bun dev:down' before 'bun dev:build'."
+  fi
+
+  mem=${ENV[DEV_BUILD_MEMORY_MB]:-4096}
+  [[ "$mem" =~ ^[0-9]+$ ]] || fail "DEV_BUILD_MEMORY_MB='$mem' is not a number."
+  node_options="--max-old-space-size=$mem"
+  [[ -n "${NODE_OPTIONS:-}" ]] && node_options="$NODE_OPTIONS $node_options"
+
+  acquire_build_lock
+  header "Building @studiq/web (heap ${mem}MB, lock $REGISTRY_DIR)"
+  (cd "$REPO_ROOT" && NODE_OPTIONS="$node_options" bun run --filter @studiq/web build)
+  write_build_fingerprint
+  release_build_lock
+  info "Build complete."
+}
+
+# Next inlines NEXT_PUBLIC_* at build time, so a build reused across port
+# blocks (or key rotations) would keep the old Supabase URL/site URL/anon key.
+# Record the values next to the build and rebuild when they change (or when
+# the record is missing).
+build_fingerprint() {
+  printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SITE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\n' \
+    "${NEXT_PUBLIC_SUPABASE_URL:-}" "${NEXT_PUBLIC_SITE_URL:-}" "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}"
+}
+
+build_is_current() {
+  [[ -f "$REPO_ROOT/apps/web/.next/BUILD_ID" ]] || return 1
+  [[ -f "$BUILD_FINGERPRINT_FILE" ]] || return 1
+  [[ "$(cat "$BUILD_FINGERPRINT_FILE")" == "$(build_fingerprint)" ]]
+}
+
+write_build_fingerprint() {
+  local tmp
+  mkdir -p "$(dirname "$BUILD_FINGERPRINT_FILE")"
+  tmp=$(mktemp "$BUILD_FINGERPRINT_FILE.XXXXXX")
+  build_fingerprint >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$BUILD_FINGERPRINT_FILE"
+}
+
+ensure_prod_build() {
+  if build_is_current; then
+    info "Production build present"
     return 0
   fi
-  # Deliberately no `--no-backup`: on the pinned CLI that flag *deletes* the
-  # data volumes (`supabase stop --help` → "Deletes all data volumes after
-  # stopping"). The default stop keeps the database volume and data.
-  (cd "$REPO_ROOT" && bunx supabase stop)
-  info "Stopped Supabase (database volume kept)"
+  if [[ -f "$REPO_ROOT/apps/web/.next/BUILD_ID" ]]; then
+    warn "Production build was made with different NEXT_PUBLIC_* values; rebuilding."
+  else
+    header "No production build for this checkout — building once"
+  fi
+  build_app
 }
 
 # ── Ready block ──────────────────────────────────────────────────────────────
 print_ready_block() {
+  local pid shared_note=""
+  (( SHARED == 1 )) && shared_note=" (shared${SHARED_OWNER:+: $SHARED_OWNER})"
+  pid=$(read_web_pid 2>/dev/null) || pid="-"
   printf '\n'
-  printf '%-9s %s\n' 'web' "$(web_url)"
-  printf '%-9s %s\n' 'supabase' "$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")"
-  printf '%-9s %s\n' 'db' "$(normalize_localhost "${ENV[SUPABASE_DB_URL]:-postgresql://postgres:postgres@localhost:54322/postgres}")"
-  printf '%-9s %s\n' 'mail' "$(normalize_localhost "${ENV[SUPABASE_MAIL_URL]:-http://localhost:54324}")"
+  printf '%-9s %s (pid %s)\n' 'web' "$(web_url)" "$pid"
+  printf '%-9s %s%s\n' 'project' "$SUPABASE_PROJECT_ID" "$shared_note"
+  printf '%-9s %s\n' 'supabase' "$(normalize_localhost "$SUPABASE_URL")"
+  printf '%-9s %s\n' 'db' "${SUPABASE_DB_URL:--}"
+  printf '%-9s %s\n' 'mail' "${SUPABASE_MAIL_URL:--}"
+  printf '%-9s %s\n' 'studio' "${SUPABASE_STUDIO_URL:--}"
+  printf '%-9s %s\n' 'registry' "$REGISTRY_DIR"
   printf '\n'
 }
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 cmd_up() {
+  local prod=0
+  [[ "${1:-}" == "--prod" ]] && prod=1
+  local mode="dev"
+  (( prod == 1 )) && mode="prod"
+
   load_root_env
-  apply_basic_defaults
-  guard_shared_stack
+  resolve_contract
+  note_missing_env_file
+  guard_qa_stack
   ensure_bun
-  ensure_docker
+  # Fail before starting anything if the registry path is not ours (a foreign
+  # directory must not receive ownership/lock writes).
+  ensure_registry_dir
 
-  # `supabase start` reads `env()` values from this process.
-  ensure_supabase_running
-  load_supabase_status || fail "Could not read 'supabase status -o env'."
-  merge_supabase_env
-  render_web_env
-  info "Rendered apps/web/.env ($(printf '%s' "$WEB_ENV_FILE"))"
+  if (( SHARED == 1 )); then
+    require_env_key SUPABASE_URL
+    require_env_key NEXT_PUBLIC_SUPABASE_ANON_KEY
+    require_env_key SUPABASE_SERVICE_ROLE_KEY
+    preflight_ports 0
+    render_supabase_env
+    render_web_env
+    claim_project "$mode"
+    STARTUP_CLAIM_ACTIVE=1
+    STARTUP_INCOMPLETE=1
+    info "Shared mode (SUPABASE_SHARED=1)${SHARED_OWNER:+ — owner: $SHARED_OWNER}; not starting Supabase"
+  else
+    ensure_docker
+    preflight_ports 1
+    # Atomic claim before the stack starts; the claim entry is what a
+    # concurrent checkout sees instead of a free project id. Render the CLI
+    # env only after the claim, so a failed claim cannot redirect bare
+    # `bunx supabase ...` commands in this checkout.
+    claim_project "$mode"
+    STARTUP_CLAIM_ACTIVE=1
+    STARTUP_INCOMPLETE=1
+    render_supabase_env
+    ensure_supabase_running
+    load_supabase_status || fail "Could not read 'supabase status -o env'."
+    merge_supabase_env
+    render_web_env
+    info "Rendered apps/web/.env and supabase/.env"
+  fi
 
-  start_web
+  if (( prod == 1 )); then
+    start_web prod
+  else
+    start_web dev
+  fi
+
+  registry_write_entry "$mode"
+  STARTUP_INCOMPLETE=0
+  STARTUP_CLAIM_ACTIVE=0
   print_ready_block
-  info "Ready. Stop with 'bun dev:down' (add --all for Supabase)."
+  if (( SHARED == 1 )); then
+    info "Ready (shared stack). Stop this checkout's web server with 'bun dev:down'; --all is refused in shared mode."
+  else
+    info "Ready. Stop with 'bun dev:down' (add --all for Supabase)."
+  fi
+}
+
+cmd_build() {
+  load_root_env
+  resolve_contract
+  note_missing_env_file
+  guard_qa_stack
+  ensure_bun
+  render_supabase_env
+
+  if (( SHARED == 1 )); then
+    render_web_env
+  else
+    assert_stack_is_ours_or_absent
+    if supabase_healthy && load_supabase_status; then
+      merge_supabase_env
+    elif [[ -f "$WEB_ENV_FILE" ]]; then
+      load_web_env_fallback
+    else
+      fail "No Supabase stack and no generated apps/web/.env.
+  Start the stack first ('bun dev:up'), or set the keys in $ROOT_ENV_FILE."
+    fi
+    render_web_env
+  fi
+
+  build_app
+}
+
+cmd_serve() {
+  load_root_env
+  resolve_contract
+  note_missing_env_file
+  guard_qa_stack
+  ensure_bun
+  ensure_registry_dir
+
+  if (( SHARED == 1 )); then
+    render_web_env
+  else
+    assert_stack_is_ours_or_absent
+    if supabase_healthy && load_supabase_status; then
+      merge_supabase_env
+      render_web_env
+    elif [[ -f "$WEB_ENV_FILE" ]]; then
+      # Stack stopped: load the generated keys so the build fingerprint (and
+      # any rebuild) uses them, not just the `next start` child.
+      load_web_env_fallback
+    else
+      fail "No generated apps/web/.env and no running stack for this checkout.
+  Run 'bun dev:up' (or 'bun dev:build') first."
+    fi
+  fi
+
+  # Reserve the project before the web starts. The claim is atomic (O_EXCL)
+  # when new; an existing entry owned by this checkout is preserved.
+  claim_project "prod"
+  STARTUP_CLAIM_ACTIVE=1
+  STARTUP_INCOMPLETE=1
+
+  preflight_ports 0
+  start_web prod
+  registry_write_entry prod
+  STARTUP_INCOMPLETE=0
+  STARTUP_CLAIM_ACTIVE=0
+  print_ready_block
 }
 
 cmd_status() {
@@ -449,13 +1557,12 @@ cmd_status() {
   [[ "${1:-}" == "--json" ]] && json=1
 
   load_root_env
-  apply_basic_defaults
+  resolve_contract
 
-  local web_http supa_http pid_json pid_text web_http_json supa_http_json
+  local web_http supa_http pid_text pid_json owner_json shared_json shared_owner_json mode_json entry worktree
   web_http=$(web_code)
   supa_http=$(http_code "$(supabase_health_url)")
-  web_http_json=$web_http
-  supa_http_json=$supa_http
+  local web_http_json=$web_http supa_http_json=$supa_http
   [[ "$web_http" == "000" ]] && web_http_json=0
   [[ "$supa_http" == "000" ]] && supa_http_json=0
 
@@ -466,28 +1573,70 @@ cmd_status() {
     pid_text=-
   fi
 
+  owner_json=null
+  mode_json=null
+  shared_owner_json=null
+  [[ -n "$SHARED_OWNER" ]] && shared_owner_json="\"$(json_escape "$SHARED_OWNER")\""
+  entry=""
+  if entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null); then
+    worktree=$(entry_field "$entry" worktree)
+    if [[ -n "$worktree" && "$(canon_path "$worktree")" != "$REPO_ROOT" ]]; then
+      owner_json="\"$(json_escape "$worktree")\""
+    fi
+    local entry_mode
+    entry_mode=$(entry_field "$entry" mode)
+    [[ -n "$entry_mode" ]] && mode_json="\"$(json_escape "$entry_mode")\""
+  fi
+  shared_json=false
+  if (( SHARED == 1 )); then shared_json=true; fi
+
   local ready=false
   if (( web_http >= 200 && web_http < 400 )) && [[ "$supa_http" == "200" ]]; then
     ready=true
   fi
 
-  local db_url mail_url
-  db_url=$(normalize_localhost "${ENV[SUPABASE_DB_URL]:-postgresql://postgres:postgres@localhost:54322/postgres}")
-  mail_url=$(normalize_localhost "${ENV[SUPABASE_MAIL_URL]:-http://localhost:54324}")
+  local app_url supa_url db_url mail_url studio_url
+  app_url=$(web_url)
+  supa_url=$(normalize_localhost "$(env_url "$SUPABASE_URL")")
+  db_url=$(normalize_localhost "${SUPABASE_DB_URL:--}")
+  mail_url=$(normalize_localhost "${SUPABASE_MAIL_URL:--}")
+  studio_url=$(normalize_localhost "${SUPABASE_STUDIO_URL:--}")
 
   if (( json == 1 )); then
-    printf '{"ready":%s,"web":{"url":"%s","pid":%s,"http":%s},"supabase":{"url":"%s","http":%s},"dbUrl":"%s","mailUrl":"%s"}\n' \
-      "$ready" "$(web_url)" "$pid_json" "$web_http_json" \
-      "$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")" "$supa_http_json" \
-      "$db_url" "$mail_url"
+    printf '{"ready":%s,"projectId":"%s","worktree":"%s","mode":%s,"shared":%s,"sharedOwner":%s,"owner":%s,"registry":"%s","ports":{"app":%s,"api":%s,"db":%s,"studio":%s,"mail":%s,"analytics":%s,"edgeInspector":%s,"shadow":%s,"pooler":%s},"urls":{"app":"%s","supabase":"%s","db":"%s","mail":"%s","studio":"%s"},"web":{"url":"%s","pid":%s,"http":%s},"supabase":{"url":"%s","http":%s},"dbUrl":"%s","mailUrl":"%s"}\n' \
+      "$ready" \
+      "$(json_escape "$SUPABASE_PROJECT_ID")" \
+      "$(json_escape "$REPO_ROOT")" \
+      "$mode_json" \
+      "$shared_json" \
+      "$shared_owner_json" \
+      "$owner_json" \
+      "$(json_escape "$REGISTRY_DIR")" \
+      "$APP_PORT" "$SUPABASE_API_PORT" "$SUPABASE_DB_PORT" "$SUPABASE_STUDIO_PORT" \
+      "$SUPABASE_MAIL_PORT" "$SUPABASE_ANALYTICS_PORT" "$SUPABASE_EDGE_INSPECTOR_PORT" \
+      "$SUPABASE_SHADOW_PORT" "$SUPABASE_POOLER_PORT" \
+      "$(json_escape "$app_url")" "$(json_escape "$supa_url")" "$(json_escape "$db_url")" \
+      "$(json_escape "$mail_url")" "$(json_escape "$studio_url")" \
+      "$(json_escape "$app_url")" "$pid_json" "$web_http_json" \
+      "$(json_escape "$supa_url")" "$supa_http_json" \
+      "$(json_escape "$db_url")" "$(json_escape "$mail_url")"
     return 0
   fi
 
-  printf 'ready      %s\n' "$ready"
-  printf 'web        %s  http=%s  pid=%s\n' "$(web_url)" "$web_http" "$pid_text"
-  printf 'supabase   %s  http=%s\n' "$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")" "$supa_http"
-  printf 'db         %s\n' "$db_url"
-  printf 'mail       %s\n' "$mail_url"
+  printf 'ready       %s\n' "$ready"
+  printf 'project     %s%s\n' "$SUPABASE_PROJECT_ID" "$( (( SHARED == 1 )) && printf ' (shared%s)' "${SHARED_OWNER:+: $SHARED_OWNER}" || true )"
+  printf 'worktree    %s\n' "$REPO_ROOT"
+  printf 'web         %s  http=%s  pid=%s\n' "$app_url" "$web_http" "$pid_text"
+  printf 'supabase    %s  http=%s\n' "$supa_url" "$supa_http"
+  printf 'db          %s\n' "$db_url"
+  printf 'mail        %s\n' "$mail_url"
+  printf 'studio      %s\n' "$studio_url"
+  printf 'ports       app=%s api=%s db=%s studio=%s mail=%s shadow=%s pooler=%s\n' \
+    "$APP_PORT" "$SUPABASE_API_PORT" "$SUPABASE_DB_PORT" "$SUPABASE_STUDIO_PORT" \
+    "$SUPABASE_MAIL_PORT" "$SUPABASE_SHADOW_PORT" "$SUPABASE_POOLER_PORT"
+  printf 'registry    %s\n' "$REGISTRY_DIR"
+  [[ "$owner_json" != "null" ]] && printf 'owner       %s\n' "$(printf '%s' "$owner_json" | tr -d '"')"
+  return 0
 }
 
 cmd_down() {
@@ -495,58 +1644,75 @@ cmd_down() {
   [[ "${1:-}" == "--all" ]] && all=1
 
   load_root_env
-  apply_basic_defaults
+  # Teardown must work even with an invalid contract (e.g. a loopback APP_URL
+  # pointing at the wrong port), so it warns instead of failing here.
+  resolve_contract 0
+
+  if (( all == 1 )) && (( SHARED == 1 )); then
+    fail "SUPABASE_SHARED=1: refusing to stop a stack this checkout does not own.
+  Run 'bun dev:down --all' in the owning checkout (${SHARED_OWNER:-owner unknown}).
+  Use 'bun dev:down' (no --all) to stop only this checkout's web server."
+  fi
+
   stop_web
 
-  if (( all == 1 )); then
-    ensure_bun
-    ensure_docker
-    stop_supabase
+  (( all == 1 )) || return 0
+
+  ensure_bun
+  ensure_docker
+
+  if assert_stack_ownership "stop"; then
+    stop_supabase_scoped
+    # Keep the registry entry: `supabase stop` retains the database volume, so
+    # ownership follows the retained state. Remove it only when that state is
+    # explicitly destroyed.
+    return 0
   fi
+
+  warn "No Supabase stack for project '$SUPABASE_PROJECT_ID'."
 }
 
 cmd_reset_db() {
   load_root_env
-  apply_basic_defaults
-  guard_shared_stack
+  resolve_contract
+  note_missing_env_file
+
+  if (( SHARED == 1 )); then
+    fail "SUPABASE_SHARED=1: refusing to reset a database this checkout does not own.
+  Run 'bun dev:reset-db' in the owning checkout (${SHARED_OWNER:-owner unknown})."
+  fi
+
+  guard_qa_stack
   ensure_bun
   ensure_docker
+  ensure_registry_dir
 
-  header "Resetting the local database (destructive)"
+  if ! assert_stack_ownership "reset"; then
+    if supabase_healthy; then
+      fail "SUPABASE_URL ($SUPABASE_URL) answers, but no stack of this checkout owns it.
+  Refusing to reset another checkout's data. Set SUPABASE_SHARED=1 to reuse it read-only."
+    fi
+  fi
+
+  preflight_ports 1
+  render_supabase_env
+  claim_project "dev"
+  header "Resetting project '$SUPABASE_PROJECT_ID' (destructive, this checkout only)"
   ensure_supabase_running
-  (cd "$REPO_ROOT" && bunx supabase db reset)
+  supa db reset
 
+  SUPA_LOADED=0
   load_supabase_status || fail "Could not read 'supabase status -o env'."
   merge_supabase_env
   render_web_env
-  info "Database reset complete; apps/web/.env re-rendered."
-}
 
-cmd_build() {
-  load_root_env
-  apply_basic_defaults
-  ensure_bun
-
-  if web_pid=$(read_web_pid); then
-    fail "The dev server is running (pid $web_pid). Run 'bun dev:down' before 'bun dev:build'."
+  local mode=dev entry current_mode
+  if entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null); then
+    current_mode=$(entry_field "$entry" mode)
+    [[ -n "$current_mode" ]] && mode=$current_mode
   fi
-
-  # Prefer fresh keys when the stack is up and readable; only fall back to the
-  # existing generated env for an offline build. Loading that fallback first
-  # would let a rotated anon/service key silently win over the live one.
-  if supabase_healthy && load_supabase_status; then
-    merge_supabase_env
-  else
-    load_web_env_fallback
-  fi
-
-  # Run after fallback/merge so a QA URL from either source is still caught.
-  guard_shared_stack
-  render_web_env
-
-  header "Building @studiq/web"
-  (cd "$REPO_ROOT" && bun run --filter @studiq/web build)
-  info "Build complete."
+  registry_write_entry "$mode"
+  info "Database reset complete for '$SUPABASE_PROJECT_ID'; apps/web/.env re-rendered."
 }
 
 cmd_logs() {
@@ -554,29 +1720,23 @@ cmd_logs() {
   [[ "${1:-}" == "--no-follow" ]] && follow=0
 
   load_root_env
-  apply_basic_defaults
+  resolve_contract
 
+  printf 'project    %s\n' "$SUPABASE_PROJECT_ID"
   printf 'web        %s  http=%s\n' "$(web_url)" "$(web_code)"
-  printf 'supabase   %s  http=%s\n' \
-    "$(normalize_localhost "$(env_url "${ENV[SUPABASE_URL]:-http://localhost:54321}")")" \
-    "$(http_code "$(supabase_health_url)")"
+  printf 'supabase   %s  http=%s\n' "$(normalize_localhost "$SUPABASE_URL")" "$(http_code "$(supabase_health_url)")"
 
-  ensure_bun
-  (cd "$REPO_ROOT" && bunx supabase status) || true
+  if (( SHARED == 0 )); then
+    ensure_bun
+    supa status || true
 
-  local project_id
-  project_id=$(sed -nE 's/^[[:space:]]*project_id[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
-    "$REPO_ROOT/supabase/config.toml" | head -n 1)
-  project_id=${project_id:-studiq}
-
-  local svc container
-  for svc in db auth rest; do
-    container="supabase_${svc}_${project_id}"
-    if command -v docker >/dev/null 2>&1 && docker inspect "$container" >/dev/null 2>&1; then
+    local container
+    while IFS= read -r container; do
+      [[ -n "$container" ]] || continue
       printf '\n──── docker logs %s (last 20) ────\n' "$container"
       docker logs --tail 20 "$container" 2>&1 || true
-    fi
-  done
+    done < <(docker_containers_for "$SUPABASE_PROJECT_ID" | sort)
+  fi
 
   if [[ ! -f "$WEB_LOG" ]]; then
     warn "No web log yet ($WEB_LOG)."
@@ -591,41 +1751,200 @@ cmd_logs() {
   fi
 }
 
+cmd_doctor() {
+  load_root_env
+  resolve_contract
+
+  local problems=0 entry worktree owner port spec kind
+  printf '\n▸ Checkout\n'
+  printf '  worktree   %s\n' "$REPO_ROOT"
+  printf '  branch     %s\n' "$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || printf 'detached')"
+  if (( ENV_FILE_MISSING == 1 )); then
+    printf '  .env       missing — cp .env.example .env (derived defaults are in use)\n'
+  else
+    printf '  .env       %s\n' "$ROOT_ENV_FILE"
+  fi
+  printf '  registry   %s\n' "$REGISTRY_DIR"
+
+  printf '\n▸ Contract\n'
+  printf '  project    %s%s\n' "$SUPABASE_PROJECT_ID" "$( (( SHARED == 1 )) && printf ' (shared%s)' "${SHARED_OWNER:+: $SHARED_OWNER}" || true )"
+  printf '  app        %s → %s\n' "$APP_PORT" "$(web_url)"
+  printf '  supabase   %s → %s\n' "$SUPABASE_API_PORT" "$(normalize_localhost "$SUPABASE_URL")"
+  printf '  db         %s → %s\n' "$SUPABASE_DB_PORT" "${SUPABASE_DB_URL:--}"
+  printf '  studio     %s → %s\n' "$SUPABASE_STUDIO_PORT" "${SUPABASE_STUDIO_URL:--}"
+  printf '  mail       %s → %s\n' "$SUPABASE_MAIL_PORT" "${SUPABASE_MAIL_URL:--}"
+  printf '  shadow     %s\n' "$SUPABASE_SHADOW_PORT"
+  printf '  pooler     %s\n' "$SUPABASE_POOLER_PORT"
+  printf '  analytics  %s\n' "$SUPABASE_ANALYTICS_PORT"
+  printf '  edge insp. %s\n' "$SUPABASE_EDGE_INSPECTOR_PORT"
+  printf '  excluded   %s\n' "${SUPABASE_START_EXCLUDE:-(none — full stack)}"
+
+  printf '\n▸ State\n'
+  if docker_available; then
+    printf '  docker     ok\n'
+    local containers
+    containers=$(docker_running_for "$SUPABASE_PROJECT_ID")
+    if [[ -n "$containers" ]]; then
+      printf '  containers %s\n' "$(printf '%s' "$containers" | tr '\n' ' ')"
+    else
+      printf '  containers none for this project\n'
+    fi
+  else
+    printf '  docker     unavailable (Supabase cannot start)\n'
+    problems=$((problems + 1))
+  fi
+  printf '  web        http=%s pid=%s\n' "$(web_code)" "$(read_web_pid 2>/dev/null || printf '-')"
+  printf '  supabase   http=%s\n' "$(http_code "$(supabase_health_url)")"
+
+  printf '\n▸ Ownership\n'
+  if entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null); then
+    worktree=$(entry_field "$entry" worktree)
+    printf '  project    %s → %s (%s, %s)\n' "$SUPABASE_PROJECT_ID" "$worktree" \
+      "$(entry_field "$entry" mode)" "$(entry_field "$entry" startedAt)"
+    if [[ "$(canon_path "$worktree")" != "$REPO_ROOT" ]]; then
+      printf '  ✘ project id is owned by another checkout\n'
+      problems=$((problems + 1))
+    fi
+  else
+    printf '  project    no registry entry (nothing started by dev:up yet)\n'
+    if [[ -n "$(docker_containers_for "$SUPABASE_PROJECT_ID")" ]]; then
+      printf '  ✘ containers exist without a registry entry (explicit recovery required)\n'
+      problems=$((problems + 1))
+    fi
+  fi
+
+  printf '\n  registry entries:\n'
+  local any=0
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    any=1
+    printf '    %-48s %s\n' "$(entry_field "$entry" projectId)" "$(entry_field "$entry" worktree)"
+  done < <(registry_list)
+  (( any == 1 )) || printf '    (none)\n'
+
+  printf '\n▸ Ports\n'
+  local -a specs=("app:$APP_PORT")
+  if (( SHARED == 0 )); then
+    specs+=("api:$SUPABASE_API_PORT" "db:$SUPABASE_DB_PORT" "studio:$SUPABASE_STUDIO_PORT" "mail:$SUPABASE_MAIL_PORT" "analytics:$SUPABASE_ANALYTICS_PORT" "edge:$SUPABASE_EDGE_INSPECTOR_PORT" "shadow:$SUPABASE_SHADOW_PORT" "pooler:$SUPABASE_POOLER_PORT")
+  fi
+  for spec in "${specs[@]}"; do
+    kind=${spec%%:*}
+    port=${spec##*:}
+    if port_in_use "$port"; then
+      owner=$(port_owner_hint "$port" 2>/dev/null) || owner=""
+      if [[ "$kind" == "app" ]] && read_web_pid >/dev/null 2>&1; then
+        printf '  %-9s %-6s in use (this checkout)\n' "$kind" "$port"
+      elif [[ "$(docker_owner_of_port "$port" 2>/dev/null)" == "$SUPABASE_PROJECT_ID" ]]; then
+        printf '  %-9s %-6s in use (this checkout)\n' "$kind" "$port"
+      else
+        printf '  %-9s %-6s in use%s\n' "$kind" "$port" "${owner:+ by $owner}"
+        problems=$((problems + 1))
+      fi
+    else
+      printf '  %-9s %-6s free\n' "$kind" "$port"
+    fi
+  done
+
+  if (( SHARED == 1 )); then
+    printf '\n▸ Shared mode\n'
+    printf '  dev:up does not start Supabase; down --all / reset-db are refused.\n'
+    local key
+    for key in SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+      if [[ -n "${ENV[$key]:-}" ]]; then
+        printf '  %-30s set\n' "$key"
+      else
+        printf '  %-30s MISSING\n' "$key"
+        problems=$((problems + 1))
+      fi
+    done
+  fi
+
+  if (( problems > 0 )); then
+    printf '\n▸ Next steps\n'
+    printf '  Pick a free block:  bun dev:ports --suggest\n'
+    printf '  Then set APP_PORT / SUPABASE_PROJECT_ID / SUPABASE_PORT_BASE in %s\n' "$ROOT_ENV_FILE"
+    return 1
+  fi
+
+  printf '\n✔ No ownership or port conflicts for this checkout.\n'
+  return 0
+}
+
+cmd_ports() {
+  local json=0
+  case "${1:-}" in
+    --suggest | "") ;;
+    --json) json=1 ;;
+    *) fail "Usage: bun dev:ports --suggest [--json]" ;;
+  esac
+
+  load_root_env
+  resolve_contract
+  suggest_free_block
+  if (( json == 1 )); then
+    printf '{"appPort":%s,"supabasePortBase":%s}\n' "$SUGGEST_APP_PORT" "$SUGGEST_PORT_BASE"
+  else
+    printf 'APP_PORT=%s\n' "$SUGGEST_APP_PORT"
+    printf 'SUPABASE_PORT_BASE=%s\n' "$SUGGEST_PORT_BASE"
+  fi
+}
+
 cmd_prepull() {
   load_root_env
-  apply_basic_defaults
-  guard_shared_stack
+  resolve_contract
+  note_missing_env_file
+
+  if (( SHARED == 1 )); then
+    fail "SUPABASE_SHARED=1: this checkout does not own a stack, so there is nothing to pull or start."
+  fi
+
+  guard_qa_stack
   ensure_bun
   ensure_docker
 
-  if supabase_healthy; then
-    info "Supabase is already running; its images are present. Nothing to pull."
+  if supabase_healthy && [[ -n "$(docker_running_for "$SUPABASE_PROJECT_ID")" ]]; then
+    info "Supabase is already running for '$SUPABASE_PROJECT_ID'; images are present."
     return 0
   fi
 
-  header "Pulling Supabase images (starts then stops the stack)"
-  (cd "$REPO_ROOT" && bunx supabase start)
-  (cd "$REPO_ROOT" && bunx supabase stop)
-  info "Images pulled; stack stopped. The database volume was initialised and kept."
+  preflight_ports 1
+  render_supabase_env
+  header "Pulling Supabase images (starts then stops project '$SUPABASE_PROJECT_ID')"
+  supabase_start
+  supa stop --project-id "$SUPABASE_PROJECT_ID"
+  info "Images pulled; project stopped. The database volume was initialised and kept."
 }
 
 usage() {
   cat <<'EOF'
 Usage: bun dev:<command>
 
-  up            Start Supabase (if needed) + the web dev server (idempotent)
-  status        Print web/Supabase health, PIDs, ports and URLs
+  up            Start Supabase (if needed) + the web server (dev mode)
+                  --prod    production build (if missing) + `next start`
+                Supabase starts lean by default (`-x` skips realtime,
+                edge-runtime, imgproxy, logflare, vector, supavisor); override
+                with SUPABASE_START_EXCLUDE (empty = full stack).
+  build         Production build of @studiq/web (waits on the registry build lock)
+  serve         `next start` for this checkout on APP_PORT (no dev server)
+  status        Web/Supabase health, PIDs, ports, project id and owner
                   --json    machine-readable, stable shape
-  down          Stop the web dev server
-                  --all     also stop Supabase (database volume is kept)
-  reset-db      Destructive: `supabase db reset`, then re-render apps/web/.env
-  build         Production build of @studiq/web (stop the dev server first)
-  logs          Follow .dev/web.log + recent Supabase container logs
+  down          Stop only this checkout's web server
+                  --all     also stop this checkout's Supabase (volume kept)
+  reset-db      Destructive: `supabase db reset` for this checkout only
+  logs          Follow .dev/web.log + this stack's container logs
                   --no-follow
+  doctor        Explain missing / owned / colliding state (exit 1 on conflicts)
+  ports         Print a free APP_PORT / SUPABASE_PORT_BASE block
+                  --suggest (default) | --json
   prepull       Pull Supabase images without leaving the stack running
 
+Parallel checkouts: set APP_PORT, SUPABASE_PROJECT_ID and SUPABASE_PORT_BASE in
+this checkout's .env (copy .env.example). Derived defaults exist, but explicit
+values are recommended. Agents must use `bun dev:build` + `bun dev:serve`
+(or `bun dev:up --prod`), not `bun dev` / `next dev`.
+
 Run from anywhere inside the repository. Root .env is optional; copy
-.env.example to .env for stable values.
+.env.example to .env for stable per-checkout values.
 EOF
 }
 
@@ -635,11 +1954,14 @@ main() {
 
   case "$command" in
     up) cmd_up "$@" ;;
+    build) cmd_build "$@" ;;
+    serve) cmd_serve "$@" ;;
     status) cmd_status "$@" ;;
     down) cmd_down "$@" ;;
     reset-db | reset) cmd_reset_db "$@" ;;
-    build) cmd_build "$@" ;;
     logs) cmd_logs "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    ports) cmd_ports "$@" ;;
     prepull) cmd_prepull "$@" ;;
     help | --help | -h | '') usage ;;
     *)

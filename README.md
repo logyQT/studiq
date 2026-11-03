@@ -56,10 +56,21 @@ bun dev:build           # explicit production build (stop the dev server first)
 bun dev:logs            # follow the web log + recent Supabase container logs
 ```
 
-The contract is fixed: web `:3000`, API `:54321`, database `:54322`, Mailpit
-`:54324`. The shared QA stack (`:3010` / `:54421`) is refused unless
-`DEV_ALLOW_SHARED=1`. `apps/admin` is **not** part of `dev:up` — run it with
-`bun dev:admin` and its own `apps/admin/.env`.
+The stack is **per checkout**: `SUPABASE_PROJECT_ID` (derived from the checkout
+path when blank) plus a port block from `SUPABASE_PORT_BASE` (default `54320` →
+API `:54321`, DB `:54322`, Studio `:54323`, Mail `:54324`; `APP_PORT` defaults to
+`3000`). Supabase starts **lean** (`supabase start -x
+realtime,edge-runtime,imgproxy,logflare,vector,supavisor` — the app uses none of
+them locally); set `SUPABASE_START_EXCLUDE=` for the full stack. For parallel
+agents, set `APP_PORT`, `SUPABASE_PROJECT_ID` and `SUPABASE_PORT_BASE` in
+`.env` — `bun dev:ports --suggest` prints a free block, `bun dev:doctor` explains
+collisions, and a stack another checkout owns is never reused or stopped.
+`dev:up` renders `apps/web/.env` **and** `supabase/.env`, so plain
+`bunx supabase ...` commands follow the same checkout. The shared QA stack
+(`:3010` / `:54421`) is refused unless `DEV_ALLOW_SHARED=1`; `SUPABASE_SHARED=1`
+reuses a stack read-only and refuses destructive commands. `apps/admin` is
+**not** part of `dev:up` — run it with `bun dev:admin` and its own
+`apps/admin/.env`.
 
 Optionally start the local observability stack (Grafana `:3001`):
 
@@ -91,14 +102,18 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 
 | Command                                  | Description                                                                                                |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `bun dev:up`                             | One-command local stack: Supabase (if needed) + web dev server; renders `apps/web/.env`                    |
-| `bun dev:status`                         | Web/Supabase health, PIDs, ports, URLs (`--json` for a stable machine shape)                               |
-| `bun dev:down` / `bun dev:down --all`    | Stop the web server / also stop Supabase (database volume kept)                                            |
-| `bun dev:reset-db`                       | Destructive `supabase db reset`, then re-render `apps/web/.env`                                            |
-| `bun dev:build`                          | Explicit production build of `@studiq/web` (stop the dev server first)                                     |
-| `bun dev:logs`                           | Follow `.dev/web.log` + recent Supabase container logs                                                     |
+| `bun dev:up`                             | One-command local stack: Supabase (if needed) + web server; renders `apps/web/.env` + `supabase/.env`      |
+| `bun dev:up --prod`                      | Same, but production build (if missing) + `next start` (agents)                                            |
+| `bun dev:serve`                          | `next start` for this checkout on `APP_PORT` (no dev server)                                               |
+| `bun dev:status`                         | Web/Supabase health, project id, ports, owner (`--json` for a stable machine shape)                        |
+| `bun dev:down` / `bun dev:down --all`    | Stop this checkout's web server / also stop **this checkout's** Supabase (database volume kept)            |
+| `bun dev:reset-db`                       | Destructive `supabase db reset` for this checkout, then re-render `apps/web/.env`                          |
+| `bun dev:build`                          | Explicit production build of `@studiq/web` (registry-level build lock; stop the dev server first)          |
+| `bun dev:doctor`                         | Explain missing / owned / colliding state                                                                  |
+| `bun dev:ports`                          | Print a free `APP_PORT` / `SUPABASE_PORT_BASE` block                                                       |
+| `bun dev:logs`                           | Follow `.dev/web.log` + this stack's container logs                                                        |
 | `bun dev:prepull`                        | Pull Supabase images without leaving the stack running (VM templates)                                      |
-| `bun dev`                                | Start the web app dev server (`@studiq/web`, port 3000) — same as `bun dev:web`                            |
+| `bun dev`                                | Start the web app dev server (`next dev`) — agents should use `dev:build` + `dev:serve`                    |
 | `bun dev:admin`                          | Start the admin app dev server (`@studiq/admin`, port 4000)                                                |
 | `bun build`                              | Build the web app for production — same as `bun build:web`                                                 |
 | `bun build:admin`                        | Build the admin app for production                                                                         |

@@ -29,6 +29,20 @@ concurrency:
 # step with scripts/check-bun-version.ts (>= 1.4.4).
 env:
   BUN_VERSION: 1.4.4-canary.20261027.1
+  # `supabase/config.toml` reads every configurable value through `env()`; an
+  # unset numeric variable makes the config fail to parse, so the whole job
+  # graph shares one explicit CI stack identity. Each job owns its own Supabase
+  # instance (containers are named `supabase_*_studiq-ci`).
+  SUPABASE_PROJECT_ID: studiq-ci
+  SUPABASE_API_PORT: '54321'
+  SUPABASE_DB_PORT: '54322'
+  SUPABASE_STUDIO_PORT: '54323'
+  SUPABASE_MAIL_PORT: '54324'
+  SUPABASE_ANALYTICS_PORT: '54327'
+  SUPABASE_EDGE_INSPECTOR_PORT: '54328'
+  SUPABASE_SHADOW_PORT: '54320'
+  SUPABASE_POOLER_PORT: '54329'
+  SUPABASE_URL: http://localhost:54321
 
 jobs:
   # Cheapest first, in the order a failure is cheapest to explain: lint, types.
@@ -239,7 +253,7 @@ jobs:
         run: bunx vitest run __tests__/integration --no-file-parallelism
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop --project-id "$SUPABASE_PROJECT_ID" --no-backup || true
 
   # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
@@ -296,6 +310,7 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "SUPABASE_DB_URL=$DB_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3010"
             echo "OTEL_SDK_DISABLED=true"
           } > apps/web/.env
@@ -303,6 +318,7 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "SUPABASE_DB_URL=$DB_URL"
             echo "OTEL_SDK_DISABLED=true"
             echo "QA_APP_URL=http://localhost:3010"
           } >> "$GITHUB_ENV"
@@ -342,7 +358,7 @@ jobs:
 
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop --project-id "$SUPABASE_PROJECT_ID" --no-backup || true
 
   # One leg per browser so a red platform re-runs alone. Each leg owns its
   # tenant set (keys include the project) and its own Supabase instance.
@@ -405,6 +421,7 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "SUPABASE_DB_URL=$DB_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
             echo "OTEL_SDK_DISABLED=true"
           } > apps/web/.env
@@ -439,7 +456,7 @@ jobs:
 
       - name: Stop Supabase
         if: always() && needs.scope.outputs.app == 'true'
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop --project-id "$SUPABASE_PROJECT_ID" --no-backup || true
 
   # admin-api only needs the admin app; the web server is skipped so this leg
   # costs seconds rather than a second Next build.
@@ -497,4 +514,4 @@ jobs:
           if-no-files-found: ignore
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop --project-id "$SUPABASE_PROJECT_ID" --no-backup || true
