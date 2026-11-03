@@ -1,10 +1,11 @@
 'use client';
 
+import type { PermissionScope } from '@studiq/authz';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { permissionKeys } from '@/lib/query-keys';
 
-type PermissionsMap = Record<string, string | null>;
+type PermissionsMap = Record<string, PermissionScope | null>;
 
 export function usePermissions() {
   const { user } = useAuth();

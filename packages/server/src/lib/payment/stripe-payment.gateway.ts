@@ -1,5 +1,7 @@
+// eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import type Stripe from 'stripe';
 import { error as logError } from '@studiq/server/lib/log';
+import { isRecord, readString } from '@studiq/server/lib/record';
 import { wrapService } from '@studiq/server/lib/observability';
 import { checkoutExpiresAt } from '@studiq/server/lib/payment/checkout-timing';
 import type {
@@ -60,7 +62,7 @@ function ownerMetadata(owner: PaymentOwner): Record<string, string> {
  * parameters: they contain the customer email/name.
  */
 function stripeFailure(error: unknown): ServiceResult<never> {
-  const type = (error as { type?: string } | null)?.type;
+  const type = isRecord(error) ? readString(error, 'type') : undefined;
 
   if (type === 'StripeRateLimitError') return failure('RATE_LIMITED');
   if (type === 'StripeInvalidRequestError' || type === 'StripeCardError') {
@@ -197,21 +199,21 @@ export class StripePaymentGateway implements PaymentGateway {
     }
   }
 
-  async createPortalSession(
+  createPortalSession(
     _input: CreatePortalSessionInput,
   ): Promise<ServiceResult<PortalSessionResult>> {
     // Phase 4 (#662 §7.1): needs the customer mapping + portal configuration.
-    return failure('SERVICE_UNAVAILABLE');
+    return Promise.resolve(failure('SERVICE_UNAVAILABLE'));
   }
 
-  async changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
+  changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
     // Phase 4 (#662 §2.5): anchor reset for upgrades, schedule for downgrades.
-    return failure('SERVICE_UNAVAILABLE');
+    return Promise.resolve(failure('SERVICE_UNAVAILABLE'));
   }
 
-  async cancelAtPeriodEnd(_input: CancelAtPeriodEndInput): Promise<ServiceResult<void>> {
+  cancelAtPeriodEnd(_input: CancelAtPeriodEndInput): Promise<ServiceResult<void>> {
     // Phase 4 (#662 §7.3).
-    return failure('SERVICE_UNAVAILABLE');
+    return Promise.resolve(failure('SERVICE_UNAVAILABLE'));
   }
 
   async handleWebhook(envelope: PaymentWebhookEnvelope): Promise<ServiceResult<WebhookOutcome>> {

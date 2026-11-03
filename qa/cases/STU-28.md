@@ -28,19 +28,14 @@ Talia z ≥ 5 fiszkami; druga talia B.
   Akcje zbiorcze w dolnym pasku to „Kopiuj”, „Eksportuj”, „Tematy”, „Przenieś”,
   „Usuń”; po zaznaczeniu widać „Zaznacz Wszystkie”/„Odznacz Wszystkie” i licznik
   „Wybrano N”.
-- UI note: akcja „Linkuj” i komunikat „Fiszki powiązano z taliami” zostały
-  celowo usunięte w #448 (commit d56c9448) — fiszka ma dziś jeden `deck_id`, więc
-  wielokrotne przypisanie do talii zastąpiło „Przenieś” („Fiszki przeniesiono do
-  nowej talii”). Test nie koduje usuniętej akcji; sprawdza dostarczone operacje
-  zbiorcze i aktualizację liczników obu talii.
 
 ## Steps
 
 1. Otwórz talię A, na karcie fiszki wybierz z menu „…” pozycję „Wybierz Fiszki”,
    zaznacz 3 fiszki; sprawdź „Zaznacz Wszystkie” (a następnie „Odznacz Wszystkie”
    i ponowny wybór trzech).
-2. Wykonaj kolejno: Tematy (Ustaw), Kopiuj (do talii B), Przenieś (do B), Usuń
-   („Linkuj” nie istnieje — patrz Seed, #448).
+2. Wykonaj kolejno: Tematy (Ustaw), Kopiuj (do talii B), Przenieś (do B). Po przeniesieniu
+   zaznacz dwie pozostałe fiszki w talii A, wybierz „Usuń” i potwierdź usunięcie.
 
 ## Expected result
 

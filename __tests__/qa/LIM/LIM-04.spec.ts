@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -101,7 +102,7 @@ interface MyOrg {
 /** GET a `/api/v1` endpoint as the signed-in user and unwrap `{ success, data }`. */
 async function getJson<T>(page: Page, url: string): Promise<ApiEnvelope<T>> {
   const res = await page.request.get(url);
-  const body = (await res.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(res);
   expect(res.ok(), `GET ${url} → ${res.status()} ${JSON.stringify(body)}`).toBe(true);
   expect(body.success, `GET ${url} success`).toBe(true);
   return body;
@@ -130,17 +131,17 @@ async function removeInviteesIfJoined(page: Page, tenant: QaTenant): Promise<voi
   for (const role of ['invitee1', 'invitee2'] as const) {
     const invitee = tenant.users[role];
     expect(invitee, `${CASE} needs the seeded ${role} account`).toBeTruthy();
-    if (!members.some((member) => member.id === invitee!.id)) continue;
-    const res = await page.request.delete(`${MEMBERS_URL}?userId=${invitee!.id}`);
+    if (!members.some((member) => member.id === invitee.id)) continue;
+    const res = await page.request.delete(`${MEMBERS_URL}?userId=${invitee.id}`);
     expect(res.status(), `cleanup DELETE ${role}`).toBe(200);
   }
 }
 
 /** Re-run safety for the group counter: remove only the groups this spec named. */
 async function removeOwnGroups(page: Page): Promise<void> {
-  const names = Object.values(GROUPS);
+  const names: string[] = Object.values(GROUPS);
   for (const group of (await listGroups(page)).filter((candidate) =>
-    names.includes(candidate.name as (typeof GROUPS)[keyof typeof GROUPS]),
+    names.includes(candidate.name),
   )) {
     const res = await page.request.delete(`${GROUPS_URL}/${group.id}`);
     expect(res.status(), `cleanup DELETE ${group.name}`).toBe(200);
@@ -197,9 +198,9 @@ async function fillInviteRow(
 function inviteCodeFor(rows: string[], email: string): string {
   const row = rows.find((text) => text.includes(email));
   expect(row, `no invitation result row for ${email}`).toBeTruthy();
-  const code = row?.match(/[0-9a-f]{32}/)?.[0];
+  const code = row?.match(/[0-9a-f]{32}/)?.[0] ?? '';
   expect(code, `no invite code in the result row "${row}"`).toMatch(/^[0-9a-f]{32}$/);
-  return code as string;
+  return code;
 }
 
 /** Accept an invitation through `/app/join` and return the accept response. */
@@ -300,7 +301,7 @@ test.describe('LIM-04 — Launch organization limits: 3 groups, 5 members', () =
     // The fourth group is refused by the Launch plan limit.
     const refused = await createGroup(page, GROUPS.refused);
     expect(refused.response.status(), 'the fourth group must be refused by the plan').toBe(429);
-    const refusedBody = (await refused.response.json()) as ApiEnvelope<unknown>;
+    const refusedBody = await json<ApiEnvelope<unknown>>(refused.response);
     expect(refusedBody.success).toBe(false);
     expect(refusedBody.error).toBe('USAGE_LIMIT_EXCEEDED');
 
@@ -363,7 +364,7 @@ test.describe('LIM-04 — Launch organization limits: 3 groups, 5 members', () =
     await loginAs(page, tenant, 'invitee1', { locale: 'pl', activeOrgId: null });
     const accept1 = await acceptInvite(page, token1);
     expect(accept1.status(), 'the first acceptance must succeed').toBe(200);
-    const accept1Body = (await accept1.json()) as ApiEnvelope<{ id: string }>;
+    const accept1Body = await json<ApiEnvelope<{ id: string }>>(accept1);
     expect(accept1Body.success, JSON.stringify(accept1Body)).toBe(true);
     expect(accept1Body.data.id).toBe(org.id);
 
@@ -381,7 +382,7 @@ test.describe('LIM-04 — Launch organization limits: 3 groups, 5 members', () =
 
     const accept2 = await acceptInvite(page, token2);
     expect(accept2.status(), 'the second acceptance must be refused by the plan limit').toBe(429);
-    const accept2Body = (await accept2.json()) as ApiEnvelope<unknown>;
+    const accept2Body = await json<ApiEnvelope<unknown>>(accept2);
     expect(accept2Body.success).toBe(false);
     expect(accept2Body.error).toBe('USAGE_LIMIT_EXCEEDED');
 

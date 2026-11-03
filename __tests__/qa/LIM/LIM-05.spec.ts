@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -94,7 +95,7 @@ interface FeatureSet {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }

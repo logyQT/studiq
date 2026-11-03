@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -37,7 +38,7 @@ const CHOOSER = {
 async function expectNoOrganizations(page: Page): Promise<void> {
   const response = await page.request.get('/api/v1/me/orgs');
   expect(response.status(), 'GET /api/v1/me/orgs').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: unknown[] };
+  const body = await json<{ success: boolean; data: unknown[] }>(response);
   expect(body.success).toBe(true);
   expect(body.data, 'the fixture educator must belong to no organization').toEqual([]);
 }

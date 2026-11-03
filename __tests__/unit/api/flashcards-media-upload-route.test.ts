@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
-const uploadFileMock = vi.fn();
+const uploadFileMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/services/storage.service', () => ({
   MAX_REQUEST_BYTES: 1024,
   storageService: { uploadFile: (...args: unknown[]) => uploadFileMock(...args) },
@@ -23,10 +23,11 @@ function fakeRequest(opts: {
   contentLength?: string;
   formData: () => Promise<FormData>;
 }): NextRequest {
-  return {
-    headers: new Headers(opts.contentLength ? { 'content-length': opts.contentLength } : {}),
-    formData: opts.formData,
-  } as unknown as NextRequest;
+  const request = new NextRequest('http://localhost/api/v1/flashcards/media/upload', {
+    method: 'POST',
+    headers: opts.contentLength ? { 'content-length': opts.contentLength } : {},
+  });
+  return Object.assign(request, { formData: opts.formData });
 }
 
 beforeEach(() => {
@@ -36,8 +37,8 @@ beforeEach(() => {
 
 describe('POST /api/v1/flashcards/media/upload (#185)', () => {
   it('returns 413 before parsing when Content-Length exceeds MAX_REQUEST_BYTES', async () => {
-    const formData = vi.fn();
-    const res = await POST(fakeRequest({ contentLength: '2048', formData: formData as never }));
+    const formData = vi.fn<() => Promise<FormData>>();
+    const res = await POST(fakeRequest({ contentLength: '2048', formData }));
 
     expect(res.status).toBe(413);
     expect(res.headers.get('x-error-code')).toBe('PAYLOAD_TOO_LARGE');
@@ -59,7 +60,7 @@ describe('POST /api/v1/flashcards/media/upload (#185)', () => {
   });
 
   it('returns 400 when the form has no file', async () => {
-    const res = await POST(fakeRequest({ formData: async () => new FormData() }));
+    const res = await POST(fakeRequest({ formData: () => Promise.resolve(new FormData()) }));
 
     expect(res.status).toBe(400);
     expect(res.headers.get('x-error-code')).toBe('BAD_REQUEST');
@@ -77,7 +78,9 @@ describe('POST /api/v1/flashcards/media/upload (#185)', () => {
     );
     const stored = formData.get('file');
 
-    const res = await POST(fakeRequest({ contentLength: '64', formData: async () => formData }));
+    const res = await POST(
+      fakeRequest({ contentLength: '64', formData: () => Promise.resolve(formData) }),
+    );
 
     expect(res.status).toBe(200);
     expect(uploadFileMock).toHaveBeenCalledWith('user-1', stored);

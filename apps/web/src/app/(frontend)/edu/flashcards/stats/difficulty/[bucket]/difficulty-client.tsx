@@ -25,9 +25,25 @@ import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
 type NamedItem = { id: string; name: string };
 
+/** The route only ever links the four difficulty buckets; an unknown one keeps the "new" copy. */
+function bucketTitleKey(
+  bucket: string,
+): 'title_easy' | 'title_medium' | 'title_hard' | 'title_new' {
+  switch (bucket) {
+    case 'easy':
+      return 'title_easy';
+    case 'medium':
+      return 'title_medium';
+    case 'hard':
+      return 'title_hard';
+    default:
+      return 'title_new';
+  }
+}
+
 export default function DifficultyBucketClient() {
-  const params = useParams();
-  const bucket = params.bucket as string;
+  const params = useParams<{ bucket: string }>();
+  const bucket = params.bucket;
   const t = useTranslations('DifficultyPage');
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const [deckIds, setDeckIds] = useState<string[]>([]);
@@ -65,7 +81,7 @@ export default function DifficultyBucketClient() {
     });
   }, [data, deckIds, topicIds]);
 
-  const titleKey = `title_${bucket}` as 'title_easy' | 'title_medium' | 'title_hard' | 'title_new';
+  const titleKey = bucketTitleKey(bucket);
 
   if (isLoading) return <DeckDetailSkeleton />;
 
@@ -93,7 +109,10 @@ export default function DifficultyBucketClient() {
           className="max-w-xs"
         />
         <MultiSelect
-          options={(topicOpts.data?.items ?? []).map((t) => ({ label: t.name, value: t.id }))}
+          options={(topicOpts.data?.items ?? []).map((topic) => ({
+            label: topic.name,
+            value: topic.id,
+          }))}
           selected={topicIds}
           onChange={setTopicIds}
           placeholder={t('filterTopics')}

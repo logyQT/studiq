@@ -2,6 +2,7 @@
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@studiq/ui';
 import { Keyboard } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 
 interface Shortcut {
@@ -34,19 +35,23 @@ export function KeyboardShortcutsPanel({
   shortcuts,
   trigger = 'icon',
 }: KeyboardShortcutsPanelProps) {
+  const t = useTranslations('AppFlashcardSessionPage');
   const [open, setOpen] = useState(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement)?.tagName;
+      const active = document.activeElement;
+      const tag = active?.tagName;
       if (
         tag === 'INPUT' ||
         tag === 'TEXTAREA' ||
-        (document.activeElement as HTMLElement)?.isContentEditable
+        (active instanceof HTMLElement && active.isContentEditable)
       )
         return;
 
-      if (e.altKey && e.key.toLowerCase() === 'k') {
+      // `e.code` keeps the chord working on macOS, where Option+K types `˚` instead of `k`.
+      const isK = e.code === 'KeyK' || e.key.toLowerCase() === 'k';
+      if (e.altKey && isK) {
         e.preventDefault();
         setOpen((prev) => !prev);
       }
@@ -68,15 +73,17 @@ export function KeyboardShortcutsPanel({
         <HoverCardTrigger asChild>
           {trigger === 'icon' ? (
             <button
+              type="button"
               className="h-12 w-12 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Keyboard shortcuts"
+              aria-label={t('shortcuts_panel_label')}
             >
               <Keyboard className="h-8 w-8" />
             </button>
           ) : (
             <button
+              type="button"
               className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Keyboard shortcuts"
+              aria-label={t('shortcuts_panel_label')}
             >
               <KeycapSmall>Alt</KeycapSmall>
               <KeycapSmall>K</KeycapSmall>
@@ -87,6 +94,11 @@ export function KeyboardShortcutsPanel({
           side="top"
           align="center"
           sideOffset={8}
+          // The global/session guards recognize an open layer by role + data-state; this panel is
+          // one, so its keys must not fall through to the card behind it.
+          // eslint-disable-next-line jsx-a11y/prefer-tag-over-role -- Radix renders a portal div; role=dialog is the layer contract above.
+          role="dialog"
+          aria-label={t('shortcuts_panel_label')}
           className="w-auto p-4 bg-background border shadow-md rounded-lg"
         >
           <div className="flex items-start gap-5">

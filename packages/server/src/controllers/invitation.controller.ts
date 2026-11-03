@@ -18,7 +18,7 @@ import {
 } from '@studiq/server/services/invitation.service';
 
 export class InvitationController {
-  constructor(private invitationService: InvitationService) {}
+  constructor(private service: InvitationService) {}
 
   async create(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
     const parsedData = CreateInviteSchema.safeParse(body);
@@ -27,7 +27,7 @@ export class InvitationController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsedData.error.issues);
     }
 
-    const result = await this.invitationService.createInvitation(ctx, parsedData.data);
+    const result = await this.service.createInvitation(ctx, parsedData.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -41,7 +41,7 @@ export class InvitationController {
       return controllerResponse.error('BAD_REQUEST');
     }
 
-    const result = await this.invitationService.getInvitationByToken(token);
+    const result = await this.service.getInvitationByToken(token);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -57,7 +57,7 @@ export class InvitationController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.invitationService.acceptInvitation(ctx, parsed.data.token);
+    const result = await this.service.acceptInvitation(ctx, parsed.data.token);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -73,7 +73,7 @@ export class InvitationController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.invitationService.listInvitations(ctx, parsed.data.isAccepted);
+    const result = await this.service.listInvitations(ctx, parsed.data.isAccepted);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -89,7 +89,7 @@ export class InvitationController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.invitationService.updateInvitation(ctx, id, parsed.data);
+    const result = await this.service.updateInvitation(ctx, id, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -99,7 +99,7 @@ export class InvitationController {
   }
 
   async delete(ctx: RequestContext, id: string): Promise<ControllerResponse> {
-    const result = await this.invitationService.deleteInvitation(ctx, id);
+    const result = await this.service.deleteInvitation(ctx, id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -118,7 +118,7 @@ export class InvitationController {
     // All-or-nothing: the service validates the whole batch before writing, so
     // a rejected entry is a 4xx for the request instead of a per-item
     // `{ success: false }` inside a 200 (MGR-INV-02).
-    const result = await this.invitationService.createInvitationsBulk(ctx, parsed.data.invitations);
+    const result = await this.service.createInvitationsBulk(ctx, parsed.data.invitations);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error, result.details);

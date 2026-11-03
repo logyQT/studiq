@@ -1,30 +1,47 @@
 import type { RequestContext } from '@studiq/authz';
+import { warn } from '@studiq/server/lib/log';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
+import { isRecord } from '@studiq/server/lib/record';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  DifficultyBucket,
-  DifficultyFlashcardDetail,
-  TeacherFlashcardStatsQuery,
-  TeacherFlashcardStatsResponse,
+import {
+  type DifficultyBucket,
+  type DifficultyFlashcardDetail,
+  type TeacherFlashcardStatsQuery,
+  type TeacherFlashcardStatsResponse,
+  TeacherFlashcardStatsResponseSchema,
 } from '@studiq/server/models/flashcard-stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
+
+/**
+ * The `flashcard_decks!inner(...)` embed, read defensively: the generated types
+ * model it as a to-one object, a to-many shape is tolerated too.
+ */
+function toOneDeck(value: unknown): { id: string; name: string } | null {
+  const first: unknown = Array.isArray(value) ? value[0] : value;
+  if (!isRecord(first) || typeof first.id !== 'string' || typeof first.name !== 'string') {
+    return null;
+  }
+  return { id: first.id, name: first.name };
+}
 
 export class FlashcardStatsService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getTeacherStats(
     ctx: RequestContext,
     filters?: TeacherFlashcardStatsQuery,
   ): Promise<ServiceResult<TeacherFlashcardStatsResponse>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // `accessibleFilter` resolves group membership into `or: created_by|id.in`
     // instead of leaving an org-wide read (#343).
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) {
+    if (isImpossibleFilter(filter)) {
       return success(emptyResponse);
     }
 
@@ -46,26 +63,32 @@ export class FlashcardStatsService {
 
     // #460: always call the RPC — a brand-new organization has no flashcards
     // yet, but the class roster (`rosterStudents`) must still be returned.
+    // The generated RPC arg types represent nullable SQL parameters as optional
+    // (`?: T`), which cannot express `null`. PostgREST forwards `null` verbatim, so
+    // keep sending it: callers/tests rely on the parameter being present as NULL.
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_teacher_stats', {
       p_flashcard_ids: flashcardIds,
       p_user_id: ctx.userId,
+      // Sent as an explicit NULL (never omitted): the SQL function keys on it.
       p_deck_id: filters?.deckId ?? null,
       p_organization_id: ctx.activeOrgId ?? null,
     });
 
     if (rpcError) return toDbFailure(rpcError);
 
-    return success(rpcResult as unknown as TeacherFlashcardStatsResponse);
+    const parsed = TeacherFlashcardStatsResponseSchema.safeParse(rpcResult);
+    if (!parsed.success) warn('flashcard stats RPC payload failed validation');
+    return success(parsed.success ? parsed.data : emptyResponse);
   }
 
   async getDifficultyCards(
     ctx: RequestContext,
     bucket: DifficultyBucket,
   ): Promise<ServiceResult<DifficultyFlashcardDetail[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success([]);
+    if (isImpossibleFilter(filter)) return success([]);
 
     let flashcardQuery = supabase.from('flashcards').select('id, front, back');
     if (filter.or) {
@@ -95,8 +118,7 @@ export class FlashcardStatsService {
     const cardToDeckId = new Map<string, string>();
     const cardToDeckName = new Map<string, string>();
     for (const f of flashcardsWithDecks ?? []) {
-      const deckRaw = f.flashcard_decks as unknown;
-      const deck = Array.isArray(deckRaw) ? deckRaw[0] : deckRaw;
+      const deck = toOneDeck(f.flashcard_decks);
       if (deck) {
         deckNameMap.set(deck.id, deck.name);
         cardToDeckId.set(f.id, deck.id);
@@ -141,6 +163,8 @@ export class FlashcardStatsService {
 
     const cardPracticeTotals = new Map<string, { correct: number; total: number }>();
     for (const row of practiceRows ?? []) {
+      // The query filters on `flashcard_id`, so NULLs cannot appear here.
+      if (!row.flashcard_id) continue;
       const entry = cardPracticeTotals.get(row.flashcard_id) ?? { correct: 0, total: 0 };
       entry.total++;
       if (row.was_correct) entry.correct++;
@@ -149,6 +173,8 @@ export class FlashcardStatsService {
 
     const cardStudentCounts = new Map<string, Set<string>>();
     for (const row of practiceRows ?? []) {
+      // Both columns are nullable FKs; rows reachable here always have both.
+      if (!row.flashcard_id || !row.user_id) continue;
       if (!cardStudentCounts.has(row.flashcard_id))
         cardStudentCounts.set(row.flashcard_id, new Set());
       cardStudentCounts.get(row.flashcard_id)!.add(row.user_id);

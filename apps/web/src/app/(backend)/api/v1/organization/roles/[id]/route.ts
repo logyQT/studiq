@@ -20,7 +20,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   return withAuth(
     req,
     async (ctx) => {
-      const body = await req.json();
+      const body: unknown = await req.json();
       return toNextResponse(await orgRoleController.updateRole(ctx, id, body));
     },
     { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },

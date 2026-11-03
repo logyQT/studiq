@@ -6,7 +6,7 @@ import type { NextRequest } from 'next/server';
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {
     const { id } = await params;
-    const body = await req.json();
+    const body: unknown = await req.json();
     return toNextResponse(await flashcardPracticeController.log(id, body, ctx));
   });
 }

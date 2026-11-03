@@ -11,6 +11,7 @@ import {
   type UpdatePoolInput,
 } from '@studiq/server/models/seat.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * Maps plan_key → compatible account tier. Used for role-aware seat
@@ -42,14 +43,14 @@ const ROLE_TIER_MAP: Record<string, string> = {
 };
 
 export class SeatService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async listPools(
     ctx: RequestContext,
   ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }[]>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('org_seat_pools')
       .select('id, plan_key, total, assigned')
@@ -74,7 +75,7 @@ export class SeatService {
   ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Upsert: if a pool for this plan already exists, increment its total.
     const { data: existing } = await supabase
@@ -141,7 +142,7 @@ export class SeatService {
   ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('org_seat_pools')
       .update({ total: input.total })
@@ -170,13 +171,14 @@ export class SeatService {
         planKey: string;
         userEmail: string;
         userFullName: string | null;
-        assignedAt: string;
+        /** Nullable column (`DEFAULT now()`): an assignment can lack it. */
+        assignedAt: string | null;
       }[]
     >
   > {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('org_seat_assignments')
       .select(
@@ -196,14 +198,13 @@ export class SeatService {
         id: a.id,
         userId: a.user_id,
         poolId: a.pool_id,
-        planKey: (a.pool as unknown as { plan_key: string }).plan_key,
+        planKey: a.pool.plan_key,
         // Left join: `profiles` is RLS-narrowed to the caller's own row and the
         // rows of users who share an organization with them. An assignment that
         // outlived the membership (historical removals) must still be listed so
         // a manager can free the seat, so `profile` may be null here.
-        userEmail: (a.profile as unknown as { email: string } | null)?.email ?? '',
-        userFullName:
-          (a.profile as unknown as { full_name: string | null } | null)?.full_name ?? null,
+        userEmail: a.profile?.email ?? '',
+        userFullName: a.profile?.full_name ?? null,
         assignedAt: a.assigned_at,
       })),
     );
@@ -219,12 +220,13 @@ export class SeatService {
       poolId: string;
       planKey: string;
       userEmail: string;
-      assignedAt: string;
+      /** Nullable column (`DEFAULT now()`): an assignment can lack it. */
+      assignedAt: string | null;
     }>
   > {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Verify pool belongs to active org
     const { data: pool, error: poolErr } = await supabase
@@ -257,7 +259,7 @@ export class SeatService {
         .eq('user_id', input.userId)
         .maybeSingle();
 
-      const roleName = (member?.org_roles as unknown as { name: string })?.name;
+      const roleName = member?.org_roles?.name;
       const userTier = roleName ? ROLE_TIER_MAP[roleName] : undefined;
 
       if (userTier && userTier !== poolTier) {
@@ -311,7 +313,7 @@ export class SeatService {
   async unassignSeat(ctx: RequestContext, assignmentId: string): Promise<ServiceResult<void>> {
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { error } = await supabase
       .from('org_seat_assignments')

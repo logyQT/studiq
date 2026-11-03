@@ -13,10 +13,10 @@ import {
 } from '@studiq/server/services/organization-member.service';
 
 export class OrganizationMemberController {
-  constructor(private organizationMemberService: OrganizationMemberService) {}
+  constructor(private service: OrganizationMemberService) {}
 
   async listMembers(ctx: RequestContext, roleFilter?: string): Promise<ControllerResponse> {
-    const members = await this.organizationMemberService.listMembers(ctx, roleFilter);
+    const members = await this.service.listMembers(ctx, roleFilter);
 
     if (isFailure(members)) {
       return controllerResponse.error(members.error);
@@ -39,7 +39,7 @@ export class OrganizationMemberController {
       };
     }
 
-    const result = await this.organizationMemberService.changeRole(
+    const result = await this.service.changeRole(
       ctx,
       parsed.data.targetUserId,
       parsed.data.newOrgRoleId,
@@ -59,7 +59,7 @@ export class OrganizationMemberController {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const result = await this.organizationMemberService.removeMember(ctx, targetUserId);
+    const result = await this.service.removeMember(ctx, targetUserId);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

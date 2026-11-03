@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -67,7 +68,7 @@ interface OrgMember {
 async function fetchRoles(page: Page): Promise<OrgRole[]> {
   const res = await page.request.get('/api/v1/organization/roles');
   expect(res.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const body = (await res.json()) as { success: boolean; data: OrgRole[] };
+  const body = await json<{ success: boolean; data: OrgRole[] }>(res);
   expect(body.success).toBe(true);
   return body.data;
 }
@@ -75,7 +76,7 @@ async function fetchRoles(page: Page): Promise<OrgRole[]> {
 async function fetchMember(page: Page, email: string): Promise<OrgMember> {
   const res = await page.request.get(MEMBERS_API);
   expect(res.status(), `GET ${MEMBERS_API}`).toBe(200);
-  const body = (await res.json()) as { success: boolean; data: OrgMember[] };
+  const body = await json<{ success: boolean; data: OrgMember[] }>(res);
   expect(body.success).toBe(true);
   const member = body.data.find((row) => row.email === email);
   if (!member) throw new Error(`member ${email} is not in the tenant's organization`);
@@ -167,10 +168,10 @@ test('a manager changes a member role to Teacher, keeps it across a reload, and 
 
   const roles = await fetchRoles(page);
   expect(
-    roles.map((role) => role.name).sort(),
+    roles.map((role) => role.name).toSorted(),
     'the tenant has the three system org roles',
   ).toEqual(['admin', 'member', 'teacher']);
-  expect(roles.map((role) => role.displayName).sort()).toEqual(['Admin', 'Student', 'Teacher']);
+  expect(roles.map((role) => role.displayName).toSorted()).toEqual(['Admin', 'Student', 'Teacher']);
 
   const initial = await fetchMember(page, student.email);
   expect(initial.id).toBe(student.id);
@@ -179,7 +180,7 @@ test('a manager changes a member role to Teacher, keeps it across a reload, and 
   // --- „Dostępne role to role organizacji”: picker === roles endpoint ------
   // Rendered in `order('name')`, labelled with `displayName`.
   const orderedLabels = [...roles]
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .toSorted((a, b) => a.name.localeCompare(b.name))
     .map((role) => role.displayName);
   expect(await openRolePicker(page, row), 'role picker options').toEqual(orderedLabels);
 

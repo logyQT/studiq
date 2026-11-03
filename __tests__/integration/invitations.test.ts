@@ -5,16 +5,20 @@ import {
   createTestUser,
   type TestUserFixture,
 } from '#test/helpers/test-user';
+import { asJson, json } from '#test/helpers/json';
 import {
   cleanupInvitations,
   cleanupOrganizationDeep,
-  createServiceClient,
   mockUser,
   seedOrganization,
   seedOrgMembership,
   useRealSupabase,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  createTypedServiceClient,
+} from '#test/integration/test-utils';
 import {
   DELETE as inviteDelete,
   PUT as invitePut,
@@ -26,6 +30,63 @@ import {
 } from '@/app/(backend)/api/v1/organization/invites/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** Failure bodies: these tests read `success`, `error` and (422) `issues`. */
+interface ApiErrorBody {
+  success: boolean;
+  error?: string;
+  issues?: unknown[];
+}
+
+/** `POST /api/v1/organization/invites` success body. */
+interface InviteCreatedBody {
+  success: boolean;
+  data: { success: boolean; inviteLink: string; inviteCode: string };
+}
+
+/** `GET /api/v1/organization/invites?token=…` preview body. */
+interface InvitePreviewBody {
+  success?: boolean;
+  data: { email: string; organizationName?: string; orgRoleName?: string };
+}
+
+/** `POST /api/v1/organization/invites/bulk` success body (MGR-INV-02). */
+interface BulkCreatedBody {
+  success: boolean;
+  data: {
+    results: Array<{
+      email: string;
+      success: boolean;
+      data: { inviteLink: string; inviteCode: string };
+    }>;
+  };
+}
+
+interface SeededOrg {
+  org: { id: string; name: string };
+  adminRoleId: string;
+  teacherRoleId: string;
+  memberRoleId: string;
+  defaultGroupId: string;
+}
+
+async function inviteExists(id: string): Promise<boolean> {
+  const { data } = await createTypedServiceClient()
+    .from('invitations')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle();
+  return data !== null;
+}
+
+async function inviteRole(id: string): Promise<string | null> {
+  const { data } = await createTypedServiceClient()
+    .from('invitations')
+    .select('target_org_role_id')
+    .eq('id', id)
+    .maybeSingle();
+  return data?.target_org_role_id ?? null;
+}
 
 describe(`Invitations Integration`, () => {
   let fixture!: BeforeResult;
@@ -44,7 +105,7 @@ describe(`Invitations Integration`, () => {
    * #242 control: the fixture manager IS a member here, but it is not the
    * active org. `organizationId` may select it.
    */
-  let controlOrg!: Awaited<ReturnType<typeof seedOrganization>>;
+  let controlOrg!: SeededOrg;
 
   beforeAll(async () => {
     // Manager creates the org via the API and becomes its admin member.
@@ -52,7 +113,7 @@ describe(`Invitations Integration`, () => {
     orgId = fixture.orgId!;
     student = await createTestUser({ role: 'student' });
 
-    const supabase = createServiceClient();
+    const supabase = createTypedServiceClient();
     const { data: adminRole } = await supabase
       .from('org_roles')
       .select('id')
@@ -110,7 +171,9 @@ describe(`Invitations Integration`, () => {
 
     // #242 control: a second membership for the fixture manager. It is not the
     // active org, but `organizationId` may still select it.
-    controlOrg = await seedOrganization(`QA #242 control ${suiteId} ${Date.now()}`);
+    controlOrg = asJson<SeededOrg>(
+      await seedOrganization(`QA #242 control ${suiteId} ${Date.now()}`),
+    );
     await seedOrgMembership({
       organizationId: controlOrg.org.id,
       userId: fixture.user.id,
@@ -159,7 +222,7 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<InviteCreatedBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -168,7 +231,7 @@ describe(`Invitations Integration`, () => {
       // #313: the manager must receive the copyable link in every environment
       // (this suite does not run under NODE_ENV=development), and it must carry
       // the token that was actually persisted for this address.
-      const { data: row, error } = await createServiceClient()
+      const { data: row, error } = await createTypedServiceClient()
         .from('invitations')
         .select('token')
         .eq('email', email)
@@ -204,13 +267,13 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
       expect(body.error).toBe('FORBIDDEN');
 
-      const { data } = await createServiceClient()
+      const { data } = await createTypedServiceClient()
         .from('invitations')
         .select('id, organization_id')
         .eq('email', email);
@@ -234,12 +297,12 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
 
-      const { data } = await createServiceClient()
+      const { data } = await createTypedServiceClient()
         .from('invitations')
         .select('id')
         .eq('email', email);
@@ -263,12 +326,12 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
 
-      const { data } = await createServiceClient()
+      const { data } = await createTypedServiceClient()
         .from('invitations')
         .select('id')
         .eq('email', email);
@@ -296,12 +359,12 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<InviteCreatedBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
 
-      const { data } = await createServiceClient()
+      const { data } = await createTypedServiceClient()
         .from('invitations')
         .select('organization_id')
         .eq('email', email)
@@ -323,7 +386,7 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -339,7 +402,7 @@ describe(`Invitations Integration`, () => {
       });
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -359,7 +422,7 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -382,13 +445,13 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
       expect(body.error).toBe('FORBIDDEN');
 
-      const { data } = await createServiceClient()
+      const { data } = await createTypedServiceClient()
         .from('invitations')
         .select('id')
         .eq('email', email);
@@ -412,7 +475,7 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await invitePost(req);
-      const body = await response.json();
+      const body = await json<InviteCreatedBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -425,7 +488,7 @@ describe(`Invitations Integration`, () => {
       // is covered by the anonymous test below.
       mockUser(fixture.user);
 
-      const supabase = createServiceClient();
+      const supabase = createTypedServiceClient();
       const { data: invitation, error } = await supabase
         .from('invitations')
         .insert({
@@ -444,7 +507,7 @@ describe(`Invitations Integration`, () => {
         `http://localhost/api/v1/organization/invites?token=${invitation.token}`,
       );
       const response = await inviteGet(req);
-      const body = await response.json();
+      const body = await json<InvitePreviewBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.email).toBe(`valid-${suiteId}@example.com`);
@@ -454,7 +517,7 @@ describe(`Invitations Integration`, () => {
     it('returns the invitation when the pasted value is the full invite link (#317)', async () => {
       mockUser(fixture.user);
 
-      const supabase = createServiceClient();
+      const supabase = createTypedServiceClient();
       const token = Array.from({ length: 32 }, () =>
         Math.floor(Math.random() * 16).toString(16),
       ).join('');
@@ -475,7 +538,7 @@ describe(`Invitations Integration`, () => {
           `http://localhost/api/v1/organization/invites?token=${encodeURIComponent(link)}`,
         ),
       );
-      const body = await response.json();
+      const body = await json<InvitePreviewBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.email).toBe(email);
@@ -503,7 +566,7 @@ describe(`Invitations Integration`, () => {
         `http://localhost/api/v1/organization/invites?token=nonexistent-token-${suiteId}`,
       );
       const response = await inviteGet(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);
@@ -513,7 +576,7 @@ describe(`Invitations Integration`, () => {
       // Service-role client for consistent read access; the route is public.
       mockUser(fixture.user);
 
-      const supabase = createServiceClient();
+      const supabase = createTypedServiceClient();
       const token = `expired-token-${suiteId}-${Date.now()}`;
       await supabase.from('invitations').insert({
         email: `expired-${suiteId}@example.com`,
@@ -526,7 +589,7 @@ describe(`Invitations Integration`, () => {
 
       const req = createNextRequest(`http://localhost/api/v1/organization/invites?token=${token}`);
       const response = await inviteGet(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(410);
       expect(body.success).toBe(false);
@@ -536,7 +599,7 @@ describe(`Invitations Integration`, () => {
     // account. The preview must work with a real anon session — i.e. without
     // the request-scoped client, which `anon` cannot use to read invitations.
     it('returns a valid invitation to an anonymous caller (#236)', async () => {
-      const supabase = createServiceClient();
+      const supabase = createTypedServiceClient();
       const token = `anon-valid-${suiteId}-${Date.now()}`;
       const { error } = await supabase.from('invitations').insert({
         email: `anon-${suiteId}@example.com`,
@@ -555,7 +618,7 @@ describe(`Invitations Integration`, () => {
 
       const req = createNextRequest(`http://localhost/api/v1/organization/invites?token=${token}`);
       const response = await inviteGet(req);
-      const body = await response.json();
+      const body = await json<InvitePreviewBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.email).toBe(`anon-${suiteId}@example.com`);
@@ -564,7 +627,7 @@ describe(`Invitations Integration`, () => {
     });
 
     it('returns 410 for an expired token to an anonymous caller (#236)', async () => {
-      const supabase = createServiceClient();
+      const supabase = createTypedServiceClient();
       const token = `anon-expired-${suiteId}-${Date.now()}`;
       const { error } = await supabase.from('invitations').insert({
         email: `anon-expired-${suiteId}@example.com`,
@@ -588,7 +651,7 @@ describe(`Invitations Integration`, () => {
     it('returns 410 when the token was already accepted', async () => {
       mockUser(fixture.user);
 
-      const supabase = createServiceClient();
+      const supabase = createTypedServiceClient();
       const token = `used-token-${suiteId}-${Date.now()}`;
       await supabase.from('invitations').insert({
         email: `used-${suiteId}@example.com`,
@@ -602,7 +665,7 @@ describe(`Invitations Integration`, () => {
 
       const req = createNextRequest(`http://localhost/api/v1/organization/invites?token=${token}`);
       const response = await inviteGet(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(410);
       expect(body.success).toBe(false);
@@ -612,7 +675,7 @@ describe(`Invitations Integration`, () => {
       mockUser(null);
       const req = createNextRequest('http://localhost/api/v1/organization/invites?token=');
       const response = await inviteGet(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -645,31 +708,26 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await bulkPost(req);
-      const body = await response.json();
+      const body = await json<BulkCreatedBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
       expect(Array.isArray(body.data.results)).toBe(true);
       // MGR-INV-02: „Wyniki” needs one attributed status per entered address.
-      expect(body.data.results.map((r: { email: string }) => r.email)).toEqual(emails);
+      expect(body.data.results.map((r) => r.email)).toEqual(emails);
 
       // #313: every manager-visible row is individually deliverable — each
       // result carries the link for the token persisted against that address.
-      const { data: rows, error } = await createServiceClient()
+      const { data: rows, error } = await createTypedServiceClient()
         .from('invitations')
         .select('email, token')
         .in('email', emails);
       if (error) throw new Error(`Failed to read invitation tokens: ${error.message}`);
-      const tokenByEmail = new Map(
-        (rows ?? []).map((row) => [row.email as string, row.token as string]),
-      );
+      const tokenByEmail = new Map((rows ?? []).map((row) => [row.email, row.token] as const));
 
-      for (const result of body.data.results as Array<{
-        email: string;
-        data: { inviteLink?: string; inviteCode?: string };
-      }>) {
+      for (const result of body.data.results) {
         expect(typeof result.data.inviteLink).toBe('string');
-        const link = new URL(result.data.inviteLink as string);
+        const link = new URL(result.data.inviteLink);
         expect(link.pathname).toBe('/join');
         expect(link.searchParams.get('token')).toBe(tokenByEmail.get(result.email));
         // #317: the bare code is returned per row alongside the link.
@@ -696,13 +754,13 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await bulkPost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
       expect(body.error).toBe('FORBIDDEN');
 
-      const { data } = await createServiceClient()
+      const { data } = await createTypedServiceClient()
         .from('invitations')
         .select('id')
         .eq('email', email);
@@ -730,7 +788,7 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await bulkPost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -750,7 +808,7 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await bulkPost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -783,13 +841,13 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await bulkPost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
       expect(body.error).toBe('UNPROCESSABLE_ENTITY');
 
-      const supabase = createServiceClient();
+      const supabase = createTypedServiceClient();
       const { data: leftover } = await supabase
         .from('invitations')
         .select('id, email')
@@ -820,13 +878,13 @@ describe(`Invitations Integration`, () => {
       );
 
       const response = await bulkPost(req);
-      const body = await response.json();
+      const body = await json<ApiErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
       expect(body.issues).toBeDefined();
 
-      const supabase = createServiceClient();
+      const supabase = createTypedServiceClient();
       const { data: leftover } = await supabase
         .from('invitations')
         .select('id, email')
@@ -835,44 +893,26 @@ describe(`Invitations Integration`, () => {
     });
   });
 
+  async function seedInvite(): Promise<string> {
+    const supabase = createTypedServiceClient();
+    const { data, error } = await supabase
+      .from('invitations')
+      .insert({
+        email: `cross-org-${suiteId}-${Date.now()}@example.com`,
+        target_org_role_id: adminRoleId,
+        expires_at: new Date(Date.now() + 86400000).toISOString(),
+        inviter_id: fixture.user.id,
+        organization_id: orgId,
+      })
+      .select('id')
+      .single();
+    if (error || !data) throw new Error(`Failed to insert invitation: ${error?.message}`);
+    return data.id;
+  }
+
   // MGR-INV-03: an invitation id must never be enough — the row has to belong
   // to the caller's verified active organization.
   describe('DELETE/PUT /api/v1/organization/invites/{id} cross-org scoping', () => {
-    async function seedInvite(): Promise<string> {
-      const supabase = createServiceClient();
-      const { data, error } = await supabase
-        .from('invitations')
-        .insert({
-          email: `cross-org-${suiteId}-${Date.now()}@example.com`,
-          target_org_role_id: adminRoleId,
-          expires_at: new Date(Date.now() + 86400000).toISOString(),
-          inviter_id: fixture.user.id,
-          organization_id: orgId,
-        })
-        .select('id')
-        .single();
-      if (error || !data) throw new Error(`Failed to insert invitation: ${error?.message}`);
-      return data.id;
-    }
-
-    async function inviteExists(id: string): Promise<boolean> {
-      const { data } = await createServiceClient()
-        .from('invitations')
-        .select('id')
-        .eq('id', id)
-        .maybeSingle();
-      return data !== null;
-    }
-
-    async function inviteRole(id: string): Promise<string | null> {
-      const { data } = await createServiceClient()
-        .from('invitations')
-        .select('target_org_role_id')
-        .eq('id', id)
-        .maybeSingle();
-      return data?.target_org_role_id ?? null;
-    }
-
     it("returns 404 and keeps the row when manager B deletes org A's invitation", async () => {
       const inviteId = await seedInvite();
       mockUser(foreignFixture.user);

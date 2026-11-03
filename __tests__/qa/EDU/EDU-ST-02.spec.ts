@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -67,7 +68,7 @@ const COPY = {
 
 /** How many cards/attempts the spec creates for one execution. */
 const CARDS = 4;
-const ATTEMPTS = 2;
+const ATTEMPTS = 3;
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -143,7 +144,7 @@ async function api<T>(
   data?: unknown,
 ): Promise<T> {
   const response = await page.request.fetch(url, { method, data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(response.ok(), `${method} ${url} → ${response.status()} ${JSON.stringify(body)}`).toBe(
     true,
   );
@@ -244,9 +245,10 @@ async function createContent(page: Page, tenant: QaTenant, tag: string): Promise
     questionIds: questions.map((question) => question.id),
   });
 
-  // Two attempts per student so „Próby testów” and „Średni wynik testu” cover a
-  // mean, and results stay visible to the student (the teacher page reads the
-  // attempts either way).
+  // Three attempts per student so „Próby testów” and „Średni wynik testu” cover a
+  // mean, and the below-half question clears the dashboard's minimum-answer floor
+  // (a question answered fewer than three times is not "problematic"); results stay
+  // visible to the student (the teacher page reads the attempts either way).
   const assignment = await api<{ id: string }>(page, 'POST', '/api/v1/teacher/assignments', {
     title: quizName,
     quizId: quiz.id,
@@ -266,7 +268,7 @@ async function createContent(page: Page, tenant: QaTenant, tag: string): Promise
 }
 
 /**
- * The student's side of the prerequisite: two completed attempts on the
+ * The student's side of the prerequisite: three completed attempts on the
  * assignment (two of three questions right, so the third stays below 50 %) and
  * four flashcard practices (three right, one wrong).
  */
@@ -290,9 +292,9 @@ async function runStudentActivity(
       {},
     );
     expect(
-      started.questions.map((question) => question.id).sort(),
+      started.questions.map((question) => question.id).toSorted(),
       'the attempt holds the quiz questions',
-    ).toEqual(content.questions.map((question) => question.id).sort());
+    ).toEqual(content.questions.map((question) => question.id).toSorted());
     const submitted = await api<{ score: number; totalQuestions: number }>(
       page,
       'POST',
@@ -395,7 +397,7 @@ test.describe('@case:EDU-ST-02 @area:EDU @prio:P2 teacher results statistics', (
 
     const content = await createContent(page, tenant, tag);
 
-    const baseURL = test.info().project.use.baseURL as string;
+    const baseURL = test.info().project.use.baseURL!;
     const studentContext = await browser.newContext({ baseURL });
     try {
       const studentPage = await studentContext.newPage();
@@ -423,7 +425,7 @@ test.describe('@case:EDU-ST-02 @area:EDU @prio:P2 teacher results statistics', (
 
     const quizRow = after.quizzes.find((quiz) => quiz.title === content.quizName);
     expect(quizRow, `the quiz „${content.quizName}” is reported`).toBeTruthy();
-    expect(quizRow!.totalAttempts, 'both attempts are counted').toBe(ATTEMPTS);
+    expect(quizRow!.totalAttempts, 'every attempt is counted').toBe(ATTEMPTS);
     expect(Math.round(quizRow!.avgScore), '2 of 3 answers right').toBe(67);
 
     const [, , belowHalf] = content.questions;

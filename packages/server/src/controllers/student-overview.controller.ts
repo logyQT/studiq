@@ -11,10 +11,10 @@ import {
 } from '@studiq/server/services/student-overview.service';
 
 export class StudentOverviewController {
-  constructor(private studentOverviewService: StudentOverviewService) {}
+  constructor(private service: StudentOverviewService) {}
 
   async getOverview(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.studentOverviewService.getOverview(ctx);
+    const result = await this.service.getOverview(ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

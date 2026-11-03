@@ -2,6 +2,7 @@ import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import { createTestUser, seedViaApi, type TestUserFixture } from '#test/helpers/test-user';
 import {
   cleanupOrganizationDeep,
@@ -53,7 +54,7 @@ async function signIn(email: string, user: TestUserFixture): Promise<Session> {
 }
 
 function actAs(session: Session) {
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => session.build());
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => session.build());
 }
 
 function checkoutRequest(body: unknown, cookies?: Record<string, string>) {
@@ -121,7 +122,7 @@ describe('org checkout resolves the target organization (#225)', () => {
     const res = await getMyOrgs(
       createNextRequest(`${BASE_URL}/api/v1/me/orgs`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<{ data: { id: string; orgRoleName: string }[] }>(res);
 
     expect(res.status).toBe(200);
     expect(body.data).toEqual([expect.objectContaining({ id: orgId, orgRoleName: 'admin' })]);
@@ -132,7 +133,7 @@ describe('org checkout resolves the target organization (#225)', () => {
     const res = await getMyOrgs(
       createNextRequest(`${BASE_URL}/api/v1/me/orgs`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<{ data: unknown[] }>(res);
 
     expect(res.status).toBe(200);
     expect(body.data).toEqual([]);
@@ -141,7 +142,7 @@ describe('org checkout resolves the target organization (#225)', () => {
   it('creates a checkout session whose URL carries the resolved org', async () => {
     actAs(admin);
     const res = await createCheckoutSession(checkoutRequest({ planKey: 'hub', orgId }));
-    const body = await res.json();
+    const body = await json<{ data: { url: string } }>(res);
 
     expect(res.status).toBe(200);
     expect(body.data.url).toContain(`org_id=${orgId}`);

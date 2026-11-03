@@ -1,3 +1,4 @@
+// eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 
 /**

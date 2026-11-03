@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { asJson } from '#test/helpers/json';
+import { loadTenant, type QaTenant } from '@qa/fixtures/qa-tenant';
 import type { SeedAccount } from '#test/helpers/tenant-seed';
 
 /**
@@ -36,6 +37,25 @@ import type { SeedAccount } from '#test/helpers/tenant-seed';
 
 const CASE = 'MGR-03';
 
+/** One organization of the `two-org` tenant, as `scripts/qa-tenant.ts` writes it. */
+interface QaOrg {
+  id: string;
+  name: string;
+  /** Default group first, then the org's second group. */
+  groups: string[];
+  /** The org's own student; the seeder always gives them a display name. */
+  student: SeedAccount & { name: string };
+  inviteEmail: string;
+  counts: { total: number; teachers: number; students: number };
+}
+
+/** The `two-org` tenant shape `scripts/qa-tenant.ts` writes for this case. */
+interface TwoOrgTenant extends QaTenant {
+  manager: SeedAccount;
+  orgA: QaOrg;
+  orgB: QaOrg;
+}
+
 /**
  * The case's two-organization tenant, seeded once by `scripts/qa-tenant.ts`
  * (`two-org` profile) before the suite starts:
@@ -43,7 +63,7 @@ const CASE = 'MGR-03';
  *   bun scripts/qa-tenant.ts MGR-03 --fresh
  */
 function twoOrgTenant(): TwoOrgTenant {
-  const tenant = loadTenant(CASE) as unknown as TwoOrgTenant & { runSuffix: string | null };
+  const tenant = asJson<TwoOrgTenant>(loadTenant(CASE));
   expect(
     tenant.runSuffix,
     'seed with --fresh: every independent run owns a new tenant',
@@ -108,8 +128,8 @@ async function expectOverviewShows(page: Page, org: QaOrg, other: QaOrg): Promis
   await expect(statValue(page, 'Studenci')).toHaveText(String(org.counts.students));
 
   await expect(page.getByText('Ostatni członkowie')).toBeVisible();
-  await expect(page.getByText(org.student.name!, { exact: true })).toBeVisible();
-  await expect(page.getByText(other.student.name!, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(org.student.name, { exact: true })).toBeVisible();
+  await expect(page.getByText(other.student.name, { exact: true })).toHaveCount(0);
 }
 
 /** Step 2 of the case: the three admin lists only carry the active org's rows. */
@@ -121,7 +141,7 @@ async function expectOrgListsShow(page: Page, org: QaOrg, other: QaOrg): Promise
 
   const membersTable = page.getByRole('table');
   await expect(membersTable.getByText(org.student.email)).toBeVisible();
-  await expect(membersTable.getByText(org.student.name!, { exact: true })).toBeVisible();
+  await expect(membersTable.getByText(org.student.name, { exact: true })).toBeVisible();
   for (const group of org.groups) {
     await expect(
       membersTable.getByText(group, { exact: true }).first(),
@@ -129,7 +149,7 @@ async function expectOrgListsShow(page: Page, org: QaOrg, other: QaOrg): Promise
     ).toBeVisible();
   }
   await expect(page.getByText(other.student.email)).toHaveCount(0);
-  await expect(page.getByText(other.student.name!, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(other.student.name, { exact: true })).toHaveCount(0);
 
   // Groups: exactly this org's two groups, none of the other org's.
   await page.goto('/manage/groups');
@@ -163,7 +183,7 @@ test.describe('@case:MGR-03 @area:MGR @prio:P2 organization data isolation', () 
 
   let tenant: TwoOrgTenant;
 
-  test.beforeAll(async () => {
+  test.beforeAll(() => {
     tenant = twoOrgTenant();
     console.log(
       `MGR-03 tenant key: ${tenant.key} (manager ${tenant.manager.email}, ` +

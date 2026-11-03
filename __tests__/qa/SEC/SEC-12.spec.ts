@@ -1,3 +1,4 @@
+import { json } from '#test/helpers/json';
 import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -115,7 +116,7 @@ test.describe('@case:SEC-12 @area:SEC @prio:P2 dev endpoints stay closed in prod
     // not a missing/ignored session.
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status(), 'GET /api/v1/auth/me with the seeded session').toBe(200);
-    const meBody = (await me.json()) as { data: { user: { id: string; email: string } | null } };
+    const meBody = await json<{ data: { user: { id: string; email: string } | null } }>(me);
     expect(meBody.data.user?.id, 'the session belongs to the tenant student').toBe(
       TENANT.users.student?.id,
     );

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
-import { ApiError } from '@/lib/api';
+import { ApiError, apiPost } from '@/lib/api';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
 interface AttemptData {
@@ -39,6 +39,14 @@ interface SubmitAnswer {
   textAnswer?: string;
 }
 
+/** `{ data: { imageUrl } }` from the upload route, narrowed without an assertion. */
+function readImageUrl(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null || !('data' in body)) return undefined;
+  const data = body.data;
+  if (typeof data !== 'object' || data === null || !('imageUrl' in data)) return undefined;
+  return typeof data.imageUrl === 'string' ? data.imageUrl : undefined;
+}
+
 export default function TakeAssignmentPage() {
   const t = useTranslations('AppAssignmentTakePage');
   const { id } = useParams<{ id: string }>();
@@ -58,7 +66,7 @@ export default function TakeAssignmentPage() {
   const deadlineParam = searchParams.get('deadline');
 
   useEffect(() => {
-    if (!deadlineParam) return;
+    if (!deadlineParam) return undefined;
     const update = () => {
       setRemainingMs(Math.max(0, new Date(deadlineParam).getTime() - Date.now()));
     };
@@ -112,17 +120,12 @@ export default function TakeAssignmentPage() {
     setAnswers(restored);
   }, [attempt]);
 
-  const submitMutation = useApiMutation({
-    mutationFn: async (body: { attemptId: string; answers: SubmitAnswer[] }) => {
-      const res = await fetch(`/api/v1/quiz/${body.attemptId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attemptId: body.attemptId, answers: body.answers }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
-    },
+  const submitMutation = useApiMutation<unknown, { attemptId: string; answers: SubmitAnswer[] }>({
+    mutationFn: (body) =>
+      apiPost<unknown>(`/api/v1/quiz/${body.attemptId}`, {
+        attemptId: body.attemptId,
+        answers: body.answers,
+      }),
     invalidateKeys: [studentAssignmentKeys.all],
   });
 
@@ -141,8 +144,8 @@ export default function TakeAssignmentPage() {
         });
         if (!res.ok) throw new Error(t('upload_failed'));
 
-        const body = (await res.json()) as { data?: { imageUrl?: string } };
-        const url = body.data?.imageUrl;
+        const body: unknown = await res.json();
+        const url = readImageUrl(body);
         if (url) {
           setPhotos((prev) => ({
             ...prev,
@@ -179,6 +182,9 @@ export default function TakeAssignmentPage() {
     } finally {
       setSubmitting(false);
     }
+    // `answers`, `submitMutation`, `id` and `router` are all read above; the rule mis-infers them
+    // as unused because they appear after `await`.
+    // eslint-disable-next-line react-hooks/memo-dependencies -- all deps are used by this callback.
   }, [attempt, answers, submitting, submitMutation, id, router]);
 
   const handleSubmit = useCallback(async () => {
@@ -193,7 +199,7 @@ export default function TakeAssignmentPage() {
     if (remainingMs === 0 && attempt && !submitting && !autoSubmitted.current) {
       // Auto-submit on timeout only once: a failed attempt must not loop.
       autoSubmitted.current = true;
-      handleSubmit();
+      void handleSubmit();
     }
   }, [remainingMs, attempt, submitting, handleSubmit]);
 
@@ -293,10 +299,14 @@ export default function TakeAssignmentPage() {
                     const input = document.createElement('input');
                     input.type = 'file';
                     input.accept = 'image/*';
-                    input.onchange = async (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) await handleUploadImage(question.id, file);
-                    };
+                    input.addEventListener(
+                      'change',
+                      () => {
+                        const file = input.files?.[0];
+                        if (file) void handleUploadImage(question.id, file);
+                      },
+                      { once: true },
+                    );
                     input.click();
                   }}
                 >

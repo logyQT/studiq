@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { isAccountType } from '@studiq/server/lib/authz';
 import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import {
@@ -46,7 +47,10 @@ export class BillingService {
 
     const plan = planResult.data;
     if (!plan || !plan.isActive || plan.priceMonthly <= 0) return failure('BAD_REQUEST');
-    if (plan.forAccountType && plan.forAccountType !== ctx.accountType) {
+    if (
+      plan.forAccountType &&
+      (!isAccountType(plan.forAccountType) || plan.forAccountType !== ctx.accountType)
+    ) {
       return failure('FORBIDDEN');
     }
 

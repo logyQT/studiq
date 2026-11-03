@@ -1,18 +1,20 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { StripeController } from '@studiq/server/controllers/stripe.controller';
+import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway';
 import type { BillingService } from '@studiq/server/services/billing.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockGateway() {
   return {
     driver: 'mock' as const,
     livemode: false,
-    createCheckoutSession: vi.fn(),
-    createPortalSession: vi.fn(),
-    changePlan: vi.fn(),
-    cancelAtPeriodEnd: vi.fn(),
-    handleWebhook: vi.fn(),
-  };
+    createCheckoutSession: vi.fn<PaymentGateway['createCheckoutSession']>(),
+    createPortalSession: vi.fn<PaymentGateway['createPortalSession']>(),
+    changePlan: vi.fn<PaymentGateway['changePlan']>(),
+    cancelAtPeriodEnd: vi.fn<PaymentGateway['cancelAtPeriodEnd']>(),
+    handleWebhook: vi.fn<PaymentGateway['handleWebhook']>(),
+  } satisfies PaymentGateway;
 }
 
 function createMockBilling() {
@@ -25,7 +27,7 @@ let controller: StripeController;
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '',
@@ -46,7 +48,7 @@ describe('StripeController', () => {
     vi.clearAllMocks();
     gateway = createMockGateway();
     billing = createMockBilling();
-    controller = new StripeController(gateway as any, billing as unknown as BillingService);
+    controller = new StripeController(gateway, asService<BillingService>(billing));
   });
 
   describe('createCheckoutSession', () => {

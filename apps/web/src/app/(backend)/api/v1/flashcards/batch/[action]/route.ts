@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ act
         error: 'BAD_REQUEST' as const,
       });
     }
-    const body = await req.json();
+    const body: unknown = await req.json();
     return toNextResponse(await handler(body, ctx));
   });
 }

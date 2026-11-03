@@ -63,9 +63,9 @@ export function NotificationBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       {/* A new notification is announced politely; the badge itself is hidden from assistive tech. */}
-      <span className="sr-only" role="status" aria-live="polite">
+      <output className="sr-only" aria-live="polite">
         {unread > 0 ? t('button_unread', { count: unread }) : ''}
-      </span>
+      </output>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -139,11 +139,13 @@ export function NotificationBell() {
                         </span>
                       </span>
                       {!item.readAt && (
-                        <span
-                          className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
-                          role="img"
-                          aria-label={t('unread')}
-                        />
+                        <>
+                          <span
+                            className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
+                            aria-hidden="true"
+                          />
+                          <span className="sr-only">{t('unread')}</span>
+                        </>
                       )}
                     </button>
                   </li>

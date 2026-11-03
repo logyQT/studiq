@@ -1,26 +1,83 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.neq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+type DbError = { message?: string; code?: string };
+type QueryResult<T> = { data: T | null; error: DbError | null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  eq: Mock;
+  neq: Mock;
+  in: Mock;
+  order: Mock;
+  limit: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  then: Promise<QueryResult<T>>['then'];
+  catch: Promise<QueryResult<T>>['catch'];
+  finally: Promise<QueryResult<T>>['finally'];
+}
+
+function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
+  const result: QueryResult<T> = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const b: FakeQueryBuilder<T> = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    neq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
+  for (const method of [
+    b.select,
+    b.insert,
+    b.update,
+    b.delete,
+    b.eq,
+    b.neq,
+    b.in,
+    b.order,
+    b.limit,
+  ]) {
+    method.mockImplementation(() => b);
+  }
   return b;
+}
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
+
+function planRow(key: string, forAccountType: string | null = null) {
+  return {
+    id: `p-${key}`,
+    key,
+    name: key,
+    description: null,
+    price_monthly: 0,
+    price_yearly: 0,
+    currency: 'PLN',
+    sort_order: 0,
+    is_active: true,
+    for_account_type: forAccountType,
+  };
 }
 
 describe('SubscriptionPlanService', () => {
@@ -28,7 +85,7 @@ describe('SubscriptionPlanService', () => {
   let service: SubscriptionPlanService;
   const ctx: RequestContext = {
     userId: 'test-user-id',
-    accountType: 'student' as any,
+    accountType: AccountType.STUDENT,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -41,8 +98,17 @@ describe('SubscriptionPlanService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new SubscriptionPlanService(async () => mock as any);
+    service = new SubscriptionPlanService(() => Promise.resolve(mock));
   });
+
+  function mockTables(
+    tables: Record<string, unknown>,
+    errors: Record<string, { message: string }> = {},
+  ) {
+    mock.from.mockImplementation((table: string) =>
+      qb(tables[table] ?? null, errors[table] ?? null),
+    );
+  }
 
   describe('listActive', () => {
     it('returns active plans with features and limits', async () => {
@@ -67,9 +133,9 @@ describe('SubscriptionPlanService', () => {
       const result = await service.listActive();
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].features).toEqual(['quiz']);
-      expect(result.data[0].limits.max_groups).toBe(3);
+      expect(expectSuccess(result)).toHaveLength(1);
+      expect(expectSuccess(result)[0].features).toEqual(['quiz']);
+      expect(expectSuccess(result)[0].limits.max_groups).toBe(3);
     });
 
     it('maps for_account_type to forAccountType, defaulting to null', async () => {
@@ -84,8 +150,8 @@ describe('SubscriptionPlanService', () => {
       const result = await service.listActive();
 
       expect(result.success).toBe(true);
-      expect(result.data[0].forAccountType).toBe('manager');
-      expect(result.data[1].forAccountType).toBeNull();
+      expect(expectSuccess(result)[0].forAccountType).toBe('manager');
+      expect(expectSuccess(result)[1].forAccountType).toBeNull();
     });
 
     it('filters by account type', async () => {
@@ -117,30 +183,6 @@ describe('SubscriptionPlanService', () => {
   });
 
   describe('getMyPlan', () => {
-    function mockTables(
-      tables: Record<string, unknown>,
-      errors: Record<string, { message: string }> = {},
-    ) {
-      mock.from.mockImplementation((table: string) =>
-        qb(tables[table] ?? null, errors[table] ?? null),
-      );
-    }
-
-    function planRow(key: string, forAccountType: string | null = null) {
-      return {
-        id: `p-${key}`,
-        key,
-        name: key,
-        description: null,
-        price_monthly: 0,
-        price_yearly: 0,
-        currency: 'PLN',
-        sort_order: 0,
-        is_active: true,
-        for_account_type: forAccountType,
-      };
-    }
-
     it('returns the seat plan to a seated student in an active org (#270)', async () => {
       mockTables({
         org_seat_assignments: { pool_id: 'pool-1' },
@@ -156,10 +198,12 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('ace');
-      expect(result.data.limits.max_ai_tokens_per_day).toBe(200000);
-      expect(result.data.limits.max_decks).toBe(200);
-      expect(result.data.features).toEqual(expect.arrayContaining(['ai.chat', 'advanced.stats']));
+      expect(expectSuccess(result).key).toBe('ace');
+      expect(expectSuccess(result).limits.max_ai_tokens_per_day).toBe(200000);
+      expect(expectSuccess(result).limits.max_decks).toBe(200);
+      expect(expectSuccess(result).features).toEqual(
+        expect.arrayContaining(['ai.chat', 'advanced.stats']),
+      );
       expect(mock.from).not.toHaveBeenCalledWith('profiles');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
@@ -174,12 +218,12 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'educator' as any,
+        accountType: AccountType.EDUCATOR,
         activeOrgId: 'org-1',
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('ace');
+      expect(expectSuccess(result).key).toBe('ace');
       expect(mock.from).not.toHaveBeenCalledWith('profiles');
     });
 
@@ -194,13 +238,13 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'manager' as any,
+        accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('hub');
-      expect(result.data.limits.max_groups).toBe(3);
+      expect(expectSuccess(result).key).toBe('hub');
+      expect(expectSuccess(result).limits.max_groups).toBe(3);
       // Managers are the org's billing contact: the seat never overrides the org plan.
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
@@ -214,7 +258,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('base');
+      expect(expectSuccess(result).key).toBe('base');
       expect(mock.from).toHaveBeenCalledWith('org_seat_assignments');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
@@ -227,12 +271,12 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'educator' as any,
+        accountType: AccountType.EDUCATOR,
         activeOrgId: 'org-1',
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('lite');
+      expect(expectSuccess(result).key).toBe('lite');
     });
 
     it('falls back to the personal plan when a manager has no org plan', async () => {
@@ -243,12 +287,12 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'manager' as any,
+        accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('launch');
     });
 
     it('returns the manager free personal plan with no active org (#228)', async () => {
@@ -257,10 +301,10 @@ describe('SubscriptionPlanService', () => {
         subscription_plans: planRow('launch', 'manager'),
       });
 
-      const result = await service.getMyPlan({ ...ctx, accountType: 'manager' as any });
+      const result = await service.getMyPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('launch');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
 
@@ -273,7 +317,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getMyPlan(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.key).toBe('free');
+      expect(expectSuccess(result).key).toBe('free');
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
@@ -312,7 +356,7 @@ describe('SubscriptionPlanService', () => {
 
       const result = await service.getMyPlan({
         ...ctx,
-        accountType: 'manager' as any,
+        accountType: AccountType.MANAGER,
         activeOrgId: 'org-1',
       });
 
@@ -378,10 +422,10 @@ describe('SubscriptionPlanService', () => {
         .mockReturnValueOnce(qb([]))
         .mockReturnValueOnce(qb([]));
 
-      const result = await service.getPersonalPlan({ ...ctx, accountType: 'manager' as any });
+      const result = await service.getPersonalPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(result.data?.key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('launch');
     });
 
     it('keeps a manager on the free personal plan without an extra catalog lookup (#228)', async () => {
@@ -403,10 +447,10 @@ describe('SubscriptionPlanService', () => {
         .mockReturnValueOnce(qb([]))
         .mockReturnValueOnce(qb([]));
 
-      const result = await service.getPersonalPlan({ ...ctx, accountType: 'manager' as any });
+      const result = await service.getPersonalPlan({ ...ctx, accountType: AccountType.MANAGER });
 
       expect(result.success).toBe(true);
-      expect(result.data?.key).toBe('launch');
+      expect(expectSuccess(result).key).toBe('launch');
       expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
@@ -490,7 +534,7 @@ describe('SubscriptionPlanService', () => {
       const result = await service.create({ key: 'new', name: 'New Plan' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(plan);
+      expect(expectSuccess(result)).toEqual(plan);
     });
 
     it('writes for_account_type from forAccountType, defaulting to null', async () => {
@@ -529,7 +573,7 @@ describe('SubscriptionPlanService', () => {
       await service.update('p-1', { name: 'Updated' });
 
       expect(b.update).toHaveBeenCalledWith(
-        expect.not.objectContaining({ for_account_type: expect.anything() }),
+        expect.not.objectContaining({ for_account_type: expect.anything() as unknown }) as unknown,
       );
 
       const b2 = qb({ id: 'p-1' });
@@ -537,7 +581,9 @@ describe('SubscriptionPlanService', () => {
 
       await service.update('p-1', { forAccountType: null });
 
-      expect(b2.update).toHaveBeenCalledWith(expect.objectContaining({ for_account_type: null }));
+      expect(b2.update).toHaveBeenCalledWith(
+        expect.objectContaining({ for_account_type: null }) as unknown,
+      );
     });
   });
 

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -125,7 +126,7 @@ interface AssignmentDetail extends AssignmentRow {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -134,7 +135,7 @@ async function getData<T>(page: Page, url: string): Promise<T> {
 async function postData<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
   expect(response.ok(), `POST ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -262,7 +263,7 @@ async function draw(page: Page, dialog: Locator, assignmentId: string): Promise<
   await dialog.getByRole('button', { name: COPY.draw, exact: true }).click();
   const response = await responsePromise;
   expect(response.status(), 'POST randomize').toBe(200);
-  const body = (await response.json()) as ApiEnvelope<{ added: number }>;
+  const body = await json<ApiEnvelope<{ added: number }>>(response);
   expect(body.success, 'POST randomize success flag').toBe(true);
   await expect(dialog).toBeHidden();
   return body.data.added;
@@ -390,7 +391,7 @@ test.describe('@case:EDU-ASG-03 @area:EDU @prio:P2 draft assignment random draw'
       },
     );
     expect(rejected.status(), 'randomize with count 0').toBe(422);
-    const rejectedBody = (await rejected.json()) as { success: boolean; error: string };
+    const rejectedBody = await json<{ success: boolean; error: string }>(rejected);
     expect(rejectedBody.success).toBe(false);
     expect(rejectedBody.error).toBe('UNPROCESSABLE_ENTITY');
 

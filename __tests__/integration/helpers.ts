@@ -1,6 +1,8 @@
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
+import type { Database } from '@studiq/server/types/database';
 import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import { asJson } from '#test/helpers/json';
 import { vi } from 'vitest';
 
 // ============================================================
@@ -44,7 +46,7 @@ export const TEST_USERS = {
 // Real Supabase Client (bypasses the global mock)
 // ============================================================
 export function createRealClient() {
-  return createServerClient(
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -64,7 +66,7 @@ export function createRealClient() {
 // Service Role Client (bypasses RLS for seeding/cleanup)
 // ============================================================
 export function createServiceClient() {
-  return createClient(
+  return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } },
@@ -77,10 +79,20 @@ export function createServiceClient() {
 // Use this for auth endpoints (register, login, etc.) that don't
 // require a mocked auth identity.
 // ============================================================
+/**
+ * Legacy tables (`subjects`, `question_answers`, `quiz_answers`) are not in the
+ * generated Database type yet, so cleanup/seed helpers for them use the
+ * untyped client surface. Delete this once the schema types are regenerated.
+ */
+function createLegacyServiceClient(): SupabaseClient {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- missing generated tables, see above
+  return createServiceClient() as SupabaseClient;
+}
+
 export function useRealSupabase() {
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
-    return createRealClient();
-  });
+  vi.mocked(supabaseModule.createClient).mockImplementation(() =>
+    Promise.resolve(createRealClient()),
+  );
 }
 
 // ============================================================
@@ -88,7 +100,7 @@ export function useRealSupabase() {
 // Combines mocked getUser() with real Supabase DB operations (app_metadata uses account_type)
 // ============================================================
 export function mockUser(user: { id: string; role: string } | null) {
-  const mockUserObj = user
+  const mockUserObj: User | null = user
     ? {
         id: user.id,
         email: 'test@test.com',
@@ -99,16 +111,23 @@ export function mockUser(user: { id: string; role: string } | null) {
       }
     : null;
 
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => {
     // Use service_role client to bypass RLS — services use explicit permission
     // checks (eq 'created_by', etc.) instead of relying on RLS.
-    const serviceClient = createClient(
+    const serviceClient = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { persistSession: false } },
     );
-    serviceClient.auth.getUser = async () => ({ data: { user: mockUserObj as any }, error: null });
-    return serviceClient;
+    // `UserResponse` types `data.user` as non-null; an unauthenticated mock
+    // still returns `null` here, which is the case services treat as "no user".
+    serviceClient.auth.getUser = () =>
+      Promise.resolve({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- a null mock user is the unauthenticated case services check for
+        data: { user: mockUserObj as User },
+        error: null,
+      });
+    return Promise.resolve(serviceClient);
   });
 }
 
@@ -231,7 +250,7 @@ export async function cleanupOrganizationByName(namePrefix: string) {
 // Cleanup Functions (use service role client to bypass RLS)
 // ============================================================
 export async function cleanupSubjects(userId: string, namePrefix?: string) {
-  const supabase = createServiceClient();
+  const supabase = createLegacyServiceClient();
   let query = supabase.from('subjects').delete().eq('created_by', userId);
   if (namePrefix) {
     query = query.ilike('name', `${namePrefix}%`);
@@ -240,15 +259,15 @@ export async function cleanupSubjects(userId: string, namePrefix?: string) {
 }
 
 export async function cleanupQuestions(userId: string, contentPrefix?: string) {
-  const supabase = createServiceClient();
+  const supabase = createLegacyServiceClient();
   let query = supabase.from('questions').select('id').eq('created_by', userId);
   if (contentPrefix) {
     query = query.ilike('content', `${contentPrefix}%`);
   }
   const { data: questions } = await query;
+  const questionIds = asJson<{ id: string }[]>(questions ?? []).map((q) => q.id);
 
-  if (questions && questions.length > 0) {
-    const questionIds = questions.map((q) => q.id);
+  if (questionIds.length > 0) {
     await supabase.from('question_answers').delete().in('question_id', questionIds);
     await supabase.from('questions').delete().in('id', questionIds);
   }
@@ -307,14 +326,15 @@ export async function cleanupFlashcardReviewState(userId: string) {
 }
 
 export async function cleanupQuizAttempts(userId: string) {
-  const supabase = createServiceClient();
+  const supabase = createLegacyServiceClient();
   const { data: attempts } = await supabase
     .from('quiz_attempts')
     .select('id')
     .eq('user_id', userId);
 
-  if (attempts && attempts.length > 0) {
-    const attemptIds = attempts.map((a) => a.id);
+  const attemptIds = asJson<{ id: string }[]>(attempts ?? []).map((a) => a.id);
+
+  if (attemptIds.length > 0) {
     await supabase.from('quiz_answers').delete().in('attempt_id', attemptIds);
     await supabase.from('quiz_attempt_questions').delete().in('attempt_id', attemptIds);
     await supabase.from('quiz_attempts').delete().eq('user_id', userId);
@@ -353,18 +373,44 @@ export async function seedSubject(data: {
   created_by: string;
   organization_id?: string;
 }) {
-  const supabase = createServiceClient();
-  const { data: subject, error } = await supabase
-    .from('subjects')
-    .insert({
-      name: data.name,
-      created_by: data.created_by,
-      organization_id: data.organization_id ?? null,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return subject;
+  const supabase = createLegacyServiceClient();
+  const { data: subject, error } = asJson<{
+    data: unknown;
+    error: { message: string } | null;
+  }>(
+    await supabase
+      .from('subjects')
+      .insert({
+        name: data.name,
+        created_by: data.created_by,
+        organization_id: data.organization_id ?? null,
+      })
+      .select()
+      .single(),
+  );
+  if (error) throw new Error(error.message);
+  return asJson<{
+    id: string;
+    name: string;
+    created_by: string | null;
+    organization_id: string | null;
+  }>(subject);
+}
+
+const QUESTION_TYPES = [
+  'mcq',
+  'true_false',
+  'open',
+  'multi_select',
+  'matching',
+  'ordering',
+  'fill_in_blank',
+] as const;
+
+type QuestionType = Database['public']['Enums']['question_type'];
+
+function isQuestionType(value: string): value is QuestionType {
+  return (QUESTION_TYPES as readonly string[]).includes(value);
 }
 
 /** DB fallback bridge: questions.bank_id is NOT NULL, so create a bank on the fly. */
@@ -398,7 +444,7 @@ export async function seedQuestion(data: {
   const { data: question, error } = await supabase
     .from('questions')
     .insert({
-      type: data.type,
+      type: isQuestionType(data.type) ? data.type : 'open',
       content: data.content,
       created_by: data.created_by,
       organization_id: data.organization_id ?? null,
@@ -406,7 +452,7 @@ export async function seedQuestion(data: {
     })
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return question;
 }
 
@@ -440,7 +486,7 @@ export async function seedFlashcard(data: {
     .insert({ front: data.front, back: data.back, created_by: data.created_by, deck_id: deckId })
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return fc;
 }
 
@@ -451,7 +497,7 @@ export async function seedTopic(data: { name: string; created_by: string }) {
     .insert({ name: data.name, created_by: data.created_by })
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return topic;
 }
 
@@ -462,7 +508,7 @@ export async function seedDeck(data: { name: string; created_by: string }) {
     .insert({ name: data.name, created_by: data.created_by })
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return deck;
 }
 

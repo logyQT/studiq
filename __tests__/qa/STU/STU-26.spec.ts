@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -100,7 +101,7 @@ interface FlashcardResponse {
 async function getCard(page: Page, cardId: string): Promise<FlashcardResponse> {
   const response = await page.request.get(`${FLASHCARDS_URL}/${cardId}`);
   expect(response.ok(), `GET ${FLASHCARDS_URL}/${cardId} → ${response.status()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<FlashcardResponse>;
+  const body = await json<ApiEnvelope<FlashcardResponse>>(response);
   expect(body.success, `GET ${FLASHCARDS_URL}/${cardId} success flag`).toBe(true);
   return body.data;
 }
@@ -111,7 +112,7 @@ async function listCards(page: Page, deckId: string): Promise<FlashcardResponse[
   expect(response.ok(), `GET ${FLASHCARDS_URL}?deckIds=${deckId} → ${response.status()}`).toBe(
     true,
   );
-  const body = (await response.json()) as ApiEnvelope<{ items: FlashcardResponse[] }>;
+  const body = await json<ApiEnvelope<{ items: FlashcardResponse[] }>>(response);
   expect(body.success, `GET ${FLASHCARDS_URL}?deckIds=${deckId} success flag`).toBe(true);
   return body.data.items;
 }
@@ -233,7 +234,7 @@ test.describe('@case:STU-26 @area:STU @prio:P2 flashcard copy', () => {
       cardResponse.status(),
       `POST ${FLASHCARDS_URL} → ${cardResponse.status()} ${await cardResponse.text()}`,
     ).toBe(201);
-    const original = ((await cardResponse.json()) as ApiEnvelope<FlashcardResponse>).data;
+    const original = (await json<ApiEnvelope<FlashcardResponse>>(cardResponse)).data;
     expect(original.deck_id, 'the source card lives in deck A').toBe(deckA.id);
 
     const deckAUrl = `/app/flashcards/${deckA.id}`;
@@ -401,7 +402,7 @@ async function createDeck(page: Page, name: string, organizationId: string): Pro
     response.status(),
     `POST ${DECKS_URL} → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const deck = ((await response.json()) as ApiEnvelope<DeckResponse>).data;
+  const deck = (await json<ApiEnvelope<DeckResponse>>(response)).data;
   expect(deck.organization_id, `deck „${name}” belongs to the tenant organization`).toBe(
     organizationId,
   );

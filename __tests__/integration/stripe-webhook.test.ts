@@ -3,8 +3,10 @@ import type { StripeClient } from '@studiq/server/lib/payment/stripe-client';
 import { SupabaseStripeWebhookRepository } from '@studiq/server/lib/payment/stripe-webhook.repository';
 import { EntitlementService } from '@studiq/server/services/entitlement.service';
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
+// eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { asJson } from '#test/helpers/json';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/helpers';
 
@@ -61,7 +63,7 @@ function subscriptionFixture(input: {
   status?: string;
   canceledAt?: number | null;
 }): Stripe.Subscription {
-  return {
+  return asJson<Stripe.Subscription>({
     id: input.id,
     object: 'subscription',
     customer: input.customer,
@@ -80,7 +82,7 @@ function subscriptionFixture(input: {
     cancel_at: null,
     canceled_at: input.canceledAt ?? null,
     livemode: false,
-  } as unknown as Stripe.Subscription;
+  });
 }
 
 let clock = Math.floor(Date.now() / 1000);
@@ -95,7 +97,7 @@ function event(input: {
   object: unknown;
   created: number;
 }): Stripe.Event {
-  return {
+  return asJson<Stripe.Event>({
     id: input.id,
     object: 'event',
     api_version: STRIPE_API_VERSION,
@@ -103,7 +105,7 @@ function event(input: {
     livemode: false,
     type: input.type,
     data: { object: input.object },
-  } as unknown as Stripe.Event;
+  });
 }
 
 describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
@@ -115,7 +117,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
   const client: StripeClient = {
     ...real,
     subscriptions: {
-      retrieve: async () => currentSubscription,
+      retrieve: () => Promise.resolve(currentSubscription),
     },
   };
   const webhookService = new StripeWebhookService({

@@ -28,6 +28,15 @@ export class ApiError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Raw admin API call. The response body is unvalidated JSON; the typed helpers
+ * below hand it to the caller as the type that caller asked for, which is the
+ * one trusted (schema-less) boundary in the admin app.
+ */
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const res = await fetch(url, {
@@ -39,12 +48,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   // A proxy 401/403 or a non-JSON 5xx page must still surface as an ApiError
   // with the real status, not as a JSON parse failure.
   if (!res.ok) {
-    const json = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(json.error || `${method} ${url} failed`, res.status);
+    const json: unknown = await res.json().catch(() => ({}));
+    const code = isRecord(json) && typeof json.error === 'string' ? json.error : undefined;
+    throw new ApiError(code || `${method} ${url} failed`, res.status);
   }
 
-  const json = (await res.json().catch(() => ({}))) as { data?: T };
-  return json.data as T;
+  const json: unknown = await res.json().catch(() => ({}));
+  const data = isRecord(json) ? json.data : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- unvalidated `{ data }` envelope, typed by the caller
+  return data as T;
 }
 
 export function apiGet<T>(path: string): Promise<T> {

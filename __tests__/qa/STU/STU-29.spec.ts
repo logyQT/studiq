@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import {
   expect,
   loadTenant,
@@ -153,9 +154,9 @@ function account(tenant: QaTenant, role: QaRole) {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.status(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(200);
-  const body = (await response.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
-  return body.data as T;
+  return body.data!;
 }
 
 async function call(
@@ -193,7 +194,7 @@ async function switchUser(
 
 async function expectSignedInAs(page: Page, tenant: QaTenant, role: QaRole): Promise<void> {
   const user = account(tenant, role);
-  const me = (await (await page.request.get(ME_URL)).json()) as Envelope<Me>;
+  const me = await json<Envelope<Me>>(await page.request.get(ME_URL));
   expect(me.data?.user?.id, `the signed-in user is the tenant's ${role}`).toBe(user.id);
 }
 
@@ -252,7 +253,7 @@ async function ensureQuestion(page: Page, tenant: QaTenant): Promise<Question> {
       response.status(),
       `POST ${BANKS_URL} (${BANK_NAME}) → ${response.status()} ${await response.text()}`,
     ).toBe(201);
-    bank = ((await response.json()) as Envelope<Bank>).data!;
+    bank = (await json<Envelope<Bank>>(response)).data!;
   }
   expect(bank.created_by, 'the bank is owned by the tenant educator').toBe(teacher.id);
   expect(bank.organization_id, 'the bank belongs to the tenant organization').toBe(tenant.org?.id);
@@ -276,7 +277,7 @@ async function ensureQuestion(page: Page, tenant: QaTenant): Promise<Question> {
     response.status(),
     `POST ${QUESTIONS_URL} (${QUESTION_CONTENT}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as Envelope<Question>).data!;
+  return (await json<Envelope<Question>>(response)).data!;
 }
 
 /** `O1G1T1`, shared to `G1`, owned by the educator — the case's teacher deck. */
@@ -297,7 +298,7 @@ async function ensureDeck(page: Page, tenant: QaTenant): Promise<Deck> {
       response.status(),
       `POST ${DECKS_URL} (${DECK_NAME}) → ${response.status()} ${await response.text()}`,
     ).toBe(201);
-    const created = ((await response.json()) as Envelope<Deck>).data!;
+    const created = (await json<Envelope<Deck>>(response)).data!;
     expect(created.created_by, 'the deck belongs to the tenant educator').toBe(teacher.id);
     return created;
   }
@@ -316,7 +317,7 @@ async function ensureDeck(page: Page, tenant: QaTenant): Promise<Deck> {
     response.status(),
     `PUT ${DECKS_URL}/${existing.id} → ${response.status()} ${await response.text()}`,
   ).toBe(200);
-  return ((await response.json()) as Envelope<Deck>).data!;
+  return (await json<Envelope<Deck>>(response)).data!;
 }
 
 /**
@@ -356,7 +357,7 @@ async function ensureCard(
       response.status(),
       `POST ${CARDS_URL} (${front}) → ${response.status()} ${await response.text()}`,
     ).toBe(201);
-    card = ((await response.json()) as Envelope<Card>).data!;
+    card = (await json<Envelope<Card>>(response)).data!;
   }
 
   expect(card.created_by, 'the card belongs to the tenant educator').toBe(teacher.id);
@@ -588,7 +589,10 @@ test.describe('@case:STU-29 @area:STU @prio:P1 teacher deck is read-only for a s
       back: card.back,
     });
     expect(ownerUpdate.status, `T1 updates their own card → ${ownerUpdate.body}`).toBe(200);
-    expect((JSON.parse(ownerUpdate.body) as Envelope<Card>).data).toMatchObject({
+    // `call()` keeps the body as text for its log messages; hand that text to the
+    // shared parser instead of casting `JSON.parse`'s `any` here.
+    const ownerUpdateBody = asJson<Envelope<Card>>(JSON.parse(ownerUpdate.body));
+    expect(ownerUpdateBody.data).toMatchObject({
       id: card.id,
       front: card.front,
       back: card.back,

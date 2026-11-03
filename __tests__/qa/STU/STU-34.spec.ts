@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -135,7 +136,7 @@ async function call<T>(
   expect([expected].flat(), `${method} ${url} → ${response.status()} ${text}`).toContain(
     response.status(),
   );
-  const body = JSON.parse(text) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `${method} ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -222,7 +223,11 @@ async function ensureBank(page: Page): Promise<string> {
 }
 
 /** A mcq question with one correct and one wrong option (1 point when graded). */
-async function createQuestion(page: Page, bankId: string, content: string): Promise<string> {
+async function createQuestion(
+  page: Page,
+  bankId: string,
+  questionContent: string,
+): Promise<string> {
   const created = await call<QuestionRow>(
     page,
     'POST',
@@ -230,7 +235,7 @@ async function createQuestion(page: Page, bankId: string, content: string): Prom
     {
       bankId,
       type: 'mcq',
-      content,
+      content: questionContent,
       answers: [
         { content: 'Odpowiedź poprawna', isCorrect: true, orderIndex: 0 },
         { content: 'Odpowiedź błędna', isCorrect: false, orderIndex: 1 },
@@ -350,7 +355,7 @@ test.describe('@case:STU-34 @area:STU @prio:P2 student quiz list', () => {
     expect(tenant.users.teacher, 'the tenant seeds the teacher').toBeTruthy();
     expect(tenant.users.manager, 'the tenant seeds the manager').toBeTruthy();
     expect(tenant.users.student, 'the tenant seeds the student').toBeTruthy();
-    const studentId = tenant.users.student!.id;
+    const studentId = tenant.users.student.id;
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -466,9 +471,9 @@ test.describe('@case:STU-34 @area:STU @prio:P2 student quiz list', () => {
 
       const studentList = await call<StudentAssignmentRow[]>(page, 'GET', '/api/v1/assignments');
       expect(
-        studentList.map((row) => row.id).sort(),
+        studentList.map((row) => row.id).toSorted(),
         'the student API returns only the group- and student-targeted quizzes',
-      ).toEqual([group.id, individual.id].sort());
+      ).toEqual([group.id, individual.id].toSorted());
 
       // ── Step 3: a started attempt has its own „W trakcie” section ─────────
       const started = await startAttempt(page, individual.id);

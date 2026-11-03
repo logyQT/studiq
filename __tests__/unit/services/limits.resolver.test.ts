@@ -3,6 +3,13 @@ import type { LimitKey } from '@studiq/server/services/limit.catalog';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { asSupabaseClient } from '#test/helpers/supabase-double';
+
+/** A key outside the catalogue: the resolver must fail closed instead of trusting it. */
+function unlistedLimitKey(key: string): LimitKey {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the runtime contract is wider than LimitKey; feeding it an unlisted key is the point of the test
+  return key as LimitKey;
+}
 
 function chain(result: unknown) {
   const resolved = { data: result, error: null };
@@ -76,7 +83,7 @@ describe('LimitsResolver', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    resolver = new LimitsResolver(async () => mock as any);
+    resolver = new LimitsResolver(() => Promise.resolve(mock));
   });
 
   // #230 acceptance: the dropped snapshot table must never be queried again,
@@ -99,7 +106,7 @@ describe('LimitsResolver', () => {
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
 
-    it('returns the org plan limit when in org — the personal plan never raises it', async () => {
+    it('returns the org plan limit when the personal plan is lower — the org is the floor', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
 
       mock.from.mockImplementation((table: string) => {
@@ -116,9 +123,10 @@ describe('LimitsResolver', () => {
       });
 
       const limit = await resolver.getEffectiveLimit(ctx, 'max_flashcards');
+      // personal `base` (100) vs org `hub` (500): the org is the floor, so the
+      // member keeps the org's higher per-member allowance.
       expect(limit).toBe(500);
-      // The org plan alone governs org-context capacity: no personal lookup.
-      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+      expect(mock.from).toHaveBeenCalledWith('profiles');
     });
 
     it('resolves the org plan for a member whose ctx has no orgRoleId', async () => {
@@ -159,7 +167,7 @@ describe('LimitsResolver', () => {
       expect(limit).toBe(50);
     });
 
-    it('derives the org limit from organizations.plan -> plan_limits, not a snapshot or the personal plan', async () => {
+    it('derives the org limit from organizations.plan -> plan_limits, not a snapshot', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
       const planLimitFilters: Record<string, string>[] = [];
 
@@ -179,13 +187,18 @@ describe('LimitsResolver', () => {
       });
 
       const limit = await resolver.getEffectiveLimit(ctx, 'max_decks');
-      // The org value must be the only `plan_limits` lookup: the personal plan
-      // cannot widen org capacity (#233).
+      // The org plan is read live from `organizations.plan`, and the personal
+      // plan is layered on top (here `base` 10 is lower, so `launch` 40 wins).
       expect(limit).toBe(40);
-      expect(planLimitFilters).toEqual([{ plan_key: 'launch', limit_key: 'max_decks' }]);
+      expect(planLimitFilters).toEqual(
+        expect.arrayContaining([
+          { plan_key: 'launch', limit_key: 'max_decks' },
+          { plan_key: 'base', limit_key: 'max_decks' },
+        ]),
+      );
       expect(mock.from).toHaveBeenCalledWith('org_members');
       expect(mock.from).toHaveBeenCalledWith('organizations');
-      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+      expect(mock.from).toHaveBeenCalledWith('profiles');
     });
 
     it('returns the seated plan limit and ignores the org plan', async () => {
@@ -243,7 +256,7 @@ describe('LimitsResolver', () => {
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
 
-    it('lets the org plan govern even when the personal plan is unlimited', async () => {
+    it('lets a student personal unlimited plan raise a per-member key inside an org', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
 
       mock.from.mockImplementation((table: string) => {
@@ -260,9 +273,30 @@ describe('LimitsResolver', () => {
       });
 
       const limit = await resolver.getEffectiveLimit(ctx, 'max_flashcards');
-      // The personal `pro` plan used to short-circuit to -1 (Q1).
-      expect(limit).toBe(500);
-      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+      // StudiQ Pro is a personal purchase: per-member keys take the most
+      // permissive layer (Q1 governs org-scope capacity, not this).
+      expect(limit).toBe(-1);
+      expect(mock.from).toHaveBeenCalledWith('profiles');
+    });
+
+    it('never lets a personal plan widen org-scope capacity', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain({ organization_id: 'org-1' });
+        if (table === 'profiles') return chain({ personal_plan_key: 'pro' });
+        if (table === 'organizations') return chain({ plan: 'launch' });
+        if (table === 'plan_limits') {
+          return filteredChain((f) =>
+            f.plan_key === 'pro' ? { limit_value: -1 } : { limit_value: 100 },
+          );
+        }
+        return chain(null);
+      });
+
+      // `max_students` is `scope: 'org'`: the personal plan must never touch it.
+      await expect(resolver.getEffectiveLimit(ctx, 'max_students')).resolves.toBe(100);
     });
 
     it('does not let a manager personal org plan widen limits in a different org (#228)', async () => {
@@ -341,7 +375,7 @@ describe('LimitsResolver', () => {
       ).resolves.toBe(-1);
     });
 
-    it('returns 0 when the org plan omits the key, with no personal fallback', async () => {
+    it('returns 0 when no plan defines the key', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
 
       mock.from.mockImplementation((table: string) => {
@@ -354,7 +388,7 @@ describe('LimitsResolver', () => {
       });
 
       await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(0);
-      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+      expect(mock.from).toHaveBeenCalledWith('profiles');
     });
 
     it('resolves an org-scope key from the org plan for a seated member', async () => {
@@ -397,7 +431,10 @@ describe('LimitsResolver', () => {
     });
 
     it('returns 0 for an unknown limit key (fail closed)', async () => {
-      const limit = await resolver.getEffectiveLimit(baseCtx, 'nonexistent_limit' as LimitKey);
+      const limit = await resolver.getEffectiveLimit(
+        baseCtx,
+        unlistedLimitKey('nonexistent_limit'),
+      );
       expect(limit).toBe(0);
       expect(mock.from).not.toHaveBeenCalled();
     });
@@ -421,7 +458,7 @@ describe('LimitsResolver', () => {
         if (table === 'plan_limits') return chain({ limit_value: 40 });
         return chain(null);
       });
-      const admin = { from: adminFrom } as any;
+      const admin = asSupabaseClient({ from: adminFrom });
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 10, 1, admin),
@@ -435,13 +472,13 @@ describe('LimitsResolver', () => {
     });
 
     it('throws when the injected client reports the org is at capacity', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain({ plan: 'launch' });
           if (table === 'plan_limits') return chain({ limit_value: 40 });
           return chain(null);
         }),
-      } as any;
+      });
 
       await expect(resolver.checkOrgLimit('org-1', 'max_students', 40, 1, admin)).rejects.toThrow(
         'USAGE_LIMIT_EXCEEDED',
@@ -449,13 +486,13 @@ describe('LimitsResolver', () => {
     });
 
     it('keeps the slot when the org is one below capacity', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain({ plan: 'launch' });
           if (table === 'plan_limits') return chain({ limit_value: 40 });
           return chain(null);
         }),
-      } as any;
+      });
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 39, 1, admin),
@@ -463,13 +500,13 @@ describe('LimitsResolver', () => {
     });
 
     it('blocks (0) when the org plan defines no such limit — fail closed', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain({ plan: 'launch' });
           if (table === 'plan_limits') return chain(null);
           return chain(null);
         }),
-      } as any;
+      });
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_students', 999_999, 1, admin),
@@ -477,12 +514,12 @@ describe('LimitsResolver', () => {
     });
 
     it('treats an unknown organization as NOT_FOUND', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain(null);
           return chain(null);
         }),
-      } as any;
+      });
 
       await expect(
         resolver.checkOrgLimit('org-missing', 'max_students', 999_999, 1, admin),
@@ -491,13 +528,13 @@ describe('LimitsResolver', () => {
     });
 
     it('enforces max_groups from the org plan boundaries', async () => {
-      const admin = {
+      const admin = asSupabaseClient({
         from: vi.fn((table: string) => {
           if (table === 'organizations') return chain({ plan: 'hub' });
           if (table === 'plan_limits') return chain({ limit_value: 20 });
           return chain(null);
         }),
-      } as any;
+      });
 
       await expect(
         resolver.checkOrgLimit('org-1', 'max_groups', 19, 1, admin),

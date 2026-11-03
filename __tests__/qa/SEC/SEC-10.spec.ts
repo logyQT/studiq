@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { asJson } from '#test/helpers/json';
 import {
   expect,
   loadTenant,
@@ -90,7 +91,7 @@ async function expectData<T>(
   expectedStatus: number,
 ): Promise<T> {
   expect(response.status(), `${label} → ${await response.text()}`).toBe(expectedStatus);
-  const body = JSON.parse(await response.text()) as ApiEnvelope<T>;
+  const body = asJson<ApiEnvelope<T>>(JSON.parse(await response.text()));
   expect(body.success, `${label} success flag`).toBe(true);
   return body.data;
 }

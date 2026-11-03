@@ -45,8 +45,8 @@ describe('OrganizationService', () => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
     service = new OrganizationService(
-      async () => mock as any,
-      () => mock as any,
+      () => Promise.resolve(mock),
+      () => mock,
     );
   });
 
@@ -158,10 +158,10 @@ describe('OrganizationService', () => {
 
   describe('delete', () => {
     it('returns FORBIDDEN without touching the admin client when the active org differs', async () => {
-      const userClient = { rpc: vi.fn(), from: vi.fn() } as any;
-      const adminClient = { from: vi.fn() } as any;
+      const userClient = { rpc: vi.fn(), from: vi.fn() };
+      const adminClient = { from: vi.fn() };
       service = new OrganizationService(
-        async () => userClient,
+        () => Promise.resolve(userClient),
         () => adminClient,
       );
 
@@ -177,10 +177,10 @@ describe('OrganizationService', () => {
       const userClient = {
         rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
         from: vi.fn(),
-      } as any;
-      const adminClient = { from: vi.fn() } as any;
+      };
+      const adminClient = { from: vi.fn() };
       service = new OrganizationService(
-        async () => userClient,
+        () => Promise.resolve(userClient),
         () => adminClient,
       );
 
@@ -198,11 +198,11 @@ describe('OrganizationService', () => {
       const userClient = {
         rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
         from: vi.fn(),
-      } as any;
-      const adminClient = { from: vi.fn() } as any;
+      };
+      const adminClient = { from: vi.fn() };
       adminClient.from.mockReturnValueOnce(chain({ id: 'org-1' })).mockReturnValueOnce(chain(null));
       service = new OrganizationService(
-        async () => userClient,
+        () => Promise.resolve(userClient),
         () => adminClient,
       );
 

@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import { assignmentKeys, flashcardKeys, questionKeys, topicKeys } from '@/lib/query-keys';
+import {
+  assignmentKeys,
+  flashcardKeys,
+  questionKeys,
+  teacherStatsKeys,
+  topicKeys,
+} from '@/lib/query-keys';
 
 /**
  * Org-scoped list queries resolve their rows from the `active_org_id` cookie on
@@ -105,7 +111,7 @@ describe('assignment results grading invalidation (#168)', () => {
     queryClient.setQueryData(studentKey, { id: 'attempt-1', graded_at: null });
 
     for (const key of assignmentKeys.gradingInvalidations(assignmentId)) {
-      queryClient.invalidateQueries({ queryKey: key });
+      void queryClient.invalidateQueries({ queryKey: key });
     }
 
     expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
@@ -119,7 +125,7 @@ describe('assignment results grading invalidation (#168)', () => {
 
     // The pre-fix behaviour — this is the control that proves the test would
     // catch a regression back to the per-student-only key.
-    queryClient.invalidateQueries({ queryKey: studentKey });
+    void queryClient.invalidateQueries({ queryKey: studentKey });
 
     expect(queryClient.getQueryState(studentKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
@@ -130,6 +136,15 @@ describe('assignment results grading invalidation (#168)', () => {
  * Suspending or restoring a deck changes which cards the statistics include, so the study
  * statistics must be invalidated together with the deck lists (#365).
  */
+function invalidatedAfterSuspend(keys: readonly (readonly unknown[])[]) {
+  const client = new QueryClient();
+  for (const key of keys) client.setQueryData([...key], 'cached');
+  for (const queryKey of flashcardKeys.afterDeckSuspend) {
+    void client.invalidateQueries({ queryKey: [...queryKey] });
+  }
+  return keys.map((key) => client.getQueryState([...key])?.isInvalidated);
+}
+
 describe('flashcardKeys.afterDeckSuspend (#365)', () => {
   const statsKeys = [
     [...flashcardKeys.all, 'practice', 'cards-stats', { state: 'all', sortBy: 'last_reviewed' }],
@@ -140,15 +155,6 @@ describe('flashcardKeys.afterDeckSuspend (#365)', () => {
     [...flashcardKeys.decks.paginated({ owner: 'all' }, 'org-a')],
     [...flashcardKeys.decks.options('org-a')],
   ];
-
-  function invalidatedAfterSuspend(keys: readonly (readonly unknown[])[]) {
-    const client = new QueryClient();
-    for (const key of keys) client.setQueryData([...key], 'cached');
-    for (const queryKey of flashcardKeys.afterDeckSuspend) {
-      client.invalidateQueries({ queryKey: [...queryKey] });
-    }
-    return keys.map((key) => client.getQueryState([...key])?.isInvalidated);
-  }
 
   it('invalidates the statistics queries built from the deck cards', () => {
     expect(invalidatedAfterSuspend(statsKeys)).toEqual([true, true, true]);
@@ -181,7 +187,7 @@ describe('a finished study session refreshes the statistics (#365)', () => {
     const client = new QueryClient();
     for (const key of cached) client.setQueryData(key, 'cached');
     for (const queryKey of flashcardKeys.afterStudySession) {
-      client.invalidateQueries({ queryKey: [...queryKey] });
+      void client.invalidateQueries({ queryKey: [...queryKey] });
     }
     expect(cached.map((key) => client.getQueryState(key)?.isInvalidated)).toEqual([
       true,
@@ -201,5 +207,23 @@ describe('a finished study session refreshes the statistics (#365)', () => {
     );
     expect(afterComplete).toContain('flashcardKeys.afterStudySession');
     expect(afterComplete).toContain('invalidateQueries');
+  });
+});
+
+describe('teacher dashboard query keys', () => {
+  it('isolates overview, group results and feed by active organization', () => {
+    for (const key of [
+      (org: string | null) => teacherStatsKeys.overview(org),
+      (org: string | null) => teacherStatsKeys.groups(org, 30),
+      (org: string | null) => teacherStatsKeys.feed(org),
+    ]) {
+      expect(key('org-a')).not.toEqual(key('org-b'));
+      expect(key('org-a')).not.toEqual(key(null));
+      expect(key('org-a').slice(0, teacherStatsKeys.all.length)).toEqual(teacherStatsKeys.all);
+    }
+  });
+
+  it('separates group results for different windows', () => {
+    expect(teacherStatsKeys.groups('org-a', 30)).not.toEqual(teacherStatsKeys.groups('org-a', 7));
   });
 });

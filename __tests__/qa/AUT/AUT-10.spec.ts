@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -75,7 +76,7 @@ async function signInThroughForm(page: Page, next: string, email: string, passwo
 async function expectSignedInAs(page: Page, email: string): Promise<void> {
   const response = await page.request.get('/api/v1/auth/me');
   expect(response.status(), 'GET /api/v1/auth/me').toBe(200);
-  const body = (await response.json()) as { data?: { user?: { email?: string } | null } };
+  const body = await json<{ data?: { user?: { email?: string } | null } }>(response);
   expect(body.data?.user?.email).toBe(email);
 }
 
@@ -102,12 +103,12 @@ test('an absolute external ?next is ignored and the user lands on their dashboar
   await signInThroughForm(
     page,
     encodeURIComponent(`https://${EXTERNAL}`),
-    student!.email,
-    student!.password,
+    student.email,
+    student.password,
   );
 
   await expectOwnDashboard(page);
-  await expectSignedInAs(page, student!.email);
+  await expectSignedInAs(page, student.email);
 
   expect(foreign, 'no request may leave the app origin').toEqual([]);
 });
@@ -124,10 +125,10 @@ test('a protocol-relative ?next is ignored and the user lands on their dashboard
   const foreign = trackForeignRequests(page);
 
   // Step 2 of the case: /login?next=//example.com
-  await signInThroughForm(page, `//${EXTERNAL}`, student!.email, student!.password);
+  await signInThroughForm(page, `//${EXTERNAL}`, student.email, student.password);
 
   await expectOwnDashboard(page);
-  await expectSignedInAs(page, student!.email);
+  await expectSignedInAs(page, student.email);
 
   expect(foreign, 'no request may leave the app origin').toEqual([]);
 });

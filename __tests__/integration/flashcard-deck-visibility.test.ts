@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import {
   type BeforeResult,
   before,
@@ -9,7 +11,6 @@ import {
   cleanupFlashcardDecks,
   cleanupFlashcards,
   cleanupOrganizationDeep,
-  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -25,6 +26,24 @@ import {
 } from '@/app/(backend)/api/v1/flashcards/decks/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** Deck payload of `POST/PUT /api/v1/flashcards/decks[/:id]` — the fields read below. */
+interface DeckBody {
+  success: boolean;
+  data: { id: string; visibility: string; groupIds: string[] };
+}
+
+/** `GET /api/v1/flashcards/decks` payload — the fields read below. */
+interface DeckListBody {
+  success: boolean;
+  data: { items: Array<{ id: string }> };
+}
+
+/** `GET /api/v1/flashcards/:id` payload — the fields read below. */
+interface CardBody {
+  success: boolean;
+  data: { id: string };
+}
 
 /**
  * #141: a partial `PUT { visibility: 'personal' }` used to leave the `deck_groups` rows
@@ -44,7 +63,7 @@ describe(`Flashcard Deck Visibility`, () => {
   let deckId!: string;
   let cardId!: string;
 
-  const service = createServiceClient();
+  const service = createSeedDb();
 
   async function listFor(user: TestUserFixture) {
     mockUser(user);
@@ -53,7 +72,7 @@ describe(`Flashcard Deck Visibility`, () => {
         active_org_id: orgId,
       }),
     );
-    return { res, body: await res.json() };
+    return { res, body: await json<DeckListBody>(res) };
   }
 
   async function getDeckFor(user: TestUserFixture) {
@@ -65,7 +84,7 @@ describe(`Flashcard Deck Visibility`, () => {
       { active_org_id: orgId },
     );
     const res = await getDeckById(request, { params });
-    return { res, body: await res.json() };
+    return { res, body: await json<DeckBody>(res) };
   }
 
   async function getCardFor(user: TestUserFixture) {
@@ -77,7 +96,7 @@ describe(`Flashcard Deck Visibility`, () => {
       { active_org_id: orgId },
     );
     const res = await getCardById(request, { params });
-    return { res, body: await res.json() };
+    return { res, body: await json<CardBody>(res) };
   }
 
   async function putFor(user: TestUserFixture, body: Record<string, unknown>) {
@@ -93,12 +112,12 @@ describe(`Flashcard Deck Visibility`, () => {
       { active_org_id: orgId },
     );
     const res = await updateDeck(request, { params });
-    return { res, body: await res.json() };
+    return { res, body: await json<DeckBody>(res) };
   }
 
   async function deckGroupIds(): Promise<string[]> {
     const { data } = await service.from('deck_groups').select('group_id').eq('deck_id', deckId);
-    return (data ?? []).map((r) => r.group_id as string);
+    return (data ?? []).map((r) => r.group_id);
   }
 
   async function cardVisibility(): Promise<string | null> {
@@ -107,7 +126,7 @@ describe(`Flashcard Deck Visibility`, () => {
       .select('visibility')
       .eq('id', cardId)
       .single();
-    return (data?.visibility as string | undefined) ?? null;
+    return data?.visibility ?? null;
   }
 
   beforeAll(async () => {
@@ -165,11 +184,11 @@ describe(`Flashcard Deck Visibility`, () => {
         { active_org_id: orgId },
       ),
     );
-    const deckBody = await deckRes.json();
+    const deckBody = await json<DeckBody>(deckRes);
     if (!deckRes.ok || !deckBody.success) {
       throw new Error(`[setup] deck creation failed: ${JSON.stringify(deckBody)}`);
     }
-    deckId = deckBody.data.id as string;
+    deckId = deckBody.data.id;
 
     mockUser(teacher.user);
     const cardRes = await createCard(
@@ -183,11 +202,11 @@ describe(`Flashcard Deck Visibility`, () => {
         { active_org_id: orgId },
       ),
     );
-    const cardBody = await cardRes.json();
+    const cardBody = await json<CardBody>(cardRes);
     if (!cardRes.ok || !cardBody.success) {
       throw new Error(`[setup] card creation failed: ${JSON.stringify(cardBody)}`);
     }
-    cardId = cardBody.data.id as string;
+    cardId = cardBody.data.id;
   });
 
   afterAll(async () => {
@@ -199,7 +218,7 @@ describe(`Flashcard Deck Visibility`, () => {
   it('lets a group member read the shared deck and its card while it is group-visible', async () => {
     const listed = await listFor(studentA);
     expect(listed.res.status).toBe(200);
-    expect(listed.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(true);
+    expect(listed.body.data.items.some((d) => d.id === deckId)).toBe(true);
 
     expect((await getDeckFor(studentA)).res.status).toBe(200);
     expect((await getCardFor(studentA)).res.status).toBe(200);
@@ -220,7 +239,7 @@ describe(`Flashcard Deck Visibility`, () => {
   it('revokes a group member’s access once the deck is personal', async () => {
     const listed = await listFor(studentA);
     expect(listed.res.status).toBe(200);
-    expect(listed.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(false);
+    expect(listed.body.data.items.some((d) => d.id === deckId)).toBe(false);
 
     const deck = await getDeckFor(studentA);
     expect(deck.res.status).toBe(404);
@@ -236,7 +255,7 @@ describe(`Flashcard Deck Visibility`, () => {
     if (error) throw new Error(`[setup] legacy link insert failed: ${error.message}`);
 
     const listed = await listFor(studentA);
-    expect(listed.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(false);
+    expect(listed.body.data.items.some((d) => d.id === deckId)).toBe(false);
     expect((await getDeckFor(studentA)).res.status).toBe(404);
     expect((await getCardFor(studentA)).res.status).toBe(404);
   });
@@ -253,7 +272,7 @@ describe(`Flashcard Deck Visibility`, () => {
     expect(await deckGroupIds()).toEqual([groupA]);
 
     const listed = await listFor(studentA);
-    expect(listed.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(true);
+    expect(listed.body.data.items.some((d) => d.id === deckId)).toBe(true);
     expect((await getDeckFor(studentA)).res.status).toBe(200);
     expect((await getCardFor(studentA)).res.status).toBe(200);
   });
@@ -269,12 +288,12 @@ describe(`Flashcard Deck Visibility`, () => {
     expect(await deckGroupIds()).toEqual([groupA]);
 
     const listed = await listFor(studentA);
-    expect(listed.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(true);
+    expect(listed.body.data.items.some((d) => d.id === deckId)).toBe(true);
   });
 
   it('keeps the deck hidden from a student outside the shared group', async () => {
     const listed = await listFor(studentB);
-    expect(listed.body.data.items.some((d: { id: string }) => d.id === deckId)).toBe(false);
+    expect(listed.body.data.items.some((d) => d.id === deckId)).toBe(false);
     expect((await getDeckFor(studentB)).res.status).toBe(404);
   });
 });

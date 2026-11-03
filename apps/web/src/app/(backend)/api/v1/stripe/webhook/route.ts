@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   if (gateway.driver === 'mock') {
     return withAuth(req, async (ctx) => {
-      const body = await req.json();
+      const body: unknown = await req.json();
       return toNextResponse(await stripeController.handleWebhook(ctx, body));
     });
   }

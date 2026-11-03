@@ -16,7 +16,9 @@ vi.mock('ai', async (importOriginal) => {
 // webfetchTool resolves DNS via assertSafeExternalUrl before fetching — mock it
 // so these tests don't depend on real network/DNS. Public IP by default; tests
 // that need a different resolution override with mockResolvedValueOnce.
-const dnsLookupMock = vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+const dnsLookupMock = vi
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
 vi.mock('node:dns/promises', () => ({
   lookup: (...args: unknown[]) => dnsLookupMock(...args),
 }));
@@ -28,10 +30,57 @@ import { extractConceptsTool } from '@studiq/server/agents/tools/generic/extract
 import { fetchMaterialTool } from '@studiq/server/agents/tools/generic/fetch-material.tool';
 import { finishTool } from '@studiq/server/agents/tools/generic/finish.tool';
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
-import { generateText } from 'ai';
+import { generateText, type ToolExecutionOptions } from 'ai';
+import type { Mock } from 'vitest';
 
-function mockCtx(overrides?: Record<string, unknown>) {
+/** The agent context the tool implementations (and these tests) read. */
+type ToolContextMock = {
+  trace: { log: Mock; getByConversation: Mock; getAll: Mock; clear: Mock };
+  state: Record<string, unknown>;
+  callbacks: {
+    onThinking: Mock;
+    onQuestion: Mock;
+    onToolCall: Mock;
+    onToolResult: Mock;
+    onFlashcards: Mock;
+    onComplete: Mock;
+    onError: Mock;
+    onStep: Mock;
+  };
+  agentRegistry: { get: Mock; getAll: Mock };
+};
+
+/** The result `askUserTool` answers with. */
+type QuestionToolResult = {
+  type: string;
+  question: { id: string; question: string; options?: Array<{ label: string; value: string }> };
+};
+
+/** `extractConceptsTool` answers with the concepts it parsed out of the task. */
+type TermsToolResult = { terms?: Array<{ term: string; definition: string }> };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isQuestionToolResult(value: unknown): value is QuestionToolResult {
+  return isRecord(value) && isRecord(value.question) && typeof value.question.id === 'string';
+}
+
+function isTermsToolResult(value: unknown): value is TermsToolResult {
+  return (
+    isRecord(value) &&
+    (!('terms' in value) || value.terms === undefined || Array.isArray(value.terms))
+  );
+}
+
+function mockCtx(
+  overrides?: Record<string, unknown>,
+): ToolContextMock & ToolExecutionOptions<Record<string, unknown>> {
   return {
+    toolCallId: 'test-tool-call',
+    messages: [],
+    context: {},
     trace: { log: vi.fn(), getByConversation: vi.fn(), getAll: vi.fn(), clear: vi.fn() },
     state: {
       text: 'test task',
@@ -41,7 +90,7 @@ function mockCtx(overrides?: Record<string, unknown>) {
       concepts: undefined,
       results: {},
       metadata: {},
-      ...(overrides as Record<string, unknown>),
+      ...overrides,
     },
     callbacks: {
       onThinking: vi.fn(),
@@ -57,7 +106,7 @@ function mockCtx(overrides?: Record<string, unknown>) {
       get: vi.fn(),
       getAll: vi.fn(),
     },
-  } as any;
+  };
 }
 
 beforeEach(() => {
@@ -67,10 +116,11 @@ beforeEach(() => {
 describe('askUserTool', () => {
   it('returns a question object with generated id', async () => {
     const ctx = mockCtx();
-    const result = await askUserTool.execute(
+    const result: unknown = await askUserTool.execute(
       { question: 'What topic?', options: [{ label: 'A', value: 'a' }] },
       ctx,
     );
+    if (!isQuestionToolResult(result)) throw new Error('expected a question result');
     expect(result.type).toBe('question');
     expect(result.question.id).toMatch(/^q_\d+_/);
     expect(result.question.question).toBe('What topic?');
@@ -128,9 +178,10 @@ describe('extractConceptsTool', () => {
   it('returns terms passed in args', async () => {
     const ctx = mockCtx();
     const terms = [{ term: 'T1', definition: 'D1' }];
-    const result = await extractConceptsTool.execute({ terms }, ctx);
+    const result: unknown = await extractConceptsTool.execute({ terms }, ctx);
+    if (!isTermsToolResult(result) || !result.terms) throw new Error('expected tool terms');
     expect(result.terms).toHaveLength(1);
-    expect(result.terms![0].term).toBe('T1');
+    expect(result.terms[0].term).toBe('T1');
   });
 
   it('returns empty array when terms is empty', async () => {
@@ -154,23 +205,22 @@ describe('fetchMaterialTool', () => {
     await fetchMaterialTool.execute({ topic: 'Math', focusAreas: ['Algebra', 'Geometry'] }, ctx);
     expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringContaining('Algebra'),
+        prompt: expect.stringContaining('Algebra') as unknown,
       }),
     );
   });
 });
 
 describe('webfetchTool', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   it('fetches URL and returns content', async () => {
     const ctx = mockCtx();
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve('Webpage content about biology.'),
-    });
+    fetchMock.mockResolvedValue(new Response('Webpage content about biology.'));
     const result = await webfetchTool.execute({ url: 'https://example.com/biology' }, ctx);
     expect(result.content).toBe('Webpage content about biology.');
     expect(result.url).toBe('https://example.com/biology');
@@ -179,7 +229,7 @@ describe('webfetchTool', () => {
 
   it('returns error on HTTP failure', async () => {
     const ctx = mockCtx();
-    (global.fetch as any).mockResolvedValue({ ok: false, status: 404, statusText: 'Not Found' });
+    fetchMock.mockResolvedValue(new Response(null, { status: 404, statusText: 'Not Found' }));
     const result = await webfetchTool.execute({ url: 'https://example.com/missing' }, ctx);
     expect(result.error).toContain('HTTP 404');
     expect(result.content).toBe('');
@@ -187,7 +237,7 @@ describe('webfetchTool', () => {
 
   it('returns error on network failure', async () => {
     const ctx = mockCtx();
-    (global.fetch as any).mockRejectedValue(new Error('ENOTFOUND'));
+    fetchMock.mockRejectedValue(new Error('ENOTFOUND'));
     const result = await webfetchTool.execute({ url: 'https://invalid.example.com' }, ctx);
     expect(result.error).toContain('Fetch failed');
     expect(result.content).toBe('');
@@ -195,7 +245,7 @@ describe('webfetchTool', () => {
 
   it('stores sourceUrl in result', async () => {
     const ctx = mockCtx();
-    (global.fetch as any).mockResolvedValue({ ok: true, text: () => Promise.resolve('content') });
+    fetchMock.mockResolvedValue(new Response('content'));
     const result = await webfetchTool.execute({ url: 'https://example.com/article' }, ctx);
     expect(result.url).toBe('https://example.com/article');
   });

@@ -1,6 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { GroupController } from '@studiq/server/controllers/group.controller';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import { GroupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/features', () => ({
@@ -8,7 +9,9 @@ vi.mock('@studiq/server/lib/features', () => ({
 }));
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new GroupService(() => Promise.reject(new Error('unused'))), {
     listGroups: vi.fn(),
     createGroup: vi.fn(),
     updateGroup: vi.fn(),
@@ -17,7 +20,7 @@ function createMockService() {
     listAddableMembers: vi.fn(),
     setGroupMembers: vi.fn(),
     listMyGroups: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -26,7 +29,7 @@ let controller: GroupController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'educator' as any,
+  accountType: AccountType.EDUCATOR,
   orgRoleId: null,
   activeOrgId: 'org-1',
   url: 'http://localhost',
@@ -39,7 +42,7 @@ describe('GroupController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new GroupController(mockService as any);
+    controller = new GroupController(mockService);
   });
 
   describe('listGroups', () => {
@@ -71,7 +74,7 @@ describe('GroupController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
-      expect((response as any).data).toEqual(group);
+      expect(response).toHaveProperty('data', group);
     });
 
     it('returns 422 on invalid body', async () => {
@@ -189,7 +192,7 @@ describe('GroupController', () => {
         name: '  Updated  ',
       });
 
-      const payload = mockService.updateGroup.mock.calls.at(-1)?.[2];
+      const payload: unknown = mockService.updateGroup.mock.calls.at(-1)?.[2];
       expect(payload).toEqual({ name: 'Updated' });
       expect(payload).not.toHaveProperty('description');
     });

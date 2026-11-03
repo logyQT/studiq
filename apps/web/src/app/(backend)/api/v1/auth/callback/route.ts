@@ -4,7 +4,7 @@ import { warn } from '@studiq/server/lib/log';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { withPublicTracing } from '@studiq/server/lib/with-public-tracing';
 import { authService } from '@studiq/server/services/auth.service';
-import type { EmailOtpType, User } from '@supabase/supabase-js';
+import type { User } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 
 const FALLBACK_REDIRECT = '/';
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     const { searchParams, origin } = req.nextUrl;
 
     const token_hash = searchParams.get('token_hash');
-    const type = searchParams.get('type') as EmailOtpType | null;
+    const type = searchParams.get('type');
 
     const code = searchParams.get('code');
 

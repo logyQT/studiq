@@ -9,6 +9,7 @@
  */
 import { expect, test } from '@playwright/test';
 import { deterministicAdminTestKey, signAdminRequest } from '#test/helpers/admin-pem';
+import { json } from '#test/helpers/json';
 
 const key = deterministicAdminTestKey('e2e-admin');
 
@@ -21,7 +22,7 @@ test.describe('admin PEM gate', () => {
 
     expect(response.status()).toBe(200);
 
-    const body = (await response.json()) as { success?: boolean; data?: unknown };
+    const body = await json<{ success?: boolean; data?: unknown }>(response);
     expect(body.success).toBe(true);
     expect(Array.isArray(body.data)).toBe(true);
   });

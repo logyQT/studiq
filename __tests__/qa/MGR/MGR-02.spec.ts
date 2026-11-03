@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -207,7 +208,7 @@ test('the manager sidebar has two sections whose entries all open their pages', 
     },
   });
   expect(ai.status(), 'POST /api/v1/ai/chat as a manager').toBe(403);
-  const aiBody = (await ai.json()) as { success: boolean; error?: string };
+  const aiBody = await json<{ success: boolean; error?: string }>(ai);
   expect(aiBody).toMatchObject({ success: false, error: 'FORBIDDEN' });
 
   expect(pageErrors, 'uncaught page errors').toEqual([]);

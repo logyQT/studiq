@@ -3,6 +3,7 @@ import { type CatalogPlan, type ListedPrice } from '@studiq/server/lib/payment/s
 import { failure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -180,51 +181,65 @@ const ACTIVE_SUBSCRIPTION_STATUSES = ['active', 'trialing', 'past_due'];
  */
 const PROCESSING_LEASE_MS = 5 * 60 * 1000;
 
-function mapCustomer(row: Record<string, unknown>): CustomerRow {
+type CustomerRowShape = Pick<
+  Database['public']['Tables']['billing_customers']['Row'],
+  'id' | 'stripe_customer_id' | 'user_id' | 'organization_id' | 'livemode'
+>;
+
+function mapCustomer(row: CustomerRowShape): CustomerRow {
   return {
-    id: row.id as string,
-    stripeCustomerId: row.stripe_customer_id as string,
-    userId: (row.user_id as string | null) ?? null,
-    organizationId: (row.organization_id as string | null) ?? null,
-    livemode: row.livemode as boolean,
+    id: row.id,
+    stripeCustomerId: row.stripe_customer_id,
+    userId: row.user_id,
+    organizationId: row.organization_id,
+    livemode: row.livemode,
   };
 }
 
-function mapSubscription(row: Record<string, unknown>): SubscriptionMirror {
+function mapSubscription(
+  row: Database['public']['Tables']['billing_subscriptions']['Row'],
+): SubscriptionMirror {
   return {
-    id: row.id as string,
-    stripeSubscriptionId: row.stripe_subscription_id as string,
-    billingCustomerId: row.billing_customer_id as string,
-    userId: (row.user_id as string | null) ?? null,
-    organizationId: (row.organization_id as string | null) ?? null,
-    purchaserUserId: (row.purchaser_user_id as string | null) ?? null,
-    checkoutSessionId: (row.checkout_session_id as string | null) ?? null,
-    planKey: row.plan_key as string,
-    priceId: row.price_id as string,
-    status: row.status as string,
-    currentPeriodStart: (row.current_period_start as string | null) ?? null,
-    currentPeriodEnd: (row.current_period_end as string | null) ?? null,
-    cancelAtPeriodEnd: (row.cancel_at_period_end as boolean | null) ?? false,
-    cancelAt: (row.cancel_at as string | null) ?? null,
-    canceledAt: (row.canceled_at as string | null) ?? null,
-    lastEventCreated: (row.last_event_created as number | null) ?? 0,
-    livemode: row.livemode as boolean,
+    id: row.id,
+    stripeSubscriptionId: row.stripe_subscription_id,
+    billingCustomerId: row.billing_customer_id,
+    userId: row.user_id,
+    organizationId: row.organization_id,
+    purchaserUserId: row.purchaser_user_id,
+    checkoutSessionId: row.checkout_session_id,
+    planKey: row.plan_key,
+    priceId: row.price_id,
+    status: row.status,
+    currentPeriodStart: row.current_period_start,
+    currentPeriodEnd: row.current_period_end,
+    cancelAtPeriodEnd: row.cancel_at_period_end,
+    cancelAt: row.cancel_at,
+    canceledAt: row.canceled_at,
+    lastEventCreated: row.last_event_created,
+    livemode: row.livemode,
   };
 }
 
-function mapPrice(row: Record<string, unknown>): ListedPrice {
+type PriceRowShape = Pick<
+  Database['public']['Tables']['stripe_prices']['Row'],
+  'plan_key' | 'stripe_price_id' | 'currency' | 'unit_amount' | 'interval' | 'active'
+>;
+
+function mapPrice(row: PriceRowShape): ListedPrice {
   return {
-    planKey: row.plan_key as string,
-    stripePriceId: row.stripe_price_id as string,
-    currency: row.currency as string,
-    unitAmount: row.unit_amount as number,
-    interval: row.interval as string,
-    active: row.active as boolean,
+    planKey: row.plan_key,
+    stripePriceId: row.stripe_price_id,
+    currency: row.currency,
+    unitAmount: row.unit_amount,
+    interval: row.interval,
+    active: row.active,
   };
 }
 
 export class SupabaseStripeWebhookRepository implements StripeWebhookRepository {
-  constructor(private readonly createAdminClient: () => SupabaseClient = createServiceClient) {}
+  constructor(
+    private readonly createAdminClient: () => SupabaseClient<Database> = createServiceClient,
+  ) {}
 
   async claimEvent(input: WebhookEventInput): Promise<ServiceResult<WebhookEventClaim>> {
     const supabase = this.createAdminClient();
@@ -241,7 +256,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
       .maybeSingle();
 
     if (!error && data) {
-      return success({ outcome: 'claimed', receivedAt: data.received_at as string });
+      return success({ outcome: 'claimed', receivedAt: data.received_at });
     }
     if (!error) return failure('INTERNAL_SERVER');
     if (error.code !== '23505') return toDbFailure(error);
@@ -263,7 +278,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     const isFailed = existing.status === 'failed';
     const isStaleProcessing =
       existing.status === 'processing' &&
-      Date.now() - new Date(existing.received_at as string).getTime() >= PROCESSING_LEASE_MS;
+      Date.now() - new Date(existing.received_at).getTime() >= PROCESSING_LEASE_MS;
     if (!isFailed && !isStaleProcessing) {
       return success({ outcome: 'duplicate', receivedAt: null });
     }
@@ -288,7 +303,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
       return success({ outcome: 'duplicate', receivedAt: null });
     }
 
-    return success({ outcome: 'retry', receivedAt: reclaimed[0].received_at as string });
+    return success({ outcome: 'retry', receivedAt: reclaimed[0].received_at });
   }
 
   async finishEvent(
@@ -500,8 +515,8 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     if (!data) return success(null);
 
     return success({
-      stripeSubscriptionId: data.stripe_subscription_id as string,
-      planKey: data.plan_key as string,
+      stripeSubscriptionId: data.stripe_subscription_id,
+      planKey: data.plan_key,
     });
   }
 
@@ -531,12 +546,12 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     if (!data) return success(null);
 
     return success({
-      key: data.key as string,
-      name: (data.name as string | null) ?? (data.key as string),
-      priceMonthly: (data.price_monthly as number | null) ?? 0,
-      currency: (data.currency as string | null) ?? 'PLN',
-      isActive: (data.is_active as boolean | null) ?? true,
-      forAccountType: (data.for_account_type as string | null) ?? null,
+      key: data.key,
+      name: data.name,
+      priceMonthly: data.price_monthly ?? 0,
+      currency: data.currency ?? 'PLN',
+      isActive: data.is_active ?? true,
+      forAccountType: data.for_account_type,
     });
   }
 
@@ -598,7 +613,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
       .maybeSingle();
 
     if (error) return toDbFailure(error);
-    return success((data?.user_id as string | undefined) ?? null);
+    return success(data?.user_id ?? null);
   }
 }
 

@@ -2,7 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { accessibleFilter } from '@studiq/server/lib/authz';
 import { QuestionListQuerySchema } from '@studiq/server/models/question.model';
 import { QuestionService } from '@studiq/server/services/question.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => ({
@@ -17,13 +17,36 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
 // #651: the question list is paged, searched, filtered and sorted in the database. Without
 // `page` the endpoint still answers with the whole array (quiz builder, assignments).
 
-function chain(rows: unknown[], count?: number) {
-  const resolved = { data: rows, count, error: null };
-  const c: any = {};
-  for (const m of ['select', 'eq', 'in', 'or', 'order', 'filter', 'ilike', 'range', 'limit']) {
-    c[m] = vi.fn(() => c);
-  }
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+type QueryResult = { data: unknown; count?: number | null; error: unknown };
+
+/** A chainable Supabase query builder stub that is also awaitable. */
+type QueryBuilder = {
+  select: Mock;
+  eq: Mock;
+  in: Mock;
+  or: Mock;
+  order: Mock;
+  filter: Mock;
+  ilike: Mock;
+  range: Mock;
+  limit: Mock;
+} & Pick<Promise<QueryResult>, 'then'>;
+
+function chain(rows: unknown[], count?: number): QueryBuilder {
+  const resolved: QueryResult = { data: rows, count, error: null };
+  const promise = Promise.resolve(resolved);
+  const c: QueryBuilder = {
+    select: vi.fn(() => c),
+    eq: vi.fn(() => c),
+    in: vi.fn(() => c),
+    or: vi.fn(() => c),
+    order: vi.fn(() => c),
+    filter: vi.fn(() => c),
+    ilike: vi.fn(() => c),
+    range: vi.fn(() => c),
+    limit: vi.fn(() => c),
+    then: promise.then.bind(promise),
+  };
   return c;
 }
 
@@ -40,12 +63,12 @@ describe('QuestionService.list pagination', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new QuestionService(async () => mock as any);
+  const service = new QuestionService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    vi.mocked(accessibleFilter).mockResolvedValue({} as any);
+    vi.mocked(accessibleFilter).mockResolvedValue({});
   });
 
   it('keeps answering with a plain array, unordered, when no page is requested', async () => {
@@ -125,12 +148,12 @@ describe('QuestionService.list pagination', () => {
 
   it('answers an empty page with the REAL total for a page past the last row', async () => {
     const past = chain([]);
-    past.then = (onfulfilled: any) =>
-      Promise.resolve({
-        data: null,
-        count: null,
-        error: { code: 'PGRST103', message: 'Requested range not satisfiable' },
-      }).then(onfulfilled);
+    const pastPage = Promise.resolve({
+      data: null,
+      count: null,
+      error: { code: 'PGRST103', message: 'Requested range not satisfiable' },
+    });
+    past.then = pastPage.then.bind(pastPage);
     const countOnly = chain([], 60);
     mock.from.mockReturnValueOnce(past).mockReturnValueOnce(countOnly);
 
@@ -148,7 +171,7 @@ describe('QuestionService.list pagination', () => {
   });
 
   it('answers an empty page when the caller can read nothing', async () => {
-    vi.mocked(accessibleFilter).mockResolvedValue({ _impossible: true } as any);
+    vi.mocked(accessibleFilter).mockResolvedValue({ _impossible: true });
 
     const paged = await service.list(ctx, { page: 3, limit: 10 });
     const plain = await service.list(ctx);
@@ -184,10 +207,10 @@ describe('QuestionListQuerySchema', () => {
   });
 });
 
-describe('QuestionListQuerySchema topicIds', () => {
-  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-  const parse = (topicIds?: string) => QuestionListQuerySchema.safeParse({ topicIds });
+const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const parse = (topicIds?: string) => QuestionListQuerySchema.safeParse({ topicIds });
 
+describe('QuestionListQuerySchema topicIds', () => {
   it('is an empty list when absent', () => {
     const parsed = parse();
     expect(parsed.success && parsed.data.topicIds).toEqual([]);

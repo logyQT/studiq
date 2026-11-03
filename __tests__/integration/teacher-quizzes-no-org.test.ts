@@ -5,6 +5,7 @@ import {
   createTestUser,
   type TestUserFixture,
 } from '#test/helpers/test-user';
+import { json } from '#test/helpers/json';
 import { cleanupOrganizationDeep, createServiceClient, mockUser } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 import { GET as listTeacherQuizzes } from '@/app/(backend)/api/v1/teacher/quizzes/route';
@@ -20,6 +21,12 @@ import { GET as listTeacherQuizzes } from '@/app/(backend)/api/v1/teacher/quizze
  * PostgREST` stack, which is the only layer that reproduces the 22P02 failure.
  */
 const BASE_URL = 'http://localhost';
+
+/** Forbidden envelope of `GET /teacher/quizzes` for a caller without an active org. */
+type ForbiddenBody = { success: boolean; error?: string };
+
+/** Success envelope: the (empty) teacher-quiz list. */
+type QuizListBody = { success: boolean; data: unknown[] };
 
 describe('GET /api/v1/teacher/quizzes without an active organization (#147)', () => {
   const service = createServiceClient();
@@ -51,7 +58,7 @@ describe('GET /api/v1/teacher/quizzes without an active organization (#147)', ()
     const res = await listTeacherQuizzes(
       createNextRequest(`${BASE_URL}/api/v1/teacher/quizzes`, { method: 'GET' }),
     );
-    const body = await res.json();
+    const body = await json<ForbiddenBody>(res);
 
     expect(res.status).toBe(403);
     expect(body).toEqual({ success: false, error: 'FORBIDDEN' });
@@ -67,7 +74,7 @@ describe('GET /api/v1/teacher/quizzes without an active organization (#147)', ()
         { active_org_id: orgEducator.orgId! },
       ),
     );
-    const body = await res.json();
+    const body = await json<QuizListBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
@@ -84,7 +91,7 @@ describe('GET /api/v1/teacher/quizzes without an active organization (#147)', ()
         { active_org_id: orgEducator.orgId! },
       ),
     );
-    const body = await res.json();
+    const body = await json<ForbiddenBody>(res);
 
     expect(res.status).toBe(403);
     expect(body).toEqual({ success: false, error: 'FORBIDDEN' });

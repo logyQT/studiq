@@ -3,7 +3,7 @@ import { AppError } from '@studiq/server/lib/errors';
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import { QuestionBankService } from '@studiq/server/services/question-bank.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
@@ -14,25 +14,59 @@ vi.mock('@studiq/server/services/group.service', () => ({
   groupService: { canShareContentToGroups: vi.fn() },
 }));
 
-function qb(data: any, error: any = null, count?: number) {
-  const result =
+type DbError = { message?: string; code?: string };
+type QueryResult<T> = { data: T | null; count?: number; error: DbError | null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  eq: Mock;
+  in: Mock;
+  order: Mock;
+  limit: Mock;
+  or: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  then: Promise<QueryResult<T>>['then'];
+  catch: Promise<QueryResult<T>>['catch'];
+  finally: Promise<QueryResult<T>>['finally'];
+}
+
+function qb<T>(data: T, error: DbError | null = null, count?: number): FakeQueryBuilder<T> {
+  const result: QueryResult<T> =
     count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.limit = vi.fn(() => b);
-  b.or = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue(result);
-  b.maybeSingle = vi.fn().mockResolvedValue(result);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const b: FakeQueryBuilder<T> = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
+    or: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
+  for (const method of [
+    b.select,
+    b.insert,
+    b.update,
+    b.delete,
+    b.eq,
+    b.in,
+    b.order,
+    b.limit,
+    b.or,
+  ]) {
+    method.mockImplementation(() => b);
+  }
   return b;
 }
 
@@ -54,7 +88,7 @@ describe('QuestionBankService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new QuestionBankService(async () => mock as any);
+    service = new QuestionBankService(() => Promise.resolve(mock));
     vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
       success: true,
       data: true,
@@ -299,14 +333,15 @@ describe('QuestionBankService', () => {
       const linked = { id: 'b-1', name: 'Bank', created_by: ctx.userId, groupIds: ['g-1'] };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // delete links
-      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      const insertLinks = qb(undefined); // insert links
+      mock.from.mockReturnValueOnce(insertLinks);
       mock.from.mockReturnValueOnce(qb(linked)); // getById
 
       const result = await service.update('b-1', { groupIds: ['g-1'] }, ctx);
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
-      const insertCall = mock.from.mock.results[2].value.insert;
+      const insertCall = insertLinks.insert;
       expect(insertCall).toHaveBeenCalledWith([{ bank_id: 'b-1', group_id: 'g-1' }]);
     });
 
@@ -353,7 +388,7 @@ describe('QuestionBankService', () => {
       mock.from.mockReturnValueOnce(pageQb); // question_banks query builder
       mock.from.mockReturnValueOnce(qb([{ bank_id: 'b-1' }])); // bank_groups
 
-      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+      const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('bank_groups');
@@ -365,7 +400,7 @@ describe('QuestionBankService', () => {
       mock.from.mockReturnValueOnce(pageQb); // question_banks query builder
       mock.from.mockReturnValueOnce(qb([])); // bank_groups → no linked banks
 
-      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+      const result = await service.list(ctx, { groups: ['g-1'] });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
@@ -376,7 +411,7 @@ describe('QuestionBankService', () => {
       const pageQb = qb([]);
       mock.from.mockReturnValueOnce(pageQb);
 
-      await service.list(ctx, { owner: 'mine' } as any);
+      await service.list(ctx, { owner: 'mine' });
 
       expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
       expect(mock.from).not.toHaveBeenCalledWith('bank_groups');

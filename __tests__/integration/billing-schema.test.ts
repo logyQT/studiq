@@ -83,7 +83,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const userIds = [owner?.id, other?.id].filter(Boolean) as string[];
+  const userIds = [owner?.id, other?.id].filter((id): id is string => Boolean(id));
   await service.from('payments').delete().in('user_id', userIds);
   await service.from('billing_subscriptions').delete().in('user_id', userIds);
   await service.from('billing_customers').delete().in('user_id', userIds);

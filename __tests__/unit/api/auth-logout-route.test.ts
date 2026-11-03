@@ -4,12 +4,12 @@ import { NEXT_COOKIE_EPOCH, reSerializeThroughNext } from '#test/helpers/next-co
 
 const { logout } = vi.hoisted(() => ({
   logout: vi.fn(
-    async (): Promise<{
+    (): {
       success: boolean;
       statusCode: number;
       data?: unknown;
       error?: string;
-    }> => ({
+    } => ({
       success: true,
       statusCode: 200,
       data: { message: 'SUCCESS_LOGOUT' },

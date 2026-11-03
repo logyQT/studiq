@@ -4,10 +4,9 @@ import type * as React from 'react';
 import { cn } from '../../utils';
 import { Separator } from './separator';
 
-function ItemGroup({ className, ...props }: React.ComponentProps<'div'>) {
+function ItemGroup({ className, ...props }: React.ComponentProps<'ul'>) {
   return (
-    <div
-      role="list"
+    <ul
       data-slot="item-group"
       className={cn('group/item-group flex flex-col', className)}
       {...props}
@@ -53,8 +52,8 @@ function Item({
   size = 'default',
   asChild = false,
   ...props
-}: React.ComponentProps<'div'> & VariantProps<typeof itemVariants> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : 'div';
+}: React.ComponentProps<'li'> & VariantProps<typeof itemVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : 'li';
   return (
     <Comp
       data-slot="item"

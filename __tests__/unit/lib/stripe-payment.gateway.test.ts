@@ -1,10 +1,13 @@
-import { AccountType } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { CHECKOUT_BUCKET_MS } from '@studiq/server/lib/payment/checkout-timing';
 import type { StripeConfig } from '@studiq/server/lib/payment/payment-gateway.factory';
 import type { StripeClient } from '@studiq/server/lib/payment/stripe-client';
 import { StripePaymentGateway } from '@studiq/server/lib/payment/stripe-payment.gateway';
 import type { StripeBillingRepository } from '@studiq/server/lib/payment/stripe-repository';
 import { success } from '@studiq/server/lib/service-result';
+import type { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
+import { asJson } from '#test/helpers/json';
+import { asService } from '#test/helpers/service-double';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const config: StripeConfig = {
@@ -17,7 +20,7 @@ const config: StripeConfig = {
 const NOW = new Date('2027-01-15T12:00:00.000Z');
 
 function createClient() {
-  return {
+  return asJson<StripeClient>({
     customers: { create: vi.fn().mockResolvedValue({ id: 'cus_1' }) },
     checkout: {
       sessions: {
@@ -31,7 +34,7 @@ function createClient() {
     subscriptions: { retrieve: vi.fn() },
     billingPortal: { sessions: { create: vi.fn() } },
     webhooks: { constructEvent: vi.fn() },
-  } as unknown as StripeClient;
+  });
 }
 
 function listedPrice(overrides: Record<string, unknown> = {}) {
@@ -49,7 +52,7 @@ function listedPrice(overrides: Record<string, unknown> = {}) {
 function createRepository(
   overrides: Partial<StripeBillingRepository> = {},
 ): StripeBillingRepository {
-  return {
+  return asJson<StripeBillingRepository>({
     getPlan: vi.fn().mockResolvedValue(
       success({
         key: 'spark',
@@ -74,7 +77,7 @@ function createRepository(
     findListedPrice: vi.fn(),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
     ...overrides,
-  } as unknown as StripeBillingRepository;
+  });
 }
 
 function personalInput(overrides: Record<string, unknown> = {}) {
@@ -340,8 +343,8 @@ describe('StripePaymentGateway', () => {
     await expect(
       gateway.handleWebhook({
         kind: 'mock',
-        ctx: {} as never,
-        event: {} as never,
+        ctx: asJson<RequestContext>({}),
+        event: { type: '', session_id: '', plan_id: '' },
       }),
     ).resolves.toEqual({ success: false, error: 'BAD_REQUEST' });
   });
@@ -352,7 +355,7 @@ describe('StripePaymentGateway', () => {
       client,
       config,
       repository,
-      webhooks: { handle } as never,
+      webhooks: asService<StripeWebhookService>({ handle }),
     });
 
     await expect(

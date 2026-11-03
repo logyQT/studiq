@@ -22,7 +22,7 @@ describe('notificationArea', () => {
     [null, null],
     [undefined, null],
   ])('%s -> %s', (path, area) => {
-    expect(notificationArea(path as string | null | undefined)).toBe(area);
+    expect(notificationArea(path)).toBe(area);
   });
 });
 
@@ -133,14 +133,24 @@ describe('unreadBadge', () => {
   });
 });
 
-describe('messages', () => {
-  const messages = (locale: string) =>
-    JSON.parse(
-      readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
-    );
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
+/** `Notifications` from one message file, failing loudly when the file no longer has it. */
+function notificationLabels(locale: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(
+    readFileSync(join(process.cwd(), `apps/web/src/i18n/messages/${locale}.json`), 'utf8'),
+  );
+  if (!isRecord(parsed)) throw new Error('the message file is not an object');
+  const labels = parsed.Notifications;
+  if (!isRecord(labels)) throw new Error('Notifications is missing from the message file');
+  return labels;
+}
+
+describe('messages', () => {
   it.each(['pl', 'en'])('%s: every kind of notification has a message', (locale) => {
-    const labels = messages(locale).Notifications as Record<string, string>;
+    const labels = notificationLabels(locale);
     for (const type of NOTIFICATION_TYPES) {
       expect(labels[`type_${type}`], `${locale}: type_${type}`).toBeTruthy();
     }

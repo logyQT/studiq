@@ -9,6 +9,7 @@ import { QueryProvider } from '@/components/providers/QueryProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { LocaleAnnouncerProvider } from '@/components/shared/language-switcher/locale-announcer';
 
+// eslint-disable-next-line import/no-unassigned-import -- side-effect import: global stylesheet.
 import '@/app/globals.css';
 import { ToastProvider } from '@studiq/ui';
 import { getSiteUrl } from '@studiq/server/lib/site-url';

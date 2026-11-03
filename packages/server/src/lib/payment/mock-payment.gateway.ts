@@ -60,12 +60,12 @@ export class MockPaymentGateway implements PaymentGateway {
     return this.stripe.createPortalSession(input.userId);
   }
 
-  async changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
-    return failure('NOT_FOUND');
+  changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
+    return Promise.resolve(failure('NOT_FOUND'));
   }
 
-  async cancelAtPeriodEnd(_input: CancelAtPeriodEndInput): Promise<ServiceResult<void>> {
-    return failure('NOT_FOUND');
+  cancelAtPeriodEnd(_input: CancelAtPeriodEndInput): Promise<ServiceResult<void>> {
+    return Promise.resolve(failure('NOT_FOUND'));
   }
 
   async handleWebhook(envelope: PaymentWebhookEnvelope): Promise<ServiceResult<WebhookOutcome>> {

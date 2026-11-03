@@ -1,12 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  useRealSupabase,
-  cleanupOrganizationDeep,
-  createServiceClient,
-} from '#test/integration/helpers';
+import { useRealSupabase, cleanupOrganizationDeep } from '#test/integration/helpers';
+import { createTypedServiceClient } from '#test/integration/test-utils';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -21,7 +19,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 describe(`OrgRoleService.rename display_name sync`, () => {
   const tag = `${suiteId}-${Date.now()}`;
 
-  let service: SupabaseClient;
+  let service: SupabaseClient<Database>;
   let orgId: string;
   let customRoleId: string;
 
@@ -46,11 +44,11 @@ describe(`OrgRoleService.rename display_name sync`, () => {
       .eq('id', roleId)
       .single();
     if (error || !data) throw new Error(`role read failed: ${error?.message}`);
-    return data as { name: string; display_name: string };
+    return data;
   }
 
   beforeAll(async () => {
-    service = createServiceClient();
+    service = createTypedServiceClient();
 
     const { data: org, error: orgError } = await service
       .from('organizations')
@@ -86,7 +84,7 @@ describe(`OrgRoleService.rename display_name sync`, () => {
   });
 
   it('updates name and display_name together on rename', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const newName = `Asystent Lektora ${tag}`;
 
     const result = await orgRoleService.updateRole(ctx(), customRoleId, { name: newName });
@@ -96,19 +94,20 @@ describe(`OrgRoleService.rename display_name sync`, () => {
   });
 
   it('serves the renamed label through listRoles (what the member pickers read)', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const newName = `Asystent Lektora ${tag}`;
 
     const result = await orgRoleService.listRoles(ctx());
 
     expect(result.success).toBe(true);
+    if (!result.success) throw new Error(`listRoles failed: ${result.error}`);
     const role = result.data.find((r) => r.id === customRoleId);
     expect(role).toBeDefined();
     expect(role?.displayName).toBe(newName);
   });
 
   it('leaves display_name untouched on a description-only update', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const newName = `Asystent Lektora ${tag}`;
     const before = await labelsOf(customRoleId);
 

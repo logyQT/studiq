@@ -5,13 +5,14 @@ vi.mock('@studiq/server/lib/features', () => ({
   resolveFeatures: vi.fn(),
 }));
 
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { resolveFeatures } from '@studiq/server/lib/features';
 
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '',
@@ -19,6 +20,10 @@ const mockCtx: RequestContext = {
   groupIds: [],
   permissionScopes: {},
 };
+
+function dataOf<T>(response: ControllerResponse<T>): T | undefined {
+  return response.success ? response.data : undefined;
+}
 
 describe('FeaturesController', () => {
   let controller: FeaturesController;
@@ -38,7 +43,7 @@ describe('FeaturesController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({
+      expect(dataOf(response)).toEqual({
         features: ['flashcards', 'quiz'],
         rollout: { 'ai.chat': 25 },
       });
@@ -51,7 +56,7 @@ describe('FeaturesController', () => {
       });
 
       const response = await controller.myFeatures(mockCtx);
-      expect((response as any).data.rollout).toEqual({});
+      expect(dataOf(response)?.rollout).toEqual({});
     });
   });
 });

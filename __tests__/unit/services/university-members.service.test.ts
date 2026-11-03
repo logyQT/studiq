@@ -1,26 +1,47 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrganizationMemberService } from '@studiq/server/services/organization-member.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function chain(result: any) {
-  const resolved = { data: result, error: null };
+type QueryResult = { data: unknown; error: unknown };
+
+/** A chainable Supabase query builder stub that is also awaitable. */
+type QueryBuilder = {
+  select: Mock;
+  eq: Mock;
+  in: Mock;
+  or: Mock;
+  order: Mock;
+  filter: Mock;
+  limit: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  upsert: Mock;
+} & Pick<Promise<QueryResult>, 'then'>;
+
+function chain(result: unknown): QueryBuilder {
+  const resolved: QueryResult = { data: result, error: null };
   const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  const promise = Promise.resolve(resolved);
+  const c: QueryBuilder = {
+    select: vi.fn(() => c),
+    eq: vi.fn(() => c),
+    in: vi.fn(() => c),
+    or: vi.fn(() => c),
+    order: vi.fn(() => c),
+    filter: vi.fn(() => c),
+    limit: vi.fn(() => c),
+    single: terminal,
+    maybeSingle: terminal,
+    insert: vi.fn(() => c),
+    update: vi.fn(() => c),
+    delete: vi.fn(() => c),
+    upsert: vi.fn(() => c),
+    then: promise.then.bind(promise),
+  };
   return c;
 }
 
@@ -37,7 +58,7 @@ describe('OrganizationMemberService', () => {
     groupIds: [],
     permissionScopes: {},
   };
-  const service = new OrganizationMemberService(async () => mock as any);
+  const service = new OrganizationMemberService(() => Promise.resolve(mock));
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -89,26 +110,8 @@ describe('OrganizationMemberService', () => {
         },
       ];
 
-      const orgResolved = {
-        data: members,
-        error: null,
-      };
-      const orgTerminal = vi.fn().mockResolvedValue(orgResolved);
-      const orgChain: any = {};
-      orgChain.select = vi.fn(() => orgChain);
-      orgChain.eq = vi.fn(() => orgChain);
-      orgChain.order = orgTerminal;
-      orgChain.then = (onfulfilled: any) => Promise.resolve(orgResolved).then(onfulfilled);
-
-      const groupResolved = {
-        data: [],
-        error: null,
-      };
-      const groupTerminal = vi.fn().mockResolvedValue(groupResolved);
-      const groupChain: any = {};
-      groupChain.select = vi.fn(() => groupChain);
-      groupChain.in = vi.fn(() => groupChain);
-      groupChain.eq = groupTerminal;
+      const orgChain = chain(members);
+      const groupChain = chain([]);
 
       mock.from.mockReturnValueOnce(orgChain);
       mock.from.mockReturnValue(groupChain);

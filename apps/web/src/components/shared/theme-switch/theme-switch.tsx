@@ -142,9 +142,9 @@ export function ThemeSwitch({ size = 'md', className }: ThemeSwitchProps) {
       >
         {hint}
       </span>
-      <span className="sr-only" role="status" aria-live="polite">
+      <output className="sr-only" aria-live="polite">
         {announcement}
-      </span>
+      </output>
 
       <span
         role="radiogroup"
@@ -177,6 +177,9 @@ export function ThemeSwitch({ size = 'md', className }: ThemeSwitchProps) {
                 cellRefs.current[i] = el;
               }}
               type="button"
+              // A custom radio: the button hosts the icon and is measured for the sliding thumb,
+              // which a native `<input type="radio">` cannot render.
+              // eslint-disable-next-line jsx-a11y/prefer-tag-over-role -- see above.
               role="radio"
               aria-checked={checked}
               aria-label={label(c)}

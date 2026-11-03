@@ -44,7 +44,7 @@ export function AiChatInput({
     if (!trimmed && !file) return;
     setText('');
     reset();
-    onSend(trimmed, file ?? undefined);
+    void onSend(trimmed, file ?? undefined);
   }, [text, file, onSend, reset]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

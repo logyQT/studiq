@@ -13,10 +13,10 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 
 export class FeatureFlagController {
-  constructor(private featureFlagService: FeatureFlagService) {}
+  constructor(private service: FeatureFlagService) {}
 
   async getAll(): Promise<ControllerResponse> {
-    const result = await this.featureFlagService.getAll();
+    const result = await this.service.getAll();
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -26,7 +26,7 @@ export class FeatureFlagController {
     if (!parsed.success) {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
-    const result = await this.featureFlagService.getById(parsed.data.id);
+    const result = await this.service.getById(parsed.data.id);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -41,7 +41,7 @@ export class FeatureFlagController {
         details: parsed.error.issues,
       };
     }
-    const result = await this.featureFlagService.create(parsed.data);
+    const result = await this.service.create(parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.created(result.data);
   }
@@ -60,7 +60,7 @@ export class FeatureFlagController {
         details: parsed.error.issues,
       };
     }
-    const result = await this.featureFlagService.update(parsedId.data.id, parsed.data);
+    const result = await this.service.update(parsedId.data.id, parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -70,7 +70,7 @@ export class FeatureFlagController {
     if (!parsed.success) {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
-    const result = await this.featureFlagService.delete(parsed.data.id);
+    const result = await this.service.delete(parsed.data.id);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return { success: true, statusCode: 200, data: { success: true } };
   }

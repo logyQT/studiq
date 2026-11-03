@@ -35,7 +35,9 @@ import { Copy, Mail, Plus, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import { isArrayOf } from '@/lib/unknown-value';
 import { SrLabel } from '@/components/shared/sr-label';
 import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
 import { resolveListEmptyView } from '@/lib/list-empty-view';
@@ -103,27 +105,16 @@ export default function InvitationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetch('/api/v1/organization/roles')
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          setOrgRoles(res.data);
-        }
-      });
+    void apiGet<unknown>('/api/v1/organization/roles')
+      .then((roles) => setOrgRoles(isArrayOf<OrgRole>(roles) ? roles : []))
+      .catch(() => undefined);
   }, []);
 
   const fetchInvitations = useCallback(() => {
     setLoading(true);
     setLoadError(false);
-    fetch(`/api/v1/organization/invites?isAccepted=${showAccepted}`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          setInvitations(res.data);
-        } else {
-          setLoadError(true);
-        }
-      })
+    apiGet<unknown>(`/api/v1/organization/invites?isAccepted=${showAccepted}`)
+      .then((rows) => setInvitations(isArrayOf<Invitation>(rows) ? rows : []))
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, [showAccepted]);
@@ -178,21 +169,16 @@ export default function InvitationsPage() {
 
     setSending(true);
     try {
-      const res = await fetch('/api/v1/organization/invites/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invitations: payload }),
-      });
-
-      const resJson = await res.json().catch(() => null);
-      const bulkResults: InvitationResult[] = Array.isArray(resJson?.data?.results)
-        ? resJson.data.results
-        : [];
+      const body = await apiPost<{ results?: InvitationResult[] }>(
+        '/api/v1/organization/invites/bulk',
+        { invitations: payload },
+      );
+      const bulkResults = Array.isArray(body.results) ? body.results : [];
 
       // The endpoint is all-or-nothing: anything short of a 2xx carrying one
       // result per entry is a failure. Never report a partial send as success,
       // and keep the rows so the manager can retry.
-      if (!res.ok || !resJson?.success || bulkResults.length !== payload.length) {
+      if (bulkResults.length !== payload.length) {
         toast.error(t('send_failed'));
         return;
       }
@@ -210,16 +196,11 @@ export default function InvitationsPage() {
 
   async function handleRoleChange(invitationId: string, orgRoleId: string) {
     try {
-      const res = await fetch(`/api/v1/organization/invites/${invitationId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetOrgRoleId: orgRoleId }),
+      await apiPut(`/api/v1/organization/invites/${invitationId}`, {
+        targetOrgRoleId: orgRoleId,
       });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(t('update_success'));
-        fetchInvitations();
-      }
+      toast.success(t('update_success'));
+      fetchInvitations();
     } catch {
       toast.error(t('send_failed'));
     }
@@ -228,18 +209,13 @@ export default function InvitationsPage() {
   async function handleRevoke(invitationId: string) {
     setRevokingId(invitationId);
     try {
-      const res = await fetch(`/api/v1/organization/invites/${invitationId}`, {
-        method: 'DELETE',
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success(t('revoke_success'));
-        // Mark the send result of exactly this invitation as cancelled (#258).
-        setResults((prev) =>
-          prev.map((r) => (r.data?.invitationId === invitationId ? { ...r, cancelled: true } : r)),
-        );
-        fetchInvitations();
-      }
+      await apiDelete(`/api/v1/organization/invites/${invitationId}`);
+      toast.success(t('revoke_success'));
+      // Mark the send result of exactly this invitation as cancelled (#258).
+      setResults((prev) =>
+        prev.map((r) => (r.data?.invitationId === invitationId ? { ...r, cancelled: true } : r)),
+      );
+      fetchInvitations();
     } catch {
       toast.error(t('send_failed'));
     } finally {
@@ -395,7 +371,7 @@ export default function InvitationsPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        navigator.clipboard.writeText(result.data!.inviteCode!);
+                        void navigator.clipboard.writeText(result.data!.inviteCode!);
                         toast.success(t('link_copied'));
                       }}
                     >
@@ -412,7 +388,7 @@ export default function InvitationsPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        navigator.clipboard.writeText(result.data!.inviteLink!);
+                        void navigator.clipboard.writeText(result.data!.inviteLink!);
                         toast.success(t('link_copied'));
                       }}
                     >

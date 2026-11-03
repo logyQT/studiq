@@ -1,30 +1,25 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SearchResult } from '@studiq/server/models/search.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
-
-type RpcRow = {
-  id: string;
-  front: string;
-  back: string;
-  rank: number;
-  deck_id: string | null;
-  deck_name: string | null;
-};
+import type { Database } from '../types/database';
 
 export class SearchService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async search(q: string, ctx: RequestContext, limit = 10): Promise<ServiceResult<SearchResult[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return success([]);
+    if (isImpossibleFilter(filter)) return success([]);
 
+    // The search RPC's parameters are nullable with a SQL `DEFAULT NULL`, so the
+    // `null` that means "no filter" is kept (see `nullableRpcArg`).
     let p_user_id: string | null = null;
     let p_organization_id: string | null = null;
 
@@ -45,7 +40,7 @@ export class SearchService {
 
     if (error) return toDbFailure(error);
 
-    const rows = data as RpcRow[] | null;
+    const rows = data;
     if (!rows || rows.length === 0) return success([]);
 
     const basePath = ctx.accountType === AccountType.EDUCATOR ? '/edu' : '/app';

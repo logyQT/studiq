@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loadTenant, loginAs, type QaRole } from '@qa/fixtures/qa-tenant';
+import { json } from '#test/helpers/json';
+import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
  * AUT-11 — Zalogowany użytkownik na /login i /register.
@@ -65,9 +66,9 @@ async function expectImmediateRedirect(
 }
 
 /** Sign in through the product API and keep the session in this page's context. */
-async function signIn(page: Page, role: QaRole): Promise<void> {
+async function signIn(page: Page, role: keyof typeof DASHBOARDS): Promise<void> {
   const tenant = loadTenant(CASE);
-  const dashboard = DASHBOARDS[role as keyof typeof DASHBOARDS];
+  const dashboard = DASHBOARDS[role];
   expect(dashboard, `${CASE} has no dashboard for role ${role}`).toBeTruthy();
   expect(tenant.users[role], `tenant ${CASE} has no seeded ${role}`).toBeTruthy();
 
@@ -92,9 +93,9 @@ test.describe('AUT-11 — a signed-in user on /login and /register', () => {
     // The session behind the redirect is the tenant's own educator.
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.ok(), 'GET /api/v1/auth/me').toBe(true);
-    const body = (await me.json()) as {
+    const body = await json<{
       data?: { user?: { email?: string; app_metadata?: { account_type?: string } } };
-    };
+    }>(me);
     expect(body.data?.user?.email).toBe(tenant.users.teacher?.email);
     expect(body.data?.user?.app_metadata?.account_type).toBe('educator');
 

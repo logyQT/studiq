@@ -2,7 +2,7 @@
 
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { cn } from '../../utils';
 import { Badge } from './badge';
 import { Button } from './button';
@@ -37,6 +37,7 @@ export function MultiSelect({
 }: MultiSelectProps) {
   const t = useTranslations('MultiSelectComponent');
   const [open, setOpen] = useState(false);
+  const listboxId = useId();
 
   const resolvedPlaceholder = placeholder ?? t('placeholder');
   const resolvedEmptyText = emptyText ?? t('no_results');
@@ -52,10 +53,16 @@ export function MultiSelect({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
+        {/* The trigger is a button on purpose: it renders the selected chips, which an
+            <input>/<select> cannot host, and `role=combobox` is what the e2e specs target.
+            The chip's remove control stays a `role=button` span for the same reason: a nested
+            `<button>` would make the HTML parser close the trigger button (hydration mismatch). */}
+        {/* eslint-disable jsx-a11y/prefer-tag-over-role -- see above: neither element can become the tag the rule suggests. */}
         <Button
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-controls={listboxId}
           className={cn('h-auto min-h-10 w-full justify-between', className)}
         >
           <div className="flex flex-wrap gap-1">
@@ -98,8 +105,9 @@ export function MultiSelect({
           </div>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
+        {/* eslint-enable jsx-a11y/prefer-tag-over-role */}
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+      <PopoverContent id={listboxId} className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <CommandInput placeholder={t('search')} />
           <CommandList>

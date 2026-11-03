@@ -14,6 +14,7 @@ import type {
   UpdateTeacherAssignmentInput,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 import {
   type Notifier,
   noopNotifier,
@@ -25,7 +26,9 @@ import {
  * `GET /api/v1/quiz/:attemptId`, which maps it to `answers` (#349). The start
  * payload never serialises the raw column, so both payload shapes stay equal.
  */
-function toAttemptPayload(attempt: Record<string, unknown>): Record<string, unknown> {
+function toAttemptPayload<T extends { draft_answers?: unknown }>(
+  attempt: T,
+): Omit<T, 'draft_answers'> {
   const { draft_answers: _draftAnswers, ...attemptFields } = attempt;
   return attemptFields;
 }
@@ -43,15 +46,19 @@ const TARGET_CHUNK = 200;
 const STUDENT_ATTEMPT_SELECT =
   'assignment_id, id, score, total_questions, total_points, completed_at, started_at';
 
-interface StudentAttemptSummaryRow {
-  assignment_id: string;
-  id: string;
-  score: number;
-  total_questions: number;
-  total_points: number | null;
-  completed_at: string | null;
-  started_at: string | null;
-}
+type QuizAttemptRow = Database['public']['Tables']['quiz_attempts']['Row'];
+
+/** The slice of a `quiz_attempts` row `STUDENT_ATTEMPT_SELECT` projects. */
+type StudentAttemptSummaryRow = Pick<
+  Database['public']['Tables']['quiz_attempts']['Row'],
+  | 'assignment_id'
+  | 'id'
+  | 'score'
+  | 'total_questions'
+  | 'total_points'
+  | 'completed_at'
+  | 'started_at'
+>;
 
 export type AnswersExportStatus = 'graded' | 'submitted' | 'in_progress';
 
@@ -78,7 +85,7 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 
 export class TeacherAssignmentService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     /** Tells students about a published assignment and a first grade; none in unit tests. */
     private notifier: Notifier = noopNotifier,
   ) {}
@@ -87,9 +94,9 @@ export class TeacherAssignmentService {
     data: CreateTeacherAssignmentInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
-    const insertData: Record<string, unknown> = {
+    const insertData: Database['public']['Tables']['teacher_assignments']['Insert'] = {
       organization_id: ctx.activeOrgId,
       created_by: ctx.userId,
       title: data.title,
@@ -146,7 +153,7 @@ export class TeacherAssignmentService {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
@@ -169,7 +176,7 @@ export class TeacherAssignmentService {
   }
 
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const scope = ctx.permissionScopes['assignment.read'];
 
@@ -194,12 +201,12 @@ export class TeacherAssignmentService {
     data: UpdateTeacherAssignmentInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {};
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.deadline !== undefined) updateData.deadline = data.deadline;
@@ -223,7 +230,7 @@ export class TeacherAssignmentService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -234,7 +241,7 @@ export class TeacherAssignmentService {
   }
 
   async unpublish(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -266,7 +273,7 @@ export class TeacherAssignmentService {
     startTime: string | undefined,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -287,7 +294,7 @@ export class TeacherAssignmentService {
       .eq('id', id)
       .single();
 
-    const updateData: Record<string, unknown> = {
+    const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {
       status: 'published',
       updated_at: new Date().toISOString(),
     };
@@ -314,7 +321,7 @@ export class TeacherAssignmentService {
     data: AddQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -357,7 +364,7 @@ export class TeacherAssignmentService {
     questionId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -377,7 +384,7 @@ export class TeacherAssignmentService {
     data: ReorderQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -406,7 +413,7 @@ export class TeacherAssignmentService {
     data: RandomizeInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -454,7 +461,7 @@ export class TeacherAssignmentService {
     const available = (allQuestions ?? []).filter((q) => !existingIds.has(q.id));
     if (available.length === 0) return success({ added: 0 });
 
-    const shuffled = [...available].sort(() => Math.random() - 0.5);
+    const shuffled = [...available].toSorted(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(data.count, shuffled.length));
 
     const { data: maxOrder } = await supabase
@@ -483,7 +490,7 @@ export class TeacherAssignmentService {
     data: SetTargetsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -526,7 +533,7 @@ export class TeacherAssignmentService {
   }
 
   async getResults(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -546,7 +553,7 @@ export class TeacherAssignmentService {
     studentId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -583,7 +590,7 @@ export class TeacherAssignmentService {
     data: GradeAnswerInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -665,9 +672,9 @@ export class TeacherAssignmentService {
    * set. A missing key means the question is no longer part of the assignment.
    */
   private async loadAssignmentPoints(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     assignmentId: string,
-  ): Promise<ServiceResult<Map<string, number>>> {
+  ): Promise<ServiceResult<Map<string | null, number>>> {
     const { data, error } = await supabase
       .from('assignment_questions')
       .select('question_id, points')
@@ -684,7 +691,7 @@ export class TeacherAssignmentService {
    * questions store one row per selected unit.
    */
   private async computeAttemptScore(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     attemptId: string,
     assignmentId: string,
   ): Promise<ServiceResult<number>> {
@@ -698,7 +705,10 @@ export class TeacherAssignmentService {
 
     if (answersError) return toDbFailure(answersError);
 
-    const perQuestion = new Map<string, { teacherPoints: number | null; isCorrect: boolean }>();
+    const perQuestion = new Map<
+      string | null,
+      { teacherPoints: number | null; isCorrect: boolean }
+    >();
     for (const answer of answers ?? []) {
       const entry = perQuestion.get(answer.question_id) ?? {
         teacherPoints: null,
@@ -738,7 +748,7 @@ export class TeacherAssignmentService {
    * Same rule as the list endpoint, so id-based access cannot bypass it.
    */
   private async isAssignmentTarget(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     assignment: {
       created_by?: string | null;
       organization_id?: string | null;
@@ -794,7 +804,7 @@ export class TeacherAssignmentService {
    * the pages can still render „Ukończono” without revealing the result.
    */
   private summarizeAttempts(rows: StudentAttemptSummaryRow[], showResults: boolean) {
-    const ordered = [...rows].sort((a, b) => {
+    const ordered = [...rows].toSorted((a, b) => {
       const at = a.started_at ? new Date(a.started_at).getTime() : 0;
       const bt = b.started_at ? new Date(b.started_at).getTime() : 0;
       return at - bt || a.id.localeCompare(b.id);
@@ -810,7 +820,7 @@ export class TeacherAssignmentService {
   }
 
   async listForStudent(ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const [{ data: groups, error: groupError }, { data: orgRows, error: orgError }] =
       await Promise.all([
@@ -839,8 +849,7 @@ export class TeacherAssignmentService {
       if (a.created_by === ctx.userId) return true;
       const targets = a.assignment_targets ?? [];
       return targets.some(
-        (t: { group_id?: string; student_id?: string }) =>
-          (t.group_id && groupIds.includes(t.group_id)) || t.student_id === ctx.userId,
+        (t) => (t.group_id && groupIds.includes(t.group_id)) || t.student_id === ctx.userId,
       );
     });
 
@@ -853,8 +862,8 @@ export class TeacherAssignmentService {
 
     if (attemptsError) return toDbFailure(attemptsError);
 
-    const attemptsByAssignment = new Map<string, StudentAttemptSummaryRow[]>();
-    for (const row of (attempts ?? []) as StudentAttemptSummaryRow[]) {
+    const attemptsByAssignment = new Map<string | null, StudentAttemptSummaryRow[]>();
+    for (const row of attempts ?? []) {
       const rows = attemptsByAssignment.get(row.assignment_id) ?? [];
       rows.push(row);
       attemptsByAssignment.set(row.assignment_id, rows);
@@ -862,14 +871,14 @@ export class TeacherAssignmentService {
 
     const result = filtered.map((a) => ({
       ...a,
-      ...this.summarizeAttempts(attemptsByAssignment.get(a.id) ?? [], a.show_results === true),
+      ...this.summarizeAttempts(attemptsByAssignment.get(a.id) ?? [], a.show_results),
     }));
 
     return success(result);
   }
 
   async getForStudent(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
@@ -895,15 +904,12 @@ export class TeacherAssignmentService {
 
     return success({
       ...assignment,
-      ...this.summarizeAttempts(
-        (attempts ?? []) as StudentAttemptSummaryRow[],
-        assignment.show_results === true,
-      ),
+      ...this.summarizeAttempts(attempts ?? [], assignment.show_results),
     });
   }
 
   async startAttempt(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: assignment, error: assignmentError } = await supabase
       .from('teacher_assignments')
@@ -963,7 +969,7 @@ export class TeacherAssignmentService {
 
     let orderedQuestions = [...questions];
     if (assignment.shuffle_questions) {
-      orderedQuestions = orderedQuestions.sort(() => Math.random() - 0.5);
+      orderedQuestions = orderedQuestions.toSorted(() => Math.random() - 0.5);
     }
 
     // Snapshot the assignment's scale on the attempt: an assignment is scored
@@ -971,20 +977,21 @@ export class TeacherAssignmentService {
     // questions change later (same reasoning as total_questions).
     const totalPoints = orderedQuestions.reduce((sum, q) => sum + (q.points ?? 1), 0);
 
+    // `assignment_questions.question_id` is nullable (`ON DELETE SET NULL`); a row
+    // whose question is gone has nothing to load, so it is left out of the read.
+    const questionIds = orderedQuestions.flatMap((q) => (q.question_id ? [q.question_id] : []));
+
     const { data: fullQuestions, error: questionsError } = await supabase
       .from('questions')
       .select(IN_PROGRESS_QUESTION_SELECT)
-      .in(
-        'id',
-        orderedQuestions.map((q) => q.question_id),
-      );
+      .in('id', questionIds);
 
     if (questionsError) return toDbFailure(questionsError);
 
     if (assignment.shuffle_answers) {
       for (const q of fullQuestions ?? []) {
         if (q.question_answers) {
-          q.question_answers = q.question_answers.sort(() => Math.random() - 0.5);
+          q.question_answers = q.question_answers.toSorted(() => Math.random() - 0.5);
         }
       }
     }
@@ -1020,11 +1027,11 @@ export class TeacherAssignmentService {
       return toDbFailure(attemptError);
     }
 
-    const attemptQuestions = orderedQuestions.map((q, i) => ({
-      attempt_id: attempt.id,
-      question_id: q.question_id,
-      order_index: i,
-    }));
+    // Same nullable `question_id`: a link row without a question would be
+    // rejected by the insert, so it is skipped and the original order kept.
+    const attemptQuestions = orderedQuestions.flatMap((q, i) =>
+      q.question_id ? [{ attempt_id: attempt.id, question_id: q.question_id, order_index: i }] : [],
+    );
 
     const { error: linkError } = await supabase
       .from('quiz_attempt_questions')
@@ -1047,13 +1054,13 @@ export class TeacherAssignmentService {
    * original start, so „Kontynuuj” shows the questions the student already had.
    */
   private async loadAttemptForTake(
-    supabase: SupabaseClient,
-    attempt: Record<string, unknown>,
+    supabase: SupabaseClient<Database>,
+    attempt: QuizAttemptRow,
   ): Promise<ServiceResult<unknown>> {
     const { data: rows, error } = await supabase
       .from('quiz_attempt_questions')
       .select(`order_index, question_id, questions(${IN_PROGRESS_QUESTION_SELECT})`)
-      .eq('attempt_id', attempt.id as string)
+      .eq('attempt_id', attempt.id)
       .order('order_index', { ascending: true });
 
     if (error) return toDbFailure(error);
@@ -1074,7 +1081,7 @@ export class TeacherAssignmentService {
     studentId: string | undefined,
     ctx: RequestContext,
   ): Promise<ServiceResult<AnswersExportRow[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
@@ -1122,7 +1129,7 @@ export class TeacherAssignmentService {
     imageUrl: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempt } = await supabase
       .from('quiz_attempts')
@@ -1155,7 +1162,7 @@ export class TeacherAssignmentService {
    * are sent in chunks so a large class does not overflow the request URL.
    */
   private async hasForeignTargets(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     assignmentId: string,
     data: SetTargetsInput,
     ctx: RequestContext,
@@ -1171,7 +1178,7 @@ export class TeacherAssignmentService {
       .single();
     // Fail closed: a failed read must not be mistaken for a personal (no-organisation) row.
     if (assignmentError || !assignment) return true;
-    const organizationId = assignment.organization_id as string | null;
+    const organizationId = assignment.organization_id;
 
     if (organizationId === null) {
       if (groupIds.length === 0) return false;
@@ -1181,7 +1188,9 @@ export class TeacherAssignmentService {
         .select('organization_id')
         .eq('user_id', ctx.userId);
       const callerOrgIds = [
-        ...new Set((memberships ?? []).map((m) => m.organization_id as string)),
+        ...new Set(
+          (memberships ?? []).flatMap((m) => (m.organization_id ? [m.organization_id] : [])),
+        ),
       ];
       if (callerOrgIds.length === 0) return true;
 
@@ -1228,7 +1237,7 @@ export class TeacherAssignmentService {
   }
 
   private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: assignment } = await supabase
       .from('teacher_assignments')

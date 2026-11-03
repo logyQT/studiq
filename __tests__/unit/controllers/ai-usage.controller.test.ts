@@ -1,7 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUsageMock = vi.fn();
+const getUsageMock = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   AI_TOKENS_LIMIT_KEY: 'max_ai_tokens_per_day',
@@ -15,7 +15,7 @@ import { AiUsageController } from '@studiq/server/controllers/ai-usage.controlle
 const mockCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '',

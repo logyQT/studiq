@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -89,7 +90,7 @@ interface TwoOrgTenant extends QaTenant {
   };
 }
 
-const TENANT = loadTenant(CASE) as TwoOrgTenant;
+const TENANT = asJson<TwoOrgTenant>(loadTenant(CASE));
 
 /**
  * Run suffix the seeder folded into the tenant key. Every piece of content below is
@@ -154,7 +155,7 @@ interface ReportRow {
 async function apiData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.status(), `GET ${url}`).toBe(200);
-  const body = (await response.json()) as { success: boolean; data: T };
+  const body = await json<{ success: boolean; data: T }>(response);
   expect(body.success, `GET ${url} success`).toBe(true);
   return body.data;
 }
@@ -189,7 +190,7 @@ async function ensureBank(page: Page, name: string): Promise<string> {
 
   const created = await page.request.post(BANKS_URL, { data: { name } });
   expect(created.status(), `POST ${BANKS_URL} (${name})`).toBe(201);
-  return ((await created.json()) as { data: { id: string } }).data.id;
+  return (await json<{ data: { id: string } }>(created)).data.id;
 }
 
 /**
@@ -198,25 +199,29 @@ async function ensureBank(page: Page, name: string): Promise<string> {
  * the same seeded tenant keeps exactly one report per thread and a fresh reply
  * history instead of accumulating both.
  */
-async function recreateQuestion(page: Page, bankId: string, content: string): Promise<string> {
+async function recreateQuestion(
+  page: Page,
+  bankId: string,
+  questionContent: string,
+): Promise<string> {
   const questions = await apiData<QuestionRow[]>(page, `${QUESTIONS_URL}?bankId=${bankId}`);
-  for (const stale of questions.filter((question) => question.content === content)) {
+  for (const stale of questions.filter((question) => question.content === questionContent)) {
     const removed = await page.request.delete(`${QUESTIONS_URL}/${stale.id}`);
     expect(removed.status(), `DELETE ${QUESTIONS_URL}/${stale.id}`).toBe(200);
   }
 
   const created = await page.request.post(QUESTIONS_URL, {
-    data: { bankId, type: 'open', content, answers: [] },
+    data: { bankId, type: 'open', content: questionContent, answers: [] },
   });
   expect(created.status(), `POST ${QUESTIONS_URL}`).toBe(201);
-  return ((await created.json()) as { data: { id: string } }).data.id;
+  return (await json<{ data: { id: string } }>(created)).data.id;
 }
 
 /** File a report on a question or a group — the same endpoint the UI dialog calls. */
 async function createReport(page: Page, path: string, message: string): Promise<string> {
   const response = await page.request.post(path, { data: { message } });
   expect(response.status(), `POST ${path}`).toBe(201);
-  return ((await response.json()) as { data: { id: string } }).data.id;
+  return (await json<{ data: { id: string } }>(response)).data.id;
 }
 
 /**
@@ -255,7 +260,7 @@ async function ensureControlOrgTeacher(browser: Browser, baseURL: string): Promi
         invite.status(),
         `POST ${INVITES_URL} (${inviteeEmail}) → ${invite.status()} ${await invite.text()}`,
       ).toBe(201);
-      inviteCode = ((await invite.json()) as { data: { inviteCode: string } }).data.inviteCode;
+      inviteCode = (await json<{ data: { inviteCode: string } }>(invite)).data.inviteCode;
     }
   } finally {
     await manager.close();
@@ -436,7 +441,7 @@ test.describe('@case:MGR-REP-01 @area:MGR @prio:P2 reports in the organization',
     // participant scope for everyone else (#276).
     const list = await page.request.get('/api/v1/question-reports?limit=100');
     expect(list.status(), 'GET /api/v1/question-reports').toBe(200);
-    const listBody = (await list.json()) as { success: boolean; data: { items: { id: string }[] } };
+    const listBody = await json<{ success: boolean; data: { items: { id: string }[] } }>(list);
     expect(listBody.success).toBe(true);
     const ids = listBody.data.items.map((item) => item.id);
     expect(ids, 'the tenant reports are listed').toEqual(
@@ -448,7 +453,7 @@ test.describe('@case:MGR-REP-01 @area:MGR @prio:P2 reports in the organization',
     // the list assertion above prove org-wide visibility.
     const detail = await page.request.get(`/api/v1/question-reports/${tenant.questionReportId}`);
     expect(detail.status(), 'GET the question report').toBe(200);
-    const detailBody = (await detail.json()) as {
+    const detailBody = await json<{
       data: {
         report: {
           status: string;
@@ -458,7 +463,7 @@ test.describe('@case:MGR-REP-01 @area:MGR @prio:P2 reports in the organization',
         };
         messages: { body: string }[];
       };
-    };
+    }>(detail);
     expect(detailBody.data.report.reporter?.id).toBe(tenant.student.id);
     expect(detailBody.data.report.teacher?.id).toBe(tenant.teacher.id);
     expect(detailBody.data.report.teacher?.id).not.toBe(tenant.manager.id);
@@ -466,9 +471,9 @@ test.describe('@case:MGR-REP-01 @area:MGR @prio:P2 reports in the organization',
 
     const groupDetail = await page.request.get(`/api/v1/question-reports/${tenant.groupReportId}`);
     expect(groupDetail.status(), 'GET the group report').toBe(200);
-    const groupBody = (await groupDetail.json()) as {
+    const groupBody = await json<{
       data: { report: { group: { name: string } | null; teacher: { id: string } | null } };
-    };
+    }>(groupDetail);
     expect(groupBody.data.report.group?.name).toBe(tenant.group.name);
     expect(groupBody.data.report.teacher?.id).toBe(tenant.manager.id);
 
@@ -511,12 +516,12 @@ test.describe('@case:MGR-REP-01 @area:MGR @prio:P2 reports in the organization',
     // The thread really stored it, and replying to an open report keeps it open.
     const detail = await page.request.get(`/api/v1/question-reports/${tenant.questionReportId}`);
     expect(detail.status(), 'GET the report after replying').toBe(200);
-    const body = (await detail.json()) as {
+    const body = await json<{
       data: {
         report: { status: string };
         messages: { body: string; sender_id: string }[];
       };
-    };
+    }>(detail);
     expect(body.data.messages.map((message) => message.body)).toEqual([
       QUESTION_REPORT_MESSAGE,
       REPLY_MESSAGE,

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -80,7 +81,7 @@ interface ApiEnvelope<T> {
 async function listQuizzes(page: Page): Promise<QuizRow[]> {
   const response = await page.request.get(QUIZZES_URL);
   expect(response.status(), `GET ${QUIZZES_URL} → ${response.status()}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<QuizRow[]>;
+  const body = await json<ApiEnvelope<QuizRow[]>>(response);
   expect(body.success, `GET ${QUIZZES_URL} success flag`).toBe(true);
   return body.data;
 }
@@ -136,7 +137,7 @@ test.describe('@case:EDU-QZ-01 @area:EDU @prio:P2 create a quiz', () => {
       ),
       createButton.click(),
     ]);
-    const createdBody = (await created.json()) as ApiEnvelope<QuizRow>;
+    const createdBody = await json<ApiEnvelope<QuizRow>>(created);
     expect(
       created.status(),
       `POST ${QUIZZES_URL} → ${created.status()} ${JSON.stringify(createdBody)}`,
@@ -159,7 +160,7 @@ test.describe('@case:EDU-QZ-01 @area:EDU @prio:P2 create a quiz', () => {
     // The same quiz, read back through the API.
     const detail = await page.request.get(`${QUIZZES_URL}/${quiz.id}`);
     expect(detail.status(), 'the created quiz is readable by its author').toBe(200);
-    const detailBody = (await detail.json()) as ApiEnvelope<QuizRow>;
+    const detailBody = await json<ApiEnvelope<QuizRow>>(detail);
     expect(detailBody.data.name).toBe(QUIZ_NAME);
     expect(detailBody.data.description).toBe(QUIZ_DESCRIPTION);
     expect(detailBody.data.quiz_questions, 'a new quiz starts without questions').toEqual([]);
@@ -223,12 +224,12 @@ test.describe('@case:EDU-QZ-01 @area:EDU @prio:P2 create a quiz', () => {
     // The API agrees: a blank name is a validation error, not an empty quiz.
     const blank = await page.request.post(QUIZZES_URL, { data: { name: '   ' } });
     expect(blank.status(), 'the server rejects a blank quiz name').toBe(422);
-    const blankBody = (await blank.json()) as {
+    const blankBody = await json<{
       success: boolean;
       error: string;
       details?: unknown;
       issues?: unknown;
-    };
+    }>(blank);
     expect(blankBody.success).toBe(false);
     expect(blankBody.error).toBe('UNPROCESSABLE_ENTITY');
 

@@ -59,7 +59,7 @@ export function selectBootstrapPrices(
   const prices: BootstrapPrice[] = [];
   const seen = new Set<string>();
 
-  const ordered = [...plans].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const ordered = [...plans].toSorted((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
   for (const plan of ordered) {
     if (seen.has(plan.key)) {

@@ -1,8 +1,15 @@
 'use client';
 
 import { motion } from 'motion/react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+
+/*
+ * The flip card is a focusable group, not a button: its markdown faces keep their own links, and a
+ * button/switch role would make those descendants presentational. That is why a non-interactive
+ * element carries `tabIndex` and the key/mouse handlers below.
+ */
+/* eslint-disable jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- see above. */
 
 interface FlashcardFlipProps {
   isFlipped: boolean;
@@ -10,12 +17,49 @@ interface FlashcardFlipProps {
   back: ReactNode;
   className?: string;
   onClick?: () => void;
+  /**
+   * Accessible name for the focusable card. The wrapper is a `group`, not a button: the faces
+   * render markdown, and the button role would turn any link inside them presentational.
+   */
+  ariaLabel?: string;
 }
 
-export function FlashcardFlip({ isFlipped, front, back, className, onClick }: FlashcardFlipProps) {
+export function FlashcardFlip({
+  isFlipped,
+  front,
+  back,
+  className,
+  onClick,
+  ariaLabel,
+}: FlashcardFlipProps) {
+  // Keyboard parity with `onClick`, for the card itself only: a focused link inside a face keeps
+  // Enter for its own activation. The event is consumed so the page-level Space handlers (the
+  // study session flips on Space) cannot flip the card a second time.
+  function onKeyDown(e: KeyboardEvent<HTMLElement>) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== 'Enter' && e.key !== ' ' && e.code !== 'Space') return;
+    // Holding the key must not flip the card over and over; consume the repeats so the page-level
+    // Space handler cannot flip it either.
+    if (e.repeat) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    onClick?.();
+  }
+
   return (
-    <div
-      className={cn('relative w-full h-88 cursor-pointer', className)}
+    <fieldset
+      aria-label={ariaLabel}
+      aria-keyshortcuts="Enter Space"
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      className={cn(
+        'relative w-full h-88 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        className,
+      )}
       style={{ perspective: 1200 }}
       onClick={onClick}
     >
@@ -45,6 +89,6 @@ export function FlashcardFlip({ isFlipped, front, back, className, onClick }: Fl
           {back}
         </div>
       </motion.div>
-    </div>
+    </fieldset>
   );
 }

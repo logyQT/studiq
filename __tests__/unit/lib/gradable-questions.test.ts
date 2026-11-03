@@ -2,29 +2,54 @@ import {
   gradableQuestionCounts,
   isGradableQuestionType,
 } from '@studiq/server/lib/gradable-questions';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+type Page = { data: unknown[]; error: unknown };
 
 /**
  * A `quiz_attempt_questions` builder that serves one page per `.range()` call,
  * so the helper's paging loop can be exercised (a flat mock would loop forever).
  */
-function pagedBuilder(pages: unknown[][], error: unknown = null) {
-  let current: { data: unknown[]; error: unknown } = { data: pages[0] ?? [], error };
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.range = vi.fn((from: number) => {
-    current = { data: pages[from / 1000] ?? [], error };
-    return b;
+type PagedBuilder = {
+  select: Mock;
+  order: Mock;
+  in: Mock;
+  range: Mock;
+  then: (
+    onFulfilled: (value: Page) => unknown,
+    onRejected?: (reason: unknown) => unknown,
+  ) => Promise<unknown>;
+};
+
+/** A recorded mock argument, narrowed to the id list the test compares. */
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('expected a list argument');
+  return value.map((entry: unknown) => {
+    if (typeof entry !== 'string') throw new Error('expected a string entry');
+    return entry;
   });
-  b.then = (onFulfilled: any, onRejected: any) =>
-    Promise.resolve(current).then(onFulfilled, onRejected);
+}
+
+function pagedBuilder(pages: unknown[][], error: unknown = null): PagedBuilder {
+  let current: Page = { data: pages[0] ?? [], error };
+  const b: PagedBuilder = {
+    select: vi.fn(() => b),
+    order: vi.fn(() => b),
+    in: vi.fn(() => b),
+    range: vi.fn((from: number) => {
+      current = { data: pages[from / 1000] ?? [], error };
+      return b;
+    }),
+    then: (onFulfilled, onRejected) => Promise.resolve(current).then(onFulfilled, onRejected),
+  };
   return b;
 }
 
-function mockClient(builder: unknown) {
-  return { from: vi.fn(() => builder) } as any;
+function mockClient(builder: PagedBuilder) {
+  const client = mockSupabaseClient();
+  client.from.mockReturnValue(builder);
+  return client;
 }
 
 const row = (attemptId: string, type: string | null) => ({
@@ -87,9 +112,8 @@ describe('gradableQuestionCounts (#619)', () => {
 
     expect(result.success).toBe(true);
     expect(client.from).toHaveBeenCalledTimes(2);
-    const inCalls = builder.in.mock.calls as Array<[string, string[]]>;
-    expect(inCalls[0][1]).toHaveLength(100);
-    expect(inCalls[1][1]).toEqual(['a-100']);
+    expect(stringList(builder.in.mock.calls[0][1])).toHaveLength(100);
+    expect(stringList(builder.in.mock.calls[1][1])).toEqual(['a-100']);
   });
 
   it('pages past the PostgREST 1000-row cap instead of truncating the denominator', async () => {

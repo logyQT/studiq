@@ -33,6 +33,7 @@ export function AiChatGreeting({ userName, onSuggestion }: AiChatGreetingProps) 
         {suggestions.map((suggestion) => (
           <button
             key={suggestion}
+            type="button"
             onClick={() => onSuggestion(suggestion)}
             className="rounded-full border border-border/60 bg-muted/30 px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >

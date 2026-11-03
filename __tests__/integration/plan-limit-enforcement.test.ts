@@ -1,11 +1,13 @@
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   useRealSupabase,
   cleanupQuestions,
   cleanupQuizAttempts,
-  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
@@ -33,7 +35,7 @@ async function postBank(name: string): Promise<ApiResponse> {
     body: JSON.stringify({ name }),
   });
   const response = await createBankPost(req);
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await json<ApiResponse['body']>(response) };
 }
 
 async function postQuiz(): Promise<ApiResponse> {
@@ -43,11 +45,11 @@ async function postQuiz(): Promise<ApiResponse> {
     body: JSON.stringify({ questionTypes: ['mcq'], questionCount: 2 }),
   });
   const response = await createQuizPost(req);
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await json<ApiResponse['body']>(response) };
 }
 
 describe(`Plan limit enforcement`, () => {
-  let service!: SupabaseClient;
+  let service!: SupabaseClient<Database>;
   let planKey!: string;
   let bankStudent!: BeforeResult;
   let quizStudent!: BeforeResult;
@@ -92,7 +94,7 @@ describe(`Plan limit enforcement`, () => {
   }
 
   beforeAll(async () => {
-    service = createServiceClient();
+    service = createSeedDb();
     planKey = `test-limits-${suiteId}-${Date.now().toString(36)}`;
 
     // One student for the bank quota (starts with no banks) and one for the

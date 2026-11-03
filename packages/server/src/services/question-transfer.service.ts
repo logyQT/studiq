@@ -3,12 +3,14 @@ import { can, check, Permission } from '@studiq/server/lib/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import {
   EXPORT_MAX_QUESTIONS,
   type ImportQuestionsResult,
+  type RawTransferQuestion,
   type TransferQuestion,
   TransferQuestionSchema,
 } from '@studiq/server/models/question-transfer.model';
@@ -16,6 +18,7 @@ import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import { questionService } from '@studiq/server/services/question.service';
 import { questionBankService } from '@studiq/server/services/question-bank.service';
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * Questions are removed 100 ids per request: one `in (…)` with the whole import (500 UUIDs)
@@ -24,21 +27,12 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
  */
 const ROLLBACK_BATCH_SIZE = 100;
 
-/** Row of `questionService.list` as far as the export needs it. */
-interface ListedQuestion {
-  type: TransferQuestion['type'];
-  content: string;
-  explanation: string | null;
-  topics?: Array<{ name: string }>;
-  question_answers?: Array<{ content: string; is_correct: boolean; order_index: number | null }>;
-}
-
 /**
  * Question-bank import/export (#652). Export follows read and never truncates, import follows
  * update and lands completely or not at all; both stay in the bank's tenant, not the caller's.
  */
 export class QuestionTransferService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   /**
    * Every question of a bank the caller may read, in the shape both file formats use.
@@ -52,7 +46,7 @@ export class QuestionTransferService {
     ctx: RequestContext,
     bankId: string,
   ): Promise<
-    ServiceResult<{ bankName: string; questions: TransferQuestion[]; notReimportable: number }>
+    ServiceResult<{ bankName: string; questions: RawTransferQuestion[]; notReimportable: number }>
   > {
     // The bank lookup applies the read permission, so a foreign or unknown bank is NOT_FOUND.
     // From here the whole bank is readable (decision B, #678).
@@ -62,10 +56,7 @@ export class QuestionTransferService {
     const listed = await questionService.listBankQuestions(bankId);
     if (!listed.success) return failure(listed.error);
 
-    const { questions: rows, total } = listed.data as {
-      questions: ListedQuestion[];
-      total: number;
-    };
+    const { questions: rows, total } = listed.data;
 
     // The cap is decided by the exact total of the query that builds the file: a longer bank is
     // refused (422) instead of being cut off at PostgREST's `max_rows` and shipped as a
@@ -73,8 +64,8 @@ export class QuestionTransferService {
     if (total > EXPORT_MAX_QUESTIONS) return failure('UNPROCESSABLE_ENTITY');
     if (rows.length < total) return failure('INTERNAL_SERVER');
 
-    const questions = rows.map((row): TransferQuestion => {
-      const answers = [...(row.question_answers ?? [])].sort(
+    const questions = rows.map((row): RawTransferQuestion => {
+      const answers = [...(row.question_answers ?? [])].toSorted(
         (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
       );
       return {
@@ -90,7 +81,10 @@ export class QuestionTransferService {
       (question) => !TransferQuestionSchema.safeParse(question).success,
     ).length;
 
-    return success({ bankName: (bank.data as { name: string }).name, questions, notReimportable });
+    const bankData = bank.data;
+    const bankName =
+      isRecord(bankData) && typeof bankData.name === 'string' ? bankData.name : 'Unknown';
+    return success({ bankName, questions, notReimportable });
   }
 
   /**
@@ -106,7 +100,7 @@ export class QuestionTransferService {
   ): Promise<ServiceResult<ImportQuestionsResult>> {
     if (!(await can(ctx, Permission.QUESTION_CREATE))) throw new AppError('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: bank } = await supabase
       .from('question_banks')
@@ -211,7 +205,7 @@ export class QuestionTransferService {
    * the rollback left behind.
    */
   private async removeCreated(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ids: string[],
   ): Promise<{ error: PostgrestError | null; remaining: number }> {
     for (let i = 0; i < ids.length; i += ROLLBACK_BATCH_SIZE) {
@@ -226,7 +220,7 @@ export class QuestionTransferService {
 
   /** Name (lower case) -> topic id for every topic the file mentions; missing ones are created. */
   private async resolveTopics(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ctx: RequestContext,
     questions: TransferQuestion[],
     organizationId: string | null,
@@ -246,7 +240,7 @@ export class QuestionTransferService {
       : existing.is('organization_id', null);
     const { data: own, error } = await existing;
     if (error) return toDbFailure(error);
-    for (const topic of own ?? []) byName.set((topic.name as string).toLowerCase(), topic.id);
+    for (const topic of own ?? []) byName.set(topic.name.toLowerCase(), topic.id);
 
     const missing = [...wanted].filter(([key]) => !byName.has(key)).map(([, name]) => name);
     if (missing.length > 0) {
@@ -262,7 +256,7 @@ export class QuestionTransferService {
         )
         .select('id, name');
       if (createError) return toDbFailure(createError);
-      for (const topic of created ?? []) byName.set((topic.name as string).toLowerCase(), topic.id);
+      for (const topic of created ?? []) byName.set(topic.name.toLowerCase(), topic.id);
     }
 
     return success(byName);

@@ -7,6 +7,7 @@ import {
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -14,18 +15,18 @@ import type {
   BatchDeleteTopicInput,
   BulkCreateTopicInput,
   CreateTopicInput,
-  Topic,
   TopicListQuery,
   UpdateTopicInput,
 } from '@studiq/server/models/topic.model';
 import { groupService } from '@studiq/server/services/group.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class TopicService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(data: CreateTopicInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
 
     const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
@@ -65,10 +66,10 @@ export class TopicService {
     ctx: RequestContext,
     queryParams?: Partial<TopicListQuery>,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
-    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
 
     let query = supabase
       .from('topics')
@@ -120,29 +121,29 @@ export class TopicService {
     const { data, error } = await query;
     if (error) return toDbFailure(error);
 
-    const rows = data as Array<Record<string, unknown>> | null;
-    const hasMore = (rows?.length ?? 0) > pageSize;
-    const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-    const items = sliced.map((item) => {
-      const countArr = item.flashcard_count as { count: number }[] | undefined;
-      return { ...item, flashcard_count: countArr?.[0]?.count ?? 0 };
-    });
+    const rows = data ?? [];
+    const hasMore = rows.length > pageSize;
+    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
+    const items = sliced.map((item) => ({
+      ...item,
+      flashcard_count: item.flashcard_count?.[0]?.count ?? 0,
+    }));
     const nextCursor = hasMore
       ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
       : null;
 
     return success({
-      items: items as unknown as Topic[],
+      items,
       nextCursor,
       hasMore,
-    } as { items: Topic[]; nextCursor: string | null; hasMore: boolean });
+    });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
-    if (filter._impossible) return failure('NOT_FOUND');
+    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     let query = supabase.from('topics').select('*').eq('id', id);
     if (filter.or) query = query.or(filter.or);
@@ -163,7 +164,7 @@ export class TopicService {
     data: UpdateTopicInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('topics')
@@ -188,7 +189,7 @@ export class TopicService {
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['topics']['Update'] = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.visibility !== undefined) updateFields.visibility = data.visibility;
 
@@ -218,7 +219,7 @@ export class TopicService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<undefined>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('topics')
@@ -239,7 +240,7 @@ export class TopicService {
     data: BulkCreateTopicInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
 
     const topics = data.topics.map((t) => ({
@@ -259,7 +260,7 @@ export class TopicService {
     data: BatchDeleteTopicInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<{ deleted: number }>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: topics, error: fetchError } = await supabase
       .from('topics')

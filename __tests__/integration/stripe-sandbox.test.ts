@@ -2,6 +2,7 @@ import { AccountType } from '@studiq/authz';
 import { StripePaymentGateway } from '@studiq/server/lib/payment/stripe-payment.gateway';
 import { SupabaseStripeBillingRepository } from '@studiq/server/lib/payment/stripe-repository';
 import { createStripeClient } from '@studiq/server/lib/payment/stripe-client';
+// eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createServiceClient, TEST_USERS } from '#test/integration/helpers';
@@ -58,7 +59,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       .gt('price_monthly', 0)
       .order('sort_order', { ascending: true });
     if (error) throw new Error(`subscription_plans: ${error.message}`);
-    plans = (data ?? []) as PaidPlan[];
+    plans = data ?? [];
     expect(plans.length).toBeGreaterThan(0);
 
     products = await stripe.products
@@ -90,16 +91,16 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
 
   it('has one Product per active paid plan, all in test mode', () => {
     const planProducts = products.filter((product) => product.metadata?.studiq_plan_key);
-    const productKeys = planProducts.map((product) => product.metadata.studiq_plan_key as string);
+    const productKeys = planProducts.map((product) => product.metadata.studiq_plan_key);
 
     expect(planProducts).toHaveLength(plans.length);
     expect(new Set(productKeys).size).toBe(productKeys.length);
 
     const byPlan = new Map(
-      planProducts.map((product) => [product.metadata.studiq_plan_key as string, product]),
+      planProducts.map((product) => [product.metadata.studiq_plan_key, product]),
     );
 
-    expect([...byPlan.keys()].sort()).toEqual(plans.map((plan) => plan.key).sort());
+    expect([...byPlan.keys()].toSorted()).toEqual(plans.map((plan) => plan.key).toSorted());
     expect(products.every((product) => !product.livemode)).toBe(true);
   });
 
@@ -137,7 +138,9 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
     if (error) throw new Error(`stripe_prices: ${error.message}`);
 
     const rows = data ?? [];
-    expect(rows.map((row) => row.plan_key).sort()).toEqual(plans.map((plan) => plan.key).sort());
+    expect(rows.map((row) => row.plan_key).toSorted()).toEqual(
+      plans.map((plan) => plan.key).toSorted(),
+    );
 
     for (const row of rows) {
       const price = monthlyPrices.find((candidate) => candidate.id === row.stripe_price_id);

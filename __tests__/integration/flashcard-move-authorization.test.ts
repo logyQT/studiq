@@ -12,6 +12,7 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
+import { json } from '#test/helpers/json';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 import { POST as batchAction } from '@/app/(backend)/api/v1/flashcards/batch/[action]/route';
 import { PUT as updateDeck } from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
@@ -42,8 +43,13 @@ describe(`Flashcard Move Authorization`, () => {
   }
 
   async function deckIdOf(cardId: string): Promise<string | null> {
-    const { data } = await service.from('flashcards').select('deck_id').eq('id', cardId).single();
-    return (data?.deck_id as string | undefined) ?? null;
+    const { data } = await service
+      .from('flashcards')
+      .select('deck_id')
+      .eq('id', cardId)
+      .single()
+      .overrideTypes<{ deck_id: string }, { merge: false }>();
+    return data?.deck_id ?? null;
   }
 
   beforeAll(async () => {
@@ -122,11 +128,11 @@ describe(`Flashcard Move Authorization`, () => {
         orgCookies(),
       ),
     );
-    const deckBody = await deckRes.json();
+    const deckBody = await json<{ success: boolean; data: { id: string } }>(deckRes);
     if (!deckRes.ok || !deckBody.success) {
       throw new Error(`[setup] member deck creation failed: ${JSON.stringify(deckBody)}`);
     }
-    memberDeckId = deckBody.data.id as string;
+    memberDeckId = deckBody.data.id;
   });
 
   afterAll(async () => {
@@ -157,7 +163,9 @@ describe(`Flashcard Move Authorization`, () => {
       orgCookies(),
     );
     const response = await batchAction(request, { params });
-    const body = await response.json();
+    const body = await json<{ success: boolean; error?: string; data: { moved: number } }>(
+      response,
+    );
 
     expect(response.status).toBe(403);
     expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
@@ -182,7 +190,9 @@ describe(`Flashcard Move Authorization`, () => {
       orgCookies(),
     );
     const response = await batchAction(request, { params });
-    const body = await response.json();
+    const body = await json<{ success: boolean; error?: string; data: { moved: number } }>(
+      response,
+    );
 
     expect(response.status).toBe(403);
     expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
@@ -204,7 +214,9 @@ describe(`Flashcard Move Authorization`, () => {
       orgCookies(),
     );
     const response = await updateDeck(request, { params });
-    const body = await response.json();
+    const body = await json<{ success: boolean; error?: string; data: { moved: number } }>(
+      response,
+    );
 
     expect(response.status).toBe(403);
     expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
@@ -229,7 +241,9 @@ describe(`Flashcard Move Authorization`, () => {
       orgCookies(),
     );
     const response = await batchAction(request, { params });
-    const body = await response.json();
+    const body = await json<{ success: boolean; error?: string; data: { moved: number } }>(
+      response,
+    );
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);

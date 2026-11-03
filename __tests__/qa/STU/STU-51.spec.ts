@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type Response } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -318,7 +319,7 @@ test.describe('@case:STU-51 @area:STU @prio:P2 account password change', () => {
       expect(invalid.headers()['x-error-code'], 'the API names the rejected check').toBe(
         'INVALID_CURRENT_PASSWORD',
       );
-      expect(((await invalid.json()) as ApiEnvelope<never>).error).toBe('INVALID_CURRENT_PASSWORD');
+      expect((await json<ApiEnvelope<never>>(invalid)).error).toBe('INVALID_CURRENT_PASSWORD');
       // Expected result: a message (the case asks to note its copy).
       await expect(
         toast(page, COPY.invalidCurrent),
@@ -330,7 +331,7 @@ test.describe('@case:STU-51 @area:STU @prio:P2 account password change', () => {
       const weak = await clickUpdate(page);
 
       expect(weak.status(), 'a weak new password is refused').toBe(422);
-      const weakBody = (await weak.json()) as ApiEnvelope<never>;
+      const weakBody = await json<ApiEnvelope<never>>(weak);
       expect(weakBody.error).toBe('UNPROCESSABLE_ENTITY');
       expect(weakBody.issues?.properties?.password?.errors, 'the violated password rules').toEqual([
         'VALIDATION_PASSWORD_TOO_SHORT',
@@ -348,7 +349,7 @@ test.describe('@case:STU-51 @area:STU @prio:P2 account password change', () => {
       const anon = await page.request.get('/api/v1/auth/me');
       expect(anon.status(), 'GET /api/v1/auth/me after logout').toBe(200);
       expect(
-        ((await anon.json()) as { data: { user: unknown } }).data.user,
+        (await json<{ data: { user: unknown } }>(anon)).data.user,
         'no authenticated user after logout',
       ).toBeNull();
 

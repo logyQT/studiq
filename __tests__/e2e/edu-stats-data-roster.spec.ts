@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
+import { json } from '#test/helpers/json';
 
 /**
  * E2E coverage for #460 (EDU-ST-01).
@@ -26,8 +27,8 @@ interface TeacherStats {
 
 async function fetchStats(page: Page): Promise<TeacherStats> {
   const res = await page.request.get('/api/v1/flashcards/stats/teacher');
-  const body = await res.json();
-  return (body.data ?? body) as TeacherStats;
+  const body = await json<TeacherStats & { data?: TeacherStats }>(res);
+  return body.data ?? body;
 }
 
 async function practice(page: Page, flashcardId: string) {
@@ -53,7 +54,7 @@ test('renders the roster card, tracks a student practice and ignores the teacher
 
   const baseline = await fetchStats(page);
   expect(baseline.summary.rosterStudents).not.toBeNull();
-  const baselineRoster = baseline.summary.rosterStudents as number;
+  const baselineRoster = baseline.summary.rosterStudents!;
   expect(baselineRoster).toBeGreaterThan(0);
 
   // 1. /edu/stats/data: value is the roster, description is the practiser count.

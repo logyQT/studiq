@@ -48,6 +48,17 @@ import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 const ACCOUNT_TYPES = ['student', 'educator', 'manager'] as const;
+type AccountType = (typeof ACCOUNT_TYPES)[number];
+const USER_STATUSES = ['active', 'deleted'] as const;
+type UserStatus = (typeof USER_STATUSES)[number];
+
+function isAccountType(value: unknown): value is AccountType {
+  return typeof value === 'string' && (ACCOUNT_TYPES as readonly string[]).includes(value);
+}
+
+function isUserStatus(value: unknown): value is UserStatus {
+  return typeof value === 'string' && (USER_STATUSES as readonly string[]).includes(value);
+}
 const PER_PAGE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 const ACTION_ERROR_TIMEOUT_MS = 8000;
@@ -56,7 +67,7 @@ type AdminUser = {
   id: string;
   email: string;
   fullName: string | null;
-  createdAt: string;
+  createdAt: string | null;
   personalPlanKey: string | null;
   accountType: string | null;
   bannedUntil: string | null;
@@ -75,7 +86,7 @@ type CreateForm = {
   email: string;
   password: string;
   fullName: string;
-  accountType: (typeof ACCOUNT_TYPES)[number];
+  accountType: AccountType;
 };
 
 const EMPTY_CREATE_FORM: CreateForm = {
@@ -95,7 +106,7 @@ export default function UsersPage() {
   const locale = useLocale();
   const queryClient = useQueryClient();
 
-  const [status, setStatus] = useState<'active' | 'deleted'>('active');
+  const [status, setStatus] = useState<UserStatus>('active');
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -130,7 +141,7 @@ export default function UsersPage() {
 
   // Auto-clear the action banner so a stale failure does not linger forever.
   useEffect(() => {
-    if (!actionError) return;
+    if (!actionError) return undefined;
     const timer = setTimeout(() => setActionError(null), ACTION_ERROR_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [actionError]);
@@ -139,8 +150,8 @@ export default function UsersPage() {
     setActionError(null);
   }
 
-  function failAction(error: Error) {
-    setActionError(error.message);
+  function failAction(err: Error) {
+    setActionError(err.message);
   }
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -148,7 +159,7 @@ export default function UsersPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [roleTarget, setRoleTarget] = useState<AdminUser | null>(null);
-  const [roleValue, setRoleValue] = useState<(typeof ACCOUNT_TYPES)[number]>('student');
+  const [roleValue, setRoleValue] = useState<AccountType>('student');
 
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<AdminUser | null>(null);
@@ -156,7 +167,7 @@ export default function UsersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function invalidate() {
-    queryClient.invalidateQueries({ queryKey: ['users'] });
+    void queryClient.invalidateQueries({ queryKey: ['users'] });
   }
 
   const createMutation = useMutation({
@@ -174,10 +185,10 @@ export default function UsersPage() {
       setCreateForm(EMPTY_CREATE_FORM);
       setCreateError(null);
     },
-    onError: (error: Error) => {
+    onError: (err: Error) => {
       // The create dialog stays open on failure, so the inline message is the
       // primary feedback; a second page-level banner would just duplicate it.
-      setCreateError(error.message);
+      setCreateError(err.message);
     },
   });
 
@@ -225,7 +236,7 @@ export default function UsersPage() {
     // Drop a failure from a previous attempt so it does not render again.
     roleMutation.reset();
     setRoleTarget(user);
-    setRoleValue((user.accountType as (typeof ACCOUNT_TYPES)[number]) ?? 'student');
+    setRoleValue(isAccountType(user.accountType) ? user.accountType : 'student');
   }
 
   function openCreate() {
@@ -262,7 +273,8 @@ export default function UsersPage() {
       <Tabs
         value={status}
         onValueChange={(v) => {
-          setStatus(v as 'active' | 'deleted');
+          if (!isUserStatus(v)) return;
+          setStatus(v);
           setPage(1);
         }}
       >
@@ -347,7 +359,7 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {status === 'active'
-                          ? new Date(u.createdAt).toLocaleDateString(locale)
+                          ? new Date(u.createdAt ?? 0).toLocaleDateString(locale)
                           : u.purgeAt
                             ? t('days_remaining', { count: daysUntil(u.purgeAt) })
                             : '—'}
@@ -499,9 +511,10 @@ export default function UsersPage() {
               <Label>{t('col_account_type')}</Label>
               <Select
                 value={createForm.accountType}
-                onValueChange={(v) =>
-                  setCreateForm({ ...createForm, accountType: v as CreateForm['accountType'] })
-                }
+                onValueChange={(v) => {
+                  if (!isAccountType(v)) return;
+                  setCreateForm({ ...createForm, accountType: v });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -540,7 +553,12 @@ export default function UsersPage() {
                 {t('action_failed', { code: roleMutation.error?.message ?? tc('error') })}
               </p>
             )}
-            <Select value={roleValue} onValueChange={(v) => setRoleValue(v as typeof roleValue)}>
+            <Select
+              value={roleValue}
+              onValueChange={(v) => {
+                if (isAccountType(v)) setRoleValue(v);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

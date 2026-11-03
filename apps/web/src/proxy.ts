@@ -20,8 +20,19 @@ function preserveCookies(originalResponse: NextResponse, newResponse: NextRespon
   return newResponse;
 }
 
-function resolveAccountType(jwtAccountType: AccountType | undefined): AccountType {
-  return jwtAccountType ?? AccountType.STUDENT;
+/**
+ * The JWT's `app_metadata.account_type` is untyped at the Supabase boundary; only
+ * the three known account types are honoured, everything else is a student.
+ */
+function resolveAccountType(jwtAccountType: unknown): AccountType {
+  if (
+    jwtAccountType === AccountType.MANAGER ||
+    jwtAccountType === AccountType.EDUCATOR ||
+    jwtAccountType === AccountType.STUDENT
+  ) {
+    return jwtAccountType;
+  }
+  return AccountType.STUDENT;
 }
 
 export async function proxy(request: NextRequest) {
@@ -40,9 +51,7 @@ export async function proxy(request: NextRequest) {
     return supabaseResponse;
   }
 
-  const accountType = resolveAccountType(
-    user?.app_metadata?.account_type as AccountType | undefined,
-  );
+  const accountType = resolveAccountType(user?.app_metadata?.account_type);
 
   // 2. Handle "Redirect if Authenticated" (e.g., /login -> /dashboard)
   if (user) {

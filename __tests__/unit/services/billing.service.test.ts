@@ -11,8 +11,13 @@ import type {
   StripeBillingRepository,
 } from '@studiq/server/lib/payment/stripe-repository';
 import { success } from '@studiq/server/lib/service-result';
+import { asJson } from '#test/helpers/json';
 import { BillingService, billingService } from '@studiq/server/services/billing.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const anyNumber: unknown = expect.any(Number);
+const anyUserCheckoutKey: unknown = expect.stringMatching(/^checkout:user:u-1::spark:en:\d+$/);
+const anyOrgCheckoutKey: unknown = expect.stringMatching(/^checkout:org:org-1:u-9:hub:pl:\d+$/);
 
 const studentCtx: RequestContext = {
   traceId: 'test',
@@ -62,19 +67,19 @@ function createGateway(driver: 'mock' | 'stripe' = 'stripe') {
     driver,
     livemode: false,
     createCheckoutSession: vi
-      .fn()
+      .fn<PaymentGateway['createCheckoutSession']>()
       .mockResolvedValue(success({ url: 'https://checkout.test/cs_1', sessionId: 'cs_1' })),
-    createPortalSession: vi.fn(),
-    changePlan: vi.fn(),
-    cancelAtPeriodEnd: vi.fn(),
-    handleWebhook: vi.fn(),
-  } as unknown as PaymentGateway;
+    createPortalSession: vi.fn<PaymentGateway['createPortalSession']>(),
+    changePlan: vi.fn<PaymentGateway['changePlan']>(),
+    cancelAtPeriodEnd: vi.fn<PaymentGateway['cancelAtPeriodEnd']>(),
+    handleWebhook: vi.fn<PaymentGateway['handleWebhook']>(),
+  } satisfies PaymentGateway;
 }
 
 function createRepository(
   overrides: Partial<StripeBillingRepository> = {},
 ): StripeBillingRepository {
-  return {
+  return asJson<StripeBillingRepository>({
     getPlan: vi.fn().mockResolvedValue(success(plan())),
     isOrgAdmin: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn(),
@@ -84,7 +89,7 @@ function createRepository(
     findListedPrice: vi.fn().mockResolvedValue(success(listedPrice())),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
     ...overrides,
-  } as unknown as StripeBillingRepository;
+  });
 }
 
 describe('BillingService.startCheckout', () => {
@@ -209,8 +214,8 @@ describe('BillingService.startCheckout', () => {
       billingCycle: 'monthly',
       priceId: 'price_spark',
       locale: 'en',
-      expiresAt: expect.any(Number),
-      idempotencyKey: expect.stringMatching(/^checkout:user:u-1::spark:en:\d+$/),
+      expiresAt: anyNumber,
+      idempotencyKey: anyUserCheckoutKey,
     });
 
     const input = vi.mocked(gateway.createCheckoutSession).mock.calls[0][0];
@@ -240,8 +245,8 @@ describe('BillingService.startCheckout', () => {
         },
         planKey: 'hub',
         priceId: 'price_hub',
-        expiresAt: expect.any(Number),
-        idempotencyKey: expect.stringMatching(/^checkout:org:org-1:u-9:hub:pl:\d+$/),
+        expiresAt: anyNumber,
+        idempotencyKey: anyOrgCheckoutKey,
       }),
     );
   });

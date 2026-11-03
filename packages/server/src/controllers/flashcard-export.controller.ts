@@ -12,7 +12,7 @@ import {
 } from '@studiq/server/services/flashcard-export.service';
 
 export class FlashcardExportController {
-  constructor(private flashcardExportService: FlashcardExportService) {}
+  constructor(private service: FlashcardExportService) {}
 
   async exportCsv(
     query: Record<string, string | null>,
@@ -36,7 +36,7 @@ export class FlashcardExportController {
         .filter(Boolean);
     }
 
-    const result = await this.flashcardExportService.exportCsv(
+    const result = await this.service.exportCsv(
       ctx,
       Object.keys(filters).length > 0 ? filters : undefined,
     );

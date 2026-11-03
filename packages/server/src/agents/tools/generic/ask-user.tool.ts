@@ -17,7 +17,7 @@ export const askUserTool = tool({
       .optional()
       .describe('Available options for the user to choose from'),
   }),
-  execute: async ({ question, options }) => {
+  execute: ({ question, options }) => {
     const cid = conversationStorage.getStore()?.conversationId;
     enqueueTrace({
       conversationId: cid,

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -121,7 +122,7 @@ interface DeckListResult {
 async function getJson<T>(page: Page, url: string): Promise<T> {
   const res = await page.request.get(url);
   expect(res.ok(), `GET ${url} → ${res.status()} ${await res.text()}`).toBe(true);
-  const body = (await res.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(res);
   expect(body.success, `GET ${url} success`).toBe(true);
   return body.data;
 }
@@ -177,9 +178,7 @@ async function ensureOwnedEmptyGroup(page: Page, name: string): Promise<GroupSum
     expect(res.status(), `POST ${GROUPS_URL} (${name}) → ${res.status()} ${await res.text()}`).toBe(
       201,
     );
-    const body = (await res.json()) as ApiEnvelope<
-      Omit<GroupSummary, 'memberCount' | 'teacherCount'>
-    >;
+    const body = await json<ApiEnvelope<Omit<GroupSummary, 'memberCount' | 'teacherCount'>>>(res);
     expect(body.success, `POST ${GROUPS_URL} (${name}) success flag`).toBe(true);
     group = (await getJson<GroupSummary[]>(page, GROUPS_URL)).find(
       (candidate) => candidate.id === body.data.id,
@@ -224,7 +223,7 @@ async function ensureGroupDeck(page: Page, groupId: string): Promise<DeckListIte
     data: { name: DECK_NAME, visibility: 'group', groupIds: [groupId] },
   });
   expect(res.status(), `POST ${DECKS_URL} → ${res.status()} ${await res.text()}`).toBe(201);
-  const body = (await res.json()) as ApiEnvelope<DeckListItem>;
+  const body = await json<ApiEnvelope<DeckListItem>>(res);
   expect(body.success, `POST ${DECKS_URL} success flag`).toBe(true);
   return body.data;
 }

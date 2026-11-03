@@ -69,7 +69,7 @@ export function QuizzesTab() {
   // orders by `started_at`, which can differ from the completion order.
   const completedAttempts = (attempts ?? [])
     .filter((attempt): attempt is CompletedQuizAttempt => attempt.completed_at !== null)
-    .sort((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at));
+    .toSorted((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at));
 
   if (completedAttempts.length === 0) {
     return (

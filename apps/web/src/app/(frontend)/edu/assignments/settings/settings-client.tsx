@@ -26,7 +26,12 @@ function loadSettings(): PrintSettings {
   if (typeof window === 'undefined') return defaultSettings;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return { ...defaultSettings, ...JSON.parse(saved) };
+    if (saved) {
+      const parsed: unknown = JSON.parse(saved);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return { ...defaultSettings, ...parsed };
+      }
+    }
   } catch {}
   return defaultSettings;
 }

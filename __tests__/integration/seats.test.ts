@@ -1,16 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import {
   type BeforeResult,
   before,
   createTestUser,
   type TestUserFixture,
 } from '#test/helpers/test-user';
-import {
-  useRealSupabase,
-  cleanupOrganizationDeep,
-  createServiceClient,
-  mockUser,
-} from '#test/integration/helpers';
+import { useRealSupabase, cleanupOrganizationDeep, mockUser } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 import { DELETE as deleteAssignment } from '@/app/(backend)/api/v1/organization/seats/assignments/[id]/route';
 import {
@@ -22,6 +19,40 @@ import {
   POST as createPool,
   GET as getPools,
 } from '@/app/(backend)/api/v1/organization/seats/pools/route';
+
+/** Seat pool resource of `/organization/seats/pools` — the fields read below. */
+interface SeatPool {
+  id: string;
+  planKey: string;
+  total: number;
+  assigned: number;
+}
+
+/** Single pool payload (`{ success, data }`). */
+type PoolBody = { success: boolean; data: SeatPool };
+
+/** Pool list payload. */
+type PoolListBody = { success: boolean; data: SeatPool[] };
+
+/** Seat assignment resource — the fields read below. */
+interface SeatAssignment {
+  id: string;
+  userId: string;
+  poolId: string;
+}
+
+/** Assignment list payload. */
+type AssignmentListBody = { success: boolean; data: SeatAssignment[] };
+
+/** Single assignment payload. */
+type AssignmentBody = { success: boolean; data: SeatAssignment };
+
+/** Error envelope (`{ success: false, error, issues }`) of the routes under test. */
+interface SeatsErrorBody {
+  success: boolean;
+  error?: string;
+  issues?: { properties: Record<'quantity', { errors: string[] }> };
+}
 
 describe(`Seats Integration`, () => {
   let fixture!: BeforeResult;
@@ -52,7 +83,7 @@ describe(`Seats Integration`, () => {
       orgCookies(),
     );
     const createRes = await createPool(createReq);
-    const createBody = await createRes.json();
+    const createBody = await json<PoolBody>(createRes);
     poolId = createBody.data.id;
 
     // Unique assignee users per suite run (org_seat_assignments
@@ -85,17 +116,17 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await getPools(req);
-      const body = await response.json();
+      const body = await json<PoolListBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
       expect(body.data).toBeInstanceOf(Array);
       expect(body.data.length).toBeGreaterThanOrEqual(1);
 
-      const pool = body.data.find((p: any) => p.planKey === 'guide');
+      const pool = body.data.find((p) => p.planKey === 'guide');
       expect(pool).toBeDefined();
-      expect(pool.total).toBe(10);
-      expect(pool.assigned).toBe(0);
+      expect(pool!.total).toBe(10);
+      expect(pool!.assigned).toBe(0);
     });
 
     it('returns 403 for non-manager users', async () => {
@@ -108,7 +139,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await getPools(req);
-      const body = await response.json();
+      const body = await json<SeatsErrorBody>(response);
 
       expect(response.status).toBe(403);
       expect(body.success).toBe(false);
@@ -131,7 +162,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createPool(req);
-      const body = await response.json();
+      const body = await json<PoolBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -154,7 +185,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createPool(req);
-      const body = await response.json();
+      const body = await json<PoolBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -178,7 +209,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await updatePool(request, { params });
-      const body = await response.json();
+      const body = await json<PoolBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -200,26 +231,26 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await updatePool(request, { params });
-      const body = await response.json();
+      const body = await json<SeatsErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
     });
   });
 
+  const readPools = async () => {
+    const req = createNextRequest(
+      'http://localhost/api/v1/organization/seats/pools',
+      undefined,
+      orgCookies(),
+    );
+    const response = await getPools(req);
+    const body = await json<PoolListBody>(response);
+    return body.data;
+  };
+
   describe('Seat quantity bounds (#266)', () => {
     const INT4_MAX = 2_147_483_647;
-
-    const readPools = async () => {
-      const req = createNextRequest(
-        'http://localhost/api/v1/organization/seats/pools',
-        undefined,
-        orgCookies(),
-      );
-      const response = await getPools(req);
-      const body = await response.json();
-      return body.data as { id: string; planKey: string; total: number }[];
-    };
 
     it('returns 422 (not 500) for a quantity above the int4 range and writes nothing', async () => {
       mockUser(fixture.user);
@@ -235,12 +266,12 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createPool(req);
-      const body = await response.json();
+      const body = await json<SeatsErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
       expect(body.error).toBe('UNPROCESSABLE_ENTITY');
-      expect(body.issues.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
+      expect(body.issues!.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
 
       const pools = await readPools();
       expect(pools.find((p) => p.planKey === 'campus')).toBeUndefined();
@@ -273,12 +304,12 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createPool(req);
-      const body = await response.json();
+      const body = await json<SeatsErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
       expect(body.error).toBe('UNPROCESSABLE_ENTITY');
-      expect(body.issues.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
+      expect(body.issues!.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
 
       const pools = await readPools();
       expect(pools.find((p) => p.planKey === 'pro')?.total).toBe(8);
@@ -287,7 +318,7 @@ describe(`Seats Integration`, () => {
     it('returns 422 for a PUT above the int4 range and leaves the pool unchanged', async () => {
       mockUser(fixture.user);
 
-      const before = (await readPools()).find((p) => p.id === poolId);
+      const beforeUpdate = (await readPools()).find((p) => p.id === poolId);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/organization/seats/pools/${poolId}`,
@@ -301,14 +332,14 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await updatePool(request, { params });
-      const body = await response.json();
+      const body = await json<SeatsErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
       expect(body.error).toBe('UNPROCESSABLE_ENTITY');
 
       const after = (await readPools()).find((p) => p.id === poolId);
-      expect(after?.total).toBe(before?.total);
+      expect(after?.total).toBe(beforeUpdate?.total);
     });
 
     it('never stores a pool total above the int4 bound', async () => {
@@ -331,7 +362,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await getAssignments(req);
-      const body = await response.json();
+      const body = await json<AssignmentListBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -356,7 +387,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createAssignment(request);
-      const body = await response.json();
+      const body = await json<AssignmentBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -387,12 +418,12 @@ describe(`Seats Integration`, () => {
         orgCookies(),
       );
       const listRes = await getAssignments(listReq);
-      const listBody = await listRes.json();
+      const listBody = await json<AssignmentListBody>(listRes);
 
       expect(listBody.data.length).toBeGreaterThanOrEqual(1);
-      const match = listBody.data.find((a: any) => a.userId === assigneeB.id);
+      const match = listBody.data.find((a) => a.userId === assigneeB.id);
       expect(match).toBeDefined();
-      expect(match.poolId).toBe(poolId);
+      expect(match!.poolId).toBe(poolId);
     });
 
     it('returns 422 when fields missing', async () => {
@@ -409,7 +440,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createAssignment(req);
-      const body = await response.json();
+      const body = await json<SeatsErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -421,7 +452,7 @@ describe(`Seats Integration`, () => {
 
     beforeEach(async () => {
       // Seed an assignment to delete (use service role to bypass trigger)
-      const supabase = createServiceClient();
+      const supabase = createSeedDb();
       const { data: assignment } = await supabase
         .from('org_seat_assignments')
         .insert({
@@ -446,7 +477,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await deleteAssignment(request, { params });
-      const body = await response.json();
+      const body = await json<{ success: boolean }>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -458,16 +489,16 @@ describe(`Seats Integration`, () => {
         orgCookies(),
       );
       const listRes = await getAssignments(listReq);
-      const listBody = await listRes.json();
+      const listBody = await json<AssignmentListBody>(listRes);
 
-      const match = listBody.data.find((a: any) => a.id === assignmentId);
+      const match = listBody.data.find((a) => a.id === assignmentId);
       expect(match).toBeUndefined();
     });
   });
 
   describe('Hard block: pool capacity', () => {
     beforeEach(async () => {
-      const supabase = createServiceClient();
+      const supabase = createSeedDb();
       await supabase.from('org_seat_pools').update({ total: 0 }).eq('id', poolId);
     });
 
@@ -488,7 +519,7 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createAssignment(req);
-      const body = await response.json();
+      const body = await json<SeatsErrorBody>(response);
 
       expect(response.status).toBe(429);
       expect(body.success).toBe(false);

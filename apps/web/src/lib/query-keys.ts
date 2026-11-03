@@ -143,6 +143,14 @@ export const studentStatsKeys = {
   insights: (days: number) => ['stats', 'student', 'insights', days] as const,
 };
 
+export const teacherStatsKeys = {
+  all: ['stats', 'teacher'] as const,
+  overview: (orgId: string | null) => ['stats', 'teacher', 'overview', orgId] as const,
+  groups: (orgId: string | null, days: number) =>
+    ['stats', 'teacher', 'groups', orgId, days] as const,
+  feed: (orgId: string | null) => ['stats', 'teacher', 'feed', orgId] as const,
+};
+
 export const searchKeys = {
   all: ['search'] as const,
   query: (q: string) => ['search', q] as const,

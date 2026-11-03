@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -79,9 +80,7 @@ async function openInvites(page: Page, tenant: QaTenant): Promise<void> {
       async () => {
         const res = await page.request.get('/api/v1/me/orgs');
         if (!res.ok()) return null;
-        const body = (await res.json()) as {
-          data?: Array<{ id: string; isActive: boolean }>;
-        };
+        const body = await json<{ data?: Array<{ id: string; isActive: boolean }> }>(res);
         return body.data?.find((row) => row.isActive)?.id ?? null;
       },
       { timeout: 30_000 },
@@ -105,7 +104,7 @@ async function openInvites(page: Page, tenant: QaTenant): Promise<void> {
 async function roleIds(page: Page): Promise<Record<'admin' | 'teacher' | 'member', string>> {
   const res = await page.request.get('/api/v1/organization/roles');
   expect(res.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const body = (await res.json()) as { data: Array<{ id: string; name: string }> };
+  const body = await json<{ data: Array<{ id: string; name: string }> }>(res);
   const byName = new Map(body.data.map((role) => [role.name, role.id]));
   return {
     admin: byName.get('admin')!,
@@ -123,9 +122,13 @@ async function fillRow(page: Page, row: number, email: string, roleLabel: string
   await expect(page.locator(`#role-${row}`)).toHaveText(roleLabel);
 }
 
+/** Whether the URL is the bulk-invite endpoint. */
+function isBulk(url: string): boolean {
+  return new URL(url).pathname === BULK_PATH;
+}
+
 /** Click "Wyślij zaproszenia" and hand back both the request and the response. */
 async function send(page: Page) {
-  const isBulk = (url: string) => new URL(url).pathname === BULK_PATH;
   const requestPromise = page.waitForRequest((req) => req.method() === 'POST' && isBulk(req.url()));
   const responsePromise = page.waitForResponse(
     (res) => res.request().method() === 'POST' && isBulk(res.url()),
@@ -136,7 +139,7 @@ async function send(page: Page) {
   const [request, response] = await Promise.all([requestPromise, responsePromise]);
   return {
     response,
-    body: request.postDataJSON() as BulkBody,
+    body: asJson<BulkBody>(request.postDataJSON()),
   };
 }
 
@@ -201,10 +204,10 @@ test('three rows, one removed with the X icon, and a separate result per e-mail'
     roles.admin,
   ]);
 
-  const payload = (await response.json()) as {
+  const payload = await json<{
     success: boolean;
     data: { results: Array<{ email: string; success: boolean }> };
-  };
+  }>(response);
   expect(payload.success).toBe(true);
   expect(payload.data.results.map((result) => result.email)).toEqual([first, third]);
   expect(payload.data.results.every((result) => result.success)).toBe(true);

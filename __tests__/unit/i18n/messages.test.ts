@@ -32,11 +32,15 @@ const MESSAGE_FILES = {
   'admin:pl': adminPl,
 } as const;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function flattenMessages(value: unknown, prefix = ''): Array<[string, string]> {
   if (typeof value === 'string') return [[prefix, value]];
 
-  if (value && typeof value === 'object') {
-    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+  if (isRecord(value)) {
+    return Object.entries(value).flatMap(([key, child]) =>
       flattenMessages(child, prefix ? `${prefix}.${key}` : key),
     );
   }
@@ -298,7 +302,7 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
   it('translates exactly the quiz review page keys', () => {
     const quizReviewPage = messages.AppQuizReviewPage as Record<string, string>;
 
-    expect(Object.keys(quizReviewPage).sort()).toEqual([...APP_QUIZ_REVIEW_KEYS].sort());
+    expect(Object.keys(quizReviewPage).toSorted()).toEqual([...APP_QUIZ_REVIEW_KEYS].toSorted());
 
     for (const key of APP_QUIZ_REVIEW_KEYS) {
       const message = quizReviewPage[key];
@@ -311,7 +315,7 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
   it('translates exactly the public status page keys', () => {
     const statusPage = messages.StatusPage as Record<string, string>;
 
-    expect(Object.keys(statusPage).sort()).toEqual([...STATUS_PAGE_KEYS].sort());
+    expect(Object.keys(statusPage).toSorted()).toEqual([...STATUS_PAGE_KEYS].toSorted());
 
     for (const key of STATUS_PAGE_KEYS) {
       const message = statusPage[key];
@@ -397,10 +401,10 @@ describe('deck view bulk action copy (#364)', () => {
   });
 });
 
-describe('quiz review copy (#329)', () => {
-  const quizReview = (locale: 'en' | 'pl') =>
-    createTranslator({ locale, messages: locales[locale], namespace: 'AppQuizReviewPage' });
+const quizReview = (locale: 'en' | 'pl') =>
+  createTranslator({ locale, messages: locales[locale], namespace: 'AppQuizReviewPage' });
 
+describe('quiz review copy (#329)', () => {
   it('pluralises the open-question lines in Polish', () => {
     const t = quizReview('pl');
 
@@ -474,7 +478,7 @@ describe('i18n message parity', () => {
   });
 
   it('has the same AccountPage keys in en and pl', () => {
-    expect(Object.keys(en.AccountPage).sort()).toEqual(Object.keys(pl.AccountPage).sort());
+    expect(Object.keys(en.AccountPage).toSorted()).toEqual(Object.keys(pl.AccountPage).toSorted());
   });
 
   /**
@@ -482,18 +486,18 @@ describe('i18n message parity', () => {
    * `/edu/questions`; a key present in only one locale would show a raw key.
    */
   it('has the same QuestionBankManagement keys in en and pl', () => {
-    expect(Object.keys(en.QuestionBankManagement).sort()).toEqual(
-      Object.keys(pl.QuestionBankManagement).sort(),
+    expect(Object.keys(en.QuestionBankManagement).toSorted()).toEqual(
+      Object.keys(pl.QuestionBankManagement).toSorted(),
     );
   });
 
   it('has the same AiChatPage keys in en and pl', () => {
-    expect(Object.keys(en.AiChatPage).sort()).toEqual(Object.keys(pl.AiChatPage).sort());
+    expect(Object.keys(en.AiChatPage).toSorted()).toEqual(Object.keys(pl.AiChatPage).toSorted());
   });
 
   it('has the same AppAssignmentsPage keys in en and pl', () => {
-    expect(Object.keys(en.AppAssignmentsPage).sort()).toEqual(
-      Object.keys(pl.AppAssignmentsPage).sort(),
+    expect(Object.keys(en.AppAssignmentsPage).toSorted()).toEqual(
+      Object.keys(pl.AppAssignmentsPage).toSorted(),
     );
   });
 
@@ -503,8 +507,8 @@ describe('i18n message parity', () => {
    * raw key to that locale's users.
    */
   it('has the same AppFlashcardSessionPage keys in en and pl', () => {
-    expect(Object.keys(en.AppFlashcardSessionPage).sort()).toEqual(
-      Object.keys(pl.AppFlashcardSessionPage).sort(),
+    expect(Object.keys(en.AppFlashcardSessionPage).toSorted()).toEqual(
+      Object.keys(pl.AppFlashcardSessionPage).toSorted(),
     );
   });
 
@@ -513,7 +517,9 @@ describe('i18n message parity', () => {
    * so a missing key would throw at render time and 1 min / 1 day would be unreadable.
    */
   it('has the same AppStatsPage keys in en and pl', () => {
-    expect(Object.keys(en.AppStatsPage).sort()).toEqual(Object.keys(pl.AppStatsPage).sort());
+    expect(Object.keys(en.AppStatsPage).toSorted()).toEqual(
+      Object.keys(pl.AppStatsPage).toSorted(),
+    );
   });
 
   /**
@@ -521,8 +527,8 @@ describe('i18n message parity', () => {
    * locales; a key present in only one would show the raw key mid-review.
    */
   it('has the same AppQuizReviewPage keys in en and pl', () => {
-    expect(Object.keys(en.AppQuizReviewPage).sort()).toEqual(
-      Object.keys(pl.AppQuizReviewPage).sort(),
+    expect(Object.keys(en.AppQuizReviewPage).toSorted()).toEqual(
+      Object.keys(pl.AppQuizReviewPage).toSorted(),
     );
   });
 
@@ -558,8 +564,8 @@ describe('language switcher copy (#634)', () => {
    * `LanguageSwitcher.*` key in that surface.
    */
   it('has the same LanguageSwitcher keys in en and pl', () => {
-    expect(Object.keys(en.LanguageSwitcher).sort()).toEqual(
-      Object.keys(pl.LanguageSwitcher).sort(),
+    expect(Object.keys(en.LanguageSwitcher).toSorted()).toEqual(
+      Object.keys(pl.LanguageSwitcher).toSorted(),
     );
   });
 

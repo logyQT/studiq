@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 /**
  * E2E coverage for #200 (EDU-ST-01, step 2).
@@ -98,8 +99,8 @@ test.describe('EDU content stats — subject filter and breakdowns (#200)', () =
 
     const response = await page.request.get(STATS_URL);
     expect(response.status()).toBe(200);
-    const body = await response.json();
-    const baseline = (body.data ?? body) as TeacherStatsPayload;
+    const body = await json<TeacherStatsPayload & { data?: TeacherStatsPayload }>(response);
+    const baseline = body.data ?? body;
     expect(baseline.totalQuestions).toBeGreaterThan(0);
     expect(baseline.bySubject.length).toBeGreaterThan(0);
     expect(Object.keys(baseline.subject.byType).length).toBeGreaterThan(0);
@@ -137,8 +138,10 @@ test.describe('EDU content stats — subject filter and breakdowns (#200)', () =
       `${STATS_URL}?subjectId=${encodeURIComponent(firstSubject.subjectId)}`,
     );
     expect(filteredResponse.status()).toBe(200);
-    const filteredBody = await filteredResponse.json();
-    const filtered = (filteredBody.data ?? filteredBody) as TeacherStatsPayload;
+    const filteredBody = await json<TeacherStatsPayload & { data?: TeacherStatsPayload }>(
+      filteredResponse,
+    );
+    const filtered = filteredBody.data ?? filteredBody;
 
     await pickSubject(page, subjectLabel(firstSubject));
     await expectTypeSplit(page, filtered.subject.byType);
@@ -158,8 +161,10 @@ test.describe('EDU content stats — subject filter and breakdowns (#200)', () =
     const secondResponse = await page.request.get(
       `${STATS_URL}?subjectId=${encodeURIComponent(secondSubject.subjectId)}`,
     );
-    const secondBody = await secondResponse.json();
-    const second = (secondBody.data ?? secondBody) as TeacherStatsPayload;
+    const secondBody = await json<TeacherStatsPayload & { data?: TeacherStatsPayload }>(
+      secondResponse,
+    );
+    const second = secondBody.data ?? secondBody;
 
     await page.route(`**${STATS_URL}*`, (route) =>
       route.fulfill({

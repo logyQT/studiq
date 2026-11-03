@@ -36,7 +36,7 @@ interface DeckCardProps {
 }
 
 export const DeckCard = memo(
-  function DeckCard({
+  function DeckCardContent({
     deck,
     isSelecting,
     isSelected,

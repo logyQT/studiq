@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -159,7 +160,7 @@ interface ReportDetail {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -177,8 +178,7 @@ async function sendData<T>(
     response.status(),
     `${method.toUpperCase()} ${url} → ${response.status()} ${await response.text()}`,
   ).toBe(status);
-  const text = await response.text();
-  return (text ? (JSON.parse(text) as ApiEnvelope<T>).data : undefined) as T;
+  return (await json<ApiEnvelope<T>>(response)).data;
 }
 
 async function listDecks(page: Page): Promise<DeckListItem[]> {
@@ -481,7 +481,7 @@ test.describe('@case:EDU-Q-06 @area:EDU @prio:P2 flashcard from a question', () 
 
     const reportResponse = await reportCreated;
     expect(reportResponse.status(), `POST ${reportUrl}`).toBe(201);
-    const reportBody = (await reportResponse.json()) as ApiEnvelope<ReportListItem>;
+    const reportBody = await json<ApiEnvelope<ReportListItem>>(reportResponse);
     const reportId = reportBody.data.id;
     await expect(page.getByText(COPY.reportSent, { exact: true }).first()).toBeVisible();
 

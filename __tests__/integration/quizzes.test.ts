@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   useRealSupabase,
@@ -13,6 +14,22 @@ import { POST } from '@/app/(backend)/api/v1/quiz/new/route';
 import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+interface QuizQuestion {
+  id: string;
+  question_answers: Array<Record<string, unknown>>;
+}
+
+/** `/api/v1/quiz/new` success body — only the fields these tests read. */
+interface QuizBody {
+  success: boolean;
+  data: { questions: QuizQuestion[] };
+}
+
+/** Error body: every failure case only asserts `success`. */
+interface ErrorBody {
+  success: boolean;
+}
 
 describe(`Quizzes Integration`, () => {
   let student!: BeforeResult;
@@ -49,7 +66,7 @@ describe(`Quizzes Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<QuizBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -79,7 +96,7 @@ describe(`Quizzes Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<QuizBody>(response);
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
@@ -96,9 +113,9 @@ describe(`Quizzes Integration`, () => {
           body: JSON.stringify({ name: topicName }),
         }),
       );
-      const topicBody = await topicRes.json();
+      const topicBody = await json<{ data: { id: string } }>(topicRes);
       expect(topicRes.status).toBe(201);
-      const topicId = topicBody.data.id as string;
+      const topicId = topicBody.data.id;
 
       // Tag exactly one of the five seeded questions with the new topic. The
       // question PUT route scopes its update to `organization_id = activeOrgId`,
@@ -121,12 +138,10 @@ describe(`Quizzes Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<QuizBody>(response);
 
       expect(response.status).toBe(201);
-      expect(body.data.questions.map((question: { id: string }) => question.id)).toEqual([
-        taggedQuestionId,
-      ]);
+      expect(body.data.questions.map((question) => question.id)).toEqual([taggedQuestionId]);
     });
 
     it('returns 401 when not authenticated', async () => {
@@ -142,7 +157,7 @@ describe(`Quizzes Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -161,7 +176,7 @@ describe(`Quizzes Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -180,7 +195,7 @@ describe(`Quizzes Integration`, () => {
       });
 
       const response = await POST(req);
-      const body = await response.json();
+      const body = await json<ErrorBody>(response);
 
       expect(response.status).toBe(404);
       expect(body.success).toBe(false);

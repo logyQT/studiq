@@ -113,13 +113,17 @@ export default function SettingsPage() {
     // Branding is read through useBranding() → useOrgs()' `['orgs']` query;
     // invalidate it so the sidebar/navbar pick the change up without a reload.
     invalidateKeys: [['orgs']],
-    onSettled: () => refetch(),
+    onSettled: () => {
+      void refetch();
+    },
   });
 
   const uploadLogo = useApiMutation({
     mutationFn: (file: File) => apiUploadFile(`/api/v1/organization/${activeOrg?.id}/logo`, file),
     invalidateKeys: [['orgs']],
-    onSettled: () => refetch(),
+    onSettled: () => {
+      void refetch();
+    },
   });
 
   async function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {

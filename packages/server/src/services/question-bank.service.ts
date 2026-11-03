@@ -7,6 +7,7 @@ import {
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -14,22 +15,22 @@ import type {
   BatchDeleteQuestionBankInput,
   BulkCreateQuestionBankInput,
   CreateQuestionBankInput,
-  QuestionBank,
   QuestionBankListQuery,
   UpdateQuestionBankInput,
 } from '@studiq/server/models/question-bank.model';
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class QuestionBankService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(
     data: CreateQuestionBankInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
     if (groupIds.length > 0) {
@@ -80,10 +81,10 @@ export class QuestionBankService {
     ctx: RequestContext,
     queryParams?: Partial<QuestionBankListQuery>,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
-    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
 
     let query = supabase
       .from('question_banks')
@@ -131,34 +132,30 @@ export class QuestionBankService {
     const { data, error } = await query;
     if (error) return toDbFailure(error);
 
-    const rows = data as Array<Record<string, unknown>> | null;
-    const hasMore = (rows?.length ?? 0) > pageSize;
-    const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-    const items = sliced.map((item) => {
-      const countArr = item.question_count as { count: number }[] | undefined;
-      const groups = item.bank_groups as { group_id: string }[] | undefined;
-      return {
-        ...item,
-        question_count: countArr?.[0]?.count ?? 0,
-        groupIds: groups?.map((g) => g.group_id) ?? [],
-      };
-    });
+    const rows = data ?? [];
+    const hasMore = rows.length > pageSize;
+    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
+    const items = sliced.map((item) => ({
+      ...item,
+      question_count: item.question_count?.[0]?.count ?? 0,
+      groupIds: item.bank_groups?.map((g) => g.group_id) ?? [],
+    }));
     const nextCursor = hasMore
       ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
       : null;
 
     return success({
-      items: items as unknown as QuestionBank[],
+      items,
       nextCursor,
       hasMore,
-    } as { items: QuestionBank[]; nextCursor: string | null; hasMore: boolean });
+    });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
-    if (filter._impossible) return failure('NOT_FOUND');
+    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
     let query = supabase
       .from('question_banks')
@@ -172,15 +169,11 @@ export class QuestionBankService {
     const { data: bank, error } = await query.single();
     if (error || !bank) return failure('NOT_FOUND');
 
-    const countArr = (bank as Record<string, unknown>).question_count as
-      { count: number }[] | undefined;
-    const groups = (bank as Record<string, unknown>).bank_groups as
-      { group_id: string }[] | undefined;
     return success({
       ...bank,
-      question_count: countArr?.[0]?.count ?? 0,
-      groupIds: groups?.map((g) => g.group_id) ?? [],
-    } as unknown as QuestionBank);
+      question_count: bank.question_count?.[0]?.count ?? 0,
+      groupIds: bank.bank_groups?.map((g) => g.group_id) ?? [],
+    });
   }
 
   async update(
@@ -188,7 +181,7 @@ export class QuestionBankService {
     data: UpdateQuestionBankInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('question_banks')
@@ -213,7 +206,7 @@ export class QuestionBankService {
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['question_banks']['Update'] = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.description !== undefined) updateFields.description = data.description;
     if (data.visibility !== undefined) updateFields.visibility = data.visibility;
@@ -256,9 +249,9 @@ export class QuestionBankService {
     }
 
     if (data.questionIds !== undefined) {
-      // First unset bank_id for all questions currently in this bank
-      await supabase.from('questions').update({ bank_id: null }).eq('bank_id', id);
-      // Then set bank_id for the specified questions
+      // `questions.bank_id` is NOT NULL (enforce_fk_not_null migration), so a
+      // question cannot be detached from its bank; assigning the listed ones is
+      // the whole operation.
       if (data.questionIds.length > 0) {
         const { error: aError } = await supabase
           .from('questions')
@@ -272,7 +265,7 @@ export class QuestionBankService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: existing, error: fetchError } = await supabase
       .from('question_banks')
@@ -293,7 +286,7 @@ export class QuestionBankService {
     data: BulkCreateQuestionBankInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const bankCount = await this.countOwned(supabase, ctx);
     await limitsResolver.checkLimit(ctx, 'max_question_banks', bankCount, data.banks.length);
@@ -319,7 +312,7 @@ export class QuestionBankService {
     data: BatchDeleteQuestionBankInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: banks, error: fetchError } = await supabase
       .from('question_banks')
@@ -344,7 +337,10 @@ export class QuestionBankService {
    * is scoped to content owned by the caller **in that org**, so personal-space
    * banks never consume the org plan's capacity.
    */
-  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+  private async countOwned(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<number> {
     let query = supabase
       .from('question_banks')
       .select('*', { count: 'exact', head: true })

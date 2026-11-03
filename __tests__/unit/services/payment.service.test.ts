@@ -1,18 +1,40 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { PaymentService } from '@studiq/server/services/payment.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-const ctx = { userId: 'u-1' } as unknown as Parameters<PaymentService['listMine']>[0];
+const ctx: RequestContext = {
+  userId: 'u-1',
+  accountType: AccountType.STUDENT,
+  traceId: 't',
+  url: '',
+  method: 'GET',
+  activeOrgId: null,
+  orgRoleId: null,
+  groupIds: [],
+  permissionScopes: {},
+};
+
+type QueryResult = { data: unknown; error: unknown };
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  then: Promise<QueryResult>['then'];
+  catch: Promise<QueryResult>['catch'];
+  finally: Promise<QueryResult>['finally'];
+};
 
 function qb(rows: unknown[] | null, error: unknown = null) {
-  const promise = Promise.resolve({ data: rows, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const promise = Promise.resolve<QueryResult>({ data: rows, error });
+  const b: QueryChain = {
+    select: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    order: vi.fn(() => b),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -23,7 +45,7 @@ describe('PaymentService.listMine (#392)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new PaymentService(async () => mock as any);
+    service = new PaymentService(() => Promise.resolve(mock));
   });
 
   it('maps payment rows to camelCase, newest first', async () => {

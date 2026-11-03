@@ -86,7 +86,7 @@ export default function UserOverridesPage() {
         expiresAt: data.expires_at || undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.userOverrides.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.userOverrides.all });
       setDialogOpen(false);
       setForm(EMPTY_FORM);
     },
@@ -100,7 +100,7 @@ export default function UserOverridesPage() {
         expiresAt: data.expires_at || undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.userOverrides.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.userOverrides.all });
       setDialogOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
@@ -110,7 +110,7 @@ export default function UserOverridesPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/user-overrides/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.userOverrides.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.userOverrides.all });
       setDeleteTarget(null);
     },
   });

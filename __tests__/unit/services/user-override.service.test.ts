@@ -2,21 +2,50 @@ import { UserOverrideService } from '@admin/server/services/user-override.servic
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
-  return b;
+type ChainMock = ReturnType<typeof vi.fn>;
+
+/** A thenable PostgREST builder stand-in: every chain method returns itself. */
+interface QueryBuilder {
+  select: ChainMock;
+  insert: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  eq: ChainMock;
+  order: ChainMock;
+  single: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
+const CHAIN_METHODS = ['select', 'insert', 'update', 'delete', 'eq', 'order'] as const;
+
+function qb(data: unknown, error: unknown = null): QueryBuilder {
+  const result = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    order: vi.fn(),
+    single: vi.fn(),
+    maybeSingle: vi.fn(),
+    then: vi.fn(),
+    catch: vi.fn(),
+    finally: vi.fn(),
+  };
+  for (const method of CHAIN_METHODS) {
+    builder[method] = vi.fn(() => builder);
+  }
+  builder.single = vi.fn().mockResolvedValue(result);
+  builder.maybeSingle = vi.fn().mockResolvedValue(result);
+  builder.then = vi.fn(promise.then.bind(promise));
+  builder.catch = vi.fn(promise.catch.bind(promise));
+  builder.finally = vi.fn(promise.finally.bind(promise));
+  return builder;
 }
 
 describe('UserOverrideService', () => {
@@ -26,7 +55,7 @@ describe('UserOverrideService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new UserOverrideService(async () => mock as any);
+    service = new UserOverrideService(() => Promise.resolve(mock));
   });
 
   describe('getAll', () => {

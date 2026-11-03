@@ -1,5 +1,7 @@
+// eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import type Stripe from 'stripe';
 import { error as logError, log, warn as logWarn } from '@studiq/server/lib/log';
+import { isRecord, readString } from '@studiq/server/lib/record';
 import type { WebhookOutcome } from '@studiq/server/lib/payment/payment-gateway';
 import { STRIPE_API_VERSION, type StripeClient } from '@studiq/server/lib/payment/stripe-client';
 import type { CatalogPlan } from '@studiq/server/lib/payment/stripe-repository';
@@ -122,8 +124,30 @@ function errorMessage(error: unknown): string {
 }
 
 function isResourceMissing(error: unknown): boolean {
-  const candidate = error as { code?: string; type?: string } | null;
-  return candidate?.code === 'resource_missing' || candidate?.type === 'StripeInvalidRequestError';
+  if (!isRecord(error)) return false;
+  const code = readString(error, 'code');
+  const type = readString(error, 'type');
+  return code === 'resource_missing' || type === 'StripeInvalidRequestError';
+}
+
+/*
+ * Stripe types `Event.data.object` as an empty interface because the payload
+ * shape depends on `event.type`. These helpers are the single boundary that
+ * trusts the event type's discrimination.
+ */
+function checkoutSession(event: Stripe.Event): Stripe.Checkout.Session {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- stripe-node leaves data.object untyped; the event type discriminates it.
+  return event.data.object as Stripe.Checkout.Session;
+}
+
+function subscriptionPayload(event: Stripe.Event): Stripe.Subscription {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- stripe-node leaves data.object untyped; the event type discriminates it.
+  return event.data.object as Stripe.Subscription;
+}
+
+function invoicePayload(event: Stripe.Event): Stripe.Invoice {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- stripe-node leaves data.object untyped; the event type discriminates it.
+  return event.data.object as Stripe.Invoice;
 }
 
 export class StripeWebhookService {
@@ -230,7 +254,7 @@ export class StripeWebhookService {
       case 'invoice.payment_action_required':
         return this.onInvoicePaymentProblem(event, true, claimToken);
       case 'checkout.session.expired': {
-        const session = event.data.object as Stripe.Checkout.Session;
+        const session = checkoutSession(event);
         log('billing.checkout_expired', { eventId: event.id, sessionId: session.id });
         return { ignored: true };
       }
@@ -244,7 +268,7 @@ export class StripeWebhookService {
     event: Stripe.Event,
     claimToken: string,
   ): Promise<DispatchResult> {
-    const session = event.data.object as Stripe.Checkout.Session;
+    const session = checkoutSession(event);
     const metadataOwner = this.ownerFromMetadata(session.metadata);
     if (!metadataOwner) {
       logError('billing.owner_unresolved', {
@@ -308,7 +332,7 @@ export class StripeWebhookService {
     deleted: boolean,
     claimToken: string,
   ): Promise<DispatchResult> {
-    const payload = event.data.object as Stripe.Subscription;
+    const payload = subscriptionPayload(event);
     const subscription = await this.retrieveSubscription(payload.id, deleted ? payload : null);
     if (!subscription) {
       logError('billing.subscription_unresolved', {
@@ -509,7 +533,7 @@ export class StripeWebhookService {
   }
 
   private async onInvoicePaid(event: Stripe.Event, claimToken: string): Promise<DispatchResult> {
-    const invoice = event.data.object as Stripe.Invoice;
+    const invoice = invoicePayload(event);
     const subscriptionId = invoiceSubscriptionId(invoice);
     if (!subscriptionId) {
       log('billing.invoice_without_subscription', { eventId: event.id, invoiceId: invoice.id });
@@ -630,7 +654,7 @@ export class StripeWebhookService {
     actionRequired: boolean,
     claimToken: string,
   ): Promise<DispatchResult> {
-    const invoice = event.data.object as Stripe.Invoice;
+    const invoice = invoicePayload(event);
     const subscriptionId = invoiceSubscriptionId(invoice);
     if (!subscriptionId) {
       log('billing.invoice_without_subscription', { eventId: event.id, invoiceId: invoice.id });

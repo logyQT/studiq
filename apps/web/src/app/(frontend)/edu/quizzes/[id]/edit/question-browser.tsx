@@ -41,6 +41,7 @@ function BrowserItem({
     >
       {draggable && (
         <button
+          type="button"
           {...attributes}
           {...listeners}
           className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
@@ -143,7 +144,7 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
               <BrowserItem
                 key={q.id}
                 question={q}
-                onAdd={(q) => onAdd([q])}
+                onAdd={(item) => onAdd([item])}
                 draggable={draggable}
               />
             ))}

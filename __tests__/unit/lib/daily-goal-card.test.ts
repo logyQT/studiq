@@ -5,6 +5,21 @@ import { describe, expect, it } from 'vitest';
 // a failed load into "no goal" (one click would overwrite a real goal with 0), and has to be
 // usable without colour or a mouse.
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** One namespace of a message file, failing loudly when the file no longer has it. */
+function messageNamespace(locale: string, namespace: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(
+    readFileSync(`apps/web/src/i18n/messages/${locale}.json`, 'utf8'),
+  );
+  if (!isRecord(parsed)) throw new Error('the message file is not an object');
+  const entries = parsed[namespace];
+  if (!isRecord(entries)) throw new Error(`${namespace} is missing from the message file`);
+  return entries;
+}
+
 const card = readFileSync('apps/web/src/components/study/daily-goal-card.tsx', 'utf8');
 const progress = readFileSync('packages/ui/src/components/ui/progress.tsx', 'utf8');
 
@@ -51,9 +66,9 @@ describe('DailyGoalCard', () => {
 describe('StudyGoal messages', () => {
   for (const locale of ['pl', 'en']) {
     it(`${locale} has every key the card uses`, () => {
-      const json = JSON.parse(readFileSync(`apps/web/src/i18n/messages/${locale}.json`, 'utf8'));
+      const messages = messageNamespace(locale, 'StudyGoal');
       const keys = [...card.matchAll(/\bt\('([a-z_]+)'/g)].map((m) => m[1]);
-      for (const key of new Set(keys)) expect(json.StudyGoal[key], key).toBeTruthy();
+      for (const key of new Set(keys)) expect(messages[key], key).toBeTruthy();
     });
   }
 });

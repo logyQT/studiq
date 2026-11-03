@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -68,7 +69,7 @@ interface CreatedFlashcard {
 
 async function getJson<T>(page: Page, url: string): Promise<T> {
   const res = await page.request.get(url);
-  const body = (await res.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(res);
   expect(res.ok(), `GET ${url} → ${res.status()} ${JSON.stringify(body)}`).toBe(true);
   expect(body.success, `GET ${url} success`).toBe(true);
   return body.data;
@@ -76,7 +77,7 @@ async function getJson<T>(page: Page, url: string): Promise<T> {
 
 async function postJson<T>(page: Page, url: string, data: unknown): Promise<T> {
   const res = await page.request.post(url, { data });
-  const body = (await res.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(res);
   expect(res.status(), `POST ${url} → ${res.status()} ${JSON.stringify(body)}`).toBe(201);
   expect(body.success, `POST ${url} success`).toBe(true);
   return body.data;
@@ -147,7 +148,9 @@ test.describe('STU-04 @area:STU @prio:P2 study page states', () => {
 
     const settings = await getJson<StudySettings>(page, '/api/v1/flashcards/practice/settings');
     expect(settings.remainingNewCards, 'new cards offered inside the daily budget').toBe(NEW_CARDS);
-    expect(newCard.getByText(String(settings.remainingNewCards), { exact: true })).toBeVisible();
+    await expect(
+      newCard.getByText(String(settings.remainingNewCards), { exact: true }),
+    ).toBeVisible();
     await expect(newCard.getByText(/nowych kart dostępnych do nauki/)).toBeVisible();
 
     // "0 z 20 nowych kart dzisiaj" and the matching (empty) progress bar.

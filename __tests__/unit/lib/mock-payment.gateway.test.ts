@@ -11,7 +11,7 @@ function createPort(): MockStripePort {
     createCheckoutSession: vi.fn(),
     createPortalSession: vi.fn(),
     handleWebhook: vi.fn(),
-  } as unknown as MockStripePort;
+  };
 }
 
 const ctx: RequestContext = {

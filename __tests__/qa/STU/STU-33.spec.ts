@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -162,7 +163,7 @@ function questionRow(page: Page, content: string): Locator {
 async function listBanks(page: Page): Promise<BankRow[]> {
   const response = await page.request.get(`${BANKS_URL}?limit=100`);
   expect(response.status(), `GET ${BANKS_URL} → ${response.status()}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<{ items: BankRow[] }>;
+  const body = await json<ApiEnvelope<{ items: BankRow[] }>>(response);
   expect(body.success, 'bank list success flag').toBe(true);
   return body.data.items;
 }
@@ -170,7 +171,7 @@ async function listBanks(page: Page): Promise<BankRow[]> {
 async function listQuestions(page: Page, bankId: string): Promise<QuestionRow[]> {
   const response = await page.request.get(`${QUESTIONS_URL}?bankId=${bankId}`);
   expect(response.status(), `GET ${QUESTIONS_URL}?bankId=${bankId}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<QuestionRow[]>;
+  const body = await json<ApiEnvelope<QuestionRow[]>>(response);
   expect(body.success, 'question list success flag').toBe(true);
   return body.data;
 }
@@ -181,7 +182,7 @@ async function getQuestion(page: Page, id: string): Promise<QuestionRow> {
     response.status(),
     `GET ${QUESTIONS_URL}/${id} → ${response.status()} ${await response.text()}`,
   ).toBe(200);
-  return ((await response.json()) as ApiEnvelope<QuestionRow>).data;
+  return (await json<ApiEnvelope<QuestionRow>>(response)).data;
 }
 
 /**
@@ -205,7 +206,7 @@ async function createBank(page: Page, tenant: QaTenant): Promise<BankRow> {
     response.status(),
     `POST ${BANKS_URL} (${BANK_NAME}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const bank = ((await response.json()) as ApiEnvelope<BankRow>).data;
+  const bank = (await json<ApiEnvelope<BankRow>>(response)).data;
   expect(bank.created_by, 'the bank belongs to the signed-in student').toBe(student.id);
   expect(bank.organization_id, 'the bank lives in the tenant organization').toBe(tenant.org?.id);
   expect(bank.visibility, 'a student bank is personal').toBe('personal');
@@ -233,12 +234,12 @@ async function createQuestion(
     response.status(),
     `POST ${QUESTIONS_URL} (${seed.content}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<QuestionRow>).data;
+  return (await json<ApiEnvelope<QuestionRow>>(response)).data;
 }
 
 function answersOf(question: QuestionRow) {
   return [...(question.question_answers ?? [])]
-    .sort((left, right) => (left.order_index ?? 0) - (right.order_index ?? 0))
+    .toSorted((left, right) => (left.order_index ?? 0) - (right.order_index ?? 0))
     .map((answer) => ({ text: answer.content, correct: answer.is_correct }));
 }
 
@@ -380,7 +381,7 @@ test.describe('@case:STU-33 @area:STU @prio:P2 edit and delete a question and it
 
     const renamedResponse = await page.request.get(`${BANKS_URL}/${bank.id}`);
     expect(renamedResponse.status(), 'GET the edited bank').toBe(200);
-    const renamedBank = ((await renamedResponse.json()) as ApiEnvelope<BankRow>).data;
+    const renamedBank = (await json<ApiEnvelope<BankRow>>(renamedResponse)).data;
     expect(renamedBank.name).toBe(BANK_EDITED);
     expect(renamedBank.question_count, 'the rename keeps the bank’s question').toBe(1);
 

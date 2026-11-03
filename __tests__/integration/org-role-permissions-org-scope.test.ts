@@ -1,12 +1,9 @@
 import type { RequestContext } from '@studiq/authz';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  useRealSupabase,
-  cleanupOrganizationDeep,
-  createServiceClient,
-} from '#test/integration/helpers';
+import { useRealSupabase, cleanupOrganizationDeep } from '#test/integration/helpers';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -23,7 +20,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 describe(`OrgRoleService.setPermissions org scope`, () => {
   const tag = `${suiteId}-${Date.now()}`;
 
-  let service: SupabaseClient;
+  let service: SupabaseClient<Database>;
   let orgA: string;
   let orgB: string;
   let orgARoleId: string; // caller's role in org A (verified membership)
@@ -77,7 +74,12 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   }
 
   beforeAll(async () => {
-    service = createServiceClient();
+    // Database-typed: `OrgRoleService` takes a factory that hands back the typed client.
+    service = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } },
+    );
 
     orgA = await createOrg(`orgscope-a-${tag}`);
     orgB = await createOrg(`orgscope-b-${tag}`);
@@ -114,7 +116,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   });
 
   it('returns NOT_FOUND for a role outside the active org and leaves its rows untouched', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const before = await permissionsOf(orgBMemberRole);
     expect(before.length).toBeGreaterThan(0);
 
@@ -131,7 +133,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   });
 
   it('returns FORBIDDEN when the active org cookie points at an org the caller is not a member of', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
     const before = await permissionsOf(orgBMemberRole);
 
     // with-auth leaves orgRoleId null when no org_members row exists for
@@ -151,7 +153,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
   });
 
   it('replaces permissions for a role in the caller own org (happy path preserved)', async () => {
-    const orgRoleService = new OrgRoleService(async () => service);
+    const orgRoleService = new OrgRoleService(() => Promise.resolve(service));
 
     const result = await orgRoleService.setPermissions(ctx({}), orgACustomRole, {
       permissions: [

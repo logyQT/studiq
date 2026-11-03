@@ -1,3 +1,4 @@
+import { json } from '#test/helpers/json';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -163,7 +164,7 @@ function watchForErrors(page: Page) {
 async function fetchStudentPlans(page: Page): Promise<PlanInfo[]> {
   const response = await page.request.get('/api/v1/subscription-plans?for=student');
   expect(response.status(), 'student plan catalogue').toBe(200);
-  const { data } = (await response.json()) as { data: PlanInfo[] };
+  const { data } = await json<{ data: PlanInfo[] }>(response);
   return data;
 }
 
@@ -191,7 +192,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
     // Prerequisite "Brak sesji": no user, so no "Obecny Plan" and no checkout CTA.
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status()).toBe(200);
-    const meBody = (await me.json()) as { data?: { user?: unknown } };
+    const meBody = await json<{ data?: { user?: unknown } }>(me);
     expect(meBody.data?.user ?? null).toBeNull();
 
     await expect(
@@ -255,8 +256,8 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
       const expectedFeatures = plan.features.map(featureLabel);
       expect(features.length, `${plan.key} feature count`).toBeGreaterThan(0);
       expect(features.length, `${plan.key} has no duplicate features`).toBe(new Set(features).size);
-      expect([...features].sort(), `${plan.key} feature labels`).toEqual(
-        [...expectedFeatures].sort(),
+      expect([...features].toSorted(), `${plan.key} feature labels`).toEqual(
+        [...expectedFeatures].toSorted(),
       );
 
       // CTA: one link per card, specific to the plan, pointing an anonymous
@@ -296,7 +297,7 @@ test.describe('@case:PUB-04 @area:PUB @prio:P2 student plan cards', () => {
     );
 
     const limitKeys = visibleLimitKeys(plans);
-    const featureKeys = [...new Set(plans.flatMap((plan) => plan.features))].sort();
+    const featureKeys = [...new Set(plans.flatMap((plan) => plan.features))].toSorted();
     const rows = table.locator('tbody tr');
     await expect(rows).toHaveCount(featureKeys.length + limitKeys.length);
 

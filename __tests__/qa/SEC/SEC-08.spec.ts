@@ -1,4 +1,5 @@
 import type { Browser, Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import {
   expect,
   loadTenant,
@@ -199,9 +200,9 @@ async function call(
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.status(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(200);
-  const body = (await response.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
-  return body.data as T;
+  return asJson<T>(body.data);
 }
 
 /**
@@ -274,7 +275,7 @@ async function prepareTenant(browser: Browser, baseURL: string): Promise<CaseFix
         invitations: [{ email: attacker.email, targetOrgRoleId: memberRole!.id }],
       });
       expect(invite.status, `manager invites S2 → ${invite.body}`).toBe(200);
-      const inviteBody = JSON.parse(invite.body) as Envelope<{ results: BulkResult[] }>;
+      const inviteBody = asJson<Envelope<{ results: BulkResult[] }>>(JSON.parse(invite.body));
       const code = inviteBody.data?.results[0]?.data.inviteCode;
       expect(code, 'the invitation carries its 32-hex code').toMatch(/^[0-9a-f]{32}$/);
 
@@ -299,7 +300,7 @@ async function prepareTenant(browser: Browser, baseURL: string): Promise<CaseFix
     if (!deck) {
       const created = await call(owner.page, 'POST', DECKS_URL, { name: DECK_NAME });
       expect(created.status, `S1 creates the deck ${DECK_NAME} → ${created.body}`).toBe(201);
-      deck = (JSON.parse(created.body) as Envelope<Deck>).data!;
+      deck = asJson<Envelope<Deck>>(JSON.parse(created.body)).data!;
     }
     expect(deck.created_by, 'the deck belongs to S1').toBe(victim.id);
     expect(deck.visibility, 'the deck is personal — only its owner may change it').toBe('personal');
@@ -312,7 +313,7 @@ async function prepareTenant(browser: Browser, baseURL: string): Promise<CaseFix
         back: cardBack,
       });
       expect(created.status, `S1 creates a card in ${DECK_NAME} → ${created.body}`).toBe(201);
-      card = (JSON.parse(created.body) as Envelope<Card>).data!;
+      card = asJson<Envelope<Card>>(JSON.parse(created.body)).data!;
     }
     expect(card.created_by, 'the card belongs to S1').toBe(victim.id);
 
@@ -354,7 +355,7 @@ const ACCOUNT_TYPE: Partial<Record<QaRole, string>> = {
 
 async function expectSignedInAs(page: Page, tenant: QaTenant, role: QaRole): Promise<void> {
   const user = account(tenant, role);
-  const me = (await (await page.request.get(ME_URL)).json()) as Envelope<Me>;
+  const me = await json<Envelope<Me>>(await page.request.get(ME_URL));
   expect(me.data?.user?.id, `the signed-in user is the tenant's ${role}`).toBe(user.id);
   expect(me.data?.user?.app_metadata?.account_type, `the ${role} account type`).toBe(
     ACCOUNT_TYPE[role],
@@ -392,7 +393,7 @@ test.describe('@case:SEC-08 @area:SEC @prio:P1 foreign flashcard and deck writes
       isActive: true,
     });
 
-    const ownCard = (await getData<Card>(page, `${CARDS_URL}/${card.id}`)) as Card;
+    const ownCard = await getData<Card>(page, `${CARDS_URL}/${card.id}`);
     expect(ownCard, 'S1 reads their own card before the attack').toMatchObject({
       id: card.id,
       front: card.front,
@@ -492,7 +493,7 @@ test.describe('@case:SEC-08 @area:SEC @prio:P1 foreign flashcard and deck writes
       back: card.back,
     });
     expect(ownerUpdate.status, `S1 updates their own card → ${ownerUpdate.body}`).toBe(200);
-    expect((JSON.parse(ownerUpdate.body) as Envelope<Card>).data).toMatchObject({
+    expect(asJson<Envelope<Card>>(JSON.parse(ownerUpdate.body)).data).toMatchObject({
       id: card.id,
       front: card.front,
     });
@@ -501,7 +502,7 @@ test.describe('@case:SEC-08 @area:SEC @prio:P1 foreign flashcard and deck writes
       name: `SEC-08 control ${fixture.run}`,
     });
     expect(throwaway.status, `S1 creates a control deck → ${throwaway.body}`).toBe(201);
-    const throwawayId = (JSON.parse(throwaway.body) as Envelope<Deck>).data!.id;
+    const throwawayId = asJson<Envelope<Deck>>(JSON.parse(throwaway.body)).data!.id;
     expect(
       (await call(page, 'DELETE', `${DECKS_URL}/${throwawayId}`)).status,
       'S1 deletes their own control deck',

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -104,31 +105,31 @@ interface FeaturesResponse {
 async function readPlan(page: Page): Promise<PlanInfo> {
   const res = await page.request.get('/api/v1/me/plan');
   expect(res.status(), 'GET /api/v1/me/plan').toBe(200);
-  return (await res.json()).data as PlanInfo;
+  return (await json<{ data: PlanInfo }>(res)).data;
 }
 
 async function readPersonalPlan(page: Page): Promise<PlanInfo> {
   const res = await page.request.get('/api/v1/me/personal-plan');
   expect(res.status(), 'GET /api/v1/me/personal-plan').toBe(200);
-  return (await res.json()).data as PlanInfo;
+  return (await json<{ data: PlanInfo }>(res)).data;
 }
 
 async function readFeatures(page: Page): Promise<string[]> {
   const res = await page.request.get('/api/v1/features/me');
   expect(res.status(), 'GET /api/v1/features/me').toBe(200);
-  return ((await res.json()).data as FeaturesResponse).features;
+  return (await json<{ data: FeaturesResponse }>(res)).data.features;
 }
 
 async function readOrganization(page: Page, orgId: string): Promise<OrganizationDetail> {
   const res = await page.request.get(`/api/v1/organization/${orgId}`);
   expect(res.status(), `GET /api/v1/organization/${orgId}`).toBe(200);
-  return (await res.json()).data as OrganizationDetail;
+  return (await json<{ data: OrganizationDetail }>(res)).data;
 }
 
 async function readPayments(page: Page): Promise<PaymentItem[]> {
   const res = await page.request.get('/api/v1/me/payments');
   expect(res.status(), 'GET /api/v1/me/payments').toBe(200);
-  return (await res.json()).data as PaymentItem[];
+  return (await json<{ data: PaymentItem[] }>(res)).data;
 }
 
 test.describe('BIL-04 — organization plan purchase', () => {
@@ -375,7 +376,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
         type: 'checkout.session.completed',
         session_id: `${CASE}-teacher-${crypto.randomUUID()}`,
         plan_id: 'hub',
-        user_id: teacher!.id,
+        user_id: teacher.id,
         org_id: orgId,
       },
     });

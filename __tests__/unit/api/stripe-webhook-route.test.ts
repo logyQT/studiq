@@ -1,15 +1,15 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { handleWebhook, handleStripeWebhook, withAuth, getPaymentGateway, gateway } = vi.hoisted(
+const { handleWebhook, handleStripeWebhook, withAuthMock, getPaymentGateway, gateway } = vi.hoisted(
   () => {
-    const gateway = { driver: 'mock' as 'mock' | 'stripe' };
+    const fakeGateway = { driver: 'mock' as 'mock' | 'stripe' };
     return {
       handleWebhook: vi.fn(),
       handleStripeWebhook: vi.fn(),
-      withAuth: vi.fn(),
-      getPaymentGateway: vi.fn(() => gateway),
-      gateway,
+      withAuthMock: vi.fn(),
+      getPaymentGateway: vi.fn(() => fakeGateway),
+      gateway: fakeGateway,
     };
   },
 );
@@ -22,8 +22,9 @@ vi.mock('@studiq/server/lib/payment/payment-gateway.factory', () => ({
   getPaymentGateway,
 }));
 
-vi.mock('@studiq/server/lib/with-auth', () => ({ withAuth }));
+vi.mock('@studiq/server/lib/with-auth', () => ({ withAuth: withAuthMock }));
 
+import { withAuth } from '@studiq/server/lib/with-auth';
 import { POST } from '@/app/(backend)/api/v1/stripe/webhook/route';
 
 function webhookRequest(body: unknown, signature?: string) {
@@ -40,7 +41,7 @@ describe('POST /api/v1/stripe/webhook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     gateway.driver = 'mock';
-    withAuth.mockImplementation(async (_req, handler) =>
+    vi.mocked(withAuth).mockImplementation((_req, handler) =>
       handler({
         traceId: 'trace',
         userId: 'u-1',
@@ -67,7 +68,7 @@ describe('POST /api/v1/stripe/webhook', () => {
     const response = await POST(webhookRequest(body));
 
     expect(response.status).toBe(200);
-    expect(withAuth).toHaveBeenCalledTimes(1);
+    expect(withAuthMock).toHaveBeenCalledTimes(1);
     expect(handleWebhook).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-1' }), body);
     expect(handleStripeWebhook).not.toHaveBeenCalled();
   });
@@ -84,7 +85,7 @@ describe('POST /api/v1/stripe/webhook', () => {
     const response = await POST(webhookRequest(rawBody, 't=1,v1=abc'));
 
     expect(response.status).toBe(200);
-    expect(withAuth).not.toHaveBeenCalled();
+    expect(withAuthMock).not.toHaveBeenCalled();
     // The raw string must reach the controller unchanged: JSON.parse/stringify
     // would invalidate the Stripe signature.
     expect(handleStripeWebhook).toHaveBeenCalledWith(rawBody, 't=1,v1=abc');
@@ -101,7 +102,7 @@ describe('POST /api/v1/stripe/webhook', () => {
     const response = await POST(webhookRequest('{}'));
 
     expect(response.status).toBe(400);
-    expect(withAuth).not.toHaveBeenCalled();
+    expect(withAuthMock).not.toHaveBeenCalled();
     expect(handleStripeWebhook).toHaveBeenCalledWith('{}', null);
   });
 });

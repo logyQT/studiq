@@ -39,7 +39,11 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <button className="p-2 rounded-md hover:bg-accent transition" aria-label={t('mobile_menu')}>
+        <button
+          type="button"
+          className="p-2 rounded-md hover:bg-accent transition"
+          aria-label={t('mobile_menu')}
+        >
           <Menu className="h-5 w-5" />
         </button>
       </SheetTrigger>

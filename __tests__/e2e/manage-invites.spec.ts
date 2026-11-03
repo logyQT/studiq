@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { asJson, json } from '#test/helpers/json';
 
 const PASSWORD = 'pass';
 const BULK_INVITES_URL = '/api/v1/organization/invites/bulk';
@@ -34,11 +35,9 @@ async function loginAndOpenInvites(page: import('@playwright/test').Page) {
 }
 
 async function getMemberRoleId(page: import('@playwright/test').Page) {
-  const body = await page.evaluate(async () => {
-    const res = await fetch('/api/v1/organization/roles');
-    return res.json();
-  });
-  const member = (body.data as { id: string; name: string }[]).find((r) => r.name === 'member');
+  const res = await page.request.get('/api/v1/organization/roles');
+  const body = await json<{ data: { id: string; name: string }[] }>(res);
+  const member = body.data.find((r) => r.name === 'member');
   expect(member).toBeDefined();
   return member!.id;
 }
@@ -108,7 +107,11 @@ test.describe('Manage invitations — role defaults (#241)', () => {
 
     const postedBodies: { invitations: { email: string; targetOrgRoleId: string }[] }[] = [];
     await page.route(`**${BULK_INVITES_URL}`, async (route) => {
-      postedBodies.push(route.request().postDataJSON());
+      postedBodies.push(
+        asJson<{ invitations: { email: string; targetOrgRoleId: string }[] }>(
+          route.request().postDataJSON(),
+        ),
+      );
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

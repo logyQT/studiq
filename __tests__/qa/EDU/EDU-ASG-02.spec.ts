@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -99,7 +100,7 @@ interface AssignmentDetail {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -118,7 +119,7 @@ async function ensureBank(page: Page, name: string): Promise<BankRow> {
     response.status(),
     `POST /api/v1/questions/banks (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<BankRow>).data;
+  return (await json<ApiEnvelope<BankRow>>(response)).data;
 }
 
 /** Create the case's topic, or reuse the one an earlier attempt left behind. */
@@ -132,7 +133,7 @@ async function ensureTopic(page: Page, name: string): Promise<TopicRow> {
     response.status(),
     `POST /api/v1/topics (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<TopicRow>).data;
+  return (await json<ApiEnvelope<TopicRow>>(response)).data;
 }
 
 /** Create a question inside the bank, keyed by its content so retries are idempotent. */
@@ -157,7 +158,7 @@ async function ensureQuestion(
     response.status(),
     `POST /api/v1/questions (${content}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<QuestionRow>).data;
+  return (await json<ApiEnvelope<QuestionRow>>(response)).data;
 }
 
 /** A fresh draft per run, so the empty-state assertions never see a previous run. */
@@ -168,7 +169,7 @@ async function createDraft(page: Page): Promise<string> {
     response.status(),
     `POST /api/v1/teacher/assignments → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<AssignmentDetail>).data.id;
+  return (await json<ApiEnvelope<AssignmentDetail>>(response)).data.id;
 }
 
 /** One of the three counters above the question list („Pytania”, „Suma punktów”, …). */
@@ -193,7 +194,7 @@ function browseRows(dialog: Locator): Locator {
 /** Question contents currently listed in the browse dialog. */
 async function browseContents(dialog: Locator): Promise<string[]> {
   const rows = await browseRows(dialog).allInnerTexts();
-  return rows.map((row) => row.split('\n')[0].trim()).sort();
+  return rows.map((row) => row.split('\n')[0].trim()).toSorted();
 }
 
 /** The source-specific bank/topic select (rendered before the always-present type select). */
@@ -287,7 +288,7 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
     ];
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'all questions' })
-      .toEqual([...allQuestions].sort());
+      .toEqual([...allQuestions].toSorted());
 
     // ── Step 1b: „Bank pytań” + the chosen bank narrows the list ────────────
     await dialog.getByRole('radio', { name: COPY.sourceBank }).check();
@@ -299,7 +300,7 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
 
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'bank A questions' })
-      .toEqual([QUESTION.bankAOpen, QUESTION.bankATrueFalse].sort());
+      .toEqual([QUESTION.bankAOpen, QUESTION.bankATrueFalse].toSorted());
 
     // ── Step 1c: „Temat” + the chosen topic narrows the list ────────────────
     await dialog.getByRole('radio', { name: COPY.sourceTopic }).check();
@@ -310,7 +311,7 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
 
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'topic questions' })
-      .toEqual([QUESTION.bankAOpen, QUESTION.bankBOpen].sort());
+      .toEqual([QUESTION.bankAOpen, QUESTION.bankBOpen].toSorted());
 
     // ── Step 3: the search field filters by content ─────────────────────────
     await dialog.getByRole('radio', { name: COPY.sourceAll }).check();
@@ -323,7 +324,7 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
     await search.fill('');
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'cleared search' })
-      .toEqual([...allQuestions].sort());
+      .toEqual([...allQuestions].toSorted());
 
     // ── Step 2: select two questions and add them to the assignment ─────────
     await selectQuestion(dialog, QUESTION.bankAOpen);
@@ -357,16 +358,16 @@ test.describe('@case:EDU-ASG-02 @area:EDU @prio:P2 assignment manual question pi
     expect(detail.question_count, 'persisted question count').toBe(2);
     expect(detail.total_points, 'persisted point sum').toBe(2);
     expect(
-      detail.assignment_questions.map((question) => question.question_id).sort(),
+      detail.assignment_questions.map((question) => question.question_id).toSorted(),
       'the two picked questions are stored in the assignment',
-    ).toEqual([bankAOpen.id, bankBOpenSecond.id].sort());
+    ).toEqual([bankAOpen.id, bankBOpenSecond.id].toSorted());
 
     // ── Adjacent regression: already-added questions leave the picker ───────
     await page.getByRole('button', { name: COPY.browse }).click();
     await expect(dialog).toBeVisible();
     await expect
       .poll(() => browseContents(dialog), { timeout: 15_000, message: 'picker after adding' })
-      .toEqual([QUESTION.bankATrueFalse, QUESTION.bankBOpen].sort());
+      .toEqual([QUESTION.bankATrueFalse, QUESTION.bankBOpen].toSorted());
 
     await dialog.getByRole('button', { name: COPY.back }).click();
     await expect(dialog).toHaveCount(0);

@@ -3,6 +3,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -40,7 +41,9 @@ const ORGANIZATION_PLAN_FAMILY = 'manager';
  * the free manager tier (`launch`) and applies only outside an organization.
  */
 export class EntitlementService {
-  constructor(private readonly createAdminClient: () => SupabaseClient = createServiceClient) {}
+  constructor(
+    private readonly createAdminClient: () => SupabaseClient<Database> = createServiceClient,
+  ) {}
 
   /**
    * Apply a plan to its owner. Idempotent: re-applying the current plan is a
@@ -147,10 +150,10 @@ export class EntitlementService {
     }
 
     return success({
-      key: freePlan.key as string,
-      forAccountType: (freePlan.for_account_type as string | null) ?? null,
-      priceMonthly: (freePlan.price_monthly as number | null) ?? 0,
-      isActive: (freePlan.is_active as boolean | null) ?? true,
+      key: freePlan.key,
+      forAccountType: freePlan.for_account_type,
+      priceMonthly: freePlan.price_monthly ?? 0,
+      isActive: freePlan.is_active ?? true,
     });
   }
 
@@ -166,10 +169,10 @@ export class EntitlementService {
     if (!data) return success(null);
 
     return success({
-      key: data.key as string,
-      forAccountType: (data.for_account_type as string | null) ?? null,
-      priceMonthly: (data.price_monthly as number | null) ?? 0,
-      isActive: (data.is_active as boolean | null) ?? true,
+      key: data.key,
+      forAccountType: data.for_account_type,
+      priceMonthly: data.price_monthly ?? 0,
+      isActive: data.is_active ?? true,
     });
   }
 }

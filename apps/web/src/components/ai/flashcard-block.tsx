@@ -7,10 +7,11 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { apiPost } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
-interface FlashcardData {
+export interface FlashcardData {
   front: string;
   back: string;
   topic?: string;
@@ -72,26 +73,15 @@ export function FlashcardBlock({
       let deckId = targetDeck?.id;
       const createdNewDeck = !deckId;
       if (!deckId) {
-        const deckRes = await fetch('/api/v1/flashcards/decks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
-        });
-        if (!deckRes.ok) throw new Error('Failed to create deck');
-        const deckData = await deckRes.json();
-        deckId = deckData.data?.id;
+        const deck = await apiPost<{ id: string }>('/api/v1/flashcards/decks', { name });
+        deckId = deck.id;
         if (!deckId) throw new Error('No deck ID returned');
       }
 
-      const batchRes = await fetch('/api/v1/flashcards/batch/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cards: visibleCards.map((c) => ({ front: c.front, back: c.back })),
-          deckId,
-        }),
+      await apiPost<unknown>('/api/v1/flashcards/batch/create', {
+        cards: visibleCards.map((c) => ({ front: c.front, back: c.back })),
+        deckId,
       });
-      if (!batchRes.ok) throw new Error('Failed to create flashcards');
 
       setSavedDeckId(deckId);
       // Deck and card lists are cached with `staleTime: Infinity`; without this
@@ -202,6 +192,7 @@ export function FlashcardBlock({
             >
               {/* Delete toggle */}
               <button
+                type="button"
                 onClick={() => toggleRemove(i)}
                 className={cn(
                   'absolute top-1.5 right-1.5 rounded-md p-1 transition-colors',

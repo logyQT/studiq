@@ -131,7 +131,7 @@ export function PlatformStats() {
                     : t('daily_total', { count: formatCount(total(values), locale), days })}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2" role="group" aria-label={t('range_label')}>
+            <fieldset className="flex items-center gap-2" aria-label={t('range_label')}>
               {RANGES.map((range) => (
                 <Button
                   key={range}
@@ -143,9 +143,9 @@ export function PlatformStats() {
                   {t('range_days', { days: range })}
                 </Button>
               ))}
-            </div>
+            </fieldset>
           </div>
-          <div className="flex flex-wrap gap-2" role="group" aria-label={t('series_label')}>
+          <fieldset className="flex flex-wrap gap-2" aria-label={t('series_label')}>
             {SERIES.map((key) => (
               <Button
                 key={key}
@@ -157,7 +157,7 @@ export function PlatformStats() {
                 {t(`series_${key}`)}
               </Button>
             ))}
-          </div>
+          </fieldset>
         </CardHeader>
         <CardContent>
           {daily.isError ? (
@@ -166,10 +166,10 @@ export function PlatformStats() {
             <div className="h-40 animate-pulse rounded-md bg-muted" />
           ) : (
             <>
+              {/* The chart is decorative: the sr-only table below carries the same numbers. */}
               <div
                 className="flex h-40 items-end gap-0 overflow-hidden sm:gap-px"
-                role="img"
-                aria-label={t('daily_aria', { series: seriesName, days })}
+                aria-hidden="true"
               >
                 {items.map((item, i) => (
                   <div

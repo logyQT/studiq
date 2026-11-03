@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -71,7 +72,7 @@ interface GroupMemberRow {
 /** `GET` the group list as the signed-in educator and unwrap the envelope. */
 async function listGroups(page: Page): Promise<GroupRow[]> {
   const response = await page.request.get(GROUPS_URL);
-  const body = (await response.json()) as ApiEnvelope<GroupRow[]>;
+  const body = await json<ApiEnvelope<GroupRow[]>>(response);
   expect(response.status(), `GET ${GROUPS_URL} → ${JSON.stringify(body)}`).toBe(200);
   expect(body.success).toBe(true);
   return body.data;
@@ -99,7 +100,7 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
     // other keys proves the answer is a real feature set, not a failed request.
     const features = await page.request.get('/api/v1/features/me');
     expect(features.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = ((await features.json()) as ApiEnvelope<{ features: string[] }>).data.features;
+    const enabled = (await json<ApiEnvelope<{ features: string[] }>>(features)).data.features;
     expect(enabled, 'the educator is not entitled to group management').not.toContain(
       'group.manage',
     );
@@ -153,7 +154,7 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
 
     const membersResponse = await page.request.get(`${GROUPS_URL}/${tenant.group!.id}/members`);
     expect(membersResponse.status(), 'GET group members').toBe(200);
-    const currentMembers = ((await membersResponse.json()) as ApiEnvelope<GroupMemberRow[]>).data;
+    const currentMembers = (await json<ApiEnvelope<GroupMemberRow[]>>(membersResponse)).data;
     expect(currentMembers.length, 'the seeded group has members').toBeGreaterThan(0);
 
     const writeAttempts = [
@@ -189,7 +190,7 @@ test.describe('@case:EDU-GRP-05 @area:EDU @prio:P2 educator without group.manage
         method: attempt.method,
         data: attempt.data,
       });
-      const body = (await response.json()) as { success: boolean; error?: string };
+      const body = await json<{ success: boolean; error?: string }>(response);
       expect(response.status(), `${attempt.label} must be rejected`).toBe(403);
       expect(response.headers()['x-error-code'], `${attempt.label} error code`).toBe('FORBIDDEN');
       expect(body, `${attempt.label} response body`).toEqual({

@@ -1,3 +1,4 @@
+import { json } from '#test/helpers/json';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -186,7 +187,7 @@ test.describe('@case:PUB-05 @area:PUB @prio:P3 contact page', () => {
     // Prerequisite "Brak sesji".
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status()).toBe(200);
-    const meBody = (await me.json()) as { data?: { user?: unknown } };
+    const meBody = await json<{ data?: { user?: unknown } }>(me);
     expect(meBody.data?.user ?? null).toBeNull();
 
     await expectContactPage(page);

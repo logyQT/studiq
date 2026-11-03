@@ -1,6 +1,6 @@
 # Global context — StudiQ manual test plan
 
-_Verbatim extract of sections 1-4 and the defect-template section of the source document (Polish). Read this once per session._
+_Adapted extract of sections 1-4 and the defect-template section of the source document (Polish). STU-25 is excluded from the active corpus. Read this once per session._
 
 STUDIQ
 
@@ -13,7 +13,7 @@ Scenariusze, kroki i pola do odhaczenia dla wszystkich funkcji aplikacji
 | Wersja dokumentu               | 1.3 (17.10.2026)                                                                                                                                                                                            |
 | Testowana aplikacja            | StudiQ – aplikacja web (port 3000) i panel administracyjny (port 4000)                                                                                                                                      |
 | Wersja kodu                    | gałąź main (commit 216daae) + PR #128 (formularz planów w adminie) + PR #130 (zarządzanie użytkownikami z 30-dniowym koszem) – oba PR do czasu merge’a należy testować na gałęzi feat/admin-user-management |
-| Liczba scenariuszy             | 215 (P1: 60, P2: 150, P3: 5)                                                                                                                                                                                |
+| Liczba scenariuszy             | 214 (P1: 60, P2: 149, P3: 5)                                                                                                                                                                                |
 | Tester (imię i nazwisko)       |                                                                                                                                                                                                             |
 | Data rozpoczęcia / zakończenia |                                                                                                                                                                                                             |
 | Wynik końcowy                  | ZALICZONY / ZALICZONY Z UWAGAMI / NIEZALICZONY                                                                                                                                                              |
@@ -136,7 +136,7 @@ Wypełnij po zakończeniu testów (liczby zaznaczeń w danym module).
 | PUB | Strony publiczne i nawigacja ogólna           | 8           |     |      |       |     |
 | AUT | Uwierzytelnianie i sesja                      | 19          |     |      |       |     |
 | ONB | Onboarding, organizacje i zaproszenia         | 10          |     |      |       |     |
-| STU | Panel studenta (/app)                         | 53          |     |      |       |     |
+| STU | Panel studenta (/app)                         | 52          |     |      |       |     |
 | EDU | Panel nauczyciela (/edu)                      | 41          |     |      |       |     |
 | MGR | Panel managera organizacji (/manage)          | 28          |     |      |       |     |
 | BIL | Plany, rozliczenia i płatność (symulowana)    | 7           |     |      |       |     |
@@ -144,7 +144,7 @@ Wypełnij po zakończeniu testów (liczby zaznaczeń w danym module).
 | ADM | Panel administracyjny (apps/admin, port 4000) | 21          |     |      |       |     |
 | SEC | Autoryzacja i izolacja danych                 | 13          |     |      |       |     |
 | NFR | Wymagania niefunkcjonalne i międzyobszarowe   | 8           |     |      |       |     |
-|     | RAZEM                                         | 215         |     |      |       |     |
+|     | RAZEM                                         | 214         |     |      |       |     |
 
 Zakładaj zgłoszenia w narzędziu zespołu (np. GitHub Issues repozytorium logyQT/studiq). Wzór treści:
 

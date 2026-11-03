@@ -16,11 +16,25 @@ import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { limitsResolver, AI_TOKENS_LIMIT_KEY } from '@studiq/server/services/limits.resolver';
-import type { UIMessage } from 'ai';
+import { safeValidateUIMessages, type UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import { type NextRequest, NextResponse } from 'next/server';
+import { isRecord } from '@/lib/unknown-value';
 
 const rateLimiter = createRateLimiter(60_000, 20);
+
+/**
+ * The `messages` of the chat request, validated against the UI-message schema the
+ * SDK streams back. `undefined` covers both a malformed body and an empty list.
+ */
+async function parseMessages(body: unknown): Promise<UIMessage[] | undefined> {
+  if (!isRecord(body)) return undefined;
+  const messages = body.messages;
+  if (!Array.isArray(messages) || messages.length === 0) return undefined;
+
+  const result = await safeValidateUIMessages({ messages });
+  return result.success ? result.data : undefined;
+}
 
 export async function POST(req: NextRequest) {
   return withAuth(
@@ -41,8 +55,8 @@ export async function POST(req: NextRequest) {
         return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
       }
 
-      const { messages } = body as { messages?: Array<Record<string, unknown>> };
-      if (!messages?.length) {
+      const messages = await parseMessages(body);
+      if (!messages) {
         return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
       }
 
@@ -51,8 +65,7 @@ export async function POST(req: NextRequest) {
         throw new AppError('USAGE_LIMIT_EXCEEDED');
       }
 
-      const conversationId =
-        ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
+      const conversationId = messages[0]?.id || crypto.randomUUID();
 
       return runAgentChat(ctx, conversationId, messages);
     },
@@ -60,11 +73,7 @@ export async function POST(req: NextRequest) {
   );
 }
 
-async function runAgentChat(
-  ctx: RequestContext,
-  conversationId: string,
-  messages: Array<Record<string, unknown>>,
-) {
+async function runAgentChat(ctx: RequestContext, conversationId: string, messages: UIMessage[]) {
   enqueueTrace({
     conversationId,
     agentName: 'general',
@@ -77,7 +86,7 @@ async function runAgentChat(
     const result = streamText({
       model: chatModel,
       system: systemPrompt,
-      messages: await convertToModelMessages(messages as unknown as Array<Omit<UIMessage, 'id'>>),
+      messages: await convertToModelMessages(messages),
       tools: {
         create_plan: createPlanTool,
         ask_user: askUserTool,
@@ -105,7 +114,7 @@ async function runAgentChat(
             stepNumber,
             messageCount: stepMessages.length,
             lastRole: lastMsg?.role,
-            promptPreview: String(preview ?? '').slice(-300),
+            promptPreview: (preview ?? '').slice(-300),
           },
         });
       },
@@ -148,19 +157,19 @@ async function runAgentChat(
         }
       },
 
-      onFinish: async (result) => {
+      onFinish: async (finish) => {
         enqueueTrace({
           conversationId,
           agentName: 'general',
           eventType: 'step',
           label: 'streamText finish',
           data: {
-            totalSteps: result.steps?.length ?? 0,
-            totalInputTokens: result.totalUsage?.inputTokens,
-            totalOutputTokens: result.totalUsage?.outputTokens,
-            totalTokens: result.totalUsage?.totalTokens,
-            finishReason: result.finishReason,
-            finalTextLength: result.text?.length ?? 0,
+            totalSteps: finish.steps?.length ?? 0,
+            totalInputTokens: finish.totalUsage?.inputTokens,
+            totalOutputTokens: finish.totalUsage?.outputTokens,
+            totalTokens: finish.totalUsage?.totalTokens,
+            finishReason: finish.finishReason,
+            finalTextLength: finish.text?.length ?? 0,
           },
         });
         // Awaited: `streamText` awaits `onFinish` before the stream closes, so
@@ -170,8 +179,8 @@ async function runAgentChat(
         try {
           await limitsResolver.trackTokenUsage(
             ctx,
-            result.totalUsage?.inputTokens ?? 0,
-            result.totalUsage?.outputTokens ?? 0,
+            finish.totalUsage?.inputTokens ?? 0,
+            finish.totalUsage?.outputTokens ?? 0,
           );
         } catch (error) {
           enqueueTrace({

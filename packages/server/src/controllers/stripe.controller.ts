@@ -7,7 +7,10 @@ import { wrapService } from '@studiq/server/lib/observability';
 import type { PaymentGateway } from '@studiq/server/lib/payment/payment-gateway';
 import { getPaymentGateway } from '@studiq/server/lib/payment/payment-gateway.factory';
 import { isFailure } from '@studiq/server/lib/service-result';
-import { CreateCheckoutSessionSchema } from '@studiq/server/models/stripe.model';
+import {
+  CreateCheckoutSessionSchema,
+  MockWebhookEventSchema,
+} from '@studiq/server/models/stripe.model';
 import { type BillingService, billingService } from '@studiq/server/services/billing.service';
 
 export class StripeController {
@@ -34,18 +37,12 @@ export class StripeController {
   }
 
   async handleWebhook(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    const event = body as Record<string, unknown>;
-    const { type, session_id, plan_id, user_id, org_id } = event as {
-      type: string;
-      session_id: string;
-      plan_id: string;
-      user_id: string;
-      org_id?: string;
-    };
-
-    if (!type || !session_id || !plan_id || !user_id) {
-      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    const parsed = MockWebhookEventSchema.safeParse(body);
+    if (!parsed.success) {
+      return controllerResponse.error('BAD_REQUEST');
     }
+
+    const { type, session_id, plan_id, user_id, org_id } = parsed.data;
 
     // The mock webhook is called by the checkout page itself, so it may only
     // ever act on the caller's own account. This is the only place that reads

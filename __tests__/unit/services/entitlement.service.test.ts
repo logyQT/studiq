@@ -2,7 +2,10 @@ import {
   EntitlementService,
   type EntitlementOwner,
 } from '@studiq/server/services/entitlement.service';
+import { readColumn } from '@studiq/server/lib/record';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { asJson } from '#test/helpers/json';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface FakePlanRow {
@@ -35,7 +38,7 @@ function createFakeAdmin(options: FakeAdminOptions = {}) {
     column: string;
     value: unknown;
   }> = [];
-  const rpc = vi.fn(async () => ({ error: options.rpcError ?? null }));
+  const rpc = vi.fn().mockResolvedValue({ error: options.rpcError ?? null });
 
   const planQuery = () => {
     const filters: Record<string, unknown> = {};
@@ -47,15 +50,13 @@ function createFakeAdmin(options: FakeAdminOptions = {}) {
       },
       order: () => chain,
       limit: () => chain,
-      maybeSingle: async () => {
+      maybeSingle: () => {
         if (options.selectError) return { data: null, error: options.selectError };
         return { data: plans.find((plan) => plan.key === filters.key) ?? null, error: null };
       },
       then: (resolve: (value: { data: unknown; error: unknown }) => unknown) => {
         const rows = plans.filter((plan) =>
-          Object.entries(filters).every(
-            ([key, value]) => (plan as unknown as Record<string, unknown>)[key] === value,
-          ),
+          Object.entries(filters).every(([key, value]) => readColumn(plan, key) === value),
         );
         return Promise.resolve({ data: rows, error: options.selectError ?? null }).then(resolve);
       },
@@ -69,7 +70,7 @@ function createFakeAdmin(options: FakeAdminOptions = {}) {
       if (table === 'profiles') {
         return {
           update: (values: Record<string, unknown>) => ({
-            eq: async (column: string, value: unknown) => {
+            eq: (column: string, value: unknown) => {
               updates.push({ table, values, column, value });
               return { error: options.updateError ?? null };
             },
@@ -80,7 +81,7 @@ function createFakeAdmin(options: FakeAdminOptions = {}) {
     }),
   };
 
-  return { admin: admin as unknown as SupabaseClient, updates, rpc };
+  return { admin: asJson<SupabaseClient<Database>>(admin), updates, rpc };
 }
 
 const PLANS: FakePlanRow[] = [

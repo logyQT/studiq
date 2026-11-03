@@ -13,10 +13,10 @@ import {
 import { type SeatService, seatService } from '@studiq/server/services/seat.service';
 
 export class SeatController {
-  constructor(private seatService: SeatService) {}
+  constructor(private service: SeatService) {}
 
   async listPools(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.seatService.listPools(ctx);
+    const result = await this.service.listPools(ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -32,7 +32,7 @@ export class SeatController {
       };
     }
 
-    const result = await this.seatService.addPool(ctx, parsed.data);
+    const result = await this.service.addPool(ctx, parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error, result.details);
     return controllerResponse.created(result.data);
   }
@@ -52,13 +52,13 @@ export class SeatController {
       };
     }
 
-    const result = await this.seatService.updatePool(ctx, poolId, parsed.data);
+    const result = await this.service.updatePool(ctx, poolId, parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error, result.details);
     return controllerResponse.success(result.data);
   }
 
   async listAssignments(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.seatService.listAssignments(ctx);
+    const result = await this.service.listAssignments(ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -74,13 +74,13 @@ export class SeatController {
       };
     }
 
-    const result = await this.seatService.assignSeat(ctx, parsed.data);
+    const result = await this.service.assignSeat(ctx, parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.created(result.data);
   }
 
   async unassignSeat(ctx: RequestContext, assignmentId: string): Promise<ControllerResponse> {
-    const result = await this.seatService.unassignSeat(ctx, assignmentId);
+    const result = await this.service.unassignSeat(ctx, assignmentId);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(undefined);
   }

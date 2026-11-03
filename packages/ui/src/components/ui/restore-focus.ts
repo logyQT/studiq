@@ -7,18 +7,25 @@ type AutoFocusHandlers = {
   onCloseAutoFocus?: (event: Event) => void;
 };
 
+/** An `Element` that can actually take focus (HTML and SVG elements both can). */
+type FocusableElement = Element & { focus: (options?: FocusOptions) => void };
+
+function isFocusable(target: Element | null): target is FocusableElement {
+  return target !== null && 'focus' in target && typeof target.focus === 'function';
+}
+
 /**
  * Give focus back to `target` when nothing else has it.
  *
  * Exported for tests; `useRestoreFocusOnClose` is the component-facing API.
  */
 export function restoreFocusIfLost(target: Element | null, doc: FocusDocument = document): boolean {
-  if (!target || !('focus' in target) || !(target as HTMLElement).isConnected) return false;
+  if (!isFocusable(target) || !target.isConnected) return false;
 
   const active = doc.activeElement;
   if (active && active !== doc.body) return false;
 
-  (target as HTMLElement).focus({ preventScroll: true });
+  target.focus({ preventScroll: true });
   return true;
 }
 

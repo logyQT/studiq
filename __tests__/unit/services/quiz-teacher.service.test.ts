@@ -1,38 +1,87 @@
 import type { RequestContext } from '@studiq/authz';
 import { QuizTeacherService } from '@studiq/server/services/quiz-teacher.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function chain(result: any) {
-  const resolved = { data: result, error: null };
+type ChainResult<T> = { data: T | null; error: { message: string; code: string } | null };
+
+interface FakeQueryBuilder<T> {
+  select: Mock;
+  eq: Mock;
+  in: Mock;
+  or: Mock;
+  order: Mock;
+  filter: Mock;
+  limit: Mock;
+  single: Mock;
+  maybeSingle: Mock;
+  insert: Mock;
+  update: Mock;
+  delete: Mock;
+  upsert: Mock;
+  then: Promise<T>['then'];
+}
+
+function chain<T>(result: T): FakeQueryBuilder<ChainResult<T>> {
+  const resolved: ChainResult<T> = { data: result, error: null };
+  const promise = Promise.resolve(resolved);
   const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  const c: FakeQueryBuilder<ChainResult<T>> = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    or: vi.fn(),
+    order: vi.fn(),
+    filter: vi.fn(),
+    limit: vi.fn(),
+    single: terminal,
+    maybeSingle: terminal,
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    upsert: vi.fn(),
+    then: promise.then.bind(promise),
+  };
+  for (const method of [
+    c.select,
+    c.eq,
+    c.in,
+    c.or,
+    c.order,
+    c.filter,
+    c.limit,
+    c.insert,
+    c.update,
+    c.delete,
+    c.upsert,
+  ]) {
+    method.mockImplementation(() => c);
+  }
   return c;
 }
 
-function chainError(dbError: { message: string; code: string }) {
+function chainError(dbError: { message: string; code: string }): FakeQueryBuilder<never> {
   const resolved = { data: null, error: dbError };
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  const promise = Promise.resolve(resolved);
+  const c: FakeQueryBuilder<never> = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    or: vi.fn(),
+    order: vi.fn(),
+    filter: vi.fn(),
+    limit: vi.fn(),
+    single: vi.fn().mockResolvedValue(resolved),
+    maybeSingle: vi.fn().mockResolvedValue(resolved),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    upsert: vi.fn(),
+    then: promise.then.bind(promise),
+  };
+  for (const method of [c.select, c.eq, c.insert, c.update, c.delete]) {
+    method.mockImplementation(() => c);
+  }
   return c;
 }
 
@@ -59,7 +108,7 @@ describe('QuizTeacherService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new QuizTeacherService(async () => mock as any);
+    service = new QuizTeacherService(() => Promise.resolve(mock));
   });
 
   describe('create', () => {

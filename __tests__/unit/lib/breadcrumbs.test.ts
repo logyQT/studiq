@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
+import { readColumn } from '@studiq/server/lib/record';
 import { buildBreadcrumbs, ID_SEGMENT, OMITTED_PREFIXES, PATH_LABELS } from '@/lib/breadcrumbs';
 import { describe, expect, it } from 'vitest';
 
@@ -15,14 +16,14 @@ function translate(messages: Messages) {
   return (key: string): string => {
     const value = key.split('.').reduce<unknown>((node, part) => {
       if (!node || typeof node !== 'object') return undefined;
-      return (node as Messages)[part];
+      return readColumn(node, part);
     }, messages);
 
     return typeof value === 'string' ? value : '';
   };
 }
 
-const t = translate(pl as Messages);
+const t = translate(pl);
 
 function crumbs(pathname: string, names: Record<string, string> = {}) {
   return buildBreadcrumbs({ pathname, names, t });
@@ -127,7 +128,7 @@ describe('buildBreadcrumbs', () => {
 
   it('resolves every route-map key in both locales', () => {
     for (const [locale, messages] of Object.entries({ pl, en })) {
-      const localeT = translate(messages as Messages);
+      const localeT = translate(messages);
 
       for (const [route, entry] of Object.entries(PATH_LABELS)) {
         expect(localeT(entry.labelKey), `${locale}: ${route} -> ${entry.labelKey}`).not.toBe('');
@@ -135,6 +136,20 @@ describe('buildBreadcrumbs', () => {
     }
   });
 });
+
+/** Static prefixes of a route, with dynamic segments normalised to `*`. */
+function staticPrefixes(route: string): string[] {
+  const walked: string[] = [];
+  const prefixes: string[] = [];
+
+  for (const segment of route.split('/').filter(Boolean)) {
+    walked.push(segment);
+    if (segment.startsWith('[')) continue;
+    prefixes.push(`/${walked.map((part) => (part.startsWith('[') ? '*' : part)).join('/')}`);
+  }
+
+  return prefixes;
+}
 
 describe('route coverage', () => {
   const appRoot = path.join(process.cwd(), 'apps/web/src/app/(frontend)');
@@ -154,20 +169,6 @@ describe('route coverage', () => {
 
     walk(path.join(appRoot, area));
     return routes;
-  }
-
-  /** Static prefixes of a route, with dynamic segments normalised to `*`. */
-  function staticPrefixes(route: string): string[] {
-    const walked: string[] = [];
-    const prefixes: string[] = [];
-
-    for (const segment of route.split('/').filter(Boolean)) {
-      walked.push(segment);
-      if (segment.startsWith('[')) continue;
-      prefixes.push(`/${walked.map((part) => (part.startsWith('[') ? '*' : part)).join('/')}`);
-    }
-
-    return prefixes;
   }
 
   const registered = new Set(Object.keys(PATH_LABELS));

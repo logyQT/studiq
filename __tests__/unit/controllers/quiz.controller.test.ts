@@ -1,7 +1,9 @@
 import type { RequestContext } from '@studiq/authz';
 import { QuizController } from '@studiq/server/controllers/quiz.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { QuizService } from '@studiq/server/services/quiz.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
 
 function createMockQuizService() {
   return {
@@ -28,7 +30,8 @@ describe('QuizController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockQuizService();
-    controller = new QuizController(mockService as any);
+    // Only `generateQuiz` is exercised; the rest of the service is unreached.
+    controller = new QuizController(asService<QuizService>(mockService));
   });
 
   describe('generate', () => {
@@ -47,7 +50,7 @@ describe('QuizController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect('error' in response && response.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {

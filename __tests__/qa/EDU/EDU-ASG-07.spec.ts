@@ -1,4 +1,5 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -106,7 +107,7 @@ function account(tenant: QaTenant, role: 'teacher' | 'student') {
 
 async function expectApi<T>(response: APIResponse, label: string) {
   expect(response.status(), label).toBeLessThan(300);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `${label} response`).toBe(true);
   return body.data;
 }
@@ -297,7 +298,9 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     await expect(cells.nth(2), 'Wynik').toHaveText(`${attempt.score}/${attempt.total_points}`);
     await expect(cells.nth(3), 'Status').toHaveText(COPY.submitted);
     // The page formats the completion date with the UI locale (`pl` → dd.MM.yyyy).
-    await expect(cells.nth(4), 'Ukończono').toHaveText(/^\d{2}\.\d{2}\.\d{4}$/);
+    // `toLocaleDateString('pl')` drops the leading zero on single-digit days
+    // and months (e.g. „1.11.2026”), so the pattern must allow one or two.
+    await expect(cells.nth(4), 'Ukończono').toHaveText(/^\d{1,2}\.\d{1,2}\.\d{4}$/);
 
     // --- Adjacent path: „Oceń” opens this student's grading page -------------
     const gradeLink = row.getByRole('link', { name: COPY.grade, exact: true });

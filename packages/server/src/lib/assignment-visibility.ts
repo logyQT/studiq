@@ -1,6 +1,7 @@
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * The single place that answers "may this student see the results?" (#374).
@@ -23,7 +24,7 @@ export function resultsHidden(
  * (deleted or RLS-hidden) counts as hidden.
  */
 export async function hiddenResultAssignmentIds(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   assignmentIds: readonly (string | null | undefined)[],
 ): Promise<ServiceResult<Set<string>>> {
   const ids = [...new Set(assignmentIds.filter((id): id is string => !!id))];

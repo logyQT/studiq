@@ -20,6 +20,8 @@ export function CodeBlock({ children, rawCode, language }: CodeBlockProps) {
 
   return (
     <div
+      // Only swallows clicks so selecting code does not toggle the card behind it.
+      role="presentation"
       className="my-2 overflow-hidden rounded-lg border bg-muted/50 text-left"
       onClick={(e) => e.stopPropagation()}
     >
@@ -30,6 +32,7 @@ export function CodeBlock({ children, rawCode, language }: CodeBlockProps) {
           <span />
         )}
         <button
+          type="button"
           onClick={handleCopy}
           className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
           title="Copy code"

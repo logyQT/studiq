@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 const PASSWORD = 'pass';
 const MANAGER_EMAIL = 'manager@dev.local';
@@ -31,7 +32,7 @@ async function loginAndOpenRoles(page: Page) {
 async function roleBuilderEntitled(page: Page): Promise<boolean> {
   const res = await page.request.get('/api/v1/features/me');
   expect(res.status()).toBe(200);
-  const { features } = (await res.json()).data as { features: string[] };
+  const { features } = (await json<{ data: { features: string[] } }>(res)).data;
   return features.includes('role.builder');
 }
 

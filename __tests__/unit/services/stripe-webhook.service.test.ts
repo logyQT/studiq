@@ -8,8 +8,10 @@ import type {
 } from '@studiq/server/lib/payment/stripe-webhook.repository';
 import { success } from '@studiq/server/lib/service-result';
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
+// eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import type Stripe from 'stripe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { asJson } from '#test/helpers/json';
 
 const WEBHOOK_SECRET = 'whsec_test';
 const CLAIM_TOKEN = '2026-11-01T09:00:00.000Z';
@@ -95,7 +97,7 @@ function makeEvent(
   overrides: Partial<Stripe.Event> = {},
 ): Stripe.Event {
   eventCounter += 1;
-  return {
+  return asJson<Stripe.Event>({
     id: `evt_${eventCounter}`,
     object: 'event',
     api_version: STRIPE_API_VERSION,
@@ -104,11 +106,11 @@ function makeEvent(
     type,
     data: { object },
     ...overrides,
-  } as unknown as Stripe.Event;
+  });
 }
 
 function makeSubscription(overrides: Record<string, unknown> = {}): Stripe.Subscription {
-  return {
+  return asJson<Stripe.Subscription>({
     id: 'sub_1',
     object: 'subscription',
     customer: 'cus_1',
@@ -128,7 +130,7 @@ function makeSubscription(overrides: Record<string, unknown> = {}): Stripe.Subsc
     canceled_at: null,
     livemode: false,
     ...overrides,
-  } as unknown as Stripe.Subscription;
+  });
 }
 
 function makeSession(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -184,14 +186,14 @@ function makeMirror(overrides: Partial<SubscriptionMirror> = {}): SubscriptionMi
 }
 
 function createClient() {
-  return {
+  return asJson<StripeClient>({
     webhooks: { constructEvent: vi.fn() },
     subscriptions: { retrieve: vi.fn() },
     customers: { create: vi.fn() },
     checkout: { sessions: { create: vi.fn(), retrieve: vi.fn() } },
     prices: { retrieve: vi.fn() },
     billingPortal: { sessions: { create: vi.fn() } },
-  } as unknown as StripeClient;
+  });
 }
 
 type FakeRepository = StripeWebhookRepository & {
@@ -208,7 +210,7 @@ function createRepository(): FakeRepository {
     finishEvent: vi.fn().mockResolvedValue(success(undefined)),
     getSubscriptionByStripeId: vi.fn().mockResolvedValue(success(null)),
     findCustomerByStripeId: vi.fn().mockResolvedValue(success(null)),
-    ensureCustomer: vi.fn().mockImplementation((input) =>
+    ensureCustomer: vi.fn<StripeWebhookRepository['ensureCustomer']>().mockImplementation((input) =>
       Promise.resolve(
         success({
           id: 'bc_1',
@@ -239,7 +241,7 @@ function createRepository(): FakeRepository {
     findOldestOrgAdmin: vi.fn().mockResolvedValue(success(null)),
     invoices,
     payments,
-  } as unknown as FakeRepository;
+  };
 }
 
 interface Harness {

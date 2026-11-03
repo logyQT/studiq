@@ -41,7 +41,7 @@ function fileSlug(name: string): string {
  * lives here (not in the service) so the service only knows the question shape.
  */
 export class QuestionTransferController {
-  constructor(private questionTransferService: QuestionTransferService) {}
+  constructor(private service: QuestionTransferService) {}
 
   /**
    * Answers with the whole bank as a downloadable file. The mapping lives in the controller
@@ -58,7 +58,7 @@ export class QuestionTransferController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.questionTransferService.exportBank(ctx, bankId);
+    const result = await this.service.exportBank(ctx, bankId);
     if (isFailure(result)) return controllerResponse.error(result.error);
 
     const { bankName, questions, notReimportable } = result.data;
@@ -100,11 +100,7 @@ export class QuestionTransferController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.questionTransferService.importQuestions(
-      ctx,
-      bankId,
-      parsed.data.questions,
-    );
+    const result = await this.service.importQuestions(ctx, bankId, parsed.data.questions);
     if (isFailure(result)) return controllerResponse.error(result.error);
 
     return controllerResponse.created(result.data);

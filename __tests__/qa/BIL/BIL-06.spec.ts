@@ -1,4 +1,5 @@
 import type { APIRequestContext, Browser } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { expect, loadTenant, test, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -108,7 +109,7 @@ async function apiSession(
 async function personalPlanKey(request: APIRequestContext): Promise<string> {
   const response = await request.get('/api/v1/me/personal-plan');
   expect(response.status(), 'GET /api/v1/me/personal-plan').toBe(200);
-  const body = (await response.json()) as ApiEnvelope<PlanInfo>;
+  const body = await json<ApiEnvelope<PlanInfo>>(response);
   expect(body.success, 'personal plan response is successful').toBe(true);
   return body.data.key;
 }
@@ -165,7 +166,7 @@ test.describe('@case:BIL-06 @area:BIL @prio:P1 anonymous checkout and webhook', 
         data: { planKey: TARGET_PLAN },
       });
       expect(sessionResponse.status(), 'anonymous create-checkout-session').toBe(401);
-      const sessionBody = (await sessionResponse.json()) as ApiEnvelope<null>;
+      const sessionBody = await json<ApiEnvelope<null>>(sessionResponse);
       expect(sessionBody.success).toBe(false);
       expect(sessionBody.error).toBe('UNAUTHORIZED');
 
@@ -179,7 +180,7 @@ test.describe('@case:BIL-06 @area:BIL @prio:P1 anonymous checkout and webhook', 
       expect(anonymous.headers()['x-error-code'], 'anonymous webhook error code').toBe(
         'UNAUTHORIZED',
       );
-      const anonymousBody = (await anonymous.json()) as ApiEnvelope<unknown>;
+      const anonymousBody = await json<ApiEnvelope<unknown>>(anonymous);
       expect(anonymousBody).toEqual({ success: false, error: 'UNAUTHORIZED' });
 
       expect(
@@ -223,7 +224,7 @@ test.describe('@case:BIL-06 @area:BIL @prio:P1 anonymous checkout and webhook', 
         data: webhookBody(student.id, 'own-purchase', TARGET_PLAN),
       });
       expect(ownPurchase.status(), 'webhook for the caller').toBe(200);
-      const ownPurchaseBody = (await ownPurchase.json()) as ApiEnvelope<{ received: boolean }>;
+      const ownPurchaseBody = await json<ApiEnvelope<{ received: boolean }>>(ownPurchase);
       expect(ownPurchaseBody).toEqual({ success: true, data: { received: true } });
       expect(await personalPlanKey(studentApi.request), 'the own purchase applied').toBe(
         TARGET_PLAN,

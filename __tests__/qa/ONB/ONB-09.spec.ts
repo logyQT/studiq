@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -59,10 +60,10 @@ async function managerSession(
 
   const response = await page.request.get('/api/v1/organization/roles');
   expect(response.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const body = (await response.json()) as {
+  const body = await json<{
     success: boolean;
     data: Array<{ id: string; name: string }>;
-  };
+  }>(response);
   expect(body.success).toBe(true);
   const member = body.data.find((role) => role.name === 'member');
   expect(member, 'the seeded organization has the system member role').toBeTruthy();
@@ -80,10 +81,10 @@ async function createInvite(
     data: { email, targetOrgRoleId: roleId, organizationId: orgId },
   });
   expect(response.status(), 'POST /api/v1/organization/invites').toBe(201);
-  const body = (await response.json()) as {
+  const body = await json<{
     success: boolean;
     data: { invitationId: string; inviteCode: string };
-  };
+  }>(response);
   expect(body.success).toBe(true);
   return { id: body.data.invitationId, token: body.data.inviteCode };
 }

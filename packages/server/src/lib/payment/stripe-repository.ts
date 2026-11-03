@@ -3,6 +3,7 @@ import type { BillingCycle, PaymentOwner } from '@studiq/server/lib/payment/paym
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -100,19 +101,28 @@ export interface StripeBillingRepository {
 
 const ACTIVE_SUBSCRIPTION_STATUSES = ['active', 'trialing', 'past_due'];
 
-function mapPrice(row: Record<string, unknown>): ListedPrice {
+function mapPrice(row: {
+  plan_key: string;
+  stripe_price_id: string;
+  currency: string;
+  unit_amount: number;
+  interval: string;
+  active: boolean;
+}): ListedPrice {
   return {
-    planKey: row.plan_key as string,
-    stripePriceId: row.stripe_price_id as string,
-    currency: row.currency as string,
-    unitAmount: row.unit_amount as number,
-    interval: row.interval as string,
-    active: row.active as boolean,
+    planKey: row.plan_key,
+    stripePriceId: row.stripe_price_id,
+    currency: row.currency,
+    unitAmount: row.unit_amount,
+    interval: row.interval,
+    active: row.active,
   };
 }
 
 export class SupabaseStripeBillingRepository implements StripeBillingRepository {
-  constructor(private readonly createAdminClient: () => SupabaseClient = createServiceClient) {}
+  constructor(
+    private readonly createAdminClient: () => SupabaseClient<Database> = createServiceClient,
+  ) {}
 
   async getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>> {
     const supabase = this.createAdminClient();
@@ -126,12 +136,12 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     if (!data) return success(null);
 
     return success({
-      key: data.key as string,
-      name: (data.name as string | null) ?? (data.key as string),
-      priceMonthly: (data.price_monthly as number | null) ?? 0,
-      currency: (data.currency as string | null) ?? 'PLN',
-      isActive: (data.is_active as boolean | null) ?? true,
-      forAccountType: (data.for_account_type as string | null) ?? null,
+      key: data.key,
+      name: data.name,
+      priceMonthly: data.price_monthly ?? 0,
+      currency: data.currency ?? 'PLN',
+      isActive: data.is_active ?? true,
+      forAccountType: data.for_account_type,
     });
   }
 
@@ -170,7 +180,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     if (error) return toDbFailure(error);
     if (!data) return success(null);
 
-    return success({ stripeCustomerId: data.stripe_customer_id as string });
+    return success({ stripeCustomerId: data.stripe_customer_id });
   }
 
   async insertCustomer(
@@ -201,7 +211,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
       return toDbFailure(error);
     }
 
-    return success({ stripeCustomerId: data.stripe_customer_id as string });
+    return success({ stripeCustomerId: data.stripe_customer_id });
   }
 
   async getCustomerDetails(owner: PaymentOwner): Promise<ServiceResult<CustomerDetails>> {
@@ -218,8 +228,8 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
       if (!data?.email) return failure('NOT_FOUND');
 
       return success({
-        email: data.email as string,
-        name: (data.full_name as string | null)?.trim() || (data.email as string),
+        email: data.email,
+        name: data.full_name?.trim() || data.email,
       });
     }
 
@@ -233,8 +243,8 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     if (!orgResult.data || !purchaserResult.data?.email) return failure('NOT_FOUND');
 
     return success({
-      email: purchaserResult.data.email as string,
-      name: orgResult.data.name as string,
+      email: purchaserResult.data.email,
+      name: orgResult.data.name,
     });
   }
 
@@ -293,8 +303,8 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     if (!data) return success(null);
 
     return success({
-      stripeSubscriptionId: data.stripe_subscription_id as string,
-      status: data.status as string,
+      stripeSubscriptionId: data.stripe_subscription_id,
+      status: data.status,
     });
   }
 }

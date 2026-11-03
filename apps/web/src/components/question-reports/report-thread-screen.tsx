@@ -81,16 +81,19 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    apiPost(`/api/v1/question-reports/${reportId}/read`, {})
+    void apiPost(`/api/v1/question-reports/${reportId}/read`, {})
       .then(() => {
-        queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
-        queryClient.invalidateQueries({ queryKey: questionReportKeys.unreadCount });
+        void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+        void queryClient.invalidateQueries({ queryKey: questionReportKeys.unreadCount });
+        return undefined;
       })
       .catch(() => {});
   }, [reportId, queryClient]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // The message count is the trigger: scroll to the newest message whenever one arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- count is the trigger.
   }, [data?.messages.length]);
 
   if (isLoading || !data) {

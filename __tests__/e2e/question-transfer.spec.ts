@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { Download, Page } from '@playwright/test';
 import { expect, test } from '#test/e2e/fixtures/tenant';
 import { sidebarLink, t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 /**
  * Question bank import / export (#652). The promises this file guards:
@@ -132,7 +133,7 @@ async function openBank(page: Page, name: string): Promise<string> {
   await cardFor(page, name).click({ position: { x: 24, y: 24 } });
   await expect(page).toHaveURL(/\/edu\/questions\/[0-9a-f-]{36}/);
   await expect(page.getByRole('button', { name: MENU_LABEL })).toBeVisible();
-  return page.url().split('/').pop() as string;
+  return page.url().split('/').pop()!;
 }
 
 async function deleteBank(page: Page, name: string) {
@@ -248,7 +249,7 @@ async function seedTopic(page: Page, name: string): Promise<string> {
     data: { name },
   });
   expect(response.ok(), await response.text()).toBe(true);
-  return ((await response.json()) as { data: { id: string } }).data.id;
+  return (await json<{ data: { id: string } }>(response)).data.id;
 }
 
 /**
@@ -294,7 +295,7 @@ test.describe('Question bank transfer', () => {
     loginAs,
   }) => {
     const name = `QA669 Ćwiczenia Łódź ${stamp()}`;
-    const stampInName = name.split(' ').pop() as string;
+    const stampInName = name.split(' ').pop()!;
     const content = 'Ćwiczenia z języka polskiego – zażółć gęślą jaźń?';
     const explanation = 'Wyjaśnienie z ą, ć, ę, ł, ń, ó, ś, ź, ż.';
 
@@ -595,7 +596,8 @@ test.describe('Question bank transfer', () => {
       },
     });
     expect(imported.status(), await imported.text()).toBe(201);
-    expect(((await imported.json()) as { data: { imported: number } }).data.imported).toBe(1);
+    const importedBody = await json<{ data: { imported: number } }>(imported);
+    expect(importedBody.data.imported).toBe(1);
 
     await page
       .context()
@@ -606,9 +608,9 @@ test.describe('Question bank transfer', () => {
     // The rows follow the bank's tenant, so the bank still lists what was imported.
     const listed = await page.request.get(`/api/v1/questions?bankId=${bankId}&page=1&limit=25`);
     expect(listed.status(), await listed.text()).toBe(200);
-    const page1 = (await listed.json()) as {
-      data: { items: Array<{ content: string }>; total: number };
-    };
+    const page1 = await json<{ data: { items: Array<{ content: string }>; total: number } }>(
+      listed,
+    );
     expect(page1.data.items.map((item) => item.content)).toEqual([content]);
     expect(page1.data.total).toBe(1);
 

@@ -38,7 +38,7 @@ describe(`Plan limit fixes`, () => {
     }
   });
 
-  it('O1/D2 — org owner can create 2 extra groups via API (launch max_groups = 3 total)', async () => {
+  it('O1/D2 — org owner can create 2 extra groups via API (launch max_groups = 3 total)', () => {
     // default group + 2 extra groups, all created through the real API
     expect(fixture.groups.length).toBe(3);
     expect(fixture.defaultGroupId).toBe(fixture.groups[0]);

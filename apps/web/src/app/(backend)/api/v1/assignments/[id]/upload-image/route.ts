@@ -16,11 +16,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return handleApiError(error, 'BAD_REQUEST');
     }
 
-    const file = formData.get('file') as File | null;
-    const attemptId = formData.get('attemptId') as string | null;
-    const questionId = formData.get('questionId') as string | null;
+    const file = formData.get('file');
+    const attemptId = formData.get('attemptId');
+    const questionId = formData.get('questionId');
 
-    if (!file || !attemptId || !questionId) {
+    if (
+      !(file instanceof File) ||
+      typeof attemptId !== 'string' ||
+      !attemptId ||
+      typeof questionId !== 'string' ||
+      !questionId
+    ) {
       return NextResponse.json({ success: false, error: 'MISSING_FIELDS' }, { status: 422 });
     }
 

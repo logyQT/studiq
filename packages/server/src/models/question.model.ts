@@ -91,13 +91,7 @@ export const UpdateQuestionSchema = registry.register(
       visibility: z.enum(['personal', 'group']).optional(),
     })
     .refine(
-      (data) =>
-        !(
-          data.type !== undefined &&
-          data.type !== 'open' &&
-          data.answers !== undefined &&
-          data.answers.length === 0
-        ),
+      (data) => !(data.type !== undefined && data.type !== 'open' && data.answers?.length === 0),
       {
         error: ValidationErrorCode.INVALID_INPUT,
         path: ['answers'],

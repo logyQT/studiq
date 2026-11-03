@@ -14,7 +14,7 @@ import {
 import { type TopicService, topicService } from '@studiq/server/services/topic.service';
 
 export class TopicController {
-  constructor(private topicService: TopicService) {}
+  constructor(private service: TopicService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     if (!(await can(ctx, Permission.TOPIC_CREATE))) {
@@ -31,7 +31,7 @@ export class TopicController {
       };
     }
 
-    const result = await this.topicService.create(parsed.data, ctx);
+    const result = await this.service.create(parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.created(result.data);
   }
@@ -48,13 +48,13 @@ export class TopicController {
       };
     }
 
-    const result = await this.topicService.list(ctx, parsed.data);
+    const result = await this.service.list(ctx, parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.topicService.getById(id, ctx);
+    const result = await this.service.getById(id, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -71,13 +71,13 @@ export class TopicController {
       };
     }
 
-    const result = await this.topicService.update(id, parsed.data, ctx);
+    const result = await this.service.update(id, parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.topicService.delete(id, ctx);
+    const result = await this.service.delete(id, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return { success: true, statusCode: 200, data: { success: true } };
   }
@@ -94,7 +94,7 @@ export class TopicController {
       };
     }
 
-    const result = await this.topicService.bulkCreate(parsed.data, ctx);
+    const result = await this.service.bulkCreate(parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.created(result.data);
   }
@@ -111,7 +111,7 @@ export class TopicController {
       };
     }
 
-    const result = await this.topicService.batchDelete(parsed.data, ctx);
+    const result = await this.service.batchDelete(parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

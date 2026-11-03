@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -49,7 +50,7 @@ const COPY = {
   startLearning: 'Rozpocznij naukę',
   flipHint: 'Kliknij, aby odkryć odpowiedź',
   exitSession: 'Zakończ sesję',
-  shortcutsTrigger: 'Keyboard shortcuts',
+  shortcutsTrigger: 'Skróty klawiszowe',
   flipAction: 'Odwróć fiszkę',
 } as const;
 
@@ -107,7 +108,7 @@ interface PracticeBatch {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -133,7 +134,7 @@ async function ensureDeck(page: Page, name: string): Promise<string> {
     response.status(),
     `POST /api/v1/flashcards/decks (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<DeckItem>;
+  const body = await json<ApiEnvelope<DeckItem>>(response);
   expect(body.success, 'deck create success flag').toBe(true);
   return body.data.id;
 }
@@ -155,13 +156,13 @@ async function ensureCards(page: Page, deckId: string): Promise<Map<string, stri
       response.status(),
       `POST /api/v1/flashcards (${front}) → ${response.status()} ${await response.text()}`,
     ).toBe(201);
-    const body = (await response.json()) as ApiEnvelope<FlashcardItem>;
+    const body = await json<ApiEnvelope<FlashcardItem>>(response);
     expect(body.success, `flashcard ${front} create success flag`).toBe(true);
     byFront.set(front, body.data.id);
   }
 
-  expect([...byFront.keys()].sort(), 'the deck holds the case’s five cards').toEqual(
-    [...CARD_FRONTS].sort(),
+  expect([...byFront.keys()].toSorted(), 'the deck holds the case’s five cards').toEqual(
+    [...CARD_FRONTS].toSorted(),
   );
   return byFront;
 }
@@ -235,6 +236,7 @@ test.describe('@case:STU-06 @area:STU @prio:P2 study session keyboard shortcuts'
     page.on('request', (request) => {
       if (request.method() !== 'POST') return;
       if (!request.url().endsWith('/api/v1/flashcards/batch/practice')) return;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Playwright types a captured request body as `Serializable`; the assertions below check the batch it carries
       batches.push(request.postDataJSON() as PracticeBatch);
     });
 
@@ -253,17 +255,20 @@ test.describe('@case:STU-06 @area:STU @prio:P2 study session keyboard shortcuts'
         response.url().includes('/api/v1/flashcards/practice/new'),
     );
     await page.getByRole('button', { name: COPY.startLearning, exact: true }).click();
-    const queue = (await (await queueResponse).json()) as ApiEnvelope<{ front: string }[]>;
+    const queue = await json<ApiEnvelope<{ front: string }[]>>(await queueResponse);
     expect(
-      queue.data.map((card) => card.front).sort(),
+      queue.data.map((card) => card.front).toSorted(),
       'the session queue is exactly the tenant’s five new cards',
-    ).toEqual([...CARD_FRONTS].sort());
+    ).toEqual([...CARD_FRONTS].toSorted());
 
     await expect(page).toHaveURL(/\/app\/study\/session\/new/);
     await expect(rotatingCard(page)).toBeVisible();
     // The session listens on `window`; the start button must not keep focus or
     // „Space” would also activate it.
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.evaluate(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) active.blur();
+    });
 
     // --- Step 1: Space flips the card (front ⇄ back) ------------------------
     const firstCard = await shownCard(page);

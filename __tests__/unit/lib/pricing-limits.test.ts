@@ -9,7 +9,7 @@ const plans = [
 
 describe('SORTED_LIMIT_KEYS', () => {
   it('lists exactly the catalog keys, so the UI and resolver cannot drift (#233)', () => {
-    expect([...SORTED_LIMIT_KEYS].sort()).toEqual([...LIMIT_KEYS].sort());
+    expect([...SORTED_LIMIT_KEYS].toSorted()).toEqual([...LIMIT_KEYS].toSorted());
   });
 });
 

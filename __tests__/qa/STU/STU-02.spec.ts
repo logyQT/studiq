@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -123,18 +124,18 @@ async function studentStats(page: Page): Promise<StudentStats> {
     response.status(),
     `GET /api/v1/stats/student → ${response.status()} ${await response.text()}`,
   ).toBe(200);
-  const body = (await response.json()) as Envelope<StudentStats>;
+  const body = await json<Envelope<StudentStats>>(response);
   expect(body.success, 'stats success flag').toBe(true);
-  return body.data as StudentStats;
+  return body.data!;
 }
 
 /** `POST` and require the created (201) envelope, returning its `data`. */
 async function postData<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
-  const body = (await response.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(response);
   expect(response.status(), `POST ${url} → ${response.status()} ${JSON.stringify(body)}`).toBe(201);
   expect(body.data, `POST ${url} payload`).toBeTruthy();
-  return body.data as T;
+  return body.data!;
 }
 
 /** The visible instance of a control that `DeckCard` renders once per breakpoint. */
@@ -226,10 +227,10 @@ async function resetStudentChecklistState(tenant: QaTenant): Promise<void> {
 async function findDeck(page: Page, name: string): Promise<DeckItem> {
   const response = await page.request.get('/api/v1/flashcards/decks?limit=200');
   expect(response.status(), 'GET /api/v1/flashcards/decks').toBe(200);
-  const body = (await response.json()) as Envelope<{ items: DeckItem[] }>;
+  const body = await json<Envelope<{ items: DeckItem[] }>>(response);
   const deck = body.data?.items.find((item) => item.name === name);
   expect(deck, `the created deck „${name}” is listed`).toBeTruthy();
-  return deck as DeckItem;
+  return deck!;
 }
 
 test.describe('@case:STU-02 @area:STU @prio:P2 student first-steps checklist', () => {

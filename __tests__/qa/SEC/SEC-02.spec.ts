@@ -1,4 +1,5 @@
 import type { Browser, Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import {
   expect,
   loadTenant,
@@ -72,7 +73,7 @@ interface TwoOrgTenant extends QaTenant {
   };
 }
 
-const TENANT = loadTenant(CASE) as TwoOrgTenant;
+const TENANT = asJson<TwoOrgTenant>(loadTenant(CASE));
 
 /** Run suffix the seeder folded into the tenant key. */
 const RUN = TENANT.runSuffix ?? 'stable';
@@ -150,7 +151,7 @@ function expectCreated(response: { status(): number }, label: string): void {
 async function listGroups(page: Page): Promise<NamedRow[]> {
   const response = await page.request.get('/api/v1/organization/groups');
   expect(response.status(), 'GET /api/v1/organization/groups').toBe(200);
-  return ((await response.json()) as ApiEnvelope<NamedRow[]>).data;
+  return (await json<ApiEnvelope<NamedRow[]>>(response)).data;
 }
 
 /** Resolve a seeded group's id from its name through the product API. */
@@ -166,7 +167,7 @@ async function createDeck(page: Page, name: string, groupIdValue: string): Promi
     data: { name, visibility: 'group', groupIds: [groupIdValue] },
   });
   expectCreated(response, 'POST /api/v1/flashcards/decks');
-  return ((await response.json()) as ApiEnvelope<NamedRow>).data;
+  return (await json<ApiEnvelope<NamedRow>>(response)).data;
 }
 
 async function createCard(
@@ -178,7 +179,7 @@ async function createCard(
     data: { deckId, ...card },
   });
   expectCreated(response, 'POST /api/v1/flashcards');
-  return ((await response.json()) as ApiEnvelope<{ id: string }>).data.id;
+  return (await json<ApiEnvelope<{ id: string }>>(response)).data.id;
 }
 
 /**
@@ -238,7 +239,7 @@ async function getJson(
   path: string,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const response = await page.request.get(path);
-  return { status: response.status(), body: (await response.json()) as Record<string, unknown> };
+  return { status: response.status(), body: await json<Record<string, unknown>>(response) };
 }
 
 test.describe('@case:SEC-02 @area:SEC @prio:P1 organization isolation', () => {
@@ -273,7 +274,7 @@ test.describe('@case:SEC-02 @area:SEC @prio:P1 organization isolation', () => {
 
     const inOrgDeck = await getJson(page, `/api/v1/flashcards/decks/${deckA.id}`);
     expect(inOrgDeck.status, 'in-org group member reads the shared deck').toBe(200);
-    expect((inOrgDeck.body.data as { name: string }).name).toBe(deckA.name);
+    expect(asJson<{ name: string }>(inOrgDeck.body.data).name).toBe(deckA.name);
 
     await page.goto(`/app/flashcards/${deckA.id}`);
     await expect(page.getByText(deckA.name, { exact: true }).first()).toBeVisible();
@@ -302,7 +303,7 @@ test.describe('@case:SEC-02 @area:SEC @prio:P1 organization isolation', () => {
 
     const foreignCards = await getJson(page, `/api/v1/flashcards?deckIds=${deckA.id}&limit=30`);
     expect(foreignCards.status, 'foreign deck card list').toBe(200);
-    expect((foreignCards.body.data as { items: unknown[] }).items).toHaveLength(0);
+    expect(asJson<{ items: unknown[] }>(foreignCards.body.data).items).toHaveLength(0);
 
     const foreignCard = await getJson(page, `/api/v1/flashcards/${deckA.cardId}`);
     expect(foreignCard.status, 'foreign card read').toBe(404);
@@ -329,7 +330,7 @@ test.describe('@case:SEC-02 @area:SEC @prio:P1 organization isolation', () => {
     // The outsider's own deck list only carries its own organization's deck.
     const deckList = await getJson(page, '/api/v1/flashcards/decks?limit=200');
     expect(deckList.status, 'deck list').toBe(200);
-    const listedNames = (deckList.body.data as { items: { name: string }[] }).items.map(
+    const listedNames = asJson<{ items: { name: string }[] }>(deckList.body.data).items.map(
       (deck) => deck.name,
     );
     expect(listedNames).toContain(deckB.name);
@@ -338,7 +339,7 @@ test.describe('@case:SEC-02 @area:SEC @prio:P1 organization isolation', () => {
     // --- Positive control: the same outsider does read its own org's deck. ---------
     const ownDeck = await getJson(page, `/api/v1/flashcards/decks/${deckB.id}`);
     expect(ownDeck.status, 'own-org deck read').toBe(200);
-    expect((ownDeck.body.data as { name: string }).name).toBe(deckB.name);
+    expect(asJson<{ name: string }>(ownDeck.body.data).name).toBe(deckB.name);
 
     await page.goto(`/app/flashcards/${deckB.id}`);
     await expect(page.getByText(deckB.name, { exact: true }).first()).toBeVisible();
@@ -353,15 +354,15 @@ test.describe('@case:SEC-02 @area:SEC @prio:P1 organization isolation', () => {
 
     const ownerDeck = await getJson(page, `/api/v1/flashcards/decks/${deckA.id}`);
     expect(ownerDeck.status, 'owner reads the deck after the denied write').toBe(200);
-    expect((ownerDeck.body.data as { name: string }).name).toBe(deckA.name);
-    expect((ownerDeck.body.data as { flashcard_count: number }).flashcard_count).toBe(1);
+    expect(asJson<{ name: string }>(ownerDeck.body.data).name).toBe(deckA.name);
+    expect(asJson<{ flashcard_count: number }>(ownerDeck.body.data).flashcard_count).toBe(1);
 
     // --- Adjacent control: staff of another org is isolated too. -------------------
     // Teacher A administers org A only; its active org stays org A, so the other
     // organization and its deck are unreachable even for staff.
     const ownOrg = await getJson(page, `/api/v1/organization/${orgA.id}`);
     expect(ownOrg.status, 'staff reads its own organization').toBe(200);
-    expect((ownOrg.body.data as { name: string }).name).toBe(orgA.name);
+    expect(asJson<{ name: string }>(ownOrg.body.data).name).toBe(orgA.name);
 
     const staffForeignOrg = await getJson(page, `/api/v1/organization/${orgB.id}`);
     expect(staffForeignOrg.status, 'staff reads the other organization').toBe(403);

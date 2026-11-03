@@ -10,6 +10,7 @@ import type {
 } from '@studiq/server/models/group.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 function canManageAnyGroup(ctx: RequestContext): boolean {
   return ctx.accountType === AccountType.MANAGER;
@@ -22,7 +23,7 @@ function normalizeDescription<T extends { description?: string | null }>(data: T
 }
 
 export class GroupService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async listGroups(ctx: RequestContext): Promise<
     ServiceResult<
@@ -30,14 +31,15 @@ export class GroupService {
         id: string;
         name: string;
         description: string | null;
-        created_at: string;
+        /** Nullable column (`DEFAULT now()`): a hand-inserted row can lack it. */
+        created_at: string | null;
         memberCount: number;
         teacherCount: number;
         canManage: boolean;
       }[]
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -62,9 +64,8 @@ export class GroupService {
 
     return success(
       data.map((g) => {
-        const total = (g.group_members as unknown as { count: number }[])?.[0]?.count ?? 0;
-        const teachers =
-          (g.group_members_teachers as unknown as { count: number }[])?.[0]?.count ?? 0;
+        const total = g.group_members?.[0]?.count ?? 0;
+        const teachers = g.group_members_teachers?.[0]?.count ?? 0;
         return {
           id: g.id,
           name: g.name,
@@ -82,9 +83,14 @@ export class GroupService {
     ctx: RequestContext,
     data: CreateGroupInput,
   ): Promise<
-    ServiceResult<{ id: string; name: string; description: string | null; created_at: string }>
+    ServiceResult<{
+      id: string;
+      name: string;
+      description: string | null;
+      created_at: string | null;
+    }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -114,12 +120,14 @@ export class GroupService {
   private async assertCanManage(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
     if (canManageAnyGroup(ctx)) return success(undefined);
 
-    const supabase = await this.createClient();
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
+    const supabase = await this.clientFactory();
     const { data: group } = await supabase
       .from('groups')
       .select('created_by')
       .eq('id', id)
-      .eq('organization_id', ctx.activeOrgId as string)
+      .eq('organization_id', ctx.activeOrgId)
       .maybeSingle();
 
     if (!group) return failure('NOT_FOUND');
@@ -133,9 +141,14 @@ export class GroupService {
     id: string,
     data: UpdateGroupInput,
   ): Promise<
-    ServiceResult<{ id: string; name: string; description: string | null; created_at: string }>
+    ServiceResult<{
+      id: string;
+      name: string;
+      description: string | null;
+      created_at: string | null;
+    }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -161,7 +174,7 @@ export class GroupService {
   }
 
   async deleteGroup(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -185,7 +198,7 @@ export class GroupService {
     ctx: RequestContext,
     groupId: string,
   ): Promise<ServiceResult<{ userId: string; role: string }[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -231,7 +244,7 @@ export class GroupService {
     const authCheck = await this.assertCanManage(ctx, groupId);
     if (isFailure(authCheck)) return authCheck;
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('org_members')
       .select('user_id, org_roles!inner(name), profiles!inner(id, email, full_name)')
@@ -242,12 +255,8 @@ export class GroupService {
 
     return success(
       data.map((m) => {
-        const profile = m.profiles as unknown as {
-          id: string;
-          email: string;
-          full_name: string | null;
-        };
-        const orgRole = m.org_roles as unknown as { name: string };
+        const profile = m.profiles;
+        const orgRole = m.org_roles;
         return {
           id: profile.id,
           email: profile.email,
@@ -263,7 +272,7 @@ export class GroupService {
     groupId: string,
     data: SetGroupMembersInput,
   ): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
@@ -304,17 +313,23 @@ export class GroupService {
   }
 
   async getUserGroupIds(ctx: RequestContext): Promise<ServiceResult<string[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
+
+    // `p_org_id` is a required (non-nullable) RPC argument: it filters
+    // `groups.organization_id = p_org_id`, so without an active org the call
+    // provably matches no group and the empty list is the same answer (#148).
+    if (!ctx.activeOrgId) return success([]);
+
     const { data, error } = await supabase.rpc('get_user_group_ids', {
       p_user_id: ctx.userId,
-      p_org_id: ctx.activeOrgId ?? null,
+      p_org_id: ctx.activeOrgId,
     });
     if (error) return toDbFailure(error);
-    return success((data as { group_id: string }[] | null)?.map((r) => r.group_id) ?? []);
+    return success(data?.map((r) => r.group_id) ?? []);
   }
 
   async isTeacherInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('group_members')
       .select('id')
@@ -349,7 +364,7 @@ export class GroupService {
     if (unique.length === 0) return success(true);
     if (!contentOrgId) return success(false);
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('group_members')
       .select('group_id, groups!inner(organization_id)')
@@ -360,12 +375,12 @@ export class GroupService {
 
     if (error) return toDbFailure(error);
 
-    const taught = new Set((data ?? []).map((row) => row.group_id as string));
+    const taught = new Set((data ?? []).map((row) => row.group_id));
     return success(unique.every((id) => taught.has(id)));
   }
 
   async isUserInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('group_members')
       .select('id')
@@ -376,14 +391,19 @@ export class GroupService {
     return success(!!data);
   }
 
-  async listMyGroups(
-    ctx: RequestContext,
-  ): Promise<
+  async listMyGroups(ctx: RequestContext): Promise<
     ServiceResult<
-      { id: string; name: string; organizationId: string; role: string; joinedAt: string }[]
+      {
+        id: string;
+        name: string;
+        organizationId: string;
+        role: string;
+        /** Nullable column (`DEFAULT now()`); a membership can lack it. */
+        joinedAt: string | null;
+      }[]
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Scope to orgs the caller still belongs to: a group row is org data, and a
     // stale group_members row must not keep it visible after the user was
@@ -408,7 +428,7 @@ export class GroupService {
 
     return success(
       data.map((m) => {
-        const group = m.groups as unknown as { id: string; name: string; organization_id: string };
+        const group = m.groups;
         return {
           id: group.id,
           name: group.name,

@@ -11,7 +11,7 @@ interface ChatHistoryProps {
   deckTarget?: DeckTarget | null;
 }
 
-export const ChatHistory = memo(function ChatHistory({
+export const ChatHistory = memo(function ChatHistoryContent({
   messages,
   onAnswer,
   deckTarget,

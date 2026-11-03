@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
+import { json } from '#test/helpers/json';
 
 /**
  * #360 (STU-31) — a search that matches nothing must not render the
@@ -18,8 +19,8 @@ async function createBank(page: Page, name: string): Promise<string> {
 
   expect(response.status()).toBe(201);
 
-  const body = await response.json();
-  return body.data.id as string;
+  const body = await json<{ data: { id: string } }>(response);
+  return body.data.id;
 }
 
 test('A search with no matches shows a no-results state, not the empty-collection copy', async ({
