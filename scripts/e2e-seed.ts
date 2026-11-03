@@ -400,7 +400,8 @@ async function main(): Promise<void> {
   // pure waste (~135 orgs and ~270 users).
   const project = args.includes('--project') ? args[args.indexOf('--project') + 1] : undefined;
 
-  if (args.includes('--reset')) await reset();
+  const wipe = args.includes('--reset');
+  if (wipe) await reset();
 
   const started = performance.now();
   const tests = only
@@ -428,7 +429,23 @@ async function main(): Promise<void> {
       }),
     ).values(),
   ];
+  // A per-project run owns only its own tenants: keep the other projects'
+  // manifest entries so seeding one leg does not hide the other leg's tenants
+  // from a later `--project` run. The selected project is always rebuilt from
+  // this run's test list. `--reset` wipes every e2e tenant, so the manifest
+  // starts empty there — entries for the other project would point at deleted
+  // rows.
   const index: Record<string, Tenant> = {};
+  if (project && !wipe) {
+    try {
+      const previous = JSON.parse(readFileSync(INDEX, 'utf8')) as Record<string, Tenant>;
+      for (const [key, tenant] of Object.entries(previous)) {
+        if (tenant.project !== project) index[key] = tenant;
+      }
+    } catch {
+      // No manifest yet (or unreadable) — nothing to preserve.
+    }
+  }
 
   await runBounded(tenants, concurrencyFromEnv('E2E_SEED_CONCURRENCY'), async (t) => {
     await seedTenant(t);
