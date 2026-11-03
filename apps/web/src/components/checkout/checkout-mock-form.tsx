@@ -404,7 +404,7 @@ export function CheckoutMockForm() {
                     <Label htmlFor="expiry">{ct('expiry')}</Label>
                     <Input
                       id="expiry"
-                      placeholder="MM/YY"
+                      placeholder={ct('expiry')}
                       value={expiry}
                       onChange={(e) => setExpiry(formatExpiry(e.target.value))}
                       className="font-mono"

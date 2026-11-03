@@ -83,7 +83,7 @@ export function StripeCheckoutRedirect({ planKey, orgId, canceled }: StripeCheck
           return;
         }
 
-        window.location.assign(url);
+        window.location.replace(url);
       } catch (error) {
         started.current = false;
         setFailure(checkoutFailureFor(error));

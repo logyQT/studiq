@@ -616,7 +616,8 @@
     "missing_plan_title": "No plan selected",
     "missing_plan_description": "Go back to the plans and choose one to continue.",
     "checkout_unavailable_title": "Checkout unavailable",
-    "checkout_unavailable_description": "This plan cannot be purchased from this account. Go back to the plans and choose another one."
+    "checkout_unavailable_description": "This plan cannot be purchased from this account. Go back to the plans and choose another one.",
+    "card_name_placeholder": "John Doe"
   },
   "BillingSuccessPage": {
     "title": "Purchase Successful!",

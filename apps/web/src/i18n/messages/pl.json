@@ -598,7 +598,8 @@
     "missing_plan_title": "Nie wybrano planu",
     "missing_plan_description": "Wróć do planów i wybierz jeden, aby kontynuować.",
     "checkout_unavailable_title": "Płatność niedostępna",
-    "checkout_unavailable_description": "Tego planu nie można kupić z tego konta. Wróć do planów i wybierz inny."
+    "checkout_unavailable_description": "Tego planu nie można kupić z tego konta. Wróć do planów i wybierz inny.",
+    "card_name_placeholder": "Jan Kowalski"
   },
   "BillingSuccessPage": {
     "title": "Zakup udany!",
