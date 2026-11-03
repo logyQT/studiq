@@ -662,7 +662,11 @@
     "mock_billing_note": "Płatności w trybie testowym są obsługiwane przez StudiQ.",
     "no_manage_permission": "Rozliczeniami organizacji zarządza jej administrator.",
     "change_plan_pending_link": "Dokończ płatność",
-    "invoice_history": "Historia płatności"
+    "invoice_history": "Historia płatności",
+    "keep_current_plan": "Zachowaj obecny plan",
+    "keep_current_plan_success": "Zaplanowana zmiana została usunięta",
+    "keep_current_plan_none": "Brak zaplanowanej zmiany do usunięcia",
+    "keep_current_plan_failed": "Nie udało się usunąć zaplanowanej zmiany"
   },
   "UpgradePrompt": {
     "title": "Zaktualizuj, aby uzyskać dostęp",

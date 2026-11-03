@@ -108,6 +108,28 @@ export interface CancelAtPeriodEndInput {
   cancel: boolean;
 }
 
+/**
+ * Release a downgrade that was previously scheduled at `current_period_end`
+ * (#662 §2.5). This is the "keep my current plan" action: it never writes an
+ * entitlement, it only detaches the provider schedule.
+ */
+export interface ReleaseScheduledPlanInput {
+  owner: PaymentOwner;
+  customerId: string;
+  subscriptionId: string;
+  /**
+   * Plan the caller believes is billed. The gateway re-reads the live price
+   * before releasing: if a scheduled phase already applied, releasing its
+   * remainder would report "kept the old plan" while Stripe bills the new one.
+   */
+  currentPlanKey: string;
+}
+
+export interface ReleaseScheduledPlanResult {
+  /** `false` when no schedule existed (an upgrade invoice awaiting payment). */
+  released: boolean;
+}
+
 export interface ReconcileCheckoutInput {
   owner: PaymentOwner;
   /** Stripe Checkout Session id from the `success_url` query. */
@@ -156,6 +178,11 @@ export interface PaymentGateway {
   cancelAtPeriodEnd(
     input: CancelAtPeriodEndInput,
   ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>>;
+
+  /** Detach a pending downgrade schedule without changing the plan. */
+  releaseScheduledPlan(
+    input: ReleaseScheduledPlanInput,
+  ): Promise<ServiceResult<ReleaseScheduledPlanResult>>;
 
   /**
    * Verify a Checkout Session belongs to the caller and run the same idempotent

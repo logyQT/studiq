@@ -13,6 +13,7 @@ function createMockGateway() {
     createPortalSession: vi.fn<PaymentGateway['createPortalSession']>(),
     changePlan: vi.fn<PaymentGateway['changePlan']>(),
     cancelAtPeriodEnd: vi.fn<PaymentGateway['cancelAtPeriodEnd']>(),
+    releaseScheduledPlan: vi.fn<PaymentGateway['releaseScheduledPlan']>(),
     handleWebhook: vi.fn<PaymentGateway['handleWebhook']>(),
   } satisfies PaymentGateway;
 }

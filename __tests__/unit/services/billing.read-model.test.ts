@@ -90,6 +90,7 @@ function createGateway(driver: 'mock' | 'stripe' = 'stripe'): PaymentGateway {
       .mockImplementation((input) => Promise.resolve(success({ url: input.returnUrl }))),
     changePlan: vi.fn<PaymentGateway['changePlan']>(),
     cancelAtPeriodEnd: vi.fn<PaymentGateway['cancelAtPeriodEnd']>(),
+    releaseScheduledPlan: vi.fn<PaymentGateway['releaseScheduledPlan']>(),
     handleWebhook: vi.fn<PaymentGateway['handleWebhook']>(),
   };
 }
@@ -106,6 +107,8 @@ function createRepository(
     findPriceById: vi.fn(),
     findListedPrice: vi.fn(),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
+    setPendingPlan: vi.fn().mockResolvedValue(success(undefined)),
+    clearPendingPlanIfApplied: vi.fn().mockResolvedValue(success(undefined)),
     ...overrides,
   });
 }

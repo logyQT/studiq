@@ -44,6 +44,7 @@ function createMockBilling() {
     changePlan: vi.fn(),
     cancelSubscription: vi.fn(),
     reconcileCheckout: vi.fn(),
+    releaseScheduledChange: vi.fn(),
   };
 }
 
@@ -122,6 +123,27 @@ describe('BillingController', () => {
       await expect(controller.changePlan(ctx, { planKey: 'ace' })).resolves.toMatchObject({
         success: false,
         statusCode: 404,
+      });
+    });
+  });
+
+  describe('releaseScheduledPlan', () => {
+    it('delegates the owner from the context and returns the release result', async () => {
+      billing.releaseScheduledChange.mockResolvedValueOnce(success({ released: true }));
+
+      const response = await controller.releaseScheduledPlan(ctx);
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: { released: true } });
+      expect(billing.releaseScheduledChange).toHaveBeenCalledWith(ctx);
+    });
+
+    it('maps a forbidden failure', async () => {
+      billing.releaseScheduledChange.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
+
+      await expect(controller.releaseScheduledPlan(ctx)).resolves.toMatchObject({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
       });
     });
   });
