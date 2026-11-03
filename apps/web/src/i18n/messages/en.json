@@ -608,7 +608,15 @@
     "redirecting_to_stripe": "Redirecting to Stripe...",
     "payment_processing": "Processing payment...",
     "payment_canceled": "Payment canceled",
-    "payment_canceled_description": "No charge was made. You can try again."
+    "payment_canceled_description": "No charge was made. You can try again.",
+    "payment_failed_title": "Could not start checkout",
+    "manage_subscription": "Manage subscription",
+    "already_subscribed": "You already have an active subscription",
+    "already_subscribed_description": "Manage the current plan from your billing page instead of starting a second checkout.",
+    "missing_plan_title": "No plan selected",
+    "missing_plan_description": "Go back to the plans and choose one to continue.",
+    "checkout_unavailable_title": "Checkout unavailable",
+    "checkout_unavailable_description": "This plan cannot be purchased from this account. Go back to the plans and choose another one."
   },
   "BillingSuccessPage": {
     "title": "Purchase Successful!",

@@ -2,9 +2,11 @@
 
 import { Button } from '@studiq/ui';
 import { Loader2 } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { apiPost } from '@/lib/api';
+import { checkoutSessionBody } from '@/lib/checkout-entry';
 
 interface CheckoutButtonProps {
   /** Catalog plan key (`spark`, `hub`, …), never the plan UUID. */
@@ -23,18 +25,24 @@ export function CheckoutButton({
   variant = 'default',
   className,
 }: CheckoutButtonProps) {
+  const t = useTranslations('CheckoutPage');
+  const locale = useLocale();
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleClick() {
     setIsLoading(true);
     try {
-      const data = await apiPost<{ url: string }>('/api/v1/stripe/create-checkout-session', {
-        planKey,
-        orgId,
-      });
+      const data = await apiPost<{ url: string }>(
+        '/api/v1/stripe/create-checkout-session',
+        checkoutSessionBody({
+          planKey,
+          orgId,
+          locale: locale === 'en' ? 'en' : 'pl',
+        }),
+      );
       window.location.href = data.url;
     } catch {
-      toast.error('Something went wrong. Please try again.');
+      toast.error(t('payment_failed'));
     } finally {
       setIsLoading(false);
     }
