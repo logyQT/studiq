@@ -31,7 +31,7 @@ import { billingKeys } from '@/lib/query-keys';
 export default function ManageBillingPage() {
   const t = useTranslations('BillingPage');
   const { user } = useAuth();
-  const { activeOrg } = useOrgs();
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const queryClient = useQueryClient();
   // /me/plan resolves the active organization's plan first (personal plan only as fallback).
   const { data: myPlan, isLoading: planLoading } = useApiQuery<PlanInfo>({
@@ -51,7 +51,7 @@ export default function ManageBillingPage() {
   } = useApiQuery<BillingSubscriptionView>({
     queryKey: billingKeys.subscription(activeOrg?.id),
     url: '/api/v1/billing/subscription',
-    enabled: !!user,
+    enabled: !!user && !orgsPending,
     staleTime: 0,
   });
   const { data: seatPools } = useApiQuery<{ total: number; assigned: number }[]>({

@@ -30,6 +30,7 @@ function view(overrides: Partial<BillingSubscriptionView> = {}): BillingSubscrip
 interface Deps {
   reconcile: Mock;
   readSubscription: Mock;
+  expectedPlanKey: string | null;
   sleep: Mock;
   isCancelled: Mock;
 }
@@ -38,6 +39,7 @@ function deps(overrides: Partial<Deps> = {}): Deps {
   return {
     reconcile: vi.fn().mockResolvedValue(undefined),
     readSubscription: vi.fn().mockResolvedValue(view()),
+    expectedPlanKey: 'spark',
     sleep: vi.fn().mockResolvedValue(undefined),
     isCancelled: vi.fn().mockReturnValue(false),
     ...overrides,
@@ -75,6 +77,22 @@ describe('pollBillingActivation', () => {
     });
     expect(d.readSubscription).toHaveBeenCalledTimes(1);
     expect(d.sleep).not.toHaveBeenCalled();
+  });
+
+  it('requires the polled plan to match the purchased plan', async () => {
+    const d = deps({
+      expectedPlanKey: 'ace',
+      readSubscription: vi.fn().mockResolvedValue(view({ planKey: 'spark' })),
+    });
+
+    await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'timeout' });
+    expect(d.readSubscription).toHaveBeenCalledTimes(BILLING_SUCCESS_POLL_ATTEMPTS);
+  });
+
+  it('falls back to any live plan when the success URL has no plan id', async () => {
+    const d = deps({ expectedPlanKey: null });
+
+    await expect(pollBillingActivation(d)).resolves.toMatchObject({ state: 'activated' });
   });
 
   it('keeps polling while the read model is free', async () => {

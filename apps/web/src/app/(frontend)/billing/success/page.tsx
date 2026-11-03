@@ -34,6 +34,7 @@ function BillingSuccessContent() {
   const { user, isLoading: isAuthLoading } = useAuth();
 
   const sessionId = searchParams.get('session_id')?.trim() || null;
+  const purchasedPlanKey = searchParams.get('plan_id')?.trim() || null;
   const orgId = searchParams.get('org_id')?.trim() || null;
   const dashboardPath = dashboardPathForAccountType(accountTypeOf(user));
 
@@ -75,6 +76,7 @@ function BillingSuccessContent() {
       const result = await pollBillingActivation({
         reconcile: () => apiPost('/api/v1/billing/reconcile', { sessionId }),
         readSubscription: () => apiGet<BillingSubscriptionView>('/api/v1/billing/subscription'),
+        expectedPlanKey: purchasedPlanKey,
         sleep,
         isCancelled: () => cancelled,
       });
@@ -95,7 +97,7 @@ function BillingSuccessContent() {
       cancelled = true;
       if (sleepTimer !== undefined) clearTimeout(sleepTimer);
     };
-  }, [sessionId, orgId, isAuthLoading, dashboardPath, router]);
+  }, [sessionId, orgId, isAuthLoading, dashboardPath, router, purchasedPlanKey]);
 
   if (isAuthLoading) {
     return (
