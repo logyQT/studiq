@@ -41,6 +41,7 @@ function createMockBilling() {
     getSubscription: vi.fn(),
     changePlan: vi.fn(),
     cancelSubscription: vi.fn(),
+    reconcileCheckout: vi.fn(),
   };
 }
 
@@ -120,6 +121,36 @@ describe('BillingController', () => {
         success: false,
         statusCode: 404,
       });
+    });
+  });
+
+  describe('reconcileCheckout', () => {
+    it('returns 422 without a session id', async () => {
+      const response = await controller.reconcileCheckout(ctx, {});
+
+      expect(response).toMatchObject({
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+      });
+      expect(billing.reconcileCheckout).not.toHaveBeenCalled();
+    });
+
+    it('delegates the session id', async () => {
+      billing.reconcileCheckout.mockResolvedValueOnce(success({ activated: true }));
+
+      const response = await controller.reconcileCheckout(ctx, { sessionId: 'cs_1' });
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: { activated: true } });
+      expect(billing.reconcileCheckout).toHaveBeenCalledWith(ctx, 'cs_1');
+    });
+
+    it('maps a foreign session to 403', async () => {
+      billing.reconcileCheckout.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
+
+      await expect(controller.reconcileCheckout(ctx, { sessionId: 'cs_1' })).resolves.toMatchObject(
+        { success: false, statusCode: 403, error: 'FORBIDDEN' },
+      );
     });
   });
 

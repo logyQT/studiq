@@ -44,3 +44,19 @@ export const CancelSubscriptionSchema = registry.register(
 );
 
 export type CancelSubscriptionBody = z.infer<typeof CancelSubscriptionSchema>;
+
+/**
+ * `POST /api/v1/billing/reconcile` body (#662 X6). The Checkout Session id from
+ * `success_url`; ownership is verified server-side before any activation.
+ */
+export const ReconcileCheckoutSchema = registry.register(
+  'ReconcileCheckoutRequest',
+  z.object({
+    sessionId: z
+      .string()
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .max(255, { error: ValidationErrorCode.TOO_LONG }),
+  }),
+);
+
+export type ReconcileCheckoutBody = z.infer<typeof ReconcileCheckoutSchema>;

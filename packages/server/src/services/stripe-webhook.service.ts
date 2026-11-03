@@ -268,11 +268,26 @@ export class StripeWebhookService {
     event: Stripe.Event,
     claimToken: string,
   ): Promise<DispatchResult> {
-    const session = checkoutSession(event);
+    return this.activateCheckoutSession(checkoutSession(event), {
+      eventId: event.id,
+      eventCreated: event.created,
+      claimToken,
+    });
+  }
+
+  /**
+   * Shared by `checkout.session.completed` and the authenticated reconcile
+   * endpoint (#662 X6). It re-uses the exact same customer/subscription/plan
+   * rules; only the freshness/fencing source differs.
+   */
+  private async activateCheckoutSession(
+    session: Stripe.Checkout.Session,
+    source: { eventId: string | null; eventCreated: number | null; claimToken: string | null },
+  ): Promise<DispatchResult> {
     const metadataOwner = this.ownerFromMetadata(session.metadata);
     if (!metadataOwner) {
       logError('billing.owner_unresolved', {
-        eventId: event.id,
+        eventId: source.eventId,
         objectId: session.id,
         object: 'checkout.session',
       });
@@ -287,14 +302,17 @@ export class StripeWebhookService {
 
     const subscriptionId = objectId(session.subscription);
     if (!subscriptionId) {
-      log('billing.checkout_without_subscription', { eventId: event.id, sessionId: session.id });
+      log('billing.checkout_without_subscription', {
+        eventId: source.eventId,
+        sessionId: session.id,
+      });
       return { ignored: true };
     }
 
     const subscription = await this.retrieveSubscription(subscriptionId, null);
     if (!subscription) {
       logError('billing.subscription_unresolved', {
-        eventId: event.id,
+        eventId: source.eventId,
         subscriptionId,
         object: 'checkout.session',
       });
@@ -303,17 +321,31 @@ export class StripeWebhookService {
 
     const resolved = await this.resolvePlan(subscription, session.metadata, metadataOwner);
     if (!resolved) {
-      logError('billing.price_unmapped', { eventId: event.id, subscriptionId });
+      logError('billing.price_unmapped', { eventId: source.eventId, subscriptionId });
       return { ignored: true };
     }
 
+    // A webhook supplies its own event timestamp. Reconcile has no event: read
+    // the mirror first and reuse its freshness value, so reconcile never makes
+    // a real event look stale (and vice versa).
+    let eventCreated = source.eventCreated;
+    let mirror: SubscriptionMirror | null | undefined;
+    if (eventCreated === null) {
+      const existing = await this.repository.getSubscriptionByStripeId(subscription.id);
+      if (isFailure(existing)) throw new Error('subscription mirror read failed');
+      mirror = existing.data;
+      eventCreated = mirror?.lastEventCreated ?? 0;
+    }
+
     const applied = await this.syncSubscription({
-      event,
+      eventId: source.eventId,
+      eventCreated,
+      claimToken: source.claimToken,
       subscription,
       owner: metadataOwner,
       resolved,
+      mirror,
       checkoutSessionId: session.id,
-      claimToken,
       // A Checkout Session can complete before the payment settles (delayed
       // methods, 3DS on the first invoice); only a paid session activates.
       applyEntitlement:
@@ -325,6 +357,39 @@ export class StripeWebhookService {
     // `checkout.session.completed` never writes a payments row: `invoice.paid`
     // owns the history, so the first charge is not duplicated (§6.3).
     return { ignored: false };
+  }
+
+  /**
+   * Authenticated reconcile (#662 X6). The gateway has already verified that
+   * the session belongs to the caller and is paid; this reuses the idempotent
+   * activation path without an event-table signature/claim.
+   */
+  async reconcileCheckout(
+    session: Stripe.Checkout.Session,
+  ): Promise<ServiceResult<{ activated: boolean }>> {
+    // Defense in depth: the gateway already requires a paid session, but the
+    // activation path must never grant an entitlement from an unpaid session.
+    if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
+      return success({ activated: false });
+    }
+
+    try {
+      const result = await this.activateCheckoutSession(session, {
+        eventId: null,
+        eventCreated: null,
+        claimToken: null,
+      });
+
+      // `stale` means a newer webhook already wrote this subscription, so the
+      // activation happened elsewhere; report it as activated.
+      return success({ activated: !result.ignored || result.stale === true });
+    } catch (error) {
+      logError('billing.reconcile_failed', {
+        sessionId: session.id,
+        message: errorMessage(error),
+      });
+      return failure('SERVICE_UNAVAILABLE');
+    }
   }
 
   private async onSubscriptionChanged(
@@ -380,7 +445,9 @@ export class StripeWebhookService {
     }
 
     return this.syncSubscription({
-      event,
+      eventId: event.id,
+      eventCreated: event.created,
+      claimToken,
       subscription,
       owner,
       resolved,
@@ -388,7 +455,6 @@ export class StripeWebhookService {
       checkoutSessionId: mirror.data?.checkoutSessionId ?? null,
       applyEntitlement: true,
       forceDowngrade: deleted,
-      claimToken,
     });
   }
 
@@ -398,7 +464,11 @@ export class StripeWebhookService {
    * writes the same absolute snapshot.
    */
   private async syncSubscription(input: {
-    event: Stripe.Event;
+    /** `null` for the authenticated reconcile path (no event row). */
+    eventId: string | null;
+    /** Event timestamp, or the mirror's freshness value for reconcile. */
+    eventCreated: number;
+    claimToken: string | null;
     subscription: Stripe.Subscription;
     owner: ResolvedOwner;
     resolved: ResolvedPlan;
@@ -406,21 +476,24 @@ export class StripeWebhookService {
     checkoutSessionId: string | null;
     applyEntitlement: boolean;
     forceDowngrade?: boolean;
-    claimToken: string;
   }): Promise<DispatchResult> {
     const { subscription, owner, resolved } = input;
     const status = subscription.status;
 
     // Fence the writes, not only the event completion: if this attempt lost the
     // claim lease to a retry while it was stalled, its snapshot may be older
-    // than the one the retry already applied. Do not write it.
-    if (!(await this.ensureClaimOwner(input.event.id, input.claimToken))) {
-      logWarn('billing.webhook_claim_lost', {
-        eventId: input.event.id,
-        subscriptionId: subscription.id,
-        phase: 'subscription',
-      });
-      return { ignored: true };
+    // than the one the retry already applied. Do not write it. Reconcile has no
+    // claim row, so it skips this fence (freshness CAS still applies).
+    if (input.claimToken) {
+      if (!input.eventId) throw new Error('missing event id for fenced write');
+      if (!(await this.ensureClaimOwner(input.eventId, input.claimToken))) {
+        logWarn('billing.webhook_claim_lost', {
+          eventId: input.eventId,
+          subscriptionId: subscription.id,
+          phase: 'subscription',
+        });
+        return { ignored: true };
+      }
     }
 
     // §5.5 / §6.3: never replace an already-active subscription with a second
@@ -442,7 +515,7 @@ export class StripeWebhookService {
     const customerId = objectId(subscription.customer);
     if (!customerId) {
       logError('billing.owner_unresolved', {
-        eventId: input.event.id,
+        eventId: input.eventId,
         objectId: subscription.id,
         object: 'subscription',
       });
@@ -468,8 +541,8 @@ export class StripeWebhookService {
       cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
       cancelAt: secondsToIso(subscription.cancel_at),
       canceledAt: secondsToIso(subscription.canceled_at),
-      lastEventCreated: Math.max(input.mirror?.lastEventCreated ?? 0, input.event.created),
-      eventCreated: input.event.created,
+      lastEventCreated: Math.max(input.mirror?.lastEventCreated ?? 0, input.eventCreated),
+      eventCreated: input.eventCreated,
       livemode: this.livemode,
     });
 
@@ -490,9 +563,9 @@ export class StripeWebhookService {
       // A newer event already wrote this subscription. Do not apply our older
       // snapshot; still record the checkout session id if the winner lacked it.
       log('billing.webhook_stale_subscription', {
-        eventId: input.event.id,
+        eventId: input.eventId,
         subscriptionId: subscription.id,
-        eventCreated: input.event.created,
+        eventCreated: input.eventCreated,
       });
       if (input.checkoutSessionId) {
         const attached = await this.repository.attachCheckoutSession(
@@ -509,11 +582,11 @@ export class StripeWebhookService {
       // while this attempt was parsing, its plan must stand.
       const latest = await this.repository.getSubscriptionByStripeId(subscription.id);
       if (isFailure(latest)) throw new Error('subscription mirror read failed');
-      if (latest.data && latest.data.lastEventCreated > input.event.created) {
+      if (latest.data && latest.data.lastEventCreated > input.eventCreated) {
         log('billing.webhook_stale_subscription', {
-          eventId: input.event.id,
+          eventId: input.eventId,
           subscriptionId: subscription.id,
-          eventCreated: input.event.created,
+          eventCreated: input.eventCreated,
           lastEventCreated: latest.data.lastEventCreated,
         });
         return { ignored: true, stale: true };
@@ -579,14 +652,15 @@ export class StripeWebhookService {
     // Reconcile the mirror from the *current* subscription (an upgrade with
     // `pending_if_incomplete` applies its price only after payment).
     const synced = await this.syncSubscription({
-      event,
+      eventId: event.id,
+      eventCreated: event.created,
+      claimToken,
       subscription,
       owner,
       resolved,
       mirror,
       checkoutSessionId: mirror?.checkoutSessionId ?? null,
       applyEntitlement: ENTITLED_STATUSES.has(subscription.status),
-      claimToken,
     });
     if (synced.ignored && !synced.stale) return synced;
 

@@ -6,7 +6,7 @@ import type {
   StripeWebhookRepository,
   SubscriptionMirror,
 } from '@studiq/server/lib/payment/stripe-webhook.repository';
-import { success } from '@studiq/server/lib/service-result';
+import { failure, success } from '@studiq/server/lib/service-result';
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import type Stripe from 'stripe';
@@ -954,6 +954,73 @@ describe('StripeWebhookService', () => {
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
       expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
+    });
+  });
+  describe('reconcileCheckout', () => {
+    it('activates a paid personal session without claiming an event row', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
+
+      const result = await harness.service.reconcileCheckout(
+        asJson<Stripe.Checkout.Session>(makeSession()),
+      );
+
+      expect(result).toEqual({ success: true, data: { activated: true } });
+      expect(harness.repository.claimEvent).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+        { type: 'user', userId: 'u-1' },
+        'spark',
+      );
+      const upsert = vi.mocked(harness.repository.upsertSubscription).mock.calls[0][0];
+      expect(upsert.eventCreated).toBe(0);
+      expect(upsert.lastEventCreated).toBe(0);
+      expect(harness.repository.insertPayment).not.toHaveBeenCalled();
+    });
+
+    it('reuses the mirror freshness instead of advancing it', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror({ lastEventCreated: 1_650_000_000 })),
+      );
+
+      await harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession()));
+
+      const upsert = vi.mocked(harness.repository.upsertSubscription).mock.calls[0][0];
+      expect(upsert.eventCreated).toBe(1_650_000_000);
+      expect(upsert.lastEventCreated).toBe(1_650_000_000);
+    });
+
+    it('reports activated when a newer webhook already won the mirror', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
+      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(success('stale'));
+
+      await expect(
+        harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),
+      ).resolves.toEqual({ success: true, data: { activated: true } });
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+    });
+
+    it('never activates an unpaid session', async () => {
+      const harness = createHarness();
+
+      await expect(
+        harness.service.reconcileCheckout(
+          asJson<Stripe.Checkout.Session>(makeSession({ payment_status: 'unpaid' })),
+        ),
+      ).resolves.toEqual({ success: true, data: { activated: false } });
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+    });
+
+    it('maps an activation failure to SERVICE_UNAVAILABLE', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
+      harness.entitlements.applyPlan.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
+
+      await expect(
+        harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),
+      ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
     });
   });
 });

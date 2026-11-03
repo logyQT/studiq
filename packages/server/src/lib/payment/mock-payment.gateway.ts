@@ -7,6 +7,8 @@ import type {
   PaymentGateway,
   PaymentWebhookEnvelope,
   PortalSessionResult,
+  ReconcileCheckoutInput,
+  ReconcileCheckoutResult,
   WebhookOutcome,
 } from '@studiq/server/lib/payment/payment-gateway';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -66,6 +68,13 @@ export class MockPaymentGateway implements PaymentGateway {
   cancelAtPeriodEnd(
     _input: CancelAtPeriodEndInput,
   ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>> {
+    return Promise.resolve(failure('NOT_FOUND'));
+  }
+
+  reconcileCheckout(
+    _input: ReconcileCheckoutInput,
+  ): Promise<ServiceResult<ReconcileCheckoutResult>> {
+    // The simulation never creates a Stripe Checkout Session.
     return Promise.resolve(failure('NOT_FOUND'));
   }
 

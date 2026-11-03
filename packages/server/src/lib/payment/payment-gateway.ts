@@ -108,6 +108,17 @@ export interface CancelAtPeriodEndInput {
   cancel: boolean;
 }
 
+export interface ReconcileCheckoutInput {
+  owner: PaymentOwner;
+  /** Stripe Checkout Session id from the `success_url` query. */
+  sessionId: string;
+}
+
+export interface ReconcileCheckoutResult {
+  /** `true` when this call (or an earlier webhook) already applied the plan. */
+  activated: boolean;
+}
+
 /**
  * The two webhook contracts are deliberately different shapes.
  *
@@ -145,6 +156,12 @@ export interface PaymentGateway {
   cancelAtPeriodEnd(
     input: CancelAtPeriodEndInput,
   ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>>;
+
+  /**
+   * Verify a Checkout Session belongs to the caller and run the same idempotent
+   * activation path as `checkout.session.completed` (#662 X6).
+   */
+  reconcileCheckout(input: ReconcileCheckoutInput): Promise<ServiceResult<ReconcileCheckoutResult>>;
 
   handleWebhook(envelope: PaymentWebhookEnvelope): Promise<ServiceResult<WebhookOutcome>>;
 }

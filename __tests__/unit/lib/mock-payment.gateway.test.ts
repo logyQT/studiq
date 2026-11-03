@@ -128,6 +128,15 @@ describe('MockPaymentGateway', () => {
     expect(port.handleWebhook).not.toHaveBeenCalled();
   });
 
+  it('reports NOT_FOUND for reconcile (the mock has no Checkout Session)', async () => {
+    await expect(
+      gateway.reconcileCheckout({
+        owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+        sessionId: 'cs_1',
+      }),
+    ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
+  });
+
   it('reports NOT_FOUND for change plan and cancel (the mock has no subscription)', async () => {
     await expect(
       gateway.changePlan({

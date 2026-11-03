@@ -586,13 +586,22 @@
     "org_not_admin_desc": "Poproś administratora organizacji {org} o zmianę planu.",
     "orgs_load_error": "Nie udało się wczytać danych organizacji.",
     "load_error": "Nie udało się wczytać zamówienia. Spróbuj ponownie.",
-    "retry": "Spróbuj ponownie"
+    "retry": "Spróbuj ponownie",
+    "redirecting_to_stripe": "Przekierowywanie do Stripe...",
+    "payment_processing": "Przetwarzanie płatności...",
+    "payment_canceled": "Płatność anulowana",
+    "payment_canceled_description": "Nie pobrano żadnej opłaty. Możesz spróbować ponownie."
   },
   "BillingSuccessPage": {
     "title": "Zakup udany!",
     "description": "Twoja subskrypcja została aktywowana. Masz teraz dostęp do wszystkich funkcji.",
     "redirecting": "Przekierowywanie do panelu za 3 sekundy...",
-    "go_dashboard": "Przejdź do panelu"
+    "go_dashboard": "Przejdź do panelu",
+    "activated_title": "Plan aktywowany!",
+    "activated_description": "Twój plan {plan} jest już aktywny.",
+    "processing_title": "Płatność jest przetwarzana",
+    "processing_description": "Może to potrwać kilka sekund. Odśwież, jeśli status się nie zmieni.",
+    "refresh": "Odśwież"
   },
   "BillingPage": {
     "title": "Rozliczenia",
@@ -622,7 +631,31 @@
     "f_feature_1": "Przeglądaj istniejące fiszki",
     "f_feature_2": "Rozwiązuj testy",
     "org_contact": "W celu uzyskania wyceny dla uczelni i planów niestandardowych skontaktuj się z naszym zespołem handlowym.",
-    "period_month": "/miesiąc"
+    "period_month": "/miesiąc",
+    "status_active": "Aktywny",
+    "status_past_due": "Zaległa płatność",
+    "status_canceled": "Anulowany",
+    "status_free": "Darmowy",
+    "status_processing": "Przetwarzanie",
+    "status_none": "Brak subskrypcji",
+    "renews_on": "Odnowienie {date}",
+    "cancels_on": "Anulowanie {date}",
+    "cancel_subscription": "Anuluj subskrypcję",
+    "resume_subscription": "Wznów subskrypcję",
+    "manage_payments": "Zarządzaj płatnościami",
+    "change_plan": "Zmień plan",
+    "no_billing_account": "Brak konta rozliczeniowego. Wybierz plan, aby rozpocząć.",
+    "invoice_link": "Faktura",
+    "pending_change": "Zaplanowana zmiana na {plan}",
+    "change_plan_applied": "Plan został zmieniony.",
+    "change_plan_scheduled": "Zmiana planu zaplanowana na koniec okresu.",
+    "change_plan_pending": "Dokończ płatność, aby aktywować nowy plan.",
+    "change_plan_failed": "Nie udało się zmienić planu.",
+    "cancel_success": "Subskrypcja zostanie anulowana na koniec okresu.",
+    "resume_success": "Subskrypcja została wznowiona.",
+    "cancel_failed": "Nie udało się zmienić subskrypcji.",
+    "seats_used_label": "Wykorzystano {used} z {total} miejsc",
+    "plan_change_title": "Zmiana planu"
   },
   "UpgradePrompt": {
     "title": "Zaktualizuj, aby uzyskać dostęp",
@@ -2735,7 +2768,8 @@
     "payment_amount": "Kwota",
     "payment_date": "Data",
     "payments_load_failed": "Nie udało się wczytać historii płatności.",
-    "manage_billing": "Zarządzaj rozliczeniami"
+    "manage_billing": "Zarządzaj rozliczeniami",
+    "invoice_link": "Faktura"
   },
   "EduAssignmentsPage": {
     "title": "Kartkówki",
