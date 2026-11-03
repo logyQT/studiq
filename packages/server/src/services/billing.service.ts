@@ -20,6 +20,7 @@ import type {
   PaymentGateway,
   PaymentOwner,
   ReconcileCheckoutResult,
+  ReleaseScheduledPlanResult,
 } from '@studiq/server/lib/payment/payment-gateway';
 import { getPaymentGateway } from '@studiq/server/lib/payment/payment-gateway.factory';
 import {
@@ -555,6 +556,62 @@ export class BillingService {
     }
 
     return success({ cancelAtPeriodEnd: result.data.cancelAtPeriodEnd });
+  }
+
+  /**
+   * "Keep my current plan": detach a downgrade scheduled at
+   * `current_period_end` without writing an entitlement (#662 §2.5). The plan
+   * was never changed on the provider, so the mirror/entitlement stay put; only
+   * the display marker is cleared once Stripe confirms the release.
+   */
+  async releaseScheduledChange(
+    ctx: RequestContext,
+  ): Promise<ServiceResult<ReleaseScheduledPlanResult>> {
+    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
+
+    const owner = ownerFromContext(ctx);
+
+    if (owner.type === 'org') {
+      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
+      if (isFailure(admin)) return admin;
+      if (!admin.data) return failure('FORBIDDEN');
+    }
+
+    const activeResult = await this.repository.findActiveSubscription(owner, this.gateway.livemode);
+    if (isFailure(activeResult)) return activeResult;
+    const active = activeResult.data;
+    if (!active) return failure('NOT_FOUND');
+
+    const customer = await this.repository.findCustomer(owner, this.gateway.livemode);
+    if (isFailure(customer)) return customer;
+    if (!customer.data) return failure('NOT_FOUND');
+
+    const observedMarker = active.pendingPlanKey;
+    const result = await this.gateway.releaseScheduledPlan({
+      owner,
+      customerId: customer.data.stripeCustomerId,
+      subscriptionId: active.stripeSubscriptionId,
+      currentPlanKey: active.planKey,
+    });
+    if (isFailure(result)) return result;
+
+    if (result.data.released && observedMarker) {
+      // Compare-and-clear on the marker we saw, not an unconditional wipe: a
+      // concurrent change-plan may have written a newer scheduled target.
+      const marker = await this.repository.clearPendingPlanIfApplied(
+        active.stripeSubscriptionId,
+        observedMarker,
+      );
+      if (isFailure(marker)) {
+        // The provider schedule is already gone; a stale display marker must
+        // not turn a successful release into a retryable error.
+        logWarn('billing.pending_plan_marker_failed', {
+          subscriptionId: active.stripeSubscriptionId,
+        });
+      }
+    }
+
+    return success(result.data);
   }
 
   /**

@@ -34,6 +34,7 @@ function activeSubscription(overrides: Partial<ActiveSubscription> = {}): Active
     status: 'active',
     planKey: 'hub',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
+    pendingPlanKey: null,
     ...overrides,
   };
 }
@@ -48,6 +49,7 @@ function createGateway(driver: 'mock' | 'stripe' = 'stripe'): PaymentGateway {
     cancelAtPeriodEnd: vi
       .fn<PaymentGateway['cancelAtPeriodEnd']>()
       .mockImplementation((input) => Promise.resolve(success({ cancelAtPeriodEnd: input.cancel }))),
+    releaseScheduledPlan: vi.fn<PaymentGateway['releaseScheduledPlan']>(),
     handleWebhook: vi.fn<PaymentGateway['handleWebhook']>(),
   };
 }
@@ -65,6 +67,7 @@ function createRepository(
     findListedPrice: vi.fn(),
     findActiveSubscription: vi.fn().mockResolvedValue(success(activeSubscription())),
     setPendingPlan: vi.fn().mockResolvedValue(success(undefined)),
+    clearPendingPlanIfApplied: vi.fn().mockResolvedValue(success(undefined)),
     ...overrides,
   });
 }

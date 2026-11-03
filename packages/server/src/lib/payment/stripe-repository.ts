@@ -47,6 +47,8 @@ export interface ActiveSubscription {
   status: string;
   planKey: string;
   currentPeriodEnd: string | null;
+  /** Display-only marker for a scheduled phase or an upgrade awaiting payment. */
+  pendingPlanKey: string | null;
 }
 
 /** Minimal plan shape needed to validate a mapped Price. */
@@ -104,6 +106,14 @@ export interface StripeBillingRepository {
   setPendingPlan(
     stripeSubscriptionId: string,
     planKey: string | null,
+  ): Promise<ServiceResult<void>>;
+  /**
+   * Clear the marker only while it still equals the value observed before the
+   * release, so a concurrent plan change is not silently discarded.
+   */
+  clearPendingPlanIfApplied(
+    stripeSubscriptionId: string,
+    planKey: string,
   ): Promise<ServiceResult<void>>;
 }
 
@@ -298,7 +308,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
     const supabase = this.createAdminClient();
     const base = supabase
       .from('billing_subscriptions')
-      .select('stripe_subscription_id, status, plan_key, current_period_end')
+      .select('stripe_subscription_id, status, plan_key, current_period_end, pending_plan_key')
       .eq('livemode', livemode)
       .in('status', ACTIVE_SUBSCRIPTION_STATUSES);
 
@@ -316,7 +326,23 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
       status: data.status,
       planKey: data.plan_key,
       currentPeriodEnd: data.current_period_end,
+      pendingPlanKey: data.pending_plan_key,
     });
+  }
+
+  async clearPendingPlanIfApplied(
+    stripeSubscriptionId: string,
+    planKey: string,
+  ): Promise<ServiceResult<void>> {
+    const supabase = this.createAdminClient();
+    const { error } = await supabase
+      .from('billing_subscriptions')
+      .update({ pending_plan_key: null })
+      .eq('stripe_subscription_id', stripeSubscriptionId)
+      .eq('pending_plan_key', planKey);
+
+    if (error) return toDbFailure(error);
+    return success(undefined);
   }
 
   async setPendingPlan(

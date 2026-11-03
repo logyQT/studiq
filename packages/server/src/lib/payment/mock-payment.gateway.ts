@@ -9,6 +9,8 @@ import type {
   PortalSessionResult,
   ReconcileCheckoutInput,
   ReconcileCheckoutResult,
+  ReleaseScheduledPlanInput,
+  ReleaseScheduledPlanResult,
   WebhookOutcome,
 } from '@studiq/server/lib/payment/payment-gateway';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -71,6 +73,13 @@ export class MockPaymentGateway implements PaymentGateway {
     return Promise.resolve(failure('NOT_FOUND'));
   }
 
+  releaseScheduledPlan(
+    _input: ReleaseScheduledPlanInput,
+  ): Promise<ServiceResult<ReleaseScheduledPlanResult>> {
+    // The simulation has no provider schedule to release.
+    return Promise.resolve(failure('NOT_FOUND'));
+  }
+
   reconcileCheckout(
     _input: ReconcileCheckoutInput,
   ): Promise<ServiceResult<ReconcileCheckoutResult>> {
@@ -80,8 +89,8 @@ export class MockPaymentGateway implements PaymentGateway {
 
   async handleWebhook(envelope: PaymentWebhookEnvelope): Promise<ServiceResult<WebhookOutcome>> {
     if (envelope.kind !== 'mock') {
-      // Only the mock driver is active in phase 1, and the route only builds
-      // this envelope behind `withAuth`. A Stripe envelope here is a wiring bug.
+      // The route only builds a mock envelope behind `withAuth`; a Stripe
+      // envelope on the mock driver is a wiring bug, not a webhook.
       return failure('BAD_REQUEST');
     }
 

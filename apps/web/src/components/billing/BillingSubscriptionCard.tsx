@@ -5,7 +5,7 @@ import type { ChangePlanResult } from '@studiq/server/lib/payment/payment-gatewa
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { Button, Card, CardContent, CardHeader, CardTitle, Separator } from '@studiq/ui';
-import { CreditCard, ExternalLink, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { CreditCard, ExternalLink, Loader2, RefreshCw, Undo2, XCircle } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -134,6 +134,28 @@ export function BillingSubscriptionCard({
     }
   }
 
+  async function keepCurrentPlan() {
+    setBusy('keep');
+    try {
+      const result = await apiPost<{ released: boolean }>(
+        '/api/v1/billing/release-scheduled-plan',
+        {},
+      );
+      if (result.released) {
+        toast.success(t('keep_current_plan_success'));
+      } else {
+        // No provider schedule to release (an unpaid upgrade waiting for
+        // payment). Refresh anyway: the webhook may already have cleared it.
+        toast.info(t('keep_current_plan_none'));
+      }
+      onChanged();
+    } catch {
+      toast.error(t('keep_current_plan_failed'));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function changePlan(planKey: string) {
     setBusy(planKey);
     try {
@@ -179,9 +201,26 @@ export function BillingSubscriptionCard({
         )}
 
         {subscription.pendingPlanKey && (
-          <p className="text-sm text-muted-foreground">
-            {t('pending_change', { plan: planName(subscription.pendingPlanKey) })}
-          </p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              {t('pending_change', { plan: planName(subscription.pendingPlanKey) })}
+            </p>
+            {subscription.canChangePlan && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={keepCurrentPlan}
+                disabled={busy !== null}
+              >
+                {busy === 'keep' ? (
+                  <Loader2 className="size-3.5 mr-2 animate-spin" />
+                ) : (
+                  <Undo2 className="size-3.5 mr-2" />
+                )}
+                {t('keep_current_plan')}
+              </Button>
+            )}
+          </div>
         )}
 
         {pendingInvoiceUrl && (

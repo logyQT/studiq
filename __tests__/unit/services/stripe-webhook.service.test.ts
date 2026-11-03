@@ -227,6 +227,8 @@ function createRepository(): FakeRepository {
     upsertSubscription: vi.fn().mockResolvedValue(success('applied')),
     attachCheckoutSession: vi.fn().mockResolvedValue(success(undefined)),
     updateSubscriptionStatus: vi.fn().mockResolvedValue(success(undefined)),
+    clearPendingPlanIfApplied: vi.fn().mockResolvedValue(success(undefined)),
+    clearPendingPlan: vi.fn().mockResolvedValue(success(undefined)),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
     isClaimOwner: vi.fn().mockResolvedValue(success(true)),
     getPlan: vi
@@ -514,6 +516,79 @@ describe('StripeWebhookService', () => {
       expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
         expect.objectContaining({ planKey: 'ace', priceId: 'price_ace' }),
       );
+      // No schedule/pending update remains, so any marker is stale and cleared.
+      expect(harness.repository.clearPendingPlan).toHaveBeenCalledWith('sub_1');
+      expect(harness.repository.clearPendingPlanIfApplied).not.toHaveBeenCalled();
+    });
+
+    it('clears only the scheduled target when a phase applies', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror()),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
+        makeSubscription({
+          schedule: 'sched_1',
+          metadata: { ...USER_METADATA, studiq_plan_key: 'ace' },
+          items: {
+            data: [{ current_period_start: 1, current_period_end: 2, price: { id: 'price_ace' } }],
+          },
+        }),
+      );
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_600,
+      });
+
+      await sign(harness, event);
+
+      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+        { type: 'user', userId: 'u-1' },
+        'ace',
+      );
+      expect(harness.repository.clearPendingPlanIfApplied).toHaveBeenCalledWith('sub_1', 'ace');
+      expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
+    });
+
+    it('keeps the marker when a paid checkout is still incomplete', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
+        makeSubscription({ status: 'incomplete' }),
+      );
+      const event = makeEvent(
+        'checkout.session.completed',
+        makeSession({ payment_status: 'paid' }),
+      );
+
+      await sign(harness, event);
+
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.repository.clearPendingPlanIfApplied).not.toHaveBeenCalled();
+      expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
+    });
+
+    it('does not fail a successful event when the marker clear fails', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
+        makeSubscription({
+          metadata: { ...USER_METADATA, studiq_plan_key: 'ace' },
+          items: {
+            data: [{ current_period_start: 1, current_period_end: 2, price: { id: 'price_ace' } }],
+          },
+        }),
+      );
+      vi.mocked(harness.repository.clearPendingPlan).mockResolvedValueOnce(
+        failure('INTERNAL_SERVER'),
+      );
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_600,
+      });
+
+      const result = await sign(harness, event);
+
+      expect(result).toEqual({ success: true, data: { received: true } });
+      expect(consoleWarn).toHaveBeenCalledWith(
+        expect.stringContaining('billing.pending_plan_clear_failed'),
+      );
     });
 
     it('downgrades to free when the subscription becomes unpaid', async () => {
@@ -555,6 +630,8 @@ describe('StripeWebhookService', () => {
         { type: 'user', userId: 'u-1' },
         'spark',
       );
+      // A deleted subscription has no meaningful pending marker left.
+      expect(harness.repository.clearPendingPlan).toHaveBeenCalledWith('sub_1');
     });
 
     it('skips entitlement when a newer event already owns the subscription', async () => {
@@ -574,6 +651,9 @@ describe('StripeWebhookService', () => {
       expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
       // The checkout session id is still recorded on the winner's row.
       expect(harness.repository.attachCheckoutSession).toHaveBeenCalledWith('sub_1', 'cs_1');
+      // A stale snapshot must not clear the newer handler's pending marker.
+      expect(harness.repository.clearPendingPlanIfApplied).not.toHaveBeenCalled();
+      expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
     });
 
     it('skips entitlement when a newer snapshot lands before the write', async () => {

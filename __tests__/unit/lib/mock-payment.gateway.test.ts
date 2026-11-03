@@ -158,5 +158,13 @@ describe('MockPaymentGateway', () => {
         cancel: true,
       }),
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
+
+    await expect(
+      gateway.releaseScheduledPlan({
+        owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+        customerId: 'cus_1',
+        subscriptionId: 'sub_1',
+      }),
+    ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
   });
 });

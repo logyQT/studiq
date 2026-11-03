@@ -86,6 +86,7 @@ function createRepository(
     findListedPrice: vi.fn(),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
     setPendingPlan: vi.fn().mockResolvedValue(success(undefined)),
+    clearPendingPlanIfApplied: vi.fn().mockResolvedValue(success(undefined)),
     ...overrides,
   });
 }
@@ -1063,6 +1064,76 @@ describe('StripePaymentGateway', () => {
         success: false,
         error: 'SERVICE_UNAVAILABLE',
       });
+    });
+  });
+
+  describe('releaseScheduledPlan', () => {
+    const releaseInput = {
+      owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
+      customerId: 'cus_1',
+      subscriptionId: 'sub_1',
+      currentPlanKey: 'spark',
+    };
+
+    it('detaches a pending downgrade schedule without touching the price', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sched_old' }),
+      );
+
+      await expect(gateway.releaseScheduledPlan(releaseInput)).resolves.toEqual(
+        success({ released: true }),
+      );
+      expect(client.subscriptionSchedules.release).toHaveBeenCalledWith('sched_old');
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to release when a scheduled phase already changed the price', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sched_old' }),
+      );
+      vi.mocked(repository.findPriceById).mockResolvedValueOnce(
+        success(listedPrice({ planKey: 'ace', stripePriceId: 'price_spark' })),
+      );
+
+      await expect(gateway.releaseScheduledPlan(releaseInput)).resolves.toEqual({
+        success: false,
+        error: 'CONFLICT',
+      });
+      expect(client.subscriptionSchedules.release).not.toHaveBeenCalled();
+    });
+
+    it('reports no schedule when the subscription has none', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+
+      await expect(gateway.releaseScheduledPlan(releaseInput)).resolves.toEqual(
+        success({ released: false }),
+      );
+      expect(client.subscriptionSchedules.release).not.toHaveBeenCalled();
+    });
+
+    it('refuses a subscription that belongs to another customer', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ customer: 'cus_other' }),
+      );
+
+      await expect(gateway.releaseScheduledPlan(releaseInput)).resolves.toEqual({
+        success: false,
+        error: 'FORBIDDEN',
+      });
+      expect(client.subscriptionSchedules.release).not.toHaveBeenCalled();
+    });
+
+    it('treats an already-released schedule as released', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ schedule: 'sched_old' }),
+      );
+      vi.mocked(client.subscriptionSchedules.release).mockRejectedValueOnce(
+        asJson<Error>({ type: 'StripeInvalidRequestError', message: 'Schedule already released' }),
+      );
+
+      await expect(gateway.releaseScheduledPlan(releaseInput)).resolves.toEqual(
+        success({ released: true }),
+      );
     });
   });
 
