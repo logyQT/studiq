@@ -14,6 +14,8 @@ import type {
   PaymentOwner,
   PaymentWebhookEnvelope,
   PortalSessionResult,
+  ReconcileCheckoutInput,
+  ReconcileCheckoutResult,
   WebhookOutcome,
 } from '@studiq/server/lib/payment/payment-gateway';
 import type { StripeConfig } from '@studiq/server/lib/payment/payment-gateway.factory';
@@ -195,7 +197,9 @@ export class StripePaymentGateway implements PaymentGateway {
             // which the phase-4 upgrade (reset + unused-time credit) requires.
             billing_mode: { type: 'classic' },
           },
-          success_url: `${this.siteUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+          success_url: `${this.siteUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}${
+            input.owner.type === 'org' ? `&org_id=${input.owner.orgId}` : ''
+          }`,
           cancel_url: `${this.siteUrl()}/checkout?plan_id=${input.planKey}&canceled=1`,
           locale: input.locale === 'en' ? 'en' : 'pl',
           // BillingService derives this from the same snapshot as the
@@ -447,9 +451,69 @@ export class StripePaymentGateway implements PaymentGateway {
     // builds it behind `withAuth`.
     if (envelope.kind !== 'stripe') return failure('BAD_REQUEST');
 
-    // Lazily built so the process does not need the webhook repository until a
-    // real event arrives; `parseStripeConfig` already validated the secret at
-    // boot, so an empty secret here cannot be a misconfiguration.
+    return this.webhookService().handle(envelope.rawBody, envelope.signature);
+  }
+
+  async reconcileCheckout(
+    input: ReconcileCheckoutInput,
+  ): Promise<ServiceResult<ReconcileCheckoutResult>> {
+    try {
+      const session = await this.client.checkout.sessions.retrieve(input.sessionId);
+
+      if (session.livemode !== this.livemode) {
+        logError('billing.reconcile_livemode_mismatch', {
+          sessionId: session.id,
+          sessionLivemode: session.livemode,
+          expectedLivemode: this.livemode,
+        });
+        return failure('BAD_REQUEST');
+      }
+
+      // Session ids are unguessable, but ownership is still mandatory (#662
+      // §9.2): a leaked/forwarded success URL must not activate a plan.
+      if (!this.checkoutBelongsTo(session, input.owner)) {
+        // A user replaying a foreign/expired success URL is expected noise, not
+        // an infrastructure error.
+        logWarn('billing.reconcile_owner_mismatch', { sessionId: session.id });
+        return failure('FORBIDDEN');
+      }
+
+      // A delayed/3DS payment is not an entitlement yet; the success page keeps
+      // showing "processing" and the webhook activates it when paid.
+      if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
+        return success({ activated: false });
+      }
+
+      const result = await this.webhookService().reconcileCheckout(session);
+      if (isFailure(result)) return result;
+
+      return success({ activated: result.data.activated });
+    } catch (error) {
+      return stripeFailure(error);
+    }
+  }
+
+  /** A Checkout Session belongs to the owner that created it server-side. */
+  private checkoutBelongsTo(session: Stripe.Checkout.Session, owner: PaymentOwner): boolean {
+    const metadata = session.metadata ?? {};
+
+    if (owner.type === 'user') {
+      return (
+        session.client_reference_id === owner.userId &&
+        metadata[`${METADATA_PREFIX}_owner_type`] === 'user' &&
+        metadata[`${METADATA_PREFIX}_user_id`] === owner.userId
+      );
+    }
+
+    return (
+      session.client_reference_id === owner.orgId &&
+      metadata[`${METADATA_PREFIX}_owner_type`] === 'org' &&
+      metadata[`${METADATA_PREFIX}_org_id`] === owner.orgId
+    );
+  }
+
+  /** Lazily built so the process does not need the webhook repository until needed. */
+  private webhookService(): StripeWebhookService {
     this.webhooks ??= wrapService(
       new StripeWebhookService({
         client: this.client,
@@ -460,7 +524,7 @@ export class StripePaymentGateway implements PaymentGateway {
       'stripe-webhook.service',
     );
 
-    return this.webhooks.handle(envelope.rawBody, envelope.signature);
+    return this.webhooks;
   }
 
   /** Reuse the owner's customer mapping or create one in Stripe. */

@@ -1,0 +1,69 @@
+import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
+import { resolveDashboardPath } from '@/lib/onboarding';
+
+/**
+ * The success page may land before Stripe delivers `checkout.session.completed`
+ * (#662 X6). These constants keep the wait bounded: 8 attempts with 2 s between
+ * attempts ≈ 14 s of waiting plus request latency (about 15 s end to end).
+ */
+export const BILLING_SUCCESS_POLL_INTERVAL_MS = 2_000;
+export const BILLING_SUCCESS_POLL_ATTEMPTS = 8;
+
+const ACTIVATED_STATUSES: readonly string[] = ['active', 'trialing', 'past_due'];
+
+/** The subscription is live and has a plan to show. */
+export function isActivatedSubscription(view: BillingSubscriptionView): boolean {
+  return Boolean(view.planKey) && ACTIVATED_STATUSES.includes(view.status);
+}
+
+export interface PollBillingActivationDeps {
+  /** Fire the authenticated reconcile once; a failure is non-fatal. */
+  reconcile: () => Promise<unknown>;
+  readSubscription: () => Promise<BillingSubscriptionView>;
+  sleep: (ms: number) => Promise<void>;
+  isCancelled: () => boolean;
+}
+
+export type PollBillingActivationResult =
+  | { state: 'activated'; subscription: BillingSubscriptionView }
+  | { state: 'timeout' }
+  | { state: 'cancelled' };
+
+/**
+ * Reconcile once, then poll the shared read model until it shows a live plan or
+ * the budget runs out. The webhook remains authoritative; this only closes the
+ * redirect-before-delivery gap.
+ */
+export async function pollBillingActivation(
+  deps: PollBillingActivationDeps,
+): Promise<PollBillingActivationResult> {
+  try {
+    await deps.reconcile();
+  } catch {
+    // The webhook may already be in flight; the read-model poll still observes it.
+  }
+
+  for (let attempt = 0; attempt < BILLING_SUCCESS_POLL_ATTEMPTS; attempt += 1) {
+    if (deps.isCancelled()) return { state: 'cancelled' };
+
+    try {
+      const view = await deps.readSubscription();
+      if (!deps.isCancelled() && isActivatedSubscription(view)) {
+        return { state: 'activated', subscription: view };
+      }
+    } catch {
+      // A transient read failure should not cancel the poll.
+    }
+
+    if (attempt < BILLING_SUCCESS_POLL_ATTEMPTS - 1) {
+      await deps.sleep(BILLING_SUCCESS_POLL_INTERVAL_MS);
+    }
+  }
+
+  return deps.isCancelled() ? { state: 'cancelled' } : { state: 'timeout' };
+}
+
+/** The dashboard (and therefore `<dashboard>/billing`) for an account type. */
+export function dashboardPathForAccountType(accountType: unknown): '/app' | '/edu' | '/manage' {
+  return resolveDashboardPath(typeof accountType === 'string' ? accountType : null);
+}

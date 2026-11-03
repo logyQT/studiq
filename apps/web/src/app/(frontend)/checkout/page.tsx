@@ -68,6 +68,7 @@ function CheckoutContent() {
   const router = useRouter();
   const planId = searchParams.get('plan_id')?.trim() || null;
   const orgId = searchParams.get('org_id')?.trim() || null;
+  const canceled = searchParams.get('canceled') === '1';
   const { user, isLoading: isAuthLoading } = useAuth();
 
   const [showAllBenefits, setShowAllBenefits] = useState(false);
@@ -357,6 +358,13 @@ function CheckoutContent() {
             </div>
           </CardHeader>
           <CardContent>
+            {canceled && (
+              <Alert className="mb-4">
+                <AlertCircle />
+                <AlertTitle>{ct('payment_canceled')}</AlertTitle>
+                <AlertDescription>{ct('payment_canceled_description')}</AlertDescription>
+              </Alert>
+            )}
             {blockedState ? (
               <div className="space-y-4">
                 <Alert variant="destructive">

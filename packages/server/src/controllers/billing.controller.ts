@@ -5,7 +5,11 @@ import {
 } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
-import { CancelSubscriptionSchema, ChangePlanSchema } from '@studiq/server/models/billing.model';
+import {
+  CancelSubscriptionSchema,
+  ChangePlanSchema,
+  ReconcileCheckoutSchema,
+} from '@studiq/server/models/billing.model';
 import { type BillingService, billingService } from '@studiq/server/services/billing.service';
 
 /**
@@ -43,6 +47,18 @@ export class BillingController {
     }
 
     const result = await this.billing.cancelSubscription(ctx, parsed.data.cancel);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
+  }
+
+  async reconcileCheckout(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    const parsed = ReconcileCheckoutSchema.safeParse(body);
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.billing.reconcileCheckout(ctx, parsed.data.sessionId);
     if (isFailure(result)) return controllerResponse.error(result.error);
 
     return controllerResponse.success(result.data);

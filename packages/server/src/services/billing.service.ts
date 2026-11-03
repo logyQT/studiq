@@ -19,6 +19,7 @@ import type {
   PaymentDriver,
   PaymentGateway,
   PaymentOwner,
+  ReconcileCheckoutResult,
 } from '@studiq/server/lib/payment/payment-gateway';
 import { getPaymentGateway } from '@studiq/server/lib/payment/payment-gateway.factory';
 import {
@@ -530,6 +531,29 @@ export class BillingService {
     }
 
     return success({ cancelAtPeriodEnd: result.data.cancelAtPeriodEnd });
+  }
+
+  /**
+   * Verify a Checkout Session belongs to the caller and ask the gateway to run
+   * the same idempotent activation path as `checkout.session.completed` (#662
+   * X6). The entitlement write stays inside `EntitlementService`; this method
+   * never writes one itself.
+   */
+  async reconcileCheckout(
+    ctx: RequestContext,
+    sessionId: string,
+  ): Promise<ServiceResult<ReconcileCheckoutResult>> {
+    if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
+
+    const owner = ownerFromContext(ctx);
+
+    if (owner.type === 'org') {
+      const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);
+      if (isFailure(admin)) return admin;
+      if (!admin.data) return failure('FORBIDDEN');
+    }
+
+    return this.gateway.reconcileCheckout({ owner, sessionId });
   }
 }
 

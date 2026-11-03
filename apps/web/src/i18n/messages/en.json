@@ -604,13 +604,24 @@
     "org_not_admin_desc": "Ask an administrator of {org} to change the plan.",
     "orgs_load_error": "Could not load organization data.",
     "load_error": "Could not load the order. Please try again.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "redirecting_to_stripe": "Redirecting to Stripe...",
+    "payment_processing": "Processing payment...",
+    "payment_canceled": "Payment canceled",
+    "payment_canceled_description": "No charge was made. You can try again."
   },
   "BillingSuccessPage": {
     "title": "Purchase Successful!",
     "description": "Your subscription has been activated. You now have access to all included features.",
     "redirecting": "Redirecting to your dashboard in 3 seconds...",
-    "go_dashboard": "Go to dashboard"
+    "go_dashboard": "Go to dashboard",
+    "activated_title": "Plan activated!",
+    "activated_description": "Your {plan} plan is active now.",
+    "processing_title": "Payment is processing",
+    "processing_description": "This can take a few seconds. Refresh if it does not update.",
+    "refresh": "Refresh",
+    "timeout_title": "Payment is still processing",
+    "timeout_description": "We have not seen the activation yet. Refresh in a moment; the subscription activates automatically once the payment is confirmed."
   },
   "BillingPage": {
     "title": "Billing",
@@ -640,7 +651,30 @@
     "f_feature_1": "Study existing flashcards",
     "f_feature_2": "Take quizzes",
     "org_contact": "For enterprise pricing and custom plans, please contact our sales team.",
-    "period_month": "/month"
+    "period_month": "/month",
+    "status_active": "Active",
+    "status_past_due": "Past due",
+    "status_canceled": "Canceled",
+    "status_free": "Free",
+    "status_processing": "Processing",
+    "status_none": "No subscription",
+    "renews_on": "Renews on {date}",
+    "cancels_on": "Cancels on {date}",
+    "cancel_subscription": "Cancel subscription",
+    "resume_subscription": "Resume subscription",
+    "manage_payments": "Manage payments",
+    "change_plan": "Change plan",
+    "no_billing_account": "No billing account yet. Choose a plan to get started.",
+    "invoice_link": "Invoice",
+    "pending_change": "Scheduled change to {plan}",
+    "change_plan_applied": "Your plan has been changed.",
+    "change_plan_scheduled": "The plan change is scheduled for the end of the period.",
+    "change_plan_pending": "Complete the payment to activate the new plan.",
+    "change_plan_failed": "Could not change the plan.",
+    "cancel_success": "The subscription will be canceled at the end of the period.",
+    "resume_success": "The subscription has been resumed.",
+    "cancel_failed": "Could not update the subscription.",
+    "plan_change_title": "Change plan"
   },
   "UpgradePrompt": {
     "title": "Upgrade to access this feature",
@@ -2754,7 +2788,8 @@
     "payment_amount": "Amount",
     "payment_date": "Date",
     "payments_load_failed": "Failed to load payment history.",
-    "manage_billing": "Manage billing"
+    "manage_billing": "Manage billing",
+    "invoice_link": "Invoice"
   },
   "EduAssignmentsPage": {
     "title": "Assignments",
