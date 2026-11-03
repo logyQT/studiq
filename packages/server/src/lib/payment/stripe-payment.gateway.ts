@@ -63,9 +63,22 @@ function ownerMetadata(owner: PaymentOwner): Record<string, string> {
  */
 function stripeFailure(error: unknown): ServiceResult<never> {
   const type = isRecord(error) ? readString(error, 'type') : undefined;
+  const code = isRecord(error) ? readString(error, 'code') : undefined;
+
+  if (code === 'resource_missing') {
+    // A Stripe-side deletion (customer/configuration/price) leaves a stale
+    // local id; the caller should see "not found", not a generic 400.
+    logError('billing.stripe_resource_missing', { type: type ?? 'unknown' });
+    return failure('NOT_FOUND');
+  }
 
   if (type === 'StripeRateLimitError') return failure('RATE_LIMITED');
   if (type === 'StripeInvalidRequestError' || type === 'StripeCardError') {
+    // Log the shape, never the request parameters (customer email/name).
+    logError('billing.stripe_invalid_request', {
+      type,
+      code: code ?? 'unknown',
+    });
     return failure('BAD_REQUEST');
   }
 
@@ -77,12 +90,12 @@ function stripeFailure(error: unknown): ServiceResult<never> {
 }
 
 /**
- * Real Stripe adapter (#662 phase 2A).
+ * Real Stripe adapter (#662 phase 2A, portal in phase 4).
  *
- * Owns provider I/O for checkout: customer create/reuse, Price validation and
- * the hosted Checkout Session. Webhooks (phase 3), the portal and plan changes
- * (phase 4) are deliberately not wired yet, so those methods fail instead of
- * pretending to work.
+ * Owns provider I/O for checkout and the Billing Portal: customer
+ * create/reuse, Price validation, the hosted Checkout Session and the hosted
+ * portal session. Webhooks are delegated to `StripeWebhookService`; plan
+ * changes and cancellation are added in phase 4 and fail until then.
  */
 export class StripePaymentGateway implements PaymentGateway {
   readonly driver = 'stripe' as const;
@@ -93,12 +106,14 @@ export class StripePaymentGateway implements PaymentGateway {
   private readonly siteUrl: () => string;
   private readonly now: () => Date;
   private readonly webhookSecret: string;
+  private readonly portalConfigurationId: string;
   private webhooks: StripeWebhookService | undefined;
 
   constructor(options: StripePaymentGatewayOptions) {
     this.client = options.client;
     this.livemode = options.config.livemode;
     this.webhookSecret = options.config.webhookSecret;
+    this.portalConfigurationId = options.config.portalConfigurationId;
     this.webhooks = options.webhooks;
     this.repository =
       options.repository ??
@@ -199,11 +214,27 @@ export class StripePaymentGateway implements PaymentGateway {
     }
   }
 
-  createPortalSession(
-    _input: CreatePortalSessionInput,
+  async createPortalSession(
+    input: CreatePortalSessionInput,
   ): Promise<ServiceResult<PortalSessionResult>> {
-    // Phase 4 (#662 §7.1): needs the customer mapping + portal configuration.
-    return Promise.resolve(failure('SERVICE_UNAVAILABLE'));
+    if (!input.customerId) {
+      // No `billing_customers` row: a mock purchase or a user who never bought
+      // through Stripe. The UI shows "buy a plan" instead of a broken portal.
+      return failure('NOT_FOUND');
+    }
+
+    try {
+      const session = await this.client.billingPortal.sessions.create({
+        customer: input.customerId,
+        return_url: input.returnUrl,
+        configuration: this.portalConfigurationId,
+        locale: input.locale === 'en' ? 'en' : 'pl',
+      });
+
+      return success({ url: session.url });
+    } catch (error) {
+      return stripeFailure(error);
+    }
   }
 
   changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {

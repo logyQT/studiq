@@ -1,3 +1,5 @@
+// eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
+import type Stripe from 'stripe';
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { CHECKOUT_BUCKET_MS } from '@studiq/server/lib/payment/checkout-timing';
 import type { StripeConfig } from '@studiq/server/lib/payment/payment-gateway.factory';
@@ -318,11 +320,70 @@ describe('StripePaymentGateway', () => {
     });
   });
 
-  it('keeps portal, plan changes and webhooks unwired for phase 2A', async () => {
-    await expect(
-      gateway.createPortalSession({ userId: 'u-1', accountType: AccountType.STUDENT }),
-    ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+  it('creates a portal session for the resolved customer and account-type return URL', async () => {
+    vi.mocked(client.billingPortal.sessions.create).mockResolvedValueOnce(
+      asJson<Stripe.BillingPortal.Session>({
+        id: 'bps_1',
+        url: 'https://billing.stripe.com/p/session',
+      }),
+    );
 
+    const result = await gateway.createPortalSession({
+      owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+      customerId: 'cus_1',
+      returnUrl: 'https://studiq.test/app/billing',
+      locale: 'pl',
+    });
+
+    expect(result).toEqual(success({ url: 'https://billing.stripe.com/p/session' }));
+    expect(client.billingPortal.sessions.create).toHaveBeenCalledWith({
+      customer: 'cus_1',
+      return_url: 'https://studiq.test/app/billing',
+      configuration: 'bpc_123',
+      locale: 'pl',
+    });
+  });
+
+  it('maps a missing customer mapping to NOT_FOUND without calling Stripe', async () => {
+    const result = await gateway.createPortalSession({
+      owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+      returnUrl: 'https://studiq.test/app/billing',
+    });
+
+    expect(result).toEqual({ success: false, error: 'NOT_FOUND' });
+    expect(client.billingPortal.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it('maps portal provider failures through the shared Stripe error mapping', async () => {
+    vi.mocked(client.billingPortal.sessions.create).mockRejectedValueOnce({
+      type: 'StripeRateLimitError',
+    });
+
+    await expect(
+      gateway.createPortalSession({
+        owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+        customerId: 'cus_1',
+        returnUrl: 'https://studiq.test/app/billing',
+      }),
+    ).resolves.toEqual({ success: false, error: 'RATE_LIMITED' });
+  });
+
+  it('maps a Stripe-side resource deletion to NOT_FOUND', async () => {
+    vi.mocked(client.billingPortal.sessions.create).mockRejectedValueOnce({
+      type: 'StripeInvalidRequestError',
+      code: 'resource_missing',
+    });
+
+    await expect(
+      gateway.createPortalSession({
+        owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+        customerId: 'cus_deleted',
+        returnUrl: 'https://studiq.test/app/billing',
+      }),
+    ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
+  });
+
+  it('keeps plan changes unwired for phase 4', async () => {
     await expect(
       gateway.changePlan({
         userId: 'u-1',
@@ -339,7 +400,9 @@ describe('StripePaymentGateway', () => {
         cancel: true,
       }),
     ).resolves.toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+  });
 
+  it('refuses a mock webhook envelope on the Stripe driver', async () => {
     await expect(
       gateway.handleWebhook({
         kind: 'mock',

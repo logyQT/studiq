@@ -64,10 +64,12 @@ export interface CheckoutSessionResult {
 }
 
 export interface CreatePortalSessionInput {
-  userId: string;
-  accountType: AccountType;
-  /** Active organization from the session cookie (a hint, re-checked by the adapter). */
-  activeOrgId?: string | null;
+  /** Resolved from `RequestContext` by `BillingService`, never a request body. */
+  owner: PaymentOwner;
+  /** Resolved from `billing_customers`; absent for the mock adapter. */
+  customerId?: string;
+  /** Account-type-aware billing page the portal returns to. */
+  returnUrl: string;
   locale?: BillingLocale;
 }
 

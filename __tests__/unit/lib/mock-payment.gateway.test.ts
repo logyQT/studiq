@@ -9,7 +9,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 function createPort(): MockStripePort {
   return {
     createCheckoutSession: vi.fn(),
-    createPortalSession: vi.fn(),
     handleWebhook: vi.fn(),
   };
 }
@@ -93,19 +92,15 @@ describe('MockPaymentGateway', () => {
     );
   });
 
-  it('delegates the portal session for the authenticated user', async () => {
-    vi.mocked(port.createPortalSession).mockResolvedValueOnce(
-      success({ url: 'http://localhost:3000/app/billing' }),
-    );
-
+  it('returns the account-type-aware local page as the mock portal', async () => {
     const result = await gateway.createPortalSession({
-      userId: 'u-1',
-      accountType: AccountType.STUDENT,
-      activeOrgId: null,
+      owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+      returnUrl: 'http://localhost:3000/app/billing',
+      locale: 'pl',
     });
 
     expect(result).toEqual(success({ url: 'http://localhost:3000/app/billing' }));
-    expect(port.createPortalSession).toHaveBeenCalledWith('u-1');
+    expect(port.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it('maps a mock webhook envelope onto the authenticated service call', async () => {
