@@ -9,6 +9,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
 import { dashboardPathForAccountType, pollBillingActivation } from '@/lib/billing-success';
+import { activatedPlanLabel } from '@/lib/billing-subscription';
 
 type SuccessState = 'processing' | 'activated' | 'timeout' | 'redirecting';
 
@@ -111,6 +112,9 @@ function BillingSuccessContent() {
   const isActivated = state === 'activated';
   const isTimeout = state === 'timeout';
   const isDone = isActivated || state === 'redirecting';
+  // The effective plan may be a seat plan; confirm the plan Stripe bills. If
+  // the catalogue name is unavailable, use the plan-neutral description.
+  const activatedPlanName = activatedPlanLabel(subscription);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -144,9 +148,9 @@ function BillingSuccessContent() {
               : isTimeout
                 ? t('timeout_description')
                 : isActivated
-                  ? t('activated_description', {
-                      plan: subscription?.planName ?? subscription?.planKey ?? '',
-                    })
+                  ? activatedPlanName
+                    ? t('activated_description', { plan: activatedPlanName })
+                    : t('description')
                   : t('description')}
           </p>
         </CardHeader>

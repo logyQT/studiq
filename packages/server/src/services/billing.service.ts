@@ -65,6 +65,8 @@ export interface BillingSubscriptionView {
    * the success page must match the purchased plan against this field.
    */
   billedPlanKey: string | null;
+  /** Catalogue name for `billedPlanKey`; null when there is no billed row. */
+  billedPlanName: string | null;
   status: BillingReadStatus;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
@@ -236,6 +238,7 @@ export class BillingService {
       planKey: effectivePlan?.key ?? null,
       planName: effectivePlan?.name ?? null,
       billedPlanKey: null,
+      billedPlanName: null,
       status: effectivePlan ? (effectivePlan.priceMonthly > 0 ? 'active' : 'free') : 'none',
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
@@ -265,6 +268,8 @@ export class BillingService {
     let planName = base.planName;
     let priceMonthly = base.priceMonthly;
     let currency = base.currency;
+    let billedPlanName: string;
+
     if (!effectivePlan) {
       const catalog = await this.repository.getPlan(subscription.planKey);
       if (isFailure(catalog)) return catalog;
@@ -272,6 +277,15 @@ export class BillingService {
       planName = catalog.data?.name ?? subscription.planKey;
       priceMonthly = catalog.data?.priceMonthly ?? 0;
       currency = catalog.data?.currency ?? 'PLN';
+      billedPlanName = planName;
+    } else if (effectivePlan.key === subscription.planKey) {
+      billedPlanName = effectivePlan.name;
+    } else {
+      // The effective plan is a seat/comped plan; resolve the name of the plan
+      // Stripe actually bills for the success-page confirmation.
+      const catalog = await this.repository.getPlan(subscription.planKey);
+      if (isFailure(catalog)) return catalog;
+      billedPlanName = catalog.data?.name ?? subscription.planKey;
     }
 
     const owner = ownerFromContext(ctx);
@@ -300,6 +314,7 @@ export class BillingService {
       planKey,
       planName,
       billedPlanKey: subscription.planKey,
+      billedPlanName,
       status,
       currentPeriodEnd: subscription.currentPeriodEnd,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,

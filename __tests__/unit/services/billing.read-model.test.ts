@@ -152,6 +152,7 @@ describe('BillingService.getSubscription', () => {
         planKey: 'spark',
         planName: 'StudiQ Spark',
         billedPlanKey: null,
+        billedPlanName: null,
         status: 'active',
         currentPeriodEnd: null,
         cancelAtPeriodEnd: false,
@@ -244,6 +245,7 @@ describe('BillingService.getSubscription', () => {
         planKey: 'spark',
         planName: 'StudiQ Spark',
         billedPlanKey: 'spark',
+        billedPlanName: 'StudiQ Spark',
         status: 'active',
         currentPeriodEnd: '2026-12-01T00:00:00.000Z',
         cancelAtPeriodEnd: false,
@@ -349,11 +351,12 @@ describe('BillingService.getSubscription', () => {
         planKey: 'ace',
         planName: 'StudiQ Ace',
         billedPlanKey: 'spark',
+        billedPlanName: 'StudiQ Spark',
         priceMonthly: 4999,
         status: 'active',
       },
     });
-    expect(repository.getPlan).not.toHaveBeenCalled();
+    expect(repository.getPlan).toHaveBeenCalledWith('spark');
   });
 
   it('falls back to the catalog row when the caller has no effective plan', async () => {
@@ -370,7 +373,13 @@ describe('BillingService.getSubscription', () => {
 
     await expect(service.getSubscription(studentCtx)).resolves.toMatchObject({
       success: true,
-      data: { planKey: 'ace', planName: 'StudiQ Ace', priceMonthly: 4999 },
+      data: {
+        planKey: 'ace',
+        planName: 'StudiQ Ace',
+        billedPlanKey: 'ace',
+        billedPlanName: 'StudiQ Ace',
+        priceMonthly: 4999,
+      },
     });
     expect(repository.getPlan).toHaveBeenCalledWith('ace');
   });

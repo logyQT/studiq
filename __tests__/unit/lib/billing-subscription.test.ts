@@ -2,6 +2,7 @@ import { AccountType } from '@studiq/authz';
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
+  activatedPlanLabel,
   alternativePlans,
   billingPlanFamily,
   billingStatusKey,
@@ -21,6 +22,7 @@ function subscription(overrides: Partial<BillingSubscriptionView> = {}): Billing
     planKey: 'spark',
     planName: 'StudiQ Spark',
     billedPlanKey: 'spark',
+    billedPlanName: 'StudiQ Spark',
     status: 'active',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
     cancelAtPeriodEnd: false,
@@ -168,6 +170,26 @@ describe('provider action copy', () => {
         }),
       ),
     ).toBe('no_billing_account');
+  });
+});
+
+describe('activatedPlanLabel', () => {
+  it('confirms the billed plan, never the effective seat plan', () => {
+    expect(
+      activatedPlanLabel(
+        subscription({
+          planKey: 'ace',
+          planName: 'StudiQ Ace',
+          billedPlanKey: 'spark',
+          billedPlanName: 'StudiQ Spark',
+        }),
+      ),
+    ).toBe('StudiQ Spark');
+  });
+
+  it('returns null when the billed plan has no catalogue name', () => {
+    expect(activatedPlanLabel(subscription({ billedPlanName: null }))).toBeNull();
+    expect(activatedPlanLabel(undefined)).toBeNull();
   });
 });
 

@@ -101,6 +101,13 @@ export function noActionsMessageKey(
   return 'no_billing_account';
 }
 
+/** The billed plan's catalogue name for the success confirmation (never the seat plan). */
+export function activatedPlanLabel(
+  subscription: BillingSubscriptionView | null | undefined,
+): string | null {
+  return subscription?.billedPlanName ?? null;
+}
+
 /** A Stripe-hosted URL is rendered only when it is a non-empty string. */
 export function invoiceHref(url: string | null | undefined): string | null {
   const trimmed = url?.trim();
