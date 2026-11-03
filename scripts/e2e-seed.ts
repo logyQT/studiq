@@ -13,9 +13,14 @@
  *   without a query and a failing run reproduces the same ids.
  *
  * Usage:
- *   bun scripts/e2e-seed.ts            # seed everything the suite will run
- *   bun scripts/e2e-seed.ts --reset    # drop e2e tenants first
+ *   bun scripts/e2e-seed.ts                     # seed everything the suite runs
+ *   bun scripts/e2e-seed.ts --reset             # drop e2e tenants first
+ *   bun scripts/e2e-seed.ts --project chromium  # one CI leg (its own tenants only)
  *   bun scripts/e2e-seed.ts --only <key>
+ *
+ * In CI the seeder runs as its own workflow step (one per browser leg) and
+ * Playwright then starts with `E2E_SKIP_SEED=1`; locally `global-setup.ts` still
+ * runs it so `bunx playwright test` works with no extra step.
  */
 import { SQL } from 'bun';
 import type { Database } from '@studiq/server/types/database';
@@ -390,6 +395,10 @@ async function reset(): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : undefined;
+  // A browser leg seeds only its own tenants: keys include the project, and each
+  // leg has its own Supabase instance, so the other project's tenants would be
+  // pure waste (~135 orgs and ~270 users).
+  const project = args.includes('--project') ? args[args.indexOf('--project') + 1] : undefined;
 
   if (args.includes('--reset')) await reset();
 
@@ -404,9 +413,16 @@ async function main(): Promise<void> {
       ]
     : await listTests();
 
+  const scoped = project ? tests.filter((test) => test.project === project) : tests;
+  if (project && scoped.length === 0) {
+    throw new Error(
+      `--project ${project} matched no tests (is it a project name in playwright.config.ts?)`,
+    );
+  }
+
   const tenants = [
     ...new Map(
-      tests.map((t) => {
+      scoped.map((t) => {
         const tenant = buildTenant(t.file, t.title, t.project);
         return [tenant.key, tenant] as const;
       }),

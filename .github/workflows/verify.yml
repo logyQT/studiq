@@ -392,6 +392,10 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       # ubuntu-latest is 4 vCPU; one project saturates at ~4 workers.
       E2E_WORKERS: '4'
+      # The workflow owns both, in explicit steps below: it builds/starts the app
+      # and seeds this leg's tenants, so Playwright must not repeat either.
+      E2E_SKIP_WEB_WS: '1'
+      E2E_SKIP_SEED: '1'
     steps:
       - name: No app code changed
         if: needs.scope.outputs.app != 'true'
@@ -447,8 +451,28 @@ jobs:
         run: bunx playwright install --with-deps ${{ matrix.project }}
         if: matrix.project != 'admin-api' && needs.scope.outputs.app == 'true'
 
-      # Playwright's webServer builds and starts the app, so there is no
-      # separate build step to keep in sync.
+      # Same shape as `qa-suite`: the workflow starts the app and seeds, and
+      # Playwright only drives the browser. Before this, the build hid inside
+      # Playwright's `webServer` (~40 s of the "Run Playwright" step) and the
+      # seeding inside `globalSetup`, so neither was visible as a step.
+      - name: Build and start the app
+        if: needs.scope.outputs.app == 'true'
+        run: |
+          bun run build
+          (cd apps/web && bunx next start -p 3000 > /tmp/e2e-app.log 2>&1 &)
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/login && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3000/login
+
+      - name: Seed this leg's tenants
+        if: needs.scope.outputs.app == 'true'
+        # One tenant per test of this project. `--reset` keeps a re-run from
+        # inheriting the previous run's decks and quiz attempts — specs mutate
+        # their own tenant and spend its plan limits.
+        run: bun scripts/e2e-seed.ts --reset --project ${{ matrix.project }}
+
       - name: Run Playwright (${{ matrix.project }})
         if: needs.scope.outputs.app == 'true'
         run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line
