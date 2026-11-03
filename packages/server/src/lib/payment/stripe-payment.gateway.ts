@@ -197,10 +197,12 @@ export class StripePaymentGateway implements PaymentGateway {
             // which the phase-4 upgrade (reset + unused-time credit) requires.
             billing_mode: { type: 'classic' },
           },
-          success_url: `${this.siteUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}${
+          success_url: `${this.siteUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}&plan_id=${encodeURIComponent(
+            input.planKey,
+          )}${input.owner.type === 'org' ? `&org_id=${input.owner.orgId}` : ''}`,
+          cancel_url: `${this.siteUrl()}/checkout?plan_id=${input.planKey}&canceled=1${
             input.owner.type === 'org' ? `&org_id=${input.owner.orgId}` : ''
           }`,
-          cancel_url: `${this.siteUrl()}/checkout?plan_id=${input.planKey}&canceled=1`,
           locale: input.locale === 'en' ? 'en' : 'pl',
           // BillingService derives this from the same snapshot as the
           // idempotency key, so a retry sends identical parameters.

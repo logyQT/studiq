@@ -234,7 +234,8 @@ describe('StripePaymentGateway', () => {
       automatic_tax: { enabled: false },
       tax_id_collection: { enabled: false },
       locale: 'pl',
-      success_url: 'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}',
+      success_url:
+        'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}&plan_id=spark',
       cancel_url: 'https://studiq.test/checkout?plan_id=spark&canceled=1',
       expires_at:
         Math.floor(
@@ -308,7 +309,10 @@ describe('StripePaymentGateway', () => {
 
     const [params] = vi.mocked(client.checkout.sessions.create).mock.calls[0];
     expect(params.success_url).toBe(
-      'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}&org_id=org-1',
+      'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}&plan_id=hub&org_id=org-1',
+    );
+    expect(params.cancel_url).toBe(
+      'https://studiq.test/checkout?plan_id=hub&canceled=1&org_id=org-1',
     );
     expect(params.client_reference_id).toBe('org-1');
     expect(params.metadata).toMatchObject({

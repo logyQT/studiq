@@ -20,6 +20,12 @@ export interface PollBillingActivationDeps {
   /** Fire the authenticated reconcile once; a failure is non-fatal. */
   reconcile: () => Promise<unknown>;
   readSubscription: () => Promise<BillingSubscriptionView>;
+  /**
+   * The plan the Checkout Session purchased (`plan_id` in `success_url`).
+   * Without it an unrelated active plan would look like a successful
+   * activation after a failed reconcile.
+   */
+  expectedPlanKey: string | null;
   sleep: (ms: number) => Promise<void>;
   isCancelled: () => boolean;
 }
@@ -48,7 +54,8 @@ export async function pollBillingActivation(
 
     try {
       const view = await deps.readSubscription();
-      if (!deps.isCancelled() && isActivatedSubscription(view)) {
+      const planMatches = deps.expectedPlanKey === null || view.planKey === deps.expectedPlanKey;
+      if (!deps.isCancelled() && planMatches && isActivatedSubscription(view)) {
         return { state: 'activated', subscription: view };
       }
     } catch {

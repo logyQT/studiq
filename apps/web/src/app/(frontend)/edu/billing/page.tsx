@@ -69,6 +69,7 @@ export default function EduBillingPage() {
     style: 'currency',
     currency: plan.currency,
   });
+  const historyPath = invoiceHistoryPath(AccountType.EDUCATOR);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -118,9 +119,9 @@ export default function EduBillingPage() {
         </CardContent>
       </Card>
 
-      {invoiceHistoryPath(AccountType.STUDENT) && (
+      {historyPath && (
         <Button variant="link" className="px-0" asChild>
-          <a href={invoiceHistoryPath(AccountType.STUDENT) ?? '#'}>{t('invoice_history')}</a>
+          <a href={historyPath}>{t('invoice_history')}</a>
         </Button>
       )}
 

@@ -79,6 +79,7 @@ export default function AppBillingPage() {
   }
 
   const visibleLimits = getVisibleLimitKeys([plan], accountType);
+  const historyPath = invoiceHistoryPath(AccountType.STUDENT);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -153,9 +154,9 @@ export default function AppBillingPage() {
         </CardContent>
       </Card>
 
-      {invoiceHistoryPath(AccountType.STUDENT) && (
+      {historyPath && (
         <Button variant="link" className="px-0" asChild>
-          <a href={invoiceHistoryPath(AccountType.STUDENT) ?? '#'}>{t('invoice_history')}</a>
+          <a href={historyPath}>{t('invoice_history')}</a>
         </Button>
       )}
 
