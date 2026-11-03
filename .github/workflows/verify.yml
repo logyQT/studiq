@@ -364,8 +364,47 @@ jobs:
             echo "QA_APP_URL=http://localhost:3010"
           } >> "$GITHUB_ENV"
 
+      # Same split as the e2e legs after #988: main restores only its exact key
+      # (Playwright never deletes superseded revisions, so a fallback would keep
+      # forwarding old browsers), PRs may fall back because they never write.
+      #
+      # `--only-shell` below installs the headless shell only, which is a
+      # different cache *content* from the e2e legs' `chromium`: own key, so the
+      # two cannot overwrite each other the way `playwright-Linux-<lock>` used
+      # to (whichever leg saved first owned the entry).
+      - name: Restore Playwright browsers (exact)
+        id: pw-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-24.04-chromium-shell-${{ hashFiles('bun.lock') }}
+      - name: Restore Playwright browsers (fallback)
+        id: pw-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-24.04-chromium-shell-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            playwright-ubuntu-24.04-chromium-shell-
+
       - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+        # QA runs headless, and since Playwright 1.49 a headless launch drives
+        # `chromium_headless_shell`, not the full browser: ~275 MB instead of
+        # ~675 MB for both, which is also what the cache entry above carries.
+        # `--with-deps` still installs the system libraries.
+        run: bunx playwright install --with-deps --only-shell chromium
+
+      - name: Save Playwright browsers
+        # A cache write is an optimisation: never let it fail the job. One
+        # writer, like the bun cache — every shard restores, `edu` saves.
+        continue-on-error: true
+        if: github.ref == 'refs/heads/main' && matrix.shard.name == 'edu' && steps.pw-cache-main.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.pw-cache-main.outputs.cache-primary-key }}
 
       - name: Build and start the shared app
         run: |
