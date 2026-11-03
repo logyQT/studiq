@@ -1,7 +1,7 @@
 # Real Stripe integration behind the payment interface (#662)
 
 **Date:** 2026-10-30
-**Status:** Design — approved decisions. Phase 1 (gateway seam + `PAYMENT_DRIVER` boot validation), phase 2A (Stripe customer + hosted Checkout + `BillingService` validation) and phase 3 (signed webhook + idempotent entitlement sync) are implemented behind `PAYMENT_DRIVER=stripe`, with the mock still the default. The success-page reconcile endpoint, the portal, plan changes and the billing UI remain phase 4.
+**Status:** Implemented behind `PAYMENT_DRIVER=stripe` through phase 4 (gateway seam, hosted Checkout, signed webhook + entitlement sync, portal, shared read model, success-page reconcile, plan change/cancel, billing UI) plus phase 5 (docs + opt-in test-clock lifecycle suite). **The mock remains the default** in dev/CI/QA; the §10.4 sandbox pilot and the production-default decision are still pending.
 **Issue:** [#662](https://github.com/logyQT/studiq/issues/662) (ROADMAP Phase 6)
 **Scope owner:** SoCoCold (Alan) per the issue body; the issue currently has no GitHub assignee
 
@@ -836,8 +836,12 @@ await stripe.checkout.sessions.create(
       metadata: {/* the same five fields */},
       billing_mode: { type: 'classic' }, // X1 — required for the upgrade anchor reset
     },
-    success_url: `${siteUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${siteUrl}/checkout?plan_id=${planKey}&canceled=1`,
+    success_url:
+      `${siteUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}&plan_id=${planKey}` +
+      (owner.type === 'org' ? `&org_id=${owner.orgId}` : ''),
+    cancel_url:
+      `${siteUrl}/checkout?plan_id=${planKey}&canceled=1` +
+      (owner.type === 'org' ? `&org_id=${owner.orgId}` : ''),
     locale: locale === 'pl' ? 'pl' : 'en',
     expires_at: checkoutExpiresAt(Date.now()), // bucket-derived; ≥30 min, ≤24 h
     allow_promotion_codes: false, // D8
@@ -1124,7 +1128,7 @@ i18n keys to add (both `pl.json` and `en.json`): `BillingPage.{status_active,sta
 ```bash
 bun scripts/stripe-bootstrap.ts --check     # dry run: print what would change
 bun scripts/stripe-bootstrap.ts             # apply to test mode
-bun scripts/stripe-bootstrap.ts --live      # explicit, refuses unless NODE_ENV=production
+bun scripts/stripe-bootstrap.ts --live      # explicit, requires --live + an https site URL
 ```
 
 For each paid plan (`price_monthly > 0`), 9 today:
@@ -1222,7 +1226,7 @@ await stripe.customers.create({
 await stripe.testHelpers.testClocks.advance(clock.id, { frozen_time: now + 31 * 86400 });
 ```
 
-Limits: max **3 customers** and **3 subscriptions** per clock; advance at most two service periods at a time; clocks auto-delete after **30 days**. Do not build CI on clock persistence.
+Limits: at most **3 customers per clock** and **3 subscriptions per customer**; advance at most two service periods at a time; clocks auto-delete after **30 days**. Do not build CI on clock persistence.
 
 ---
 
@@ -1344,7 +1348,7 @@ Use an injected fake `StripeClient`. Suggested files and cases:
 
 ### 10.3 Opt-in Stripe test-mode suite
 
-`__tests__/integration/stripe-live.test.ts`, skipped unless `RUN_STRIPE_TESTS=1` **and** `STRIPE_SECRET_KEY` is set:
+`__tests__/integration/stripe-sandbox.test.ts`, skipped unless `RUN_STRIPE_TESTS=1` **and** `STRIPE_SECRET_KEY` is set:
 
 - create a test Clock (max 3 customers);
 - checkout session creation with a real Price from `stripe_prices`;
@@ -1432,7 +1436,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 
 1. Set `PAYMENT_DRIVER=mock` and restart. New checkouts use the fake form again.
 2. **Do not revert the migrations** and **do not delete** `billing_*`, `stripe_prices`, `stripe_webhook_events` or `payments` rows. Existing Stripe subscriptions keep billing in Stripe; the webhook keeps updating entitlements because the route still verifies signatures even if new checkouts are mocked.
-3. If the webhook must be stopped entirely, disable the Dashboard endpoint / stop `stripe listen`; entitlements freeze at their last known value. Subscriptions can be managed in the Stripe Dashboard.
+3. If the webhook must be stopped entirely, disable the Dashboard endpoint / stop `stripe listen`; entitlements freeze at their last known value. Note that `PAYMENT_DRIVER=mock` also routes `/api/v1/stripe/webhook` to the authenticated mock branch, so real Stripe events are rejected while the driver is mock. Flip back to `stripe` deliberately if entitlements must keep syncing. Subscriptions can be managed in the Stripe Dashboard.
 4. To unwind a Stripe entitlement, cancel the subscription in Stripe and let `customer.subscription.deleted` downgrade to free — never hand-edit `profiles.personal_plan_key` while the webhook is live.
 5. Keep `STRIPE_WEBHOOK_SECRET` valid until the last in-flight subscription is canceled.
 

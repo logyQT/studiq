@@ -27,7 +27,7 @@ StudiQ is delivered as a course project. **The scope is this roadmap and nothing
 | 3     | Teacher tools                 | 🏗️ quiz builder + assignments done; question-bank polish, documents, dashboard open       |
 | 4     | AI integration                | 🏗️ agent + security done; 4B extensions open                                              |
 | 5     | Student experience            | 🏗️ stats and SRS basics done; dashboard, goals, extra stats open                          |
-| 6     | Subscription gating           | 🏗️ gating + seats done; real Stripe open                                                  |
+| 6     | Subscription gating           | 🏗️ gating + seats + Stripe driver done; mock remains default, pilot open                  |
 | 7     | Admin dashboard & analytics   | 🏗️ admin panel done; global stats open                                                    |
 | 8     | Polish & launch               | 🏗️ branding, onboarding checklists, SEO done; notifications, shortcuts, empty states open |
 
@@ -177,13 +177,13 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 
 ## Phase 6: Subscription Gating 🏗️
 
-| Item                                     | Status | Notes                                                                                                        |
-| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
-| Feature flags                            | ✅     | DB-backed `features`, `feature_flags`, per-plan and per-role (`org_role_features`), user overrides, admin UI |
-| Plans, limits and gating                 | ✅     | `subscription_plans`, `plan_features`, `plan_limits`, `/pricing`, upgrade prompts, plan limits resolved live |
-| Seat-based licensing                     | ✅     | `org_seat_pools`, assignments, `/manage/seats` ([plan](plans/seat-based-licensing.md))                       |
-| Checkout, billing pages, payment history | ✅     | Simulated by `mock-stripe.service.ts`                                                                        |
-| Real Stripe                              | 📋     | [#662](https://github.com/logyQT/studiq/issues/662); live verification needs Stripe test keys                |
+| Item                                     | Status | Notes                                                                                                                                                        |
+| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Feature flags                            | ✅     | DB-backed `features`, `feature_flags`, per-plan and per-role (`org_role_features`), user overrides, admin UI                                                 |
+| Plans, limits and gating                 | ✅     | `subscription_plans`, `plan_features`, `plan_limits`, `/pricing`, upgrade prompts, plan limits resolved live                                                 |
+| Seat-based licensing                     | ✅     | `org_seat_pools`, assignments, `/manage/seats` ([plan](plans/seat-based-licensing.md))                                                                       |
+| Checkout, billing pages, payment history | ✅     | Mock simulation by default; hosted Stripe Checkout/Portal behind `PAYMENT_DRIVER=stripe`                                                                     |
+| Real Stripe                              | 🏗️     | [#662](https://github.com/logyQT/studiq/issues/662) implemented behind `PAYMENT_DRIVER=stripe`; mock stays default, §10.4 pilot + production default pending |
 
 ---
 
@@ -226,5 +226,5 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 - **SM-2 is done** — only the 5B enhancements remain.
 - **LLM provider abstracted** — OpenAI-compatible and Ollama.
 - **Feature flags, plans and limits are DB-backed** — plan changes need no deploy.
-- **External providers sit behind interfaces chosen by config** — payments are a mock today and become a Stripe driver in [#662](https://github.com/logyQT/studiq/issues/662); mail follows the same pattern in [#604](https://github.com/logyQT/studiq/issues/604).
+- **External providers sit behind interfaces chosen by config** — payments run as a mock by default and as a real Stripe driver behind `PAYMENT_DRIVER=stripe` in [#662](https://github.com/logyQT/studiq/issues/662); mail follows the same pattern in [#604](https://github.com/logyQT/studiq/issues/604).
 - **No hyphens in routes** — all API and frontend routes use `/` segments only.
