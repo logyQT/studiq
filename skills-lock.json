@@ -7,6 +7,12 @@
       "skillPath": "skills/shadcn/SKILL.md",
       "computedHash": "0dc0edeeaec2ae491ae506806517866a3f9bd48d04e0458feb37e0252862891f"
     },
+    "stripe-best-practices": {
+      "source": "stripe/ai",
+      "sourceType": "github",
+      "skillPath": "skills/stripe-best-practices/SKILL.md",
+      "computedHash": "7e1641c9d20740942259db6e0dfc69ad288bc57bca281f78125449e42ec287b1"
+    },
     "supabase": {
       "source": "supabase/agent-skills",
       "sourceType": "github",
