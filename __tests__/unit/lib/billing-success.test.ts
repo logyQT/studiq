@@ -13,6 +13,8 @@ function view(overrides: Partial<BillingSubscriptionView> = {}): BillingSubscrip
     provider: 'stripe',
     planKey: 'spark',
     planName: 'StudiQ Spark',
+    billedPlanKey: 'spark',
+    billedPlanName: 'StudiQ Spark',
     status: 'active',
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
@@ -87,6 +89,28 @@ describe('pollBillingActivation', () => {
 
     await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'timeout' });
     expect(d.readSubscription).toHaveBeenCalledTimes(BILLING_SUCCESS_POLL_ATTEMPTS);
+  });
+
+  it('matches a purchased plan even when the effective plan is a seat plan', async () => {
+    const d = deps({
+      expectedPlanKey: 'spark',
+      readSubscription: vi
+        .fn()
+        .mockResolvedValue(
+          view({ planKey: 'ace', planName: 'StudiQ Ace', billedPlanKey: 'spark' }),
+        ),
+    });
+
+    await expect(pollBillingActivation(d)).resolves.toMatchObject({ state: 'activated' });
+  });
+
+  it('does not treat the effective plan as the billed plan', async () => {
+    const d = deps({
+      expectedPlanKey: 'ace',
+      readSubscription: vi.fn().mockResolvedValue(view({ planKey: 'ace', billedPlanKey: 'spark' })),
+    });
+
+    await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'timeout' });
   });
 
   it('falls back to any live plan when the success URL has no plan id', async () => {

@@ -2,6 +2,7 @@ import { AccountType } from '@studiq/authz';
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
+  activatedPlanLabel,
   alternativePlans,
   billingPlanFamily,
   billingStatusKey,
@@ -20,6 +21,8 @@ function subscription(overrides: Partial<BillingSubscriptionView> = {}): Billing
     provider: 'stripe',
     planKey: 'spark',
     planName: 'StudiQ Spark',
+    billedPlanKey: 'spark',
+    billedPlanName: 'StudiQ Spark',
     status: 'active',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
     cancelAtPeriodEnd: false,
@@ -75,6 +78,16 @@ describe('alternativePlans', () => {
     );
 
     expect(options.map((option) => option.key)).toEqual(['ace', 'pro']);
+  });
+
+  it('excludes the billed plan even when the effective plan is a seat plan', () => {
+    const options = alternativePlans(
+      [plan('spark', { priceMonthly: 999 }), plan('pro', { priceMonthly: 4999 })],
+      subscription({ planKey: 'ace', planName: 'StudiQ Ace', billedPlanKey: 'spark' }),
+      AccountType.STUDENT,
+    );
+
+    expect(options.map((option) => option.key)).toEqual(['pro']);
   });
 
   it('returns an empty list without a catalogue', () => {
@@ -157,6 +170,26 @@ describe('provider action copy', () => {
         }),
       ),
     ).toBe('no_billing_account');
+  });
+});
+
+describe('activatedPlanLabel', () => {
+  it('confirms the billed plan, never the effective seat plan', () => {
+    expect(
+      activatedPlanLabel(
+        subscription({
+          planKey: 'ace',
+          planName: 'StudiQ Ace',
+          billedPlanKey: 'spark',
+          billedPlanName: 'StudiQ Spark',
+        }),
+      ),
+    ).toBe('StudiQ Spark');
+  });
+
+  it('returns null when the billed plan has no catalogue name', () => {
+    expect(activatedPlanLabel(subscription({ billedPlanName: null }))).toBeNull();
+    expect(activatedPlanLabel(undefined)).toBeNull();
   });
 });
 

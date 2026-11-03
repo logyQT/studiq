@@ -59,6 +59,14 @@ export interface BillingSubscriptionView {
   provider: PaymentDriver;
   planKey: string | null;
   planName: string | null;
+  /**
+   * The plan Stripe actually bills (the mirror row). `planKey` stays the
+   * **effective** entitlement (a seated student may hold a different plan), so
+   * the success page must match the purchased plan against this field.
+   */
+  billedPlanKey: string | null;
+  /** Catalogue name for `billedPlanKey`; null when there is no billed row. */
+  billedPlanName: string | null;
   status: BillingReadStatus;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
@@ -229,6 +237,8 @@ export class BillingService {
       provider: this.gateway.driver,
       planKey: effectivePlan?.key ?? null,
       planName: effectivePlan?.name ?? null,
+      billedPlanKey: null,
+      billedPlanName: null,
       status: effectivePlan ? (effectivePlan.priceMonthly > 0 ? 'active' : 'free') : 'none',
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
@@ -258,6 +268,8 @@ export class BillingService {
     let planName = base.planName;
     let priceMonthly = base.priceMonthly;
     let currency = base.currency;
+    let billedPlanName: string | null;
+
     if (!effectivePlan) {
       const catalog = await this.repository.getPlan(subscription.planKey);
       if (isFailure(catalog)) return catalog;
@@ -265,6 +277,15 @@ export class BillingService {
       planName = catalog.data?.name ?? subscription.planKey;
       priceMonthly = catalog.data?.priceMonthly ?? 0;
       currency = catalog.data?.currency ?? 'PLN';
+      billedPlanName = catalog.data?.name ?? null;
+    } else if (effectivePlan.key === subscription.planKey) {
+      billedPlanName = effectivePlan.name;
+    } else {
+      // The effective plan is a seat/comped plan; resolve the name of the plan
+      // Stripe actually bills for the success-page confirmation.
+      const catalog = await this.repository.getPlan(subscription.planKey);
+      if (isFailure(catalog)) return catalog;
+      billedPlanName = catalog.data?.name ?? null;
     }
 
     const owner = ownerFromContext(ctx);
@@ -292,13 +313,16 @@ export class BillingService {
       ...base,
       planKey,
       planName,
+      billedPlanKey: subscription.planKey,
+      billedPlanName,
       status,
       currentPeriodEnd: subscription.currentPeriodEnd,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       // A scheduled change that already landed is history: the applied plan
-      // equals the marker, so never render "changing to the current plan".
+      // (what Stripe bills) equals the marker, so never render "changing to the
+      // current plan".
       pendingPlanKey:
-        subscription.pendingPlanKey && subscription.pendingPlanKey !== planKey
+        subscription.pendingPlanKey && subscription.pendingPlanKey !== subscription.planKey
           ? subscription.pendingPlanKey
           : null,
       priceMonthly,

@@ -39,13 +39,13 @@ export function alternativePlans(
   accountType: AccountType,
 ): PlanInfo[] {
   const family = billingPlanFamily(accountType);
+  // The effective plan may be a seat plan; exclude what Stripe already bills.
+  const currentPlanKey = subscription.billedPlanKey ?? subscription.planKey;
 
   return (plans ?? [])
     .filter(
       (plan) =>
-        plan.priceMonthly > 0 &&
-        plan.forAccountType === family &&
-        plan.key !== subscription.planKey,
+        plan.priceMonthly > 0 && plan.forAccountType === family && plan.key !== currentPlanKey,
     )
     .toSorted((a, b) => a.priceMonthly - b.priceMonthly);
 }
@@ -99,6 +99,13 @@ export function noActionsMessageKey(
   const hasPlan = Boolean(subscription.planKey) && subscription.status !== 'none';
   if (hasPlan && subscription.status !== 'free') return 'no_manage_permission';
   return 'no_billing_account';
+}
+
+/** The billed plan's catalogue name for the success confirmation (never the seat plan). */
+export function activatedPlanLabel(
+  subscription: BillingSubscriptionView | null | undefined,
+): string | null {
+  return subscription?.billedPlanName ?? null;
 }
 
 /** A Stripe-hosted URL is rendered only when it is a non-empty string. */
