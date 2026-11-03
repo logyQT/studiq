@@ -590,7 +590,16 @@
     "redirecting_to_stripe": "Przekierowywanie do Stripe...",
     "payment_processing": "Przetwarzanie płatności...",
     "payment_canceled": "Płatność anulowana",
-    "payment_canceled_description": "Nie pobrano żadnej opłaty. Możesz spróbować ponownie."
+    "payment_canceled_description": "Nie pobrano żadnej opłaty. Możesz spróbować ponownie.",
+    "payment_failed_title": "Nie udało się rozpocząć płatności",
+    "manage_subscription": "Zarządzaj subskrypcją",
+    "already_subscribed": "Masz już aktywną subskrypcję",
+    "already_subscribed_description": "Zarządzaj obecnym planem na stronie rozliczeń zamiast rozpoczynać drugą płatność.",
+    "missing_plan_title": "Nie wybrano planu",
+    "missing_plan_description": "Wróć do planów i wybierz jeden, aby kontynuować.",
+    "checkout_unavailable_title": "Płatność niedostępna",
+    "checkout_unavailable_description": "Tego planu nie można kupić z tego konta. Wróć do planów i wybierz inny.",
+    "card_name_placeholder": "Jan Kowalski"
   },
   "BillingSuccessPage": {
     "title": "Zakup udany!",
