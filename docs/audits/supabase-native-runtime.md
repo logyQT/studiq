@@ -219,13 +219,38 @@ Therefore the six branded-link specs (`AUT-01/02/06/12/13`, `ONB-08`) skip when
 `STUDIQ_STACK_MODE=1`; every other QA spec runs natively. Keep a non-stack
 Docker leg for those six until the upstream issue lands.
 
-### Remaining optimisation
+### Native artifact cache: measured, not worth it
 
-The 1:1 workflow has no explicit cache for `~/.supabase/cache/stack`; cold
-runners download the archives (lean set ≈637 MB, full lock ≈1.9 GB). Adding
-`actions/cache` keyed on `supabase/supabase.lock` would keep starts at the
-observed 13–18 s on every run. Playwright browser caching is already present in
-the e2e/QA jobs.
+We tried caching `~/.supabase/cache/stack` (520 MB lean set) and measured both
+paths on the same workflow:
+
+| Path                           | Restore step | Start Supabase | Total        |
+| ------------------------------ | ------------ | -------------- | ------------ |
+| Cache miss (run `41911016046`) | 0–1 s        | 13–20 s        | **13–20 s**  |
+| Cache hit (run `41909438297`)  | ~11 s        | 9–16 s         | **~20–27 s** |
+
+The cache save/restore costs more wall-clock than the download it replaces
+(GitHub-hosted runners download the lean artifacts quickly). It is an egress /
+availability optimisation, not a speed one. **The native artifact cache was
+removed**; `verify.yml` starts native without a cache step.
+
+### Chromium's 5-minute install
+
+The slow `Install Chromium` step in one QA shard was **apt**, not Playwright:
+the log shows `Installing dependencies...` and five minutes of `fonts-*` /
+`xfonts-*` packages. The browser cache itself was hit; the other QA shards and
+both e2e legs installed in 10–61 s. This is runner apt variance, not native.
+
+### Cache ownership and refresh
+
+- **Only `main` writes caches.** Feature branches only restore. The Playwright
+  and bun save steps already had `github.ref == 'refs/heads/main'`; the native
+  save was removed entirely.
+- A new `cache-warm.yml` runs on `push` to `main` (and manual dispatch) and only
+  refreshes the bun and Playwright browser caches (`chromium-shell`,
+  `chromium`, `firefox`) using the exact keys `verify.yml` restores. It runs no
+  tests, so a merge does not duplicate the PR gate.
+- `cache-hit != 'true'` guards every save, so an unchanged lockfile is a no-op.
 
 ## Files changed
 
@@ -234,6 +259,7 @@ the e2e/QA jobs.
 | `.env.example`                           | documents `SUPABASE_RUNTIME`, `SUPABASE_HOME`, `SUPABASE_NATIVE_POSTGRES_USER`, destroy caveat                                                                                                                                                                  |
 | `scripts/dev`                            | runtime selection/preflight, `--runtime` forwarding, native-aware doctor/status, `prepull` uses effective runtime, teardown no longer gated on Docker, robust stop-failure check, `SUPABASE_HOME` validation, config-drift warning, `db reset` sslmode/port fix |
 | `.github/workflows/verify.yml`           | existing workflow switched 1:1 to native: stack mode, native start, stack status `.env.*`, no fixed ports, `stop` without `--no-backup`                                                                                                                         |
+| `.github/workflows/cache-warm.yml`       | main-only cache refresh (bun + Playwright browsers); no tests                                                                                                                                                                                                   |
 | `qa/fixtures/stack-mode.ts`              | temporary `STUDIQ_STACK_MODE=1` skip helper for branded-template specs                                                                                                                                                                                          |
 | `__tests__/qa/AUT/AUT-01,02,06,12,13`    | temporary skip clause in stack mode                                                                                                                                                                                                                             |
 | `__tests__/qa/ONB/ONB-08.spec.ts`        | temporary skip clause in stack mode                                                                                                                                                                                                                             |

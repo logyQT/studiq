@@ -296,14 +296,6 @@ jobs:
           restore-keys: |
             bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
-      - name: Restore native Supabase artifacts
-        id: native-cache-integration
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.supabase/cache/stack
-          key: supabase-native-${{ runner.os }}-${{ hashFiles('supabase/supabase.lock') }}
-          restore-keys: |
-            supabase-native-${{ runner.os }}-
       - name: Start Supabase
         env:
           APP_URL: http://localhost:3000
@@ -333,15 +325,6 @@ jobs:
       - name: Stop Supabase
         if: always()
         run: bunx supabase stop || true
-      - name: Save native Supabase artifacts
-        # Never write caches from a feature branch: only main owns the shared
-        # cache entries. Branches restore main's cache; a post-merge warm run
-        # refreshes it.
-        if: always() && github.ref == 'refs/heads/main' && steps.native-cache-integration.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.supabase/cache/stack
-          key: ${{ steps.native-cache-integration.outputs.cache-primary-key }}
 
   # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
@@ -377,13 +360,6 @@ jobs:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
-      - name: Restore native Supabase artifacts
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.supabase/cache/stack
-          key: supabase-native-${{ runner.os }}-${{ hashFiles('supabase/supabase.lock') }}
-          restore-keys: |
-            supabase-native-${{ runner.os }}-
 
       - name: Start Supabase (native)
         env:
@@ -598,14 +574,6 @@ jobs:
             bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
         if: needs.scope.outputs.app == 'true'
-      - name: Restore native Supabase artifacts
-        if: needs.scope.outputs.app == 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.supabase/cache/stack
-          key: supabase-native-${{ runner.os }}-${{ hashFiles('supabase/supabase.lock') }}
-          restore-keys: |
-            supabase-native-${{ runner.os }}-
 
       - name: Start Supabase
         if: needs.scope.outputs.app == 'true'
@@ -771,13 +739,6 @@ jobs:
           restore-keys: |
             bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
-      - name: Restore native Supabase artifacts
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.supabase/cache/stack
-          key: supabase-native-${{ runner.os }}-${{ hashFiles('supabase/supabase.lock') }}
-          restore-keys: |
-            supabase-native-${{ runner.os }}-
       - name: Start Supabase
         env:
           APP_URL: http://localhost:3000
