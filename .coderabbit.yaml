@@ -270,9 +270,14 @@ reviews:
         - `verify.yml` pins the Bun canary in `env.BUN_VERSION`, which must stay in
           step with `scripts/check-bun-version.ts` (the linter is canary-only).
           Flag a bump that touches one without the other.
-        - Jobs are ordered cheapest-first (`checks` gates the rest). Flag
-          reordering that makes an expensive job block a cheap one, or a new job
-          that does not `needs: checks`.
+        - `verify.yml` jobs start in parallel; `checks` is a reported result,
+          not a gate. Do not add `needs: checks` to test/build jobs — gating
+          delays every result by the lint/typecheck runtime. `cache-warm.yml`
+          is the exception: it may gate warming on `checks` so a commit that
+          fails simple checks cannot pollute the caches.
+        - `scope` still gates `verify.yml` jobs as a cheap diff router. Treat
+          removing it as a separate workflow-cleanup issue; do not add more
+          `needs: [scope]` gates.
         - Keep `pull_request.paths` in sync with what the suite actually
           exercises — a new top-level directory that affects tests must be added,
           and dropping a path silently disables CI for it.

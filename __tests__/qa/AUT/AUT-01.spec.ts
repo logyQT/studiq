@@ -3,6 +3,7 @@ import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
 
 /**
  * AUT-01 — student registration, happy path.
@@ -49,6 +50,7 @@ const UI = {
 
 test.describe('AUT-01 — student registration', () => {
   test('registers, activates from the e-mail and logs in to /app', async ({ page }) => {
+    skipBrandedAuthTemplateTest();
     test.setTimeout(180_000);
 
     const tenant = loadTenant(CASE);

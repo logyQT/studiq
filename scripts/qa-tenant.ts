@@ -185,7 +185,13 @@ function declaredShape(entry: ProfileEntry | undefined): ProfileShape {
   };
 }
 
-/** The cases the suite actually runs: one spec file per case. */
+/**
+ * The cases the suite actually runs: one spec file per case.
+ *
+ * `*-temp.spec.ts` variants reuse their parent case's tenant (the temp spec
+ * loads `qa/.tenants/<CASE>.json`); they are not case ids, so they must not be
+ * seeded as separate cases or validated by `CASE_ID_PATTERN`.
+ */
 function specsOnDisk(): string[] {
   if (!existsSync(TESTS)) return [];
   const byArea = new Map(
@@ -194,7 +200,7 @@ function specsOnDisk(): string[] {
       .map((dir) => [
         dir.name,
         readdirSync(join(TESTS, dir.name))
-          .filter((file) => file.endsWith('.spec.ts'))
+          .filter((file) => file.endsWith('.spec.ts') && !file.endsWith('-temp.spec.ts'))
           .map((file) => file.slice(0, -'.spec.ts'.length)),
       ]),
   );
