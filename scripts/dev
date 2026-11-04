@@ -1099,44 +1099,6 @@ stop_supabase_scoped() {
   info "Stopped Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (data kept)"
 }
 
-ensure_supabase_running() {
-  if load_stack_env && supabase_healthy; then
-    STACK_ADOPTED=1
-    info "Supabase stack already running (${SUPABASE_STACK_ID:0:12}) at $SUPABASE_URL"
-    return 0
-  fi
-
-  STACK_ENV_LOADED=0
-  STACK_START_ATTEMPTED=1
-  STACK_STARTED_BY_US=1
-  header "Starting Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'}${SUPABASE_START_EXCLUDE:+ (skipping: $SUPABASE_START_EXCLUDE)}"
-  supabase_start
-  load_stack_env || fail "Could not read 'supabase status --output-format json'."
-
-  local waited=0
-  while (( waited < 180 )); do
-    if supabase_healthy; then
-      info "Supabase is healthy ($SUPABASE_URL)"
-      return 0
-    fi
-    sleep 1
-    waited=$((waited + 1))
-  done
-  fail "Supabase did not become healthy at $SUPABASE_URL. Check: bunx supabase status"
-}
-
-stop_supabase_scoped() {
-  local -a args=(stop)
-  if [[ -n "${SUPABASE_STACK:-}" ]]; then args+=(--stack "$SUPABASE_STACK"); fi
-  # Stack `stop` keeps the project's data and ports; `stack destroy` is the
-  # only data-deleting command and is never called here.
-  if ! supa "${args[@]}"; then
-    warn "No running stack for this branch (or it was already stopped)."
-    return 0
-  fi
-  info "Stopped Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (data kept)"
-}
-
 # ── Env rendering ────────────────────────────────────────────────────────────
 format_env_value() {
   local value=$1
@@ -1830,6 +1792,7 @@ cmd_reset_db() {
   header "Resetting Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (destructive, this checkout only)"
   if [[ -n "${SUPABASE_STACK:-}" ]]; then
     # Database commands can't take --stack; a named stack's DB is a remote URL.
+    [[ -n "${SUPABASE_DB_URL:-}" ]] || fail "Could not read DB_URL for stack '$SUPABASE_STACK'; run 'bun dev:up' first."
     supa db reset --remote="$SUPABASE_DB_URL" --yes
   else
     supa db reset

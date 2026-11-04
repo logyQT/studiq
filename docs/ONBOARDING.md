@@ -465,10 +465,16 @@ checkout's `.env` (`bun dev:ports` prints a free port). Never run
 > Plain `bunx supabase start|stop|status|db ...` targets this branch's **default**
 > stack because `supabase/config.toml` enables `[experimental] stack = true`.
 > With `SUPABASE_STACK=<name>`, add `--stack <name>` to
-> `status`/`start`/`stop`/`logs`; database commands do not take `--stack` — use
-> `--remote="$SUPABASE_DB_URL" --yes` (or the `DB_URL` from
-> `supabase status --stack <name> --env`). Prefer the `bun dev:*` commands — they
-> add the app port checks, build lock and generated env files.
+> `status`/`start`/`stop`/`logs`; database commands do not take `--stack` — read
+> the URL and pass it as a remote target:
+>
+> ```bash
+> DB_URL=$(bunx supabase status --stack <name> --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+> bunx supabase db reset --remote="$DB_URL" --yes
+> ```
+>
+> Prefer the `bun dev:*` commands — they add the app port checks, build lock and
+> generated env files.
 
 ---
 
@@ -477,14 +483,14 @@ checkout's `.env` (`bun dev:ports` prints a free port). Never run
 Supabase stack endpoints (API, DB, Studio, Mailpit) are assigned per project
 (20000-32767) and printed by `bun dev:status`. Fixed services:
 
-| Service                 | URL                   |
-| ----------------------- | --------------------- |
-| App                     | http://localhost:3000 |
-| Grafana (observability) | http://localhost:3001 |
-| Prometheus              | http://localhost:9090 |
-| Tempo (traces API)      | http://localhost:3200 |
-| Loki (logs API)         | http://localhost:3100 |
-| OTLP intake (collector) | http://localhost:4318 |
+| Service                 | URL                                           |
+| ----------------------- | --------------------------------------------- |
+| App                     | `http://localhost:$APP_PORT` (default `3000`) |
+| Grafana (observability) | http://localhost:3001                         |
+| Prometheus              | http://localhost:9090                         |
+| Tempo (traces API)      | http://localhost:3200                         |
+| Loki (logs API)         | http://localhost:3100                         |
+| OTLP intake (collector) | http://localhost:4318                         |
 
 A second worktree/branch gets its own stack automatically; only `APP_PORT` needs
 a distinct value. The shared QA stack keeps its fixed ports (`:54421` API,

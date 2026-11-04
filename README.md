@@ -69,12 +69,17 @@ another checkout owns is never reused or stopped.
 `dev:up` renders `apps/web/.env` **and** `supabase/.env`, so plain
 `bunx supabase ...` commands use the same branch's **default** stack. With
 `SUPABASE_STACK=<name>`, add `--stack <name>` to `status`/`start`/`stop`/`logs`;
-database commands do not take `--stack` — use
-`--remote="$SUPABASE_DB_URL" --yes` (or the `DB_URL` from
-`supabase status --stack <name> --env`). The shared QA stack
-(`:3010` / `:54421`) is refused unless `DEV_ALLOW_SHARED=1`; `SUPABASE_SHARED=1`
-reuses a stack read-only and refuses destructive commands. `apps/admin` is
-**not** part of `dev:up` — run it with `bun dev:admin` and its own
+database commands do not take `--stack` — read the URL first and pass it as a
+remote target:
+
+```bash
+DB_URL=$(bunx supabase status --stack <name> --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+bunx supabase db reset --remote="$DB_URL" --yes
+```
+
+The shared QA stack (`:3010` / `:54421`) is refused unless `DEV_ALLOW_SHARED=1`;
+`SUPABASE_SHARED=1` reuses a stack read-only and refuses destructive commands.
+`apps/admin` is **not** part of `dev:up` — run it with `bun dev:admin` and its own
 `apps/admin/.env`.
 
 Optionally start the local observability stack (Grafana `:3001`):

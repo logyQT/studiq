@@ -7,12 +7,12 @@
  *
  * Everything is dependency-free (Bun + Node builtins + global fetch). Bun
  * auto-loads `.env` / `.env.local`, so any value below can be overridden by an
- * env var of the same name; otherwise the value recorded by `scripts/dev` in
- * `supabase/.env`, or the well-known local Supabase defaults, are used.
+ * env var of the same name; otherwise the values `scripts/dev` writes to
+ * `apps/web/.env`, or the well-known local Supabase defaults, are used.
  */
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 
 export type AccountType = 'student' | 'educator' | 'manager';
 
@@ -67,7 +67,6 @@ function envPort(name: string): number | null {
 }
 
 const ROOT = join(import.meta.dir, '..', '..');
-const GENERATED_SUPABASE_ENV = join(ROOT, 'supabase', '.env');
 const WEB_ENV = join(ROOT, 'apps', 'web', '.env');
 
 /**
@@ -122,7 +121,10 @@ function currentBranch(): string | null {
 /** Fresh `supabase status --output-format json`, or null when it cannot answer. */
 function freshStackStatus(): Record<string, unknown> | null {
   try {
-    const raw = execFileSync('bunx', ['supabase', 'status', '--output-format', 'json'], {
+    const stack = process.env.SUPABASE_STACK?.trim();
+    const args = ['supabase', 'status', '--output-format', 'json'];
+    if (stack) args.push('--stack', stack);
+    const raw = execFileSync('bunx', args, {
       cwd: ROOT,
       env: { ...process.env, SUPABASE_EXPERIMENTAL_STACK: '1' },
       encoding: 'utf8',
@@ -203,118 +205,13 @@ function stackIdentityMatches(generatedUrl: string): ImplicitTargetCheck | null 
   return { ok: true };
 }
 
-/**
- * Raw value recorded in the generated `supabase/.env` (written by `scripts/dev`).
- * Bun does not auto-load that file, so this is how start-time overrides reach
- * the harness. Missing file/key (shared mode, never started) is fine.
- */
-function generatedValue(name: string): string | null {
-  try {
-    const raw = readFileSync(GENERATED_SUPABASE_ENV, 'utf8');
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eq = trimmed.indexOf('=');
-      if (eq <= 0 || trimmed.slice(0, eq).trim() !== name) continue;
-      return trimmed.slice(eq + 1).trim();
-    }
-  } catch {
-    /* no generated file yet */
-  }
-  return null;
-}
-
-function generatedPort(name: string): number | null {
-  return parsePort(generatedValue(name));
-}
-
-/** Same resolution as `scripts/dev` (registry lives outside the repo). */
-function registryDir(): string {
-  const configured = process.env.STUDIQ_DEV_REGISTRY?.trim();
-  if (configured) return isAbsolute(configured) ? configured : join(ROOT, configured);
-  const runtime = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || '/tmp';
-  return join(runtime, `studiq-dev-${process.getuid?.() ?? 0}`);
-}
-
-interface RegistryEntry {
-  projectId?: string;
-  worktree?: string;
-  apiPort?: number;
-}
-
-/**
- * Read (and lightly validate) this checkout's registry entry for a project.
- * Mirrors `scripts/dev`: ignore symlinks, foreign-owned dirs and entries whose
- * file name disagrees with their project id. Missing data returns null.
- */
-function registryEntry(projectId: string): RegistryEntry | null {
-  try {
-    const dir = registryDir();
-    const dirStat = lstatSync(dir);
-    if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) return null;
-    const uid = process.getuid?.();
-    if (uid !== undefined && dirStat.uid !== uid) return null;
-
-    const file = join(dir, `${projectId}.json`);
-    const fileStat = lstatSync(file);
-    if (fileStat.isSymbolicLink() || !fileStat.isFile()) return null;
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- registry JSON is local runtime state; projectId is checked below
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as RegistryEntry;
-    if (parsed.projectId !== projectId) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 export type ImplicitTargetCheck = { ok: true } | { ok: false; reason: string };
 
 /**
- * Prove the recorded stack is actually running here: `docker ps` (running
- * containers only) must list a container with the project label and the
- * recorded API port mapping. Fail closed when Docker cannot answer.
- */
-function liveStackPublishes(projectId: string, apiPort: number): ImplicitTargetCheck {
-  let ports: string;
-  try {
-    ports = execFileSync(
-      'docker',
-      ['ps', '--filter', `label=com.supabase.cli.project=${projectId}`, '--format', '{{.Ports}}'],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
-    );
-  } catch (error) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- execFileSync throws errno-shaped errors
-    const code = (error as NodeJS.ErrnoException).code;
-    return {
-      ok: false,
-      reason:
-        code === 'ENOENT'
-          ? 'docker is not installed, so a running stack cannot be verified'
-          : 'docker could not inspect running containers, so the stack cannot be verified',
-    };
-  }
-  if (!ports.trim()) {
-    return {
-      ok: false,
-      reason: `no running container carries project label ${projectId} (is the stack up?)`,
-    };
-  }
-  if (!ports.includes(`:${apiPort}->`)) {
-    return {
-      ok: false,
-      reason: `no running ${projectId} container publishes the target API port :${apiPort}`,
-    };
-  }
-  return { ok: true };
-}
-
-/**
- * Seeding writes accounts, so a target taken from the generated
- * `supabase/.env` must be proven to belong to this checkout. Only an explicit
- * URL (`SUPABASE_URL`, `--supabase-url`) skips the check; a
- * `SUPABASE_API_PORT` override selects the effective port but must still match
- * the registry entry and the live container.
+ * Seeding writes accounts, so an implicit target read from `apps/web/.env` must
+ * be loopback. Stack-mode targets (STUDIQ_STACK_MODE=1) additionally re-check
+ * the fresh CLI identity (project root, branch, stack name, API URL). Non-stack
+ * and shared targets must pass `--supabase-url` / `SUPABASE_URL`.
  */
 export function implicitTargetOwnership(): ImplicitTargetCheck {
   if (env('SUPABASE_URL', '')) return { ok: true };
@@ -333,84 +230,38 @@ export function implicitTargetOwnership(): ImplicitTargetCheck {
       return { ok: false, reason: `generated API URL is invalid: ${generatedUrl}` };
     }
     if (webValue('STUDIQ_STACK_MODE') === '1') {
-      return (
-        stackIdentityMatches(generatedUrl) ?? {
-          ok: false,
-          reason: 'cannot read fresh supabase status to verify the generated stack identity',
-        }
-      );
+      const identity = stackIdentityMatches(generatedUrl) ?? {
+        ok: false as const,
+        reason: 'cannot read fresh supabase status to verify the generated stack identity',
+      };
+      if (!identity.ok) return identity;
+      return liveApiHealth(generatedUrl);
     }
-    return liveApiHealth(generatedUrl);
-  }
-
-  const projectId = generatedValue('SUPABASE_PROJECT_ID');
-  const apiPort = envPort('SUPABASE_API_PORT') ?? generatedPort('SUPABASE_API_PORT');
-  if (!projectId || apiPort === null) {
-    return { ok: false, reason: 'supabase/.env has no generated project/API port' };
-  }
-
-  const entry = registryEntry(projectId);
-  if (!entry) {
     return {
       ok: false,
-      reason: `no private registry entry for project ${projectId} (run a bun dev:* command)`,
+      reason:
+        'apps/web/.env is not stack-generated (STUDIQ_STACK_MODE missing) — pass --supabase-url / SUPABASE_URL for a shared or non-stack target',
     };
   }
-  if (!entry.worktree) {
-    return { ok: false, reason: `registry entry for ${projectId} has no worktree` };
-  }
 
-  let entryRoot: string;
-  let repoRoot: string;
-  try {
-    entryRoot = realpathSync(entry.worktree);
-    repoRoot = realpathSync(ROOT);
-  } catch {
-    return { ok: false, reason: `registry entry for ${projectId} points at a missing worktree` };
-  }
-  if (entryRoot !== repoRoot) {
-    return { ok: false, reason: `project ${projectId} is owned by ${entry.worktree}` };
-  }
-  if (Number(entry.apiPort) !== apiPort) {
-    return {
-      ok: false,
-      reason: `registry records :${entry.apiPort} but the target API port is :${apiPort}`,
-    };
-  }
-  return liveStackPublishes(projectId, apiPort);
-}
-
-/**
- * A stale generated API port that disagrees with this checkout's current
- * contract. Teardown keeps `supabase/.env` (so plain `bunx supabase ...` keeps
- * working), and the retired port can later be bound by another checkout. A
- * destructive caller must fail closed instead of silently targeting it.
- */
-export function staleGeneratedTarget(): { generated: number; expected: number } | null {
-  if (env('SUPABASE_URL', '')) return null; // explicit target
-  if (webValue('NEXT_PUBLIC_SUPABASE_URL')) return null; // stack mode: no port math
-  if (envPort('SUPABASE_API_PORT') !== null) return null; // explicit port
-  const generated = generatedPort('SUPABASE_API_PORT');
-  if (generated === null) return null; // nothing recorded
-  const expected = (envPort('SUPABASE_PORT_BASE') ?? 54320) + 1;
-  return generated === expected ? null : { generated, expected };
+  return {
+    ok: false,
+    reason:
+      'no generated stack target (run a bun dev:* command) — or pass --supabase-url / SUPABASE_URL explicitly',
+  };
 }
 
 export function resolveConfig(overrides: Partial<LoadTestConfig> = {}): LoadTestConfig {
   const outDir = overrides.outDir ?? env('LOADTEST_DIR', '.dev/load-test');
   const emailDomain =
     overrides.emailDomain ?? env('LOADTEST_EMAIL_DOMAIN', 'loadtest.studiq.local');
-  // No fixed port fallbacks: a checkout can run on any block. Derive the local
-  // defaults from APP_PORT / the Supabase block so the load test targets the
-  // stack this checkout actually started. Explicit APP_URL / SUPABASE_URL /
-  // overrides still win; the absent-variable defaults stay 3000 / 54321.
+  // No fixed-port derivation: stack mode supplies apps/web/.env, and
+  // SUPABASE_API_PORT is the non-stack/CI escape hatch. Defaults are
+  // 3000 and 54321 when nothing is configured.
   const appPort = envPort('APP_PORT') ?? 3000;
-  const supabasePortBase = envPort('SUPABASE_PORT_BASE') ?? 54320;
-  // Precedence: explicit SUPABASE_API_PORT, then the port `scripts/dev`
-  // recorded in supabase/.env, then the block's default (base + 1). Stack mode
-  // writes the real URL to apps/web/.env, which wins over all of these.
-  const supabaseApiPort =
-    envPort('SUPABASE_API_PORT') ?? generatedPort('SUPABASE_API_PORT') ?? supabasePortBase + 1;
+  // Stack mode writes the real URL to apps/web/.env; explicit env still wins.
+  // SUPABASE_API_PORT is the non-stack/CI escape hatch.
+  const supabaseApiPort = envPort('SUPABASE_API_PORT') ?? 54321;
   const generatedSupabaseUrl = webValue('NEXT_PUBLIC_SUPABASE_URL');
   const generatedAppUrl = webValue('NEXT_PUBLIC_SITE_URL');
   return {

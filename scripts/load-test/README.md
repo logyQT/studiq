@@ -40,8 +40,7 @@ Both run directly with Bun (no build step) and are dependency-free.
   The target comes from the generated `apps/web/.env` (written by `scripts/dev`
   from `supabase status`), so stack projects with random ports work without
   configuration. Explicit `SUPABASE_URL` / `APP_URL` / `--supabase-url` /
-  `--app-url` still win. Legacy fixed-port checkouts fall back to
-  `SUPABASE_API_PORT` / `supabase/.env` / `SUPABASE_PORT_BASE + 1`.
+  `--app-url` still win. Shared/non-stack targets should pass an explicit URL.
 
 > `.dev/` is git-ignored, so generated pools and reports never get committed.
 
@@ -92,22 +91,12 @@ bun scripts/load-test/seed.ts --count 1000
 
 - **Idempotent** — re-running skips accounts that already exist.
 - **Ownership-checked** — when the target is implicit (no `--supabase-url` or
-  `SUPABASE_URL`), seeding verifies it before writing or deleting:
-  - **Stack mode** (`apps/web/.env` carries `STUDIQ_STACK_MODE=1`): a fresh
-    `supabase status --output-format json` must report the same project root,
-    current branch, stack name (`SUPABASE_STACK` or `default`) and API URL as
-    `apps/web/.env`. A stale file from another branch, or a different stack, is
-    refused.
-  - **Legacy fixed-port mode**: the generated `supabase/.env` project must be
-    recorded in this checkout's registry **and** a running container with that
-    project label must publish the effective API port (`SUPABASE_API_PORT` when
-    set, otherwise the generated port). `--reset` also compares the generated
-    port with the current `SUPABASE_PORT_BASE + 1` (`staleGeneratedTarget`).
-
-  A foreign or unverifiable target is refused; pass `--supabase-url` to override
-  deliberately. If a fixed-port base changed, stop the existing stack with
-  `bun dev:down --all` (this checkout only — never `supabase stop --all`) and
-  then run `bun dev:up`.
+  `SUPABASE_URL`), it must come from `apps/web/.env` and be loopback. Stack-mode
+  files (`STUDIQ_STACK_MODE=1`) are re-checked against a fresh
+  `supabase status --output-format json`: project root, current branch, stack
+  name (`SUPABASE_STACK` or `default`) and API URL must match. A stale file from
+  another branch, or a different stack, is refused. Shared/non-stack targets
+  need an explicit URL.
 
 - Accounts are created with `email_confirm: true`, so they can log in
   immediately even though local GoTrue has `enable_confirmations = true`.
@@ -121,11 +110,9 @@ Reset the pool when you're done:
 bun scripts/load-test/seed.ts --reset
 ```
 
-`--reset` refuses to run when a legacy fixed-port checkout's generated
-`supabase/.env` disagrees with the current `SUPABASE_PORT_BASE + 1`. Stack mode
-reads the live URL from `apps/web/.env` and has no port math to go stale.
-Re-run a `bun dev:*` command to re-render the env files, or pass
-`--supabase-url <url>` explicitly.
+`--reset` refuses a stale `apps/web/.env` (another branch/stack) and requires an
+explicit target for shared/non-stack stacks. Re-run a `bun dev:*` command to
+re-render the env files, or pass `--supabase-url <url>` explicitly.
 
 ### Convenience scripts
 
