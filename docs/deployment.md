@@ -73,6 +73,7 @@ STRIPE_SECRET_KEY=rk_live_...          # restricted key preferred; sk_live_ also
 STRIPE_WEBHOOK_SECRET=whsec_...        # per environment
 STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
 STRIPE_PRODUCT_TAX_CODE=txcd_...            # eligible Managed Payments product code
+STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1        # after checking the eligible label
 NEXT_PUBLIC_SITE_URL=https://studiq.app  # https, non-localhost (APP_URL is the fallback)
 ```
 
@@ -144,11 +145,14 @@ tax, handles fraud/disputes and provides transaction support through Link.
   would keep being sold at price + VAT.
 - Stripe **forbids** `automatic_tax` and `tax_id_collection` on a Managed
   Payments session. They are absent (not `false`).
-- Set `STRIPE_PRODUCT_TAX_CODE` to an eligible product tax code. Managed
-  Payments handles tax rates/remittance, but the product classification is still
-  required; the bootstrap refuses **any write run** without it (test mode
-  included) and verifies the code exists in Stripe before writing. The code must
-  be labelled "Eligible for Managed Payments" in the Dashboard/Tax Codes API.
+- Set `STRIPE_PRODUCT_TAX_CODE` to an eligible product tax code and
+  `STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1` after confirming it is labelled
+  "Eligible for Managed Payments". Managed Payments handles tax
+  rates/remittance, but the product classification is still required; the
+  bootstrap refuses **any write run** without both (test mode included),
+  verifies the code exists in Stripe, and then verifies the human confirmation.
+  Stripe's API does not expose the eligibility flag, so the confirmation is
+  explicit rather than inferred from `taxCodes.retrieve`.
 - Prices are created with `tax_behavior: 'inclusive'`: the displayed PLN price
   is the final consumer price (operator decision). A legacy exclusive/
   unspecified Price is rotated by the bootstrap.

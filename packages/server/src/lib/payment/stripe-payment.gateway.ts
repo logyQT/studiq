@@ -25,6 +25,7 @@ import type { StripeClient } from '@studiq/server/lib/payment/stripe-client';
 import {
   type CustomerDetails,
   type CustomerMapping,
+  type ListedPrice,
   type StripeBillingRepository,
   stripeBillingRepository,
   SupabaseStripeBillingRepository,
@@ -312,11 +313,12 @@ export class StripePaymentGateway implements PaymentGateway {
       // The live price must still be the plan the caller/D B thought it was.
       const currentPrice = await this.repository.findPriceById(livePriceId, this.livemode);
       if (isFailure(currentPrice)) return currentPrice;
-      if (currentPrice.data?.planKey !== input.currentPlanKey) {
+      const currentPlanKey = this.planKeyForLivePrice(currentPrice.data, subscription);
+      if (currentPlanKey !== input.currentPlanKey) {
         logError('billing.subscription_plan_mismatch', {
           subscriptionId: input.subscriptionId,
           expected: input.currentPlanKey,
-          actual: currentPrice.data?.planKey ?? null,
+          actual: currentPlanKey,
         });
         return failure('CONFLICT');
       }
@@ -476,11 +478,12 @@ export class StripePaymentGateway implements PaymentGateway {
 
       const livePrice = await this.repository.findPriceById(livePriceId, this.livemode);
       if (isFailure(livePrice)) return livePrice;
-      if (livePrice.data?.planKey !== input.currentPlanKey) {
+      const livePlanKey = this.planKeyForLivePrice(livePrice.data, subscription);
+      if (livePlanKey !== input.currentPlanKey) {
         logError('billing.subscription_plan_mismatch', {
           subscriptionId: input.subscriptionId,
           expected: input.currentPlanKey,
-          actual: livePrice.data?.planKey ?? null,
+          actual: livePlanKey,
         });
         return failure('CONFLICT');
       }
@@ -490,6 +493,29 @@ export class StripePaymentGateway implements PaymentGateway {
     } catch (error) {
       return stripeFailure(error);
     }
+  }
+
+  /**
+   * The plan a live Price represents. The current `stripe_prices` mapping wins;
+   * when the Price was rotated by a catalog change (amount or the tax-inclusive
+   * migration), the subscription metadata written at Checkout still records the
+   * plan. That is the same trust level the webhook already uses. A *different*
+   * mapped plan stays a hard mismatch.
+   */
+  private planKeyForLivePrice(
+    mapped: ListedPrice | null,
+    subscription: Stripe.Subscription,
+  ): string | null {
+    if (mapped) return mapped.planKey;
+
+    const planKey = subscription.metadata?.[`${METADATA_PREFIX}_plan_key`] ?? null;
+    if (planKey) {
+      logWarn('billing.subscription_price_unmapped', {
+        subscriptionId: subscription.id,
+        planKey,
+      });
+    }
+    return planKey;
   }
 
   /** Detach a pending schedule created by an earlier downgrade, if any. */

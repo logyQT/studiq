@@ -22,6 +22,7 @@ import {
   portalParams,
   priceMatches,
   productUpdateFor,
+  isProductTaxCodeConfirmed,
   resolveProductTaxCode,
   selectBootstrapPrices,
 } from '@studiq/server/lib/payment/stripe-bootstrap';
@@ -287,6 +288,11 @@ async function main(): Promise<void> {
   assert(
     productTaxCode,
     'STRIPE_PRODUCT_TAX_CODE is required: Managed Payments needs an eligible product tax code (Dashboard > Products > Tax code, or the Tax Codes API; the code must be labelled "Eligible for Managed Payments")',
+  );
+  // Existence is not eligibility: Stripe does not expose the eligible flag.
+  assert(
+    isProductTaxCodeConfirmed(),
+    'STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1 is required after confirming the code is labelled "Eligible for Managed Payments" in the Dashboard',
   );
 
   const prices = await loadValidatedPrices();

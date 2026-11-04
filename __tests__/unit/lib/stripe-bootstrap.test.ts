@@ -2,6 +2,7 @@ import {
   BOOTSTRAP_TAX_BEHAVIOR,
   type BootstrapStripePrice,
   type CatalogPlanForBootstrap,
+  isProductTaxCodeConfirmed,
   lookupKeyForPlan,
   portalParams,
   priceMatches,
@@ -226,6 +227,14 @@ describe('resolveProductTaxCode', () => {
   it('rejects a malformed code instead of sending it to Stripe', () => {
     expect(() => resolveProductTaxCode({ STRIPE_PRODUCT_TAX_CODE: 'txcd_' })).toThrow(/txcd_/);
     expect(() => resolveProductTaxCode({ STRIPE_PRODUCT_TAX_CODE: 'saas' })).toThrow(/txcd_/);
+  });
+});
+
+describe('isProductTaxCodeConfirmed', () => {
+  it('requires the explicit confirmation flag, trimmed', () => {
+    expect(isProductTaxCodeConfirmed({})).toBe(false);
+    expect(isProductTaxCodeConfirmed({ STRIPE_PRODUCT_TAX_CODE_CONFIRMED: '0' })).toBe(false);
+    expect(isProductTaxCodeConfirmed({ STRIPE_PRODUCT_TAX_CODE_CONFIRMED: ' 1 ' })).toBe(true);
   });
 });
 

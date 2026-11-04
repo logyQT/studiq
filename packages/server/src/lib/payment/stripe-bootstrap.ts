@@ -141,6 +141,17 @@ export function resolveProductTaxCode(
   return value;
 }
 
+/**
+ * Stripe's Tax Codes API does not expose the Managed Payments eligibility flag,
+ * so existence cannot prove eligibility. A write run requires an explicit human
+ * confirmation that the code is labelled "Eligible for Managed Payments".
+ */
+export function isProductTaxCodeConfirmed(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.STRIPE_PRODUCT_TAX_CODE_CONFIRMED?.trim() === '1';
+}
+
 /** Minimal Price shape the comparison needs (avoids the SDK at runtime). */
 export interface BootstrapStripePrice {
   active: boolean;

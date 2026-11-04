@@ -809,6 +809,32 @@ describe('StripePaymentGateway', () => {
       expect(client.subscriptions.update).not.toHaveBeenCalled();
     });
 
+    it('resolves a rotated (unmapped) live Price through the subscription metadata', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ metadata: { studiq_plan_key: 'spark' } }),
+      );
+      vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual(
+        success({ status: 'applied' }),
+      );
+      expect(client.subscriptions.update).toHaveBeenCalled();
+    });
+
+    it('refuses a rotated Price whose metadata names another plan', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
+        subscriptionFixture({ metadata: { studiq_plan_key: 'ace' } }),
+      );
+      vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'CONFLICT',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
     it('refuses a stale mirror whose plan does not match the live price', async () => {
       vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
       vi.mocked(repository.findPriceById).mockResolvedValueOnce(
