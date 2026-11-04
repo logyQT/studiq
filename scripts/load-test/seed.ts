@@ -30,7 +30,6 @@ import {
   parseArgs,
   resolveConfig,
   sleep,
-  staleGeneratedTarget,
 } from './config';
 
 const FIRST_NAMES = [
@@ -217,6 +216,7 @@ async function resetPool(
       );
       break;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Admin API response; users are only read after the response is checked
     const payload = (await res.json()) as { users?: { id: string; email?: string }[] };
     const users = payload.users ?? [];
     if (users.length === 0) break;
@@ -298,18 +298,8 @@ async function main(): Promise<void> {
   };
 
   if (argBool(args, 'reset')) {
-    const stale = staleGeneratedTarget();
-    if (stale && !explicitUrl) {
-      console.error(
-        `  reset: refusing to target http://127.0.0.1:${stale.generated} — supabase/.env records :${stale.generated}, but this checkout's contract is :${stale.expected}.`,
-      );
-      console.error(
-        '  The generated file is stale (another checkout may own that port). Re-run a bun dev:* command to re-render it, or pass --supabase-url explicitly.',
-      );
-      process.exit(1);
-    }
-    // A matching port is not enough: an implicit target must still be owned by
-    // this checkout. Checked before --dry-run so a dry run reports it too.
+    // An implicit target must still be owned by this checkout. Checked before
+    // --dry-run so a dry run reports it too.
     if (!explicitUrl) {
       const ownership = implicitTargetOwnership();
       if (!ownership.ok) {
