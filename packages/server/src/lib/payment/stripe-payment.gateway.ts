@@ -514,21 +514,19 @@ export class StripePaymentGateway implements PaymentGateway {
   ): Promise<string | null> {
     if (mapped) return mapped.planKey;
 
-    try {
-      const price = await this.client.prices.retrieve(livePriceId);
-      const planKey = price?.metadata?.[`${METADATA_PREFIX}_plan_key`] ?? null;
-      if (planKey) {
-        logWarn('billing.subscription_price_unmapped', {
-          subscriptionId: subscription.id,
-          priceId: livePriceId,
-          planKey,
-        });
-      }
-      return planKey;
-    } catch {
-      // Fail closed: an unreadable Price cannot prove the plan.
-      return null;
+    // A transient provider error must reach `stripeFailure` (retryable), not be
+    // reported as a plan conflict. A retrieved Price with missing/different
+    // metadata stays a hard mismatch.
+    const price = await this.client.prices.retrieve(livePriceId);
+    const planKey = price?.metadata?.[`${METADATA_PREFIX}_plan_key`] ?? null;
+    if (planKey) {
+      logWarn('billing.subscription_price_unmapped', {
+        subscriptionId: subscription.id,
+        priceId: livePriceId,
+        planKey,
+      });
     }
+    return planKey;
   }
 
   /** Detach a pending schedule created by an earlier downgrade, if any. */

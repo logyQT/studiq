@@ -982,13 +982,19 @@ export class StripeWebhookService {
     return fromMetadata;
   }
 
-  /** Plan key written on the Price at bootstrap; `null` when unreadable. */
+  /**
+   * Plan key written on the Price at bootstrap. A deleted Price is a permanent
+   * `resource_missing` and falls through to the metadata fallback; any other
+   * error is transient and must make the webhook retry rather than apply a
+   * possibly stale plan from the subscription metadata.
+   */
   private async planKeyFromPriceMetadata(priceId: string): Promise<string | null> {
     try {
       const price = await this.client.prices.retrieve(priceId);
       return price?.metadata?.[METADATA_PLAN_KEY] ?? null;
-    } catch {
-      return null;
+    } catch (error) {
+      if (isRecord(error) && readString(error, 'code') === 'resource_missing') return null;
+      throw error;
     }
   }
 

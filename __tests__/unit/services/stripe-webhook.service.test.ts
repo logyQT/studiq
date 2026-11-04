@@ -799,6 +799,43 @@ describe('StripeWebhookService', () => {
       );
     });
 
+    it('retries on a transient Price read failure instead of using stale metadata', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.findPrice).mockResolvedValueOnce(success(null));
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      vi.mocked(harness.client.prices.retrieve).mockRejectedValueOnce({
+        type: 'StripeRateLimitError',
+      });
+      const event = makeEvent('customer.subscription.created', makeSubscription(), {
+        created: 1_700_000_600,
+      });
+
+      const result = await sign(harness, event);
+
+      expect(result).toEqual({ success: false, error: 'INTERNAL_SERVER' });
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+    });
+
+    it('falls back to metadata when the Price was deleted', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.findPrice).mockResolvedValueOnce(success(null));
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      vi.mocked(harness.client.prices.retrieve).mockRejectedValueOnce({
+        type: 'StripeInvalidRequestError',
+        code: 'resource_missing',
+      });
+      const event = makeEvent('customer.subscription.created', makeSubscription(), {
+        created: 1_700_000_600,
+      });
+
+      await sign(harness, event);
+
+      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+        { type: 'user', userId: 'u-1' },
+        'spark',
+      );
+    });
+
     it('falls back to metadata when the price is not mapped, and logs it', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.findPrice).mockResolvedValueOnce(success(null));

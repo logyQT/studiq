@@ -846,14 +846,16 @@ describe('StripePaymentGateway', () => {
       expect(client.subscriptions.update).not.toHaveBeenCalled();
     });
 
-    it('fails closed when the rotated Price cannot be read', async () => {
+    it('reports a transient Price read failure as retryable, not as a conflict', async () => {
       vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
       vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
-      vi.mocked(client.prices.retrieve).mockRejectedValueOnce(new Error('stripe down'));
+      vi.mocked(client.prices.retrieve).mockRejectedValueOnce({
+        type: 'StripeRateLimitError',
+      });
 
       await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
         success: false,
-        error: 'CONFLICT',
+        error: 'RATE_LIMITED',
       });
       expect(client.subscriptions.update).not.toHaveBeenCalled();
     });
