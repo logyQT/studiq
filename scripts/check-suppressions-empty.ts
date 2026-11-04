@@ -21,9 +21,15 @@ const LEDGER = 'eslint-suppressions.json';
 let raw: string;
 try {
   raw = readFileSync(LEDGER, 'utf8');
-} catch {
-  // No ledger is equivalent to an empty one.
-  process.exit(0);
+} catch (error) {
+  // Only a missing ledger is equivalent to an empty one. Permissions, a
+  // directory in its place, or any other I/O error must fail the check.
+  if (isErrnoException(error) && error.code === 'ENOENT') process.exit(0);
+  throw error;
+}
+
+function isErrnoException(error: unknown): error is { code?: string } {
+  return typeof error === 'object' && error !== null && 'code' in error;
 }
 
 let parsed: unknown;
