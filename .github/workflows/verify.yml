@@ -69,6 +69,7 @@ jobs:
   # shard at all).
   # Schedule/dispatch runs everything.
   scope:
+    if: ${{ !inputs.native_smoke }}
     runs-on: ubuntu-24.04
     outputs:
       app: ${{ steps.diff.outputs.app }}
@@ -214,6 +215,7 @@ jobs:
   # The required check that no test job waits on any more: a lint/type failure
   # still blocks the merge, it just no longer holds the runners back first.
   checks:
+    if: ${{ !inputs.native_smoke }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -266,7 +268,7 @@ jobs:
 
   unit:
     needs: [scope]
-    if: needs.scope.outputs.app == 'true'
+    if: ${{ !inputs.native_smoke && needs.scope.outputs.app == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -288,7 +290,7 @@ jobs:
 
   integration:
     needs: [scope]
-    if: needs.scope.outputs.app == 'true'
+    if: ${{ !inputs.native_smoke && needs.scope.outputs.app == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -342,7 +344,7 @@ jobs:
   # job `__tests__/qa/**` would never run in CI.
   qa-suite:
     needs: [scope]
-    if: needs.scope.outputs.qa_shards != '[]'
+    if: ${{ !inputs.native_smoke && needs.scope.outputs.qa_shards != '[]' }}
     # Sharded by area, one runner per shard. The suite is one long serial job
     # (~12 min at 140 specs, growing), so splitting is what buys wall-clock time
     # now — not more workers: the runner is 4 vCPU and raising QA_WORKERS only
@@ -558,6 +560,7 @@ jobs:
   # skipped and the leg reports success immediately.
   e2e:
     needs: [scope]
+    if: ${{ !inputs.native_smoke }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -734,7 +737,7 @@ jobs:
   # admin-api only needs the admin app; the web server is skipped so this leg
   # costs seconds rather than a second Next build.
   e2e-admin:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: ${{ !inputs.native_smoke && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     needs: [checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -806,13 +809,14 @@ jobs:
   supabase-native-spike:
     if: github.event_name == 'workflow_dispatch' && inputs.native_smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       CI: '1'
       NEXT_TELEMETRY_DISABLED: '1'
       SUPABASE_EXPERIMENTAL_STACK: '1'
       SUPABASE_RUNTIME: native
       SUPABASE_PROJECT_ID: studiq-ci-native
+      STUDIQ_STACK_MODE: '1'
       APP_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v7
@@ -895,30 +899,36 @@ jobs:
             sleep 2
           done
           curl -sf -o /dev/null http://localhost:3000/login
-      - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
-      - name: E2E login (native)
+      - name: Restore Playwright browsers
+        id: pw-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-ubuntu-24.04-chromium-firefox-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ms-playwright-ubuntu-24.04-
+      - name: Install browsers
+        run: bunx playwright install --with-deps chromium firefox
+      - name: Save Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.pw-cache.outputs.cache-primary-key }}
+      - name: Full E2E suite (native)
         env:
           E2E_SKIP_WEB_WS: '1'
-          E2E_SKIP_SEED: '1'
-          E2E_WORKERS: '1'
-        run: bunx playwright test --project=chromium __tests__/e2e/login.spec.ts --workers=1 --reporter=line
-      - name: Seed AUT-01 tenant
-        run: bun scripts/qa-tenant.ts AUT-01 --profile bare --role student --fresh
-      - name: QA PUB-01 (native)
+          E2E_WORKERS: '4'
+          CI: ''
+        run: bunx playwright test --project=chromium --project=firefox --workers=4 --reporter=line
+      - name: Seed all QA tenants
+        run: bun scripts/qa-tenant.ts --all --run "native${{ github.run_id }}"
+      - name: Full QA suite (native)
         env:
           QA_APP_URL: http://localhost:3000
-        run: bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/PUB/PUB-01.spec.ts --workers=1 --project=chromium
-      - name: Verify branded-template gap (AUT-01)
-        env:
-          QA_APP_URL: http://localhost:3000
-        run: |
-          if bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/AUT/AUT-01.spec.ts --workers=1 --project=chromium; then
-            echo "::error::AUT-01 passed; the branded-template gap may be fixed"
-            exit 1
-          else
-            echo "Confirmed known gap: AUT-01 cannot find the branded /auth/callback link"
-          fi
+          QA_WORKERS: '4'
+          CI: ''
+        run: bunx playwright test -c qa/playwright.qa.config.ts --workers=4 --project=chromium --reporter=line
       - name: App logs
         if: failure()
         run: tail -200 /tmp/native-app.log || true

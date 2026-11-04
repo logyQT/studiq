@@ -3,6 +3,9 @@ import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { skipBrandedAuthTemplateTests } from '@qa/fixtures/stack-mode';
+
+skipBrandedAuthTemplateTests();
 
 /**
  * AUT-13 — ustawienie nowego hasła z linku resetującego.
