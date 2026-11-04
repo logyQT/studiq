@@ -308,9 +308,12 @@ A second provider cannot be inserted without splitting these. The webhook is als
 packages/server/src/lib/payment/
   payment-gateway.ts          # types + PaymentGateway + WebhookEnvelope
   payment-gateway.factory.ts  # createPaymentGatewayFromEnv + getPaymentGateway + PaymentConfigError
-  mock-payment.gateway.ts     # adapter over the existing mock behaviour
+  mock-payment.gateway.ts     # fake checkout URL + completion delegation (provider I/O only)
   stripe-payment.gateway.ts   # Stripe SDK calls, signature verification, event normalization
   stripe-client.ts            # narrow interface + real implementation (test injection point)
+  checkout-rules.ts           # shared plan/owner/org-admin policy (both drivers)
+  payment-history.repository.ts # one provider-neutral `payments` writer
+  billing-read.repository.ts  # shared subscription read model
 
 packages/server/src/services/
   billing.service.ts          # domain: plan/org/admin/owner/customer/checkout/portal/change/cancel
@@ -399,7 +402,7 @@ export type WebhookEnvelope =
 export type WebhookOutcome = { received: true; duplicate?: boolean; ignored?: boolean };
 ```
 
-`MockPaymentGateway` delegates to the existing `MockStripeService` and returns the same `/checkout?session_id=…` URL, so mock behaviour is unchanged. `StripePaymentGateway` wraps a `StripeClient` interface:
+`MockPaymentGateway` builds the same local `/checkout?session_id=…` URL itself (provider I/O) and delegates only **completion** to the mock domain service; plan/owner validation lives in `checkout-rules.ts`. `StripePaymentGateway` wraps a `StripeClient` interface:
 
 ```ts
 // packages/server/src/lib/payment/stripe-client.ts
@@ -454,7 +457,7 @@ export interface StripeClient {
 
 `stripeClient` is constructed once per process with the pinned API version; tests inject a fake object, no network.
 
-**Phase 1 implementation note.** The shipped seam (`packages/server/src/lib/payment/payment-gateway.ts`) uses the caller-shaped inputs `userId`, `accountType`, `planKey`, `orgId?`, `locale?`, `idempotencyKey` — exactly the fields `MockStripeService` already takes — so routing the controller through the gateway is behaviour-preserving. `MockPaymentGateway` delegates to the existing service; `changePlan`/`cancelAtPeriodEnd` return `NOT_FOUND` because the simulation has no subscription. `BillingService`, the resolved `PaymentOwner`, and `priceId`/`customerId` fields arrive with the Stripe adapter in Phase 2; the shapes above remain the target contract.
+**Implementation note (current).** The shipped seam (`payment-gateway.ts`) takes a resolved `PaymentOwner` plus catalog/price fields from `BillingService`; the gateway never reads a request body. `MockPaymentGateway` builds the local checkout URL and delegates completion to `MockStripeService`; `changePlan`/`cancelAtPeriodEnd` return `NOT_FOUND` because the simulation has no subscription. Both drivers share `lib/payment/checkout-rules.ts` for plan/owner validation and `lib/payment/payment-history.repository.ts` for the purchase log (§6.10).
 
 ### 3.4 Route-level webhook contract (explicit branching)
 
@@ -787,7 +790,7 @@ The old field name `planId` is renamed to `planKey` (it was always a key). Updat
 
 1. Load `subscription_plans` by `key`; require `is_active`, `price_monthly > 0`, and `for_account_type` null-or-equal to `ctx.accountType`. Free plans are not purchasable (`BAD_REQUEST`), wrong family is `FORBIDDEN`.
 2. `isOrgPlan = plan.for_account_type === 'manager'`.
-3. If org plan: require `orgId`; verify an `org_members` row for `(orgId, ctx.userId)` whose `org_roles.name` passes `isOrgAdminRole`. Reject with `FORBIDDEN` otherwise. Keep the same check as `MockStripeService.assertOrgAdmin`.
+3. If org plan: require `orgId`; verify an `org_members` row for `(orgId, ctx.userId)` whose `org_roles.name` passes `isOrgAdminRole`. Reject with `FORBIDDEN` otherwise. This is `resolveCheckoutOwner` in `lib/payment/checkout-rules.ts`, shared by the row and the mock completion path.
 4. Reject if the owner already has a `billing_subscriptions` row with status `active|trialing|past_due` for the current `livemode` → `CONFLICT`. The UI shows "manage your subscription" instead of a second checkout.
 5. Resolve `stripe_prices` for `(planKey, 'monthly', livemode, active)`; require `currency = plan.currency`, `unit_amount = plan.price_monthly`, `interval = 'month'`. A mismatch is a configuration error → `SERVICE_UNAVAILABLE` + error log (fail closed; never charge a different amount).
 6. Resolve or create the customer (§5.3).
@@ -1016,6 +1019,30 @@ Authorization is deliberately **not** re-checked on the webhook. If an admin is 
 | Test event in a live deployment (or vice versa)      | 400 + alert, no writes                                                                                                   | `livemode` guard                                                               |
 | Customer deleted in Stripe                           | Portal returns `NOT_FOUND`; the next checkout creates a new customer                                                     | Mapping cleanup in Phase 5                                                     |
 
+### 6.10 Mock/Stripe downstream parity (workstream A)
+
+The mock is a non-production contract double, not a second domain implementation. Both drivers must land the same **domain** state:
+
+| Concern               | Shared module                                           | Rule                                                                                                |
+| --------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Plan/owner validation | `lib/payment/checkout-rules.ts`                         | Active, paid, matching account family; org plan requires an explicit id + current `admin`.          |
+| Entitlement write     | `services/entitlement.service.ts`                       | The only writer of `organizations.plan` / `profiles.personal_plan_key`. Mock never writes directly. |
+| Purchase history      | `lib/payment/payment-history.repository.ts`             | One writer, `provider` set explicitly; mock keys on `session_id`, Stripe on `stripe_invoice_id`.    |
+| Provider I/O          | `mock-payment.gateway.ts` / `stripe-payment.gateway.ts` | The gateway never decides domain rules.                                                             |
+
+Both drivers also agree on lifecycle semantics: a **paid** plan writes one purchase row, while a **free** plan is a lifecycle change (Stripe `customer.subscription.deleted`, the mock completion command for the QA downgrade fixture) with no purchase row.
+
+Storage intentionally differs:
+
+- the mock does **not** write `billing_subscriptions` rows; its billing read model is synthesized from the effective entitlement;
+- the mock does **not** use `stripe_webhook_events`; its webhook is one authenticated command whose idempotency is the absolute entitlement write plus the `session_id` unique index;
+- the first Stripe invoice also carries `stripe_checkout_session_id`; mock rows only carry `session_id`;
+- the mock checkout page reuses the `session_id` from the checkout URL, so a reload/double submit replays the same purchase; a `session_id` that already belongs to a different owner or plan is rejected with `CONFLICT` **before** any entitlement write.
+
+**Known mock limitation (non-production only).** The mock has no lifecycle ordering: delaying the same authenticated completion command and replaying it _after_ a newer purchase (or a free-plan change) re-applies the older plan, because the command carries no event timestamp to fence against. Stripe does not have this problem (`stripe_webhook_events` claim/lease plus `billing_subscriptions.last_event_created` freshness CAS). This is acceptable for a contract/test double and is another reason `APP_ENV=production` must reject `PAYMENT_DRIVER=mock`.
+
+The five plan-identity fields of the read model (`planKey`, `planName`, `status`, `priceMonthly`, `currency`) are identical. Period dates, cancel flags, provider actions and `billedPlanKey` are Stripe-only (the mock has no subscription row); the parity suite asserts only the shared fields. `__tests__/integration/stripe-parity.test.ts` proves this against the real database for personal purchase, org purchase, non-admin refusal, wrong-family refusal, replay, manager-plan protection and read-model semantics.
+
 ---
 
 ## 7. Portal and cancel
@@ -1029,7 +1056,7 @@ billingService.createPortalSession(ctx)
 → owner = ctx.accountType === MANAGER && ctx.activeOrgId
     ? { type:'org', orgId: ctx.activeOrgId, … }
     : { type:'user', userId: ctx.userId, … }
-→ if org: assertOrgAdmin(orgId, userId)
+→ if org: re-check `repository.isOrgAdmin(orgId, userId)`
 → customer = billing_customers(owner, livemode) or NOT_FOUND
 → stripe.billingPortal.sessions.create({
     customer,
@@ -1345,6 +1372,15 @@ Use an injected fake `StripeClient`. Suggested files and cases:
 - replay a signed fixture event twice → one entitlement write and one `payments` row;
 - personal vs org entitlement paths;
 - downgrade on `subscription.deleted`.
+
+`__tests__/integration/stripe-parity.test.ts` (workstream A, real DB)
+
+- the same personal/org purchases through the mock driver and a fake Stripe client
+  (signed events) → the same entitlement and exactly one payment row per driver;
+- non-admin org buyer and wrong-family plan → `FORBIDDEN` on both paths;
+- replay → one entitlement, one payment row, per provider uniqueness key;
+- an org purchase never writes the manager's personal plan;
+- the billing read model reports the same plan/status semantics (storage differs).
 
 ### 10.3 Opt-in Stripe test-mode suite
 

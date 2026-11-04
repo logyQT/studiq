@@ -112,21 +112,21 @@ Seed files are located in `supabase/seeds/` and are organized by domain:
 
 ### Billing & Payments
 
-| Table                   | Description                                                                                                                                                                                                                                                           |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `billing_customers`     | One Stripe customer per owner and `livemode` (`user_id` XOR `organization_id`). Never exposed to clients.                                                                                                                                                             |
-| `billing_subscriptions` | Stripe subscription mirror: plan/price key, status, period, cancel/pending flags, `last_event_created` freshness fence. Own-row and org-manager reads (RLS).                                                                                                          |
-| `stripe_prices`         | Plan → Stripe Price map per `(plan_key, billing_cycle, livemode)`; validated on every checkout (amount, currency, monthly interval). No client grants.                                                                                                                |
-| `stripe_webhook_events` | Idempotency/claim/lease table keyed by Stripe `event.id`; stores type/status/error only, never the payload. No client grants.                                                                                                                                         |
-| `payments`              | One row per paid invoice. `provider` is `mock` or `stripe`; the Stripe columns are `stripe_customer_id`, `stripe_subscription_id`, `stripe_invoice_id` (unique), `stripe_checkout_session_id` (unique, create-invoice only), `hosted_invoice_url`, `invoice_pdf_url`. |
+| Table                   | Description                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `billing_customers`     | One Stripe customer per owner and `livemode` (`user_id` XOR `organization_id`). Never exposed to clients.                                                                                                                                                                                                                                                                                                              |
+| `billing_subscriptions` | Stripe subscription mirror: plan/price key, status, period, cancel/pending flags, `last_event_created` freshness fence. Own-row and org-manager reads (RLS).                                                                                                                                                                                                                                                           |
+| `stripe_prices`         | Plan → Stripe Price map per `(plan_key, billing_cycle, livemode)`; validated on every checkout (amount, currency, monthly interval). No client grants.                                                                                                                                                                                                                                                                 |
+| `stripe_webhook_events` | Idempotency/claim/lease table keyed by Stripe `event.id`; stores type/status/error only, never the payload. No client grants.                                                                                                                                                                                                                                                                                          |
+| `payments`              | One row per purchase: a paid invoice for Stripe, one row per mock checkout. `provider` is `mock` or `stripe`; each provider has one replay-safe key (`session_id` for mock, `stripe_invoice_id` for Stripe). The Stripe columns are `stripe_customer_id`, `stripe_subscription_id`, `stripe_invoice_id` (unique), `stripe_checkout_session_id` (unique, create-invoice only), `hosted_invoice_url`, `invoice_pdf_url`. |
 
 RLS: `payments` is own-row readable and has no client write policy;
 `billing_subscriptions` is own-row readable and readable by a manager of the
 subscription's organization (any organization they manage, not just the active
 one). `billing_customers`, `stripe_prices` and `stripe_webhook_events` have
 **no** client grants — all writes go through the service-role client
-(`EntitlementService`, the webhook repository and the mock webhook). Do not add
-a browser-side Supabase client for billing.
+(`EntitlementService`, `payment-history.repository.ts` and the webhook
+repositories). Do not add a browser-side Supabase client for billing.
 
 ### Learning System
 

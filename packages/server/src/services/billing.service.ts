@@ -1,5 +1,4 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
-import { isAccountType } from '@studiq/server/lib/authz';
 import { error as logError, warn as logWarn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import {
@@ -7,6 +6,10 @@ import {
   type BillingReadRepository,
 } from '@studiq/server/lib/payment/billing-read.repository';
 import { billingPath } from '@studiq/server/lib/payment/billing-paths';
+import {
+  resolveCheckoutOwner,
+  resolvePurchasablePlan,
+} from '@studiq/server/lib/payment/checkout-rules';
 import {
   changePlanIdempotencyKey,
   checkoutExpiresAt,
@@ -133,32 +136,20 @@ export class BillingService {
     orgId?: string,
     locale: BillingLocale = 'pl',
   ): Promise<ServiceResult<CheckoutSessionResult>> {
-    const planResult = await this.repository.getPlan(planKey);
-    if (isFailure(planResult)) return planResult;
+    // Plan/owner rules are shared with the mock completion path (workstream A),
+    // so the two drivers cannot drift on what may be bought or by whom.
+    const purchasable = await resolvePurchasablePlan(this.repository, planKey, ctx.accountType);
+    if (isFailure(purchasable)) return purchasable;
 
-    const plan = planResult.data;
-    if (!plan || !plan.isActive || plan.priceMonthly <= 0) return failure('BAD_REQUEST');
-    if (
-      plan.forAccountType &&
-      (!isAccountType(plan.forAccountType) || plan.forAccountType !== ctx.accountType)
-    ) {
-      return failure('FORBIDDEN');
-    }
-
-    const isOrgPlan = plan.forAccountType === AccountType.MANAGER;
-    let owner: PaymentOwner;
-
-    if (isOrgPlan) {
-      if (!orgId) return failure('BAD_REQUEST');
-
-      const admin = await this.repository.isOrgAdmin(orgId, ctx.userId);
-      if (isFailure(admin)) return admin;
-      if (!admin.data) return failure('FORBIDDEN');
-
-      owner = { type: 'org', orgId, userId: ctx.userId, accountType: ctx.accountType };
-    } else {
-      owner = { type: 'user', userId: ctx.userId, accountType: ctx.accountType };
-    }
+    const plan = purchasable.data.plan;
+    const ownerResult = await resolveCheckoutOwner(
+      this.repository,
+      purchasable.data,
+      { userId: ctx.userId, accountType: ctx.accountType },
+      orgId,
+    );
+    if (isFailure(ownerResult)) return ownerResult;
+    const owner = ownerResult.data;
 
     let priceId: string | undefined;
     if (this.gateway.driver === 'stripe') {
@@ -386,26 +377,20 @@ export class BillingService {
   ): Promise<ServiceResult<ChangePlanResult>> {
     if (this.gateway.driver === 'mock') return failure('NOT_FOUND');
 
-    const targetResult = await this.repository.getPlan(targetPlanKey);
+    const targetResult = await resolvePurchasablePlan(
+      this.repository,
+      targetPlanKey,
+      ctx.accountType,
+    );
     if (isFailure(targetResult)) return targetResult;
 
-    const target = targetResult.data;
-    if (!target || !target.isActive || target.priceMonthly <= 0) return failure('BAD_REQUEST');
-
+    const target = targetResult.data.plan;
     const owner = ownerFromContext(ctx);
-    const targetIsOrgPlan = target.forAccountType === AccountType.MANAGER;
 
     // A plan belongs to exactly one family; an organization plan can never be
     // attached to a personal owner (and vice versa), even if a caller guesses
     // the key.
-    if (targetIsOrgPlan !== (owner.type === 'org')) return failure('FORBIDDEN');
-    if (
-      !targetIsOrgPlan &&
-      target.forAccountType &&
-      (!isAccountType(target.forAccountType) || target.forAccountType !== ctx.accountType)
-    ) {
-      return failure('FORBIDDEN');
-    }
+    if (targetResult.data.isOrgPlan !== (owner.type === 'org')) return failure('FORBIDDEN');
 
     if (owner.type === 'org') {
       const admin = await this.repository.isOrgAdmin(owner.orgId, ctx.userId);

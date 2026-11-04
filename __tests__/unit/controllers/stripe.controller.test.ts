@@ -150,8 +150,20 @@ describe('StripeController', () => {
 
     it('passes org_id through when present', async () => {
       gateway.handleWebhook.mockResolvedValueOnce({ success: true, data: { received: true } });
-      await controller.handleWebhook(mockCtx, { ...validEvent, org_id: 'org-1' });
-      expect(gateway.handleWebhook.mock.calls[0][0].event).toMatchObject({ org_id: 'org-1' });
+      await controller.handleWebhook(mockCtx, {
+        ...validEvent,
+        org_id: '00000000-0000-4000-8000-000000000001',
+      });
+      expect(gateway.handleWebhook.mock.calls[0][0].event).toMatchObject({
+        org_id: '00000000-0000-4000-8000-000000000001',
+      });
+    });
+
+    it('rejects a malformed org_id with 400 instead of a database error', async () => {
+      const response = await controller.handleWebhook(mockCtx, { ...validEvent, org_id: 'org-1' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(400);
+      expect(gateway.handleWebhook).not.toHaveBeenCalled();
     });
 
     it('returns 403 when the plan is not meant for the account type', async () => {

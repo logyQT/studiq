@@ -68,6 +68,9 @@ export function CheckoutMockForm() {
   const router = useRouter();
   const planId = searchParams.get('plan_id')?.trim() || null;
   const orgId = searchParams.get('org_id')?.trim() || null;
+  // The provider-issued session id: reusing it makes a double submit / reload
+  // replay the same purchase instead of creating a second payment row.
+  const sessionId = searchParams.get('session_id')?.trim() || null;
   const canceled = searchParams.get('canceled') === '1';
   const { user, isLoading: isAuthLoading } = useAuth();
 
@@ -130,7 +133,7 @@ export function CheckoutMockForm() {
     try {
       await apiPost('/api/v1/stripe/webhook', {
         type: 'checkout.session.completed',
-        session_id: crypto.randomUUID(),
+        session_id: sessionId ?? crypto.randomUUID(),
         plan_id: planId,
         user_id: user.id,
         ...(resolvedOrgId ? { org_id: resolvedOrgId } : {}),

@@ -31,7 +31,7 @@ export const MockWebhookEventSchema = registry.register(
     session_id: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }),
     plan_id: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }),
     user_id: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }),
-    org_id: z.string().optional(),
+    org_id: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
   }),
 );
 export type MockWebhookEventInput = z.infer<typeof MockWebhookEventSchema>;

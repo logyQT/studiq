@@ -8,7 +8,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createPort(): MockStripePort {
   return {
-    createCheckoutSession: vi.fn(),
     handleWebhook: vi.fn(),
   };
 }
@@ -40,41 +39,8 @@ describe('MockPaymentGateway', () => {
     expect(gateway.livemode).toBe(false);
   });
 
-  it('delegates checkout with the authenticated actor and target org', async () => {
-    const result = { url: '/checkout?plan_id=hub&org_id=org-1', sessionId: 's-1' };
-    vi.mocked(port.createCheckoutSession).mockResolvedValueOnce(success(result));
-
-    await expect(
-      gateway.createCheckoutSession({
-        owner: {
-          type: 'org',
-          orgId: 'org-1',
-          userId: 'u-1',
-          accountType: AccountType.MANAGER,
-        },
-        planKey: 'hub',
-        planName: 'StudiQ Hub',
-        amount: 4999,
-        currency: 'PLN',
-        billingCycle: 'monthly',
-        idempotencyKey: 'checkout-key',
-      }),
-    ).resolves.toEqual(success(result));
-
-    expect(port.createCheckoutSession).toHaveBeenCalledWith(
-      'hub',
-      AccountType.MANAGER,
-      'u-1',
-      'org-1',
-    );
-  });
-
-  it('passes no org for a personal plan', async () => {
-    vi.mocked(port.createCheckoutSession).mockResolvedValueOnce(
-      success({ url: '/checkout?plan_id=spark', sessionId: 's-1' }),
-    );
-
-    await gateway.createCheckoutSession({
+  it('builds a local checkout URL for a personal plan', async () => {
+    const result = await gateway.createCheckoutSession({
       owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
       planKey: 'spark',
       planName: 'StudiQ Spark',
@@ -84,12 +50,40 @@ describe('MockPaymentGateway', () => {
       idempotencyKey: 'checkout-key',
     });
 
-    expect(port.createCheckoutSession).toHaveBeenCalledWith(
-      'spark',
-      AccountType.STUDENT,
-      'u-1',
-      undefined,
-    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const url = new URL(result.data.url);
+    expect(url.pathname).toBe('/checkout');
+    expect(url.searchParams.get('plan_id')).toBe('spark');
+    expect(url.searchParams.get('session_id')).toBe(result.data.sessionId);
+    expect(url.searchParams.get('org_id')).toBeNull();
+    // The provider-only adapter performs no domain validation or DB write.
+    expect(port.handleWebhook).not.toHaveBeenCalled();
+  });
+
+  it('carries the organization id for an org plan', async () => {
+    const result = await gateway.createCheckoutSession({
+      owner: {
+        type: 'org',
+        orgId: 'org-1',
+        userId: 'u-1',
+        accountType: AccountType.MANAGER,
+      },
+      planKey: 'hub',
+      planName: 'StudiQ Hub',
+      amount: 29900,
+      currency: 'PLN',
+      billingCycle: 'monthly',
+      idempotencyKey: 'checkout-key',
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const url = new URL(result.data.url);
+    expect(url.searchParams.get('plan_id')).toBe('hub');
+    expect(url.searchParams.get('org_id')).toBe('org-1');
   });
 
   it('returns the account-type-aware local page as the mock portal', async () => {
@@ -100,7 +94,6 @@ describe('MockPaymentGateway', () => {
     });
 
     expect(result).toEqual(success({ url: 'http://localhost:3000/app/billing' }));
-    expect(port.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it('maps a mock webhook envelope onto the authenticated service call', async () => {
