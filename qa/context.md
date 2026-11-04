@@ -78,11 +78,11 @@ All seeded accounts use the password `pass`. QA slots run a production build, so
 
 ### Plans (prices are stored in grosze in the database)
 
-| Type         | Free                         | Basic (9.99 zł) | Premium (19.99 zł)            | Advanced (49.99 zł)          |
-| ------------ | ---------------------------- | --------------- | ----------------------------- | ---------------------------- |
-| Student      | Base                         | Spark           | Ace (AI, advanced statistics) | Pro (no limits)              |
-| Educator     | Lite (groups 1, students 5)  | Guide           | Creator (AI)                  | Master (roles, no limits)    |
-| Organization | Launch (groups 3, members 5) | Team            | Hub (AI, roles, branding)     | Campus (no limits, branding) |
+| Type         | Free                         | Entry          | Mid                                    | Top                                 |
+| ------------ | ---------------------------- | -------------- | -------------------------------------- | ----------------------------------- |
+| Student      | Base                         | Spark 9.99 zł  | Ace 19.99 zł (AI, advanced statistics) | Pro 39.99 zł (no limits)            |
+| Educator     | Lite (groups 1, students 5)  | Guide 19.99 zł | Creator 39.99 zł (AI)                  | Master 79.99 zł (roles, no limits)  |
+| Organization | Launch (groups 3, members 5) | Team 99 zł     | Hub 299 zł (AI, roles, branding)       | Campus 699 zł (no limits, branding) |
 
 # 3. How to use this document
 

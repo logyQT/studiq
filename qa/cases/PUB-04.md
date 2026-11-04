@@ -45,7 +45,7 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
 
 ## Expected result
 
-- Ceny zgodne z konfiguracją: Base 0 zł; Spark 9,99 zł; Ace 19,99 zł; Pro 49,99 zł /miesiąc (wartości wyświetlane z groszy: 999 → 9,99).
+- Ceny zgodne z konfiguracją: Base 0 zł; Spark 9,99 zł; Ace 19,99 zł; Pro 39,99 zł /miesiąc (wartości wyświetlane z groszy: 999 → 9,99).
 - Funkcje: Base – Fiszki, Testy; Ace/Pro – dodatkowo Asystent AI i Zaawansowane Statystyki.
 - Limity wyświetlane czytelnie, „Bez ograniczeń” dla wartości -1.
 - CTA różni się per plan (np. „Zacznij za Darmo”, „Przejdź na Spark”, „Wybierz Ace”, „Wybierz Pro”).

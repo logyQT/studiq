@@ -65,13 +65,13 @@ Confirmed end to end on this case's tenant:
 
 - `/pricing/org` lists Launch as „Obecny Plan” and offers „Wybierz Hub”; the CTA
   creates a checkout session for the tenant's organization, and `/checkout`
-  shows „Dla: <organizacja>”, „StudiQ Hub”, 19,99 zł/mies., „Razem” and the
+  shows „Dla: <organizacja>”, „StudiQ Hub”, 299 zł/mies., „Razem” and the
   „Zabezpieczone przez StudiQ Pay…” warning.
 - Paying with the test card shows „Płatność udana! Przekierowywanie...”, then
   „Zakup udany!”, then the manager panel.
 - `GET /api/v1/organization/<id>` reports `plan: "hub"`, `GET /api/v1/me/plan`
   reports Hub with the `branding` and `role.builder` features, and
-  `GET /api/v1/me/payments` gains one Hub row (19,99 PLN).
+  `GET /api/v1/me/payments` gains one Hub row (299 PLN).
 - `/manage/settings` shows „StudiQ Hub” and the unlocked controls („Wgraj logo”,
   „Kolor marki”) — the „Własny branding” lock card is gone.
 - `/manage/roles` shows „Nowa rola” — the „Kreator ról nie jest dostępny w Twoim

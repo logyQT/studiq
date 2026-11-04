@@ -101,6 +101,9 @@ constructed lazily on the first request, not at module import.
 bun scripts/stripe-bootstrap.ts --check
 # Test-mode run (APP_ENV must be development/test/qa):
 APP_ENV=development bun scripts/stripe-bootstrap.ts
+# After ANY catalog price change, re-run the test-mode write (not just
+# --check): stripe_prices must rotate to the new amount or Stripe checkout
+# fails closed with SERVICE_UNAVAILABLE.
 # Live run (operator only, APP_ENV=production, --live):
 bun scripts/stripe-bootstrap.ts --live
 # prints STRIPE_PORTAL_CONFIGURATION_ID=bpc_…
@@ -166,10 +169,104 @@ tax, handles fraud/disputes and provides transaction support through Link.
 #### Portal configuration
 
 The bootstrap creates the `StudiQ` Billing Portal configuration: payment-method
-update, invoice history, cancel-at-period-end and tax-id update are enabled;
-**plan switching is deliberately disabled**, because upgrades/downgrades go
-through `/api/v1/billing/change-plan` (anchor reset / period-end schedule).
+update, invoice history and cancel-at-period-end are enabled (tax-ID collection
+belongs to Managed Payments); **plan switching is deliberately disabled**,
+because upgrades/downgrades go through `/api/v1/billing/change-plan` (anchor
+reset / period-end schedule).
 Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
+
+#### Production live bootstrap (operator only)
+
+Never run `--live` from a developer machine, never paste a key into a shell, and
+never commit the output. Do this in the production secret environment after the
+approved price ladder is in the production catalog.
+
+This is a **hard cutover**: the app refuses to boot until the live Stripe
+configuration exists, and Stripe-mode checkout fails closed while the catalog
+and live Prices disagree. Run the whole sequence in one maintenance window. If a
+live deployment already serves checkout (a re-run), disable the checkout CTA or
+use a maintenance page **before step 0** and keep it disabled until step 3
+passes.
+
+Preconditions:
+
+- Managed Payments is enabled in the **live** Dashboard and its terms are
+  accepted; the chosen `STRIPE_PRODUCT_TAX_CODE` is labelled "Eligible for
+  Managed Payments" and `STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1` is set.
+- `APP_ENV=production`, `NEXT_PUBLIC_SITE_URL=https://…` and a live restricted
+  key `rk_live_…` are available in the production secret store. Minimum scopes:
+  Checkout Sessions (write), Billing Portal Sessions (write), Billing Portal
+  Configurations (write), Customers (write), Subscriptions (write), Subscription
+  Schedules (write), Products/Prices (write for the bootstrap, read for runtime),
+  Tax Codes (read for the bootstrap), Invoices (read).
+- The production database is reachable from the bootstrap environment:
+  `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (the script reads
+  `subscription_plans` and writes `stripe_prices`).
+- This release's migrations are applied to the production database **before**
+  `--live` (it writes `stripe_prices`, which those migrations create). Deploying
+  schema is separate from deploying the app binary.
+- The production `subscription_plans` rows carry the approved ladder. The seed
+  (`supabase/seeds/00_plans.sql`) is for a **new, empty** project only: it
+  deletes and re-inserts the catalog and will hit FKs once accounts exist. For
+  an existing catalog, run this UPDATE and confirm it returns exactly 9 rows:
+
+  ```sql
+  UPDATE public.subscription_plans AS p
+  SET price_monthly = v.amount, updated_at = now()
+  FROM (VALUES
+    ('spark', 999), ('ace', 1999), ('pro', 3999),
+    ('guide', 1999), ('creator', 3999), ('master', 7999),
+    ('team', 9900), ('hub', 29900), ('campus', 69900)
+  ) AS v(key, amount)
+  WHERE p.key = v.key
+  RETURNING p.key, p.price_monthly;
+  ```
+
+Steps:
+
+0. Apply this release's migrations to the production database (for a Supabase
+   project: `bunx supabase db push --remote --yes`), then run the catalog UPDATE
+   above in the same window. Do not leave the catalog and the live Prices
+   mismatched between steps.
+1. `bun scripts/stripe-bootstrap.ts --check` in the production secret environment
+   (read-only: it reads `subscription_plans` and makes no Stripe calls). Confirm
+   the 9 amounts and the tax-code line. Any additional active paid plan (a
+   legacy catalog row) must be deactivated first.
+2. `bun scripts/stripe-bootstrap.ts --live`. It requires `--live`, a live
+   `rk_live_`/`sk_live_` key, `APP_ENV=production`, an `https://` non-localhost
+   site URL, `STRIPE_PRODUCT_TAX_CODE` and
+   `STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1`. It creates/rotates the StudiQ Products,
+   tax-inclusive Prices and the portal configuration, and prints
+   `STRIPE_PORTAL_CONFIGURATION_ID=bpc_…`.
+3. Verify before deploying:
+   - 9 active `stripe_prices` rows with `livemode = true` whose amounts match the
+     catalog;
+   - every StudiQ Product (`metadata.studiq_plan_key`) carries the tax code;
+   - every Price referenced by those 9 rows has `tax_behavior = 'inclusive'`;
+   - the printed portal configuration is active, `livemode`, and belongs to this
+     account.
+4. Create the live Dashboard webhook endpoint
+   `https://<site>/api/v1/stripe/webhook` with
+   `checkout.session.completed`, `checkout.session.expired`,
+   `customer.subscription.created/updated/deleted`, `invoice.paid`,
+   `invoice.payment_failed`, `invoice.payment_action_required`. Copy its
+   `whsec_…` into the secret store (never into a shell log).
+5. Put the runtime variables (`APP_ENV=production`, `PAYMENT_DRIVER=stripe` or
+   unset, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+   `STRIPE_PORTAL_CONFIGURATION_ID`, the site URL) into the production secret
+   store, then deploy. The two tax-code variables are bootstrap-only and are not
+   read at runtime. On the container/VM path `bun run start` runs the payment
+   preflight and must print `provider=stripe livemode=true`; on Vercel (which
+   does not use root `start`) verify `payment.gateway_ready` in the configured
+   OTLP log backend, or in Vercel Runtime Logs when `OTEL_SDK_DISABLED=true`
+   (the deployment/build log is not the runtime log source).
+6. If a key or the webhook secret is ever exposed, rotate it in the Dashboard and
+   restart; never reuse a leaked value.
+
+Rollback is **not** a driver flip: roll back the release, disable the checkout
+CTA/maintenance-page if needed, and keep the webhook endpoint and
+`STRIPE_WEBHOOK_SECRET` valid while any active subscription or pending delivery
+still depends on them (a release rollback does not cancel subscriptions).
 
 #### Livemode separation
 
@@ -194,8 +291,8 @@ Production **never** switches to the mock driver: `APP_ENV=production` +
    a maintenance page. That stops new sessions only; it must not change
    `PAYMENT_DRIVER` and must not stop the webhook endpoint. (A dedicated
    driver-independent kill switch is planned in #662 workstream E.)
-3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled until
-   the last in-flight subscription is canceled.
+3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled while
+   any active subscription or pending delivery still depends on them.
 4. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
    `stripe_webhook_events` or `payments` rows. Never hand-edit
    `profiles.personal_plan_key` / `organizations.plan` while the webhook is live.

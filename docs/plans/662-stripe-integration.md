@@ -1,7 +1,7 @@
 # Real Stripe integration behind the payment interface (#662)
 
 **Date:** 2026-10-30
-**Status:** Implemented through phase 5 (gateway seam, hosted Checkout, signed webhook + entitlement sync, portal, shared read model, success-page reconcile, plan change/cancel, billing UI, docs + opt-in test-clock lifecycle suite) plus phase-6 workstreams A (mock/Stripe parity), B (`APP_ENV` fail-closed contract) and C (Managed Payments + tax-inclusive prices). Workstreams D–F (prices, ops, team secrets) are pending. **Production uses Stripe only**; the mock is an explicit non-production contract/test double, and `NODE_ENV` is never used as the posture.
+**Status:** Implemented through phase 5 (gateway seam, hosted Checkout, signed webhook + entitlement sync, portal, shared read model, success-page reconcile, plan change/cancel, billing UI, docs + opt-in test-clock lifecycle suite) plus phase-6 workstreams A (mock/Stripe parity), B (`APP_ENV` fail-closed contract), C (Managed Payments + tax-inclusive prices) and D (approved price ladder + live runbook). Workstreams E–F (ops, team secrets) are pending. **Production uses Stripe only**; the mock is an explicit non-production contract/test double, and `NODE_ENV` is never used as the posture.
 **Issue:** [#662](https://github.com/logyQT/studiq/issues/662) (ROADMAP Phase 6)
 **Scope owner:** SoCoCold (Alan) per the issue body; the issue currently has no GitHub assignee
 
@@ -30,23 +30,24 @@
 
 ### Decisions (operator answers, 2026-10-30)
 
-| #   | Decision             | Choice                                                                                                                                                                                                                                                          |
-| --- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | Billing cadence      | **Monthly only.** Lookup key encodes `_monthly`; yearly can be added later.                                                                                                                                                                                     |
-| D2  | Currency             | **PLN only**, matching the catalog (`999` = 9.99 PLN). Assert plan currency == price currency.                                                                                                                                                                  |
-| D3  | Org customer         | **The organization owns the Stripe Customer** (`metadata.org_id`). **Any current org admin** may open the Billing Portal.                                                                                                                                       |
-| D4  | Seat quantity        | **Quantity 1 per org plan.** Do not derive quantity from member count.                                                                                                                                                                                          |
-| D5  | Plan changes         | First purchase = Checkout. **Upgrades in-app**: reset the billing cycle, credit unused time, charge the full new period now. **Downgrades at period end.**                                                                                                      |
-| D6  | Cancel               | **At period end**; the user may **reactivate** before it takes effect. Immediate cancel only as an admin/ops action.                                                                                                                                            |
-| D7  | Payment types        | **Subscriptions only.**                                                                                                                                                                                                                                         |
-| D8  | Extras               | **No trials, no coupons.** Managed Payments is the merchant of record and handles indirect tax; `automatic_tax` / `tax_id_collection` must be absent from the session. Prices are tax-inclusive (`tax_behavior: 'inclusive'`). Invoices are Stripe/Link-hosted. |
-| D9  | Portal actions       | **Payment method, invoice history, cancel at period end, customer email/address.** No `subscription_update`, no portal tax-ID collection (Managed Payments owns it).                                                                                            |
-| D10 | Products & prices    | **Idempotent bootstrap script + DB price map** (`stripe_prices`); no price IDs in env or git.                                                                                                                                                                   |
-| D11 | Entitlement source   | **Combination, one job each:** `checkout.session.completed` activates, `customer.subscription.*` owns lifecycle, `invoice.paid` writes history.                                                                                                                 |
-| D12 | Payment history      | **One row per paid invoice** + `hosted_invoice_url` link. Mock keeps one row per checkout.                                                                                                                                                                      |
-| D13 | Mock/CI default      | **Mock is the default** in dev, CI, QA and preview. Stripe test-mode calls are opt-in (`RUN_STRIPE_TESTS=1`).                                                                                                                                                   |
-| D14 | Failed payment grace | **Status-driven:** keep access while `past_due`, revoke on `unpaid` / `canceled` / `incomplete_expired` / `subscription.deleted`. No local timer.                                                                                                               |
-| D15 | Webhook tooling      | **Stripe Dashboard/CLI replay only**; idempotency table makes replay safe.                                                                                                                                                                                      |
+| #   | Decision                  | Choice                                                                                                                                                                                                                                                                         |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | Billing cadence           | **Monthly only.** Lookup key encodes `_monthly`; yearly can be added later.                                                                                                                                                                                                    |
+| D2  | Currency                  | **PLN only**, matching the catalog (`999` = 9.99 PLN). Assert plan currency == price currency.                                                                                                                                                                                 |
+| D3  | Org customer              | **The organization owns the Stripe Customer** (`metadata.org_id`). **Any current org admin** may open the Billing Portal.                                                                                                                                                      |
+| D4  | Seat quantity             | **Quantity 1 per org plan.** Do not derive quantity from member count.                                                                                                                                                                                                         |
+| D5  | Plan changes              | First purchase = Checkout. **Upgrades in-app**: reset the billing cycle, credit unused time, charge the full new period now. **Downgrades at period end.**                                                                                                                     |
+| D6  | Cancel                    | **At period end**; the user may **reactivate** before it takes effect. Immediate cancel only as an admin/ops action.                                                                                                                                                           |
+| D7  | Payment types             | **Subscriptions only.**                                                                                                                                                                                                                                                        |
+| D8  | Extras                    | **No trials, no coupons.** Managed Payments is the merchant of record and handles indirect tax; `automatic_tax` / `tax_id_collection` must be absent from the session. Prices are tax-inclusive (`tax_behavior: 'inclusive'`). Invoices are Stripe/Link-hosted.                |
+| D9  | Portal actions            | **Payment method, invoice history, cancel at period end, customer email/address.** No `subscription_update`, no portal tax-ID collection (Managed Payments owns it).                                                                                                           |
+| D10 | Products & prices         | **Idempotent bootstrap script + DB price map** (`stripe_prices`); no price IDs in env or git.                                                                                                                                                                                  |
+| D11 | Entitlement source        | **Combination, one job each:** `checkout.session.completed` activates, `customer.subscription.*` owns lifecycle, `invoice.paid` writes history.                                                                                                                                |
+| D12 | Payment history           | **One row per paid invoice** + `hosted_invoice_url` link. Mock keeps one row per checkout.                                                                                                                                                                                     |
+| D13 | Mock/CI default           | **Mock is the default** in dev, CI, QA and preview. Stripe test-mode calls are opt-in (`RUN_STRIPE_TESTS=1`).                                                                                                                                                                  |
+| D14 | Failed payment grace      | **Status-driven:** keep access while `past_due`, revoke on `unpaid` / `canceled` / `incomplete_expired` / `subscription.deleted`. No local timer.                                                                                                                              |
+| D15 | Webhook tooling           | **Stripe Dashboard/CLI replay only**; idempotency table makes replay safe.                                                                                                                                                                                                     |
+| D16 | Price ladder (2026-11-04) | **Approved flat monthly PLN, tax-inclusive:** student Spark 9.99 / Ace 19.99 / Pro 39.99; educator Guide 19.99 / Creator 39.99 / Master 79.99; org Team 99 / Hub 299 / Campus 699. The seed is for a new project; production uses the reviewed UPDATE in `docs/deployment.md`. |
 
 ### Design decisions made here (not operator policy)
 
@@ -1236,6 +1237,11 @@ PAYMENT_DRIVER=mock
 STRIPE_SECRET_KEY=rk_test_...   # sk_test_ also accepted
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
+
+# Bootstrap-only (not read at runtime): an eligible Managed Payments tax code
+# and the explicit confirmation that it carries the eligible label.
+STRIPE_PRODUCT_TAX_CODE=txcd_...
+STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1
 ```
 
 - No `NEXT_PUBLIC_*` Stripe key is needed: hosted Checkout and the hosted Portal mean **no Stripe.js in the bundle**.
@@ -1489,7 +1495,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 2. **Do not revert the migrations** and **do not delete** `billing_*`, `stripe_prices`, `stripe_webhook_events` or `payments` rows.
 3. To stop new checkouts, disable the checkout CTA or use a maintenance page. This must not change `PAYMENT_DRIVER` and must not stop the webhook endpoint. (A driver-independent kill switch is planned in workstream E.)
 4. To unwind a Stripe entitlement, cancel the subscription in Stripe and let `customer.subscription.deleted` downgrade to free — never hand-edit `profiles.personal_plan_key` while the webhook is live.
-5. Keep `STRIPE_WEBHOOK_SECRET` valid until the last in-flight subscription is canceled.
+5. Keep `STRIPE_WEBHOOK_SECRET` valid while any active subscription or pending delivery still depends on the webhook.
 
 ---
 
