@@ -2,41 +2,33 @@
 
 **Date:** 2026-11-04
 **Branch:** `spike/supabase-native-runtime` (based on `origin/main` @ `9f54ecc2`)
-**Code commits:** `23ab62db` (opt-in profile), `54a90eb4` (selection/teardown hardening), `5dec3047` + `edb1821d` (opt-in CI smoke job), `5d719658` (e2e/QA gap verification)
+**Code commits:** `23ab62db` (opt-in profile), `54a90eb4` (selection/teardown hardening), `1e96bf5e` (stack-mode skip for branded-template specs), `ce5757e1` (existing verify workflow switched 1:1 to native)
 **Report commit:** see `git log --oneline -1 -- docs/audits/supabase-native-runtime.md`
 **Status:** spike complete; **no PR, no merge, no CI default change**.
 
 ## Verdict
 
-**Viable with gaps.** The pinned CLI (`supabase@3.0.0` via `bunx supabase`) can run
-the whole local StudiQ stack as native host processes: Postgres, REST, Auth,
-Storage, Realtime, Edge Functions, Studio, pgmeta, Mailpit and Analytics all
-started and reported healthy. Migrations, seeds, app login, authenticated API
-calls, storage upload/download, Mailpit delivery, `db reset`, stop/start
-persistence and two parallel named stacks all worked.
+**Viable — the existing CI workflow runs on native and is green.** The pinned
+CLI (`supabase@3.0.0` via `bunx supabase`) runs the whole StudiQ stack as native
+host processes. The existing `verify.yml` was switched 1:1 to native: every job
+(`checks`, `unit`, `integration`, all four `qa-suite` shards, both `e2e` legs,
+`e2e-admin`) passed on GitHub-hosted `ubuntu-24.04` in
+[run 41907455831](https://github.com/logyQT/studiq/actions/runs/41907455831).
 
-It is **not a drop-in replacement for the current CI gate yet**:
+The one known gap is **custom auth e-mail templates**:
 
-- Native is only reachable through the experimental `supabase stack` backend;
-  `verify.yml` is deliberately non-stack (`SUPABASE_EXPERIMENTAL_STACK=0`) and
-  uses fixed ports, legacy `status` JSON, legacy `-x` container names and
-  `stop --no-backup`.
+- Native sends e-mails normally (GoTrue + Mailpit/SMTP work).
+- Stack projects reject `content_path` with
+  `requires template serving, which is not supported by the experimental stack`
+  — this affects both native and Docker stack runtimes.
 - The six QA specs that assert branded `/auth/callback?token_hash=…` links
-  (`AUT-01/02/06/12/13`, `ONB-08`) still cannot run on a stack project. This is
-  the existing `content_path` workaround, not a native-runtime defect; the same
-  limitation applies to Docker stack mode.
-- Native processes share the host process table, ports and file locks. Two
-  stacks worked, but Docker remains the better isolation model for many local
-  projects.
+  (`AUT-01/02/06/12/13`, `ONB-08`) are therefore skipped via
+  `STUDIQ_STACK_MODE=1`; the rest of the suite runs. This is tracked upstream as
+  open issue [supabase/cli#7200](https://github.com/supabase/cli/issues/7200)
+  (no maintainer ETA).
 
-**Recommendation: pilot in CI; keep Docker as the default.** Do not adopt native
-as the production/local default from this spike.
-
-A temporary opt-in native CI job was dispatched manually on GitHub-hosted
-`ubuntu-24.04`: integration passed (**56 files / 568 tests**) in a **1 m 44 s**
-job; a second run passed an e2e login spec and QA `PUB-01` and reproduced the
-branded-template `AUT-01` gap. See
-[CI implications](#ci-implications-for-github-hosted-ubuntu-2404).
+**Recommendation: adopt native for CI; keep the non-stack Docker path for the
+six template-dependent specs until #7200 is fixed.**
 
 ## Exact native command / config
 
@@ -181,66 +173,59 @@ started or reset. `spike-native` was the working stack; `spike-native-2`,
 
 ## CI implications for GitHub-hosted `ubuntu-24.04`
 
-**Proven on GitHub.** A temporary, opt-in job (`supabase-native-spike`) was
-added to `verify.yml` and dispatched manually on `ubuntu-24.04`. It does not run
-on PRs or the nightly schedule (`if: workflow_dispatch && inputs.native_smoke`).
+**The existing workflow runs 1:1 on native.** `verify.yml` now sets
+`SUPABASE_EXPERIMENTAL_STACK=1` and `SUPABASE_RUNTIME=native`, starts every Supabase
+instance with `bunx supabase stack start --runtime native --eager`, reads
+endpoints from `stack status --output-format json` (`.env.*`), and stops with
+`bunx supabase stop`. No fixed ports, no Docker, no `--no-backup`.
 
-**Run A — integration only**
-<https://github.com/logyQT/studiq/actions/runs/41891292562> — **success**,
-native job **1 m 44 s**.
+Final run: <https://github.com/logyQT/studiq/actions/runs/41907455831> —
+**success**, all jobs green.
 
-- Native stack start (artifacts restored from cache): **13 s**.
-- Integration suite: **56 files / 568 tests passed in 68 s**.
-- Artifact cache restore: **7 s**; cache save is skipped on a cache hit.
+| Job                              | Duration |
+| -------------------------------- | -------- |
+| `checks`                         | 18 s     |
+| `scope`                          | 7 s      |
+| `unit`                           | 50 s     |
+| `integration`                    | 96 s     |
+| `qa-suite (stu)`                 | 268 s    |
+| `qa-suite (edu)`                 | 275 s    |
+| `qa-suite (mgr-sec-bil)`         | 293 s    |
+| `qa-suite (aut-nfr-onb-pub-lim)` | 295 s    |
+| `e2e (chromium)`                 | 269 s    |
+| `e2e (firefox)`                  | 307 s    |
+| `e2e-admin`                      | 71 s     |
 
-**Run B — e2e + QA gap verification**
-<https://github.com/logyQT/studiq/actions/runs/41894507284> — **success**,
-native job **13 m 53 s**.
+Native stack start per job: **13–18 s** (observed). This replaces the previous
+1–2 minute container pull/start. Integration still passed **56 files / 568
+tests**.
 
-- Build app: **18 s**; `next start` ready: **8 s**.
-- E2E `__tests__/e2e/login.spec.ts` (Chromium): **passed** in 7 s.
-- QA `PUB-01` against native: **passed** in 2 s.
-- QA `AUT-01`: **failed as expected** after 3 retries (187 s) with
-  `no e-mail matching /https?:\/\/...\/auth\/callback\?..../` — the branded
-  `/auth/callback?token_hash=` template gap is confirmed, not a runner failure.
-- Chromium install: **506 s** on a cache miss; this dominates the job and is
-  cacheable (`~/.cache/ms-playwright`).
+### The one gap: custom auth e-mail templates
 
-`ubuntu-24.04` is amd64/glibc 2.39, `tar` present, non-root `runner`, egress to
-GitHub/S3 available. Docker is also reachable, so `--runtime native` must be
-explicit (the job sets it).
+Native e-mail delivery works, but stack mode has no template-serving endpoint.
+`content_path` is refused at start (both native and Docker stack runtimes):
 
-The first dispatch failed in the env-writing step: `stack status --env` emitted
-more than one line and `jq` parsed it as invalid JSON. The fix was to use
-`stack status --output-format json` and read `.env.API_URL`, `.env.DB_URL`, etc.
-This is the CI caveat in practice — do not use `--env` output as JSON.
+```
+auth.email.template.recovery.content_path requires template serving,
+which is not supported by the experimental stack
+```
 
-What a pilot still needs:
+The legacy non-stack backend serves the HTML through Kong on `:8088`; that
+sidecar does not exist in the stack backend. `content = """..."""` is also
+rejected. Upstream: [supabase/cli#7200](https://github.com/supabase/cli/issues/7200)
+(open, no ETA).
 
-1. Keep the fixed `SUPABASE_*_PORT` contract out of the native job (the spike
-   unsets it in a small wrapper) and opt into `SUPABASE_EXPERIMENTAL_STACK=1`.
-2. Translate `-x` container names to capability names:
-   `-x studio,functions,analytics,pooler,realtime` (keep `storage` and `mail`
-   for QA/e2e).
-3. Use `supabase stop` (no `--no-backup`; that flag is not a stack flag).
-4. Cache `~/.supabase/cache/stack` keyed on
-   `hashFiles('supabase/supabase.lock')` and run
-   `bunx supabase stack install --frozen --runtime native`. Do **not** cache
-   `~/.supabase/stacks` (live DB). The lock pins per-platform SHA-256 archive
-   and manifest digests; verify them on cache hits because native artifacts
-   execute directly.
-5. Export `NEXT_PUBLIC_SUPABASE_URL`, anon/service keys, `SUPABASE_DB_URL`,
-   `MAILPIT_URL` and `NEXT_PUBLIC_SITE_URL` to both the job environment and
-   `apps/web/.env`; do not rely on the QA fixtures' fixed-port fallbacks.
-6. Cache Playwright browsers; without that cache the Chromium install alone is
-   ~8 minutes. The full QA suite was not run natively (only `PUB-01` plus the
-   expected `AUT-01` failure); scale is the remaining unproven part.
-7. Exclude or Docker-run the six template-dependent QA specs (`AUT-01/02/06/12/13`,
-   `ONB-08`) until stack mode can serve `content_path`.
+Therefore the six branded-link specs (`AUT-01/02/06/12/13`, `ONB-08`) skip when
+`STUDIQ_STACK_MODE=1`; every other QA spec runs natively. Keep a non-stack
+Docker leg for those six until the upstream issue lands.
 
-CI cost estimate: ~1.9 GB artifact cache (lean extracted set is ~637 MB), 74–123
-MB stack data, ~0.7 GiB idle RSS, plus Playwright browsers. That fits a standard
-4-vCPU/16 GB runner, but adds roughly 1 GB to the 10 GB Actions cache budget.
+### Remaining optimisation
+
+The 1:1 workflow has no explicit cache for `~/.supabase/cache/stack`; cold
+runners download the archives (lean set ≈637 MB, full lock ≈1.9 GB). Adding
+`actions/cache` keyed on `supabase/supabase.lock` would keep starts at the
+observed 13–18 s on every run. Playwright browser caching is already present in
+the e2e/QA jobs.
 
 ## Files changed
 
@@ -248,12 +233,14 @@ MB stack data, ~0.7 GiB idle RSS, plus Playwright browsers. That fits a standard
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `.env.example`                           | documents `SUPABASE_RUNTIME`, `SUPABASE_HOME`, `SUPABASE_NATIVE_POSTGRES_USER`, destroy caveat                                                                                                                                                                  |
 | `scripts/dev`                            | runtime selection/preflight, `--runtime` forwarding, native-aware doctor/status, `prepull` uses effective runtime, teardown no longer gated on Docker, robust stop-failure check, `SUPABASE_HOME` validation, config-drift warning, `db reset` sslmode/port fix |
-| `.github/workflows/verify.yml`           | opt-in `workflow_dispatch` input + `supabase-native-spike` job; never runs on PRs or the schedule, does not replace the Docker gate                                                                                                                             |
+| `.github/workflows/verify.yml`           | existing workflow switched 1:1 to native: stack mode, native start, stack status `.env.*`, no fixed ports, `stop` without `--no-backup`                                                                                                                         |
+| `qa/fixtures/stack-mode.ts`              | temporary `STUDIQ_STACK_MODE=1` skip helper for branded-template specs                                                                                                                                                                                          |
+| `__tests__/qa/AUT/AUT-01,02,06,12,13`    | temporary skip clause in stack mode                                                                                                                                                                                                                             |
+| `__tests__/qa/ONB/ONB-08.spec.ts`        | temporary skip clause in stack mode                                                                                                                                                                                                                             |
 | `docs/audits/supabase-native-runtime.md` | this report                                                                                                                                                                                                                                                     |
 
 No changes to `supabase/config.toml`, production config, Stripe, authz, or app
-code. The CI change is an opt-in spike job only; existing jobs and defaults are
-unchanged.
+code. CI now runs native; the six branded-template specs are the only exclusion.
 
 ## Review findings
 
@@ -278,38 +265,36 @@ recorded as known limitations.
 | nit      | `SUPABASE_RUNTIME` leaked into shared-mode `apps/web/.env`               | Fixed: runtime/state keys are filtered in both modes                                                                           |
 | nit      | `scripts/dev` top comment still said "images"                            | Fixed                                                                                                                          |
 
-Test/CI review findings that are **not** code changes:
+Test/CI review findings:
 
-- Native is stack-backend-only; CI is legacy non-stack. A pilot needs the changes
-  listed above.
-- Branded auth templates are impossible in stack mode, so `AUT-01/02/06/12/13`
-  and `ONB-08` need Docker or a skip list.
-- The full QA suite was not run natively; only `PUB-01` was executed. Integration
-  and e2e have no known native blockers, but this is unproven at suite scale.
+- Native is stack-backend-only; the 1:1 workflow now enables stack mode and runs
+  every job on native. This is proven by run `41907455831`.
+- Branded auth templates are impossible in stack mode (open
+  [supabase/cli#7200](https://github.com/supabase/cli/issues/7200)). The six
+  specs are skipped via `STUDIQ_STACK_MODE=1`; all other QA specs run.
+- Full QA, integration and both e2e browsers passed natively. The remaining
+  optimisation is artifact caching (cold runners download the archives) and
+  Playwright browser caching.
 - `qa/AGENT-PROMPT.md`/`README.md` still describe a `supabase_db_qa-env-*`
   Docker container for manual QA; that has no native equivalent.
 
 ## Recommendation
 
-**Pilot in CI; keep Docker as the default.** Integration (568 tests), an e2e
-login spec and QA `PUB-01` are now proven on a GitHub-hosted `ubuntu-24.04`
-runner. The remaining gaps are full QA-suite scale, the six template-dependent
-QA specs, weaker multi-project isolation, and the ~8-minute Chromium install
-without a browser cache. Those make a full switch premature.
+**Adopt native for CI; keep a non-stack Docker fallback for the six
+branded-template specs until #7200 is fixed.** The 1:1 workflow is green on
+GitHub-hosted `ubuntu-24.04`, with native stack starts at 13–18 s. The only
+functional gap is custom auth templates; everything else (integration, e2e
+Chromium/Firefox, QA shards, admin API) passed.
 
 ### What I would do next (requires operator approval)
 
-1. Run the **full QA suite** (all shards, minus the six template specs) on the
-   opt-in native job, and cache Playwright browsers; keep Docker as the
-   required gate.
-2. Fix or explicitly skip the branded-template specs in native/stack mode
-   (`AUT-01/02/06/12/13`, `ONB-08`); update `AGENTS.md` if the list grows.
-3. If the pilot is stable for two weeks, consider native for integration/e2e
-   only; keep Docker for QA until the template issue is resolved.
+1. Add native artifact caching (`~/.supabase/cache/stack`, keyed on
+   `supabase/supabase.lock`) so cold runners start at 13–18 s too.
+2. Keep the six branded-template specs on a non-stack Docker leg until #7200
+   lands, or re-enable them once a CLI with template serving is pinned.
+3. Update `AGENTS.md`/onboarding docs to describe native CI and the
+   template-mode exception.
 4. Separately fix `docs/database.md`'s named-stack `db push` guidance
-   (`sslmode=disable` + unset DB port vars), and decide whether
-   `scripts/dev` should warn when `SUPABASE_HOME` is unset on a host with no
-   Docker.
+   (`sslmode=disable` + unset DB port vars).
 
-Do not turn this spike into an implementation, change CI defaults, or open a PR
-without operator approval.
+Do not open a PR or merge without operator approval.
