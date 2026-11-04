@@ -34,9 +34,13 @@ migrations:
 bunx supabase db push
 ```
 
-In CLI v3 `db push` targets the local stack by default. A fresh `supabase start`
-(new volume) applies them during initialization; use `bun dev:reset-db` to drop,
-recreate and re-seed this branch's database.
+In CLI v3 `db push` targets the local stack by default. With
+`SUPABASE_STACK=<name>` the database commands cannot take `--stack`; target the
+named stack explicitly with
+`bunx supabase db push --remote="$SUPABASE_DB_URL" --yes` (or the `DB_URL` from
+`supabase status --stack <name> --env`). A fresh `supabase start`
+(new volume) applies migrations during initialization; use `bun dev:reset-db` to
+drop, recreate and re-seed this branch's database.
 
 ### Resetting Database
 

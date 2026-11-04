@@ -1,160 +1,160 @@
 # Global context — StudiQ manual test plan
 
-_Adapted extract of sections 1-4 and the defect-template section of the source document (Polish). STU-25 is excluded from the active corpus. Read this once per session._
+_Adapted English extract of sections 1-4 and the defect-template section of the source document. STU-25 is excluded from the active corpus. Read this once per session._
 
 STUDIQ
 
-Dokument testera – testy manualne
+Tester document – manual tests
 
-Scenariusze, kroki i pola do odhaczenia dla wszystkich funkcji aplikacji
+Scenarios, steps and checkboxes for every application feature
 
-| Pole                           | Wartość                                                                                                                                                                                                     |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Wersja dokumentu               | 1.3 (17.10.2026)                                                                                                                                                                                            |
-| Testowana aplikacja            | StudiQ – aplikacja web (port 3000) i panel administracyjny (port 4000)                                                                                                                                      |
-| Wersja kodu                    | gałąź main (commit 216daae) + PR #128 (formularz planów w adminie) + PR #130 (zarządzanie użytkownikami z 30-dniowym koszem) – oba PR do czasu merge’a należy testować na gałęzi feat/admin-user-management |
-| Liczba scenariuszy             | 214 (P1: 60, P2: 149, P3: 5)                                                                                                                                                                                |
-| Tester (imię i nazwisko)       |                                                                                                                                                                                                             |
-| Data rozpoczęcia / zakończenia |                                                                                                                                                                                                             |
-| Wynik końcowy                  | ZALICZONY / ZALICZONY Z UWAGAMI / NIEZALICZONY                                                                                                                                                              |
+| Field                  | Value                                                                                                                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Document version       | 1.3 (2026-10-17)                                                                                                                                                              |
+| Application under test | StudiQ – web app (port 3000) and admin panel (port 4000)                                                                                                                      |
+| Code version           | `main` (commit 216daae) + PR #128 (plan form in admin) + PR #130 (user management with a 30-day bin) – until both merge, test them on the `feat/admin-user-management` branch |
+| Scenario count         | 214 (P1: 60, P2: 149, P3: 5)                                                                                                                                                  |
+| Tester (full name)     |                                                                                                                                                                               |
+| Start / end date       |                                                                                                                                                                               |
+| Final result           | PASS / PASS WITH COMMENTS / FAIL                                                                                                                                              |
 
-# 1. Cel i zakres dokumentu
+# 1. Purpose and scope
 
-Dokument prowadzi testera krok po kroku przez ręczne sprawdzenie wszystkich funkcji platformy StudiQ – od stron publicznych, przez panele studenta, nauczyciela i managera organizacji, po plany/płatności i panel administracyjny. Przy każdym scenariuszu podano: warunek wstępny, numerowane kroki, oczekiwany rezultat oraz pola do odhaczenia wyniku.
+This document walks the tester through a manual check of every StudiQ feature – from public pages, through the student, teacher and organization-manager dashboards, to plans/payments and the admin panel. Every scenario states its precondition, numbered steps, expected result and the fields used to record the outcome.
 
-Skala testów: dokument jest przygotowany pod małą skalę – wystarczą 2–3 rekordy każdego typu (kilka fiszek, kilka pytań, 1–2 grupy, 1–2 kartkówki) i kilka kont z seeda. Limity planów sprawdzamy po obniżeniu wartości w bazie (LIM-02), a nie przez wgrywanie setek rekordów.
+Test scale: the document is designed for a small scale – 2-3 records of each type (a few flashcards, a few questions, 1-2 groups, 1-2 quizzes) and a handful of seeded accounts are enough. Plan limits are checked after lowering the values in the database (LIM-02), not by uploading hundreds of records.
 
-### Co jest objęte testami
+### In scope
 
-Rejestracja, logowanie, reset hasła, ochrona tras według ról (student / nauczyciel / manager).
+Registration, login, password reset, role-based route protection (student / teacher / manager).
 
-Panel studenta: nauka fiszek (SM-2), wkuwanie, quizy, talie i fiszki, tematy, banki pytań, kartkówki, zgłoszenia, statystyki, asystent AI, konto.
+Student dashboard: flashcard study (SM-2), cramming, quizzes, decks and flashcards, topics, question banks, quizzes, reports, statistics, AI assistant, account.
 
-Panel nauczyciela: talie i fiszki, banki pytań, kreator quizów, kartkówki (publikacja, ocenianie, eksport, wydruk), grupy, zgłoszenia, statystyki.
+Teacher dashboard: decks and flashcards, question banks, quiz builder, quizzes (publishing, grading, export, print), groups, reports, statistics.
 
-Panel managera: członkowie, zaproszenia, grupy, role i uprawnienia, licencje (miejsca), ustawienia i branding.
+Manager dashboard: members, invitations, groups, roles and permissions, licences (seats), settings and branding.
 
-Plany, limity, funkcje (feature flags), symulowana płatność.
+Plans, limits, features (feature flags), simulated payment.
 
-Panel administracyjny: flagi funkcji, plany, nadpisania użytkowników, organizacje, użytkownicy (kosz 30 dni), zabezpieczenie API podpisem.
+Admin panel: feature flags, plans, user overrides, organizations, users (30-day bin), API signature protection.
 
-Testy negatywne bezpieczeństwa i izolacji danych oraz wymagania niefunkcjonalne (język, motyw, responsywność, dostępność, wydajność).
+Negative security and data-isolation tests plus non-functional requirements (language, theme, responsiveness, accessibility, performance).
 
-### Poza zakresem
+### Out of scope
 
-Realna integracja płatności (moduł płatności jest świadomie symulowany – decyzja zespołu z 14.09.2026).
+Real payment integration (the payment module is deliberately simulated – team decision of 2026-09-14).
 
-Egzamin ustny AI (funkcja opcjonalna, nie zaimplementowana) oraz sesje „Na żywo” (ekran „wkrótce”).
+AI oral exam (optional feature, not implemented) and "Live" sessions (the "coming soon" screen).
 
-Testy obciążeniowe, duże wolumeny danych i testy penetracyjne – dokument zawiera jedynie podstawowe kontrole bezpieczeństwa.
+Load tests, large data volumes and penetration tests – this document contains only basic security checks.
 
-Zautomatyzowane testy (unit/integration/e2e) – uruchamia się je osobno poleceniem bun test.
+Automated tests (unit/integration/e2e) – run them separately with `bun test`.
 
-# 2. Konta i dane testowe
+# 2. Test accounts and data
 
-Hasło wszystkich kont seedowych: pass. W slotach QA działa build produkcyjny, więc nie ma panelu „Dev Quick Login”; **zawsze loguj się przez `POST /api/v1/auth/login`** (`{"email","password"}`), nigdy przez Dev Quick Login ani formularz. Skrzynka Mailpit: `http://localhost:$((54321 + 100 * N + 3))` dla slotu N (env-1 `:54424`, env-2 `:54524`, …).
+All seeded accounts use the password `pass`. QA slots run a production build, so there is no "Dev Quick Login" panel; **always sign in with `POST /api/v1/auth/login`** (`{"email","password"}`), never through Dev Quick Login or the form. Mailpit inbox: `http://localhost:$((54321 + 100 * N + 3))` for slot N (env-1 `:54424`, env-2 `:54524`, …). For a local stack-mode project, use the `mail` URL reported by `bun dev:status`.
 
-| E-mail                      | Skrót | Typ konta | Organizacje / rola                                  | Plan osobisty | Uwagi                                                      |
-| --------------------------- | ----- | --------- | --------------------------------------------------- | ------------- | ---------------------------------------------------------- |
-| manager@dev.local           | M1    | manager   | WSB Merito (admin), UE Wrocław (admin)              | Launch        | Dwie organizacje – test przełącznika                       |
-| manager2@dev.local          | M2    | manager   | Akademia Górnicza (admin)                           | Launch        | Jedyna organizacja, brak grup i uczniów                    |
-| teacher1@dev.local          | T1    | educator  | WSB Merito i UE Wrocław (teacher); grupy O1G1, O2G1 | Lite          | Główne konto nauczyciela                                   |
-| teacher2@dev.local          | T2    | educator  | WSB Merito i UE Wrocław (teacher); grupy O1G2, O2G2 | Lite          | Do testów izolacji względem T1                             |
-| student1@dev.local          | S1    | student   | WSB Merito (member), grupa O1G1                     | Base          | Ma talię „O1S1” (osobista)                                 |
-| student2@dev.local          | S2    | student   | UE Wrocław (member), grupa O2G1                     | Base          | Inna organizacja niż S1                                    |
-| student3@dev.local          | S3    | student   | brak organizacji                                    | Base          | Konto samodzielne (B2C)                                    |
-| test-student@dev.local      | TS    | student   | brak                                                | Base          | Brak jakichkolwiek treści – do testów „od zera” i limitów  |
-| teacher-classroom@dev.local | TC    | educator  | Classroom (admin), grupa „Classroom Group”          | Launch        | Pełne dane: 2 banki, 10 pytań, 2 talie (8 fiszek), 2 quizy |
-| student-classroom@dev.local | SC    | student   | Classroom (member), grupa „Classroom Group”         | Base          | Uczeń TC – do kartkówek i quizów                           |
+| E-mail                      | Alias | Account type | Organizations / role                                   | Personal plan | Notes                                                               |
+| --------------------------- | ----- | ------------ | ------------------------------------------------------ | ------------- | ------------------------------------------------------------------- |
+| manager@dev.local           | M1    | manager      | WSB Merito (admin), UE Wrocław (admin)                 | Launch        | Two organizations – switch test                                     |
+| manager2@dev.local          | M2    | manager      | Akademia Górnicza (admin)                              | Launch        | Only organization, no groups or students                            |
+| teacher1@dev.local          | T1    | educator     | WSB Merito and UE Wrocław (teacher); groups O1G1, O2G1 | Lite          | Main teacher account                                                |
+| teacher2@dev.local          | T2    | educator     | WSB Merito and UE Wrocław (teacher); groups O1G2, O2G2 | Lite          | For isolation tests against T1                                      |
+| student1@dev.local          | S1    | student      | WSB Merito (member), group O1G1                        | Base          | Has a personal deck "O1S1"                                          |
+| student2@dev.local          | S2    | student      | UE Wrocław (member), group O2G1                        | Base          | Different organization from S1                                      |
+| student3@dev.local          | S3    | student      | no organization                                        | Base          | Standalone account (B2C)                                            |
+| test-student@dev.local      | TS    | student      | none                                                   | Base          | No content at all – for "from scratch" and limit tests              |
+| teacher-classroom@dev.local | TC    | educator     | Classroom (admin), group "Classroom Group"             | Launch        | Full data: 2 banks, 10 questions, 2 decks (8 flashcards), 2 quizzes |
+| student-classroom@dev.local | SC    | student      | Classroom (member), group "Classroom Group"            | Base          | TC's student – for quizzes and tests                                |
 
-### Organizacje, grupy i treści seed
+### Organizations, groups and seeded content
 
-| Organizacja (plan)         | Członkowie                                | Grupy                    | Treści                                                                                                                                                                                                                                                               |
-| -------------------------- | ----------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WSB Merito (Launch)        | M1 admin; T1, T2 teacher; S1 member (4/5) | O1G1 (T1, S1), O1G2 (T2) | Talie/banki/tematy oznaczone O1G1T1, O1G2T2, osobista O1S1                                                                                                                                                                                                           |
-| UE Wrocław (Launch)        | M1 admin; T1, T2 teacher; S2 member (4/5) | O2G1 (T1, S2), O2G2 (T2) | O2G1T1, O2G2T2, osobista O2S2                                                                                                                                                                                                                                        |
-| Akademia Górnicza (Launch) | M2 admin                                  | —                        | brak                                                                                                                                                                                                                                                                 |
-| Classroom (Launch)         | TC admin; SC member                       | Classroom Group          | Banki: Historia (4 pyt.: 2 WW, 1 P/F, 1 otw.), Geografia i Nauka (6 pyt.: 2 WW, 2 P/F, 2 otw.); talie: Historia – fiszki, Geografia – fiszki (po 4); quizy: „Historia — Średniowiecze”, „Geografia i Nauka — Odkrycia”; tematy: Średniowiecze, Odkrycia geograficzne |
+| Organization (plan)        | Members                                   | Groups                   | Content                                                                                                                                                                                                                                                                                                                            |
+| -------------------------- | ----------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WSB Merito (Launch)        | M1 admin; T1, T2 teacher; S1 member (4/5) | O1G1 (T1, S1), O1G2 (T2) | Decks/banks/topics marked O1G1T1, O1G2T2, personal O1S1                                                                                                                                                                                                                                                                            |
+| UE Wrocław (Launch)        | M1 admin; T1, T2 teacher; S2 member (4/5) | O2G1 (T1, S2), O2G2 (T2) | O2G1T1, O2G2T2, personal O2S2                                                                                                                                                                                                                                                                                                      |
+| Akademia Górnicza (Launch) | M2 admin                                  | —                        | none                                                                                                                                                                                                                                                                                                                               |
+| Classroom (Launch)         | TC admin; SC member                       | Classroom Group          | Banks: Historia (4 questions: 2 multiple choice, 1 true/false, 1 open), Geografia i Nauka (6 questions: 2 multiple choice, 2 true/false, 2 open); decks: Historia – flashcards, Geografia – flashcards (4 each); quizzes: "Historia — Średniowiecze", "Geografia i Nauka — Odkrycia"; topics: Średniowiecze, Odkrycia geograficzne |
 
-### Plany (ceny podane w groszach w bazie)
+### Plans (prices are stored in grosze in the database)
 
-| Typ         | Darmowy                        | Podstawowy (9,99 zł) | Premium (19,99 zł)                | Zaawansowany (49,99 zł)        |
-| ----------- | ------------------------------ | -------------------- | --------------------------------- | ------------------------------ |
-| Student     | Base                           | Spark                | Ace (AI, zaawansowane statystyki) | Pro (bez limitów)              |
-| Edukator    | Lite (grupy 1, studenci 5)     | Guide                | Creator (AI)                      | Master (role, bez limitów)     |
-| Organizacja | Launch (grupy 3, członkowie 5) | Team                 | Hub (AI, role, branding)          | Campus (bez limitów, branding) |
+| Type         | Free                         | Basic (9.99 zł) | Premium (19.99 zł)            | Advanced (49.99 zł)          |
+| ------------ | ---------------------------- | --------------- | ----------------------------- | ---------------------------- |
+| Student      | Base                         | Spark           | Ace (AI, advanced statistics) | Pro (no limits)              |
+| Educator     | Lite (groups 1, students 5)  | Guide           | Creator (AI)                  | Master (roles, no limits)    |
+| Organization | Launch (groups 3, members 5) | Team            | Hub (AI, roles, branding)     | Campus (no limits, branding) |
 
-# 3. Jak korzystać z dokumentu
+# 3. How to use this document
 
-### Pola wyniku (kolumna „Wynik”)
+### Result fields ("Result" column)
 
-| Pole  | Kiedy zaznaczyć                                                                                                                |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------ |
-| OK    | Wszystkie punkty oczekiwanego rezultatu spełnione.                                                                             |
-| BŁĄD  | Którykolwiek punkt niespełniony. Opisz w uwagach co się stało i załóż zgłoszenie. Wpisz numer zgłoszenia w ostatniej kolumnie. |
-| BLOK. | Test nie mógł zostać wykonany (np. poprzedni krok zawiódł, brak danych, brak środowiska). Podaj powód w uwagach.               |
-| N/D   | Nie dotyczy w tej konfiguracji (np. brak klucza AI, brak PR #130). Podaj powód.                                                |
+| Field   | When to select                                                                                                                     |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| OK      | Every point of the expected result is satisfied.                                                                                   |
+| FAIL    | Any point is not satisfied. Describe what happened in the notes and file an issue. Put the issue number in the last column.        |
+| BLOCKED | The test could not be run (for example the previous step failed, data is missing, or the environment is missing). Give the reason. |
+| N/A     | Not applicable in this configuration (for example no AI key, PR #130 not applied). Give the reason.                                |
 
-Pola wyboru są klikalnymi kontrolkami w programie Word (kliknij, aby zaznaczyć ☒). W wersji drukowanej zaznacz długopisem. Zaznaczaj dokładnie jedno pole na scenariusz.
+The choice fields are clickable controls in the Word document (click to check ☒). On paper, use a pen. Select exactly one field per scenario.
 
-### Priorytety
+### Priorities
 
-| Priorytet        | Znaczenie                                                                               | Zasada wykonywania                                               |
-| ---------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| P1 – krytyczny   | Podstawowa funkcja lub bezpieczeństwo; jej awaria blokuje użytkownika lub ujawnia dane. | Wykonuj zawsze, jako pierwsze. Błąd P1 = zgłoszenie natychmiast. |
-| P2 – ważny       | Funkcja standardowa, walidacje, ścieżki alternatywne.                                   | Wykonuj w pełnym przebiegu testów.                               |
-| P3 – kosmetyczny | Szczegóły wizualne, językowe i rzadkie przypadki.                                       | Wykonuj, gdy zostanie czas; błędy zbieraj zbiorczo.              |
+| Priority       | Meaning                                                                    | Execution rule                                           |
+| -------------- | -------------------------------------------------------------------------- | -------------------------------------------------------- |
+| P1 – critical  | Core functionality or security; a failure blocks the user or exposes data. | Always run first. A P1 failure means an immediate issue. |
+| P2 – important | Standard functionality, validations, alternative paths.                    | Run in the full pass.                                    |
+| P3 – cosmetic  | Visual, language and rare edge cases.                                      | Run when there is time; collect failures in a batch.     |
 
-### Zasady wykonywania
+### Execution rules
 
-Czytaj cały scenariusz przed rozpoczęciem. Wykonuj kroki dokładnie w podanej kolejności i na wskazanym koncie.
+Read the whole scenario before starting. Run the steps exactly in the given order and on the specified account.
 
-Teksty w cudzysłowie „…” oznaczają dokładne napisy w interfejsie (polskim). Rozbieżność w treści komunikatu to uwaga językowa (P3), nie błąd działania – chyba że komunikat jest mylący.
+Text in quotes "…" means exact UI copy (in Polish). A difference in the message text is a language remark (P3), not a behaviour failure – unless the message is misleading.
 
-Sformułowania „zanotuj” oznaczają, że oczekiwane zachowanie nie jest jednoznaczne – wpisz faktyczny wynik w uwagach, a decyzję o zaliczeniu podejmij z zespołem.
+The phrase "note it" means the expected behaviour is not unambiguous – write the actual result in the notes and decide with the team whether to pass it.
 
-Oznaczenia „ZNANY PROBLEM”, „UWAGA”, „WERYFIKUJ I ZGŁOŚ” wskazują miejsca, w których przegląd kodu wskazał prawdopodobną usterkę – potwierdź ją testem.
+The markers "KNOWN ISSUE", "ATTENTION", "VERIFY AND REPORT" point to places where a code review suggested a likely defect – confirm it with a test.
 
-Po każdej awarii zapisz zrzut ekranu, treść błędów z konsoli (Console) oraz nieudane żądanie z zakładki Network (adres, kod, odpowiedź).
+After every failure, save a screenshot, the Console errors and the failed request from the Network tab (URL, status, response).
 
-Nigdy nie używaj prawdziwych danych karty płatniczej ani prawdziwych haseł – płatność jest symulowana, a hasła testowe są jawne.
+Never use real card data or real passwords – payment is simulated and the test passwords are public.
 
-### Odstępstwa od dokumentu (decyzje produktowe)
+### Deviations from the document (product decisions)
 
-**PUB-08 — panel nauczyciela bez sekcji „Klasa”** (decyzja #292, 2026-10-25). Strona 404 `/edu/nie-istnieje` pokazuje cztery linki: Przegląd / Pytania / Fiszki / Statystyki. Trasa `/edu/classroom` nie ma strony docelowej (istnieją tylko `/edu/classroom/members`, `/edu/classroom/invite`, `/edu/classroom/new`), a zarządzanie członkami i grupami należy do panelu managera — brak linku „Klasa” jest wynikiem oczekiwanym, nie usterką.
+**PUB-08 — teacher dashboard without a "Class" section** (decision #292, 2026-10-25). The 404 page `/edu/nie-istnieje` shows four links: Overview / Questions / Flashcards / Statistics. The `/edu/classroom` route has no target page (only `/edu/classroom/members`, `/edu/classroom/invite` and `/edu/classroom/new` exist), and member/group management belongs to the manager dashboard – the missing "Class" link is expected, not a defect.
 
-### Sugerowana kolejność
+### Suggested order
 
-1. PUB, AUT → 2) ONB → 3) STU → 4) EDU → 5) MGR → 6) BIL, LIM → 7) ADM → 8) SEC → 9) NFR. Pełny przebieg ma sens po bunx supabase db reset.
+1. PUB, AUT → 2) ONB → 3) STU → 4) EDU → 5) MGR → 6) BIL, LIM → 7) ADM → 8) SEC → 9) NFR. A full pass makes sense after `bunx supabase db reset`.
 
-# 4. Spis modułów i podsumowanie wykonania
+# 4. Module index and execution summary
 
-Wypełnij po zakończeniu testów (liczby zaznaczeń w danym module).
+Fill this in after testing (count of selections per module).
 
-| Kod | Moduł                                         | Scenariuszy | OK  | BŁĄD | BLOK. | N/D |
-| --- | --------------------------------------------- | ----------- | --- | ---- | ----- | --- |
-| PUB | Strony publiczne i nawigacja ogólna           | 8           |     |      |       |     |
-| AUT | Uwierzytelnianie i sesja                      | 19          |     |      |       |     |
-| ONB | Onboarding, organizacje i zaproszenia         | 10          |     |      |       |     |
-| STU | Panel studenta (/app)                         | 52          |     |      |       |     |
-| EDU | Panel nauczyciela (/edu)                      | 41          |     |      |       |     |
-| MGR | Panel managera organizacji (/manage)          | 28          |     |      |       |     |
-| BIL | Plany, rozliczenia i płatność (symulowana)    | 7           |     |      |       |     |
-| LIM | Funkcje (feature flags) i limity planów       | 7           |     |      |       |     |
-| ADM | Panel administracyjny (apps/admin, port 4000) | 21          |     |      |       |     |
-| SEC | Autoryzacja i izolacja danych                 | 13          |     |      |       |     |
-| NFR | Wymagania niefunkcjonalne i międzyobszarowe   | 8           |     |      |       |     |
-|     | RAZEM                                         | 214         |     |      |       |     |
+| Code | Module                                        | Scenarios | OK  | FAIL | BLOCKED | N/A |
+| ---- | --------------------------------------------- | --------- | --- | ---- | ------- | --- |
+| PUB  | Public pages and global navigation            | 8         |     |      |         |     |
+| AUT  | Authentication and session                    | 19        |     |      |         |     |
+| ONB  | Onboarding, organizations and invitations     | 10        |     |      |         |     |
+| STU  | Student dashboard (/app)                      | 52        |     |      |         |     |
+| EDU  | Teacher dashboard (/edu)                      | 41        |     |      |         |     |
+| MGR  | Organization manager dashboard (/manage)      | 28        |     |      |         |     |
+| BIL  | Plans, billing and payment (simulated)        | 7         |     |      |         |     |
+| LIM  | Features (feature flags) and plan limits      | 7         |     |      |         |     |
+| ADM  | Admin panel (apps/admin, port 4000)           | 21        |     |      |         |     |
+| SEC  | Authorization and data isolation              | 13        |     |      |         |     |
+| NFR  | Non-functional and cross-cutting requirements | 8         |     |      |         |     |
+|      | TOTAL                                         | 214       |     |      |         |     |
 
-Zakładaj zgłoszenia w narzędziu zespołu (np. GitHub Issues repozytorium logyQT/studiq). Wzór treści:
+File issues in the team's tracker (for example GitHub Issues in `logyQT/studiq`). Suggested template:
 
-| Pole                 | Treść                                                                         |
-| -------------------- | ----------------------------------------------------------------------------- |
-| Tytuł                | Krótko: [moduł] co nie działa (np. „[MGR] Konto managera prowadzi do 404”)    |
-| Numer scenariusza    | np. MGR-ACC-01, krok 2                                                        |
-| Kroki do odtworzenia | Numerowana lista od czystych danych (po bunx supabase db reset)               |
-| Wynik oczekiwany     | Skopiuj z dokumentu                                                           |
-| Wynik faktyczny      | Co się stało, dokładny tekst komunikatu                                       |
-| Załączniki           | Zrzut ekranu, treść Console, nieudane żądanie z Network (URL, kod, odpowiedź) |
-| Waga                 | Krytyczny (blokuje pracę lub ujawnia dane) / Wysoki / Średni / Niski          |
-| Powtarzalność        | Zawsze / czasami (ile razy na ile prób)                                       |
+| Field              | Content                                                                    |
+| ------------------ | -------------------------------------------------------------------------- |
+| Title              | Short: [module] what is broken (e.g. "[MGR] Manager account leads to 404") |
+| Scenario number    | e.g. MGR-ACC-01, step 2                                                    |
+| Reproduction steps | Numbered list from clean data (after `bunx supabase db reset`)             |
+| Expected result    | Copy from the document                                                     |
+| Actual result      | What happened, exact message text                                          |
+| Attachments        | Screenshot, Console output, failed Network request (URL, status, response) |
+| Severity           | Critical (blocks work or exposes data) / High / Medium / Low               |
+| Reproducibility    | Always / sometimes (how many times out of how many attempts)               |

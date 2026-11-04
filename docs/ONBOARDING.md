@@ -410,7 +410,7 @@ Edit files in `supabase/seeds/` to manage test data. These files are committed t
 ### Author workflow
 
 ```bash
-# 1. Make changes in Studio (http://127.0.0.1:54323)
+# 1. Make changes in Studio (see `bun dev:status` for the current URL)
 # 2. Generate migration
 bunx supabase db diff -f migration_name
 # 3. Update seeds if needed
@@ -462,10 +462,13 @@ checkout's `.env` (`bun dev:ports` prints a free port). Never run
 | `scripts/pr`                         | Create a PR from current branch via `gh`                        |
 | `scripts/spin <branch>`              | Create worktree + branch for isolated work                      |
 
-> Plain `bunx supabase start|stop|status|db ...` targets this branch's stack
-> because `supabase/config.toml` enables `[experimental] stack = true`. Prefer
-> the `bun dev:*` commands — they add the app port checks, build lock and
-> generated env files.
+> Plain `bunx supabase start|stop|status|db ...` targets this branch's **default**
+> stack because `supabase/config.toml` enables `[experimental] stack = true`.
+> With `SUPABASE_STACK=<name>`, add `--stack <name>` to
+> `status`/`start`/`stop`/`logs`; database commands do not take `--stack` — use
+> `--remote="$SUPABASE_DB_URL" --yes` (or the `DB_URL` from
+> `supabase status --stack <name> --env`). Prefer the `bun dev:*` commands — they
+> add the app port checks, build lock and generated env files.
 
 ---
 

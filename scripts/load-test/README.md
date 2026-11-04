@@ -92,17 +92,23 @@ bun scripts/load-test/seed.ts --count 1000
 
 - **Idempotent** — re-running skips accounts that already exist.
 - **Ownership-checked** — when the target is implicit (no `--supabase-url` or
-  `SUPABASE_URL`), seeding verifies that the generated `supabase/.env` project
-  is recorded in this checkout's registry **and** that a running container with
-  that project label publishes the effective API port (`SUPABASE_API_PORT` when
-  set, otherwise the generated port). A `SUPABASE_API_PORT` override does not
-  skip the check. A foreign or unverifiable target is refused; pass
-  `--supabase-url` to override deliberately. Only `--reset` also compares the
-  generated port with the current `SUPABASE_PORT_BASE` (`staleGeneratedTarget`):
-  ordinary seeding reuses the generated port, which may be the old one if the
-  base changed while the previous stack is still running. After changing it,
-  stop the existing stack with `bun dev:down --all` (this checkout only — never
-  `supabase stop --all`) and then run `bun dev:up`.
+  `SUPABASE_URL`), seeding verifies it before writing or deleting:
+  - **Stack mode** (`apps/web/.env` carries `STUDIQ_STACK_MODE=1`): a fresh
+    `supabase status --output-format json` must report the same project root,
+    current branch, stack name (`SUPABASE_STACK` or `default`) and API URL as
+    `apps/web/.env`. A stale file from another branch, or a different stack, is
+    refused.
+  - **Legacy fixed-port mode**: the generated `supabase/.env` project must be
+    recorded in this checkout's registry **and** a running container with that
+    project label must publish the effective API port (`SUPABASE_API_PORT` when
+    set, otherwise the generated port). `--reset` also compares the generated
+    port with the current `SUPABASE_PORT_BASE + 1` (`staleGeneratedTarget`).
+
+  A foreign or unverifiable target is refused; pass `--supabase-url` to override
+  deliberately. If a fixed-port base changed, stop the existing stack with
+  `bun dev:down --all` (this checkout only — never `supabase stop --all`) and
+  then run `bun dev:up`.
+
 - Accounts are created with `email_confirm: true`, so they can log in
   immediately even though local GoTrue has `enable_confirmations = true`.
 - The `handle_new_user` DB trigger creates the matching `profiles` row and

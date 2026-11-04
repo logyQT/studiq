@@ -93,40 +93,6 @@ trim() {
   printf '%s' "$value"
 }
 
-# Map the old `supabase start -x` container names to stack capability names so
-# an existing .env (from the v2/fixed-port era) keeps working after the upgrade.
-normalize_stack_exclude() {
-  local raw=$1 item mapped out="" out_list=""
-  local -a items
-  IFS=',' read -r -a items <<<"$raw"
-  for item in "${items[@]}"; do
-    item=$(trim "$item")
-    [[ -n "$item" ]] || continue
-    case "$item" in
-      rest | auth | realtime | storage | functions | studio | mail | analytics | pooler) mapped=$item ;;
-      gotrue) mapped=auth ;;
-      postgrest) mapped=rest ;;
-      storage-api) mapped=storage ;;
-      edge-runtime | edge_runtime) mapped=functions ;;
-      mailpit) mapped=mail ;;
-      logflare | vector) mapped=analytics ;;
-      supavisor) mapped=pooler ;;
-      imgproxy | postgres-meta | pg-meta | kong)
-        warn "Ignoring legacy start exclude '$item' (bundled with a stack capability)."
-        continue
-        ;;
-      *)
-        warn "Unknown start exclude '$item'; dropping it."
-        continue
-        ;;
-    esac
-    if [[ ",$out_list," == *",$mapped,"* ]]; then continue; fi
-    out_list="${out_list:+$out_list,}$mapped"
-    out="${out:+$out,}$mapped"
-  done
-  printf '%s' "$out"
-}
-
 # Keys `scripts/dev` relies on internally (or that would break the shell if a
 # user `.env` exported them) are never loaded from a dotenv file.
 env_key_allowed() {
@@ -378,7 +344,6 @@ resolve_contract() {
   # data by project root + git branch + optional SUPABASE_STACK name. Endpoints
   # are discovered after `supabase start` from `status --output-format json`.
   if (( SHARED == 0 )); then
-    SUPABASE_START_EXCLUDE=$(normalize_stack_exclude "$SUPABASE_START_EXCLUDE")
     local app_port_raw=${ENV[APP_PORT]:-} url_app_port=""
     if [[ -n "${ENV[APP_URL]:-}" ]]; then url_app_port=$(url_port "${ENV[APP_URL]}"); fi
     if [[ -n "$app_port_raw" ]]; then
@@ -910,20 +875,6 @@ unregistered_containers_error() {
   Then retry."
 }
 
-assert_stack_ownership() {
-  local action=$1 entry worktree
-  entry=$(registry_get_entry "$SUPABASE_PROJECT_ID" 2>/dev/null) || entry=""
-  if [[ -n "$entry" ]]; then
-    worktree=$(entry_field "$entry" worktree)
-    if [[ "$(canon_path "$worktree")" != "$REPO_ROOT" ]]; then
-      fail "Refusing to $action: project id '$SUPABASE_PROJECT_ID' is owned by $worktree (registry: $REGISTRY_DIR)."
-    fi
-    return 0
-  fi
-  unregistered_containers_error "$action"
-  return 1
-}
-
 # Fails when a port we need is taken by something that is not this checkout.
 preflight_ports() {
   local include_supabase=$1 spec kind port entry owner pid
@@ -1148,12 +1099,42 @@ stop_supabase_scoped() {
   info "Stopped Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (data kept)"
 }
 
-# Refuse to read keys/URLs from a stack another checkout owns.
-assert_stack_is_ours_or_absent() {
-  (( SHARED == 1 )) && return 0
-  # Stack identity (project root + branch + name) is owned by the CLI; there is
-  # no shared project id or fixed port to collide with here.
-  return 0
+ensure_supabase_running() {
+  if load_stack_env && supabase_healthy; then
+    STACK_ADOPTED=1
+    info "Supabase stack already running (${SUPABASE_STACK_ID:0:12}) at $SUPABASE_URL"
+    return 0
+  fi
+
+  STACK_ENV_LOADED=0
+  STACK_START_ATTEMPTED=1
+  STACK_STARTED_BY_US=1
+  header "Starting Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'}${SUPABASE_START_EXCLUDE:+ (skipping: $SUPABASE_START_EXCLUDE)}"
+  supabase_start
+  load_stack_env || fail "Could not read 'supabase status --output-format json'."
+
+  local waited=0
+  while (( waited < 180 )); do
+    if supabase_healthy; then
+      info "Supabase is healthy ($SUPABASE_URL)"
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  fail "Supabase did not become healthy at $SUPABASE_URL. Check: bunx supabase status"
+}
+
+stop_supabase_scoped() {
+  local -a args=(stop)
+  if [[ -n "${SUPABASE_STACK:-}" ]]; then args+=(--stack "$SUPABASE_STACK"); fi
+  # Stack `stop` keeps the project's data and ports; `stack destroy` is the
+  # only data-deleting command and is never called here.
+  if ! supa "${args[@]}"; then
+    warn "No running stack for this branch (or it was already stopped)."
+    return 0
+  fi
+  info "Stopped Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (data kept)"
 }
 
 # ── Env rendering ────────────────────────────────────────────────────────────
@@ -1189,6 +1170,9 @@ render_web_env() {
       printf '# Source of truth: root .env + this checkout'"'"'s shared contract.\n\n'
     else
       printf '# Source of truth: root .env + `supabase status` for this branch'"'"'s stack.\n\n'
+      # Lets one-shot scripts (load-test seeding) verify the stack identity
+      # before destructive work; the app itself ignores it.
+      printf 'STUDIQ_STACK_MODE=1\n'
     fi
     for key in "${ENV_ORDER[@]}"; do
       # Fixed-port / stack-internal bookkeeping never belongs in the app env.
@@ -1822,24 +1806,8 @@ cmd_down() {
   (( all == 1 )) || return 0
 
   ensure_bun
-
-  if (( SHARED == 0 )); then
-    ensure_docker
-    stop_supabase_scoped
-    return 0
-  fi
-
   ensure_docker
-
-  if assert_stack_ownership "stop"; then
-    stop_supabase_scoped
-    # Keep the registry entry: `supabase stop` retains the database volume, so
-    # ownership follows the retained state. Remove it only when that state is
-    # explicitly destroyed.
-    return 0
-  fi
-
-  warn "No Supabase stack for project '$SUPABASE_PROJECT_ID'."
+  stop_supabase_scoped
 }
 
 cmd_reset_db() {
@@ -2103,14 +2071,8 @@ cmd_ports() {
   load_root_env
   resolve_contract
 
-  local app
-  for ((app = 3000; app <= 3999; app++)); do
-    # :3010 is reserved for the shared QA app (guard_qa_stack rejects it).
-    (( app == 3010 )) && continue
-    port_in_use "$app" && continue
-    break
-  done
-  (( app <= 3999 )) || fail "No free APP_PORT found in 3000-3999."
+  suggest_free_app_port
+  local app=$SUGGEST_APP_PORT
 
   if (( json == 1 )); then
     printf '{"appPort":%s,"stackPorts":"dynamic"}\n' "$app"

@@ -67,7 +67,11 @@ own stack; `bun dev:down --all` stops it and keeps the data, while
 `supabase stack destroy` deletes it. `bun dev:doctor` explains state, and a stack
 another checkout owns is never reused or stopped.
 `dev:up` renders `apps/web/.env` **and** `supabase/.env`, so plain
-`bunx supabase ...` commands use the same branch's stack. The shared QA stack
+`bunx supabase ...` commands use the same branch's **default** stack. With
+`SUPABASE_STACK=<name>`, add `--stack <name>` to `status`/`start`/`stop`/`logs`;
+database commands do not take `--stack` — use
+`--remote="$SUPABASE_DB_URL" --yes` (or the `DB_URL` from
+`supabase status --stack <name> --env`). The shared QA stack
 (`:3010` / `:54421`) is refused unless `DEV_ALLOW_SHARED=1`; `SUPABASE_SHARED=1`
 reuses a stack read-only and refuses destructive commands. `apps/admin` is
 **not** part of `dev:up` — run it with `bun dev:admin` and its own
