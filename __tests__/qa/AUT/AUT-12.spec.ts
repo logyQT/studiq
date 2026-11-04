@@ -3,9 +3,7 @@ import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
-import { skipBrandedAuthTemplateTests } from '@qa/fixtures/stack-mode';
-
-skipBrandedAuthTemplateTests();
+import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
 
 /**
  * AUT-12 — Zapomniane hasło: wysłanie linku resetującego.
@@ -113,6 +111,7 @@ async function expectConfirmation(page: Page, response: Response): Promise<void>
 
 test.describe('AUT-12 forgotten password — send the reset link', () => {
   test('sends the recovery link and shows the confirmation', async ({ page }) => {
+    skipBrandedAuthTemplateTest();
     test.setTimeout(180_000);
 
     const tenant = loadTenant(CASE);

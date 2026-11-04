@@ -3,9 +3,7 @@ import { shortHash } from '#test/e2e/fixtures/ids';
 import { waitForMailLink } from '@qa/fixtures/qa-mail';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
-import { skipBrandedAuthTemplateTests } from '@qa/fixtures/stack-mode';
-
-skipBrandedAuthTemplateTests();
+import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
 
 /**
  * ONB-08 — registration from an invitation link (/join?token=…), happy path.
@@ -60,6 +58,7 @@ test.describe('ONB-08 — invitation link registration', () => {
     page,
     browser,
   }) => {
+    skipBrandedAuthTemplateTest();
     test.setTimeout(120_000);
 
     const tenant = loadTenant(CASE);

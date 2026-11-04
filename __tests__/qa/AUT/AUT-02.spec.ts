@@ -3,9 +3,7 @@ import { shortHash } from '#test/e2e/fixtures/ids';
 import { asJson, json } from '#test/helpers/json';
 import { waitForMailLink } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
-import { skipBrandedAuthTemplateTests } from '@qa/fixtures/stack-mode';
-
-skipBrandedAuthTemplateTests();
+import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
 
 /**
  * AUT-02 — Rejestracja nauczyciela i managera.
@@ -177,6 +175,7 @@ test('an educator registers, activates and lands on /setup with account_type edu
   page,
   browser,
 }) => {
+  skipBrandedAuthTemplateTest();
   test.setTimeout(120_000);
 
   const tenant = loadTenant(CASE);
@@ -228,6 +227,7 @@ test('a manager registers, activates and lands on /setup/org with account_type m
   page,
   browser,
 }) => {
+  skipBrandedAuthTemplateTest();
   test.setTimeout(120_000);
 
   const tenant = loadTenant(CASE);
