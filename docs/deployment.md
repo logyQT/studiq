@@ -175,6 +175,62 @@ because upgrades/downgrades go through `/api/v1/billing/change-plan` (anchor
 reset / period-end schedule).
 Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
 
+#### Team access and secrets
+
+**Environment model**
+
+- **Development:** each developer runs `stripe login`, creates their own sandbox
+  (`stripe sandbox create "name"`), then mints a restricted key **inside that
+  sandbox's Dashboard** (Developers → API keys → Create restricted key) and puts
+  that `rk_test_…` in their local root `.env`. Do not use the `secret_key`
+  printed by `stripe sandbox create` (it starts with `rkcs_test_`, which the
+  app does not accept). Copy the restricted key straight into `.env`; never into
+  chat, tickets or an agent transcript.
+- Each sandbox has its own Products/Prices/portal configuration: run
+  `APP_ENV=development PAYMENT_DRIVER=stripe bun scripts/stripe-bootstrap.ts`
+  once per sandbox and use `stripe listen` for its webhook secret. `.env.example`
+  keeps `mock` as the local default; set `PAYMENT_DRIVER=stripe` when testing the
+  real path.
+- **Shared test-mode account:** only the repo's opt-in sandbox suite uses one
+  provisioned catalog/portal. Its lifecycle cases replay signed events through
+  the local webhook service, so they need no Dashboard webhook endpoint; the
+  catalog/portal checks do need a bootstrap run in that account. Do not share
+  personal test keys.
+- **CI:** unit, integration, e2e and QA run with the mock driver and need no
+  Stripe secret (`vitest.config.ts` forces `APP_ENV=test`,
+  `PAYMENT_DRIVER=mock`). The opt-in sandbox suite is **not wired into CI
+  today**; if it is ever enabled, run it only via manual/trusted-branch dispatch
+  behind an `environment:` with reviewers, never on fork PRs.
+- **Production:** the live `rk_live_` key exists only in the production secret
+  store. No engineer keeps a copy, no key is shared, and it is rotated on
+  offboarding or any suspected exposure.
+
+**Restricted-key scopes**
+
+Runtime (least privilege): Checkout Sessions (write), Billing Portal Sessions
+(write), Billing Portal Configurations (**read** — only `stripe:preflight` reads
+it), Customers (write), Subscriptions (write), Subscription Schedules (write),
+Prices (read), Invoices (read). Receiving webhooks needs **no** Stripe API
+scope: the signature is verified locally with `whsec_`.
+
+The bootstrap (operator run) additionally needs Products (write), Prices
+(write), Billing Portal Configurations (write) and Tax Codes (read). The same key
+may carry both sets; if you use a separate bootstrap key, do not revoke the
+runtime key. Review the key's access policy in the Dashboard.
+
+**Rules**
+
+- Never print, log, paste or commit a key, `whsec_` or `.env` file. `bpc_` and
+  `price_` ids are not secrets, but they belong in env/DB, not git.
+- Do not use a live key in dev/CI/QA; the only exception is a deliberate,
+  supervised smoke test with `STRIPE_ALLOW_LIVE=1` outside production.
+- Fork PRs get no repository/environment secrets from GitHub, run the full gate
+  with the mock driver, and must never be able to reach Stripe.
+- Offboarding: revoke the person's sandbox/team access, run `stripe logout
+--all` on shared machines, rotate the personal key and any shared test key,
+  delete CI secrets if they were ever added, and rotate `rk_live_` if there was
+  any exposure.
+
 #### Production live bootstrap (operator only)
 
 Never run `--live` from a developer machine, never paste a key into a shell, and
