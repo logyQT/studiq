@@ -37,8 +37,10 @@ function migrationFileNames(): string[] {
     if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) {
       throw error;
     }
-    const tracked = execSync(`git ls-files -- ${MIGRATIONS_DIR}`, { encoding: 'utf8' })
-      .split('\n')
+    // `-z` keeps paths verbatim (no core.quotePath quoting), and NUL cannot
+    // appear in a filename, so splitting on it cannot merge or split a path.
+    const tracked = execSync(`git ls-files -z -- ${MIGRATIONS_DIR}`, { encoding: 'utf8' })
+      .split('\0')
       .filter((f) => f.endsWith('.sql'));
     if (tracked.length === 0) return [];
     throw new Error(
