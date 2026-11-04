@@ -51,7 +51,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
 
   beforeAll(async () => {
     const secretKey = process.env.STRIPE_SECRET_KEY!;
-    expect(secretKey.startsWith('sk_test_')).toBe(true);
+    expect(/^(sk|rk)_test_/.test(secretKey)).toBe(true);
 
     stripe = new Stripe(secretKey, { apiVersion: API_VERSION });
     service = createServiceClient();
@@ -318,7 +318,7 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
 
   beforeAll(async () => {
     const secretKey = process.env.STRIPE_SECRET_KEY!;
-    expect(secretKey.startsWith('sk_test_')).toBe(true);
+    expect(/^(sk|rk)_test_/.test(secretKey)).toBe(true);
 
     service = createServiceClient();
     stripe = new Stripe(secretKey, { apiVersion: API_VERSION });

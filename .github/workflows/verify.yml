@@ -313,6 +313,8 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "APP_ENV=test"
+            echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
           } > .env
       - name: Integration tests
@@ -347,6 +349,9 @@ jobs:
       CI: '1'
       NEXT_TELEMETRY_DISABLED: '1'
       QA_APP_URL: http://localhost:3010
+      # The QA app is a non-production posture: never Stripe, never production.
+      APP_ENV: qa
+      PAYMENT_DRIVER: mock
       # Every test owns its tenant, so CI can run four at a time on a 4-vCPU
       # runner. Locally the same variable stays unset (workers: 1).
       QA_WORKERS: '4'
@@ -383,6 +388,8 @@ jobs:
             # hosted project) it falls back to the Admin API.
             echo "SUPABASE_DB_URL=$DB_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3010"
+            echo "APP_ENV=qa"
+            echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
           } > apps/web/.env
           {
@@ -391,6 +398,8 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
             echo "SUPABASE_DB_URL=$DB_URL"
             echo "OTEL_SDK_DISABLED=true"
+            echo "APP_ENV=qa"
+            echo "PAYMENT_DRIVER=mock"
             echo "QA_APP_URL=http://localhost:3010"
           } >> "$GITHUB_ENV"
 
@@ -538,6 +547,8 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       # ubuntu-latest is 4 vCPU; one project saturates at ~4 workers.
       E2E_WORKERS: '4'
+      APP_ENV: qa
+      PAYMENT_DRIVER: mock
       # The workflow owns both, in explicit steps below: it builds/starts the app
       # and seeds this leg's tenants, so Playwright must not repeat either.
       E2E_SKIP_WEB_WS: '1'
@@ -596,6 +607,8 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
             echo "SUPABASE_DB_URL=$DB_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "APP_ENV=qa"
+            echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
           } > apps/web/.env
 

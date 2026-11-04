@@ -14,11 +14,25 @@ import {
 } from '@studiq/server/models/stripe.model';
 import { type BillingService, billingService } from '@studiq/server/services/billing.service';
 
+type GatewayProvider = () => PaymentGateway;
+
 export class StripeController {
+  private readonly gatewayProvider: GatewayProvider;
+
+  /**
+   * Lazy on purpose: the controller module is imported by `next build`, which
+   * must not require the production Stripe configuration (#662 workstream B).
+   */
   constructor(
-    private readonly gateway: PaymentGateway,
+    gateway: PaymentGateway | GatewayProvider,
     private readonly billing: BillingService,
-  ) {}
+  ) {
+    this.gatewayProvider = typeof gateway === 'function' ? gateway : () => gateway;
+  }
+
+  private get gateway(): PaymentGateway {
+    return this.gatewayProvider();
+  }
 
   async createCheckoutSession(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
     const parsed = CreateCheckoutSessionSchema.safeParse(body);
@@ -98,6 +112,6 @@ export class StripeController {
   }
 }
 export const stripeController = wrapService(
-  new StripeController(getPaymentGateway(), billingService),
+  new StripeController(getPaymentGateway, billingService),
   'stripe.controller',
 );

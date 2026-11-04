@@ -159,21 +159,22 @@ bun dev:down           # stop this checkout's web; `--all` also stops this check
 - **The shared QA stack is protected**: `dev:up` refuses `APP_URL`/`SUPABASE_URL` on `:3010` / `:54421` unless `DEV_ALLOW_SHARED=1` (or the checkout is in `SUPABASE_SHARED=1` mode).
 - **`apps/admin` is out of scope** for `dev:up`: it keeps its own `apps/admin/.env` and `bun dev:admin`.
 
-| Variable                        | Source                                                                              |
-| ------------------------------- | ----------------------------------------------------------------------------------- |
-| `APP_PORT`                      | root `.env` (default `3000`)                                                        |
-| `APP_URL`                       | root `.env` (defaults to `http://localhost:$APP_PORT`)                              |
-| `NEXT_PUBLIC_SITE_URL`          | root `.env` (defaults to `APP_URL`)                                                 |
-| `SUPABASE_PROJECT_ID`           | root `.env`; blank = derived from the checkout path                                 |
-| `SUPABASE_PORT_BASE`            | root `.env` (default `54320`); explicit `SUPABASE_*_PORT` wins                      |
-| `NEXT_PUBLIC_SUPABASE_URL`      | derived from `SUPABASE_API_PORT` (explicit only for shared/remote)                  |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | root `.env` (shared mode) or `supabase status` (local stack)                        |
-| `SUPABASE_SERVICE_ROLE_KEY`     | root `.env` (shared mode) or `supabase status` (local stack)                        |
-| `SUPABASE_SHARED`               | root `.env` (`0`/`1`; shared mode refuses destructive commands)                     |
-| `SUPABASE_START_EXCLUDE`        | root `.env`; `supabase start -x` list (default skips unused services; empty = full) |
-| `STUDIQ_DEV_REGISTRY`           | root `.env`; blank = `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`      |
-| `DEV_BUILD_MEMORY_MB`           | root `.env` (default `4096`) — `dev:build` heap cap                                 |
-| `OTEL_*`                        | root `.env` (copied verbatim into `apps/web/.env`)                                  |
+| Variable                        | Source                                                                                 |
+| ------------------------------- | -------------------------------------------------------------------------------------- |
+| `APP_PORT`                      | root `.env` (default `3000`)                                                           |
+| `APP_URL`                       | root `.env` (defaults to `http://localhost:$APP_PORT`)                                 |
+| `APP_ENV`                       | root `.env` (default `development` in `scripts/dev`; the app defaults to `production`) |
+| `NEXT_PUBLIC_SITE_URL`          | root `.env` (defaults to `APP_URL`)                                                    |
+| `SUPABASE_PROJECT_ID`           | root `.env`; blank = derived from the checkout path                                    |
+| `SUPABASE_PORT_BASE`            | root `.env` (default `54320`); explicit `SUPABASE_*_PORT` wins                         |
+| `NEXT_PUBLIC_SUPABASE_URL`      | derived from `SUPABASE_API_PORT` (explicit only for shared/remote)                     |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | root `.env` (shared mode) or `supabase status` (local stack)                           |
+| `SUPABASE_SERVICE_ROLE_KEY`     | root `.env` (shared mode) or `supabase status` (local stack)                           |
+| `SUPABASE_SHARED`               | root `.env` (`0`/`1`; shared mode refuses destructive commands)                        |
+| `SUPABASE_START_EXCLUDE`        | root `.env`; `supabase start -x` list (default skips unused services; empty = full)    |
+| `STUDIQ_DEV_REGISTRY`           | root `.env`; blank = `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`         |
+| `DEV_BUILD_MEMORY_MB`           | root `.env` (default `4096`) — `dev:build` heap cap                                    |
+| `OTEL_*`                        | root `.env` (copied verbatim into `apps/web/.env`)                                     |
 
 ### Formatting scope & blame
 
@@ -529,6 +530,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. Public-by-design prefixes must be added to the catch-all exclusion in `packages/server/src/config/routes.config.ts`.
 - **New UI routes**: add a `RouteRule` to `packages/server/src/config/routes.config.ts` if the route needs auth, account-type restrictions, or a logged-in redirect.
 - **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it) and schema in `supabase/schemas/`
+- **Payment posture uses `APP_ENV`, never `NODE_ENV`** — production is the default; `PAYMENT_DRIVER=mock` is a boot error there (no override), production rejects test keys and needs an `https://` non-localhost site URL. Dev/test/QA must set `APP_ENV` explicitly. See `packages/server/src/lib/app-env.ts` and `docs/deployment.md`.
 - **Supabase `eq(col, null)` is not `IS NULL`** — `.eq('organization_id', ctx.activeOrgId)` with `activeOrgId === null` serialises to `organization_id=eq.null`, which Postgres rejects on a `uuid` column (`22P02`, surfacing as a 500 — #148). For NOT NULL org columns guard first (`if (!ctx.activeOrgId) return failure('FORBIDDEN')`); for nullable-org personal content apply the org filter only when set (`if (ctx.activeOrgId) query = query.eq(...)`), matching `accessibleFilter`'s `own` scope.
 - **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun lint's `oxc/no-barrel-file` rule enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `oxc/no-barrel-file` is disabled for those two files.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — a hand-run root `bun check` must stay at zero errors; use the per-workspace scripts for app code.

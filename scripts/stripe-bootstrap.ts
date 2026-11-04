@@ -2,7 +2,7 @@
 /**
  * Idempotent Stripe sandbox bootstrap for #662.
  *
- *   bun scripts/stripe-bootstrap.ts --check   # catalog validation, no network
+ *   bun scripts/stripe-bootstrap.ts --check   # catalog validation, no Stripe calls/writes
  *   bun scripts/stripe-bootstrap.ts           # create/update test-mode objects
  *   bun scripts/stripe-bootstrap.ts --live    # explicit live-mode run
  *
@@ -13,12 +13,20 @@
  * Secrets come from the environment (Bun loads the root `.env`). Never pass a
  * key on the command line: it would leak into shell history and process lists.
  */
+// eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 import {
   type BootstrapPrice,
   type CatalogPlanForBootstrap,
   selectBootstrapPrices,
 } from '@studiq/server/lib/payment/stripe-bootstrap';
+import {
+  AppEnvError,
+  assertSecureSiteUrl,
+  isProductionEnv,
+  resolveAppEnv,
+} from '@studiq/server/lib/app-env';
+import { parseStripeKey } from '@studiq/server/lib/payment/stripe-key';
 import { getSiteUrl } from '@studiq/server/lib/site-url';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 
@@ -69,12 +77,12 @@ async function loadCatalog(): Promise<CatalogPlanForBootstrap[]> {
   assert(!error, `could not read subscription_plans: ${error?.message ?? 'unknown error'}`);
 
   return (data ?? []).map((plan) => ({
-    key: plan.key as string,
-    name: plan.name as string,
-    priceMonthly: (plan.price_monthly as number | null) ?? 0,
-    currency: (plan.currency as string | null) ?? null,
+    key: plan.key,
+    name: plan.name,
+    priceMonthly: plan.price_monthly ?? 0,
+    currency: plan.currency,
     isActive: Boolean(plan.is_active),
-    sortOrder: (plan.sort_order as number | null) ?? 0,
+    sortOrder: plan.sort_order ?? 0,
   }));
 }
 
@@ -228,7 +236,7 @@ async function ensurePortalConfiguration(
   if (existing) {
     const updated = await stripe.billingPortal.configurations.update(
       existing.id,
-      portalParams(livemode, siteUrl) as Stripe.BillingPortal.ConfigurationUpdateParams,
+      portalParams(livemode, siteUrl),
     );
     return { id: updated.id, created: false };
   }
@@ -239,30 +247,13 @@ async function ensurePortalConfiguration(
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  assert(!(args.check && args.live), '--check cannot be combined with --live');
 
-  const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
-  assert(secretKey, 'STRIPE_SECRET_KEY is required (root .env or environment)');
-  assert(
-    secretKey.startsWith('sk_test_') || secretKey.startsWith('sk_live_'),
-    'STRIPE_SECRET_KEY must start with sk_test_ or sk_live_',
-  );
-
-  const livemode = secretKey.startsWith('sk_live_');
-  if (livemode && !args.live) {
-    throw new BootstrapError('refusing a live key without --live');
-  }
-
-  const siteUrl = getSiteUrl();
-  if (livemode) {
-    assert(
-      siteUrl.startsWith('https://'),
-      'NEXT_PUBLIC_SITE_URL must start with https:// in live mode (the portal return URL cannot be localhost)',
-    );
-  }
-
+  // `--check` only reads the local catalog: no Stripe key or network call is
+  // required, so it can run in a preflight shell that has DB but no key.
   assert(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
-    'NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to write stripe_prices',
+    'NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to read the catalog',
   );
 
   const plans = await loadCatalog();
@@ -277,11 +268,48 @@ async function main(): Promise<void> {
   // A populated catalog may contain only free/inactive plans: that must reach
   // the stale-mapping cleanup so a plan that became free stops being sold.
   // An empty catalog means the seed did not run, so stop before writing.
-  assert(plans.length > 0, 'no active paid plans found in subscription_plans');
+  assert(plans.length > 0, 'subscription_plans is empty; run the seed first');
 
   if (args.check) {
     printCheck(prices);
     return;
+  }
+
+  const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+  assert(secretKey, 'STRIPE_SECRET_KEY is required (root .env or environment)');
+  const parsedKey = parseStripeKey(secretKey);
+  assert(
+    parsedKey,
+    'STRIPE_SECRET_KEY must start with sk_test_, sk_live_, rk_test_ or rk_live_ and contain a key suffix',
+  );
+  const { livemode } = parsedKey;
+
+  if (args.live && !livemode) {
+    throw new BootstrapError('--live requires a live (rk_live_ / sk_live_) key');
+  }
+  if (livemode && !args.live) {
+    throw new BootstrapError('refusing a live key without --live');
+  }
+
+  // The mode must match the deployment posture: a test-mode bootstrap cannot
+  // write into a production catalog, and a live key belongs only to production.
+  if (isProductionEnv() && !livemode) {
+    throw new BootstrapError('refusing a test-mode bootstrap with APP_ENV=production');
+  }
+  if (!isProductionEnv() && livemode) {
+    throw new BootstrapError(
+      `a live bootstrap requires APP_ENV=production (got APP_ENV=${resolveAppEnv()})`,
+    );
+  }
+
+  let siteUrl = getSiteUrl();
+  if (livemode) {
+    try {
+      siteUrl = assertSecureSiteUrl(siteUrl);
+    } catch (error) {
+      if (error instanceof AppEnvError) throw new BootstrapError(error.message);
+      throw error;
+    }
   }
 
   const stripe = new Stripe(secretKey, {
@@ -336,9 +364,7 @@ async function main(): Promise<void> {
 
   const stalePlans = [
     ...new Set(
-      (mappedRows ?? [])
-        .map((row) => row.plan_key as string)
-        .filter((planKey) => !activePlans.has(planKey)),
+      (mappedRows ?? []).map((row) => row.plan_key).filter((planKey) => !activePlans.has(planKey)),
     ),
   ];
 

@@ -122,13 +122,29 @@ function isBillingReadStatus(value: string): value is BillingReadStatus {
  * mock and Stripe paths share them, and the Stripe-specific checks
  * (active-subscription guard, price map) never run for the mock driver.
  */
+type GatewayProvider = () => PaymentGateway;
+
 export class BillingService {
+  private readonly gatewayProvider: GatewayProvider;
+
+  /**
+   * The gateway is resolved lazily. Constructing it eagerly at module import
+   * would make `next build` (which imports every route module) require the
+   * production Stripe secrets; boot validation belongs to `instrumentation.ts`
+   * and the `start` preflight (#662 workstream B).
+   */
   constructor(
-    private readonly gateway: PaymentGateway,
+    gateway: PaymentGateway | GatewayProvider,
     private readonly repository: StripeBillingRepository = stripeBillingRepository,
     private readonly reads: BillingReadRepository = billingReadRepository,
     private readonly plans: Pick<SubscriptionPlanService, 'getMyPlan'> = subscriptionPlanService,
-  ) {}
+  ) {
+    this.gatewayProvider = typeof gateway === 'function' ? gateway : () => gateway;
+  }
+
+  private get gateway(): PaymentGateway {
+    return this.gatewayProvider();
+  }
 
   async startCheckout(
     ctx: RequestContext,
@@ -623,7 +639,4 @@ export class BillingService {
   }
 }
 
-export const billingService = wrapService(
-  new BillingService(getPaymentGateway()),
-  'billing.service',
-);
+export const billingService = wrapService(new BillingService(getPaymentGateway), 'billing.service');

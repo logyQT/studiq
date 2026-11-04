@@ -157,7 +157,7 @@ load_env_file() {
 # before this script assigns anything, then mirror it into ENV first so the
 # file loader's `keep` mode never overwrites an explicit override.
 CONTRACT_KEYS=(
-  APP_PORT APP_URL NEXT_PUBLIC_SITE_URL
+  APP_PORT APP_URL NEXT_PUBLIC_SITE_URL APP_ENV PAYMENT_DRIVER
   SUPABASE_PROJECT_ID SUPABASE_PORT_BASE SUPABASE_API_PORT SUPABASE_DB_PORT
   SUPABASE_STUDIO_PORT SUPABASE_MAIL_PORT SUPABASE_ANALYTICS_PORT
   SUPABASE_EDGE_INSPECTOR_PORT SUPABASE_SHADOW_PORT SUPABASE_POOLER_PORT
@@ -431,6 +431,9 @@ resolve_contract() {
   fi
 
   # Export the resolved contract (force: derived values win over stale .env).
+  # The app treats production as the default posture; a local checkout is
+  # explicitly development unless the operator sets APP_ENV in root `.env`.
+  env_set APP_ENV "${ENV[APP_ENV]:-development}" force
   env_set SUPABASE_PROJECT_ID "$SUPABASE_PROJECT_ID" force
   env_set APP_PORT "$APP_PORT" force
   env_set APP_URL "$APP_URL" force
@@ -1426,6 +1429,21 @@ print_ready_block() {
 }
 
 # ── Commands ─────────────────────────────────────────────────────────────────
+assert_local_app_env() {
+  # A local checkout is always http://localhost; production needs a live Stripe
+  # key and an https site URL, so it can never run from here (#662 workstream B).
+  case "${ENV[APP_ENV]:-development}" in
+    development | test | qa) ;;
+    production)
+      fail "APP_ENV=production cannot serve this local checkout (it requires a live Stripe key and an https site URL).
+  Set APP_ENV=development (or test/qa) in root .env."
+      ;;
+    *)
+      fail "APP_ENV='${ENV[APP_ENV]}' is not valid; use development, test or qa for a local checkout."
+      ;;
+  esac
+}
+
 cmd_up() {
   local prod=0
   [[ "${1:-}" == "--prod" ]] && prod=1
@@ -1434,6 +1452,7 @@ cmd_up() {
 
   load_root_env
   resolve_contract
+  assert_local_app_env
   note_missing_env_file
   guard_qa_stack
   ensure_bun
@@ -1490,6 +1509,7 @@ cmd_up() {
 cmd_build() {
   load_root_env
   resolve_contract
+  assert_local_app_env
   note_missing_env_file
   guard_qa_stack
   ensure_bun
@@ -1516,6 +1536,7 @@ cmd_build() {
 cmd_serve() {
   load_root_env
   resolve_contract
+  assert_local_app_env
   note_missing_env_file
   guard_qa_stack
   ensure_bun

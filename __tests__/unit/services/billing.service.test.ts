@@ -108,6 +108,14 @@ describe('BillingService.startCheckout', () => {
     service = new BillingService(gateway, repository);
   });
 
+  it('resolves the payment gateway lazily so module import needs no Stripe config', () => {
+    const provider = vi.fn(() => gateway);
+    const lazy = new BillingService(provider, repository);
+
+    expect(provider).not.toHaveBeenCalled();
+    expect(lazy).toBeInstanceOf(BillingService);
+  });
+
   it('rejects a free plan', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(success(plan({ priceMonthly: 0 })));
 
