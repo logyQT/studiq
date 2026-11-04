@@ -186,6 +186,11 @@ Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
   printed by `stripe sandbox create` (it starts with `rkcs_test_`, which the
   app does not accept). Copy the restricted key straight into `.env`; never into
   chat, tickets or an agent transcript.
+- Before the write run, set `STRIPE_PRODUCT_TAX_CODE` to an eligible `txcd_` code
+  and `STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1`; confirm the code is labelled
+  "Eligible for Managed Payments" in the Dashboard (Products > Tax code). Every
+  bootstrap write run refuses without both, test mode included; `--check` and
+  the runtime boot do not read them.
 - Each sandbox has its own Products/Prices/portal configuration: run
   `APP_ENV=development PAYMENT_DRIVER=stripe bun scripts/stripe-bootstrap.ts`
   once per sandbox and use `stripe listen` for its webhook secret. `.env.example`
