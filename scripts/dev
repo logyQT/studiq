@@ -1432,14 +1432,19 @@ print_ready_block() {
 assert_local_app_env() {
   # A local checkout is always http://localhost; production needs a live Stripe
   # key and an https site URL, so it can never run from here (#662 workstream B).
-  case "${ENV[APP_ENV]:-development}" in
+  # Normalize exactly like `resolveAppEnv` (trim + lowercase) so `QA` and
+  # `" qa "` are accepted by both.
+  local app_env
+  app_env=$(trim "${ENV[APP_ENV]:-development}")
+  app_env=${app_env,,}
+  case "$app_env" in
     development | test | qa) ;;
     production)
       fail "APP_ENV=production cannot serve this local checkout (it requires a live Stripe key and an https site URL).
   Set APP_ENV=development (or test/qa) in root .env."
       ;;
     *)
-      fail "APP_ENV='${ENV[APP_ENV]}' is not valid; use development, test or qa for a local checkout."
+      fail "APP_ENV='$app_env' is not valid; use development, test or qa for a local checkout."
       ;;
   esac
 }
@@ -1551,8 +1556,10 @@ cmd_serve() {
       render_web_env
     elif [[ -f "$WEB_ENV_FILE" ]]; then
       # Stack stopped: load the generated keys so the build fingerprint (and
-      # any rebuild) uses them, not just the `next start` child.
+      # any rebuild) uses them, not just the `next start` child. Re-render so
+      # `apps/web/.env` cannot keep a stale APP_ENV/PAYMENT_DRIVER posture.
       load_web_env_fallback
+      render_web_env
     else
       fail "No generated apps/web/.env and no running stack for this checkout.
   Run 'bun dev:up' (or 'bun dev:build') first."

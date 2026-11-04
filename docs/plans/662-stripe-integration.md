@@ -1316,7 +1316,6 @@ Use an injected fake `StripeClient`. Suggested files and cases:
 
 `__tests__/unit/lib/payment-gateway.factory.test.ts`
 
-- default (unset) → `driver === 'mock'`;
 - the full `APP_ENV` × `PAYMENT_DRIVER` matrix (production default, production + mock always throws, production + test key throws, production + live key starts, production + http/localhost site URL throws);
 - live key outside production → throws unless `STRIPE_ALLOW_LIVE=1`;
 - `sk_` and `rk_` keys derive `livemode` from the prefix;
@@ -1481,7 +1480,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 
 1. Roll back to the previous application release with the same valid Stripe configuration. Production never switches to `PAYMENT_DRIVER=mock`; that combination is a boot error and has no override.
 2. **Do not revert the migrations** and **do not delete** `billing_*`, `stripe_prices`, `stripe_webhook_events` or `payments` rows.
-3. To stop new checkouts, disable the checkout CTA / use the billing kill switch or a maintenance page. This must not change `PAYMENT_DRIVER` and must not stop the webhook endpoint.
+3. To stop new checkouts, disable the checkout CTA or use a maintenance page. This must not change `PAYMENT_DRIVER` and must not stop the webhook endpoint. (A driver-independent kill switch is planned in workstream E.)
 4. To unwind a Stripe entitlement, cancel the subscription in Stripe and let `customer.subscription.deleted` downgrade to free — never hand-edit `profiles.personal_plan_key` while the webhook is live.
 5. Keep `STRIPE_WEBHOOK_SECRET` valid until the last in-flight subscription is canceled.
 

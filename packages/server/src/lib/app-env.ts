@@ -56,7 +56,10 @@ export function isLocalHostname(hostname: string): boolean {
     /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
     host === '::1' ||
     host === '::' ||
-    host.startsWith('::ffff:127.')
+    host.startsWith('::ffff:127.') ||
+    // `new URL('https://[::ffff:127.0.0.1]').hostname` serializes the mapped
+    // address as `[::ffff:7f00:1]`, not the dotted form.
+    /^::ffff:7f[0-9a-f]{2}:/.test(host)
   );
 }
 

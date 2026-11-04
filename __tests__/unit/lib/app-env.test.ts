@@ -76,6 +76,7 @@ describe('assertSecureSiteUrl', () => {
     ['https://127.0.0.1', /must not point at localhost/],
     ['https://127.0.0.2:3000', /must not point at localhost/],
     ['https://[::]', /must not point at localhost/],
+    ['https://[::ffff:127.0.0.1]', /must not point at localhost/],
     ['not-a-url', /valid absolute URL/],
     ['', /must be an https/],
   ])('rejects %s', (value, pattern) => {
