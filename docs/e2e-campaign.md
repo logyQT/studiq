@@ -41,14 +41,14 @@ only fixed values are product constants (plan keys, permission scope names).
 
 ## Fixtures (target API)
 
-| helper                                                                         | purpose                                                |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| `tenant` (via `test.extend`)                                                   | org + accounts + login state for the test              |
-| `loginAs('manager' \| 'teacher' \| 'student')`                                 | storage state for this test's account                  |
-| `makeDeck()`, `makeBank()`, `makeQuestion()`, `makeQuiz()`, `makeAssignment()` | API-seeded graph                                       |
-| `mailbox()`                                                                    | Inbucket token/link extraction (signup + invite cases) |
-| `stripeMock()`, `aiMock()`, `clock()`                                          | the other three flakiness sources                      |
-| `assertTenantIsolation(a, b)`                                                  | asserts 403/404 across tenants                         |
+| helper                                                                         | purpose                                               |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `tenant` (via `test.extend`)                                                   | org + accounts + login state for the test             |
+| `loginAs('manager' \| 'teacher' \| 'student')`                                 | storage state for this test's account                 |
+| `makeDeck()`, `makeBank()`, `makeQuestion()`, `makeQuiz()`, `makeAssignment()` | API-seeded graph                                      |
+| `mailbox()`                                                                    | Mailpit token/link extraction (signup + invite cases) |
+| `stripeMock()`, `aiMock()`, `clock()`                                          | the other three flakiness sources                     |
+| `assertTenantIsolation(a, b)`                                                  | asserts 403/404 across tenants                        |
 
 ## Spec contract
 

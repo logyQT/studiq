@@ -55,9 +55,10 @@ LLM_MODEL_NAME=gpt-4o-mini
 ### Supabase Configuration
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Run migrations: `bunx supabase db push`
-3. Seed production data if needed
-4. Configure auth settings:
+2. Link the checkout: `bunx supabase link --project-ref <ref>`
+3. Run migrations: `bunx supabase db push --remote --yes`
+4. Seed production data if needed
+5. Configure auth settings:
    - Site URL
    - Redirect URLs
    - Email templates
@@ -95,10 +96,11 @@ vercel --prod
 
 ## Database Migrations
 
-Push migrations to production Supabase:
+Push migrations to production Supabase (CLI v3: local is the default target, so
+hosted commands need `--remote`, and unattended runs need `--yes`):
 
 ```bash
-bunx supabase db push
+bunx supabase db push --remote --yes
 ```
 
 This applies any local migrations that haven't been applied to the remote database.
