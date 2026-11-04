@@ -137,7 +137,7 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                                                        |
 | `bun format`                             | Format with **`bun fmt`** (writes, whole repo)                                                             |
 | `bun format:check`                       | Check formatting with `bun fmt --check` (no writes, whole repo)                                            |
-| `bun test`                               | Run all Vitest tests (unit + integration)                                                                  |
+| `bun run test`                           | Run all Vitest tests (unit + integration)                                                                  |
 | `bun test:unit`                          | Run unit tests                                                                                             |
 | `bun test:integration`                   | Run integration tests (requires local Supabase)                                                            |
 | `bun test:watch`                         | Vitest watch mode                                                                                          |

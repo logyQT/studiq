@@ -19,6 +19,8 @@ graph LR
 After modifying tables in Supabase Studio:
 
 ```bash
+# Default stack; for a named stack use --remote="$DB_URL" as shown under
+# Applying Migrations.
 bunx supabase db diff -f migration_name
 ```
 

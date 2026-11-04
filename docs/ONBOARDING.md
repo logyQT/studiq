@@ -403,6 +403,8 @@ Local data is **not synced via git** — each team member has their own local da
 After modifying tables in Supabase Studio, generate a migration:
 
 ```bash
+# Default stack; for a named stack use the selected-stack conditional in the
+# Author workflow below.
 bunx supabase db diff -f migration_name
 ```
 
@@ -416,8 +418,14 @@ Edit files in `supabase/seeds/` to manage test data. These files are committed t
 
 ```bash
 # 1. Make changes in Studio (see `bun dev:status` for the current URL)
-# 2. Generate migration
-bunx supabase db diff -f migration_name
+# 2. Generate migration from the selected stack (default or SUPABASE_STACK)
+STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env 2>/dev/null | tail -n1 | tr -d "'\"")}
+if [ -n "$STACK" ]; then
+  DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  bunx supabase db diff -f migration_name --remote="$DB_URL"
+else
+  bunx supabase db diff -f migration_name
+fi
 # 3. Update seeds if needed
 # 4. Commit and push
 git add supabase/
