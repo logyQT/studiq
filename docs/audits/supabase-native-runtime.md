@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-04
 **Branch:** `spike/supabase-native-runtime` (based on `origin/main` @ `9f54ecc2`)
-**Code commits:** `23ab62db` (opt-in profile), `54a90eb4` (selection/teardown hardening)
+**Code commits:** `23ab62db` (opt-in profile), `54a90eb4` (selection/teardown hardening), `5dec3047` + `edb1821d` (opt-in CI smoke job)
 **Report commit:** see `git log --oneline -1 -- docs/audits/supabase-native-runtime.md`
 **Status:** spike complete; **no PR, no merge, no CI default change**.
 
@@ -31,6 +31,10 @@ It is **not a drop-in replacement for the current CI gate yet**:
 
 **Recommendation: pilot in CI; keep Docker as the default.** Do not adopt native
 as the production/local default from this spike.
+
+A temporary opt-in native CI job was dispatched manually on GitHub-hosted
+`ubuntu-24.04`: integration passed (**56 files / 568 tests**) in a **1 m 44 s**
+job. See [CI implications](#ci-implications-for-github-hosted-ubuntu-2404).
 
 ## Exact native command / config
 
@@ -175,36 +179,44 @@ started or reset. `spike-native` was the working stack; `spike-native-2`,
 
 ## CI implications for GitHub-hosted `ubuntu-24.04`
 
-In principle native is a good fit: `ubuntu-24.04` is amd64 with glibc 2.39,
-`tar` is present, the runner is non-root (`runner`), and egress to GitHub/S3 is
-available. Docker is also reachable on hosted runners, so a pilot must set
-`--runtime native` explicitly. This was **not** executed on GitHub in this
-spike; the timings above are local.
+**Proven on GitHub.** A temporary, opt-in job (`supabase-native-spike`) was
+added to `verify.yml` and dispatched manually on `ubuntu-24.04`. It does not run
+on PRs or the nightly schedule (`if: workflow_dispatch && inputs.native_smoke`).
 
-What a pilot must change (not done here):
+- Run: <https://github.com/logyQT/studiq/actions/runs/41891292562>
+- Result: **success**; native job **1 m 44 s** end to end.
+- Native stack start (artifacts restored from cache): **13 s**.
+- Integration suite: **56 files / 568 tests passed in 68 s**.
+- Artifact cache restore: **7 s**; cache save is skipped on a cache hit.
+- `ubuntu-24.04` is amd64/glibc 2.39, `tar` present, non-root `runner`, egress
+  to GitHub/S3 available. Docker is also reachable, so `--runtime native` must
+  be explicit (the job sets it).
 
-1. Opt into stack mode: `SUPABASE_EXPERIMENTAL_STACK=1`, drop the fixed
-   `SUPABASE_*_PORT` contract, and use `supabase stack start` (or
-   `supabase start` with the stack backend).
-2. Replace legacy flat `supabase status --output-format json` parsing
-   (`jq -r .API_URL`) with `supabase status --env` or `jq -r .env.API_URL`.
-3. Translate `-x` container names to capability names:
+The first dispatch failed in the env-writing step: `stack status --env` emitted
+more than one line and `jq` parsed it as invalid JSON. The fix was to use
+`stack status --output-format json` and read `.env.API_URL`, `.env.DB_URL`, etc.
+This is the CI caveat in practice — do not use `--env` output as JSON.
+
+What a pilot still needs:
+
+1. Keep the fixed `SUPABASE_*_PORT` contract out of the native job (the spike
+   unsets it in a small wrapper) and opt into `SUPABASE_EXPERIMENTAL_STACK=1`.
+2. Translate `-x` container names to capability names:
    `-x studio,functions,analytics,pooler,realtime` (keep `storage` and `mail`
    for QA/e2e).
-4. Use `supabase stop` (no `--no-backup`; that flag is not a stack flag).
-5. Cache `~/.supabase/cache/stack` keyed on
+3. Use `supabase stop` (no `--no-backup`; that flag is not a stack flag).
+4. Cache `~/.supabase/cache/stack` keyed on
    `hashFiles('supabase/supabase.lock')` and run
    `bunx supabase stack install --frozen --runtime native`. Do **not** cache
    `~/.supabase/stacks` (live DB). The lock pins per-platform SHA-256 archive
    and manifest digests; verify them on cache hits because native artifacts
    execute directly.
-6. Export `NEXT_PUBLIC_SUPABASE_URL`, anon/service keys, `SUPABASE_DB_URL`,
+5. Export `NEXT_PUBLIC_SUPABASE_URL`, anon/service keys, `SUPABASE_DB_URL`,
    `MAILPIT_URL` and `NEXT_PUBLIC_SITE_URL` to both the job environment and
    `apps/web/.env`; do not rely on the QA fixtures' fixed-port fallbacks.
-7. Run integration first, then e2e Chromium, then QA. Exclude or Docker-run the
-   six template-dependent QA specs until stack mode can serve `content_path`.
-8. Measure cold/warm time and cache size on a real runner before replacing any
-   Docker job.
+6. Run e2e Chromium and QA next. Integration is proven; e2e/QA are not. Exclude
+   or Docker-run the six template-dependent QA specs until stack mode can serve
+   `content_path`.
 
 CI cost estimate: ~1.9 GB artifact cache (lean extracted set is ~637 MB), 74–123
 MB stack data, ~0.7 GiB idle RSS. That fits a standard 4-vCPU/16 GB runner, but
@@ -216,10 +228,12 @@ adds roughly 1 GB to the 10 GB Actions cache budget.
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `.env.example`                           | documents `SUPABASE_RUNTIME`, `SUPABASE_HOME`, `SUPABASE_NATIVE_POSTGRES_USER`, destroy caveat                                                                                                                                                                  |
 | `scripts/dev`                            | runtime selection/preflight, `--runtime` forwarding, native-aware doctor/status, `prepull` uses effective runtime, teardown no longer gated on Docker, robust stop-failure check, `SUPABASE_HOME` validation, config-drift warning, `db reset` sslmode/port fix |
+| `.github/workflows/verify.yml`           | opt-in `workflow_dispatch` input + `supabase-native-spike` job; never runs on PRs or the schedule, does not replace the Docker gate                                                                                                                             |
 | `docs/audits/supabase-native-runtime.md` | this report                                                                                                                                                                                                                                                     |
 
-No changes to `supabase/config.toml`, CI workflows, production config, Stripe,
-authz, or app code.
+No changes to `supabase/config.toml`, production config, Stripe, authz, or app
+code. The CI change is an opt-in spike job only; existing jobs and defaults are
+unchanged.
 
 ## Review findings
 
@@ -257,24 +271,20 @@ Test/CI review findings that are **not** code changes:
 
 ## Recommendation
 
-**Pilot in CI; keep Docker as the default.** Native is technically viable and
-substantially faster to start once artifacts are cached, but the remaining gaps
-(CI pipeline shape, six template-dependent QA specs, weaker multi-project
-isolation, unproven suite-scale stability) make a full switch premature.
+**Pilot in CI; keep Docker as the default.** Integration is now proven on a
+GitHub-hosted `ubuntu-24.04` runner (568 tests, 1 m 44 s job). The remaining gaps
+are e2e/QA coverage, the six template-dependent QA specs, weaker multi-project
+isolation, and suite-scale stability. Those make a full switch premature.
 
 ### What I would do next (requires operator approval)
 
-1. Add a **non-blocking** `workflow_dispatch`/nightly native job on
-   `ubuntu-24.04` running integration + e2e Chromium + QA with the six template
-   specs excluded. Keep Docker as the required gate.
-2. Cache `~/.supabase/cache/stack` keyed on `supabase/supabase.lock`, run
-   `stack install --frozen --runtime native`, and record cold/warm timings and
-   cache size on the real runner.
-3. Fix or explicitly skip the branded-template specs in native/stack mode
+1. Extend the opt-in native job to e2e Chromium and QA (minus the six template
+   specs), and keep Docker as the required gate.
+2. Fix or explicitly skip the branded-template specs in native/stack mode
    (`AUT-01/02/06/12/13`, `ONB-08`); update `AGENTS.md` if the list grows.
-4. If the pilot is stable for two weeks, consider native for integration/e2e
+3. If the pilot is stable for two weeks, consider native for integration/e2e
    only; keep Docker for QA until the template issue is resolved.
-5. Separately fix `docs/database.md`'s named-stack `db push` guidance
+4. Separately fix `docs/database.md`'s named-stack `db push` guidance
    (`sslmode=disable` + unset DB port vars), and decide whether
    `scripts/dev` should warn when `SUPABASE_HOME` is unset on a host with no
    Docker.
