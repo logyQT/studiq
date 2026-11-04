@@ -1039,6 +1039,8 @@ Storage intentionally differs:
 - the first Stripe invoice also carries `stripe_checkout_session_id`; mock rows only carry `session_id`;
 - the mock checkout page reuses the `session_id` from the checkout URL, so a reload/double submit replays the same purchase; a `session_id` that already belongs to a different owner or plan is rejected with `CONFLICT` **before** any entitlement write.
 
+**Known mock limitation (non-production only).** The mock has no lifecycle ordering: delaying the same authenticated completion command and replaying it _after_ a newer purchase (or a free-plan change) re-applies the older plan, because the command carries no event timestamp to fence against. Stripe does not have this problem (`stripe_webhook_events` claim/lease plus `billing_subscriptions.last_event_created` freshness CAS). This is acceptable for a contract/test double and is another reason `APP_ENV=production` must reject `PAYMENT_DRIVER=mock`.
+
 The five plan-identity fields of the read model (`planKey`, `planName`, `status`, `priceMonthly`, `currency`) are identical. Period dates, cancel flags, provider actions and `billedPlanKey` are Stripe-only (the mock has no subscription row); the parity suite asserts only the shared fields. `__tests__/integration/stripe-parity.test.ts` proves this against the real database for personal purchase, org purchase, non-admin refusal, wrong-family refusal, replay, manager-plan protection and read-model semantics.
 
 ---
