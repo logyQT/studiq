@@ -17,8 +17,9 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  *
  * The verdict of the walk (shared app, pl): the concern in the case text — „student
  * może przypisać sobie plan organizacyjny/edukatora” — does not reproduce. The
- * server refuses the purchase (`MockStripeService.assertPlanPurchasable` compares
- * `subscription_plans.for_account_type` with the caller's `ctx.accountType`):
+ * server refuses the purchase (`resolveApplicablePlan` in
+ * `lib/payment/checkout-rules.ts` compares `subscription_plans.for_account_type`
+ * with the caller's `ctx.accountType`):
  *
  * - `/checkout?plan_id=campus` (the case's step) renders the Campus summary but no
  *   payment form: a student has no organization, so the page shows the blocking

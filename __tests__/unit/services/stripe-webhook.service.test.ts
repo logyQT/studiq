@@ -238,10 +238,12 @@ function createRepository(): FakeRepository {
       .fn()
       .mockImplementation((priceId: string) => Promise.resolve(success(PRICES[priceId] ?? null))),
     insertPayment: vi.fn().mockImplementation((row: PaymentRowInput) => {
-      if (invoices.has(row.stripeInvoiceId)) return Promise.resolve(success('duplicate'));
+      if (invoices.has(row.stripeInvoiceId)) {
+        return Promise.resolve(success({ outcome: 'duplicate', existing: null }));
+      }
       invoices.add(row.stripeInvoiceId);
       payments.push(row);
-      return Promise.resolve(success('inserted'));
+      return Promise.resolve(success({ outcome: 'inserted', existing: null }));
     }),
     findOldestOrgAdmin: vi.fn().mockResolvedValue(success(null)),
     invoices,

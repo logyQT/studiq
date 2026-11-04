@@ -755,7 +755,7 @@ export class StripeWebhookService {
     });
 
     if (isFailure(payment)) throw new Error('payment history write failed');
-    if (payment.data === 'duplicate') {
+    if (payment.data.outcome === 'duplicate') {
       log('billing.payment_replay', { eventId: event.id, invoiceId: invoice.id });
     }
 

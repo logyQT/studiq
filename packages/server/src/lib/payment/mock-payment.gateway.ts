@@ -13,6 +13,7 @@ import type {
   ReleaseScheduledPlanResult,
   WebhookOutcome,
 } from '@studiq/server/lib/payment/payment-gateway';
+import { getSiteUrl } from '@studiq/server/lib/site-url';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import {
   type MockStripeService,
@@ -20,16 +21,20 @@ import {
 } from '@studiq/server/services/mock-stripe.service';
 
 /**
- * Minimal surface of the simulated provider used by the gateway. Keeping it
- * narrow lets tests pass a plain fake and stops the adapter from reaching into
- * the mock service's private rules.
+ * Minimal surface of the simulated provider used by the gateway. The checkout
+ * URL is provider I/O and lives here; completion (domain writes) stays in
+ * `MockStripeService`.
  */
-export type MockStripePort = Pick<MockStripeService, 'createCheckoutSession' | 'handleWebhook'>;
+export type MockStripePort = Pick<MockStripeService, 'handleWebhook'>;
 
 /**
  * The simulation adapter. Behaviour is intentionally identical to the old
- * controller → `MockStripeService` path: the fake checkout URL and the
- * authenticated webhook delegate to the same service.
+ * controller → `MockStripeService` path: the fake checkout URL, and an
+ * authenticated webhook whose downstream domain behaviour matches Stripe.
+ *
+ * Domain validation (purchasable plan, org admin) already ran in
+ * `BillingService.startCheckout` through the shared checkout rules, so this
+ * adapter never re-implements it.
  *
  * The Billing Portal is not simulated: `BillingService` builds the
  * account-type-aware local billing page and the adapter returns it unchanged.
@@ -40,18 +45,22 @@ export class MockPaymentGateway implements PaymentGateway {
   readonly driver = 'mock' as const;
   readonly livemode = false;
 
-  constructor(private readonly stripe: MockStripePort = mockStripeService) {}
+  constructor(
+    private readonly purchases: MockStripePort = mockStripeService,
+    private readonly siteUrl: () => string = getSiteUrl,
+  ) {}
 
   createCheckoutSession(
     input: CreateCheckoutSessionInput,
   ): Promise<ServiceResult<{ url: string; sessionId: string }>> {
-    const orgId = input.owner.type === 'org' ? input.owner.orgId : undefined;
+    const sessionId = crypto.randomUUID();
+    const orgParam = input.owner.type === 'org' ? `&org_id=${input.owner.orgId}` : '';
 
-    return this.stripe.createCheckoutSession(
-      input.planKey,
-      input.owner.accountType,
-      input.owner.userId,
-      orgId,
+    return Promise.resolve(
+      success({
+        url: `${this.siteUrl()}/checkout?session_id=${sessionId}&plan_id=${input.planKey}${orgParam}`,
+        sessionId,
+      }),
     );
   }
 
@@ -94,7 +103,7 @@ export class MockPaymentGateway implements PaymentGateway {
       return failure('BAD_REQUEST');
     }
 
-    const result = await this.stripe.handleWebhook(
+    const result = await this.purchases.handleWebhook(
       envelope.event,
       envelope.ctx.accountType,
       envelope.ctx.userId,

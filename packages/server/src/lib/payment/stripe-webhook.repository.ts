@@ -1,4 +1,9 @@
 import { ORG_ADMIN_ROLE } from '@studiq/authz';
+import {
+  type PaymentHistoryWriter,
+  type PaymentRecordResult,
+  paymentHistoryWriter,
+} from '@studiq/server/lib/payment/payment-history.repository';
 import { type CatalogPlan, type ListedPrice } from '@studiq/server/lib/payment/stripe-repository';
 import { failure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -128,9 +133,6 @@ export interface PaymentRowInput {
   paidAt: string;
 }
 
-/** `duplicate` means the partial unique index on `stripe_invoice_id` won. */
-export type PaymentInsertOutcome = 'inserted' | 'duplicate';
-
 export interface StripeWebhookRepository {
   claimEvent(input: WebhookEventInput): Promise<ServiceResult<WebhookEventClaim>>;
   finishEvent(
@@ -178,7 +180,7 @@ export interface StripeWebhookRepository {
   getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>>;
   findPrice(priceId: string, livemode: boolean): Promise<ServiceResult<ListedPrice | null>>;
 
-  insertPayment(input: PaymentRowInput): Promise<ServiceResult<PaymentInsertOutcome>>;
+  insertPayment(input: PaymentRowInput): Promise<ServiceResult<PaymentRecordResult>>;
   findOldestOrgAdmin(orgId: string): Promise<ServiceResult<string | null>>;
 }
 
@@ -250,6 +252,7 @@ function mapPrice(row: PriceRowShape): ListedPrice {
 export class SupabaseStripeWebhookRepository implements StripeWebhookRepository {
   constructor(
     private readonly createAdminClient: () => SupabaseClient<Database> = createServiceClient,
+    private readonly payments: PaymentHistoryWriter = paymentHistoryWriter,
   ) {}
 
   async claimEvent(input: WebhookEventInput): Promise<ServiceResult<WebhookEventClaim>> {
@@ -606,37 +609,25 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     return success(data ? mapPrice(data) : null);
   }
 
-  async insertPayment(input: PaymentRowInput): Promise<ServiceResult<PaymentInsertOutcome>> {
-    const supabase = this.createAdminClient();
-    const { data, error } = await supabase
-      .from('payments')
-      .insert({
-        user_id: input.userId,
-        organization_id: input.organizationId,
-        plan_key: input.planKey,
-        plan_name: input.planName,
-        amount: input.amount,
-        currency: input.currency,
-        session_id: null,
-        paid_at: input.paidAt,
-        provider: 'stripe',
-        stripe_customer_id: input.stripeCustomerId,
-        stripe_subscription_id: input.stripeSubscriptionId,
-        stripe_invoice_id: input.stripeInvoiceId,
-        stripe_checkout_session_id: input.stripeCheckoutSessionId,
-        hosted_invoice_url: input.hostedInvoiceUrl,
-        invoice_pdf_url: input.invoicePdfUrl,
-        status: 'paid',
-      })
-      .select('id')
-      .maybeSingle();
-
-    if (!error && data) return success('inserted');
-    // `payments_stripe_invoice_id_key` is the replay-safe key.
-    if (error?.code === '23505') return success('duplicate');
-    if (error) return toDbFailure(error);
-
-    return failure('INTERNAL_SERVER');
+  async insertPayment(input: PaymentRowInput): Promise<ServiceResult<PaymentRecordResult>> {
+    // The shared provider-neutral writer owns the row shape and the
+    // `stripe_invoice_id` uniqueness rule (workstream A).
+    return this.payments.record({
+      provider: 'stripe',
+      userId: input.userId,
+      organizationId: input.organizationId,
+      planKey: input.planKey,
+      planName: input.planName,
+      amount: input.amount,
+      currency: input.currency,
+      paidAt: input.paidAt,
+      stripeCustomerId: input.stripeCustomerId,
+      stripeSubscriptionId: input.stripeSubscriptionId,
+      stripeInvoiceId: input.stripeInvoiceId,
+      stripeCheckoutSessionId: input.stripeCheckoutSessionId,
+      hostedInvoiceUrl: input.hostedInvoiceUrl,
+      invoicePdfUrl: input.invoicePdfUrl,
+    });
   }
 
   async findOldestOrgAdmin(orgId: string): Promise<ServiceResult<string | null>> {

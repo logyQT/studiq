@@ -54,7 +54,8 @@ tenant is read or written.
 The concern the case asks to verify does **not** reproduce on the current build.
 The mock webhook (`mock-stripe.service.ts`) treats a plan whose
 `subscription_plans.for_account_type` is `manager` as an organization plan: it
-requires the caller to be an admin of the target organization (`assertOrgAdmin`)
+requires the caller to be an admin of the target organization
+(`resolveCheckoutOwner` in `lib/payment/checkout-rules.ts`)
 and calls `apply_org_plan`, which moves `organizations.plan` and re-syncs the
 organization's feature snapshots. The buyer's `profiles.personal_plan_key` is
 deliberately left on the free `launch` tier (#228) — the organization purchase

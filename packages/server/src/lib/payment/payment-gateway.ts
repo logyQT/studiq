@@ -5,9 +5,9 @@ import type { MockWebhookEvent } from '@studiq/server/services/mock-stripe.servi
 /**
  * The provider behind the billing surface (#662).
  *
- * `mock` is the simulation that ships today; `stripe` is the real gateway.
- * Domain rules (is the plan purchasable, is the caller an org admin, may the
- * owner start a second subscription) live in `BillingService` — the gateway
+ * `mock` is the non-production simulation; `stripe` is the real gateway.
+ * Plan/owner/org-admin rules live in `lib/payment/checkout-rules.ts` and are
+ * called by `BillingService` (and by the mock completion command); the gateway
  * only performs provider operations and maps failures onto `ServiceResult`.
  */
 export type PaymentDriver = 'mock' | 'stripe';
