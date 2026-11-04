@@ -10,11 +10,8 @@
 
 import { readFileSync, writeFileSync } from 'fs';
 import { globSync } from 'glob';
-import { relative } from 'path';
 
 const ROOT = '/workspaces/studiq/.worktrees/feat/monorepo-scaffold';
-
-const IMPORT_PACKAGES = new Set(['@studiq/authz', '@studiq/ui']);
 
 const files = [
   ...globSync(`${ROOT}/src/**/*.{ts,tsx}`, {
@@ -46,7 +43,6 @@ for (const filePath of files) {
     if (!pkgMatch) continue;
 
     const pkg = pkgMatch[3];
-    const isType = !!pkgMatch[1];
     const symbols = pkgMatch[2].trim();
 
     // Check if we're inside a multi-line import by looking backwards

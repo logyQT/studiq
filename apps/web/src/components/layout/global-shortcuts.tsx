@@ -94,7 +94,6 @@ export function GlobalShortcuts() {
   useEffect(() => {
     matcher.reset();
     // `pathname` and `open` are reset triggers, not values the body reads.
-    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- reset triggers.
   }, [matcher, pathname, open]);
 
   // The mouse swallows the keys a guard would see: `g`, click a menu open and closed, then `d`

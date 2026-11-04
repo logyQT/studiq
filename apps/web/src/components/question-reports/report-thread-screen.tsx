@@ -93,7 +93,6 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     // The message count is the trigger: scroll to the newest message whenever one arrives.
-    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- count is the trigger.
   }, [data?.messages.length]);
 
   if (isLoading || !data) {
