@@ -31,17 +31,20 @@ already running (a healthy stack is reused as-is). After a `git pull` that adds
 migrations:
 
 ```bash
-bunx supabase db push
+# Apply migrations to the selected stack (default or SUPABASE_STACK)
+STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env 2>/dev/null | tail -n1 | tr -d "'\"")}
+if [ -n "$STACK" ]; then
+  DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  bunx supabase db push --remote="$DB_URL" --yes
+else
+  bunx supabase db push
+fi
 ```
 
-In CLI v3 `db push` targets the local stack by default. With
-`SUPABASE_STACK=<name>` the database commands cannot take `--stack`; read the
-URL first and pass it as a remote target:
-
-```bash
-DB_URL=$(bunx supabase status --stack <name> --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
-bunx supabase db push --remote="$DB_URL" --yes
-```
+In CLI v3 a bare `db push` targets the local **default** stack; database commands
+cannot take `--stack`. The conditional above reads `SUPABASE_STACK` from the
+shell or root `.env`, resolves that stack's `DB_URL`, and passes it as
+`--remote`, so it cannot silently migrate the default database.
 
 A fresh `supabase start` (new volume) applies migrations during initialization;
 use `bun dev:reset-db` to drop, recreate and re-seed this branch's database.
@@ -56,9 +59,9 @@ This drops and recreates **this branch's selected stack**, applying all
 migrations and loading seed data. `dev:reset-db` uses the named stack's DB URL
 when `SUPABASE_STACK` is set, refuses in shared mode, and never touches another
 checkout's stack. Plain `bunx supabase db reset` targets the branch's **default**
-stack; to reset a named stack directly, use
-`bunx supabase db reset --remote="$SUPABASE_DB_URL" --yes` (or the `DB_URL` from
-`supabase status --stack <name> --env`).
+stack; for a named stack prefer `SUPABASE_STACK=<name> bun dev:reset-db`, or use
+the `DB_URL` extraction above with
+`bunx supabase db reset --remote="$DB_URL" --yes`.
 
 ## Schema Organization
 

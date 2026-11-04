@@ -147,7 +147,8 @@ bun dev:down           # stop this checkout's web; `--all` also stops this branc
 > set it in `.env` (`bun dev:ports` prints a free one). A branch switch
 > creates/resumes its own stack; moving/renaming the checkout creates a new one.
 > `bun dev:down --all` stops the stack and keeps its data;
-> `supabase stack destroy` deletes it. Never run `supabase stop --all` (it stops
+> `supabase stack destroy` (add `--stack <name>` for a named stack) deletes it.
+> Never run `supabase stop --all` (it stops
 > every stack on the machine), and never stop/reset a stack you did not start.
 > Agents must use `bun dev:build` + `bun dev:serve` (or `bun dev:up --prod`),
 > not `next dev`.

@@ -64,7 +64,8 @@ database per project root, branch and optional `SUPABASE_STACK` name. Only
 realtime,functions,analytics,pooler` — the app uses none of them locally); set
 `SUPABASE_START_EXCLUDE=` for the full stack. A branch switch creates/resumes its
 own stack; `bun dev:down --all` stops it and keeps the data, while
-`supabase stack destroy` deletes it. `bun dev:doctor` explains state, and a stack
+`supabase stack destroy` (add `--stack <name>` for a named stack) deletes it.
+`bun dev:doctor` explains state, and a stack
 another checkout owns is never reused or stopped.
 `dev:up` renders `apps/web/.env` **and** `supabase/.env`, so plain
 `bunx supabase ...` commands use the same branch's **default** stack. With

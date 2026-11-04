@@ -230,8 +230,8 @@ refetches. Resolution itself is immediate.
 
 ## Where to change plan data
 
-- **Templates** — `supabase/seeds/00_plans.sql`. `bunx supabase db reset`
-  rewrites `plan_features` / `plan_limits`, discarding runtime edits.
+- **Templates** — `supabase/seeds/00_plans.sql`. `bun dev:reset-db` rewrites
+  `plan_features` / `plan_limits`, discarding runtime edits.
 - **Runtime** — admin app: `GET/POST /api/v1/plan-limits`,
   `PUT/DELETE /api/v1/plan-limits/[id]` (id, not plan key). For
   `plan-features` the routes are `GET/POST /api/v1/plan-features` and
