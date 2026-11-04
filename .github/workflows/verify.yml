@@ -45,18 +45,38 @@ env:
 jobs:
   # Cheapest first, in the order a failure is cheapest to explain: lint, types.
   # This job is a merge gate, not a fan-out gate: the test jobs below wait only
-  # on `scope` (7 s), because a runner that boots Supabase, builds and installs
+  # on `scope` (5-8 s), because a runner that boots Supabase, builds and installs
   # browsers does not need to sit idle for 28 s behind lint. The trade-off is
   # deliberate — a lint failure no longer stops the test jobs before they start,
   # so it also burns their runners.
-  # A QA-suite PR only touches qa/** (plus, occasionally, __tests__ helpers).
-  # The app, its unit/integration tests and the e2e matrix cannot change there,
-  # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
-  # the `qa-suite` job still run. A docs-only PR (docs/**, any *.md outside
-  # qa/cases/) is treated the same way and then some: no app code and no spec can
-  # change, so `checks` is the only job that does any real work (the e2e legs
-  # still report, but as no-ops — see the note on top — and the QA suite starts no
-  # shard at all).
+  # A QA-suite PR only touches qa/** and __tests__/qa/**; the app, its
+  # unit/integration tests and the e2e matrix cannot change there, so they are
+  # skipped. `checks` (lint/typecheck, which does cover qa specs) and the
+  # `qa-suite` job still run. Everything else under __tests__/ (unit,
+  # integration, e2e, helpers, setup) is app code: a test-only change there must
+  # run the suite it edits, so `app` stays true. A Markdown-only docs PR (every
+  # changed file is `*.md`, none under qa/cases/) is treated the same way and
+  # then some: no app code and no spec can change, so `checks` is the only job
+  # that does any real work (the e2e legs still report, but as no-ops — see the
+  # note on top — and the QA suite starts no shard at all). A non-Markdown file
+  # under docs/ (e.g. docs/image.png) is still `app=false`, but the QA router
+  # cannot attribute it, so it starts all four shards.
+  #
+  # Why the `scope` gate stays (#1022, 36 runs): `scope` takes 5-8 s (median
+  # 6 s) and the first gated job starts ~3 s after it, so removing the gate is
+  # estimated to save ~9 s on the critical path (both components are measured;
+  # the saving itself is not an A/B run) — ~2 % of a 393 s app run and ~3.5 % of
+  # a 256 s QA-only run. On a Markdown-only docs PR the gate does not extend the
+  # run: the wall clock is `checks` (36 s total, 32 s in `checks`), which is
+  # ungated. Ungating the required jobs to recover those ~9 s would either run
+  # the full suite on non-app PRs — on a Markdown-only docs PR that is ~28
+  # runner-minutes (unit 47-53 s, integration 78-141 s, two e2e legs 177-378 s
+  # each, four QA shards 210-285 s each); on a non-Markdown docs PR the four QA
+  # shards already run, so it adds ~13 runner-minutes — or repeat this router
+  # inside each job, which still pays the same diff (~3 s, or ~0.6 s via the
+  # files API) before it can skip. `qa-suite` cannot be ungated at all: its
+  # matrix is `fromJSON(needs.scope.outputs.qa_shards)`. Decision record:
+  # docs/decisions/0008-keep-ci-scope-gate.md.
   # Schedule/dispatch runs everything.
   scope:
     runs-on: ubuntu-24.04
@@ -81,7 +101,7 @@ jobs:
             # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
             # the first match and the writer gets SIGPIPE (141), which flipped
             # `app` to false and skipped the unit/integration/e2e jobs.
-            if ! grep -qvE '^(qa/|__tests__/|docs/)|\.md$' <<< "$changed"; then
+            if ! grep -qvE '^(qa/|__tests__/qa/|docs/)|\.md$' <<< "$changed"; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
