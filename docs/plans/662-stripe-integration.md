@@ -1491,9 +1491,9 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 
 ### Rollback (never to the mock)
 
-1. Roll back to the previous application release with the same valid Stripe configuration. Production never switches to `PAYMENT_DRIVER=mock`; that combination is a boot error and has no override.
-2. **Do not revert the migrations** and **do not delete** `billing_*`, `stripe_prices`, `stripe_webhook_events` or `payments` rows.
-3. To stop new checkouts, set `CHECKOUT_KILL_SWITCH=1` (server-side; see `docs/deployment.md` → Preflight, kill switch, alerting and rotation). This must not change `PAYMENT_DRIVER` and must not stop the webhook endpoint.
+1. Stop new checkout sessions server-side first: `CHECKOUT_KILL_SWITCH=1` (see `docs/deployment.md` → Preflight, kill switch, alerting and rotation), or block the checkout route at the edge when the rollback target predates the switch.
+2. Roll back to the previous application release with the same valid Stripe configuration. Production never switches to `PAYMENT_DRIVER=mock`; that combination is a boot error and has no override.
+3. **Do not revert the migrations** and **do not delete** `billing_*`, `stripe_prices`, `stripe_webhook_events` or `payments` rows.
 4. To unwind a Stripe entitlement, cancel the subscription in Stripe and let `customer.subscription.deleted` downgrade to free — never hand-edit `profiles.personal_plan_key` while the webhook is live.
 5. Keep `STRIPE_WEBHOOK_SECRET` valid while any active subscription or pending delivery still depends on the webhook.
 
@@ -1545,7 +1545,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 | 24  | Docs                                                                                                               | `docs/api.md`, `docs/database.md`, `docs/ROADMAP.md`, `docs/testing.md`, `docs/ONBOARDING.md`                                                                           | `bun run lint`                       |
 | 25  | Pilot one plan; monitor `billing.*`; decide on production default                                                  | —                                                                                                                                                                       | manual                               |
 
-### 12.3 What blocks the design (current code)
+### 12.3 What blocked the design at planning time (historical — resolved by phases 1–5)
 
 1. **`payments.session_id NOT NULL UNIQUE`** — cannot represent invoice-based renewal rows until the migration lands.
 2. **The webhook route is `withAuth` + `req.json()`** — a real Stripe webhook cannot authenticate and the body must stay raw. `routes.config.ts` already marks it public, so only the route body needs to change.

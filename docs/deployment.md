@@ -180,10 +180,10 @@ Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
 **Environment model**
 
 - **Development:** each developer runs `stripe login`, creates their own sandbox
-  (`stripe sandboxes create "name"`), then mints a restricted key **inside that
+  (`stripe sandbox create "name"`), then mints a restricted key **inside that
   sandbox's Dashboard** (Developers → API keys → Create restricted key) and puts
   that `rk_test_…` in their local root `.env`. Do not use the `secret_key`
-  printed by `stripe sandboxes create` (it starts with `rkcs_test_`, which the
+  printed by `stripe sandbox create` (it starts with `rkcs_test_`, which the
   app does not accept). Copy the restricted key straight into `.env`; never into
   chat, tickets or an agent transcript.
 - Each sandbox has its own Products/Prices/portal configuration: run
@@ -191,8 +191,11 @@ Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
   once per sandbox and use `stripe listen` for its webhook secret. `.env.example`
   keeps `mock` as the local default; set `PAYMENT_DRIVER=stripe` when testing the
   real path.
-- **Shared test-mode account:** only the repo's opt-in lifecycle suite uses one
-  provisioned catalog/portal/webhook. Do not share personal test keys.
+- **Shared test-mode account:** only the repo's opt-in sandbox suite uses one
+  provisioned catalog/portal. Its lifecycle cases replay signed events through
+  the local webhook service, so they need no Dashboard webhook endpoint; the
+  catalog/portal checks do need a bootstrap run in that account. Do not share
+  personal test keys.
 - **CI:** unit, integration, e2e and QA run with the mock driver and need no
   Stripe secret (`vitest.config.ts` forces `APP_ENV=test`,
   `PAYMENT_DRIVER=mock`). The opt-in sandbox suite is **not wired into CI

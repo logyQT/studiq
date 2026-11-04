@@ -82,8 +82,8 @@ E2E and QA set `APP_ENV=qa` + `PAYMENT_DRIVER=mock` in the workflow env files.
   `environment:` with reviewers, never a fork PR.
 - The opt-in sandbox suite is **not wired into CI today**; `bun run test:stripe`
   is a local one-off. Its key is broader than the runtime key: Accounts (read),
-  Test Helpers (write), Payment Methods (write), Events (read), Billing Portal
-  Configurations (read), plus the runtime set.
+  Products (read), Test Helpers (write), Payment Methods (write), Events (read),
+  Billing Portal Configurations (read), plus the runtime set.
 - Never echo a key in a test, script or CI step; CI masking is not permission to
   print. Each developer uses their own Stripe sandbox and a restricted
   `rk_test_` key (not the `rkcs_test_` value printed by `stripe sandboxes
