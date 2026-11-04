@@ -64,17 +64,17 @@ database per project root, branch and optional `SUPABASE_STACK` name. Only
 realtime,functions,analytics,pooler` — the app uses none of them locally); set
 `SUPABASE_START_EXCLUDE=` for the full stack. A branch switch creates/resumes its
 own stack; `bun dev:down --all` stops it and keeps the data, while
-`supabase stack destroy` (add `--stack <name>` for a named stack) deletes it.
+`bunx supabase stack destroy` deletes it; add `--stack "$SUPABASE_STACK"` for a named stack.
 `bun dev:doctor` explains state, and a stack
 another checkout owns is never reused or stopped.
 `dev:up` renders `apps/web/.env` **and** `supabase/.env`, so plain
-`bunx supabase ...` commands use the same branch's **default** stack. With
-`SUPABASE_STACK=<name>`, add `--stack <name>` to `status`/`start`/`stop`/`logs`;
-database commands do not take `--stack` — read the URL first and pass it as a
-remote target:
+`bunx supabase ...` commands use the same branch's **default** stack. For a
+named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and add
+`--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`; database commands
+do not take `--stack` — read the URL first and pass it as a remote target:
 
 ```bash
-DB_URL=$(bunx supabase status --stack <name> --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+DB_URL=$(bunx supabase status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
 bunx supabase db reset --remote="$DB_URL" --yes
 ```
 

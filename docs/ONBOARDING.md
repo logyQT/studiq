@@ -281,9 +281,10 @@ bunx supabase status            # human-readable endpoints + service state
 bunx supabase status --env      # exportable KEY=VALUE
 ```
 
-For a named stack (`SUPABASE_STACK=<name>`), add `--stack <name>` to `status`,
-`start`, `stop`, `logs` and `stack destroy`. Database commands do not accept
-`--stack`; use the `DB_URL` + `--remote` form shown in the team workflow above.
+For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and
+add `--stack "$SUPABASE_STACK"` to `status`, `start`, `stop`, `logs` and
+`bunx supabase stack destroy`. Database commands do not accept `--stack`; use the
+`DB_URL` + `--remote` form shown in the team workflow above.
 
 Studio, Mailpit and API URLs are assigned per stack; `bun dev:status` prints the
 authoritative ones for this branch.
@@ -388,8 +389,8 @@ bun dev:down --all
 > Stops only **this branch's** Supabase stack and keeps its data. It refuses
 > when `SUPABASE_SHARED=1` and never touches another checkout's stack. Do not use
 > `supabase stop --all` on a shared machine. To deliberately wipe this branch's
-> database, use `bun dev:reset-db`; `supabase stack destroy` (add
-> `--stack <name>` for a named stack) also deletes the project (including data).
+> database, use `bun dev:reset-db`; `bunx supabase stack destroy` (add
+> `--stack "$SUPABASE_STACK"` for a named stack) also deletes the project (including data).
 
 ---
 
@@ -477,12 +478,13 @@ checkout's `.env` (`bun dev:ports` prints a free port). Never run
 
 > Plain `bunx supabase start|stop|status|db ...` targets this branch's **default**
 > stack because `supabase/config.toml` enables `[experimental] stack = true`.
-> With `SUPABASE_STACK=<name>`, add `--stack <name>` to
-> `status`/`start`/`stop`/`logs`; database commands do not take `--stack` — read
-> the URL and pass it as a remote target:
+> For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`)
+> and add `--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`;
+> database commands do not take `--stack` — read the URL and pass it as a remote
+> target:
 >
 > ```bash
-> DB_URL=$(bunx supabase status --stack <name> --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+> DB_URL=$(bunx supabase status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
 > bunx supabase db reset --remote="$DB_URL" --yes
 > ```
 >

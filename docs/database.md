@@ -59,7 +59,7 @@ This drops and recreates **this branch's selected stack**, applying all
 migrations and loading seed data. `dev:reset-db` uses the named stack's DB URL
 when `SUPABASE_STACK` is set, refuses in shared mode, and never touches another
 checkout's stack. Plain `bunx supabase db reset` targets the branch's **default**
-stack; for a named stack prefer `SUPABASE_STACK=<name> bun dev:reset-db`, or use
+stack; for a named stack prefer `SUPABASE_STACK=test bun dev:reset-db`, or use
 the `DB_URL` extraction above with
 `bunx supabase db reset --remote="$DB_URL" --yes`.
 
