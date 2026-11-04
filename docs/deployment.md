@@ -183,7 +183,10 @@ approved price ladder is in the production catalog.
 
 This is a **hard cutover**: the app refuses to boot until the live Stripe
 configuration exists, and Stripe-mode checkout fails closed while the catalog
-and live Prices disagree. Run the whole sequence in one maintenance window.
+and live Prices disagree. Run the whole sequence in one maintenance window. If a
+live deployment already serves checkout (a re-run), disable the checkout CTA or
+use a maintenance page **before step 0** and keep it disabled until step 3
+passes.
 
 Preconditions:
 
@@ -254,14 +257,16 @@ Steps:
    store, then deploy. The two tax-code variables are bootstrap-only and are not
    read at runtime. On the container/VM path `bun run start` runs the payment
    preflight and must print `provider=stripe livemode=true`; on Vercel (which
-   does not use root `start`) check the deployment log for the
-   `payment.gateway_ready` instrumentation line.
+   does not use root `start`) verify `payment.gateway_ready` in the configured
+   OTLP log backend, or in Vercel Runtime Logs when `OTEL_SDK_DISABLED=true`
+   (the deployment/build log is not the runtime log source).
 6. If a key or the webhook secret is ever exposed, rotate it in the Dashboard and
    restart; never reuse a leaked value.
 
 Rollback is **not** a driver flip: roll back the release, disable the checkout
 CTA/maintenance-page if needed, and keep the webhook endpoint and
-`STRIPE_WEBHOOK_SECRET` valid until the last in-flight subscription is canceled.
+`STRIPE_WEBHOOK_SECRET` valid while any active subscription or pending delivery
+still depends on them (a release rollback does not cancel subscriptions).
 
 #### Livemode separation
 
@@ -286,8 +291,8 @@ Production **never** switches to the mock driver: `APP_ENV=production` +
    a maintenance page. That stops new sessions only; it must not change
    `PAYMENT_DRIVER` and must not stop the webhook endpoint. (A dedicated
    driver-independent kill switch is planned in #662 workstream E.)
-3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled until
-   the last in-flight subscription is canceled.
+3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled while
+   any active subscription or pending delivery still depends on them.
 4. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
    `stripe_webhook_events` or `payments` rows. Never hand-edit
    `profiles.personal_plan_key` / `organizations.plan` while the webhook is live.
