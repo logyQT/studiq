@@ -1,7 +1,7 @@
 # Real Stripe integration behind the payment interface (#662)
 
 **Date:** 2026-10-30
-**Status:** Implemented through phase 5 (gateway seam, hosted Checkout, signed webhook + entitlement sync, portal, shared read model, success-page reconcile, plan change/cancel, billing UI, docs + opt-in test-clock lifecycle suite) plus phase-6 workstreams A (mock/Stripe parity), B (`APP_ENV` fail-closed contract), C (Managed Payments + tax-inclusive prices) and D (approved price ladder + live runbook). Workstreams E–F (ops, team secrets) are pending. **Production uses Stripe only**; the mock is an explicit non-production contract/test double, and `NODE_ENV` is never used as the posture.
+**Status:** Phase-6 workstreams A–F are implemented: mock/Stripe parity, the `APP_ENV` fail-closed contract, Managed Payments + tax-inclusive prices, the approved price ladder, operational touches (rate limits, preflight, kill switch, alerting/rotation) and the team-secret docs. The live bootstrap remains operator-only; the opt-in sandbox suite is manual. **Production uses Stripe only**; the mock is an explicit non-production contract/test double, and `NODE_ENV` is never used as the posture.
 **Issue:** [#662](https://github.com/logyQT/studiq/issues/662) (ROADMAP Phase 6)
 **Scope owner:** SoCoCold (Alan) per the issue body; the issue currently has no GitHub assignee
 
@@ -1493,7 +1493,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 
 1. Roll back to the previous application release with the same valid Stripe configuration. Production never switches to `PAYMENT_DRIVER=mock`; that combination is a boot error and has no override.
 2. **Do not revert the migrations** and **do not delete** `billing_*`, `stripe_prices`, `stripe_webhook_events` or `payments` rows.
-3. To stop new checkouts, disable the checkout CTA or use a maintenance page. This must not change `PAYMENT_DRIVER` and must not stop the webhook endpoint. (A driver-independent kill switch is planned in workstream E.)
+3. To stop new checkouts, set `CHECKOUT_KILL_SWITCH=1` (server-side; see `docs/deployment.md` → Preflight, kill switch, alerting and rotation). This must not change `PAYMENT_DRIVER` and must not stop the webhook endpoint.
 4. To unwind a Stripe entitlement, cancel the subscription in Stripe and let `customer.subscription.deleted` downgrade to free — never hand-edit `profiles.personal_plan_key` while the webhook is live.
 5. Keep `STRIPE_WEBHOOK_SECRET` valid while any active subscription or pending delivery still depends on the webhook.
 
@@ -1541,7 +1541,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 | 20  | Change plan (upgrade reset / downgrade schedule)                                                                   | `apps/web/src/app/(backend)/api/v1/billing/change-plan/route.ts`, `stripe-payment.gateway.ts`                                                                           | `billing.change-plan.test.ts`        |
 | 21  | Cancel / reactivate                                                                                                | `apps/web/src/app/(backend)/api/v1/billing/cancel/route.ts`, gateway                                                                                                    | `billing.cancel.test.ts`             |
 | 22  | Rebuild the three billing pages + invoice link + i18n                                                              | `apps/web/src/app/(frontend)/{app,edu,manage}/billing/page.tsx`, `apps/web/src/components/account/PaymentHistoryContent.tsx`, `apps/web/src/i18n/messages/{pl,en}.json` | component/E2E                        |
-| 23  | Opt-in Stripe test-mode suite                                                                                      | `__tests__/integration/stripe-live.test.ts`                                                                                                                             | `RUN_STRIPE_TESTS=1`                 |
+| 23  | Opt-in Stripe test-mode suite                                                                                      | `__tests__/integration/stripe-sandbox.test.ts`                                                                                                                          | `RUN_STRIPE_TESTS=1`                 |
 | 24  | Docs                                                                                                               | `docs/api.md`, `docs/database.md`, `docs/ROADMAP.md`, `docs/testing.md`, `docs/ONBOARDING.md`                                                                           | `bun run lint`                       |
 | 25  | Pilot one plan; monitor `billing.*`; decide on production default                                                  | —                                                                                                                                                                       | manual                               |
 
