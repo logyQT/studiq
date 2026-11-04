@@ -937,35 +937,59 @@ export class StripeWebhookService {
     owner: ResolvedOwner,
   ): Promise<ResolvedPlan | null> {
     const priceId = firstPriceId(subscription);
-    if (priceId) {
-      const listed = await this.repository.findPrice(priceId, this.livemode);
-      if (isFailure(listed)) throw new Error('price lookup failed');
+    if (!priceId) return null;
 
-      if (listed.data?.active) {
-        const plan = await this.repository.getPlan(listed.data.planKey);
-        if (isFailure(plan)) throw new Error('plan lookup failed');
+    const resolved = async (planKey: string | null | undefined): Promise<ResolvedPlan | null> => {
+      if (!planKey) return null;
+      const plan = await this.repository.getPlan(planKey);
+      if (isFailure(plan)) throw new Error('plan lookup failed');
+      if (!plan.data?.isActive || !this.planMatchesOwner(plan.data, owner)) return null;
+      return { plan: plan.data, priceId };
+    };
 
-        if (plan.data && this.planMatchesOwner(plan.data, owner) && plan.data.isActive) {
-          return { plan: plan.data, priceId };
-        }
-      }
+    // 1. The current sellable mapping wins.
+    const listed = await this.repository.findPrice(priceId, this.livemode);
+    if (isFailure(listed)) throw new Error('price lookup failed');
+    const fromMap = await resolved(listed.data?.active ? listed.data.planKey : null);
+    if (fromMap) return fromMap;
+
+    // 2. A Price rotated out of `stripe_prices` still carries its plan metadata,
+    //    which checkout wrote at creation. The Price is authoritative; the
+    //    subscription metadata goes stale after an in-app plan change.
+    const fromPrice = await this.planKeyFromPriceMetadata(priceId);
+    const resolvedFromPrice = await resolved(fromPrice);
+    if (resolvedFromPrice) {
+      logError('billing.price_unmapped', {
+        subscriptionId: subscription.id,
+        priceId,
+        planKey: fromPrice,
+        fallback: 'price_metadata',
+      });
+      return resolvedFromPrice;
     }
 
+    // 3. Last resort: the subscription's own metadata (survives session expiry).
     const metadataPlanKey = metadata?.[METADATA_PLAN_KEY];
-    if (!metadataPlanKey || !priceId) return null;
+    const fromMetadata = await resolved(metadataPlanKey);
+    if (fromMetadata) {
+      logError('billing.price_unmapped', {
+        subscriptionId: subscription.id,
+        priceId,
+        planKey: metadataPlanKey,
+        fallback: 'subscription_metadata',
+      });
+    }
+    return fromMetadata;
+  }
 
-    const fallback = await this.repository.getPlan(metadataPlanKey);
-    if (isFailure(fallback)) throw new Error('plan lookup failed');
-    if (!fallback.data?.isActive) return null;
-    if (!this.planMatchesOwner(fallback.data, owner)) return null;
-
-    logError('billing.price_unmapped', {
-      subscriptionId: subscription.id,
-      priceId,
-      planKey: metadataPlanKey,
-      fallback: true,
-    });
-    return { plan: fallback.data, priceId };
+  /** Plan key written on the Price at bootstrap; `null` when unreadable. */
+  private async planKeyFromPriceMetadata(priceId: string): Promise<string | null> {
+    try {
+      const price = await this.client.prices.retrieve(priceId);
+      return price?.metadata?.[METADATA_PLAN_KEY] ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private planMatchesOwner(plan: CatalogPlan, owner: ResolvedOwner): boolean {

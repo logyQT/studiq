@@ -764,6 +764,41 @@ describe('StripeWebhookService', () => {
   });
 
   describe('plan resolution', () => {
+    it('prefers the live Price metadata over stale subscription metadata', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.findPrice).mockResolvedValueOnce(success(null));
+      const stale = { ...USER_METADATA, studiq_plan_key: 'ace' };
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
+        makeSubscription({
+          metadata: stale,
+          items: {
+            data: [
+              { current_period_start: 1, current_period_end: 2, price: { id: 'price_rotated' } },
+            ],
+          },
+        }),
+      );
+      vi.mocked(harness.client.prices.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.Price>({
+          id: 'price_rotated',
+          object: 'price',
+          metadata: { studiq_plan_key: 'spark' },
+        }),
+      );
+      const event = makeEvent('customer.subscription.created', makeSubscription(), {
+        created: 1_700_000_600,
+      });
+
+      await sign(harness, event);
+
+      // The in-app upgrade changed the live Price but not the subscription's
+      // Checkout metadata; the rotated Price is authoritative.
+      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+        { type: 'user', userId: 'u-1' },
+        'spark',
+      );
+    });
+
     it('falls back to metadata when the price is not mapped, and logs it', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.findPrice).mockResolvedValueOnce(success(null));

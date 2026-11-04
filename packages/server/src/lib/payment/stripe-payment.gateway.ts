@@ -313,7 +313,11 @@ export class StripePaymentGateway implements PaymentGateway {
       // The live price must still be the plan the caller/D B thought it was.
       const currentPrice = await this.repository.findPriceById(livePriceId, this.livemode);
       if (isFailure(currentPrice)) return currentPrice;
-      const currentPlanKey = this.planKeyForLivePrice(currentPrice.data, subscription);
+      const currentPlanKey = await this.planKeyForLivePrice(
+        livePriceId,
+        currentPrice.data,
+        subscription,
+      );
       if (currentPlanKey !== input.currentPlanKey) {
         logError('billing.subscription_plan_mismatch', {
           subscriptionId: input.subscriptionId,
@@ -478,7 +482,7 @@ export class StripePaymentGateway implements PaymentGateway {
 
       const livePrice = await this.repository.findPriceById(livePriceId, this.livemode);
       if (isFailure(livePrice)) return livePrice;
-      const livePlanKey = this.planKeyForLivePrice(livePrice.data, subscription);
+      const livePlanKey = await this.planKeyForLivePrice(livePriceId, livePrice.data, subscription);
       if (livePlanKey !== input.currentPlanKey) {
         logError('billing.subscription_plan_mismatch', {
           subscriptionId: input.subscriptionId,
@@ -496,26 +500,35 @@ export class StripePaymentGateway implements PaymentGateway {
   }
 
   /**
-   * The plan a live Price represents. The current `stripe_prices` mapping wins;
-   * when the Price was rotated by a catalog change (amount or the tax-inclusive
-   * migration), the subscription metadata written at Checkout still records the
-   * plan. That is the same trust level the webhook already uses. A *different*
-   * mapped plan stays a hard mismatch.
+   * The plan a live Price represents. The current `stripe_prices` mapping wins.
+   * A Price rotated by a catalog change (amount or the tax-inclusive migration)
+   * is no longer in the map, but the Price itself carries the
+   * `studiq_plan_key` metadata written at creation — authoritative and immune to
+   * a subscription's stale Checkout metadata after a plan change. A different
+   * mapped/Price-metadata plan stays a hard mismatch.
    */
-  private planKeyForLivePrice(
+  private async planKeyForLivePrice(
+    livePriceId: string,
     mapped: ListedPrice | null,
     subscription: Stripe.Subscription,
-  ): string | null {
+  ): Promise<string | null> {
     if (mapped) return mapped.planKey;
 
-    const planKey = subscription.metadata?.[`${METADATA_PREFIX}_plan_key`] ?? null;
-    if (planKey) {
-      logWarn('billing.subscription_price_unmapped', {
-        subscriptionId: subscription.id,
-        planKey,
-      });
+    try {
+      const price = await this.client.prices.retrieve(livePriceId);
+      const planKey = price?.metadata?.[`${METADATA_PREFIX}_plan_key`] ?? null;
+      if (planKey) {
+        logWarn('billing.subscription_price_unmapped', {
+          subscriptionId: subscription.id,
+          priceId: livePriceId,
+          planKey,
+        });
+      }
+      return planKey;
+    } catch {
+      // Fail closed: an unreadable Price cannot prove the plan.
+      return null;
     }
-    return planKey;
   }
 
   /** Detach a pending schedule created by an earlier downgrade, if any. */

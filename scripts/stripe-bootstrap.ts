@@ -287,7 +287,7 @@ async function main(): Promise<void> {
   const productTaxCode = resolveProductTaxCode();
   assert(
     productTaxCode,
-    'STRIPE_PRODUCT_TAX_CODE is required: Managed Payments needs an eligible product tax code (Dashboard > Products > Tax code, or the Tax Codes API; the code must be labelled "Eligible for Managed Payments")',
+    'STRIPE_PRODUCT_TAX_CODE is required: Managed Payments needs an eligible product tax code. Choose it in the Dashboard (Products > Tax code) and confirm it is labelled "Eligible for Managed Payments"',
   );
   // Existence is not eligibility: Stripe does not expose the eligible flag.
   assert(

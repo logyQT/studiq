@@ -809,24 +809,47 @@ describe('StripePaymentGateway', () => {
       expect(client.subscriptions.update).not.toHaveBeenCalled();
     });
 
-    it('resolves a rotated (unmapped) live Price through the subscription metadata', async () => {
-      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
-        subscriptionFixture({ metadata: { studiq_plan_key: 'spark' } }),
-      );
+    it('resolves a rotated (unmapped) live Price through the Price metadata', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
       vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
+      vi.mocked(client.prices.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.Price>({
+          id: 'price_spark',
+          object: 'price',
+          metadata: { studiq_plan_key: 'spark' },
+        }),
+      );
       vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
 
       await expect(gateway.changePlan(changePlanInput)).resolves.toEqual(
         success({ status: 'applied' }),
       );
+      expect(client.prices.retrieve).toHaveBeenCalledWith('price_spark');
       expect(client.subscriptions.update).toHaveBeenCalled();
     });
 
     it('refuses a rotated Price whose metadata names another plan', async () => {
-      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(
-        subscriptionFixture({ metadata: { studiq_plan_key: 'ace' } }),
-      );
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
       vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
+      vi.mocked(client.prices.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.Price>({
+          id: 'price_spark',
+          object: 'price',
+          metadata: { studiq_plan_key: 'ace' },
+        }),
+      );
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'CONFLICT',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the rotated Price cannot be read', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
+      vi.mocked(client.prices.retrieve).mockRejectedValueOnce(new Error('stripe down'));
 
       await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
         success: false,

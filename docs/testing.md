@@ -90,7 +90,8 @@ sandbox suite needs no `APP_ENV`):
 - `STRIPE_PORTAL_CONFIGURATION_ID=bpc_…` and the catalog/prices created by
   `bun scripts/stripe-bootstrap.ts` (`STRIPE_PRODUCT_TAX_CODE` and
   `STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1` are required for any bootstrap write run,
-  test mode included; Managed Payments needs an eligible product tax code)
+  test mode included; Managed Payments needs an eligible product tax code,
+  confirmed in the Dashboard)
 - `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for a reachable local
   Supabase, plus the seeded `TEST_USERS` and at least two mapped student plans
 - `RUN_STRIPE_TESTS=1` (the script sets it)
