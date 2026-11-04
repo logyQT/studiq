@@ -1,5 +1,5 @@
-import type { RateLimitResult } from '@studiq/server/lib/rate-limiter';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
+import type { RateLimitResult } from './rate-limiter';
+import { toNextResponse } from './http-utils';
 import type { NextResponse } from 'next/server';
 
 /**

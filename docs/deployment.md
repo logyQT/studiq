@@ -251,8 +251,10 @@ Steps:
    `customer.subscription.created/updated/deleted`, `invoice.paid`,
    `invoice.payment_failed`, `invoice.payment_action_required`. Copy its
    `whsec_…` into the secret store (never into a shell log). With
-   `STRIPE_WEBHOOK_SECRET` now set, `bun run stripe:preflight` must exit 0
-   (it only checks the `whsec_` shape, not whether the secret is correct).
+   `STRIPE_WEBHOOK_SECRET` and the step-2
+   `STRIPE_PORTAL_CONFIGURATION_ID` set in the preflight environment,
+   `bun run stripe:preflight` must exit 0 (it only checks the `whsec_` shape,
+   not whether the secret is correct).
 5. Put the runtime variables (`APP_ENV=production`, `PAYMENT_DRIVER=stripe` or
    unset, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
    `STRIPE_PORTAL_CONFIGURATION_ID`, the site URL) into the production secret
@@ -287,12 +289,14 @@ still depends on them (a release rollback does not cancel subscriptions).
 Production **never** switches to the mock driver: `APP_ENV=production` +
 `PAYMENT_DRIVER=mock` is a boot error and there is no override.
 
-1. Roll back to the previous application release with the same valid Stripe
+1. Stop **new checkout sessions server-side** before rolling back: set
+   `CHECKOUT_KILL_SWITCH=1` on a release that supports it, or block
+   `POST /api/v1/stripe/create-checkout-session` at the edge/maintenance page if
+   the rollback target predates the switch. Disabling only the CTA or
+   `/checkout` page does not stop an already-open client. This must not change
+   `PAYMENT_DRIVER` and must not stop the webhook endpoint.
+2. Roll back to the previous application release with the same valid Stripe
    configuration.
-2. If new checkouts must stop, set `CHECKOUT_KILL_SWITCH=1` (or disable the
-   checkout CTA / point `/checkout` at a maintenance page). That stops new
-   sessions only; it must not change `PAYMENT_DRIVER` and must not stop the
-   webhook endpoint. Unset it to resume.
 3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled while
    any active subscription or pending delivery still depends on them.
 4. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
@@ -363,8 +367,10 @@ per-process, per-user bucket (10/min each, so 30/min combined); reconcile has
   is accepted. There is one app-side secret; retire the **old Dashboard
   endpoint** once the new one is live. Stripe retries failed deliveries for up
   to 3 days; events replay safely through the idempotency table.
-- **Emergency stop:** `CHECKOUT_KILL_SWITCH=1`, keep the webhook endpoint and
-  secret valid, roll back the release to one with the same valid Stripe config.
+- **Emergency stop:** set `CHECKOUT_KILL_SWITCH=1` (server-side, blocks the
+  checkout API even for an open client; on a pre-switch release block the route
+  at the edge), keep the webhook endpoint and secret valid, then roll back the
+  release to one with the same valid Stripe config.
   Never route production to `mock`, never hand-edit entitlements, never delete
   `billing_*` / `stripe_prices` / `stripe_webhook_events` / `payments` rows.
 - **Test cards:** `4242 4242 4242 4242` succeeds, `4000 0000 0000 0002`
