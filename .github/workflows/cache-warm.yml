@@ -21,6 +21,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -43,6 +45,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -80,6 +84,8 @@ jobs:
             install: firefox
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -98,9 +104,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ms-playwright
+          # Main-only workflow: pin the exact key so an old browser revision can
+          # never be re-saved under the current lockfile.
           key: playwright-ubuntu-24.04-${{ matrix.key }}-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            playwright-ubuntu-24.04-${{ matrix.key }}-
       - name: Install browser
         # Browser binaries only; the test jobs still run --with-deps for apt.
         run: bunx playwright install ${{ matrix.install }}

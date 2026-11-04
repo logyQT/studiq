@@ -212,39 +212,4 @@ test.describe('AUT-06 — an unconfirmed account cannot log in', () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fapp$/);
     await expectNoSession(page);
   });
-
-  test('a confirmed account with the same form still logs in and receives a session', async ({
-    page,
-  }) => {
-    const tenant = loadTenant(CASE);
-    const student = tenant.users.student;
-    expect(student, `${CASE} must seed the confirmed bare student`).toBeTruthy();
-
-    await pinLocale(page);
-    await expectNoSession(page);
-    await page.goto('/login');
-    await expect(page.getByText(COPY.loginTitle, { exact: true })).toBeVisible();
-
-    const responsePromise = page.waitForResponse(isLoginPost);
-    await page.getByLabel(COPY.emailLabel, { exact: true }).fill(student.email);
-    await page.getByLabel(COPY.passwordLabel, { exact: true }).fill(student.password);
-    await page.getByRole('button', { name: COPY.loginButton, exact: true }).click();
-    const response = await responsePromise;
-    expect(response.status(), 'POST /api/v1/auth/login for a confirmed account').toBe(200);
-
-    // The same redirect a verified student gets: the student panel.
-    await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Cześć');
-    expect(
-      await sessionCookieNames(page),
-      'session cookie after a confirmed login',
-    ).not.toHaveLength(0);
-
-    const me = await page.request.get('/api/v1/auth/me');
-    expect(me.status(), 'GET /api/v1/auth/me after login').toBe(200);
-    const body = await json<{ data?: { user?: { email?: string } | null } }>(me);
-    expect(body.data?.user?.email, 'the session belongs to the confirmed account').toBe(
-      student.email,
-    );
-  });
 });

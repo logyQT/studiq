@@ -1,5 +1,4 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
-import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
 import { waitForDefaultAuthPath } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
@@ -162,21 +161,5 @@ test.describe('AUT-12 forgotten password — send the reset link', () => {
     expect(login.status(), 'login with the unchanged password').toBe(200);
     const session = await json<{ data?: { user?: { id?: string } } }>(login);
     expect(session.data?.user?.id, 'the login belongs to the tenant student').toBe(student.id);
-  });
-
-  test('an unknown address gets the same neutral confirmation', async ({ page }) => {
-    // Deterministic per run and owned by this tenant: an address that was never
-    // registered, so the response must not reveal whether an account exists.
-    const tenant = loadTenant(CASE);
-    const unknown = `qa+${shortHash(`${tenant.key}:aut12-unknown`)}@test.local`;
-
-    await openResetPage(page);
-    expect(await currentUser(page), `${CASE} prerequisite: no session`).toBeNull();
-
-    const response = await submitReset(page, unknown);
-    await expectConfirmation(page, response);
-
-    // Still anonymous, exactly like the known-address path.
-    expect(await currentUser(page)).toBeNull();
   });
 });

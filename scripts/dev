@@ -333,8 +333,9 @@ resolve_contract() {
   esac
   SHARED_OWNER=${ENV[SUPABASE_SHARED_OWNER]:-}
 
-  # Runtime: blank keeps the CLI's auto choice (Docker when reachable, matching
-  # the pre-spike behaviour). `native` opts into the no-Docker runtime.
+  # Runtime: blank selects Docker (the pre-spike default); explicit `auto` asks
+  # the CLI to probe Docker, then Podman, then native. `native` opts into the
+  # no-Docker runtime.
   SUPABASE_RUNTIME=${ENV[SUPABASE_RUNTIME]:-}
   case "$SUPABASE_RUNTIME" in
     "" | auto | docker | podman | native) ;;
@@ -1101,8 +1102,9 @@ supabase_start() {
   if [[ -n "${SUPABASE_START_EXCLUDE:-}" ]]; then
     args+=(-x "$SUPABASE_START_EXCLUDE")
   fi
-  # Only pass an explicit choice. A blank/auto runtime lets the CLI pick for a
-  # new stack and keeps the persisted runtime for an existing one.
+  # Only forward an explicit, non-auto choice. A blank runtime is resolved to
+  # Docker by the preflight; `auto` lets the CLI probe for a new stack; both keep
+  # an existing stack's persisted runtime.
   if [[ -n "${SUPABASE_RUNTIME:-}" && "${SUPABASE_RUNTIME}" != "auto" ]]; then
     args+=(--runtime "$SUPABASE_RUNTIME")
   fi
@@ -2286,7 +2288,8 @@ Usage: bun dev:<command>
                 `-x` skips realtime/functions/analytics/pooler by default;
                 override with SUPABASE_START_EXCLUDE (empty = full stack).
                 SUPABASE_RUNTIME=native runs services as host processes
-                (no Docker); blank keeps the CLI's Docker-first auto choice.
+                (no Docker); blank selects Docker, `auto` probes Docker ->
+                Podman -> native.
   build         Production build of @studiq/web (waits on the registry build lock)
   serve         `next start` for this checkout on APP_PORT (no dev server)
   status        Web/Supabase health, PIDs and stack endpoints
