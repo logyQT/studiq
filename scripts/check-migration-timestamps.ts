@@ -23,17 +23,28 @@ const MIGRATIONS_DIR = 'supabase/migrations';
 // Matches Supabase migration filenames: {timestamp}_{name}.sql
 const MIGRATION_RE = /^(\d{14,})_(.+)\.sql$/;
 
-/** Migration filenames on disk; empty only when the migrations directory is absent. */
+/**
+ * Migration filenames on disk. An absent working-tree directory is only a valid
+ * "nothing to check" state when git does not track migrations here; if it does,
+ * skipping would silently disable the guard, so fail instead.
+ */
 function migrationFileNames(): string[] {
   try {
     return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
   } catch (error) {
-    // A missing directory is a valid "nothing to check" state; other read
-    // errors (e.g. EACCES) must fail loudly instead of skipping the guard.
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-      return [];
+    // Only a missing directory is recoverable; other read errors (e.g. EACCES)
+    // must fail loudly rather than skip the collision guard.
+    if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) {
+      throw error;
     }
-    throw error;
+    const tracked = execSync(`git ls-files -- ${MIGRATIONS_DIR}`, { encoding: 'utf8' })
+      .split('\n')
+      .filter((f) => f.endsWith('.sql'));
+    if (tracked.length === 0) return [];
+    throw new Error(
+      `✖ ${MIGRATIONS_DIR} is missing from the working tree but git tracks ${tracked.length} migration file(s) — restore the directory so the timestamp guard can run.`,
+      { cause: error },
+    );
   }
 }
 
