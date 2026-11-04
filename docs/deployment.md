@@ -250,7 +250,11 @@ Steps:
    `checkout.session.completed`, `checkout.session.expired`,
    `customer.subscription.created/updated/deleted`, `invoice.paid`,
    `invoice.payment_failed`, `invoice.payment_action_required`. Copy its
-   `whsec_…` into the secret store (never into a shell log).
+   `whsec_…` into the secret store (never into a shell log). With
+   `STRIPE_WEBHOOK_SECRET` and the step-2
+   `STRIPE_PORTAL_CONFIGURATION_ID` set in the preflight environment,
+   `bun run stripe:preflight` must exit 0 (it only checks the `whsec_` shape,
+   not whether the secret is correct).
 5. Put the runtime variables (`APP_ENV=production`, `PAYMENT_DRIVER=stripe` or
    unset, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
    `STRIPE_PORTAL_CONFIGURATION_ID`, the site URL) into the production secret
@@ -285,27 +289,93 @@ still depends on them (a release rollback does not cancel subscriptions).
 Production **never** switches to the mock driver: `APP_ENV=production` +
 `PAYMENT_DRIVER=mock` is a boot error and there is no override.
 
-1. Roll back to the previous application release with the same valid Stripe
+1. Stop **new checkout sessions server-side** before rolling back: set
+   `CHECKOUT_KILL_SWITCH=1` on a release that supports it, or block
+   `POST /api/v1/stripe/create-checkout-session` at the edge/maintenance page if
+   the rollback target predates the switch. Disabling only the CTA or
+   `/checkout` page does not stop an already-open client. This must not change
+   `PAYMENT_DRIVER` and must not stop the webhook endpoint.
+2. Roll back to the previous application release with the same valid Stripe
    configuration.
-2. If new checkouts must stop, disable the checkout CTA or point `/checkout` at
-   a maintenance page. That stops new sessions only; it must not change
-   `PAYMENT_DRIVER` and must not stop the webhook endpoint. (A dedicated
-   driver-independent kill switch is planned in #662 workstream E.)
 3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled while
    any active subscription or pending delivery still depends on them.
 4. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
    `stripe_webhook_events` or `payments` rows. Never hand-edit
    `profiles.personal_plan_key` / `organizations.plan` while the webhook is live.
 
-#### Operational notes
+#### Preflight, kill switch, alerting and rotation
 
-- The reconcile endpoint has a **per-process** in-memory rate limit (20/min per
-  user). A scaled-out deployment still needs a shared counter for a hard quota.
-- Watch `billing.webhook_*`, `billing.duplicate_subscription`,
-  `billing.price_unmapped`, `billing.payments_no_attributable_user` and
-  `billing.reconcile_*` during a pilot.
-- Test cards: `4242 4242 4242 4242` succeeds, `4000 0000 0000 0002` declines,
-  `4000 0000 0000 0341` attaches but fails the renewal charge (dunning).
+**Preflight (read-only).** `bun run stripe:preflight` validates the posture and
+the live configuration without creating anything or printing a key:
+
+- key prefix/mode, webhook-secret presence/shape and the production site URL
+  (through the factory);
+- the Billing Portal configuration exists, is active and is in the key's mode;
+- every active paid plan has one active monthly `stripe_prices` row with the
+  catalog amount/currency, in the key's mode;
+- production (or any live key) has no active test-mode mapping.
+
+It reads `subscription_plans`/`stripe_prices` with the production
+service-role credentials. With `PAYMENT_DRIVER=mock` it refuses unless
+`--allow-mock` is passed (a local smoke), because a deploy must see
+`provider=stripe`. It exits 1 on any issue, so a deploy step can gate on it. Run
+it after the live bootstrap + webhook secret and before enabling the release,
+and on demand during an incident.
+
+Three different checks, different jobs:
+
+| Command                                               | When                     | Network           | Proves                                                                      |
+| ----------------------------------------------------- | ------------------------ | ----------------- | --------------------------------------------------------------------------- |
+| `scripts/payment-preflight.ts` (automatic in `start`) | every app start          | no                | `APP_ENV`/driver/key/site-URL contract, `provider`/`livemode`               |
+| `stripe-bootstrap.ts --check`                         | before a bootstrap write | DB only           | the catalog plans/amounts the bootstrap would create                        |
+| `stripe-preflight.ts`                                 | before enabling a deploy | DB + Stripe reads | portal config, catalog ↔ `stripe_prices` parity, no test rows in production |
+
+**Kill switch.** `CHECKOUT_KILL_SWITCH=1` (any positive value: `1`, `true`,
+`yes`, `on`) makes `POST /api/v1/stripe/create-checkout-session` return
+`SERVICE_UNAVAILABLE` and logs `billing.checkout_disabled`. It stops **new**
+sessions only: webhooks, the Billing Portal and change/cancel keep working, and
+the payment driver is untouched. It is read from `process.env` per request, so
+set the variable and restart/redeploy to apply it.
+
+**Rate limits.** Checkout creation, change-plan and cancel each have their own
+per-process, per-user bucket (10/min each, so 30/min combined); reconcile has
+20/min. A scaled-out deployment still needs a shared counter for a hard quota.
+
+**Alert on** (Loki/Grafana; records carry `trace_id` when OTel is enabled):
+
+| Event                                   | Meaning                                | First action                                                             |
+| --------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| `billing.webhook_failed`                | handler raised; Stripe retries         | inspect the logged `eventId`, `type`, `message`, then replay after a fix |
+| `billing.webhook_signature_invalid`     | wrong/rotated `whsec_`                 | compare the Dashboard endpoint secret, rotate env                        |
+| `billing.webhook_livemode_mismatch`     | test event in live (or vice versa)     | check the endpoint/key pairing, no writes happened                       |
+| `billing.duplicate_subscription`        | second checkout for an active owner    | refund/cancel in Stripe; verify the active mirror                        |
+| `billing.price_unmapped`                | a live Price is not in `stripe_prices` | re-run `stripe:preflight`; fix the mapping                               |
+| `billing.price_mismatch`                | catalog ≠ mapped Price                 | re-run the bootstrap (test/live) before enabling checkout                |
+| `billing.payments_no_attributable_user` | org invoice without a payer profile    | check old admin left; history row skipped, entitlement applied           |
+| `billing.reconcile_*`                   | success-page reconcile errors          | webhook remains authoritative; investigate Stripe reads                  |
+| `billing.managed_payments_unavailable`  | MP/tax-code account misconfiguration   | enable MP/accept terms/set the tax code; checkout is 503                 |
+| `billing.checkout_disabled`             | kill switch is on                      | expected during an incident; confirm before re-enabling                  |
+
+**Rotation / incident response.** Never print, paste, log or commit a key.
+
+- **Restricted key rotation:** create the new `rk_live_` in the Dashboard, put it
+  in the production secret store, redeploy (or restart), verify
+  `stripe:preflight` and a test checkout, then revoke the old key. Do not rotate
+  and change the price catalog in the same step.
+- **Webhook secret rotation:** create/rotate the endpoint secret in the
+  Dashboard, update `STRIPE_WEBHOOK_SECRET`, redeploy, and confirm a test event
+  is accepted. There is one app-side secret; retire the **old Dashboard
+  endpoint** once the new one is live. Stripe retries failed deliveries for up
+  to 3 days; events replay safely through the idempotency table.
+- **Emergency stop:** set `CHECKOUT_KILL_SWITCH=1` (server-side, blocks the
+  checkout API even for an open client; on a pre-switch release block the route
+  at the edge), keep the webhook endpoint and secret valid, then roll back the
+  release to one with the same valid Stripe config.
+  Never route production to `mock`, never hand-edit entitlements, never delete
+  `billing_*` / `stripe_prices` / `stripe_webhook_events` / `payments` rows.
+- **Test cards:** `4242 4242 4242 4242` succeeds, `4000 0000 0000 0002`
+  declines, `4000 0000 0000 0341` attaches but fails the renewal charge
+  (dunning).
 
 ### Vercel Configuration
 

@@ -48,7 +48,8 @@
     "start:web": "bun run --filter @studiq/web start",
     "lint:web": "bun run --filter @studiq/web lint",
     "typecheck:web": "bun run --filter @studiq/web typecheck",
-    "test:qa": "playwright test -c qa/playwright.qa.config.ts"
+    "test:qa": "playwright test -c qa/playwright.qa.config.ts",
+    "stripe:preflight": "bun scripts/stripe-preflight.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.102",

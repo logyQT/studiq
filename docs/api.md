@@ -69,6 +69,12 @@ Production always uses `stripe`: `PAYMENT_DRIVER=mock` is a boot error there,
 test keys are refused, and `NEXT_PUBLIC_SITE_URL` must be an `https://`
 non-localhost origin. No Stripe.js ships in the browser bundle.
 
+Checkout creation, change-plan, cancel and reconcile are per-process, per-user
+rate limited (10/min for the money actions, 20/min for reconcile); a rejected
+call returns `429 RATE_LIMITED` with `Retry-After`. `CHECKOUT_KILL_SWITCH=1`
+stops new Checkout Sessions (503) without touching the payment driver or
+webhooks.
+
 Every endpoint below is authenticated by `withAuth()` (the proxy skips
 `/api/*`). The billing **owner is the authenticated user** (`ctx.userId`) for
 personal plans and the **active organization** (`ctx.activeOrgId`,
@@ -116,16 +122,16 @@ signed.
 
 ### Errors
 
-| Code                   | When                                                                                            |
-| ---------------------- | ----------------------------------------------------------------------------------------------- |
-| `BAD_REQUEST`          | Free plan, unknown plan/cadence, missing org id, no schedule to release                         |
-| `UNAUTHORIZED`         | No session (every route except the Stripe webhook)                                              |
-| `FORBIDDEN`            | Wrong plan family, non-admin org caller, foreign checkout session                               |
-| `NOT_FOUND`            | No active subscription/customer mapping (mock driver returns this for provider actions)         |
-| `CONFLICT`             | Owner already has an active subscription, or the live Stripe price no longer matches the mirror |
-| `UNPROCESSABLE_ENTITY` | Invalid body (e.g. missing `planKey`, non-uuid `orgId`)                                         |
-| `RATE_LIMITED`         | Per-user reconcile bucket exhausted (429, `Retry-After`)                                        |
-| `SERVICE_UNAVAILABLE`  | Stripe outage, missing/mismatched `stripe_prices` mapping, or a failed provider operation       |
+| Code                   | When                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `BAD_REQUEST`          | Free plan, unknown plan/cadence, missing org id, no schedule to release                                           |
+| `UNAUTHORIZED`         | No session (every route except the Stripe webhook)                                                                |
+| `FORBIDDEN`            | Wrong plan family, non-admin org caller, foreign checkout session                                                 |
+| `NOT_FOUND`            | No active subscription/customer mapping (mock driver returns this for provider actions)                           |
+| `CONFLICT`             | Owner already has an active subscription, or the live Stripe price no longer matches the mirror                   |
+| `UNPROCESSABLE_ENTITY` | Invalid body (e.g. missing `planKey`, non-uuid `orgId`)                                                           |
+| `RATE_LIMITED`         | Per-user burst limit exhausted on checkout / change-plan / cancel / reconcile (429, `Retry-After`)                |
+| `SERVICE_UNAVAILABLE`  | Checkout kill switch, Managed Payments misconfiguration, missing/mismatched `stripe_prices`, or a provider outage |
 
 Entitlements (`organizations.plan`, `profiles.personal_plan_key`) are written
 **only** by `EntitlementService` from the webhook path. `POST /billing/reconcile`

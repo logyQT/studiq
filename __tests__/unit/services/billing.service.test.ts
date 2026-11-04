@@ -116,6 +116,40 @@ describe('BillingService.startCheckout', () => {
     expect(lazy).toBeInstanceOf(BillingService);
   });
 
+  it('stops new checkouts when the kill switch is on, without touching the gateway', async () => {
+    vi.stubEnv('CHECKOUT_KILL_SWITCH', '1');
+
+    try {
+      await expect(service.startCheckout(studentCtx, 'spark')).resolves.toEqual({
+        success: false,
+        error: 'SERVICE_UNAVAILABLE',
+      });
+      expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
+      expect(repository.getPlan).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('keeps the portal available while the checkout kill switch is on', async () => {
+    vi.stubEnv('CHECKOUT_KILL_SWITCH', '1');
+
+    try {
+      vi.mocked(repository.findCustomer).mockResolvedValueOnce(
+        success({ stripeCustomerId: 'cus_1' }),
+      );
+      vi.mocked(gateway.createPortalSession).mockResolvedValueOnce(
+        success({ url: 'https://billing.stripe.com/p/session' }),
+      );
+
+      await expect(service.createPortalSession(studentCtx)).resolves.toEqual(
+        success({ url: 'https://billing.stripe.com/p/session' }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('rejects a free plan', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(success(plan({ priceMonthly: 0 })));
 
