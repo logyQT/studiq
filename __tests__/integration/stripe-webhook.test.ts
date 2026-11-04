@@ -117,9 +117,18 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
   let currentSubscription: Stripe.Subscription;
   const client: StripeClient = {
     ...real,
-    // These fixtures deliberately use prices outside `stripe_prices`; never
-    // reach the real Prices API from a test.
-    prices: { retrieve: () => Promise.reject(new Error('offline price lookup')) },
+    // These fixtures deliberately use prices outside `stripe_prices`. The
+    // offline lookup must be a permanent `resource_missing` so the resolver
+    // takes the metadata fallback instead of treating it as a retryable error.
+    prices: {
+      retrieve: () =>
+        Promise.reject(
+          Object.assign(new Error('offline price lookup'), {
+            type: 'StripeInvalidRequestError',
+            code: 'resource_missing',
+          }),
+        ),
+    },
     subscriptions: {
       retrieve: () => Promise.resolve(currentSubscription),
     },
