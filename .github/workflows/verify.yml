@@ -367,6 +367,13 @@ jobs:
       - run: npm install -g bun@${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
 
+      - name: Enable CI auth e-mail templates
+        # CLI 3.0.0 stack projects cannot serve `content_path` templates, so the
+        # committed config leaves them out. This job runs the non-stack backend
+        # and AUT-01/02/06/12 need the app's /auth/callback?token_hash=… link,
+        # which the branded templates produce (the default GoTrue URL differs).
+        run: cat supabase/config.ci-overlay.toml >> supabase/config.toml
+
       - name: Start Supabase
         env:
           # `supabase/config.toml` resolves `auth.site_url` from `env(APP_URL)`;
