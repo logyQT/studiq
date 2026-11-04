@@ -16,7 +16,29 @@ env:
   BUN_VERSION: 1.4.4-canary.20261027.1
 
 jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - name: Restore bun install cache
+        id: bun-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck:all
+
   bun:
+    needs: [checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -42,6 +64,7 @@ jobs:
           key: ${{ steps.bun-cache.outputs.cache-primary-key }}
 
   browsers:
+    needs: [checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:

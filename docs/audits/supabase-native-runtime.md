@@ -298,9 +298,8 @@ Test/CI review findings:
 - Branded auth templates are impossible in stack mode (open
   [supabase/cli#7200](https://github.com/supabase/cli/issues/7200)). The six
   specs are skipped via `STUDIQ_STACK_MODE=1`; all other QA specs run.
-- Full QA, integration and both e2e browsers passed natively. The remaining
-  optimisation is artifact caching (cold runners download the archives) and
-  Playwright browser caching.
+- Full QA, integration and both e2e browsers passed natively. Playwright browser
+  caching is refreshed by the main-only `cache-warm` workflow.
 - `qa/AGENT-PROMPT.md`/`README.md` still describe a `supabase_db_qa-env-*`
   Docker container for manual QA; that has no native equivalent.
 
@@ -314,13 +313,11 @@ Chromium/Firefox, QA shards, admin API) passed.
 
 ### What I would do next (requires operator approval)
 
-1. Add native artifact caching (`~/.supabase/cache/stack`, keyed on
-   `supabase/supabase.lock`) so cold runners start at 13–18 s too.
-2. Keep the six branded-template specs on a non-stack Docker leg until #7200
+1. Keep the six branded-template specs on a non-stack Docker leg until #7200
    lands, or re-enable them once a CLI with template serving is pinned.
-3. Update `AGENTS.md`/onboarding docs to describe native CI and the
+2. Update `AGENTS.md`/onboarding docs to describe native CI and the
    template-mode exception.
-4. Separately fix `docs/database.md`'s named-stack `db push` guidance
+3. Separately fix `docs/database.md`'s named-stack `db push` guidance
    (`sslmode=disable` + unset DB port vars).
 
 Do not open a PR or merge without operator approval.

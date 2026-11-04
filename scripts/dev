@@ -999,13 +999,19 @@ native_runtime_supported() {
 # `stack status` has no endpoints for a stopped stack, so fall back to
 # `stack list` (identity is project root + stack name).
 listed_stack_runtime() {
+  local current_ref
+  current_ref=$(git -C "$REPO_ROOT" symbolic-ref -q HEAD || printf 'detached')
   supa stack list --output-format json 2>/dev/null | STACK_ROOT="$REPO_ROOT" \
-    STACK_NAME="${SUPABASE_STACK:-default}" bun -e '
+    STACK_NAME="${SUPABASE_STACK:-default}" STACK_BRANCH="$current_ref" bun -e '
       const s = await Bun.stdin.json().catch(() => ({}));
       const root = process.env.STACK_ROOT;
       const name = process.env.STACK_NAME || "default";
+      const branch = process.env.STACK_BRANCH;
       const hit = (s.stacks ?? []).find(
-        (x) => x.project_root === root && (x.name || "default") === name,
+        (x) =>
+          x.project_root === root &&
+          (x.name || "default") === name &&
+          (x.branch_context || "") === branch,
       );
       if (hit?.runtime) console.log(hit.runtime);
     ' 2>/dev/null || true
@@ -1245,15 +1251,23 @@ stop_supabase_scoped() {
 
   # A failed stop is not proof that the stack was already stopped: native
   # services are host processes and must not be reported as gone while their
-  # lifecycle is still running.
+  # lifecycle is still running. Only a successful status response that confirms
+  # a stopped lifecycle may be treated as "already stopped".
   local status_json
-  status_json=$(supa "${status_args[@]}" 2>/dev/null || true)
+  if ! status_json=$(supa "${status_args[@]}" 2>/dev/null); then
+    fail "Failed to stop Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} and could not read its status.
+  Inspect it with 'bunx supabase stack logs${SUPABASE_STACK:+ --stack $SUPABASE_STACK}' or stop it explicitly."
+  fi
   if printf '%s' "$status_json" | grep -q '"lifecycle":"running"'; then
     fail "Failed to stop Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'}; it is still running.
   Inspect it with 'bunx supabase stack logs${SUPABASE_STACK:+ --stack $SUPABASE_STACK}' or stop it explicitly."
   fi
-  warn "No running stack for this branch (or it was already stopped)."
-  return 0
+  if printf '%s' "$status_json" | grep -q '"lifecycle":"stopped"'; then
+    info "Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} was already stopped."
+    return 0
+  fi
+  fail "Failed to stop Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'}; status did not confirm a stopped lifecycle.
+  Inspect it with 'bunx supabase stack logs${SUPABASE_STACK:+ --stack $SUPABASE_STACK}' or stop it explicitly."
 }
 
 # ── Env rendering ────────────────────────────────────────────────────────────
