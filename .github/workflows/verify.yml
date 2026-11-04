@@ -919,7 +919,6 @@ jobs:
         env:
           E2E_SKIP_WEB_WS: '1'
           E2E_WORKERS: '4'
-          CI: ''
         run: bunx playwright test --project=chromium --project=firefox --workers=4 --reporter=line
       - name: Seed all QA tenants
         run: bun scripts/qa-tenant.ts --all --run "native${{ github.run_id }}"
@@ -927,7 +926,6 @@ jobs:
         env:
           QA_APP_URL: http://localhost:3000
           QA_WORKERS: '4'
-          CI: ''
         run: bunx playwright test -c qa/playwright.qa.config.ts --workers=4 --project=chromium --reporter=line
       - name: App logs
         if: failure()
