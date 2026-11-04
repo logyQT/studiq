@@ -1,6 +1,8 @@
 # Bun-native toolchain: two-phase migration
 
-Status: **phase 1 implemented**, phase 2 deferred.
+Status: **phase 1 (#438) and the strict core (#984) implemented**; the `perf` and `style` tiers
+are deliberately rejected. Remaining follow-ups and the evidence behind those decisions:
+[`docs/audits/173-bun-strictness-premise.md`](../audits/173-bun-strictness-premise.md).
 
 PR #173 (`experimental/bun-native-linter`) bundled two different changes:
 
@@ -52,9 +54,11 @@ reports and the formatter's own output.
 
 ### Bun version caveat
 
-`bun fmt` and `bun check` shipped in stable **1.4.4**. `bun lint` is still canary-only, so the
-repo requires a 1.4.4 canary until 1.4.5 ships it (`bun upgrade --canary`). The devcontainer
-does this in `postCreateCommand`. There is no CI workflow in the repo; hooks are the gate.
+`bun fmt` and `bun check` shipped in stable **1.4.4** (2026-10-22). `bun lint` is still
+canary-only — stable 1.4.4 has no linter — so the repo requires a 1.4.4 canary until a stable
+release ships it (`bun upgrade --canary`). The devcontainer does this in `postCreateCommand`;
+CI pins `BUN_VERSION` in `.github/workflows/verify.yml`. Do not unpin until
+`bun lint --help` succeeds on a stable release.
 
 ### Output differences
 
@@ -99,22 +103,45 @@ Two lint findings appeared that Biome did not report. Both are behaviour-preserv
 - **`format:check` is formatting-only now.** `biome ci .` used to lint as well; `bun run lint`
   is the separate gate, which is how the hooks already called them.
 - **`typescript/prefer-optional-chain` stays a warning**, matching Biome, which reported
-  `complexity/useOptionalChain` as a warning on `main`. Phase 2 turns on `maxWarnings = 0`.
+  `complexity/useOptionalChain` as a warning on `main`. Phase 2 (#984) sets `maxWarnings = 0`,
+  so it must stay at zero findings.
 - **`bun lint` on its own lints more than the gate.** The gate scopes are passed by the scripts
   (apps/*/src, packages, `__tests__`); a bare `bun lint` also walks scripts and configs.
 - `typescript` remains a dependency because Next.js uses it for its own build-time checks, but
   no script invokes `tsc`.
 
-## Phase 2 — stricter config (deferred, was the body of PR #173)
+## Phase 2 — strict core (implemented in #984)
 
-Not in this change, deliberately:
+Landed deliberately:
 
-- `[lint] typeAware = true` and type-aware rules (`no-floating-promises`, `no-unsafe-*`, …),
-- `[lint.categories] suspicious = "warn"`, then `perf`, then `style`,
-- re-enabling the `jsx-a11y` rules and `react/button-has-type`,
-- `--max-warnings 0` so warnings fail the run,
-- driving the baseline of 557 errors / ~3,800 warnings to zero and deleting
-  `eslint-suppressions.json` (which phase 1 does not introduce).
+- `[lint] typeAware = true` and the type-aware rules (`no-floating-promises`,
+  `no-misused-promises`, `no-unsafe-*`, `unbound-method`, …),
+- `[lint.categories] suspicious = "warn"`,
+- the `jsx-a11y` rules and `react/button-has-type` as errors,
+- `@typescript-eslint/no-explicit-any` as an error,
+- `maxWarnings = 0`, with `eslint-suppressions.json` at `{}`,
+- the generated `Database` type wired through both Supabase client factories and every injected
+  factory (which surfaced 93 real nullability errors),
+- typed test boundaries (`json<T>` / `asJson<T>`, typed doubles) instead of `any`.
 
-Phase 2 is a product-quality effort with its own PR(s) and should land only after phase 1 has
-proven stable in day-to-day use.
+Rejected, with measurements in
+[`docs/audits/173-bun-strictness-premise.md`](../audits/173-bun-strictness-premise.md):
+
+- **`perf` tier** — ~1,700 findings, only 3 auto-fixable, dominated by `no-await-in-loop` on
+  intentional sequential I/O.
+- **`style` tier** — ~66,000 findings, mostly `one-var`, `sort-keys`, `no-magic-numbers`.
+- **"Zero suppressions"** — the landed tree carries ~48 justified inline `eslint-disable`
+  comments, 16 of them at genuine `any` boundaries. The empty _file_ ledger is the policy; the
+  inline comments are reviewed code.
+- **`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`,
+  `noPropertyAccessFromIndexSignature`** — deferred/never; costs are measured in the audit.
+
+`unbound-method` stays off for `__tests__/**`: all 82 reports were the Vitest
+`expect(mock.method)` idiom. `react-hooks/exhaustive-effect-dependencies` (a Bun duplicate of
+`exhaustive-deps`) is off globally so it does not need inline suppressions.
+
+### Canary policy
+
+`bun lint` is still canary-only. Keep the CI pin, and re-check stable on every Bun release; the
+gate depends on type-aware mode suppressing the obsolete `react/react-in-jsx-scope` rule, so do
+not run the gate with `--no-type-aware`.
