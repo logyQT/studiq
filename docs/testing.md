@@ -86,7 +86,7 @@ E2E and QA set `APP_ENV=qa` + `PAYMENT_DRIVER=mock` in the workflow env files.
   Billing Portal Configurations (read), plus the runtime set.
 - Never echo a key in a test, script or CI step; CI masking is not permission to
   print. Each developer uses their own Stripe sandbox and a restricted
-  `rk_test_` key (not the `rkcs_test_` value printed by `stripe sandboxes
+  `rk_test_` key (not the `rkcs_test_` value printed by `stripe sandbox
 create`). See `docs/deployment.md` → "Team access and secrets".
 
 ## Stripe sandbox (opt-in)
