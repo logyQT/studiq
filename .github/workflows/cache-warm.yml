@@ -27,8 +27,16 @@ jobs:
         with:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - name: Restore bun install cache
-        id: bun-cache
+      - name: Restore bun install cache (exact)
+        id: bun-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore bun install cache (fallback)
+        id: bun-cache-pr
+        if: github.ref != 'refs/heads/main'
         uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
@@ -51,21 +59,31 @@ jobs:
         with:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - name: Restore bun install cache
-        id: bun-cache
+      - name: Restore bun install cache (exact)
+        id: bun-cache-main
+        if: github.ref == 'refs/heads/main'
         uses: actions/cache/restore@v6
         with:
           # Main-only writer: pin the exact lockfile key so an older cache can
           # never be re-saved under the current lockfile.
           path: ~/.bun/install/cache
           key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore bun install cache (fallback)
+        id: bun-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
       - name: Save bun install cache
-        if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/main' && steps.bun-cache-main.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: ~/.bun/install/cache
-          key: ${{ steps.bun-cache.outputs.cache-primary-key }}
+          key: ${{ steps.bun-cache-main.outputs.cache-primary-key }}
 
   browsers:
     needs: [checks]
@@ -90,8 +108,16 @@ jobs:
         with:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - name: Restore bun install cache
-        id: bun-cache
+      - name: Restore bun install cache (exact)
+        id: bun-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore bun install cache (fallback)
+        id: bun-cache-pr
+        if: github.ref != 'refs/heads/main'
         uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
