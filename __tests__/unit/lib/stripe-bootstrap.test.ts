@@ -1,6 +1,13 @@
 import {
+  BOOTSTRAP_TAX_BEHAVIOR,
+  type BootstrapStripePrice,
   type CatalogPlanForBootstrap,
+  isProductTaxCodeConfirmed,
   lookupKeyForPlan,
+  portalParams,
+  priceMatches,
+  productUpdateFor,
+  resolveProductTaxCode,
   selectBootstrapPrices,
 } from '@studiq/server/lib/payment/stripe-bootstrap';
 import { describe, expect, it } from 'vitest';
@@ -123,5 +130,122 @@ describe('selectBootstrapPrices', () => {
     expect(errors).toHaveLength(2);
     expect(errors[0]).toContain('spark: currency must be PLN');
     expect(errors[1]).toContain('pro: amount 100 is below the PLN minimum');
+  });
+});
+
+const bootstrapPrice = {
+  planKey: 'spark',
+  productName: 'StudiQ Spark',
+  lookupKey: 'studiq_spark_monthly',
+  currency: 'pln',
+  unitAmount: 999,
+  interval: 'month' as const,
+  billingCycle: 'monthly' as const,
+};
+
+function stripePrice(overrides: Partial<BootstrapStripePrice> = {}): BootstrapStripePrice {
+  return {
+    active: true,
+    type: 'recurring',
+    product: 'prod_1',
+    currency: 'pln',
+    unit_amount: 999,
+    recurring: { interval: 'month', interval_count: 1 },
+    tax_behavior: BOOTSTRAP_TAX_BEHAVIOR,
+    ...overrides,
+  };
+}
+
+describe('priceMatches', () => {
+  it('reuses a matching tax-inclusive monthly Price', () => {
+    expect(priceMatches(stripePrice(), bootstrapPrice, 'prod_1')).toBe(true);
+  });
+
+  it.each(['exclusive', 'unspecified', null])(
+    'rotates a Price whose tax behavior is %s',
+    (tax_behavior) => {
+      expect(priceMatches(stripePrice({ tax_behavior }), bootstrapPrice, 'prod_1')).toBe(false);
+    },
+  );
+
+  it.each([
+    ['inactive', { active: false }],
+    ['one-time', { type: 'one_time' }],
+    ['another product', { product: 'prod_2' }],
+    ['another currency', { currency: 'eur' }],
+    ['another amount', { unit_amount: 1999 }],
+    ['another interval', { recurring: { interval: 'year', interval_count: 1 } }],
+  ])('rotates on %s', (_label, overrides) => {
+    expect(
+      priceMatches(
+        stripePrice(overrides as Partial<BootstrapStripePrice>),
+        bootstrapPrice,
+        'prod_1',
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('productUpdateFor', () => {
+  it('returns null when the name and tax code already match', () => {
+    expect(
+      productUpdateFor({ name: 'StudiQ Spark', tax_code: 'txcd_123' }, bootstrapPrice, 'txcd_123'),
+    ).toBeNull();
+  });
+
+  it('updates only the name when the tax code matches', () => {
+    expect(
+      productUpdateFor({ name: 'Old', tax_code: 'txcd_123' }, bootstrapPrice, 'txcd_123'),
+    ).toEqual({ name: 'StudiQ Spark' });
+  });
+
+  it('adds the tax code without renaming', () => {
+    expect(
+      productUpdateFor({ name: 'StudiQ Spark', tax_code: null }, bootstrapPrice, 'txcd_123'),
+    ).toEqual({ tax_code: 'txcd_123' });
+  });
+
+  it('never clears an existing tax code when none is configured', () => {
+    expect(
+      productUpdateFor({ name: 'StudiQ Spark', tax_code: 'txcd_old' }, bootstrapPrice, null),
+    ).toBeNull();
+  });
+});
+
+describe('resolveProductTaxCode', () => {
+  it('returns null when unset or blank', () => {
+    expect(resolveProductTaxCode({})).toBeNull();
+    expect(resolveProductTaxCode({ STRIPE_PRODUCT_TAX_CODE: '   ' })).toBeNull();
+  });
+
+  it('trims a valid code', () => {
+    expect(resolveProductTaxCode({ STRIPE_PRODUCT_TAX_CODE: '  txcd_10103000 ' })).toBe(
+      'txcd_10103000',
+    );
+  });
+
+  it('rejects a malformed code instead of sending it to Stripe', () => {
+    expect(() => resolveProductTaxCode({ STRIPE_PRODUCT_TAX_CODE: 'txcd_' })).toThrow(/txcd_/);
+    expect(() => resolveProductTaxCode({ STRIPE_PRODUCT_TAX_CODE: 'saas' })).toThrow(/txcd_/);
+  });
+});
+
+describe('isProductTaxCodeConfirmed', () => {
+  it('requires the explicit confirmation flag, trimmed', () => {
+    expect(isProductTaxCodeConfirmed({})).toBe(false);
+    expect(isProductTaxCodeConfirmed({ STRIPE_PRODUCT_TAX_CODE_CONFIRMED: '0' })).toBe(false);
+    expect(isProductTaxCodeConfirmed({ STRIPE_PRODUCT_TAX_CODE_CONFIRMED: ' 1 ' })).toBe(true);
+  });
+});
+
+describe('portalParams', () => {
+  it('keeps tax-id collection out and plan switching off', () => {
+    const params = portalParams(false, 'https://studiq.test');
+
+    expect(params.features?.customer_update?.allowed_updates).toEqual(['email', 'address', 'name']);
+    expect(params.features?.customer_update?.allowed_updates).not.toContain('tax_id');
+    expect(params.features?.subscription_update).toBeUndefined();
+    expect(params.default_return_url).toBe('https://studiq.test/app/billing');
+    expect(params.metadata?.studiq_livemode).toBe('false');
   });
 });

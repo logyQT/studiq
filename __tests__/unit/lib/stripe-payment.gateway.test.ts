@@ -232,9 +232,9 @@ describe('StripePaymentGateway', () => {
       line_items: [{ price: 'price_spark', quantity: 1 }],
       client_reference_id: 'u-1',
       allow_promotion_codes: false,
-      managed_payments: { enabled: false },
-      automatic_tax: { enabled: false },
-      tax_id_collection: { enabled: false },
+      // Managed Payments is the merchant of record and handles tax; it forbids
+      // automatic_tax/tax_id_collection on the session.
+      managed_payments: { enabled: true },
       locale: 'pl',
       success_url:
         'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}&plan_id=spark',
@@ -245,6 +245,9 @@ describe('StripePaymentGateway', () => {
         ) + 60,
     });
     expect(params.subscription_data?.billing_mode).toEqual({ type: 'classic' });
+    // The forbidden Managed Payments parameters must be absent, not `false`.
+    expect(params).not.toHaveProperty('automatic_tax');
+    expect(params).not.toHaveProperty('tax_id_collection');
     expect(params.metadata).toMatchObject({
       studiq_owner_type: 'user',
       studiq_user_id: 'u-1',
@@ -378,6 +381,20 @@ describe('StripePaymentGateway', () => {
     await expect(gateway.createCheckoutSession(personalInput())).resolves.toEqual({
       success: false,
       error: 'RATE_LIMITED',
+    });
+  });
+
+  it('maps a Managed Payments configuration failure to a retryable SERVICE_UNAVAILABLE', async () => {
+    vi.mocked(client.checkout.sessions.create).mockRejectedValueOnce({
+      type: 'StripeInvalidRequestError',
+      code: 'parameter_invalid',
+      param: 'managed_payments[enabled]',
+      message: 'The product is not eligible for Managed Payments',
+    });
+
+    await expect(gateway.createCheckoutSession(personalInput())).resolves.toEqual({
+      success: false,
+      error: 'SERVICE_UNAVAILABLE',
     });
   });
 
@@ -788,6 +805,57 @@ describe('StripePaymentGateway', () => {
       await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
         success: false,
         error: 'FORBIDDEN',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('resolves a rotated (unmapped) live Price through the Price metadata', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
+      vi.mocked(client.prices.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.Price>({
+          id: 'price_spark',
+          object: 'price',
+          metadata: { studiq_plan_key: 'spark' },
+        }),
+      );
+      vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual(
+        success({ status: 'applied' }),
+      );
+      expect(client.prices.retrieve).toHaveBeenCalledWith('price_spark');
+      expect(client.subscriptions.update).toHaveBeenCalled();
+    });
+
+    it('refuses a rotated Price whose metadata names another plan', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
+      vi.mocked(client.prices.retrieve).mockResolvedValueOnce(
+        asJson<Stripe.Price>({
+          id: 'price_spark',
+          object: 'price',
+          metadata: { studiq_plan_key: 'ace' },
+        }),
+      );
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'CONFLICT',
+      });
+      expect(client.subscriptions.update).not.toHaveBeenCalled();
+    });
+
+    it('reports a transient Price read failure as retryable, not as a conflict', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
+      vi.mocked(client.prices.retrieve).mockRejectedValueOnce({
+        type: 'StripeRateLimitError',
+      });
+
+      await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
+        success: false,
+        error: 'RATE_LIMITED',
       });
       expect(client.subscriptions.update).not.toHaveBeenCalled();
     });

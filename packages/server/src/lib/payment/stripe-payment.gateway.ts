@@ -25,6 +25,7 @@ import type { StripeClient } from '@studiq/server/lib/payment/stripe-client';
 import {
   type CustomerDetails,
   type CustomerMapping,
+  type ListedPrice,
   type StripeBillingRepository,
   stripeBillingRepository,
   SupabaseStripeBillingRepository,
@@ -82,6 +83,24 @@ function stripeFailure(error: unknown): ServiceResult<never> {
   }
 
   if (type === 'StripeRateLimitError') return failure('RATE_LIMITED');
+
+  // A Managed Payments / product-tax-code configuration problem is global
+  // infrastructure, not "this plan is unavailable to this account". Surface it
+  // as retryable so the checkout UI does not blame the customer.
+  if (type === 'StripeInvalidRequestError') {
+    const message = isRecord(error) ? readString(error, 'message') : undefined;
+    const param = isRecord(error) ? readString(error, 'param') : undefined;
+    const configIssue = `${message ?? ''} ${param ?? ''} ${code ?? ''}`.toLowerCase();
+    if (
+      configIssue.includes('managed_payments') ||
+      configIssue.includes('managed payments') ||
+      configIssue.includes('tax_code')
+    ) {
+      logError('billing.managed_payments_unavailable', { code: code ?? 'unknown' });
+      return failure('SERVICE_UNAVAILABLE');
+    }
+  }
+
   if (type === 'StripeInvalidRequestError' || type === 'StripeCardError') {
     // Log the shape, never the request parameters (customer email/name).
     logError('billing.stripe_invalid_request', {
@@ -210,13 +229,14 @@ export class StripePaymentGateway implements PaymentGateway {
           // idempotency key, so a retry sends identical parameters.
           expires_at: input.expiresAt ?? checkoutExpiresAt(this.now().getTime()),
           allow_promotion_codes: false,
-          // Some accounts have Stripe Managed Payments (merchant of record)
-          // enabled by default, which rejects `automatic_tax: false`. We are
-          // the merchant of record and collect no tax at launch (D8), so
-          // disable it explicitly for this session.
-          managed_payments: { enabled: false },
-          automatic_tax: { enabled: false },
-          tax_id_collection: { enabled: false },
+          // Managed Payments is Stripe's merchant-of-record solution: it
+          // calculates/withholds/remits indirect tax itself (operator decision
+          // #662). Stripe therefore forbids `automatic_tax` and
+          // `tax_id_collection` on a Managed Payments session — they must be
+          // absent, not `false`. Tax-inclusive display comes from
+          // `Price.tax_behavior = 'inclusive'` (bootstrap), not from the
+          // session. See docs/deployment.md and design §5.4.
+          managed_payments: { enabled: true },
         },
         { idempotencyKey: input.idempotencyKey },
       );
@@ -293,11 +313,16 @@ export class StripePaymentGateway implements PaymentGateway {
       // The live price must still be the plan the caller/D B thought it was.
       const currentPrice = await this.repository.findPriceById(livePriceId, this.livemode);
       if (isFailure(currentPrice)) return currentPrice;
-      if (currentPrice.data?.planKey !== input.currentPlanKey) {
+      const currentPlanKey = await this.planKeyForLivePrice(
+        livePriceId,
+        currentPrice.data,
+        subscription,
+      );
+      if (currentPlanKey !== input.currentPlanKey) {
         logError('billing.subscription_plan_mismatch', {
           subscriptionId: input.subscriptionId,
           expected: input.currentPlanKey,
-          actual: currentPrice.data?.planKey ?? null,
+          actual: currentPlanKey,
         });
         return failure('CONFLICT');
       }
@@ -457,11 +482,12 @@ export class StripePaymentGateway implements PaymentGateway {
 
       const livePrice = await this.repository.findPriceById(livePriceId, this.livemode);
       if (isFailure(livePrice)) return livePrice;
-      if (livePrice.data?.planKey !== input.currentPlanKey) {
+      const livePlanKey = await this.planKeyForLivePrice(livePriceId, livePrice.data, subscription);
+      if (livePlanKey !== input.currentPlanKey) {
         logError('billing.subscription_plan_mismatch', {
           subscriptionId: input.subscriptionId,
           expected: input.currentPlanKey,
-          actual: livePrice.data?.planKey ?? null,
+          actual: livePlanKey,
         });
         return failure('CONFLICT');
       }
@@ -471,6 +497,36 @@ export class StripePaymentGateway implements PaymentGateway {
     } catch (error) {
       return stripeFailure(error);
     }
+  }
+
+  /**
+   * The plan a live Price represents. The current `stripe_prices` mapping wins.
+   * A Price rotated by a catalog change (amount or the tax-inclusive migration)
+   * is no longer in the map, but the Price itself carries the
+   * `studiq_plan_key` metadata written at creation — authoritative and immune to
+   * a subscription's stale Checkout metadata after a plan change. A different
+   * mapped/Price-metadata plan stays a hard mismatch.
+   */
+  private async planKeyForLivePrice(
+    livePriceId: string,
+    mapped: ListedPrice | null,
+    subscription: Stripe.Subscription,
+  ): Promise<string | null> {
+    if (mapped) return mapped.planKey;
+
+    // A transient provider error must reach `stripeFailure` (retryable), not be
+    // reported as a plan conflict. A retrieved Price with missing/different
+    // metadata stays a hard mismatch.
+    const price = await this.client.prices.retrieve(livePriceId);
+    const planKey = price?.metadata?.[`${METADATA_PREFIX}_plan_key`] ?? null;
+    if (planKey) {
+      logWarn('billing.subscription_price_unmapped', {
+        subscriptionId: subscription.id,
+        priceId: livePriceId,
+        planKey,
+      });
+    }
+    return planKey;
   }
 
   /** Detach a pending schedule created by an earlier downgrade, if any. */

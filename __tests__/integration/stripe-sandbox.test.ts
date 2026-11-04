@@ -106,6 +106,15 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
 
     expect([...byPlan.keys()].toSorted()).toEqual(plans.map((plan) => plan.key).toSorted());
     expect(products.every((product) => !product.livemode)).toBe(true);
+
+    // Managed Payments needs the product classification. The bootstrap refuses
+    // a write run without it, so every product must carry the configured code.
+    const expectedTaxCode = process.env.STRIPE_PRODUCT_TAX_CODE?.trim();
+    if (expectedTaxCode) {
+      expect([...byPlan.values()].every((product) => product.tax_code === expectedTaxCode)).toBe(
+        true,
+      );
+    }
   });
 
   it('has one monthly PLN Price per plan with a unique lookup key', () => {
@@ -128,6 +137,9 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       expect(price!.unit_amount).toBe(plan.price_monthly);
       expect(price!.recurring?.interval).toBe('month');
       expect(price!.recurring?.interval_count).toBe(1);
+      // Operator decision: displayed PLN prices are tax-inclusive. Managed
+      // Payments uses the Price's tax_behavior.
+      expect(price!.tax_behavior).toBe('inclusive');
       expect(price!.product).toBe(byPlan.get(plan.key)?.id);
       expect(price!.livemode).toBe(false);
     }
@@ -164,7 +176,9 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
     expect(portal!.features.invoice_history?.enabled).toBe(true);
     expect(portal!.features.subscription_cancel?.enabled).toBe(true);
     expect(portal!.features.subscription_cancel?.mode).toBe('at_period_end');
-    expect(portal!.features.customer_update?.allowed_updates).toContain('tax_id');
+    // Managed Payments is the merchant of record and owns tax IDs; the portal
+    // no longer collects them.
+    expect(portal!.features.customer_update?.allowed_updates).not.toContain('tax_id');
     // Plan switching is an app endpoint (#662 X5), not a portal action.
     expect(portal!.features.subscription_update?.enabled).not.toBe(true);
   });
@@ -231,6 +245,10 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
       expect(session.client_reference_id).toBe(studentId);
       expect(session.metadata?.studiq_plan_key).toBe(plan.key);
       expect(session.metadata?.studiq_owner_type).toBe('user');
+      // Managed Payments is the merchant of record and owns tax; the session
+      // must not also enable automatic tax.
+      expect(session.managed_payments?.enabled).toBe(true);
+      expect(session.automatic_tax?.enabled).not.toBe(true);
 
       customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
       expect(customerId).toMatch(/^cus_/);

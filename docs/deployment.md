@@ -75,6 +75,10 @@ STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
 NEXT_PUBLIC_SITE_URL=https://studiq.app  # https, non-localhost (APP_URL is the fallback)
 ```
 
+Two further variables are **bootstrap-only** (the runtime boot validation does
+not read them): `STRIPE_PRODUCT_TAX_CODE` and
+`STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1`. The live bootstrap refuses without them.
+
 Test mode for a local/preview deployment:
 
 ```env
@@ -126,6 +130,38 @@ For preview/staging, create a Dashboard endpoint with the same event list and
 store its secret in that environment. One endpoint per environment is the
 default; sharing a staging endpoint across previews is an open decision (§12.1
 Q9).
+
+#### Managed Payments (merchant of record)
+
+Checkout sessions are created with `managed_payments: { enabled: true }`. Stripe
+becomes the merchant of record: it calculates, withholds and remits indirect
+tax, handles fraud/disputes and provides transaction support through Link.
+
+- Enable Managed Payments in the Stripe Dashboard for each mode and accept its
+  terms of service; the API call fails if the account is not eligible or the
+  terms are not accepted. All checkouts fail until this is done.
+- Managed Payments applies only to **new** subscriptions bought through a
+  Managed Payments Checkout Session; existing subscriptions cannot be migrated.
+  Re-run `stripe-bootstrap.ts --live` (which rotates the Prices to tax-inclusive
+  `tax_behavior`) **before** deploying this release, or a legacy exclusive Price
+  would keep being sold at price + VAT.
+- Stripe **forbids** `automatic_tax` and `tax_id_collection` on a Managed
+  Payments session. They are absent (not `false`).
+- Set `STRIPE_PRODUCT_TAX_CODE` to an eligible product tax code and
+  `STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1` after confirming in the Dashboard
+  (Products > Tax code) that it is labelled "Eligible for Managed Payments".
+  Managed Payments handles tax rates/remittance, but the product classification
+  is still required; the bootstrap refuses **any write run** without both (test
+  mode included), verifies the code exists in Stripe, and then verifies the
+  human confirmation. Stripe's API does not expose the eligibility label, so the
+  confirmation cannot be inferred from `taxCodes.retrieve`.
+- Prices are created with `tax_behavior: 'inclusive'`: the displayed PLN price
+  is the final consumer price (operator decision). A legacy exclusive/
+  unspecified Price is rotated by the bootstrap.
+- Customers see Link as the seller ("Sold through Link"), receipts/invoices
+  come from Link, and Adaptive Pricing may present local currencies. Our
+  invoice-history rows still come from `invoice.paid`.
+- The Billing Portal no longer collects tax IDs; Link/Managed Payments owns them.
 
 #### Portal configuration
 
