@@ -56,17 +56,18 @@ bun dev:build           # explicit production build (stop the dev server first)
 bun dev:logs            # follow the web log + recent Supabase container logs
 ```
 
-The stack is **per checkout**: `SUPABASE_PROJECT_ID` (derived from the checkout
-path when blank) plus a port block from `SUPABASE_PORT_BASE` (default `54320` →
-API `:54321`, DB `:54322`, Studio `:54323`, Mail `:54324`; `APP_PORT` defaults to
-`3000`). Supabase starts **lean** (`supabase start -x
-realtime,edge-runtime,imgproxy,logflare,vector,supavisor` — the app uses none of
-them locally); set `SUPABASE_START_EXCLUDE=` for the full stack. For parallel
-agents, set `APP_PORT`, `SUPABASE_PROJECT_ID` and `SUPABASE_PORT_BASE` in
-`.env` — `bun dev:ports --suggest` prints a free block, `bun dev:doctor` explains
-collisions, and a stack another checkout owns is never reused or stopped.
+The stack is **per git worktree + branch**: `dev:up` uses the experimental
+`supabase stack` backend, which assigns ports (20000-32767) and keeps a separate
+database per project root, branch and optional `SUPABASE_STACK` name. Only
+`APP_PORT` (default `3000`) can collide between checkouts — pick a free one with
+`bun dev:ports`. Supabase starts **lean** (`supabase start -x
+realtime,functions,analytics,pooler` — the app uses none of them locally); set
+`SUPABASE_START_EXCLUDE=` for the full stack. A branch switch creates/resumes its
+own stack; `bun dev:down --all` stops it and keeps the data, while
+`supabase stack destroy` deletes it. `bun dev:doctor` explains state, and a stack
+another checkout owns is never reused or stopped.
 `dev:up` renders `apps/web/.env` **and** `supabase/.env`, so plain
-`bunx supabase ...` commands follow the same checkout. The shared QA stack
+`bunx supabase ...` commands use the same branch's stack. The shared QA stack
 (`:3010` / `:54421`) is refused unless `DEV_ALLOW_SHARED=1`; `SUPABASE_SHARED=1`
 reuses a stack read-only and refuses destructive commands. `apps/admin` is
 **not** part of `dev:up` — run it with `bun dev:admin` and its own
@@ -105,14 +106,14 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun dev:up`                             | One-command local stack: Supabase (if needed) + web server; renders `apps/web/.env` + `supabase/.env`      |
 | `bun dev:up --prod`                      | Same, but production build (if missing) + `next start` (agents)                                            |
 | `bun dev:serve`                          | `next start` for this checkout on `APP_PORT` (no dev server)                                               |
-| `bun dev:status`                         | Web/Supabase health, project id, ports, owner (`--json` for a stable machine shape)                        |
-| `bun dev:down` / `bun dev:down --all`    | Stop this checkout's web server / also stop **this checkout's** Supabase (database volume kept)            |
-| `bun dev:reset-db`                       | Destructive `supabase db reset` for this checkout, then re-render `apps/web/.env`                          |
+| `bun dev:status`                         | Web/Supabase health, stack id, endpoints (`--json` for a stable machine shape)                             |
+| `bun dev:down` / `bun dev:down --all`    | Stop this checkout's web server / also stop **this branch's** Supabase stack (data kept)                   |
+| `bun dev:reset-db`                       | Destructive `supabase db reset` for this branch's stack, then re-render `apps/web/.env`                    |
 | `bun dev:build`                          | Explicit production build of `@studiq/web` (registry-level build lock; stop the dev server first)          |
 | `bun dev:doctor`                         | Explain missing / owned / colliding state                                                                  |
-| `bun dev:ports`                          | Print a free `APP_PORT` / `SUPABASE_PORT_BASE` block                                                       |
-| `bun dev:logs`                           | Follow `.dev/web.log` + this stack's container logs                                                        |
-| `bun dev:prepull`                        | Pull Supabase images without leaving the stack running (VM templates)                                      |
+| `bun dev:ports`                          | Print a free `APP_PORT` (Supabase ports are assigned per stack)                                            |
+| `bun dev:logs`                           | Follow `.dev/web.log` + this stack's logs                                                                  |
+| `bun dev:prepull`                        | Download stack images without starting the stack (VM templates)                                            |
 | `bun dev`                                | Start the web app dev server (`next dev`) — agents should use `dev:build` + `dev:serve`                    |
 | `bun dev:admin`                          | Start the admin app dev server (`@studiq/admin`, port 4000)                                                |
 | `bun build`                              | Build the web app for production — same as `bun build:web`                                                 |
@@ -144,17 +145,17 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 
 The committed template is [`.env.example`](.env.example) at the repo root —
 `cp .env.example .env` once. `bun dev:up` reads that root `.env`, asks
-`supabase status -o env` for the local keys (anon + service role) and generates
-**`apps/web/.env`** (mode `600`, Git-ignored). Never edit or commit the generated
-file: change root `.env` and re-run `bun dev:up`. The admin app keeps its own
-`apps/admin/.env` (committed template:
+`supabase status --output-format json` for the local stack's URLs/keys (anon +
+service role) and generates **`apps/web/.env`** (mode `600`, Git-ignored). Never
+edit or commit the generated file: change root `.env` and re-run `bun dev:up`.
+The admin app keeps its own `apps/admin/.env` (committed template:
 [`apps/admin/.env.example`](apps/admin/.env.example)) and is outside the
 `dev:up` contract. Vitest still loads a root `.env` / `.env.local` when running
 tests.
 
 ```env
-# ── Supabase (required) ───────────────────────────────────────────────
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+# ── Supabase (shared/remote mode only — local stack discovers these) ──
+SUPABASE_URL=http://127.0.0.1:54321
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # service-role key — server only, never ship to the client
 NEXT_PUBLIC_SITE_URL=http://localhost:3000       # canonical URL (invite links, sitemap)
@@ -164,8 +165,8 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000       # canonical URL (invite links, 
 # copyable invite link stays the only delivery path. A bad value stops the server at boot.
 MAIL_DRIVER=                                     # none (default) | log (NODE_ENV=development only) | smtp
 MAIL_FROM=                                       # smtp: sender, e.g. StudiQ <no-reply@your-domain.com>
-MAIL_SMTP_HOST=                                  # smtp: 127.0.0.1 locally (Inbucket), the relay in production
-MAIL_SMTP_PORT=                                  # smtp: 54325 locally (Inbucket), 587 / 465 in production
+MAIL_SMTP_HOST=                                  # smtp: 127.0.0.1 locally (Mailpit), the relay in production
+MAIL_SMTP_PORT=                                  # smtp: read from `supabase status` locally, 587 / 465 in production
 MAIL_SMTP_SECURE=                                # smtp: true for implicit TLS (port 465)
 MAIL_SMTP_USER=                                  # smtp: set together with MAIL_SMTP_PASS
 MAIL_SMTP_PASS=

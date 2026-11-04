@@ -34,14 +34,17 @@ env:
   # graph shares one explicit CI stack identity. Each job owns its own Supabase
   # instance (containers are named `supabase_*_studiq-ci`).
   SUPABASE_PROJECT_ID: studiq-ci
+  # CI keeps the default (non-stack) backend: runners are already isolated,
+  # fixed ports are fine, and the experimental surface stays out of the gate.
+  SUPABASE_EXPERIMENTAL_STACK: '0'
   SUPABASE_API_PORT: '54321'
   SUPABASE_DB_PORT: '54322'
   SUPABASE_STUDIO_PORT: '54323'
-  SUPABASE_MAIL_PORT: '54324'
+  SUPABASE_LOCAL_SMTP_PORT: '54324'
   SUPABASE_ANALYTICS_PORT: '54327'
-  SUPABASE_EDGE_INSPECTOR_PORT: '54328'
-  SUPABASE_SHADOW_PORT: '54320'
-  SUPABASE_POOLER_PORT: '54329'
+  SUPABASE_EDGE_RUNTIME_INSPECTOR_PORT: '54328'
+  SUPABASE_DB_SHADOW_PORT: '54320'
+  SUPABASE_DB_POOLER_PORT: '54329'
   SUPABASE_URL: http://localhost:54321
 
 jobs:
@@ -307,11 +310,17 @@ jobs:
         # vitest's loadEnv() reads the repo root; integration imports the route
         # handlers directly, so no app server is needed.
         run: |
-          eval "$(bunx supabase status -o env)"
+          status=$(bunx supabase status --output-format json)
+          API_URL=$(jq -r .API_URL <<<"$status")
+          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
             echo "OTEL_SDK_DISABLED=true"
           } > .env
@@ -321,7 +330,7 @@ jobs:
         run: bunx vitest run __tests__/integration --no-file-parallelism
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --project-id "$SUPABASE_PROJECT_ID" --no-backup || true
+        run: bunx supabase stop --no-backup || true
 
   # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
@@ -372,11 +381,17 @@ jobs:
         # environment they fall back to the shared-VM localhost:54421 and fail
         # with `fetch failed`. Export them to $GITHUB_ENV as well.
         run: |
-          eval "$(bunx supabase status -o env)"
+          status=$(bunx supabase status --output-format json)
+          API_URL=$(jq -r .API_URL <<<"$status")
+          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
             # Lets the seeder write auth users straight into Postgres (one
             # statement, one bcrypt for the whole batch) instead of one GoTrue
             # admin call per account. Optional: without a direct URL (e.g. a
@@ -389,6 +404,7 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
             echo "SUPABASE_DB_URL=$DB_URL"
             echo "OTEL_SDK_DISABLED=true"
             echo "QA_APP_URL=http://localhost:3010"
@@ -514,7 +530,7 @@ jobs:
 
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --project-id "$SUPABASE_PROJECT_ID" --no-backup || true
+        run: bunx supabase stop --no-backup || true
 
   # One leg per browser so a red platform re-runs alone. Each leg owns its
   # tenant set (keys include the project) and its own Supabase instance.
@@ -589,11 +605,17 @@ jobs:
         if: needs.scope.outputs.app == 'true'
         # Local Supabase keys are deterministic, so nothing here is a secret.
         run: |
-          eval "$(bunx supabase status -o env)"
+          status=$(bunx supabase status --output-format json)
+          API_URL=$(jq -r .API_URL <<<"$status")
+          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
             echo "SUPABASE_DB_URL=$DB_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
             echo "OTEL_SDK_DISABLED=true"
@@ -692,7 +714,7 @@ jobs:
 
       - name: Stop Supabase
         if: always() && needs.scope.outputs.app == 'true'
-        run: bunx supabase stop --project-id "$SUPABASE_PROJECT_ID" --no-backup || true
+        run: bunx supabase stop --no-backup || true
 
   # admin-api only needs the admin app; the web server is skipped so this leg
   # costs seconds rather than a second Next build.
@@ -733,10 +755,16 @@ jobs:
         run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
       - name: Write admin env
         run: |
-          eval "$(bunx supabase status -o env)"
+          status=$(bunx supabase status --output-format json)
+          API_URL=$(jq -r .API_URL <<<"$status")
+          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
           } > apps/admin/.env
       - name: Install browsers
         run: bunx playwright install --with-deps chromium
@@ -754,4 +782,4 @@ jobs:
           if-no-files-found: ignore
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --project-id "$SUPABASE_PROJECT_ID" --no-backup || true
+        run: bunx supabase stop --no-backup || true

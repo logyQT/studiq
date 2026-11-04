@@ -1,18 +1,23 @@
 # For detailed configuration reference documentation, visit:
 # https://supabase.com/docs/guides/local-development/cli/config
 #
-# ── Per-checkout parametrization ──────────────────────────────────────────────
-# Every configurable value is read through `env()`. `scripts/dev` resolves the
-# contract from root `.env` (see `.env.example`), derives per-checkout defaults
-# from the checkout path, exports them to every Supabase call, and renders
-# `supabase/.env`.
+# ── Local projects + env parametrization ─────────────────────────────────────
+# `[experimental] stack = true` (below) makes `supabase start|status|stop` run
+# the experimental stack backend: it assigns ports per local project and keeps
+# data separate by project root + git branch + optional `--stack` name.
 #
-# How direct CLI commands see these values (pinned CLI v2.x):
+# The remaining `env()` values are `APP_URL` (auth site/redirect URLs),
+# `project_id` (used by non-stack runs: CI sets SUPABASE_EXPERIMENTAL_STACK=0
+# and SUPABASE_PROJECT_ID), and optional provider secrets. `scripts/dev`
+# resolves them from root `.env` (see `.env.example`) and renders `supabase/.env`
+# so plain `bunx supabase ...` can parse this file.
+#
+# How direct CLI commands see these values (pinned CLI 3.0.0):
 #   * the CLI loads the project-root `.env` and `supabase/.env`; the process
-#     environment wins over both, and root `.env` wins over `supabase/.env`.
+#     environment wins over both.
 #   * `supabase/.env` is generated and only exists after a `bun dev:*` run. In a
-#     fresh shell/checkout with neither file, export the required variables (or
-#     run `bun dev:up`, or `cp .env.example .env`) before a direct CLI command.
+#     fresh shell/checkout run `bun dev:up` (or `cp .env.example .env` and export
+#     APP_URL) before a direct CLI command.
 #   * an unset numeric variable makes the whole config fail to parse
 #     (`CliConfigParseError`); an unset string is left as the literal
 #     `env(NAME)`.
@@ -24,8 +29,9 @@ project_id = "env(SUPABASE_PROJECT_ID)"
 
 [api]
 enabled = true
-# Port to use for the API URL.
-port = "env(SUPABASE_API_PORT)"
+# No port on purpose: `[experimental] stack = true` assigns one per local
+# project. CI runs with SUPABASE_EXPERIMENTAL_STACK=0 and supplies
+# SUPABASE_API_PORT explicitly.
 # Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
 # endpoints. `public` and `graphql_public` schemas are included by default.
 schemas = ["public", "graphql_public"]
@@ -36,10 +42,8 @@ extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-# Port to use for the local database URL.
-port = "env(SUPABASE_DB_PORT)"
-# Port used by db diff command to initialize the shadow database.
-shadow_port = "env(SUPABASE_SHADOW_PORT)"
+# No port/shadow_port: the stack assigns them per local project (CI sets
+# SUPABASE_DB_PORT / SUPABASE_DB_SHADOW_PORT with SUPABASE_EXPERIMENTAL_STACK=0).
 # Maximum amount of time to wait for health check when starting the local database.
 health_timeout = "2m"
 # The database major version to use. This has to be the same as your remote database's. Run `SHOW
@@ -48,8 +52,7 @@ major_version = 17
 
 [db.pooler]
 enabled = false
-# Port to use for the local connection pooler.
-port = "env(SUPABASE_POOLER_PORT)"
+# No port: the stack assigns one per local project.
 # Specifies when a server connection can be reused by other clients.
 # Configure one of the supported pooler modes: `transaction`, `session`.
 pool_mode = "transaction"
@@ -95,24 +98,21 @@ enabled = true
 
 [studio]
 enabled = true
-# Port to use for Supabase Studio.
-port = "env(SUPABASE_STUDIO_PORT)"
-# External URL of the API server that frontend connects to.
-api_url = "env(SUPABASE_URL)"
-# OpenAI API Key to use for Supabase AI in the Supabase Studio.
-openai_api_key = "env(OPENAI_API_KEY)"
+# No port: the stack assigns one per local project.
+# `api_url` is derived by the stack; set it only for non-stack/hosted setups.
+# OpenAI API Key to use for Supabase AI in the Supabase Studio (optional).
+# openai_api_key = "env(OPENAI_API_KEY)"
 
 # Local email testing server (Mailpit). Emails sent with the local dev setup are not actually sent -
 # rather, they are monitored, and you can view the emails that would have been sent from the web
 # interface.
 [local_smtp]
 enabled = true
-# Port to use for the email testing server web interface.
-port = "env(SUPABASE_MAIL_PORT)"
+# No port: the stack assigns one per local project.
 # Uncomment to expose additional ports for testing user applications that send emails.
 # To try invitation e-mails (#604) locally: uncomment, set MAIL_DRIVER=smtp, MAIL_SMTP_HOST=127.0.0.1 and
-# MAIL_SMTP_PORT to this value, and read the mail at the port above. Left commented on purpose: parallel
-# slots offset every host port, so a fixed SMTP port would collide (slot N: 54325 + 100N).
+# MAIL_SMTP_PORT to this value, and read the mail at the port above. The stack
+# picks an ephemeral host port for SMTP, so read it from `supabase status`.
 # smtp_port = 54325
 # pop3_port = 54326
 # admin_email = "admin@email.com"
@@ -393,32 +393,26 @@ enabled = true
 # `per_worker` (default) — enables hot reload during local development.
 # `oneshot` — fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
 policy = "per_worker"
-# Port to attach the Chrome inspector for debugging edge functions.
-inspector_port = "env(SUPABASE_EDGE_INSPECTOR_PORT)"
-# The Deno major version to use.
-deno_version = 2
+# No inspector_port / deno_version: the stack assigns the inspector port, and a
+# custom Deno version is not supported by stack projects.
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
 [analytics]
 enabled = true
-port = "env(SUPABASE_ANALYTICS_PORT)"
+# No port: the stack assigns one per local project.
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"
 
 # Experimental features may be deprecated any time
 [experimental]
+# Per-checkout local projects: `supabase start|status|stop` use the stack
+# backend, which assigns ports and isolates data by project root + branch.
+# CI sets SUPABASE_EXPERIMENTAL_STACK=0 (runner-isolated, fixed ports).
+stack = true
 # Configures Postgres storage engine to use OrioleDB (S3)
 orioledb_version = ""
-# Configures S3 bucket URL, eg. <bucket_name>.s3-<region>.amazonaws.com
-s3_host = "env(S3_HOST)"
-# Configures S3 bucket region, eg. us-east-1
-s3_region = "env(S3_REGION)"
-# Configures AWS_ACCESS_KEY_ID for S3 bucket
-s3_access_key = "env(S3_ACCESS_KEY)"
-# Configures AWS_SECRET_ACCESS_KEY for S3 bucket
-s3_secret_key = "env(S3_SECRET_KEY)"
 
 # [experimental.pgdelta]
 # When enabled, pg-delta becomes the active engine for supported schema flows.
@@ -432,11 +426,10 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # --------------- #
 # EMAIL TEMPLATES #
 # --------------- #
-
-[auth.email.template.recovery]
-subject = "StudiQ - Password Reset"
-content_path = "./supabase/templates/auth.email.template.recovery.html"
-
-[auth.email.template.confirmation]
-subject = "StudiQ - Confirm Your Email"
-content_path = "./supabase/templates/auth.email.template.confirmation.html"
+#
+# Custom email templates are not configurable with stack projects: v3.0.0
+# rejects `content_path` ("requires template serving") and rejects inline
+# `content` ("please use content_path instead"). The branded HTML in
+# `supabase/templates/` is kept as the source for the hosted project's dashboard
+# templates; local stacks use Supabase's default messages. QA matches mail by
+# recipient and link, not by subject.

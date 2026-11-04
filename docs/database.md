@@ -31,11 +31,12 @@ already running (a healthy stack is reused as-is). After a `git pull` that adds
 migrations:
 
 ```bash
-bunx supabase db push --local
+bunx supabase db push
 ```
 
-A fresh `supabase start` (new volume) applies them during initialization; use
-`bun dev:reset-db` to drop, recreate and re-seed this checkout's database.
+In CLI v3 `db push` targets the local stack by default. A fresh `supabase start`
+(new volume) applies them during initialization; use `bun dev:reset-db` to drop,
+recreate and re-seed this branch's database.
 
 ### Resetting Database
 
@@ -43,11 +44,11 @@ A fresh `supabase start` (new volume) applies them during initialization; use
 bun dev:reset-db
 ```
 
-This drops and recreates **this checkout's** database, applying all migrations
-and loading seed data. It is scoped to this checkout's `SUPABASE_PROJECT_ID`,
+This drops and recreates **this branch's** database, applying all migrations and
+loading seed data. It is scoped to the current stack (project root + branch),
 refuses in shared mode, and never touches another checkout's stack (plain
-`bunx supabase db reset` also follows this checkout because `scripts/dev`
-renders `supabase/.env`).
+`bunx supabase db reset` also follows this branch's stack because
+`supabase/config.toml` enables `[experimental] stack = true`).
 
 ## Schema Organization
 

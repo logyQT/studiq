@@ -37,10 +37,11 @@ Both run directly with Bun (no build step) and are dependency-free.
   | `LOADTEST_PASSWORD`         | `Password123!`                                            |
   | `LOADTEST_EMAIL_DOMAIN`     | `loadtest.studiq.local`                                   |
 
-  `SUPABASE_API_PORT` resolves from the environment, then from the port
-  `scripts/dev` recorded in the generated `supabase/.env`, then
-  `SUPABASE_PORT_BASE + 1` (base `54320`) — so a non-default checkout block is
-  picked up without hardcoding it.
+  The target comes from the generated `apps/web/.env` (written by `scripts/dev`
+  from `supabase status`), so stack projects with random ports work without
+  configuration. Explicit `SUPABASE_URL` / `APP_URL` / `--supabase-url` /
+  `--app-url` still win. Legacy fixed-port checkouts fall back to
+  `SUPABASE_API_PORT` / `supabase/.env` / `SUPABASE_PORT_BASE + 1`.
 
 > `.dev/` is git-ignored, so generated pools and reports never get committed.
 
@@ -114,9 +115,10 @@ Reset the pool when you're done:
 bun scripts/load-test/seed.ts --reset
 ```
 
-`--reset` refuses to run when the implicit target comes from a stale generated
-`supabase/.env` (the recorded `SUPABASE_API_PORT` disagrees with the current
-`SUPABASE_PORT_BASE + 1`). Re-run a `bun dev:*` command to re-render it, or pass
+`--reset` refuses to run when a legacy fixed-port checkout's generated
+`supabase/.env` disagrees with the current `SUPABASE_PORT_BASE + 1`. Stack mode
+reads the live URL from `apps/web/.env` and has no port math to go stale.
+Re-run a `bun dev:*` command to re-render the env files, or pass
 `--supabase-url <url>` explicitly.
 
 ### Convenience scripts
