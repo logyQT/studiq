@@ -711,7 +711,6 @@ jobs:
   # costs seconds rather than a second Next build.
   e2e-admin:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: [checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
