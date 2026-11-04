@@ -183,7 +183,7 @@ bun dev:down           # stop this checkout's web; `--all` also stops this branc
 
 ### Formatting scope & blame
 
-`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Two patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject) and `.agents/skills/**` (vendored skill content, checksummed in `skills-lock.json`).
+`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Three patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject), `.agents/skills/**` (vendored skill content, checksummed in `skills-lock.json`) and `eslint-suppressions.json` (the ledger `bun lint` generates).
 
 Repo-wide formatting passes are listed in **`.git-blame-ignore-revs`** so `git blame` blames the last real change instead of the reformat. Enable it once per clone (git does not read the file automatically — GitHub does):
 

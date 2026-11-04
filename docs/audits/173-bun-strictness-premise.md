@@ -235,6 +235,9 @@ should be done before new Stripe work starts.
 
 ## 7. Recommended corrections (with gates)
 
+Status: C1–C4 and the four free TS flags are implemented in #1010; C5 (a11y browser spot-check)
+remains manual.
+
 ### C1 — Tell the truth in the docs (0.5 day)
 
 - `docs/plans/bun-native-toolchain.md`: change status to "phase 1 and the strict core
@@ -257,18 +260,17 @@ Add to `bunfig.toml`:
 Gate: the 6 corresponding `eslint-disable` lines are deleted; `bun run lint` green; total
 disables drop 48 → 42.
 
-### C3 — Guard the empty ledger (0.2 day)
+### C3 — Guard the empty ledger (implemented in #1010)
 
-Add a check to `bun run lint` (or the `checks` CI job):
+`scripts/check-suppressions-empty.ts` is wired into `bun run lint`. It:
 
-```bash
-test "$(cat eslint-suppressions.json)" = "{}" || {
-  echo "eslint-suppressions.json must stay empty; fix the finding or use a justified inline disable";
-  exit 1;
-}
-```
+- treats a **missing** ledger as empty (exit 0);
+- accepts `{}` (`✓ suppression ledger is empty`, exit 0);
+- rejects invalid JSON (exit 1);
+- rejects any non-empty ledger (exit 1) with fix-vs-suppress guidance.
 
-Gate: deliberately running `--suppress-all` fails the guard.
+Verified negative test: a ledger containing one suppression exited 1; restoring `{}` exited 0.
+Gate: any non-empty ledger fails `bun run lint`.
 
 ### C4 — Write down the canary policy (0.2 day)
 
@@ -415,6 +417,9 @@ grep -rn "eslint-disable" --include='*.ts' --include='*.tsx' apps packages __tes
 # 48
 
 cat eslint-suppressions.json    # {}
+bun scripts/check-suppressions-empty.ts
+# ✓ suppression ledger is empty, exit 0
+# negative test: a non-empty ledger exits 1 (restored to {} afterwards)
 ```
 
 ## Appendix B — historical pre-#984 numbers (for comparison with #173)
