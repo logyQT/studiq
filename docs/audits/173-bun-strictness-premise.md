@@ -218,15 +218,15 @@ mostly moot, but the CI guard in C3 is what keeps it empty.
 
 ## 6. Prerequisite status
 
-| item                           | status                                                                                    |
-| ------------------------------ | ----------------------------------------------------------------------------------------- |
-| Phase 1 parity                 | done (#438)                                                                               |
-| Phase 2 core                   | **done (#984, merged 2026-11-03)**                                                        |
-| Stable Bun with `bun lint`     | **not available** — stable 1.4.4 (2026-10-22) lacks it; CI pins `1.4.4-canary.20261027.1` |
-| QA coverage gate (#464 / #926) | still open; 170 green / 10 blocked / 33 parked; waived in practice by #984                |
-| Docs                           | **stale** — plan says "phase 2 deferred"; bunfig says perf/style "follow"                 |
-| Stripe branch                  | **19 commits behind main; 10 files overlap #984**                                         |
-| QA env worktrees               | based on old main; small diffs, 0 overlap with #984                                       |
+| item                           | status                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| Phase 1 parity                 | done (#438)                                                                                |
+| Phase 2 core                   | **done (#984, merged 2026-11-03)**                                                         |
+| Stable Bun with `bun lint`     | **not available** — stable 1.4.4 (2026-10-22) lacks it; CI pins `1.4.4-canary.20261027.1`  |
+| QA coverage gate (#464 / #926) | still open; 170 green / 10 blocked / 33 parked; waived in practice by #984                 |
+| Docs                           | **updated** — plan records the strict core and rejected tiers; bunfig points at this audit |
+| Stripe branch                  | **19 commits behind main; 10 files overlap #984**                                          |
+| QA env worktrees               | based on old main; small diffs, 0 overlap with #984                                        |
 
 The Stripe rebase is the only concrete conflict created by #984. It is 10 files, not 776, but it
 should be done before new Stripe work starts.
