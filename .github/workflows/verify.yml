@@ -16,6 +16,11 @@ name: verify
 # skipped leg then reports success under its required name in a few seconds.
 on:
   workflow_dispatch:
+    inputs:
+      native_smoke:
+        description: 'Spike: also run the Supabase native-runtime smoke job'
+        type: boolean
+        default: false
   schedule:
     - cron: '0 3 * * *'
   pull_request:
@@ -793,3 +798,95 @@ jobs:
       - name: Stop Supabase
         if: always()
         run: bunx supabase stop --no-backup || true
+
+  # SPIKE ONLY: prove the experimental native runtime on a GitHub-hosted
+  # ubuntu-24.04 runner. Opt-in via `workflow_dispatch` + `native_smoke=true`;
+  # it never runs on PRs or the nightly schedule and does not replace the
+  # Docker gate. Remove this job when the spike is decided.
+  supabase-native-spike:
+    if: github.event_name == 'workflow_dispatch' && inputs.native_smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      SUPABASE_EXPERIMENTAL_STACK: '1'
+      SUPABASE_RUNTIME: native
+      SUPABASE_PROJECT_ID: studiq-ci-native
+      APP_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Native CLI wrapper
+        # The workflow-level fixed-port contract belongs to the Docker jobs.
+        # Unset it for every stack command instead of copying the unset list.
+        run: |
+          cat > /tmp/native-supa <<'EOF'
+          #!/usr/bin/env bash
+          unset SUPABASE_API_PORT SUPABASE_DB_PORT SUPABASE_STUDIO_PORT \
+            SUPABASE_LOCAL_SMTP_PORT SUPABASE_ANALYTICS_PORT \
+            SUPABASE_EDGE_RUNTIME_INSPECTOR_PORT SUPABASE_DB_SHADOW_PORT \
+            SUPABASE_DB_POOLER_PORT SUPABASE_URL
+          exec bunx supabase "$@"
+          EOF
+          chmod +x /tmp/native-supa
+      - name: Restore native artifact cache
+        id: native-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.supabase/cache/stack
+          key: supabase-native-${{ runner.os }}-${{ hashFiles('supabase/supabase.lock') }}
+          restore-keys: |
+            supabase-native-${{ runner.os }}-
+      - name: Prepare native artifacts
+        run: /tmp/native-supa stack install --runtime native --frozen
+      - name: Start native stack
+        run: /tmp/native-supa stack start --runtime native --eager -x realtime,functions,analytics,pooler
+      - name: Write native env
+        run: |
+          status=$(/tmp/native-supa stack status --env)
+          API_URL=$(jq -r .API_URL <<<"$status")
+          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "SUPABASE_DB_URL=$DB_URL"
+            echo "MAILPIT_URL=$MAILPIT_URL"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "OTEL_SDK_DISABLED=true"
+          } > .env
+          cp .env apps/web/.env
+          while IFS='=' read -r key value; do
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done < .env
+      - name: Native smoke checks
+        run: |
+          set -euo pipefail
+          curl -fsS "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/health" >/dev/null
+          curl -fsS -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/token?grant_type=password" \
+            -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"teacher1@dev.local","password":"pass"}' >/dev/null
+          echo "native auth health + seeded login OK"
+      - name: Integration tests
+        run: bunx vitest run __tests__/integration --no-file-parallelism
+      - name: Native stack logs
+        if: failure()
+        run: /tmp/native-supa stack logs --tail 200 || true
+      - name: Stop native stack
+        if: always()
+        run: /tmp/native-supa stop || true
+      - name: Save native artifact cache
+        if: always() && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.supabase/cache/stack
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
