@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-04
 **Branch:** `spike/supabase-native-runtime` (based on `origin/main` @ `9f54ecc2`)
-**Code commits:** `23ab62db` (opt-in profile), `54a90eb4` (selection/teardown hardening), `5dec3047` + `edb1821d` (opt-in CI smoke job)
+**Code commits:** `23ab62db` (opt-in profile), `54a90eb4` (selection/teardown hardening), `5dec3047` + `edb1821d` (opt-in CI smoke job), `5d719658` (e2e/QA gap verification)
 **Report commit:** see `git log --oneline -1 -- docs/audits/supabase-native-runtime.md`
 **Status:** spike complete; **no PR, no merge, no CI default change**.
 
@@ -34,7 +34,9 @@ as the production/local default from this spike.
 
 A temporary opt-in native CI job was dispatched manually on GitHub-hosted
 `ubuntu-24.04`: integration passed (**56 files / 568 tests**) in a **1 m 44 s**
-job. See [CI implications](#ci-implications-for-github-hosted-ubuntu-2404).
+job; a second run passed an e2e login spec and QA `PUB-01` and reproduced the
+branded-template `AUT-01` gap. See
+[CI implications](#ci-implications-for-github-hosted-ubuntu-2404).
 
 ## Exact native command / config
 
@@ -118,22 +120,22 @@ All checks were run in the disposable worktree with no other checkout's stack
 started or reset. `spike-native` was the working stack; `spike-native-2`,
 `spike-native-full` and `spike-native-all` were temporary and destroyed.
 
-| #   | Check                           | Result                                                                                                                                                                           |
-| --- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Start from clean state          | ✅ `bun dev:up --prod` created a new native stack; all migrations applied, seeds loaded, app booted                                                                              |
-| 2   | Migrations apply                | ✅ full migration chain applied during first start and `db reset`                                                                                                                |
-| 3   | Seed loads                      | ✅ 10 seeded profiles, 5 seed files, storage placeholder uploaded                                                                                                                |
-| 4   | `status --env` / JSON parseable | ✅ `stack status --output-format json` and `--env` both parse as JSON (14 env keys)                                                                                              |
-| 5   | App boots                       | ✅ production build + `next start` on `:3456`                                                                                                                                    |
-| 6   | Login with seeded user          | ✅ `teacher1@dev.local` / `pass` → HTTP 200                                                                                                                                      |
-| 7   | Authenticated API call          | ✅ `GET /api/v1/permissions/me` → HTTP 200, 24 permissions                                                                                                                       |
-| 8   | Invitation/e-mail flow          | ✅ Mailpit received a GoTrue recovery e-mail (`StudiQ - Password Reset`); SMTP works. The app's own invite e-mail still depends on `MAIL_DRIVER` (default `none`, copyable link) |
-| 9   | Storage upload/download         | ✅ PNG upload 200, download bytes match, public URL 200, delete 200                                                                                                              |
-| 10  | QA/e2e spec                     | ✅ `PUB-01` 2/2 passed against native. ❌ `AUT-01` failed waiting for the branded `/auth/callback?token_hash=` link (known stack template workaround, not native)                |
-| 11  | `db reset` / reseed             | ✅ `bun dev:reset-db` in ~3 s; migrations + seeds reapplied                                                                                                                      |
-| 12  | Stop → start, data persists     | ✅ marker `profiles.full_name` survived; same ports and stack id                                                                                                                 |
-| 13  | Two named stacks in parallel    | ✅ `spike-native` (API 21127, DB 32430) and `spike-native-2` (API 28500, DB 25948) healthy simultaneously; marker existed only in stack 1                                        |
-| 14  | Cleanup leaves no orphans       | ✅ `bun dev:down --all` → 0 processes for the stack id, 0 listening ports                                                                                                        |
+| #   | Check                           | Result                                                                                                                                                                                                                          |
+| --- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Start from clean state          | ✅ `bun dev:up --prod` created a new native stack; all migrations applied, seeds loaded, app booted                                                                                                                             |
+| 2   | Migrations apply                | ✅ full migration chain applied during first start and `db reset`                                                                                                                                                               |
+| 3   | Seed loads                      | ✅ 10 seeded profiles, 5 seed files, storage placeholder uploaded                                                                                                                                                               |
+| 4   | `status --env` / JSON parseable | ✅ `stack status --output-format json` and `--env` both parse as JSON (14 env keys)                                                                                                                                             |
+| 5   | App boots                       | ✅ production build + `next start` on `:3456`                                                                                                                                                                                   |
+| 6   | Login with seeded user          | ✅ `teacher1@dev.local` / `pass` → HTTP 200                                                                                                                                                                                     |
+| 7   | Authenticated API call          | ✅ `GET /api/v1/permissions/me` → HTTP 200, 24 permissions                                                                                                                                                                      |
+| 8   | Invitation/e-mail flow          | ✅ Mailpit received a GoTrue recovery e-mail (`StudiQ - Password Reset`); SMTP works. The app's own invite e-mail still depends on `MAIL_DRIVER` (default `none`, copyable link)                                                |
+| 9   | Storage upload/download         | ✅ PNG upload 200, download bytes match, public URL 200, delete 200                                                                                                                                                             |
+| 10  | QA/e2e spec                     | ✅ locally `PUB-01` 2/2; on CI native, e2e `login.spec.ts` and QA `PUB-01` passed. ❌ `AUT-01` failed waiting for the branded `/auth/callback?token_hash=` link (known stack template workaround, not native; reproduced on CI) |
+| 11  | `db reset` / reseed             | ✅ `bun dev:reset-db` in ~3 s; migrations + seeds reapplied                                                                                                                                                                     |
+| 12  | Stop → start, data persists     | ✅ marker `profiles.full_name` survived; same ports and stack id                                                                                                                                                                |
+| 13  | Two named stacks in parallel    | ✅ `spike-native` (API 21127, DB 32430) and `spike-native-2` (API 28500, DB 25948) healthy simultaneously; marker existed only in stack 1                                                                                       |
+| 14  | Cleanup leaves no orphans       | ✅ `bun dev:down --all` → 0 processes for the stack id, 0 listening ports                                                                                                                                                       |
 
 ### Timings (this host: WSL2, Debian 12, glibc 2.36, amd64, 20 GB RAM, Docker available)
 
@@ -183,14 +185,30 @@ started or reset. `spike-native` was the working stack; `spike-native-2`,
 added to `verify.yml` and dispatched manually on `ubuntu-24.04`. It does not run
 on PRs or the nightly schedule (`if: workflow_dispatch && inputs.native_smoke`).
 
-- Run: <https://github.com/logyQT/studiq/actions/runs/41891292562>
-- Result: **success**; native job **1 m 44 s** end to end.
+**Run A — integration only**
+<https://github.com/logyQT/studiq/actions/runs/41891292562> — **success**,
+native job **1 m 44 s**.
+
 - Native stack start (artifacts restored from cache): **13 s**.
 - Integration suite: **56 files / 568 tests passed in 68 s**.
 - Artifact cache restore: **7 s**; cache save is skipped on a cache hit.
-- `ubuntu-24.04` is amd64/glibc 2.39, `tar` present, non-root `runner`, egress
-  to GitHub/S3 available. Docker is also reachable, so `--runtime native` must
-  be explicit (the job sets it).
+
+**Run B — e2e + QA gap verification**
+<https://github.com/logyQT/studiq/actions/runs/41894507284> — **success**,
+native job **13 m 53 s**.
+
+- Build app: **18 s**; `next start` ready: **8 s**.
+- E2E `__tests__/e2e/login.spec.ts` (Chromium): **passed** in 7 s.
+- QA `PUB-01` against native: **passed** in 2 s.
+- QA `AUT-01`: **failed as expected** after 3 retries (187 s) with
+  `no e-mail matching /https?:\/\/...\/auth\/callback\?..../` — the branded
+  `/auth/callback?token_hash=` template gap is confirmed, not a runner failure.
+- Chromium install: **506 s** on a cache miss; this dominates the job and is
+  cacheable (`~/.cache/ms-playwright`).
+
+`ubuntu-24.04` is amd64/glibc 2.39, `tar` present, non-root `runner`, egress to
+GitHub/S3 available. Docker is also reachable, so `--runtime native` must be
+explicit (the job sets it).
 
 The first dispatch failed in the env-writing step: `stack status --env` emitted
 more than one line and `jq` parsed it as invalid JSON. The fix was to use
@@ -214,13 +232,15 @@ What a pilot still needs:
 5. Export `NEXT_PUBLIC_SUPABASE_URL`, anon/service keys, `SUPABASE_DB_URL`,
    `MAILPIT_URL` and `NEXT_PUBLIC_SITE_URL` to both the job environment and
    `apps/web/.env`; do not rely on the QA fixtures' fixed-port fallbacks.
-6. Run e2e Chromium and QA next. Integration is proven; e2e/QA are not. Exclude
-   or Docker-run the six template-dependent QA specs until stack mode can serve
-   `content_path`.
+6. Cache Playwright browsers; without that cache the Chromium install alone is
+   ~8 minutes. The full QA suite was not run natively (only `PUB-01` plus the
+   expected `AUT-01` failure); scale is the remaining unproven part.
+7. Exclude or Docker-run the six template-dependent QA specs (`AUT-01/02/06/12/13`,
+   `ONB-08`) until stack mode can serve `content_path`.
 
 CI cost estimate: ~1.9 GB artifact cache (lean extracted set is ~637 MB), 74–123
-MB stack data, ~0.7 GiB idle RSS. That fits a standard 4-vCPU/16 GB runner, but
-adds roughly 1 GB to the 10 GB Actions cache budget.
+MB stack data, ~0.7 GiB idle RSS, plus Playwright browsers. That fits a standard
+4-vCPU/16 GB runner, but adds roughly 1 GB to the 10 GB Actions cache budget.
 
 ## Files changed
 
@@ -271,15 +291,17 @@ Test/CI review findings that are **not** code changes:
 
 ## Recommendation
 
-**Pilot in CI; keep Docker as the default.** Integration is now proven on a
-GitHub-hosted `ubuntu-24.04` runner (568 tests, 1 m 44 s job). The remaining gaps
-are e2e/QA coverage, the six template-dependent QA specs, weaker multi-project
-isolation, and suite-scale stability. Those make a full switch premature.
+**Pilot in CI; keep Docker as the default.** Integration (568 tests), an e2e
+login spec and QA `PUB-01` are now proven on a GitHub-hosted `ubuntu-24.04`
+runner. The remaining gaps are full QA-suite scale, the six template-dependent
+QA specs, weaker multi-project isolation, and the ~8-minute Chromium install
+without a browser cache. Those make a full switch premature.
 
 ### What I would do next (requires operator approval)
 
-1. Extend the opt-in native job to e2e Chromium and QA (minus the six template
-   specs), and keep Docker as the required gate.
+1. Run the **full QA suite** (all shards, minus the six template specs) on the
+   opt-in native job, and cache Playwright browsers; keep Docker as the
+   required gate.
 2. Fix or explicitly skip the branded-template specs in native/stack mode
    (`AUT-01/02/06/12/13`, `ONB-08`); update `AGENTS.md` if the list grows.
 3. If the pilot is stable for two weeks, consider native for integration/e2e
