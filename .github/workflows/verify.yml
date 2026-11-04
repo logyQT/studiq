@@ -16,11 +16,6 @@ name: verify
 # skipped leg then reports success under its required name in a few seconds.
 on:
   workflow_dispatch:
-    inputs:
-      native_smoke:
-        description: 'Spike: also run the Supabase native-runtime smoke job'
-        type: boolean
-        default: false
   schedule:
     - cron: '0 3 * * *'
   pull_request:
@@ -36,21 +31,16 @@ env:
   BUN_VERSION: 1.4.4-canary.20261027.1
   # `supabase/config.toml` reads every configurable value through `env()`; an
   # unset numeric variable makes the config fail to parse, so the whole job
-  # graph shares one explicit CI stack identity. Each job owns its own Supabase
-  # instance (containers are named `supabase_*_studiq-ci`).
+  # graph shares one explicit CI stack identity. Each job owns its own native
+  # stack (ports are assigned by the CLI per runner).
   SUPABASE_PROJECT_ID: studiq-ci
-  # CI keeps the default (non-stack) backend: runners are already isolated,
-  # fixed ports are fine, and the experimental surface stays out of the gate.
-  SUPABASE_EXPERIMENTAL_STACK: '0'
-  SUPABASE_API_PORT: '54321'
-  SUPABASE_DB_PORT: '54322'
-  SUPABASE_STUDIO_PORT: '54323'
-  SUPABASE_LOCAL_SMTP_PORT: '54324'
-  SUPABASE_ANALYTICS_PORT: '54327'
-  SUPABASE_EDGE_RUNTIME_INSPECTOR_PORT: '54328'
-  SUPABASE_DB_SHADOW_PORT: '54320'
-  SUPABASE_DB_POOLER_PORT: '54329'
-  SUPABASE_URL: http://localhost:54321
+  # CI runs the native runtime: the experimental stack backend is required, the
+  # CLI assigns ports per runner, and no Docker daemon is used.
+  SUPABASE_EXPERIMENTAL_STACK: '1'
+  SUPABASE_RUNTIME: native
+  # QA specs that assert branded auth e-mail links skip in stack mode; the rest
+  # of the suite runs normally.
+  STUDIQ_STACK_MODE: '1'
 
 jobs:
   # Cheapest first, in the order a failure is cheapest to explain: lint, types.
@@ -69,7 +59,6 @@ jobs:
   # shard at all).
   # Schedule/dispatch runs everything.
   scope:
-    if: ${{ !inputs.native_smoke }}
     runs-on: ubuntu-24.04
     outputs:
       app: ${{ steps.diff.outputs.app }}
@@ -215,7 +204,6 @@ jobs:
   # The required check that no test job waits on any more: a lint/type failure
   # still blocks the merge, it just no longer holds the runners back first.
   checks:
-    if: ${{ !inputs.native_smoke }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -268,7 +256,7 @@ jobs:
 
   unit:
     needs: [scope]
-    if: ${{ !inputs.native_smoke && needs.scope.outputs.app == 'true' }}
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -290,7 +278,7 @@ jobs:
 
   integration:
     needs: [scope]
-    if: ${{ !inputs.native_smoke && needs.scope.outputs.app == 'true' }}
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -311,18 +299,17 @@ jobs:
       - name: Start Supabase
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
       - name: Write root .env
         # vitest's loadEnv() reads the repo root; integration imports the route
         # handlers directly, so no app server is needed.
         run: |
-          status=$(bunx supabase status --output-format json)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -337,14 +324,14 @@ jobs:
         run: bunx vitest run __tests__/integration --no-file-parallelism
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
 
   # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
   # job `__tests__/qa/**` would never run in CI.
   qa-suite:
     needs: [scope]
-    if: ${{ !inputs.native_smoke && needs.scope.outputs.qa_shards != '[]' }}
+    if: needs.scope.outputs.qa_shards != '[]'
     # Sharded by area, one runner per shard. The suite is one long serial job
     # (~12 min at 140 specs, growing), so splitting is what buys wall-clock time
     # now — not more workers: the runner is 4 vCPU and raising QA_WORKERS only
@@ -374,23 +361,12 @@ jobs:
       - run: npm install -g bun@${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
 
-      - name: Start Supabase (temporary e-mail template workaround)
+      - name: Start Supabase (native)
         env:
           # `supabase/config.toml` resolves `auth.site_url` from `env(APP_URL)`;
           # without it the QA e-mails carry relative callback links.
           APP_URL: http://localhost:3010
-          SUPABASE_URL: http://localhost:54321
-          # ⚠️ TEMPORARY: stack projects cannot serve `content_path` templates,
-          # so config.toml keeps empty paths. This job is non-stack; these env
-          # vars override them and AUT-01/02/06/12 get the branded
-          # /auth/callback?token_hash=… link. Remove when stack supports
-          # templates, or restore literal paths if stack is deprecated and local
-          # provisioning goes back to manual.
-          SUPABASE_AUTH_EMAIL_TEMPLATE_RECOVERY_CONTENT_PATH: ./supabase/templates/auth.email.template.recovery.html
-          SUPABASE_AUTH_EMAIL_TEMPLATE_CONFIRMATION_CONTENT_PATH: ./supabase/templates/auth.email.template.confirmation.html
-        run: |
-          printf '\033[1;31m⚠ TEMPORARY: stack mode cannot serve content_path templates; CI is non-stack and injects them via SUPABASE_AUTH_EMAIL_TEMPLATE_*_CONTENT_PATH. Remove when stack supports templates (or when reverting to manual provisioning).\033[0m\n'
-          bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
 
       - name: Write env files
         # The app reads apps/web/.env, but the QA seeder and the specs that seed
@@ -398,12 +374,12 @@ jobs:
         # environment they fall back to the shared-VM localhost:54421 and fail
         # with `fetch failed`. Export them to $GITHUB_ENV as well.
         run: |
-          status=$(bunx supabase status --output-format json)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -547,7 +523,7 @@ jobs:
 
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
 
   # One leg per browser so a red platform re-runs alone. Each leg owns its
   # tenant set (keys include the project) and its own Supabase instance.
@@ -560,7 +536,6 @@ jobs:
   # skipped and the leg reports success immediately.
   e2e:
     needs: [scope]
-    if: ${{ !inputs.native_smoke }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -604,31 +579,29 @@ jobs:
         if: needs.scope.outputs.app == 'true'
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
         # None of these services is reachable from the app, and each `-x` entry
-        # skips its docker pull too (`Start Supabase` is mostly download time on
-        # a cold runner):
+        # skips its native artifact/start cost too:
         #   studio + postgres-meta  Studio/tooling only — the API and the QA
         #                           specs talk to PostgREST, not pg-meta
         #   realtime                no client: nothing in apps/ or packages/
         #                           calls `.channel()` (the `supabase_realtime`
         #                           publication is a plain Postgres object and
         #                           still exists without the container)
-        #   imgproxy/logflare/vector/edge-runtime  unused, ~4 GB together
-        # `storage-api` stays: QA `EDU-ASG-08` uploads and the integration
-        # storage suites need it.
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+        #   functions/analytics/pooler  unused
+        # `storage` stays: QA `EDU-ASG-08` uploads and the integration storage
+        # suites need it.
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
 
       - name: Write env files
         if: needs.scope.outputs.app == 'true'
         # Local Supabase keys are deterministic, so nothing here is a secret.
         run: |
-          status=$(bunx supabase status --output-format json)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -732,12 +705,12 @@ jobs:
 
       - name: Stop Supabase
         if: always() && needs.scope.outputs.app == 'true'
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
 
   # admin-api only needs the admin app; the web server is skipped so this leg
   # costs seconds rather than a second Next build.
   e2e-admin:
-    if: ${{ !inputs.native_smoke && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: [checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -769,16 +742,15 @@ jobs:
       - name: Start Supabase
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
       - name: Write admin env
         run: |
-          status=$(bunx supabase status --output-format json)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
@@ -800,148 +772,4 @@ jobs:
           if-no-files-found: ignore
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
-
-  # SPIKE ONLY: prove the experimental native runtime on a GitHub-hosted
-  # ubuntu-24.04 runner. Opt-in via `workflow_dispatch` + `native_smoke=true`;
-  # it never runs on PRs or the nightly schedule and does not replace the
-  # Docker gate. Remove this job when the spike is decided.
-  supabase-native-spike:
-    if: github.event_name == 'workflow_dispatch' && inputs.native_smoke
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    env:
-      CI: '1'
-      NEXT_TELEMETRY_DISABLED: '1'
-      SUPABASE_EXPERIMENTAL_STACK: '1'
-      SUPABASE_RUNTIME: native
-      SUPABASE_PROJECT_ID: studiq-ci-native
-      STUDIQ_STACK_MODE: '1'
-      APP_URL: http://localhost:3000
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - run: bun install --frozen-lockfile
-      - name: Native CLI wrapper
-        # The workflow-level fixed-port contract belongs to the Docker jobs.
-        # Unset it for every stack command instead of copying the unset list.
-        run: |
-          cat > /tmp/native-supa <<'EOF'
-          #!/usr/bin/env bash
-          unset SUPABASE_API_PORT SUPABASE_DB_PORT SUPABASE_STUDIO_PORT \
-            SUPABASE_LOCAL_SMTP_PORT SUPABASE_ANALYTICS_PORT \
-            SUPABASE_EDGE_RUNTIME_INSPECTOR_PORT SUPABASE_DB_SHADOW_PORT \
-            SUPABASE_DB_POOLER_PORT SUPABASE_URL
-          exec bunx supabase "$@"
-          EOF
-          chmod +x /tmp/native-supa
-      - name: Restore native artifact cache
-        id: native-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.supabase/cache/stack
-          key: supabase-native-${{ runner.os }}-${{ hashFiles('supabase/supabase.lock') }}
-          restore-keys: |
-            supabase-native-${{ runner.os }}-
-      - name: Prepare native artifacts
-        run: /tmp/native-supa stack install --runtime native --frozen
-      - name: Start native stack
-        run: /tmp/native-supa stack start --runtime native --eager -x realtime,functions,analytics,pooler
-      - name: Write native env
-        run: |
-          status=$(/tmp/native-supa stack status --output-format json)
-          API_URL=$(jq -r .env.API_URL <<<"$status")
-          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .env.DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
-          {
-            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
-            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
-            echo "SUPABASE_DB_URL=$DB_URL"
-            echo "MAILPIT_URL=$MAILPIT_URL"
-            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
-            echo "OTEL_SDK_DISABLED=true"
-          } > .env
-          cp .env apps/web/.env
-          while IFS='=' read -r key value; do
-            echo "$key=$value" >> "$GITHUB_ENV"
-          done < .env
-      - name: Native smoke checks
-        run: |
-          set -euo pipefail
-          curl -fsS "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/health" >/dev/null
-          curl -fsS -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/token?grant_type=password" \
-            -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" \
-            -H 'Content-Type: application/json' \
-            -d '{"email":"teacher1@dev.local","password":"pass"}' >/dev/null
-          echo "native auth health + seeded login OK"
-      - name: Integration tests
-        run: bunx vitest run __tests__/integration --no-file-parallelism
-      - name: Restore Next build cache
-        uses: actions/cache/restore@v6
-        with:
-          path: apps/web/.next/cache
-          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            next-ubuntu-24.04-
-      - name: Build app
-        run: bun run build
-      - name: Start app
-        run: |
-          (cd apps/web && bunx next start -p 3000 > /tmp/native-app.log 2>&1 &)
-          for _ in $(seq 1 60); do
-            curl -sf -o /dev/null http://localhost:3000/login && break
-            sleep 2
-          done
-          curl -sf -o /dev/null http://localhost:3000/login
-      - name: Restore Playwright browsers
-        id: pw-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: ms-playwright-ubuntu-24.04-chromium-firefox-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ms-playwright-ubuntu-24.04-
-      - name: Install browsers
-        run: bunx playwright install --with-deps chromium firefox
-      - name: Save Playwright browsers
-        if: steps.pw-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ steps.pw-cache.outputs.cache-primary-key }}
-      - name: Full E2E suite (native)
-        env:
-          E2E_SKIP_WEB_WS: '1'
-          E2E_WORKERS: '4'
-        run: bunx playwright test --project=chromium --project=firefox --workers=4 --reporter=line
-      - name: Seed all QA tenants
-        run: bun scripts/qa-tenant.ts --all --run "native${{ github.run_id }}"
-      - name: Full QA suite (native)
-        env:
-          QA_APP_URL: http://localhost:3000
-          QA_WORKERS: '4'
-        run: bunx playwright test -c qa/playwright.qa.config.ts --workers=4 --project=chromium --reporter=line
-      - name: App logs
-        if: failure()
-        run: tail -200 /tmp/native-app.log || true
-      - name: Stop app
-        if: always()
-        run: pkill -f "next start -p 3000" || true
-      - name: Native stack logs
-        if: failure()
-        run: /tmp/native-supa stack logs --tail 200 || true
-      - name: Stop native stack
-        if: always()
-        run: /tmp/native-supa stop || true
-      - name: Save native artifact cache
-        if: always() && steps.native-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.supabase/cache/stack
-          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+        run: bunx supabase stop || true
