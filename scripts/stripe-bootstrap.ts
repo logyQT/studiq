@@ -16,8 +16,13 @@
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 import {
+  BOOTSTRAP_TAX_BEHAVIOR,
   type BootstrapPrice,
   type CatalogPlanForBootstrap,
+  portalParams,
+  priceMatches,
+  productUpdateFor,
+  resolveProductTaxCode,
   selectBootstrapPrices,
 } from '@studiq/server/lib/payment/stripe-bootstrap';
 import {
@@ -86,7 +91,7 @@ async function loadCatalog(): Promise<CatalogPlanForBootstrap[]> {
   }));
 }
 
-function printCheck(prices: BootstrapPrice[]): void {
+function printCheck(prices: BootstrapPrice[], taxCode: string | null): void {
   console.log('\nPlanned Stripe catalog (no network calls):\n');
   console.table(
     prices.map((price) => ({
@@ -96,20 +101,9 @@ function printCheck(prices: BootstrapPrice[]): void {
       lookupKey: price.lookupKey,
     })),
   );
+  console.log(`\nProduct tax code (Managed Payments): ${taxCode ?? 'unset — a write run refuses'}`);
   console.log(
     `${prices.length} paid plan(s). Re-run without --check to create/update Products, Prices and the portal configuration.`,
-  );
-}
-
-function priceMatches(price: Stripe.Price, row: BootstrapPrice, productId: string): boolean {
-  return (
-    price.active &&
-    price.type === 'recurring' &&
-    price.product === productId &&
-    price.currency.toLowerCase() === row.currency &&
-    price.unit_amount === row.unitAmount &&
-    price.recurring?.interval === row.interval &&
-    price.recurring?.interval_count === 1
   );
 }
 
@@ -126,12 +120,14 @@ async function ensureProduct(
   stripe: Stripe,
   row: BootstrapPrice,
   cache: Map<string, Stripe.Product>,
+  taxCode: string | null,
 ): Promise<{ product: Stripe.Product; created: boolean }> {
   const existing = cache.get(row.planKey);
   if (existing) {
-    if (existing.name === row.productName) return { product: existing, created: false };
+    const update = productUpdateFor(existing, row, taxCode);
+    if (!update) return { product: existing, created: false };
 
-    const updated = await stripe.products.update(existing.id, { name: row.productName });
+    const updated = await stripe.products.update(existing.id, update);
     cache.set(row.planKey, updated);
     return { product: updated, created: false };
   }
@@ -139,6 +135,7 @@ async function ensureProduct(
   const product = await stripe.products.create({
     name: row.productName,
     metadata: { studiq_plan_key: row.planKey },
+    ...(taxCode ? { tax_code: taxCode } : {}),
   });
   cache.set(row.planKey, product);
   return { product, created: true };
@@ -166,6 +163,7 @@ async function ensurePrice(
       currency: row.currency,
       unit_amount: row.unitAmount,
       recurring: { interval: row.interval },
+      tax_behavior: BOOTSTRAP_TAX_BEHAVIOR,
       lookup_key: row.lookupKey,
       transfer_lookup_key: true,
       nickname: `${row.productName} — monthly`,
@@ -180,40 +178,6 @@ async function ensurePrice(
   );
 
   return { price, created: true };
-}
-
-function portalParams(
-  livemode: boolean,
-  siteUrl: string,
-): Stripe.BillingPortal.ConfigurationCreateParams {
-  return {
-    name: 'StudiQ',
-    business_profile: {
-      headline: 'StudiQ — zarządzanie rozliczeniami',
-    },
-    features: {
-      payment_method_update: { enabled: true },
-      invoice_history: { enabled: true },
-      subscription_cancel: {
-        enabled: true,
-        mode: 'at_period_end',
-        proration_behavior: 'none',
-        cancellation_reason: {
-          enabled: true,
-          options: ['too_expensive', 'missing_features', 'unused', 'other'],
-        },
-      },
-      customer_update: {
-        enabled: true,
-        allowed_updates: ['email', 'address', 'name', 'tax_id'],
-      },
-    },
-    default_return_url: `${siteUrl}/app/billing`,
-    metadata: {
-      studiq_managed: 'true',
-      studiq_livemode: String(livemode),
-    },
-  };
 }
 
 async function ensurePortalConfiguration(
@@ -245,12 +209,7 @@ async function ensurePortalConfiguration(
   return { id: created.id, created: true };
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  assert(!(args.check && args.live), '--check cannot be combined with --live');
-
-  // `--check` only reads the local catalog: no Stripe key or network call is
-  // required, so it can run in a preflight shell that has DB but no key.
+async function loadValidatedPrices(): Promise<BootstrapPrice[]> {
   assert(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
     'NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to read the catalog',
@@ -269,9 +228,18 @@ async function main(): Promise<void> {
   // the stale-mapping cleanup so a plan that became free stops being sold.
   // An empty catalog means the seed did not run, so stop before writing.
   assert(plans.length > 0, 'subscription_plans is empty; run the seed first');
+  return prices;
+}
 
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  assert(!(args.check && args.live), '--check cannot be combined with --live');
+
+  // `--check` only reads the local catalog: no Stripe key, network call or
+  // write is required. It still reports the tax-code requirement.
   if (args.check) {
-    printCheck(prices);
+    const prices = await loadValidatedPrices();
+    printCheck(prices, resolveProductTaxCode());
     return;
   }
 
@@ -312,11 +280,31 @@ async function main(): Promise<void> {
     }
   }
 
+  // Managed Payments is enabled for every session, in test mode too. A write
+  // run without a product classification would create a catalog checkout cannot
+  // use, so the code is required for both modes (`--check` stays read-only).
+  const productTaxCode = resolveProductTaxCode();
+  assert(
+    productTaxCode,
+    'STRIPE_PRODUCT_TAX_CODE is required: Managed Payments needs an eligible product tax code (Dashboard > Products > Tax code, or the Tax Codes API; the code must be labelled "Eligible for Managed Payments")',
+  );
+
+  const prices = await loadValidatedPrices();
+
   const stripe = new Stripe(secretKey, {
     apiVersion: API_VERSION,
     maxNetworkRetries: 2,
     timeout: 20_000,
   });
+
+  // Fail fast on a typo/nonexistent code before any write.
+  try {
+    await stripe.taxCodes.retrieve(productTaxCode);
+  } catch {
+    throw new BootstrapError(
+      'STRIPE_PRODUCT_TAX_CODE could not be retrieved from Stripe; check the value (it must be a real, Managed Payments-eligible tax code)',
+    );
+  }
 
   console.log(`Bootstrapping Stripe ${modeLabel(livemode)} mode against ${siteUrl}…\n`);
 
@@ -327,7 +315,12 @@ async function main(): Promise<void> {
   let pricesReused = 0;
 
   for (const row of prices) {
-    const { product, created: productCreated } = await ensureProduct(stripe, row, productCache);
+    const { product, created: productCreated } = await ensureProduct(
+      stripe,
+      row,
+      productCache,
+      productTaxCode,
+    );
     if (productCreated) productsCreated += 1;
 
     const { price, created: priceCreated } = await ensurePrice(stripe, row, product.id, livemode);

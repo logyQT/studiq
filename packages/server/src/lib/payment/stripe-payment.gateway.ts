@@ -82,6 +82,24 @@ function stripeFailure(error: unknown): ServiceResult<never> {
   }
 
   if (type === 'StripeRateLimitError') return failure('RATE_LIMITED');
+
+  // A Managed Payments / product-tax-code configuration problem is global
+  // infrastructure, not "this plan is unavailable to this account". Surface it
+  // as retryable so the checkout UI does not blame the customer.
+  if (type === 'StripeInvalidRequestError') {
+    const message = isRecord(error) ? readString(error, 'message') : undefined;
+    const param = isRecord(error) ? readString(error, 'param') : undefined;
+    const configIssue = `${message ?? ''} ${param ?? ''} ${code ?? ''}`.toLowerCase();
+    if (
+      configIssue.includes('managed_payments') ||
+      configIssue.includes('managed payments') ||
+      configIssue.includes('tax_code')
+    ) {
+      logError('billing.managed_payments_unavailable', { code: code ?? 'unknown' });
+      return failure('SERVICE_UNAVAILABLE');
+    }
+  }
+
   if (type === 'StripeInvalidRequestError' || type === 'StripeCardError') {
     // Log the shape, never the request parameters (customer email/name).
     logError('billing.stripe_invalid_request', {
@@ -210,13 +228,14 @@ export class StripePaymentGateway implements PaymentGateway {
           // idempotency key, so a retry sends identical parameters.
           expires_at: input.expiresAt ?? checkoutExpiresAt(this.now().getTime()),
           allow_promotion_codes: false,
-          // Some accounts have Stripe Managed Payments (merchant of record)
-          // enabled by default, which rejects `automatic_tax: false`. We are
-          // the merchant of record and collect no tax at launch (D8), so
-          // disable it explicitly for this session.
-          managed_payments: { enabled: false },
-          automatic_tax: { enabled: false },
-          tax_id_collection: { enabled: false },
+          // Managed Payments is Stripe's merchant-of-record solution: it
+          // calculates/withholds/remits indirect tax itself (operator decision
+          // #662). Stripe therefore forbids `automatic_tax` and
+          // `tax_id_collection` on a Managed Payments session — they must be
+          // absent, not `false`. Tax-inclusive display comes from
+          // `Price.tax_behavior = 'inclusive'` (bootstrap), not from the
+          // session. See docs/deployment.md and design §5.4.
+          managed_payments: { enabled: true },
         },
         { idempotencyKey: input.idempotencyKey },
       );

@@ -116,3 +116,123 @@ export function selectBootstrapPrices(
 
   return { prices, errors };
 }
+
+// ── Managed Payments / tax policy ───────────────────────────────────────────
+// Pure decisions used by the bootstrap script so they can be unit-tested
+// without the Stripe network or a Supabase instance.
+
+/** Prices are tax-inclusive: the PLN amount is the final consumer price. */
+export const BOOTSTRAP_TAX_BEHAVIOR = 'inclusive' as const;
+
+/** The operator supplies an eligible Managed Payments product tax code. */
+const PRODUCT_TAX_CODE_PATTERN = /^txcd_[0-9]+$/;
+
+/** Managed Payments owns tax IDs; the portal must not collect them. */
+export const PORTAL_CUSTOMER_ALLOWED_UPDATES = ['email', 'address', 'name'] as const;
+
+export function resolveProductTaxCode(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const value = env.STRIPE_PRODUCT_TAX_CODE?.trim();
+  if (!value) return null;
+  if (!PRODUCT_TAX_CODE_PATTERN.test(value)) {
+    throw new Error('STRIPE_PRODUCT_TAX_CODE must look like txcd_<digits>');
+  }
+  return value;
+}
+
+/** Minimal Price shape the comparison needs (avoids the SDK at runtime). */
+export interface BootstrapStripePrice {
+  active: boolean;
+  type: string;
+  product: string;
+  currency: string;
+  unit_amount: number | null;
+  recurring: { interval: string; interval_count: number } | null;
+  tax_behavior: string | null;
+}
+
+/**
+ * A mapped Price can be reused only when it still matches the catalog and is
+ * tax-inclusive. Any mismatch (including a legacy exclusive/unspecified Price)
+ * rotates the lookup key to a new Price.
+ */
+export function priceMatches(
+  price: BootstrapStripePrice,
+  row: BootstrapPrice,
+  productId: string,
+): boolean {
+  return (
+    price.active &&
+    price.type === 'recurring' &&
+    price.product === productId &&
+    price.currency.toLowerCase() === row.currency &&
+    price.unit_amount === row.unitAmount &&
+    price.recurring?.interval === row.interval &&
+    price.recurring?.interval_count === 1 &&
+    price.tax_behavior === BOOTSTRAP_TAX_BEHAVIOR
+  );
+}
+
+export interface BootstrapStripeProduct {
+  name: string;
+  tax_code?: string | null;
+}
+
+/**
+ * The Product fields that must change, or `null` for a no-op. A null tax code
+ * never clears an existing classification.
+ */
+export function productUpdateFor(
+  existing: BootstrapStripeProduct,
+  row: BootstrapPrice,
+  taxCode: string | null,
+): { name?: string; tax_code?: string } | null {
+  const needsName = existing.name !== row.productName;
+  const needsTaxCode = Boolean(taxCode) && existing.tax_code !== taxCode;
+  if (!needsName && !needsTaxCode) return null;
+
+  return {
+    ...(needsName ? { name: row.productName } : {}),
+    ...(needsTaxCode && taxCode ? { tax_code: taxCode } : {}),
+  };
+}
+
+/**
+ * The StudiQ Billing Portal configuration. Managed Payments is the merchant of
+ * record and owns tax IDs, so `customer_update.allowed_updates` omits `tax_id`.
+ * `subscription_update` is intentionally absent (#662 X5).
+ */
+export function portalParams(
+  livemode: boolean,
+  siteUrl: string,
+): import('stripe').Stripe.BillingPortal.ConfigurationCreateParams {
+  return {
+    name: 'StudiQ',
+    business_profile: {
+      headline: 'StudiQ — zarządzanie rozliczeniami',
+    },
+    features: {
+      payment_method_update: { enabled: true },
+      invoice_history: { enabled: true },
+      subscription_cancel: {
+        enabled: true,
+        mode: 'at_period_end',
+        proration_behavior: 'none',
+        cancellation_reason: {
+          enabled: true,
+          options: ['too_expensive', 'missing_features', 'unused', 'other'],
+        },
+      },
+      customer_update: {
+        enabled: true,
+        allowed_updates: [...PORTAL_CUSTOMER_ALLOWED_UPDATES],
+      },
+    },
+    default_return_url: `${siteUrl}/app/billing`,
+    metadata: {
+      studiq_managed: 'true',
+      studiq_livemode: String(livemode),
+    },
+  };
+}
