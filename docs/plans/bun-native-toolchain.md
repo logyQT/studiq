@@ -25,7 +25,10 @@ reports and the formatter's own output.
   - `printWidth = 100`, `singleQuote = true` (Prettier defaults for everything else match the
     old Biome settings: 2-space indent, semicolons, `trailingComma = "all"`,
     `arrowParens = "always"`).
-  - Markdown, YAML, TOML, HTML and JSONC are excluded, because Biome never formatted them.
+  - Markdown, YAML, TOML and HTML are formatted as well (the one-time pass over them is in
+    `.git-blame-ignore-revs`). Only `**/*.jsonc` and `.agents/skills/**` stay out of scope:
+    `bun fmt` rewrites JSONC with trailing commas, and the vendored skills are checksummed in
+    `skills-lock.json`. This matches the scope documented in `AGENTS.md` and `bun run format`.
 - `bun check` replaces `tsc --noEmit` in every workspace `typecheck` script. It reads the same
   `tsconfig.json`, follows project references and reports tsc-shaped errors.
 - `bun lint` replaces `biome ci`. Rule mapping:
@@ -57,8 +60,14 @@ reports and the formatter's own output.
 `bun fmt` and `bun check` shipped in stable **1.4.4** (2026-10-22). `bun lint` is still
 canary-only — stable 1.4.4 has no linter — so the repo requires a 1.4.4 canary until a stable
 release ships it (`bun upgrade --canary`). The devcontainer does this in `postCreateCommand`;
-CI pins `BUN_VERSION` in `.github/workflows/verify.yml`. Do not unpin until
-`bun lint --help` succeeds on a stable release.
+CI pins `BUN_VERSION` in `.github/workflows/verify.yml`. Do not unpin until the linter probe
+passes on a stable release. Run it from an **empty temporary directory** — inside a checkout,
+`bun lint` resolves the repository's `lint` script instead of the linter — and expect exit 0 plus
+`Usage: bun lint`, the same probe `scripts/check-bun-version.ts` performs:
+
+```bash
+tmp=$(mktemp -d); (cd "$tmp" && bun lint --no-script --help)
+```
 
 ### Output differences
 

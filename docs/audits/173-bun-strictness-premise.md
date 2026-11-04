@@ -274,7 +274,10 @@ Gate: deliberately running `--suppress-all` fails the guard.
 
 - Keep the CI pin; add a note in the plan: "`bun lint` is canary-only; revisit when stable ships
   it".
-- Do not unpin until stable `bun lint --help` succeeds (verified failing on 1.4.4 today).
+- Do not unpin until the stable probe passes: run `bun lint --no-script --help` from an empty
+  temporary directory (inside a repo it resolves the `lint` script), expect exit 0 and
+  `Usage: bun lint` — the same probe as `scripts/check-bun-version.ts`. Stable 1.4.4 exits 1 with
+  `error: Script not found "lint"`.
 
 Gate: a documented fallback if the pinned canary disappears.
 
@@ -377,11 +380,10 @@ What would change my mind:
 ## Appendix A — reproduction log (post-#984)
 
 ```bash
-git fetch origin main
-# 27953562..67a9f11d  main -> origin/main
-
-git archive origin/main | tar -x -C /tmp/main2
-cd /tmp/main2 && bun install --frozen-lockfile
+REV=67a9f11d5b01e304df593a6c14da7a64db2010d3   # exact revision measured
+WORK=$(mktemp -d)                              # fresh directory per measurement
+git archive "$REV" | tar -x -C "$WORK"
+cd "$WORK" && bun install --frozen-lockfile
 
 bun run lint
 # ✓ No problems in 1300 files [963.59ms], exit 0
