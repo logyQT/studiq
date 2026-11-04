@@ -144,7 +144,6 @@ export default function StatsDataPage() {
     return () => controller.abort();
     // `reloadToken` is an explicit reload trigger: it must re-run this fetch even though the
     // request URL only depends on `selectedSubject`.
-    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- reload trigger.
   }, [selectedSubject, reloadToken]);
 
   if (loading) {
