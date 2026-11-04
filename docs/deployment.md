@@ -102,3 +102,17 @@ bunx supabase db push
 ```
 
 This applies any local migrations that haven't been applied to the remote database.
+
+## Staging
+
+The persistent staging environment is specified separately in
+[`plans/staging-environment.md`](./plans/staging-environment.md). It covers:
+
+- Vercel web + admin projects and domains
+- separate Supabase staging project and migrations
+- registration disabled
+- Stripe test mode and staging webhook
+- admin protection (Vercel SSO / Cloudflare Access / self-hosted VPN)
+- manual deploy gate + nightly `main` deploys
+
+Staging is not production and must never use production Supabase or live Stripe keys.
