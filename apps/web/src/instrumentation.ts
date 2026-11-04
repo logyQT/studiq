@@ -6,13 +6,28 @@ export async function register() {
     getMailer();
 
     // The same rule for payments (#662): a bad PAYMENT_DRIVER or missing
-    // Stripe setting must crash at boot, not on the first checkout. `mock`
-    // (the default) needs no configuration.
+    // Stripe setting must crash at boot, not on the first checkout. Production
+    // always runs Stripe; `mock` is rejected there with no override.
     const { getPaymentGateway } =
       await import('@studiq/server/lib/payment/payment-gateway.factory');
-    getPaymentGateway();
-  }
+    const gateway = getPaymentGateway();
+    // Readiness line for operators: provider + mode only, never key material.
+    // Emitted after the log pipeline is active when telemetry is on.
+    const logReady = async () => {
+      const { log } = await import('@studiq/server/lib/log');
+      log('payment.gateway_ready', { provider: gateway.driver, livemode: gateway.livemode });
+    };
 
+    if (process.env.OTEL_SDK_DISABLED === 'true') {
+      await logReady();
+      return;
+    }
+
+    await startTelemetry(logReady);
+  }
+}
+
+async function startTelemetry(logReady: () => Promise<void>): Promise<void> {
   if (process.env.OTEL_SDK_DISABLED === 'true') return;
 
   const { NodeSDK } = await import('@opentelemetry/sdk-node');
@@ -31,7 +46,9 @@ export async function register() {
   const sdk = new NodeSDK({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? 'studiq',
-      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV ?? 'development',
+      // APP_ENV is the deployment posture; NODE_ENV is 'production' in QA too.
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]:
+        process.env.APP_ENV ?? process.env.NODE_ENV ?? 'development',
     }),
     traceExporter: new OTLPTraceExporter(),
     metricReaders: [
@@ -49,4 +66,6 @@ export async function register() {
   // Flip the logger off its console fallback now that OTLP shipping is live.
   const { markLogsPipelineActive } = await import('@studiq/server/lib/log');
   markLogsPipelineActive();
+
+  await logReady();
 }

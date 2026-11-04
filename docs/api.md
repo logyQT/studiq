@@ -61,9 +61,13 @@ The seed is typically the user's email address. The route is excluded from auth 
 
 ## Billing & Stripe
 
-`PAYMENT_DRIVER` selects the provider at boot. `mock` (the default in dev, CI
-and QA) simulates a successful checkout; `stripe` uses Stripe-hosted Checkout
-and the hosted Billing Portal. No Stripe.js ships in the browser bundle.
+`APP_ENV` selects the deployment posture (`production`, `development`, `test`,
+`qa`; production is the default) and `PAYMENT_DRIVER` selects the provider at
+boot. Development, test and QA default to `mock`, which simulates a successful
+checkout; `stripe` uses Stripe-hosted Checkout and the hosted Billing Portal.
+Production always uses `stripe`: `PAYMENT_DRIVER=mock` is a boot error there,
+test keys are refused, and `NEXT_PUBLIC_SITE_URL` must be an `https://`
+non-localhost origin. No Stripe.js ships in the browser bundle.
 
 Every endpoint below is authenticated by `withAuth()` (the proxy skips
 `/api/*`). The billing **owner is the authenticated user** (`ctx.userId`) for

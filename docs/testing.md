@@ -66,6 +66,12 @@ bun run test:watch        # Watch mode (re-runs on file changes)
 bun run test:coverage     # Run with coverage report
 ```
 
+Vitest sets `APP_ENV=test` and `PAYMENT_DRIVER=mock` in `vitest.config.ts`, so
+unit and integration tests never need Stripe configuration. Those two values
+are the only reason the mock driver may run in CI; production is the default
+posture when `APP_ENV` is unset and rejects `PAYMENT_DRIVER=mock` outright.
+E2E and QA set `APP_ENV=qa` + `PAYMENT_DRIVER=mock` in the workflow env files.
+
 ## Stripe sandbox (opt-in)
 
 The real-Stripe suites need the network, a **test-mode** secret and a reachable
@@ -77,9 +83,10 @@ must **never** run on PRs from forks.
 bun run test:stripe
 ```
 
-Prerequisites (root `.env`):
+Prerequisites (root `.env`; Vitest already forces the test posture, so the
+sandbox suite needs no `APP_ENV`):
 
-- `STRIPE_SECRET_KEY=sk_test_…` (never `sk_live_…` for this suite)
+- `STRIPE_SECRET_KEY=rk_test_…` or `sk_test_…` (never a live key for this suite)
 - `STRIPE_PORTAL_CONFIGURATION_ID=bpc_…` and the catalog/prices created by
   `bun scripts/stripe-bootstrap.ts`
 - `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for a reachable local

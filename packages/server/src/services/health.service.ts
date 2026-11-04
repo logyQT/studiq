@@ -33,7 +33,7 @@ export class HealthService {
       status,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      environment: process.env.NODE_ENV || 'development',
+      environment: process.env.APP_ENV || process.env.NODE_ENV || 'development',
       services,
       responseTime: Date.now() - start,
     };

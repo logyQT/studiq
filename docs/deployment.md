@@ -45,32 +45,71 @@ LLM_MODEL_NAME=gpt-4o-mini
 # OTEL_SDK_DISABLED=true
 ```
 
-### Stripe (optional — test mode first)
+### Environment posture (`APP_ENV`) and Stripe
 
-`PAYMENT_DRIVER=mock` is the default and needs no Stripe configuration.
-Switching to `stripe` requires **all** of the following; boot validation
-(`parseStripeConfig`) refuses a partial or malformed configuration:
+`APP_ENV` is the deployment posture, **not** `NODE_ENV`: `next start` in QA and
+e2e also runs with `NODE_ENV=production`. Production is the default when
+`APP_ENV` is unset; every non-production environment must set it explicitly.
+
+| `APP_ENV`                     | `PAYMENT_DRIVER`    | Result                                                                     |
+| ----------------------------- | ------------------- | -------------------------------------------------------------------------- |
+| unset → `production`          | unset → `stripe`    | boot error if the Stripe config is missing                                 |
+| `production`                  | `stripe`            | only a live `sk_live_` / `rk_live_` key; `https://` non-localhost site URL |
+| `production`                  | `mock`              | **boot error, no override**                                                |
+| `production`                  | `stripe` + test key | **boot error** (`sk_test_` / `rk_test_` refused)                           |
+| `development` / `test` / `qa` | unset → `mock`      | no Stripe configuration needed                                             |
+| `development` / `test` / `qa` | `stripe` + test key | allowed                                                                    |
+| `development` / `test` / `qa` | `stripe` + live key | error unless `STRIPE_ALLOW_LIVE=1` (deliberate live smoke test)            |
+
+Production requires **all** of the following **before this release is
+deployed**: the server refuses to start otherwise (hard cutover, no mock
+fallback). Boot validation (`parseStripeConfig`) refuses a partial or malformed
+configuration:
 
 ```env
+APP_ENV=production
 PAYMENT_DRIVER=stripe
-STRIPE_SECRET_KEY=sk_test_...          # sk_live_... only in production
-STRIPE_WEBHOOK_SECRET=whsec_...        # per environment; stripe listen locally
+STRIPE_SECRET_KEY=rk_live_...          # restricted key preferred; sk_live_ also accepted
+STRIPE_WEBHOOK_SECRET=whsec_...        # per environment
 STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
-# STRIPE_ALLOW_LIVE=1                  # explicit escape hatch, never for the sandbox
+NEXT_PUBLIC_SITE_URL=https://studiq.app  # https, non-localhost (APP_URL is the fallback)
 ```
+
+Test mode for a local/preview deployment:
+
+```env
+APP_ENV=development
+PAYMENT_DRIVER=stripe
+STRIPE_SECRET_KEY=rk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
+```
+
+`bun run start` (and `bun dev:serve`) runs `scripts/payment-preflight.ts`
+**before the port binds**, because `next start` does not exit on an
+instrumentation rejection. `next build` needs no Stripe secret: the gateway is
+constructed lazily on the first request, not at module import.
 
 #### Bootstrap (once per Stripe mode)
 
 ```bash
-bun scripts/stripe-bootstrap.ts --check   # validate the catalog, no network/writes
-bun scripts/stripe-bootstrap.ts           # create/rotate products, prices, portal config
+# --check reads subscription_plans; it makes no Stripe calls and no writes.
+bun scripts/stripe-bootstrap.ts --check
+# Test-mode run (APP_ENV must be development/test/qa):
+APP_ENV=development bun scripts/stripe-bootstrap.ts
+# Live run (operator only, APP_ENV=production, --live):
+bun scripts/stripe-bootstrap.ts --live
 # prints STRIPE_PORTAL_CONFIGURATION_ID=bpc_…
 ```
 
-The script is idempotent, refuses a live key unless `--live` is passed **and**
-`NEXT_PUBLIC_SITE_URL` is an `https://` URL, never deletes a Stripe Price (it
-rotates the lookup key), and writes the `stripe_prices` rows. Price ids live in
-the database, never in git.
+The script accepts secret (`sk_`) and restricted (`rk_`) keys, derives live vs
+test from the prefix, and ties the mode to the posture: production only runs a
+live bootstrap (`--live`, `APP_ENV=production`, `https://` non-localhost site
+URL), and development/test/QA only run a test-mode bootstrap. It never deletes a
+Stripe Price (it rotates the lookup key) and writes the `stripe_prices` rows.
+Price ids live in the database, never in git. Never run `--live` from a
+developer machine; the production operator runs it in the production secret
+environment.
 
 #### Local webhook forwarding
 
@@ -98,31 +137,32 @@ Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
 
 #### Livemode separation
 
-- `livemode` is derived from the key prefix (`sk_live_`), stored on
+- `livemode` is derived from the key prefix (`sk_live_` / `rk_live_`), stored on
   `billing_customers`/`billing_subscriptions`/`stripe_prices`/
   `stripe_webhook_events`, and filtered on every read. `payments` rows are
   mode-agnostic (the invoice id is unique within a mode).
-- A live key outside `NODE_ENV=production` throws at boot unless
-  `STRIPE_ALLOW_LIVE=1`.
+- Production rejects test keys at boot; a live key outside production throws
+  unless `STRIPE_ALLOW_LIVE=1`.
 - The webhook rejects an event from the other mode; the bootstrap refuses live
-  without `--live` + production.
+  without `--live` + an `https://` non-localhost site URL.
 - Never mix test and live price ids in one `stripe_prices` row set.
 
-#### Rollback
+#### Rollback (never to the mock)
 
-1. Set `PAYMENT_DRIVER=mock` and restart — new checkouts use the simulation.
-   **Entitlement syncing stops with the driver flip**: in mock mode
-   `/api/v1/stripe/webhook` is the authenticated mock branch, so real Stripe
-   events get 401/400 and subscriptions freeze at their last known value.
-2. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
-   `stripe_webhook_events` or `payments` rows.
-3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled while
-   the driver is `stripe` (or flip back to `stripe` deliberately) until the last
-   in-flight subscription is canceled.
-4. Cancel a Stripe subscription in the Dashboard and let
-   `customer.subscription.deleted` downgrade to free — with the driver back on
-   `stripe` long enough to receive it. Never hand-edit
-   `profiles.personal_plan_key` while the webhook is live.
+Production **never** switches to the mock driver: `APP_ENV=production` +
+`PAYMENT_DRIVER=mock` is a boot error and there is no override.
+
+1. Roll back to the previous application release with the same valid Stripe
+   configuration.
+2. If new checkouts must stop, disable the checkout CTA or point `/checkout` at
+   a maintenance page. That stops new sessions only; it must not change
+   `PAYMENT_DRIVER` and must not stop the webhook endpoint. (A dedicated
+   driver-independent kill switch is planned in #662 workstream E.)
+3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled until
+   the last in-flight subscription is canceled.
+4. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
+   `stripe_webhook_events` or `payments` rows. Never hand-edit
+   `profiles.personal_plan_key` / `organizations.plan` while the webhook is live.
 
 #### Operational notes
 

@@ -177,13 +177,13 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 
 ## Phase 6: Subscription Gating 🏗️
 
-| Item                                     | Status | Notes                                                                                                                                                        |
-| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Feature flags                            | ✅     | DB-backed `features`, `feature_flags`, per-plan and per-role (`org_role_features`), user overrides, admin UI                                                 |
-| Plans, limits and gating                 | ✅     | `subscription_plans`, `plan_features`, `plan_limits`, `/pricing`, upgrade prompts, plan limits resolved live                                                 |
-| Seat-based licensing                     | ✅     | `org_seat_pools`, assignments, `/manage/seats` ([plan](plans/seat-based-licensing.md))                                                                       |
-| Checkout, billing pages, payment history | ✅     | Mock simulation by default; hosted Stripe Checkout/Portal behind `PAYMENT_DRIVER=stripe`                                                                     |
-| Real Stripe                              | 🏗️     | [#662](https://github.com/logyQT/studiq/issues/662) implemented behind `PAYMENT_DRIVER=stripe`; mock stays default, §10.4 pilot + production default pending |
+| Item                                     | Status | Notes                                                                                                                                                           |
+| ---------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Feature flags                            | ✅     | DB-backed `features`, `feature_flags`, per-plan and per-role (`org_role_features`), user overrides, admin UI                                                    |
+| Plans, limits and gating                 | ✅     | `subscription_plans`, `plan_features`, `plan_limits`, `/pricing`, upgrade prompts, plan limits resolved live                                                    |
+| Seat-based licensing                     | ✅     | `org_seat_pools`, assignments, `/manage/seats` ([plan](plans/seat-based-licensing.md))                                                                          |
+| Checkout, billing pages, payment history | ✅     | Mock simulation by default; hosted Stripe Checkout/Portal behind `PAYMENT_DRIVER=stripe`                                                                        |
+| Real Stripe                              | 🏗️     | [#662](https://github.com/logyQT/studiq/issues/662) production uses Stripe (`APP_ENV=production`, no mock); dev/test/QA explicitly use the mock contract double |
 
 ---
 
@@ -226,5 +226,5 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 - **SM-2 is done** — only the 5B enhancements remain.
 - **LLM provider abstracted** — OpenAI-compatible and Ollama.
 - **Feature flags, plans and limits are DB-backed** — plan changes need no deploy.
-- **External providers sit behind interfaces chosen by config** — payments run as a mock by default and as a real Stripe driver behind `PAYMENT_DRIVER=stripe` in [#662](https://github.com/logyQT/studiq/issues/662); mail follows the same pattern in [#604](https://github.com/logyQT/studiq/issues/604).
+- **External providers sit behind interfaces chosen by config** — production payments always use Stripe (`APP_ENV=production`), while dev/test/QA use the mock contract double in [#662](https://github.com/logyQT/studiq/issues/662); mail follows the same pattern in [#604](https://github.com/logyQT/studiq/issues/604).
 - **No hyphens in routes** — all API and frontend routes use `/` segments only.

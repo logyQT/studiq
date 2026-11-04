@@ -1,7 +1,7 @@
 # Real Stripe integration behind the payment interface (#662)
 
 **Date:** 2026-10-30
-**Status:** Implemented behind `PAYMENT_DRIVER=stripe` through phase 4 (gateway seam, hosted Checkout, signed webhook + entitlement sync, portal, shared read model, success-page reconcile, plan change/cancel, billing UI) plus phase 5 (docs + opt-in test-clock lifecycle suite). **The mock remains the default** in dev/CI/QA; the §10.4 sandbox pilot and the production-default decision are still pending.
+**Status:** Implemented through phase 5 (gateway seam, hosted Checkout, signed webhook + entitlement sync, portal, shared read model, success-page reconcile, plan change/cancel, billing UI, docs + opt-in test-clock lifecycle suite) plus phase-6 workstreams A (mock/Stripe parity) and B (`APP_ENV` fail-closed contract). Workstreams C–F (Managed Payments, prices, ops, team secrets) are pending. **Production uses Stripe only**; the mock is an explicit non-production contract/test double, and `NODE_ENV` is never used as the posture.
 **Issue:** [#662](https://github.com/logyQT/studiq/issues/662) (ROADMAP Phase 6)
 **Scope owner:** SoCoCold (Alan) per the issue body; the issue currently has no GitHub assignee
 
@@ -489,34 +489,39 @@ export async function POST(req: NextRequest) {
 
 ### 3.5 Driver selection and boot validation
 
-Mirror `packages/server/src/lib/mailer/index.ts` exactly.
+`APP_ENV` is the posture (`production` default; `development`/`test`/`qa`
+explicit) and lives in `lib/app-env.ts`; the payment factory consumes it.
 
 ```ts
-// payment-gateway.factory.ts
+// lib/payment/payment-gateway.factory.ts
 export class PaymentConfigError extends Error { … }
 
-export function createPaymentGatewayFromEnv(env = process.env): PaymentGateway {
-  const driver = (env.PAYMENT_DRIVER ?? 'mock').trim().toLowerCase();
-
-  if (driver === '' || driver === 'mock') return new MockPaymentGateway(…);
-
-  if (driver !== 'stripe') {
-    throw new PaymentConfigError(`unknown PAYMENT_DRIVER "${driver}" (expected mock or stripe)`);
+export function resolvePaymentDriver(env, appEnv): 'mock' | 'stripe' {
+  const raw = (env.PAYMENT_DRIVER ?? '').trim().toLowerCase();
+  if (raw === '') return appEnv === 'production' ? 'stripe' : 'mock';
+  if (raw === 'mock') {
+    if (appEnv === 'production') throw new PaymentConfigError('PAYMENT_DRIVER=mock is not available in production');
+    return 'mock';
   }
+  if (raw === 'stripe') return 'stripe';
+  throw new PaymentConfigError(`unknown PAYMENT_DRIVER "${raw}"`);
+}
 
+export function parseStripeConfig(env, appEnv) {
   const key = required(env, 'STRIPE_SECRET_KEY');
-  if (!/^sk_(test|live)_/.test(key)) throw new PaymentConfigError('STRIPE_SECRET_KEY must start with sk_test_ or sk_live_');
-  if (key.startsWith('sk_live_') && env.NODE_ENV !== 'production' && env.STRIPE_ALLOW_LIVE !== '1') {
+  if (!/^(sk|rk)_(test|live)_/.test(key)) throw new PaymentConfigError(…);
+  const livemode = key.startsWith('sk_live_') || key.startsWith('rk_live_');
+
+  if (appEnv === 'production') {
+    if (!livemode) throw new PaymentConfigError('test-mode keys are refused in production');
+    assertProductionSiteUrl(env); // https, non-localhost, NEXT_PUBLIC_SITE_URL or APP_URL
+  } else if (livemode && env.STRIPE_ALLOW_LIVE !== '1') {
     throw new PaymentConfigError('live Stripe key refused outside production');
   }
 
-  const webhookSecret = required(env, 'STRIPE_WEBHOOK_SECRET');
-  if (!webhookSecret.startsWith('whsec_')) throw new PaymentConfigError(…);
-
-  const portalConfig = required(env, 'STRIPE_PORTAL_CONFIGURATION_ID');
-  if (!portalConfig.startsWith('bpc_')) throw new PaymentConfigError(…);
-
-  return new StripePaymentGateway({ key, webhookSecret, portalConfig, livemode: key.startsWith('sk_live_') });
+  const webhookSecret = required(env, 'STRIPE_WEBHOOK_SECRET'); // whsec_
+  const portalConfig = required(env, 'STRIPE_PORTAL_CONFIGURATION_ID'); // bpc_
+  return { secretKey: key, webhookSecret, portalConfigurationId: portalConfig, livemode };
 }
 
 let cached: PaymentGateway | undefined;
@@ -526,14 +531,14 @@ export function getPaymentGateway(): PaymentGateway {
 }
 ```
 
-`apps/web/src/instrumentation.ts` calls `getPaymentGateway()` in the `NEXT_RUNTIME === 'nodejs'` block, **before** the OTel opt-out, exactly like `getMailer()`:
+`apps/web/src/instrumentation.ts` calls `getPaymentGateway()` in the `NEXT_RUNTIME === 'nodejs'` block, **before** the OTel opt-out, exactly like `getMailer()`, then logs the readiness line:
 
 ```ts
-const { getPaymentGateway } = await import('@studiq/server/lib/payment/payment-gateway.factory');
-getPaymentGateway(); // throws PaymentConfigError at boot on bad config
+const gateway = getPaymentGateway(); // throws PaymentConfigError at boot on bad config
+log('payment.gateway_ready', { provider: gateway.driver, livemode: gateway.livemode });
 ```
 
-Result: a typo or a missing secret crashes the server at start-up, not at the first checkout. The `mock` driver requires **no** Stripe env at all.
+Result: a typo, a test key in production or a non-https site URL crashes the server at start-up, not at the first checkout. The `mock` driver requires **no** Stripe env, but only under an explicit non-production `APP_ENV`.
 
 The factory imports the Stripe SDK **only through `stripe-payment.gateway.ts`** (a `@studiq/server` module that only server routes import); no client component imports it, the webhook route pins the Node runtime, and there is no `NEXT_PUBLIC_` Stripe key. Do not try to lazy-load it: the boot-time singleton is synchronous, and a server-only static import is simpler and cannot reach the browser bundle.
 
@@ -1214,18 +1219,22 @@ stripe listen \
 ### 8.4 Environment variables
 
 ```dotenv
-# Payment driver (default mock)
+# Posture: production is the default; dev/test/QA must set this explicitly.
+APP_ENV=development
+
+# Payment driver (default mock only outside production)
 PAYMENT_DRIVER=mock
 
 # Stripe (test mode only; never commit)
-STRIPE_SECRET_KEY=sk_test_...
+STRIPE_SECRET_KEY=rk_test_...   # sk_test_ also accepted
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
 ```
 
 - No `NEXT_PUBLIC_*` Stripe key is needed: hosted Checkout and the hosted Portal mean **no Stripe.js in the bundle**.
 - `STRIPE_SECRET_KEY` is read only by `packages/server` on Node.
-- `STRIPE_ALLOW_LIVE=1` is the explicit escape hatch that lets a live key run outside `NODE_ENV=production` (for a deliberate live smoke test). It is not needed for the sandbox.
+- Production requires a live `rk_live_`/`sk_live_` key, an `https://` non-localhost site URL, and `PAYMENT_DRIVER=stripe`; a test key or `mock` fails boot with no override.
+- `STRIPE_ALLOW_LIVE=1` is the explicit escape hatch that lets a live key run outside production (for a deliberate live smoke test). It is not needed for the sandbox and cannot enable the mock in production.
 
 ### 8.5 Test cards and clocks
 
@@ -1284,9 +1293,10 @@ Limits: at most **3 customers per clock** and **3 subscriptions per customer**; 
 
 ### 9.4 Test/live separation
 
-- `livemode` derived from the key prefix; stored on every mapping; filtered on every read.
-- A live key outside `NODE_ENV=production` throws at boot unless `STRIPE_ALLOW_LIVE=1`.
-- Bootstrap refuses live unless `--live` and production.
+- `livemode` derived from the key prefix (`sk_live_` / `rk_live_`); stored on every mapping; filtered on every read.
+- Production rejects test keys (`sk_test_` / `rk_test_`) and `PAYMENT_DRIVER=mock` at boot, with no override.
+- A live key outside production throws at boot unless `STRIPE_ALLOW_LIVE=1`.
+- Bootstrap refuses a live key unless `--live`, `APP_ENV=production` and an `https://` non-localhost site URL; it refuses a test-mode run in production.
 - The webhook rejects events from the other mode.
 - Price ids are per-mode; `stripe_prices` has `livemode` in the PK.
 
@@ -1306,12 +1316,10 @@ Use an injected fake `StripeClient`. Suggested files and cases:
 
 `__tests__/unit/lib/payment-gateway.factory.test.ts`
 
-- default (unset) → `driver === 'mock'`;
-- `PAYMENT_DRIVER=mock` → mock;
-- `PAYMENT_DRIVER=stripe` without `STRIPE_SECRET_KEY` → throws `PaymentConfigError`;
-- `sk_live_…` in `NODE_ENV=test` → throws;
-- `sk_test_…` + `whsec_…` + `bpc_…` → `driver === 'stripe'`, `livemode === false`;
-- unknown driver (`PAYMENT_DRIVER=strpe`) → throws.
+- the full `APP_ENV` × `PAYMENT_DRIVER` matrix (production default, production + mock always throws, production + test key throws, production + live key starts, production + http/localhost site URL throws);
+- live key outside production → throws unless `STRIPE_ALLOW_LIVE=1`;
+- `sk_` and `rk_` keys derive `livemode` from the prefix;
+- unknown `APP_ENV` / driver → throws `PaymentConfigError` / `AppEnvError` at boot.
 
 `__tests__/unit/services/billing.service.test.ts`
 
@@ -1398,7 +1406,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 
 1. `bun scripts/stripe-bootstrap.ts --check` → 9 products/prices, no writes.
 2. Run it; confirm `stripe_prices` has 9 active rows and the portal config id is printed.
-3. `PAYMENT_DRIVER=stripe` + the three env vars; restart; boot log shows the stripe driver and `livemode=false`.
+3. `APP_ENV=development` + `PAYMENT_DRIVER=stripe` + the three env vars; restart; the preflight/boot log shows the stripe driver and `livemode=false`.
 4. `stripe listen --forward-to localhost:3000/api/v1/stripe/webhook` — keep it running.
 5. Log in as a student, buy **Spark** with `4242…`.
    - Checkout redirects to Stripe, not `/checkout`.
@@ -1411,7 +1419,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 10. Log in as a teacher of that org: `POST /billing/change-plan` and the portal → 403.
 11. Declined card `4000…0002` → Checkout shows the error, no local rows.
 12. `stripe trigger invoice.payment_failed` → mirror `past_due`, plan unchanged.
-13. Flip `PAYMENT_DRIVER=mock`; re-run the QA specs BIL-04, BIL-05, STU-52 unchanged.
+13. Flip to a non-production posture (`APP_ENV=development`, `PAYMENT_DRIVER=mock`); re-run the QA specs BIL-04, BIL-05, STU-52 unchanged. Production can never use the mock.
 14. `bun run lint:all` and `bun run test:unit` green.
 
 ---
@@ -1466,13 +1474,13 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 - `docs/api.md`, `docs/database.md`, `docs/ROADMAP.md`, `docs/testing.md`.
 - Bootstrap + CLI runbook in `docs/ONBOARDING.md` or `docs/deployment.md`.
 - Pilot **one plan** (e.g. `spark`) in one environment; watch `billing.*` logs and the webhook failure rate.
-- Only then consider making Stripe the default for production. `PAYMENT_DRIVER=mock` stays the default in dev/CI/QA indefinitely.
+- Production now always runs Stripe (`APP_ENV=production`); `mock` stays the default in dev/CI/QA and is a production boot error.
 
-### Rollback
+### Rollback (never to the mock)
 
-1. Set `PAYMENT_DRIVER=mock` and restart. New checkouts use the fake form again.
-2. **Do not revert the migrations** and **do not delete** `billing_*`, `stripe_prices`, `stripe_webhook_events` or `payments` rows. Existing Stripe subscriptions keep billing in Stripe; the webhook keeps updating entitlements because the route still verifies signatures even if new checkouts are mocked.
-3. If the webhook must be stopped entirely, disable the Dashboard endpoint / stop `stripe listen`; entitlements freeze at their last known value. Note that `PAYMENT_DRIVER=mock` also routes `/api/v1/stripe/webhook` to the authenticated mock branch, so real Stripe events are rejected while the driver is mock. Flip back to `stripe` deliberately if entitlements must keep syncing. Subscriptions can be managed in the Stripe Dashboard.
+1. Roll back to the previous application release with the same valid Stripe configuration. Production never switches to `PAYMENT_DRIVER=mock`; that combination is a boot error and has no override.
+2. **Do not revert the migrations** and **do not delete** `billing_*`, `stripe_prices`, `stripe_webhook_events` or `payments` rows.
+3. To stop new checkouts, disable the checkout CTA or use a maintenance page. This must not change `PAYMENT_DRIVER` and must not stop the webhook endpoint. (A driver-independent kill switch is planned in workstream E.)
 4. To unwind a Stripe entitlement, cancel the subscription in Stripe and let `customer.subscription.deleted` downgrade to free — never hand-edit `profiles.personal_plan_key` while the webhook is live.
 5. Keep `STRIPE_WEBHOOK_SECRET` valid until the last in-flight subscription is canceled.
 
@@ -1549,14 +1557,15 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 
 ## Appendix A — Environment variables
 
-| Variable                           | Default                 | Required when           | Notes                                                  |
-| ---------------------------------- | ----------------------- | ----------------------- | ------------------------------------------------------ |
-| `PAYMENT_DRIVER`                   | `mock`                  | always                  | `mock` or `stripe`; anything else throws at boot       |
-| `STRIPE_SECRET_KEY`                | —                       | `stripe`                | `sk_test_…` (sandbox) or `sk_live_…` (production only) |
-| `STRIPE_WEBHOOK_SECRET`            | —                       | `stripe`                | `whsec_…`; `stripe listen` secret locally              |
-| `STRIPE_PORTAL_CONFIGURATION_ID`   | —                       | `stripe`                | `bpc_…` created by the bootstrap script                |
-| `STRIPE_ALLOW_LIVE`                | unset                   | live outside production | explicit escape hatch; not for the sandbox             |
-| `NEXT_PUBLIC_SITE_URL` / `APP_URL` | `http://localhost:3000` | always                  | success/cancel/return URLs                             |
+| Variable                           | Default                                  | Required when                    | Notes                                                                         |
+| ---------------------------------- | ---------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------- |
+| `APP_ENV`                          | `production`                             | always                           | `production` / `development` / `test` / `qa`; non-production must be explicit |
+| `PAYMENT_DRIVER`                   | `stripe` in production, `mock` elsewhere | always                           | `mock` is a production boot error; anything else throws at boot               |
+| `STRIPE_SECRET_KEY`                | —                                        | `stripe`                         | `rk_` / `sk_` + `test_`/`live_`; test keys refused in production              |
+| `STRIPE_WEBHOOK_SECRET`            | —                                        | `stripe`                         | `whsec_…`; `stripe listen` secret locally                                     |
+| `STRIPE_PORTAL_CONFIGURATION_ID`   | —                                        | `stripe`                         | `bpc_…` created by the bootstrap script                                       |
+| `STRIPE_ALLOW_LIVE`                | unset                                    | live outside production          | explicit escape hatch; not for the sandbox                                    |
+| `NEXT_PUBLIC_SITE_URL` / `APP_URL` | `http://localhost:3000`                  | production: https, non-localhost | success/cancel/return URLs                                                    |
 
 ## Appendix B — Stripe objects created by the bootstrap
 
