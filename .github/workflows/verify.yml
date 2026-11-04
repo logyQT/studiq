@@ -334,7 +334,10 @@ jobs:
         if: always()
         run: bunx supabase stop || true
       - name: Save native Supabase artifacts
-        if: always() && steps.native-cache-integration.outputs.cache-hit != 'true'
+        # Never write caches from a feature branch: only main owns the shared
+        # cache entries. Branches restore main's cache; a post-merge warm run
+        # refreshes it.
+        if: always() && github.ref == 'refs/heads/main' && steps.native-cache-integration.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: ~/.supabase/cache/stack
