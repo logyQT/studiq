@@ -112,7 +112,7 @@ export function QuestionFormDialog({
   useEffect(() => {
     setError(null);
     // Every form field is listed on purpose: editing any of them must clear the stale error.
-  }, [content, type, answers, topicIds]);
+  }, [content, type, explanation, answers, topicIds]);
 
   function addAnswer() {
     setAnswers([...answers, { content: '', isCorrect: false }]);
