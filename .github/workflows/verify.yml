@@ -848,12 +848,12 @@ jobs:
         run: /tmp/native-supa stack start --runtime native --eager -x realtime,functions,analytics,pooler
       - name: Write native env
         run: |
-          status=$(/tmp/native-supa stack status --env)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(/tmp/native-supa stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
