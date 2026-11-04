@@ -35,8 +35,13 @@ maxWarnings = 0
 
 [lint.categories]
 # Bun's defaults already cover correctness (ESLint + typescript-eslint
-# recommended). `suspicious` is the first strictness tier after the baseline
-# is clean; `perf` and then `style` follow once that is done.
+# recommended); `suspicious` is the one extra tier we adopted.
+#
+# `perf` and `style` are deliberately **not** adopted. Measured on 2026-11-03:
+# `perf` adds ~1,700 findings (only 3 auto-fixable, mostly `no-await-in-loop`
+# for intentional sequential I/O) and `style` adds ~66,000 (mostly `one-var`,
+# `sort-keys`, `no-magic-numbers`). See docs/audits/173-bun-strictness-premise.md
+# before proposing either again.
 suspicious = "warn"
 
 [lint.rules]
@@ -45,6 +50,10 @@ suspicious = "warn"
 "@typescript-eslint/no-unused-vars" = "error"
 "@typescript-eslint/no-explicit-any" = "error"
 "react-hooks/exhaustive-deps" = "error"
+# Bun also ships `exhaustive-effect-dependencies`, a duplicate of the rule above
+# that fires on the same dependency arrays. Keep the ESLint-compatible name and
+# turn the duplicate off here instead of suppressing it inline at six call sites.
+"react-hooks/exhaustive-effect-dependencies" = "off"
 "react/no-danger" = "error"
 "oxc/no-barrel-file" = ["error", { threshold = 0 }]
 
