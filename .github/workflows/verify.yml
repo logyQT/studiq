@@ -367,20 +367,23 @@ jobs:
       - run: npm install -g bun@${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
 
-      - name: Enable CI auth e-mail templates
-        # CLI 3.0.0 stack projects cannot serve `content_path` templates, so the
-        # committed config leaves them out. This job runs the non-stack backend
-        # and AUT-01/02/06/12 need the app's /auth/callback?token_hash=… link,
-        # which the branded templates produce (the default GoTrue URL differs).
-        run: cat supabase/config.ci-overlay.toml >> supabase/config.toml
-
-      - name: Start Supabase
+      - name: Start Supabase (temporary e-mail template workaround)
         env:
           # `supabase/config.toml` resolves `auth.site_url` from `env(APP_URL)`;
           # without it the QA e-mails carry relative callback links.
           APP_URL: http://localhost:3010
           SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+          # ⚠️ TEMPORARY: stack projects cannot serve `content_path` templates,
+          # so config.toml keeps empty paths. This job is non-stack; these env
+          # vars override them and AUT-01/02/06/12 get the branded
+          # /auth/callback?token_hash=… link. Remove when stack supports
+          # templates, or restore literal paths if stack is deprecated and local
+          # provisioning goes back to manual.
+          SUPABASE_AUTH_EMAIL_TEMPLATE_RECOVERY_CONTENT_PATH: ./supabase/templates/auth.email.template.recovery.html
+          SUPABASE_AUTH_EMAIL_TEMPLATE_CONFIRMATION_CONTENT_PATH: ./supabase/templates/auth.email.template.confirmation.html
+        run: |
+          printf '\033[1;31m⚠ TEMPORARY: stack mode cannot serve content_path templates; CI is non-stack and injects them via SUPABASE_AUTH_EMAIL_TEMPLATE_*_CONTENT_PATH. Remove when stack supports templates (or when reverting to manual provisioning).\033[0m\n'
+          bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
 
       - name: Write env files
         # The app reads apps/web/.env, but the QA seeder and the specs that seed

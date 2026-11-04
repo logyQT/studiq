@@ -423,13 +423,26 @@ orioledb_version = ""
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
 
 
-# --------------- #
-# EMAIL TEMPLATES #
-# --------------- #
-#
-# Custom email templates are not configurable with stack projects: v3.0.0
-# rejects `content_path` ("requires template serving") and rejects inline
-# `content` ("please use content_path instead"). The branded HTML in
-# `supabase/templates/` is kept as the source for the hosted project's dashboard
-# templates; local stacks use Supabase's default messages. QA matches mail by
-# recipient and link, not by subject.
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  ⚠️  TEMPORARY WORKAROUND — DO NOT BUILD ON THIS                         ║
+# ║                                                                          ║
+# ║  Stack projects in CLI 3.x cannot serve `content_path` templates, so the  ║
+# ║  paths are empty here (stack boots, uses Supabase defaults). CI runs the  ║
+# ║  non-stack backend and sets the env-gated sources:                       ║
+# ║                                                                          ║
+# ║    SUPABASE_AUTH_EMAIL_TEMPLATE_RECOVERY_CONTENT_PATH=…                  ║
+# ║    SUPABASE_AUTH_EMAIL_TEMPLATE_CONFIRMATION_CONTENT_PATH=…              ║
+# ║                                                                          ║
+# ║  This keeps ONE config gated by env, but it is a workaround, not a       ║
+# ║  design. Remove it when stack accepts templates. If the stack backend is ║
+# ║  deprecated first, go back to manual local provisioning and restore the  ║
+# ║  literal content_path values.                                            ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+[auth.email.template.recovery]
+subject = "StudiQ - Password Reset"
+content_path = ""
+
+[auth.email.template.confirmation]
+subject = "StudiQ - Confirm Your Email"
+content_path = ""

@@ -24,6 +24,11 @@
 #     do port math or derive a project id.
 #   * `SUPABASE_SHARED=1` reuses an existing stack (shared QA) with explicit
 #     URLs/keys from root `.env`; that path keeps its fixed ports.
+#   * TEMPORARY WORKAROUND: stack projects cannot serve auth `content_path`
+#     templates, so `supabase/config.toml` keeps the paths empty and non-stack
+#     CI injects them via SUPABASE_AUTH_EMAIL_TEMPLATE_*_CONTENT_PATH. Remove
+#     when stack supports templates (or restore manual provisioning if the
+#     stack backend is deprecated). See the banner in config.toml.
 #   * `apps/web/.env` and `supabase/.env` are generated (mode 600, Git-ignored)
 #   * ownership: the CLI owns stack identity; shared mode is read-only for
 #     destructive commands and `--all` is refused
