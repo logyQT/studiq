@@ -80,7 +80,7 @@ function qs(params: Record<string, string | number | undefined>): string {
   return query ? `?${query}` : '';
 }
 
-function remember(items: Record<string, unknown>[], state: BotState, target: string[]): void {
+function remember(items: Record<string, unknown>[], target: string[]): void {
   const seen = new Set(target);
   for (const item of items) {
     const id = idOf(item);
@@ -90,6 +90,18 @@ function remember(items: Record<string, unknown>[], state: BotState, target: str
     }
     if (target.length > 250) target.splice(0, target.length - 250);
   }
+}
+
+/** Narrow an unknown value to a plain object. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** The `data` payload of an API envelope, when it is a plain object. */
+function dataOf(body: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(body)) return undefined;
+  const { data } = body;
+  return isRecord(data) ? data : undefined;
 }
 
 // ── Shared (all roles) ──────────────────────────────────────────────────────
@@ -128,7 +140,7 @@ const studentActions: Action[] = [
     weight: 12,
     run: async (state) => {
       const result = await state.client.get('/api/v1/flashcards/decks?limit=200', 'decks.list');
-      remember(extractItems(result.body), state, state.deckIds);
+      remember(extractItems(result.body), state.deckIds);
       return result;
     },
   },
@@ -137,7 +149,7 @@ const studentActions: Action[] = [
     weight: 8,
     run: async (state) => {
       const result = await state.client.get('/api/v1/flashcards/topics?limit=200', 'topics.list');
-      remember(extractItems(result.body), state, state.topicIds);
+      remember(extractItems(result.body), state.topicIds);
       return result;
     },
   },
@@ -152,7 +164,7 @@ const studentActions: Action[] = [
           ? `/api/v1/flashcards${qs({ topicIds: pick(rng, topicIds), limit: 50 })}`
           : '/api/v1/flashcards?limit=50';
       const result = await client.get(path, 'flashcards.list');
-      remember(extractItems(result.body), state, state.cardIds);
+      remember(extractItems(result.body), state.cardIds);
       return result;
     },
   },
@@ -215,7 +227,7 @@ const studentActions: Action[] = [
             : '?limit=20'
       }`;
       const result = await client.get(path, 'practice.review');
-      remember(extractItems(result.body), state, state.cardIds);
+      remember(extractItems(result.body), state.cardIds);
       return result;
     },
   },
@@ -283,7 +295,7 @@ const studentActions: Action[] = [
         },
         'decks.create',
       );
-      const id = idOf((result.body as { data?: Record<string, unknown> } | null)?.data) ?? null;
+      const id = idOf(dataOf(result.body));
       if (id) {
         state.deckIds.push(id);
         state.lastDeckId = id;
@@ -305,7 +317,7 @@ const studentActions: Action[] = [
           'decks.create',
         );
         results.push(deck);
-        deckId = idOf((deck.body as { data?: Record<string, unknown> } | null)?.data) ?? null;
+        deckId = idOf(dataOf(deck.body));
         if (deckId) {
           state.deckIds.push(deckId);
           state.lastDeckId = deckId;
@@ -325,7 +337,7 @@ const studentActions: Action[] = [
           'flashcards.batch-create',
         );
         results.push(created);
-        remember(extractItems(created.body), state, state.cardIds);
+        remember(extractItems(created.body), state.cardIds);
       }
       return results;
     },

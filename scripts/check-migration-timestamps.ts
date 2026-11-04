@@ -17,7 +17,7 @@
  */
 import { execSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 
 const MIGRATIONS_DIR = 'supabase/migrations';
 // Matches Supabase migration filenames: {timestamp}_{name}.sql
@@ -44,7 +44,7 @@ function getMigrationFiles(): string[] {
     return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
   } catch {
     console.log('✓ no migrations directory found — skipping check.');
-    process.exit(0);
+    return [];
   }
 }
 

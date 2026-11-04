@@ -6,7 +6,6 @@
 
 import { readFileSync, writeFileSync } from 'fs';
 import { globSync } from 'glob';
-import { relative } from 'path';
 
 const ROOT = '/workspaces/studiq/.worktrees/feat/monorepo-scaffold';
 
@@ -119,7 +118,7 @@ for (const filePath of files) {
     const multiMatch = line.match(/^import\s+(type\s+)?\{([^}]*)$/);
     if (multiMatch && !line.includes('} from')) {
       const isType = !!multiMatch[1];
-      let allSymbols = multiMatch[2]
+      const allSymbols = multiMatch[2]
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
@@ -168,7 +167,7 @@ for (const filePath of files) {
     const importInfo = imports.find((imp) => imp.start === i);
     if (importInfo) {
       // Get ALL imports that start at this line (should be just one)
-      const remainingSymbols = importInfo.symbols.filter((s) => {
+      const remainingSymbols = importInfo.symbols.filter(() => {
         // Keep symbols that are NOT from the migrated module
         // We need to check: is this symbol ONLY from the migrated module?
         // Since we know the module, all symbols in this import are from that module
