@@ -6,6 +6,7 @@ import {
   type BillingReadRepository,
 } from '@studiq/server/lib/payment/billing-read.repository';
 import { billingPath } from '@studiq/server/lib/payment/billing-paths';
+import { isCheckoutDisabled } from '@studiq/server/lib/payment/checkout-switch';
 import {
   resolveCheckoutOwner,
   resolvePurchasablePlan,
@@ -152,6 +153,14 @@ export class BillingService {
     orgId?: string,
     locale: BillingLocale = 'pl',
   ): Promise<ServiceResult<CheckoutSessionResult>> {
+    // Incident switch: stop NEW checkout sessions without touching the payment
+    // driver. Existing subscriptions, webhooks, the portal and change/cancel
+    // keep working; rollback guidance lives in docs/deployment.md.
+    if (isCheckoutDisabled()) {
+      logWarn('billing.checkout_disabled', { planKey, userId: ctx.userId });
+      return failure('SERVICE_UNAVAILABLE');
+    }
+
     // Plan/owner rules are shared with the mock completion path (workstream A),
     // so the two drivers cannot drift on what may be bought or by whom.
     const purchasable = await resolvePurchasablePlan(this.repository, planKey, ctx.accountType);
