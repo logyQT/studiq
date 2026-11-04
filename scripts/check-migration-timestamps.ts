@@ -23,6 +23,15 @@ const MIGRATIONS_DIR = 'supabase/migrations';
 // Matches Supabase migration filenames: {timestamp}_{name}.sql
 const MIGRATION_RE = /^(\d{14,})_(.+)\.sql$/;
 
+/** Migration filenames on disk; empty when the migrations directory is absent. */
+function migrationFileNames(): string[] {
+  try {
+    return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
+  } catch {
+    return [];
+  }
+}
+
 function getMigrationFiles(): string[] {
   if (process.argv.includes('--staged')) {
     // In --staged mode, get only .sql files that are staged in git.
@@ -40,12 +49,7 @@ function getMigrationFiles(): string[] {
     return staged;
   }
 
-  try {
-    return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
-  } catch {
-    console.log('✓ no migrations directory found — skipping check.');
-    return [];
-  }
+  return migrationFileNames();
 }
 
 function extractTimestamp(filename: string): string | null {
@@ -54,7 +58,7 @@ function extractTimestamp(filename: string): string | null {
 }
 
 const stagedMode = process.argv.includes('--staged');
-const allFiles = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
+const allFiles = migrationFileNames();
 const targetFiles = stagedMode ? getMigrationFiles() : allFiles;
 
 if (targetFiles.length === 0) {
