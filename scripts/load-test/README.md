@@ -18,9 +18,9 @@ Both run directly with Bun (no build step) and are dependency-free.
 
 ## 1. Prerequisites
 
-- This checkout's local stack via `bun dev:up` (it creates the runtime registry
-  entry that seeding and reset verify) and a working app:
-  - app on `http://localhost:3000` (or pass `--app-url`), and
+- This checkout's local stack via `bun dev:up` — it generates `apps/web/.env`,
+  which seeding and reset use as the implicit target — and a working app:
+  - app on `http://localhost:$APP_PORT` (default `3000`, or pass `--app-url`), and
   - telemetry pointed at the OTel Collector — i.e. the app was started with
     `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and `OTEL_SDK_DISABLED`
     **not** `true`.
@@ -37,10 +37,10 @@ Both run directly with Bun (no build step) and are dependency-free.
   | `LOADTEST_PASSWORD`         | `Password123!`                                            |
   | `LOADTEST_EMAIL_DOMAIN`     | `loadtest.studiq.local`                                   |
 
-  `SUPABASE_API_PORT` resolves from the environment, then from the port
-  `scripts/dev` recorded in the generated `supabase/.env`, then
-  `SUPABASE_PORT_BASE + 1` (base `54320`) — so a non-default checkout block is
-  picked up without hardcoding it.
+  The target comes from the generated `apps/web/.env` (written by `scripts/dev`
+  from `supabase status`), so stack projects with random ports work without
+  configuration. Explicit `SUPABASE_URL` / `APP_URL` / `--supabase-url` /
+  `--app-url` still win. Shared/non-stack targets should pass an explicit URL.
 
 > `.dev/` is git-ignored, so generated pools and reports never get committed.
 
@@ -91,17 +91,13 @@ bun scripts/load-test/seed.ts --count 1000
 
 - **Idempotent** — re-running skips accounts that already exist.
 - **Ownership-checked** — when the target is implicit (no `--supabase-url` or
-  `SUPABASE_URL`), seeding verifies that the generated `supabase/.env` project
-  is recorded in this checkout's registry **and** that a running container with
-  that project label publishes the effective API port (`SUPABASE_API_PORT` when
-  set, otherwise the generated port). A `SUPABASE_API_PORT` override does not
-  skip the check. A foreign or unverifiable target is refused; pass
-  `--supabase-url` to override deliberately. Only `--reset` also compares the
-  generated port with the current `SUPABASE_PORT_BASE` (`staleGeneratedTarget`):
-  ordinary seeding reuses the generated port, which may be the old one if the
-  base changed while the previous stack is still running. After changing it,
-  stop the existing stack with `bun dev:down --all` (this checkout only — never
-  `supabase stop --all`) and then run `bun dev:up`.
+  `SUPABASE_URL`), it must come from `apps/web/.env` and be loopback. Stack-mode
+  files (`STUDIQ_STACK_MODE=1`) are re-checked against a fresh
+  `supabase status --output-format json`: project root, current branch, stack
+  name (`SUPABASE_STACK` or `default`) and API URL must match. A stale file from
+  another branch, or a different stack, is refused. Shared/non-stack targets
+  need an explicit URL.
+
 - Accounts are created with `email_confirm: true`, so they can log in
   immediately even though local GoTrue has `enable_confirmations = true`.
 - The `handle_new_user` DB trigger creates the matching `profiles` row and
@@ -114,10 +110,9 @@ Reset the pool when you're done:
 bun scripts/load-test/seed.ts --reset
 ```
 
-`--reset` refuses to run when the implicit target comes from a stale generated
-`supabase/.env` (the recorded `SUPABASE_API_PORT` disagrees with the current
-`SUPABASE_PORT_BASE + 1`). Re-run a `bun dev:*` command to re-render it, or pass
-`--supabase-url <url>` explicitly.
+`--reset` refuses a stale `apps/web/.env` (another branch/stack) and requires an
+explicit target for shared/non-stack stacks. Re-run a `bun dev:*` command to
+re-render the env files, or pass `--supabase-url <url>` explicitly.
 
 ### Convenience scripts
 
