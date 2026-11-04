@@ -18,9 +18,9 @@ Both run directly with Bun (no build step) and are dependency-free.
 
 ## 1. Prerequisites
 
-- This checkout's local stack via `bun dev:up` (it creates the runtime registry
-  entry that seeding and reset verify) and a working app:
-  - app on `http://localhost:3000` (or pass `--app-url`), and
+- This checkout's local stack via `bun dev:up` — it generates `apps/web/.env`,
+  which seeding and reset use as the implicit target — and a working app:
+  - app on `http://localhost:$APP_PORT` (default `3000`, or pass `--app-url`), and
   - telemetry pointed at the OTel Collector — i.e. the app was started with
     `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and `OTEL_SDK_DISABLED`
     **not** `true`.
