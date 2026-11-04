@@ -878,6 +878,53 @@ jobs:
           echo "native auth health + seeded login OK"
       - name: Integration tests
         run: bunx vitest run __tests__/integration --no-file-parallelism
+      - name: Restore Next build cache
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            next-ubuntu-24.04-
+      - name: Build app
+        run: bun run build
+      - name: Start app
+        run: |
+          (cd apps/web && bunx next start -p 3000 > /tmp/native-app.log 2>&1 &)
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/login && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3000/login
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: E2E login (native)
+        env:
+          E2E_SKIP_WEB_WS: '1'
+          E2E_SKIP_SEED: '1'
+          E2E_WORKERS: '1'
+        run: bunx playwright test --project=chromium __tests__/e2e/login.spec.ts --workers=1 --reporter=line
+      - name: Seed AUT-01 tenant
+        run: bun scripts/qa-tenant.ts AUT-01 --profile bare --role student --fresh
+      - name: QA PUB-01 (native)
+        env:
+          QA_APP_URL: http://localhost:3000
+        run: bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/PUB/PUB-01.spec.ts --workers=1 --project=chromium
+      - name: Verify branded-template gap (AUT-01)
+        env:
+          QA_APP_URL: http://localhost:3000
+        run: |
+          if bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/AUT/AUT-01.spec.ts --workers=1 --project=chromium; then
+            echo "::error::AUT-01 passed; the branded-template gap may be fixed"
+            exit 1
+          else
+            echo "Confirmed known gap: AUT-01 cannot find the branded /auth/callback link"
+          fi
+      - name: App logs
+        if: failure()
+        run: tail -200 /tmp/native-app.log || true
+      - name: Stop app
+        if: always()
+        run: pkill -f "next start -p 3000" || true
       - name: Native stack logs
         if: failure()
         run: /tmp/native-supa stack logs --tail 200 || true
