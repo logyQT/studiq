@@ -72,3 +72,6 @@ qa/.tenants/
 .qa-app.pid
 test-results/
 playwright-report/
+
+# Untracked operator handoff notes for #662 (never commit these)
+docs/plans/662-*-handoff.md
