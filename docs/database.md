@@ -48,11 +48,13 @@ drop, recreate and re-seed this branch's database.
 bun dev:reset-db
 ```
 
-This drops and recreates **this branch's** database, applying all migrations and
-loading seed data. It is scoped to the current stack (project root + branch),
-refuses in shared mode, and never touches another checkout's stack (plain
-`bunx supabase db reset` also follows this branch's stack because
-`supabase/config.toml` enables `[experimental] stack = true`).
+This drops and recreates **this branch's selected stack**, applying all
+migrations and loading seed data. `dev:reset-db` uses the named stack's DB URL
+when `SUPABASE_STACK` is set, refuses in shared mode, and never touches another
+checkout's stack. Plain `bunx supabase db reset` targets the branch's **default**
+stack; to reset a named stack directly, use
+`bunx supabase db reset --remote="$SUPABASE_DB_URL" --yes` (or the `DB_URL` from
+`supabase status --stack <name> --env`).
 
 ## Schema Organization
 
