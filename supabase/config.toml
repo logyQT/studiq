@@ -35,13 +35,6 @@ extra_search_path = ["public", "extensions"]
 # for accidental or malicious requests.
 max_rows = 1000
 
-[api.tls]
-# Enable HTTPS endpoints locally using a self-signed certificate.
-enabled = false
-# Paths to self-signed certificate pair.
-# cert_path = "../certs/my-cert.pem"
-# key_path = "../certs/my-key.pem"
-
 [db]
 # Port to use for the local database URL.
 port = "env(SUPABASE_DB_PORT)"
@@ -109,9 +102,10 @@ api_url = "env(SUPABASE_URL)"
 # OpenAI API Key to use for Supabase AI in the Supabase Studio.
 openai_api_key = "env(OPENAI_API_KEY)"
 
-# Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
-# are monitored, and you can view the emails that would have been sent from the web interface.
-[inbucket]
+# Local email testing server (Mailpit). Emails sent with the local dev setup are not actually sent -
+# rather, they are monitored, and you can view the emails that would have been sent from the web
+# interface.
+[local_smtp]
 enabled = true
 # Port to use for the email testing server web interface.
 port = "env(SUPABASE_MAIL_PORT)"
@@ -240,7 +234,7 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-enable_signup = true
+enabled = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -278,7 +272,7 @@ otp_expiry = 3600
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
-enable_signup = false
+enabled = false
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false
 # Template for sending OTP to users
