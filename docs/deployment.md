@@ -343,18 +343,18 @@ per-process, per-user bucket (10/min each, so 30/min combined); reconcile has
 
 **Alert on** (Loki/Grafana; records carry `trace_id` when OTel is enabled):
 
-| Event                                   | Meaning                                | First action                                                   |
-| --------------------------------------- | -------------------------------------- | -------------------------------------------------------------- |
-| `billing.webhook_failed`                | handler raised; Stripe retries         | inspect `error.code`/`event.id`, replay after a fix            |
-| `billing.webhook_signature_invalid`     | wrong/rotated `whsec_`                 | compare the Dashboard endpoint secret, rotate env              |
-| `billing.webhook_livemode_mismatch`     | test event in live (or vice versa)     | check the endpoint/key pairing, no writes happened             |
-| `billing.duplicate_subscription`        | second checkout for an active owner    | refund/cancel in Stripe; verify the active mirror              |
-| `billing.price_unmapped`                | a live Price is not in `stripe_prices` | re-run `stripe:preflight`; fix the mapping                     |
-| `billing.price_mismatch`                | catalog ≠ mapped Price                 | re-run the bootstrap (test/live) before enabling checkout      |
-| `billing.payments_no_attributable_user` | org invoice without a payer profile    | check old admin left; history row skipped, entitlement applied |
-| `billing.reconcile_*`                   | success-page reconcile errors          | webhook remains authoritative; investigate Stripe reads        |
-| `billing.managed_payments_unavailable`  | MP/tax-code account misconfiguration   | enable MP/accept terms/set the tax code; checkout is 503       |
-| `billing.checkout_disabled`             | kill switch is on                      | expected during an incident; confirm before re-enabling        |
+| Event                                   | Meaning                                | First action                                                             |
+| --------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| `billing.webhook_failed`                | handler raised; Stripe retries         | inspect the logged `eventId`, `type`, `message`, then replay after a fix |
+| `billing.webhook_signature_invalid`     | wrong/rotated `whsec_`                 | compare the Dashboard endpoint secret, rotate env                        |
+| `billing.webhook_livemode_mismatch`     | test event in live (or vice versa)     | check the endpoint/key pairing, no writes happened                       |
+| `billing.duplicate_subscription`        | second checkout for an active owner    | refund/cancel in Stripe; verify the active mirror                        |
+| `billing.price_unmapped`                | a live Price is not in `stripe_prices` | re-run `stripe:preflight`; fix the mapping                               |
+| `billing.price_mismatch`                | catalog ≠ mapped Price                 | re-run the bootstrap (test/live) before enabling checkout                |
+| `billing.payments_no_attributable_user` | org invoice without a payer profile    | check old admin left; history row skipped, entitlement applied           |
+| `billing.reconcile_*`                   | success-page reconcile errors          | webhook remains authoritative; investigate Stripe reads                  |
+| `billing.managed_payments_unavailable`  | MP/tax-code account misconfiguration   | enable MP/accept terms/set the tax code; checkout is 503                 |
+| `billing.checkout_disabled`             | kill switch is on                      | expected during an incident; confirm before re-enabling                  |
 
 **Rotation / incident response.** Never print, paste, log or commit a key.
 
