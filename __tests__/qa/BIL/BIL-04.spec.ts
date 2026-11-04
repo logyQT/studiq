@@ -180,7 +180,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
     await expect(hubCard, 'the Hub card shows the organization plan name').toContainText(
       UI.hubName,
     );
-    await expect(hubCard, 'the Hub card shows the monthly price').toContainText(/299 zł/);
+    await expect(hubCard, 'the Hub card shows the monthly price').toContainText(/299\s*zł/);
     const hubCta = hubCard.getByRole('button', { name: UI.hubCta, exact: true });
     await expect(hubCta, 'the Hub card offers its purchase button').toBeVisible();
     await hubCta.click();
