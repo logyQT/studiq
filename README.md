@@ -131,7 +131,7 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun start`                              | Start the web app production server — same as `bun start:web`                                                                         |
 | `bun start:admin`                        | Start the admin app production server                                                                                                 |
 | `bun lint`                               | Lint only: Bun native linter + import-path + migration-timestamp + hardcoded-URL + empty-suppression-ledger guards (**no typecheck**) |
-| `bun typecheck`                          | Typecheck the web app with `bun check` (`typecheck:all` = every workspace)                                                            |
+| `bun typecheck`                          | Typecheck the web app with `bun check` (`typecheck:all` = root `bun check` for `scripts/` + every workspace)                          |
 | `bun lint:all`                           | `typecheck:all` + `lint` in one run                                                                                                   |
 | `bun lint:web` / `bun typecheck:web`     | Lint / typecheck the web app only                                                                                                     |
 | `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                                                                                   |
