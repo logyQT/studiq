@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import * as RechartsPrimitive from 'recharts';
+import type { LegendPayload, TooltipContentProps, TooltipPayload } from 'recharts';
 
 import { cn, cssVars } from '../../utils';
 
@@ -46,6 +47,14 @@ function readStringProp(value: unknown, key: string): string | undefined {
   if (!isRecord(value)) return undefined;
   const candidate = value[key];
   return typeof candidate === 'string' ? candidate : undefined;
+}
+
+/**
+ * `dataKey` may be a custom accessor function, which is not a usable config key; only
+ * primitive keys are looked up (a function key was only ever stringified before).
+ */
+function toConfigKey(value: unknown): string | number | undefined {
+  return typeof value === 'string' || typeof value === 'number' ? value : undefined;
 }
 
 function ChartContainer({
@@ -109,6 +118,24 @@ ${colorConfig
 
 const ChartTooltip = RechartsPrimitive.Tooltip;
 
+/**
+ * Recharts v3 injects `active`, `payload`, `label` and `coordinate` into a custom tooltip at
+ * runtime but no longer exposes them on the public `TooltipProps`; `TooltipContentProps` is the
+ * content signature that carries them. They stay optional here because call sites render
+ * `<ChartTooltipContent />` without them and let recharts clone the element with props.
+ */
+type ChartTooltipContentProps = Omit<
+  TooltipContentProps,
+  'active' | 'payload' | 'label' | 'coordinate' | 'accessibilityLayer' | 'activeIndex'
+> & {
+  active?: boolean;
+  payload?: TooltipPayload;
+  label?: TooltipContentProps['label'];
+  coordinate?: TooltipContentProps['coordinate'];
+  accessibilityLayer?: boolean;
+  activeIndex?: TooltipContentProps['activeIndex'];
+};
+
 function ChartTooltipContent({
   active,
   payload,
@@ -123,8 +150,8 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-}: React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-  React.ComponentProps<'div'> & {
+}: React.ComponentProps<'div'> &
+  ChartTooltipContentProps & {
     hideLabel?: boolean;
     hideIndicator?: boolean;
     indicator?: 'line' | 'dot' | 'dashed';
@@ -139,7 +166,7 @@ function ChartTooltipContent({
     }
 
     const [item] = payload;
-    const key = `${labelKey || item?.dataKey || item?.name || 'value'}`;
+    const key = `${labelKey || toConfigKey(item?.dataKey) || item?.name || 'value'}`;
     const itemConfig = getPayloadConfigFromPayload(config, item, key);
     const value =
       !labelKey && typeof label === 'string' ? config[label]?.label || label : itemConfig?.label;
@@ -173,13 +200,13 @@ function ChartTooltipContent({
       {!nestLabel ? tooltipLabel : null}
       <div className="grid gap-1.5">
         {payload.map((item, index) => {
-          const key = `${nameKey || item.name || item.dataKey || 'value'}`;
+          const key = `${nameKey || item.name || toConfigKey(item.dataKey) || 'value'}`;
           const itemConfig = getPayloadConfigFromPayload(config, item, key);
           const indicatorColor = color || readStringProp(item.payload, 'fill') || item.color;
 
           return (
             <div
-              key={item.dataKey}
+              key={String(item.dataKey)}
               className={cn(
                 '[&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5',
                 indicator === 'dot' && 'items-center',
@@ -249,7 +276,8 @@ function ChartLegendContent({
   verticalAlign = 'bottom',
   nameKey,
 }: React.ComponentProps<'div'> &
-  Pick<RechartsPrimitive.LegendProps, 'payload' | 'verticalAlign'> & {
+  Pick<RechartsPrimitive.LegendProps, 'verticalAlign'> & {
+    payload?: readonly LegendPayload[];
     hideIcon?: boolean;
     nameKey?: string;
   }) {

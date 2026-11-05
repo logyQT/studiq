@@ -255,7 +255,9 @@ export default function TeacherActivityPage() {
                   <Tooltip
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(value) => formatDate(parseDay(String(value)), locale)}
+                        labelFormatter={(value) =>
+                          formatDate(parseDay(typeof value === 'string' ? value : ''), locale)
+                        }
                       />
                     }
                   />

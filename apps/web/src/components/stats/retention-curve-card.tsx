@@ -11,11 +11,11 @@ import {
   Skeleton,
 } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
-import type { ReactElement, SVGProps } from 'react';
+import type { ReactNode } from 'react';
 import {
   Bar,
   BarChart,
-  type BarProps,
+  type BarShapeProps,
   CartesianGrid,
   Rectangle,
   Tooltip,
@@ -37,8 +37,20 @@ function toPx(value: number | string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function RetentionBar(props: BarProps & { reviews?: number }) {
-  if (!props.reviews) return null;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** `BarShapeProps.payload` is the original chart datum, typed loosely by recharts. */
+function readReviews(payload: unknown): number | undefined {
+  if (!isRecord(payload)) return undefined;
+  const reviews = payload.reviews;
+  return typeof reviews === 'number' ? reviews : undefined;
+}
+
+function RetentionBar(props: BarShapeProps) {
+  const reviews = readReviews(props.payload);
+  if (!reviews) return null;
   const height = Math.max(toPx(props.height), MIN_BAR_PX);
   return (
     <Rectangle
@@ -55,9 +67,9 @@ function RetentionBar(props: BarProps & { reviews?: number }) {
 
 /**
  * recharts types `shape` as always returning an element, but a bucket without reviews must
- * draw nothing — the component itself returns `null`, so the adapter carries the element type.
+ * draw nothing — the component itself returns `null`, so the adapter carries the node type.
  */
-function renderRetentionBar(props: BarProps): ReactElement<SVGProps<SVGPathElement>> {
+function renderRetentionBar(props: BarShapeProps): ReactNode {
   return <RetentionBar {...props} />;
 }
 
