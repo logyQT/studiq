@@ -13,7 +13,7 @@
 #   bun dev:logs            follow the web log + this stack's logs
 #   bun dev:doctor          explain missing / owned / colliding state
 #   bun dev:ports           print a free APP_PORT (Supabase ports are dynamic)
-#   bun dev:prepull         download stack images without starting the stack
+#   bun dev:prepull         download stack artifacts without starting the stack
 #
 # Contract:
 #   * root `.env` is the only hand-edited env file (copy `.env.example`)
@@ -22,6 +22,8 @@
 #     by project root + git branch + optional `SUPABASE_STACK` name. Scripts
 #     discover endpoints from `supabase status --output-format json` and never
 #     do port math or derive a project id.
+#   * `SUPABASE_RUNTIME=native` opts into the no-Docker runtime; blank keeps
+#     Docker (an existing stack reuses the runtime it was created with).
 #   * `SUPABASE_SHARED=1` reuses an existing stack (shared QA) with explicit
 #     URLs/keys from root `.env`; that path keeps its fixed ports.
 #   * TEMPORARY WORKAROUND: stack projects cannot serve auth `content_path`
@@ -165,7 +167,8 @@ CONTRACT_KEYS=(
   SUPABASE_STUDIO_PORT SUPABASE_MAIL_PORT SUPABASE_ANALYTICS_PORT
   SUPABASE_EDGE_INSPECTOR_PORT SUPABASE_SHADOW_PORT SUPABASE_POOLER_PORT
   SUPABASE_URL SUPABASE_DB_URL SUPABASE_MAIL_URL SUPABASE_STUDIO_URL
-  SUPABASE_SHARED SUPABASE_SHARED_OWNER SUPABASE_STACK
+  SUPABASE_SHARED SUPABASE_SHARED_OWNER SUPABASE_STACK SUPABASE_RUNTIME
+  SUPABASE_HOME SUPABASE_NATIVE_POSTGRES_USER
   NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY
   STUDIQ_DEV_REGISTRY DEV_BUILD_MEMORY_MB SUPABASE_START_EXCLUDE
 )
@@ -330,6 +333,31 @@ resolve_contract() {
   esac
   SHARED_OWNER=${ENV[SUPABASE_SHARED_OWNER]:-}
 
+  # Runtime: blank selects Docker (the pre-spike default); explicit `auto` asks
+  # the CLI to probe Docker, then Podman, then native. `native` opts into the
+  # no-Docker runtime.
+  SUPABASE_RUNTIME=${ENV[SUPABASE_RUNTIME]:-}
+  case "$SUPABASE_RUNTIME" in
+    "" | auto | docker | podman | native) ;;
+    *) fail "SUPABASE_RUNTIME must be blank, auto, docker, podman or native (got '$SUPABASE_RUNTIME')." ;;
+  esac
+
+  # Native state (database, keys, uploads) lives outside the checkout. A
+  # relative or in-repo SUPABASE_HOME would put it inside the working tree,
+  # where it is neither ignored nor cleaned up by the CLI's stack commands.
+  if [[ -n "${ENV[SUPABASE_HOME]:-}" ]]; then
+    local supabase_home=${ENV[SUPABASE_HOME]}
+    case "$supabase_home" in
+      /*) ;;
+      *) fail "SUPABASE_HOME must be an absolute path (got '$supabase_home')." ;;
+    esac
+    supabase_home=$(canon_path "$supabase_home")
+    case "$supabase_home/" in
+      "$REPO_ROOT"/*) fail "SUPABASE_HOME must be outside the checkout (got '$supabase_home')." ;;
+    esac
+    env_set SUPABASE_HOME "$supabase_home" force
+  fi
+
   # Lean stack: skip services the app does not use locally. An explicit empty
   # value (`SUPABASE_START_EXCLUDE=`) starts the full stack.
   if env_has SUPABASE_START_EXCLUDE; then
@@ -404,6 +432,7 @@ resolve_contract() {
     env_set NEXT_PUBLIC_SITE_URL "$NEXT_PUBLIC_SITE_URL" force
     env_set SUPABASE_STACK "$SUPABASE_STACK" force
     env_set SUPABASE_START_EXCLUDE "$SUPABASE_START_EXCLUDE" force
+    env_set SUPABASE_RUNTIME "$SUPABASE_RUNTIME" force
     env_set SUPABASE_EXPERIMENTAL_STACK 1 force
     return 0
   fi
@@ -523,6 +552,7 @@ resolve_contract() {
   env_set NEXT_PUBLIC_SUPABASE_URL "$SUPABASE_URL" force
   env_set SUPABASE_SHARED "$SHARED" force
   env_set SUPABASE_START_EXCLUDE "$SUPABASE_START_EXCLUDE" force
+  env_set SUPABASE_RUNTIME "$SUPABASE_RUNTIME" force
   if [[ -n "$SUPABASE_DB_URL" ]]; then env_set SUPABASE_DB_URL "$SUPABASE_DB_URL" force; fi
   if [[ -n "$SUPABASE_MAIL_URL" ]]; then env_set SUPABASE_MAIL_URL "$SUPABASE_MAIL_URL" force; fi
   if [[ -n "$SUPABASE_STUDIO_URL" ]]; then env_set SUPABASE_STUDIO_URL "$SUPABASE_STUDIO_URL" force; fi
@@ -957,6 +987,93 @@ ensure_docker() {
   docker_available || fail "Docker is not reachable. Start Docker (or the Docker daemon) and retry."
 }
 
+# The native runtime runs the same services as plain processes. It is supported
+# on Linux amd64/arm64 (glibc >= 2.35) and macOS 14+ on Apple silicon; the CLI
+# performs the authoritative platform check, this is only an early hint.
+native_runtime_supported() {
+  command -v tar >/dev/null 2>&1 || return 1
+  case "$(uname -s)/$(uname -m)" in
+    Linux/x86_64 | Linux/amd64 | Linux/aarch64 | Linux/arm64) return 0 ;;
+    Darwin/arm64) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# The persisted runtime of this project's stack, including a stopped one.
+# `stack status` has no endpoints for a stopped stack, so fall back to
+# `stack list` (identity is project root + stack name).
+listed_stack_runtime() {
+  local current_ref
+  current_ref=$(git -C "$REPO_ROOT" symbolic-ref -q HEAD || printf 'detached')
+  supa stack list --output-format json 2>/dev/null | STACK_ROOT="$REPO_ROOT" \
+    STACK_NAME="${SUPABASE_STACK:-default}" STACK_BRANCH="$current_ref" bun -e '
+      const s = await Bun.stdin.json().catch(() => ({}));
+      const root = process.env.STACK_ROOT;
+      const name = process.env.STACK_NAME || "default";
+      const branch = process.env.STACK_BRANCH;
+      const hit = (s.stacks ?? []).find(
+        (x) =>
+          x.project_root === root &&
+          (x.name || "default") === name &&
+          (x.branch_context || "") === branch,
+      );
+      if (hit?.runtime) console.log(hit.runtime);
+    ' 2>/dev/null || true
+}
+
+# Runtime for this checkout: an explicit SUPABASE_RUNTIME wins; otherwise an
+# existing stack's persisted runtime; otherwise Docker (the pre-spike default).
+# Only an explicit `auto` opts into the CLI's Docker -> Podman -> native probe,
+# so a stopped Docker daemon never silently creates a native stack.
+effective_supabase_runtime() {
+  if [[ -n "${SUPABASE_RUNTIME:-}" && "${SUPABASE_RUNTIME}" != "auto" ]]; then
+    printf '%s' "$SUPABASE_RUNTIME"
+    return 0
+  fi
+  if load_stack_env && [[ -n "${SUPABASE_STACK_RUNTIME:-}" ]]; then
+    printf '%s' "$SUPABASE_STACK_RUNTIME"
+    return 0
+  fi
+  local listed
+  listed=$(listed_stack_runtime)
+  if [[ -n "$listed" ]]; then
+    printf '%s' "$listed"
+    return 0
+  fi
+  if [[ -z "${SUPABASE_RUNTIME:-}" ]]; then
+    printf 'docker'
+    return 0
+  fi
+  if docker_available; then
+    printf 'docker'
+  elif command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    printf 'podman'
+  elif native_runtime_supported; then
+    printf 'native'
+  else
+    printf 'docker'
+  fi
+}
+
+ensure_supabase_runtime() {
+  local runtime
+  runtime=$(effective_supabase_runtime)
+  case "$runtime" in
+    native)
+      native_runtime_supported || fail "The native runtime is not supported here (needs Linux amd64/arm64 with glibc >= 2.35, macOS arm64, and tar)."
+      if [[ "$(id -u)" == "0" && -z "${SUPABASE_NATIVE_POSTGRES_USER:-}" ]]; then
+        warn "Running as root: the native runtime cannot run Postgres as root. Set SUPABASE_NATIVE_POSTGRES_USER to a non-root account."
+      fi
+      ;;
+    docker) ensure_docker ;;
+    podman)
+      command -v podman >/dev/null 2>&1 || fail "Podman is not installed (SUPABASE_RUNTIME=podman)."
+      podman info >/dev/null 2>&1 || fail "Podman is not reachable. Start the Podman engine and retry."
+      ;;
+    *) fail "Unknown Supabase runtime '$runtime'." ;;
+  esac
+}
+
 require_env_key() {
   local key=$1
   env_has "$key" && [[ -n "${ENV[$key]}" ]] && return 0
@@ -969,6 +1086,17 @@ require_env_key() {
 # ── Supabase ─────────────────────────────────────────────────────────────────
 supa() { (cd "$REPO_ROOT" && bunx supabase "$@"); }
 
+# Database commands that target an explicit --remote URL must not inherit the
+# stack's SUPABASE_*_PORT overrides: the CLI treats those as a request to use
+# the local stack and refuses the remote URL ("local stack is not running").
+supa_db() {
+  (
+    unset SUPABASE_DB_PORT SUPABASE_DB_SHADOW_PORT SUPABASE_SHADOW_PORT \
+      SUPABASE_DB_POOLER_PORT SUPABASE_POOLER_PORT
+    supa "$@"
+  )
+}
+
 # `supabase start` for the local stack. `--eager` starts every enabled service
 # and disables idle stops; `-x` uses stack capability names (realtime,
 # functions, analytics, pooler).
@@ -976,6 +1104,12 @@ supabase_start() {
   local -a args=(start --eager)
   if [[ -n "${SUPABASE_START_EXCLUDE:-}" ]]; then
     args+=(-x "$SUPABASE_START_EXCLUDE")
+  fi
+  # Only forward an explicit, non-auto choice. A blank runtime is resolved to
+  # Docker by the preflight; `auto` lets the CLI probe for a new stack; both keep
+  # an existing stack's persisted runtime.
+  if [[ -n "${SUPABASE_RUNTIME:-}" && "${SUPABASE_RUNTIME}" != "auto" ]]; then
+    args+=(--runtime "$SUPABASE_RUNTIME")
   fi
   if [[ -n "${SUPABASE_STACK:-}" ]]; then
     args+=(--stack "$SUPABASE_STACK")
@@ -1002,6 +1136,7 @@ stack_status_rows() {
     put("SUPABASE_STACK_NAME", s.identity?.name);
     put("SUPABASE_STACK_BRANCH", s.identity?.branch_context);
     put("SUPABASE_STACK_RUNTIME", s.runtime);
+    put("SUPABASE_STACK_CONFIG_DRIFT", s.config_drift?.status);
     put("SUPABASE_URL", env.API_URL);
     put("SUPABASE_DB_URL", env.DB_URL);
     put("SUPABASE_STUDIO_URL", env.STUDIO_URL);
@@ -1065,16 +1200,31 @@ supabase_health_url() {
 supabase_healthy() { [[ "$(http_code "$(supabase_health_url)")" == "200" ]]; }
 
 ensure_supabase_running() {
-  if load_stack_env && supabase_healthy; then
-    STACK_ADOPTED=1
-    info "Supabase stack already running (${SUPABASE_STACK_ID:0:12}) at $SUPABASE_URL"
-    return 0
+  local runtime
+  runtime=$(effective_supabase_runtime)
+  if load_stack_env; then
+    # The CLI persists a stack's runtime and never converts data between
+    # runtimes. Fail before start instead of surfacing its late error.
+    if [[ -n "${SUPABASE_RUNTIME:-}" && "${SUPABASE_RUNTIME}" != "auto" &&
+      -n "${SUPABASE_STACK_RUNTIME:-}" && "$SUPABASE_RUNTIME" != "$SUPABASE_STACK_RUNTIME" ]]; then
+      fail "Stack '${SUPABASE_STACK:-default}' uses the $SUPABASE_STACK_RUNTIME runtime, not $SUPABASE_RUNTIME.
+  To switch runtimes, destroy this stack first (data is deleted):
+    bunx supabase stack destroy${SUPABASE_STACK:+ --stack '$SUPABASE_STACK'} --yes"
+    fi
+    if [[ "${SUPABASE_STACK_CONFIG_DRIFT:-}" == "changed" ]]; then
+      warn "Stack config drift: restart the stack to apply config.toml changes."
+    fi
+    if supabase_healthy; then
+      STACK_ADOPTED=1
+      info "Supabase stack already running (${SUPABASE_STACK_ID:0:12}) at $SUPABASE_URL"
+      return 0
+    fi
   fi
 
   STACK_ENV_LOADED=0
   STACK_START_ATTEMPTED=1
   STACK_STARTED_BY_US=1
-  header "Starting Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'}${SUPABASE_START_EXCLUDE:+ (skipping: $SUPABASE_START_EXCLUDE)}"
+  header "Starting Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} [$runtime]${SUPABASE_START_EXCLUDE:+ (skipping: $SUPABASE_START_EXCLUDE)}"
   supabase_start
   load_stack_env || fail "Could not read 'supabase status --output-format json'."
 
@@ -1092,14 +1242,37 @@ ensure_supabase_running() {
 
 stop_supabase_scoped() {
   local -a args=(stop)
-  if [[ -n "${SUPABASE_STACK:-}" ]]; then args+=(--stack "$SUPABASE_STACK"); fi
+  local -a status_args=(stack status --output-format json)
+  if [[ -n "${SUPABASE_STACK:-}" ]]; then
+    args+=(--stack "$SUPABASE_STACK")
+    status_args+=(--stack "$SUPABASE_STACK")
+  fi
   # Stack `stop` keeps the project's data and ports; `stack destroy` is the
   # only data-deleting command and is never called here.
-  if ! supa "${args[@]}"; then
-    warn "No running stack for this branch (or it was already stopped)."
+  if supa "${args[@]}"; then
+    info "Stopped Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (data kept)"
     return 0
   fi
-  info "Stopped Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (data kept)"
+
+  # A failed stop is not proof that the stack was already stopped: native
+  # services are host processes and must not be reported as gone while their
+  # lifecycle is still running. Only a successful status response that confirms
+  # a stopped lifecycle may be treated as "already stopped".
+  local status_json
+  if ! status_json=$(supa "${status_args[@]}" 2>/dev/null); then
+    fail "Failed to stop Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} and could not read its status.
+  Inspect it with 'bunx supabase stack logs${SUPABASE_STACK:+ --stack $SUPABASE_STACK}' or stop it explicitly."
+  fi
+  if printf '%s' "$status_json" | grep -q '"lifecycle":"running"'; then
+    fail "Failed to stop Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'}; it is still running.
+  Inspect it with 'bunx supabase stack logs${SUPABASE_STACK:+ --stack $SUPABASE_STACK}' or stop it explicitly."
+  fi
+  if printf '%s' "$status_json" | grep -q '"lifecycle":"stopped"'; then
+    info "Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} was already stopped."
+    return 0
+  fi
+  fail "Failed to stop Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'}; status did not confirm a stopped lifecycle.
+  Inspect it with 'bunx supabase stack logs${SUPABASE_STACK:+ --stack $SUPABASE_STACK}' or stop it explicitly."
 }
 
 # ── Env rendering ────────────────────────────────────────────────────────────
@@ -1140,6 +1313,10 @@ render_web_env() {
       printf 'STUDIQ_STACK_MODE=1\n'
     fi
     for key in "${ENV_ORDER[@]}"; do
+      # Runtime/state bookkeeping never belongs in the app env (in either mode).
+      case "$key" in
+        SUPABASE_RUNTIME | SUPABASE_HOME | SUPABASE_NATIVE_POSTGRES_USER) continue ;;
+      esac
       # Fixed-port / stack-internal bookkeeping never belongs in the app env.
       if (( SHARED == 0 )); then
         case "$key" in
@@ -1575,7 +1752,7 @@ cmd_up() {
     STARTUP_INCOMPLETE=1
     info "Shared mode (SUPABASE_SHARED=1)${SHARED_OWNER:+ — owner: $SHARED_OWNER}; not starting Supabase"
   else
-    ensure_docker
+    ensure_supabase_runtime
     preflight_app_port
     render_supabase_env
     STARTUP_CLAIM_ACTIVE=1
@@ -1722,6 +1899,7 @@ cmd_status() {
   fi
 
   local stack_id="${SUPABASE_STACK_ID:-}"
+  local stack_runtime="${SUPABASE_STACK_RUNTIME:-}"
   local project_id="${SUPABASE_PROJECT_ID:-}"
   local app_url supa_url db_url mail_url studio_url
   app_url=$(web_url)
@@ -1731,7 +1909,7 @@ cmd_status() {
   studio_url=$(normalize_localhost "${SUPABASE_STUDIO_URL:--}")
 
   if (( json == 1 )); then
-    printf '{"ready":%s,"projectId":"%s","worktree":"%s","mode":%s,"shared":%s,"sharedOwner":%s,"owner":%s,"registry":"%s","stackId":"%s","branch":"%s","ports":{"app":%s,"api":%s,"db":%s,"studio":%s,"mail":%s,"analytics":%s,"edgeInspector":%s,"shadow":%s,"pooler":%s},"urls":{"app":"%s","supabase":"%s","db":"%s","mail":"%s","studio":"%s"},"web":{"url":"%s","pid":%s,"http":%s},"supabase":{"url":"%s","http":%s},"dbUrl":"%s","mailUrl":"%s"}\n' \
+    printf '{"ready":%s,"projectId":"%s","worktree":"%s","mode":%s,"shared":%s,"sharedOwner":%s,"owner":%s,"registry":"%s","stackId":"%s","runtime":"%s","branch":"%s","ports":{"app":%s,"api":%s,"db":%s,"studio":%s,"mail":%s,"analytics":%s,"edgeInspector":%s,"shadow":%s,"pooler":%s},"urls":{"app":"%s","supabase":"%s","db":"%s","mail":"%s","studio":"%s"},"web":{"url":"%s","pid":%s,"http":%s},"supabase":{"url":"%s","http":%s},"dbUrl":"%s","mailUrl":"%s"}\n' \
       "$ready" \
       "$(json_escape "$project_id")" \
       "$(json_escape "$REPO_ROOT")" \
@@ -1741,6 +1919,7 @@ cmd_status() {
       "$owner_json" \
       "$(json_escape "$REGISTRY_DIR")" \
       "$(json_escape "$stack_id")" \
+      "$(json_escape "$stack_runtime")" \
       "$(json_escape "${SUPABASE_STACK_BRANCH:-}")" \
       "$APP_PORT" "${SUPABASE_API_PORT:-0}" "${SUPABASE_DB_PORT:-0}" "${SUPABASE_STUDIO_PORT:-0}" \
       "${SUPABASE_MAIL_PORT:-0}" "${SUPABASE_ANALYTICS_PORT:-0}" "${SUPABASE_EDGE_INSPECTOR_PORT:-0}" \
@@ -1764,6 +1943,7 @@ cmd_status() {
 
   printf 'ready       %s\n' "$ready"
   printf 'project     %s\n' "$project_label"
+  [[ -n "$stack_runtime" ]] && printf 'runtime     %s\n' "$stack_runtime"
   printf 'worktree    %s\n' "$REPO_ROOT"
   printf 'web         %s  http=%s  pid=%s\n' "$app_url" "$web_http" "$pid_text"
   printf 'supabase    %s  http=%s\n' "$supa_url" "$supa_http"
@@ -1797,7 +1977,8 @@ cmd_down() {
   (( all == 1 )) || return 0
 
   ensure_bun
-  ensure_docker
+  # `stack stop` is runtime-agnostic; do not gate teardown on a working engine
+  # or a supported native platform.
   stop_supabase_scoped
 }
 
@@ -1813,7 +1994,7 @@ cmd_reset_db() {
 
   guard_qa_stack
   ensure_bun
-  ensure_docker
+  ensure_supabase_runtime
   ensure_registry_dir
 
   render_supabase_env
@@ -1821,8 +2002,14 @@ cmd_reset_db() {
   header "Resetting Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (destructive, this checkout only)"
   if [[ -n "${SUPABASE_STACK:-}" ]]; then
     # Database commands can't take --stack; a named stack's DB is a remote URL.
+    # A local stack's Postgres is plaintext, so --remote needs sslmode=disable
+    # (the CLI otherwise attempts TLS and fails before connecting).
     [[ -n "${SUPABASE_DB_URL:-}" ]] || fail "Could not read DB_URL for stack '$SUPABASE_STACK'; run 'bun dev:up' first."
-    supa db reset --remote="$SUPABASE_DB_URL" --yes
+    local db_url=$SUPABASE_DB_URL
+    if [[ "$db_url" != *"sslmode="* ]]; then
+      if [[ "$db_url" == *"?"* ]]; then db_url="$db_url&sslmode=disable"; else db_url="$db_url?sslmode=disable"; fi
+    fi
+    supa_db db reset --remote="$db_url" --yes
   else
     supa db reset
   fi
@@ -1912,13 +2099,38 @@ cmd_doctor() {
       problems=$((problems + 1))
     fi
 
-    printf '\n▸ Docker\n'
-    if docker_available; then
-      printf '  docker     ok\n'
-    else
-      printf '  docker     unavailable (the stack cannot start)\n'
-      problems=$((problems + 1))
-    fi
+    printf '\n▸ Runtime\n'
+    local runtime
+    runtime=$(effective_supabase_runtime)
+    printf '  configured %s\n' "${SUPABASE_RUNTIME:-blank (docker)}"
+    printf '  persisted  %s\n' "${SUPABASE_STACK_RUNTIME:-none}"
+    printf '  effective  %s\n' "$runtime"
+    case "$runtime" in
+      native)
+        if native_runtime_supported; then
+          printf '  native     ok (tar present)\n'
+        else
+          printf '  native     unsupported on %s/%s (or tar missing)\n' "$(uname -s)" "$(uname -m)"
+          problems=$((problems + 1))
+        fi
+        ;;
+      podman)
+        if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+          printf '  podman     ok\n'
+        else
+          printf '  podman     unavailable (the stack cannot start)\n'
+          problems=$((problems + 1))
+        fi
+        ;;
+      *)
+        if docker_available; then
+          printf '  docker     ok\n'
+        else
+          printf '  docker     unavailable (the stack cannot start)\n'
+          problems=$((problems + 1))
+        fi
+        ;;
+    esac
 
     printf '\n▸ Stacks on this machine\n'
     if (( stack_ok == 1 )); then
@@ -2086,10 +2298,11 @@ cmd_prepull() {
 
   guard_qa_stack
   ensure_bun
-  ensure_docker
+  ensure_supabase_runtime
 
-  header "Downloading Supabase stack images (nothing is started)"
-  supa stack install
+  local -a args=(stack install --runtime "$(effective_supabase_runtime)")
+  header "Downloading Supabase stack artifacts (nothing is started)"
+  supa "${args[@]}"
   info "Stack artifacts are cached; run 'bun dev:up' to start this branch's stack."
 }
 
@@ -2103,6 +2316,9 @@ Usage: bun dev:<command>
                 are isolated per project root + git branch (+ SUPABASE_STACK).
                 `-x` skips realtime/functions/analytics/pooler by default;
                 override with SUPABASE_START_EXCLUDE (empty = full stack).
+                SUPABASE_RUNTIME=native runs services as host processes
+                (no Docker); blank selects Docker, `auto` probes Docker ->
+                Podman -> native.
   build         Production build of @studiq/web (waits on the registry build lock)
   serve         `next start` for this checkout on APP_PORT (no dev server)
   status        Web/Supabase health, PIDs and stack endpoints
@@ -2115,7 +2331,7 @@ Usage: bun dev:<command>
   doctor        Explain missing / owned / colliding state (exit 1 on conflicts)
   ports         Print a free APP_PORT (stack ports are assigned dynamically)
                   --suggest (default) | --json
-  prepull       Download stack images without starting the stack
+  prepull       Download stack artifacts without starting the stack
 
 Parallel checkouts: a separate git worktree/branch gets its own stack and ports
 automatically. Set APP_PORT in this checkout's .env to avoid web-server

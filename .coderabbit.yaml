@@ -273,9 +273,23 @@ reviews:
         - `verify.yml` pins the Bun canary in `env.BUN_VERSION`, which must stay in
           step with `scripts/check-bun-version.ts` (the linter is canary-only).
           Flag a bump that touches one without the other.
-        - Jobs are ordered cheapest-first (`checks` gates the rest). Flag
-          reordering that makes an expensive job block a cheap one, or a new job
-          that does not `needs: checks`.
+        - `verify.yml` jobs start in parallel; `checks` is a reported result,
+          not a gate. Do not add `needs: checks` to test/build jobs — gating
+          delays every result by the lint/typecheck runtime. `cache-warm.yml`
+          is the exception: it may gate warming on `checks` so a commit that
+          fails simple checks cannot pollute the caches.
+        - `scope` gates `verify.yml` test/build jobs as a cheap diff router. It
+          was re-evaluated in #1022 and stays: it costs 5-8 s (median 6 s) plus
+          ~3 s of scheduling (the components are measured; the ~9 s saving if
+          removed is an estimate, not an A/B run), and keeps the two
+          unit/integration runners from starting on non-app PRs. A Markdown-only
+          docs PR (every changed file is `*.md`, none under `qa/cases/`) starts
+          no QA shards; a QA-only PR starts only the shards for the areas it
+          touches, or all four when a shared QA file changes. A non-Markdown
+          file under `docs/` (e.g. `docs/image.png`) is `app=false` but still
+          selects all four QA shards. Do not remove the gate without new
+          measurements, and do not add more `needs: [scope]` gates; the evidence
+          is in `docs/decisions/0008-keep-ci-scope-gate.md`.
         - Keep `pull_request.paths` in sync with what the suite actually
           exercises — a new top-level directory that affects tests must be added,
           and dropping a path silently disables CI for it.

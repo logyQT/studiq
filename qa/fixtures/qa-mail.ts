@@ -217,3 +217,56 @@ export async function waitForMailLink(
 ): Promise<string> {
   return (await waitForMailLinkMatch(email, pattern, timeoutMs)).link;
 }
+
+export interface DefaultAuthPath {
+  /** App callback path rebuilt from the default auth link. */
+  path: string;
+  tokenHash: string;
+  type: string;
+  messageCount: number;
+}
+
+/**
+ * TEMPORARY non-branded-email helper for the `*-temp.spec.ts` variants.
+ *
+ * Stack projects (native or Docker) cannot serve auth `content_path` templates,
+ * so GoTrue sends its default link:
+ *
+ *   {API_URL}/auth/v1/verify?token=<token_hash>&type=<type>&redirect_to=<site>
+ *
+ * The app's `/auth/callback` still expects `token_hash`/`type`/`next`, so this
+ * reconstructs that path from the default link. Remove this helper (and the
+ * temp specs) once stack mode serves the branded templates.
+ */
+export async function waitForDefaultAuthPath(
+  email: string,
+  expectedType: string | undefined,
+  next: string,
+  timeoutMs = 60_000,
+): Promise<DefaultAuthPath> {
+  const mail = await waitForMailLinkMatch(
+    email,
+    /https?:\/\/[^"'\s]+\/auth\/v1\/verify\?[^"'\s]+/,
+    timeoutMs,
+  );
+  const link = new URL(mail.link);
+  const tokenHash = link.searchParams.get('token');
+  const type = link.searchParams.get('type') ?? expectedType;
+
+  if (!tokenHash) {
+    throw new Error(`default auth link has no token: ${mail.link}`);
+  }
+  if (!type) {
+    throw new Error(`default auth link has no type: ${mail.link}`);
+  }
+  if (expectedType !== undefined && type !== expectedType) {
+    throw new Error(`default auth link type ${type}, expected ${expectedType}: ${mail.link}`);
+  }
+
+  return {
+    path: `/auth/callback?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}&next=${next}`,
+    tokenHash,
+    type,
+    messageCount: mail.messageCount,
+  };
+}

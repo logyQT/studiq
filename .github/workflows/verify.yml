@@ -31,37 +31,52 @@ env:
   BUN_VERSION: 1.4.4-canary.20261027.1
   # `supabase/config.toml` reads every configurable value through `env()`; an
   # unset numeric variable makes the config fail to parse, so the whole job
-  # graph shares one explicit CI stack identity. Each job owns its own Supabase
-  # instance (containers are named `supabase_*_studiq-ci`).
+  # graph shares one explicit CI stack identity. Each job owns its own native
+  # stack (ports are assigned by the CLI per runner).
   SUPABASE_PROJECT_ID: studiq-ci
-  # CI keeps the default (non-stack) backend: runners are already isolated,
-  # fixed ports are fine, and the experimental surface stays out of the gate.
-  SUPABASE_EXPERIMENTAL_STACK: '0'
-  SUPABASE_API_PORT: '54321'
-  SUPABASE_DB_PORT: '54322'
-  SUPABASE_STUDIO_PORT: '54323'
-  SUPABASE_LOCAL_SMTP_PORT: '54324'
-  SUPABASE_ANALYTICS_PORT: '54327'
-  SUPABASE_EDGE_RUNTIME_INSPECTOR_PORT: '54328'
-  SUPABASE_DB_SHADOW_PORT: '54320'
-  SUPABASE_DB_POOLER_PORT: '54329'
-  SUPABASE_URL: http://localhost:54321
+  # CI runs the native runtime: the experimental stack backend is required, the
+  # CLI assigns ports per runner, and no Docker daemon is used.
+  SUPABASE_EXPERIMENTAL_STACK: '1'
+  SUPABASE_RUNTIME: native
+  # QA specs that assert branded auth e-mail links skip in stack mode; the rest
+  # of the suite runs normally.
+  STUDIQ_STACK_MODE: '1'
 
 jobs:
   # Cheapest first, in the order a failure is cheapest to explain: lint, types.
   # This job is a merge gate, not a fan-out gate: the test jobs below wait only
-  # on `scope` (7 s), because a runner that boots Supabase, builds and installs
+  # on `scope` (5-8 s), because a runner that boots Supabase, builds and installs
   # browsers does not need to sit idle for 28 s behind lint. The trade-off is
   # deliberate — a lint failure no longer stops the test jobs before they start,
   # so it also burns their runners.
-  # A QA-suite PR only touches qa/** (plus, occasionally, __tests__ helpers).
-  # The app, its unit/integration tests and the e2e matrix cannot change there,
-  # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
-  # the `qa-suite` job still run. A docs-only PR (docs/**, any *.md outside
-  # qa/cases/) is treated the same way and then some: no app code and no spec can
-  # change, so `checks` is the only job that does any real work (the e2e legs
-  # still report, but as no-ops — see the note on top — and the QA suite starts no
-  # shard at all).
+  # A QA-suite PR only touches qa/** and __tests__/qa/**; the app, its
+  # unit/integration tests and the e2e matrix cannot change there, so they are
+  # skipped. `checks` (lint/typecheck, which does cover qa specs) and the
+  # `qa-suite` job still run. Everything else under __tests__/ (unit,
+  # integration, e2e, helpers, setup) is app code: a test-only change there must
+  # run the suite it edits, so `app` stays true. A Markdown-only docs PR (every
+  # changed file is `*.md`, none under qa/cases/) is treated the same way and
+  # then some: no app code and no spec can change, so `checks` is the only job
+  # that does any real work (the e2e legs still report, but as no-ops — see the
+  # note on top — and the QA suite starts no shard at all). A non-Markdown file
+  # under docs/ (e.g. docs/image.png) is still `app=false`, but the QA router
+  # cannot attribute it, so it starts all four shards.
+  #
+  # Why the `scope` gate stays (#1022, 36 runs): `scope` takes 5-8 s (median
+  # 6 s) and the first gated job starts ~3 s after it, so removing the gate is
+  # estimated to save ~9 s on the critical path (both components are measured;
+  # the saving itself is not an A/B run) — ~2 % of a 393 s app run and ~3.5 % of
+  # a 256 s QA-only run. On a Markdown-only docs PR the gate does not extend the
+  # run: the wall clock is `checks` (36 s total, 32 s in `checks`), which is
+  # ungated. Ungating the required jobs to recover those ~9 s would either run
+  # the full suite on non-app PRs — on a Markdown-only docs PR that is ~28
+  # runner-minutes (unit 47-53 s, integration 78-141 s, two e2e legs 177-378 s
+  # each, four QA shards 210-285 s each); on a non-Markdown docs PR the four QA
+  # shards already run, so it adds ~13 runner-minutes — or repeat this router
+  # inside each job, which still pays the same diff (~3 s, or ~0.6 s via the
+  # files API) before it can skip. `qa-suite` cannot be ungated at all: its
+  # matrix is `fromJSON(needs.scope.outputs.qa_shards)`. Decision record:
+  # docs/decisions/0008-keep-ci-scope-gate.md.
   # Schedule/dispatch runs everything.
   scope:
     runs-on: ubuntu-24.04
@@ -86,7 +101,9 @@ jobs:
             # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
             # the first match and the writer gets SIGPIPE (141), which flipped
             # `app` to false and skipped the unit/integration/e2e jobs.
-            if ! grep -qvE '^(qa/|__tests__/|docs/)|\.md$' <<< "$changed"; then
+            # Only the QA subtree is non-app: a test-only change under
+            # __tests__/unit|integration|e2e must run the suite it edits.
+            if ! grep -qvE '^(qa/|__tests__/qa/|docs/)|\.md$' <<< "$changed"; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
@@ -304,18 +321,17 @@ jobs:
       - name: Start Supabase
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
       - name: Write root .env
         # vitest's loadEnv() reads the repo root; integration imports the route
         # handlers directly, so no app server is needed.
         run: |
-          status=$(bunx supabase status --output-format json)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -332,7 +348,7 @@ jobs:
         run: bunx vitest run __tests__/integration --no-file-parallelism
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
 
   # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
@@ -372,23 +388,12 @@ jobs:
       - run: npm install -g bun@${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
 
-      - name: Start Supabase (temporary e-mail template workaround)
+      - name: Start Supabase (native)
         env:
           # `supabase/config.toml` resolves `auth.site_url` from `env(APP_URL)`;
           # without it the QA e-mails carry relative callback links.
           APP_URL: http://localhost:3010
-          SUPABASE_URL: http://localhost:54321
-          # ⚠️ TEMPORARY: stack projects cannot serve `content_path` templates,
-          # so config.toml keeps empty paths. This job is non-stack; these env
-          # vars override them and AUT-01/02/06/12 get the branded
-          # /auth/callback?token_hash=… link. Remove when stack supports
-          # templates, or restore literal paths if stack is deprecated and local
-          # provisioning goes back to manual.
-          SUPABASE_AUTH_EMAIL_TEMPLATE_RECOVERY_CONTENT_PATH: ./supabase/templates/auth.email.template.recovery.html
-          SUPABASE_AUTH_EMAIL_TEMPLATE_CONFIRMATION_CONTENT_PATH: ./supabase/templates/auth.email.template.confirmation.html
-        run: |
-          printf '\033[1;31m⚠ TEMPORARY: stack mode cannot serve content_path templates; CI is non-stack and injects them via SUPABASE_AUTH_EMAIL_TEMPLATE_*_CONTENT_PATH. Remove when stack supports templates (or when reverting to manual provisioning).\033[0m\n'
-          bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
 
       - name: Write env files
         # The app reads apps/web/.env, but the QA seeder and the specs that seed
@@ -396,12 +401,12 @@ jobs:
         # environment they fall back to the shared-VM localhost:54421 and fail
         # with `fetch failed`. Export them to $GITHUB_ENV as well.
         run: |
-          status=$(bunx supabase status --output-format json)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -549,7 +554,7 @@ jobs:
 
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
 
   # One leg per browser so a red platform re-runs alone. Each leg owns its
   # tenant set (keys include the project) and its own Supabase instance.
@@ -607,31 +612,29 @@ jobs:
         if: needs.scope.outputs.app == 'true'
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
         # None of these services is reachable from the app, and each `-x` entry
-        # skips its docker pull too (`Start Supabase` is mostly download time on
-        # a cold runner):
+        # skips its native artifact/start cost too:
         #   studio + postgres-meta  Studio/tooling only — the API and the QA
         #                           specs talk to PostgREST, not pg-meta
         #   realtime                no client: nothing in apps/ or packages/
         #                           calls `.channel()` (the `supabase_realtime`
         #                           publication is a plain Postgres object and
         #                           still exists without the container)
-        #   imgproxy/logflare/vector/edge-runtime  unused, ~4 GB together
-        # `storage-api` stays: QA `EDU-ASG-08` uploads and the integration
-        # storage suites need it.
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+        #   functions/analytics/pooler  unused
+        # `storage` stays: QA `EDU-ASG-08` uploads and the integration storage
+        # suites need it.
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
 
       - name: Write env files
         if: needs.scope.outputs.app == 'true'
         # Local Supabase keys are deterministic, so nothing here is a secret.
         run: |
-          status=$(bunx supabase status --output-format json)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -737,13 +740,12 @@ jobs:
 
       - name: Stop Supabase
         if: always() && needs.scope.outputs.app == 'true'
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
 
   # admin-api only needs the admin app; the web server is skipped so this leg
   # costs seconds rather than a second Next build.
   e2e-admin:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: [checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -774,16 +776,15 @@ jobs:
       - name: Start Supabase
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime,postgres-meta,realtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
       - name: Write admin env
         run: |
-          status=$(bunx supabase status --output-format json)
-          API_URL=$(jq -r .API_URL <<<"$status")
-          ANON_KEY=$(jq -r .ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .MAILPIT_URL <<<"$status")
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
@@ -805,4 +806,4 @@ jobs:
           if-no-files-found: ignore
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
