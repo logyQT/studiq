@@ -331,7 +331,11 @@ Steps:
 Rollback is **not** a driver flip: roll back the release, disable the checkout
 CTA/maintenance-page if needed, and keep the webhook endpoint and
 `STRIPE_WEBHOOK_SECRET` valid while any active subscription or pending delivery
-still depends on them (a release rollback does not cancel subscriptions).
+still depends on them (a release rollback does not cancel subscriptions). The
+rollback target must be a **Stripe-capable** release — production `stripe`
+driver, signature-verified webhook and the fenced entitlement writer. Never roll
+back to a pre-Stripe/mock-only binary after live subscriptions exist: blocking
+checkout does not stop that binary's mock-completion webhook command.
 
 #### Livemode separation
 
@@ -356,11 +360,21 @@ Production **never** switches to the mock driver: `APP_ENV=production` +
    the rollback target predates the switch. Disabling only the CTA or
    `/checkout` page does not stop an already-open client. This must not change
    `PAYMENT_DRIVER` and must not stop the webhook endpoint.
-2. Roll back to the previous application release with the same valid Stripe
-   configuration.
-3. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled while
+2. Roll back to a **Stripe-capable** application release — the rollback floor —
+   with the same valid Stripe configuration. A pre-Stripe/mock-only base is not
+   a recovery target after live subscriptions exist: it requires a user session
+   on `/api/v1/stripe/webhook`, treats that call as mock completion, and has no
+   production mock boot guard.
+3. If no Stripe-capable predecessor exists, do **not** roll back the process
+   that owns the webhook. Preserve this release's billing processor (or run the
+   webhook handler independently of the rolled-back app) and roll back only
+   unrelated changes.
+4. Verify the rollback target consumes Stripe events: a signed test event is
+   accepted, `provider=stripe livemode=true` is reported, and a cancellation
+   still downgrades.
+5. Keep `STRIPE_WEBHOOK_SECRET` valid and the Dashboard endpoint enabled while
    any active subscription or pending delivery still depends on them.
-4. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
+6. Do **not** revert migrations or delete `billing_*`, `stripe_prices`,
    `stripe_webhook_events` or `payments` rows. Never hand-edit
    `profiles.personal_plan_key` / `organizations.plan` while the webhook is live.
 
@@ -398,9 +412,10 @@ sessions only: webhooks, the Billing Portal and change/cancel keep working, and
 the payment driver is untouched. It is read from `process.env` per request, so
 set the variable and restart/redeploy to apply it.
 
-**Rate limits.** Checkout creation, change-plan and cancel each have their own
-per-process, per-user bucket (10/min each, so 30/min combined); reconcile has
-20/min. A scaled-out deployment still needs a shared counter for a hard quota.
+**Rate limits.** Checkout creation, change-plan, cancel and
+release-scheduled-plan each have their own per-process, per-user bucket
+(10/min each, so 40/min combined); reconcile has 20/min. A scaled-out
+deployment still needs a shared counter for a hard quota.
 
 **Alert on** (Loki/Grafana; records carry `trace_id` when OTel is enabled):
 
@@ -431,7 +446,7 @@ per-process, per-user bucket (10/min each, so 30/min combined); reconcile has
 - **Emergency stop:** set `CHECKOUT_KILL_SWITCH=1` (server-side, blocks the
   checkout API even for an open client; on a pre-switch release block the route
   at the edge), keep the webhook endpoint and secret valid, then roll back the
-  release to one with the same valid Stripe config.
+  release only to a Stripe-capable floor (see [Rollback](#rollback-never-to-the-mock)).
   Never route production to `mock`, never hand-edit entitlements, never delete
   `billing_*` / `stripe_prices` / `stripe_webhook_events` / `payments` rows.
 - **Test cards:** `4242 4242 4242 4242` succeeds, `4000 0000 0000 0002`
