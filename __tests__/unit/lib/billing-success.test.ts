@@ -15,6 +15,7 @@ function view(overrides: Partial<BillingSubscriptionView> = {}): BillingSubscrip
     planName: 'StudiQ Spark',
     billedPlanKey: 'spark',
     billedPlanName: 'StudiQ Spark',
+    entitlementAppliedPlanKey: 'spark',
     status: 'active',
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
@@ -55,6 +56,7 @@ describe('isActivatedSubscription', () => {
     expect(isActivatedSubscription(view({ status: 'free' }))).toBe(false);
     expect(isActivatedSubscription(view({ status: 'canceled' }))).toBe(false);
     expect(isActivatedSubscription(view({ planKey: null }))).toBe(false);
+    expect(isActivatedSubscription(view({ entitlementAppliedPlanKey: null }))).toBe(false);
   });
 });
 
@@ -111,6 +113,25 @@ describe('pollBillingActivation', () => {
     });
 
     await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'timeout' });
+  });
+
+  it('does not activate on a matching billed mirror before the entitlement commits', async () => {
+    const d = deps({
+      expectedPlanKey: 'spark',
+      readSubscription: vi.fn().mockResolvedValue(
+        view({
+          planKey: 'base',
+          planName: 'StudiQ Base',
+          billedPlanKey: 'spark',
+          billedPlanName: 'StudiQ Spark',
+          entitlementAppliedPlanKey: null,
+          status: 'active',
+        }),
+      ),
+    });
+
+    await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'timeout' });
+    expect(d.readSubscription).toHaveBeenCalledTimes(BILLING_SUCCESS_POLL_ATTEMPTS);
   });
 
   it('falls back to any live plan when the success URL has no plan id', async () => {

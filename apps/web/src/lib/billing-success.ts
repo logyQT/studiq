@@ -11,9 +11,13 @@ export const BILLING_SUCCESS_POLL_ATTEMPTS = 8;
 
 const ACTIVATED_STATUSES: readonly string[] = ['active', 'trialing', 'past_due'];
 
-/** The subscription is live and has a plan to show. */
+/** The subscription is live and the entitlement transaction has committed. */
 export function isActivatedSubscription(view: BillingSubscriptionView): boolean {
-  return Boolean(view.planKey) && ACTIVATED_STATUSES.includes(view.status);
+  return (
+    Boolean(view.planKey) &&
+    Boolean(view.entitlementAppliedPlanKey) &&
+    ACTIVATED_STATUSES.includes(view.status)
+  );
 }
 
 export interface PollBillingActivationDeps {
@@ -54,10 +58,12 @@ export async function pollBillingActivation(
 
     try {
       const view = await deps.readSubscription();
-      // Compare the **billed** plan: `planKey` is the effective entitlement,
-      // which can be a seat plan while the checkout purchased another plan.
+      // The committed-entitlement marker is written in the same transaction as
+      // the entitlement apply. The billed mirror updates first, so it is not
+      // proof on its own. Compare the marker rather than the effective planKey:
+      // a seat/comped plan may legitimately differ from the purchased plan.
       const planMatches =
-        deps.expectedPlanKey === null || view.billedPlanKey === deps.expectedPlanKey;
+        deps.expectedPlanKey === null || view.entitlementAppliedPlanKey === deps.expectedPlanKey;
       if (!deps.isCancelled() && planMatches && isActivatedSubscription(view)) {
         return { state: 'activated', subscription: view };
       }

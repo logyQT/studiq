@@ -356,6 +356,21 @@ describe('StripeWebhookService', () => {
       expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
     });
 
+    it('returns a retryable 503 while another delivery holds the processing lease', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.claimEvent).mockResolvedValueOnce(
+        success({ outcome: 'busy', receivedAt: null }),
+      );
+      const event = makeEvent('customer.subscription.updated', makeSubscription());
+
+      const result = await sign(harness, event);
+
+      expect(result).toEqual({ success: false, error: 'SERVICE_UNAVAILABLE' });
+      expect(harness.client.subscriptions.retrieve).not.toHaveBeenCalled();
+      expect(harness.repository.finishEvent).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+    });
+
     it('marks a failed handler failed and returns a retryable error', async () => {
       const harness = createHarness();
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());

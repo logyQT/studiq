@@ -220,6 +220,7 @@ export type Database = {
           created_at: string;
           current_period_end: string | null;
           current_period_start: string | null;
+          entitlement_applied_plan_key: string | null;
           id: string;
           last_event_created: number;
           livemode: boolean;
@@ -245,6 +246,7 @@ export type Database = {
           created_at?: string;
           current_period_end?: string | null;
           current_period_start?: string | null;
+          entitlement_applied_plan_key?: string | null;
           id?: string;
           last_event_created?: number;
           livemode: boolean;
@@ -269,6 +271,7 @@ export type Database = {
           created_at?: string;
           current_period_end?: string | null;
           current_period_start?: string | null;
+          entitlement_applied_plan_key?: string | null;
           id?: string;
           last_event_created?: number;
           livemode?: boolean;

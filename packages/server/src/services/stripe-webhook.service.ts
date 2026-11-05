@@ -1,5 +1,6 @@
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import type Stripe from 'stripe';
+import { AppError } from '@studiq/server/lib/errors';
 import { error as logError, log, warn as logWarn } from '@studiq/server/lib/log';
 import { isRecord, readString } from '@studiq/server/lib/record';
 import type { WebhookOutcome } from '@studiq/server/lib/payment/payment-gateway';
@@ -226,6 +227,16 @@ export class StripeWebhookService {
       eventCreated: event.created,
     });
     if (isFailure(claim)) return claim;
+
+    if (claim.data.outcome === 'busy') {
+      // Another delivery still owns a live processing lease. Returning 200 here
+      // would let Stripe stop retrying while that worker may fail.
+      logWarn('billing.webhook_processing_lease_active', {
+        eventId: event.id,
+        type: event.type,
+      });
+      return failure('SERVICE_UNAVAILABLE');
+    }
 
     if (claim.data.outcome === 'duplicate') {
       log('billing.webhook_duplicate', { eventId: event.id, type: event.type });
@@ -849,7 +860,7 @@ export class StripeWebhookService {
     // Read the mirror before the provider snapshot so its generation fences a
     // same-second concurrent write.
     const mirrorResult = await this.repository.getSubscriptionByStripeId(subscriptionId);
-    if (isFailure(mirrorResult)) throw new Error('subscription mirror read failed');
+    if (isFailure(mirrorResult)) throw new AppError('INTERNAL_SERVER');
     const mirror = mirrorResult.data;
     if (!mirror) {
       logError('billing.subscription_unresolved', {

@@ -18,6 +18,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export interface SubscriptionReadRow {
   stripeSubscriptionId: string;
   planKey: string;
+  /**
+   * Plan actually committed to the entitlement column by the webhook. Null
+   * until the fenced entitlement transaction has run for this subscription.
+   */
+  entitlementAppliedPlanKey: string | null;
   status: string;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
@@ -59,7 +64,7 @@ export class SupabaseBillingReadRepository implements BillingReadRepository {
     const base = supabase
       .from('billing_subscriptions')
       .select(
-        'stripe_subscription_id, plan_key, status, current_period_end, cancel_at_period_end, pending_plan_key',
+        'stripe_subscription_id, plan_key, entitlement_applied_plan_key, status, current_period_end, cancel_at_period_end, pending_plan_key',
       )
       .eq('livemode', livemode);
 
@@ -84,6 +89,7 @@ export class SupabaseBillingReadRepository implements BillingReadRepository {
     return success({
       stripeSubscriptionId: row.stripe_subscription_id,
       planKey: row.plan_key,
+      entitlementAppliedPlanKey: row.entitlement_applied_plan_key ?? null,
       status: row.status,
       currentPeriodEnd: row.current_period_end,
       cancelAtPeriodEnd: row.cancel_at_period_end,

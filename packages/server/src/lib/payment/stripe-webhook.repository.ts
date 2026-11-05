@@ -28,15 +28,17 @@ export type WebhookEventStatus = 'processing' | 'processed' | 'ignored' | 'faile
 
 /**
  * - `claimed`: a new event row was inserted, run the handler.
- * - `duplicate`: already processed/ignored/processing → 200 without writes.
+ * - `duplicate`: already processed/ignored → 200 without writes.
  * - `retry`: a previous claim was abandoned → re-run the handler.
+ * - `busy`: another delivery still owns a live processing lease → the caller
+ *   must return a retryable non-2xx so Stripe keeps trying.
  *
  * `receivedAt` is the claim-lease token: it is renewed on every claim and
  * `finishEvent` only completes the row if the token still matches. That fences
  * a slow original handler out of the row after another delivery reclaimed it.
  */
 export interface WebhookEventClaim {
-  outcome: 'claimed' | 'duplicate' | 'retry';
+  outcome: 'claimed' | 'duplicate' | 'retry' | 'busy';
   receivedAt: string | null;
 }
 
@@ -305,11 +307,16 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     if (!existing) return failure('INTERNAL_SERVER');
 
     const isFailed = existing.status === 'failed';
+    const isProcessing = existing.status === 'processing';
     const isStaleProcessing =
-      existing.status === 'processing' &&
-      Date.now() - new Date(existing.received_at).getTime() >= PROCESSING_LEASE_MS;
+      isProcessing && Date.now() - new Date(existing.received_at).getTime() >= PROCESSING_LEASE_MS;
     if (!isFailed && !isStaleProcessing) {
-      return success({ outcome: 'duplicate', receivedAt: null });
+      // A live processing lease is not a duplicate: the other worker may fail.
+      // Return a retryable outcome so Stripe keeps this delivery alive.
+      return success({
+        outcome: isProcessing ? 'busy' : 'duplicate',
+        receivedAt: null,
+      });
     }
 
     // Conditional write = compare-and-swap: the loser of a concurrent retry
@@ -329,7 +336,8 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
 
     if (retryError) return toDbFailure(retryError);
     if (!reclaimed || reclaimed.length === 0) {
-      return success({ outcome: 'duplicate', receivedAt: null });
+      // Another delivery won the reclaim race and owns the new lease.
+      return success({ outcome: 'busy', receivedAt: null });
     }
 
     return success({ outcome: 'retry', receivedAt: reclaimed[0].received_at });

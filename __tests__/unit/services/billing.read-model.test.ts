@@ -72,6 +72,7 @@ function subscriptionRow(overrides: Partial<SubscriptionReadRow> = {}): Subscrip
   return {
     stripeSubscriptionId: 'sub_1',
     planKey: 'spark',
+    entitlementAppliedPlanKey: 'spark',
     status: 'active',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
     cancelAtPeriodEnd: false,
@@ -156,6 +157,7 @@ describe('BillingService.getSubscription', () => {
         planName: 'StudiQ Spark',
         billedPlanKey: null,
         billedPlanName: null,
+        entitlementAppliedPlanKey: null,
         status: 'active',
         currentPeriodEnd: null,
         cancelAtPeriodEnd: false,
@@ -249,6 +251,7 @@ describe('BillingService.getSubscription', () => {
         planName: 'StudiQ Spark',
         billedPlanKey: 'spark',
         billedPlanName: 'StudiQ Spark',
+        entitlementAppliedPlanKey: 'spark',
         status: 'active',
         currentPeriodEnd: '2026-12-01T00:00:00.000Z',
         cancelAtPeriodEnd: false,

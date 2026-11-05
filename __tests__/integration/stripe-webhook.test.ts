@@ -322,6 +322,8 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       plan_key: 'spark',
       status: 'active',
     });
+    // The success page waits for this marker, not the billed mirror row.
+    expect(mirrors[0].entitlement_applied_plan_key).toBe('spark');
 
     // customer.subscription.deleted → the free student tier.
     currentSubscription = subscriptionFixture({
@@ -680,5 +682,62 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     expect(result).toEqual({ success: false, error: 'BAD_REQUEST' });
     const { data } = await service.from('stripe_webhook_events').select('id').eq('id', evt.id);
     expect(data ?? []).toHaveLength(0);
+  });
+});
+
+describe('Stripe webhook claim lease (#662)', () => {
+  const service = createServiceClient();
+  const repository = new SupabaseStripeWebhookRepository(() => service);
+  const id = `evt_lease_${tag}`;
+  const input = {
+    id,
+    type: 'invoice.paid',
+    livemode: false,
+    apiVersion: STRIPE_API_VERSION,
+    eventCreated: Math.floor(Date.now() / 1000),
+  };
+
+  afterAll(async () => {
+    await service.from('stripe_webhook_events').delete().eq('id', id);
+  });
+
+  it('returns busy for a live lease, reclaims a stale one and keeps processed duplicates at 200', async () => {
+    const { error: insertError } = await service.from('stripe_webhook_events').insert({
+      id,
+      type: input.type,
+      api_version: input.apiVersion,
+      livemode: false,
+      event_created: input.eventCreated,
+      status: 'processing',
+      received_at: new Date().toISOString(),
+    });
+    if (insertError) throw new Error(insertError.message);
+
+    await expect(repository.claimEvent(input)).resolves.toEqual({
+      success: true,
+      data: { outcome: 'busy', receivedAt: null },
+    });
+
+    const { error: staleError } = await service
+      .from('stripe_webhook_events')
+      .update({ received_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() })
+      .eq('id', id);
+    if (staleError) throw new Error(staleError.message);
+
+    await expect(repository.claimEvent(input)).resolves.toMatchObject({
+      success: true,
+      data: { outcome: 'retry' },
+    });
+
+    const { error: processedError } = await service
+      .from('stripe_webhook_events')
+      .update({ status: 'processed' })
+      .eq('id', id);
+    if (processedError) throw new Error(processedError.message);
+
+    await expect(repository.claimEvent(input)).resolves.toEqual({
+      success: true,
+      data: { outcome: 'duplicate', receivedAt: null },
+    });
   });
 });

@@ -108,6 +108,7 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
         {
           stripe_subscription_id: 'sub_old',
           plan_key: 'spark',
+          entitlement_applied_plan_key: 'spark',
           status: 'canceled',
           current_period_end: '2026-10-01T00:00:00.000Z',
           cancel_at_period_end: false,
@@ -116,6 +117,7 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
         {
           stripe_subscription_id: 'sub_live',
           plan_key: 'ace',
+          entitlement_applied_plan_key: 'ace',
           status: 'past_due',
           current_period_end: '2026-12-01T00:00:00.000Z',
           cancel_at_period_end: false,
@@ -132,6 +134,7 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
       data: {
         stripeSubscriptionId: 'sub_live',
         planKey: 'ace',
+        entitlementAppliedPlanKey: 'ace',
         status: 'past_due',
         currentPeriodEnd: '2026-12-01T00:00:00.000Z',
         cancelAtPeriodEnd: false,
@@ -146,6 +149,7 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
         {
           stripe_subscription_id: 'sub_newest',
           plan_key: 'spark',
+          entitlement_applied_plan_key: 'spark',
           status: 'canceled',
           current_period_end: null,
           cancel_at_period_end: true,
@@ -154,6 +158,7 @@ describe('SupabaseBillingReadRepository.findSubscription', () => {
         {
           stripe_subscription_id: 'sub_older',
           plan_key: 'base',
+          entitlement_applied_plan_key: 'base',
           status: 'canceled',
           current_period_end: null,
           cancel_at_period_end: false,

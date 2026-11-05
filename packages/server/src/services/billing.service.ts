@@ -72,6 +72,12 @@ export interface BillingSubscriptionView {
   billedPlanKey: string | null;
   /** Catalogue name for `billedPlanKey`; null when there is no billed row. */
   billedPlanName: string | null;
+  /**
+   * Plan committed to the entitlement column by the fenced webhook write.
+   * Null until that transaction has run; the success page waits for this
+   * instead of treating the billed mirror as proof.
+   */
+  entitlementAppliedPlanKey: string | null;
   status: BillingReadStatus;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
@@ -256,6 +262,7 @@ export class BillingService {
       planName: effectivePlan?.name ?? null,
       billedPlanKey: null,
       billedPlanName: null,
+      entitlementAppliedPlanKey: null,
       status: effectivePlan ? (effectivePlan.priceMonthly > 0 ? 'active' : 'free') : 'none',
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
@@ -332,6 +339,7 @@ export class BillingService {
       planName,
       billedPlanKey: subscription.planKey,
       billedPlanName,
+      entitlementAppliedPlanKey: subscription.entitlementAppliedPlanKey,
       status,
       currentPeriodEnd: subscription.currentPeriodEnd,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
