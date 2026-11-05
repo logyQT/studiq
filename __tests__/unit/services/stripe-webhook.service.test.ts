@@ -256,8 +256,8 @@ interface Harness {
   client: StripeClient;
   repository: FakeRepository;
   entitlements: {
-    applyPlan: ReturnType<typeof vi.fn>;
-    downgradeToFree: ReturnType<typeof vi.fn>;
+    applyPlanFenced: ReturnType<typeof vi.fn>;
+    downgradeToFreeFenced: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -265,8 +265,8 @@ function createHarness(options: { livemode?: boolean } = {}): Harness {
   const client = createClient();
   const repository = createRepository();
   const entitlements = {
-    applyPlan: vi.fn().mockResolvedValue(success(undefined)),
-    downgradeToFree: vi.fn().mockResolvedValue(success(undefined)),
+    applyPlanFenced: vi.fn().mockResolvedValue(success('applied')),
+    downgradeToFreeFenced: vi.fn().mockResolvedValue(success('applied')),
   };
 
   const service = new StripeWebhookService({
@@ -352,8 +352,8 @@ describe('StripeWebhookService', () => {
 
       expect(result).toEqual({ success: true, data: { received: true, duplicate: true } });
       expect(harness.client.subscriptions.retrieve).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
-      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
     });
 
     it('marks a failed handler failed and returns a retryable error', async () => {
@@ -406,10 +406,11 @@ describe('StripeWebhookService', () => {
       const result = await sign(harness, event);
 
       expect(result).toEqual({ success: true, data: { received: true } });
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledTimes(1);
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledTimes(1);
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(harness.repository.insertPayment).not.toHaveBeenCalled();
       expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
@@ -445,10 +446,11 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledTimes(1);
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledTimes(1);
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'org', orgId: 'org-1' },
         'hub',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -472,8 +474,8 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
-      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
       expect(harness.repository.upsertSubscription).toHaveBeenCalled();
     });
 
@@ -484,7 +486,7 @@ describe('StripeWebhookService', () => {
       const result = await sign(harness, event);
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(consoleError).toHaveBeenCalledWith(
         expect.stringContaining('billing.owner_unresolved'),
       );
@@ -511,9 +513,10 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'ace',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
         expect.objectContaining({ planKey: 'ace', priceId: 'price_ace' }),
@@ -543,9 +546,10 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'ace',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(harness.repository.clearPendingPlanIfApplied).toHaveBeenCalledWith('sub_1', 'ace');
       expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
@@ -563,7 +567,7 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(harness.repository.clearPendingPlanIfApplied).not.toHaveBeenCalled();
       expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
     });
@@ -607,11 +611,12 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.downgradeToFree).toHaveBeenCalledWith(
+      expect(harness.entitlements.downgradeToFreeFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('downgrades on customer.subscription.deleted', async () => {
@@ -628,9 +633,10 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.downgradeToFree).toHaveBeenCalledWith(
+      expect(harness.entitlements.downgradeToFreeFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       // A deleted subscription has no meaningful pending marker left.
       expect(harness.repository.clearPendingPlan).toHaveBeenCalledWith('sub_1');
@@ -650,7 +656,7 @@ describe('StripeWebhookService', () => {
       const result = await sign(harness, event);
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       // The checkout session id is still recorded on the winner's row.
       expect(harness.repository.attachCheckoutSession).toHaveBeenCalledWith('sub_1', 'cs_1');
       // A stale snapshot must not clear the newer handler's pending marker.
@@ -672,7 +678,32 @@ describe('StripeWebhookService', () => {
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
       expect(harness.repository.upsertSubscription).toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+    });
+
+    it('treats a database fence loss as stale without clearing the marker', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror()),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      // The mirror advanced between the final read and the fenced write, so the
+      // database refused the entitlement mutation.
+      vi.mocked(harness.entitlements.applyPlanFenced).mockResolvedValueOnce(success('stale'));
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_700,
+      });
+
+      const result = await sign(harness, event);
+
+      expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
+        { type: 'user', userId: 'u-1' },
+        'spark',
+        { stripeSubscriptionId: 'sub_1', eventCreated: 1_700_000_700 },
+      );
+      expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
+      expect(harness.repository.clearPendingPlanIfApplied).not.toHaveBeenCalled();
     });
 
     it('does not write when the claim lease was lost to a retry', async () => {
@@ -689,7 +720,7 @@ describe('StripeWebhookService', () => {
       // attempt must not overwrite it even though the handler ran.
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
       expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(consoleWarn).toHaveBeenCalledWith(
         expect.stringContaining('billing.webhook_claim_lost'),
       );
@@ -715,7 +746,7 @@ describe('StripeWebhookService', () => {
       // The cancelled subscription was the refused duplicate: the owner still
       // pays through `sub_main`, so the plan must stay.
       expect(result).toEqual({ success: true, data: { received: true } });
-      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
       expect(harness.repository.upsertSubscription).toHaveBeenCalled();
       expect(consoleWarn).toHaveBeenCalledWith(
         expect.stringContaining('billing.downgrade_skipped_active_subscription'),
@@ -737,8 +768,8 @@ describe('StripeWebhookService', () => {
       const result = await sign(harness, event);
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
-      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
     });
 
@@ -756,7 +787,7 @@ describe('StripeWebhookService', () => {
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
       expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(consoleError).toHaveBeenCalledWith(
         expect.stringContaining('billing.duplicate_subscription'),
       );
@@ -793,9 +824,10 @@ describe('StripeWebhookService', () => {
 
       // The in-app upgrade changed the live Price but not the subscription's
       // Checkout metadata; the rotated Price is authoritative.
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
     });
 
@@ -813,7 +845,7 @@ describe('StripeWebhookService', () => {
       const result = await sign(harness, event);
 
       expect(result).toEqual({ success: false, error: 'INTERNAL_SERVER' });
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('falls back to metadata when the Price was deleted', async () => {
@@ -830,9 +862,10 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
     });
 
@@ -854,9 +887,10 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('billing.price_unmapped'));
     });
@@ -891,7 +925,7 @@ describe('StripeWebhookService', () => {
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
       expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
   });
 
@@ -967,7 +1001,7 @@ describe('StripeWebhookService', () => {
       // was still collected, so the history row must exist.
       expect(harness.repository.payments).toHaveLength(1);
       expect(harness.repository.payments[0].stripeInvoiceId).toBe('in_stale');
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('attributes an organization invoice to the recorded purchaser', async () => {
@@ -1061,8 +1095,8 @@ describe('StripeWebhookService', () => {
         1_700_000_700,
       );
       expect(harness.repository.insertPayment).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
-      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
     });
 
     it('marks a first invoice failure incomplete without changing the plan', async () => {
@@ -1083,8 +1117,8 @@ describe('StripeWebhookService', () => {
         'incomplete',
         1_700_000_700,
       );
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
-      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
     });
 
     it('acknowledges a stale status write without touching the plan', async () => {
@@ -1110,8 +1144,8 @@ describe('StripeWebhookService', () => {
         1_700_000_700,
       );
       expect(harness.repository.insertPayment).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
-      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
     });
   });
 
@@ -1124,7 +1158,7 @@ describe('StripeWebhookService', () => {
 
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
       expect(harness.repository.finishEvent).toHaveBeenCalledWith(event.id, CLAIM_TOKEN, 'ignored');
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('acknowledges an unknown event type', async () => {
@@ -1150,8 +1184,8 @@ describe('StripeWebhookService', () => {
       );
 
       expect(result).toEqual({ success: true, data: { activated: false } });
-      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('reports activated:false when the duplicate-subscription guard refuses it', async () => {
@@ -1164,7 +1198,7 @@ describe('StripeWebhookService', () => {
       await expect(
         harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),
       ).resolves.toEqual({ success: true, data: { activated: false } });
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('never consults or completes the event claim', async () => {
@@ -1197,9 +1231,10 @@ describe('StripeWebhookService', () => {
 
       expect(result).toEqual({ success: true, data: { activated: true } });
       expect(harness.repository.claimEvent).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).toHaveBeenCalledWith(
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       const upsert = vi.mocked(harness.repository.upsertSubscription).mock.calls[0][0];
       expect(upsert.eventCreated).toBe(0);
@@ -1229,7 +1264,7 @@ describe('StripeWebhookService', () => {
       await expect(
         harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),
       ).resolves.toEqual({ success: true, data: { activated: true } });
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('never activates an unpaid session', async () => {
@@ -1240,13 +1275,13 @@ describe('StripeWebhookService', () => {
           asJson<Stripe.Checkout.Session>(makeSession({ payment_status: 'unpaid' })),
         ),
       ).resolves.toEqual({ success: true, data: { activated: false } });
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('maps an activation failure to SERVICE_UNAVAILABLE', async () => {
       const harness = createHarness();
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
-      harness.entitlements.applyPlan.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
+      harness.entitlements.applyPlanFenced.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       await expect(
         harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),
@@ -1263,7 +1298,7 @@ describe('StripeWebhookService', () => {
       await sign(harness, makeEvent('checkout.session.completed', makeSession()));
 
       expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('writes the event timestamp as the subscription mirror freshness', async () => {

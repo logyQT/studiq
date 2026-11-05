@@ -15,6 +15,19 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  */
 export type EntitlementOwner = { type: 'user'; userId: string } | { type: 'org'; orgId: string };
 
+/**
+ * Freshness fence for a webhook-driven entitlement write (#662 security
+ * review). The update only lands while the subscription mirror is still at or
+ * behind `eventCreated`; a newer cancellation/downgrade wins.
+ */
+export interface EntitlementFence {
+  stripeSubscriptionId: string;
+  eventCreated: number;
+}
+
+/** `stale` = a newer event already owns the subscription mirror. */
+export type EntitlementApplyOutcome = 'applied' | 'stale';
+
 export interface EntitlementPlan {
   key: string;
   forAccountType: string | null;
@@ -50,14 +63,8 @@ export class EntitlementService {
    * no-op at the database level.
    */
   async applyPlan(owner: EntitlementOwner, planKey: string): Promise<ServiceResult<void>> {
-    const planResult = await this.getPlan(planKey);
+    const planResult = await this.resolveWritablePlan(owner, planKey);
     if (isFailure(planResult)) return planResult;
-
-    const plan = planResult.data;
-    if (!plan) {
-      logError('billing.plan_not_found', { planKey, ownerType: owner.type });
-      return failure('BAD_REQUEST');
-    }
 
     if (owner.type === 'org') {
       // organizations.plan alone changes nothing: features and limits are
@@ -71,17 +78,6 @@ export class EntitlementService {
       return success(undefined);
     }
 
-    // ADR-0007: a manager plan is an organization plan. Writing it to a profile
-    // would widen that manager's limits in every organization they belong to,
-    // so reject + alert instead of silently corrupting the entitlement.
-    if (this.isOrganizationPlan(plan)) {
-      logError('billing.manager_plan_to_profile', {
-        planKey,
-        userId: owner.userId,
-      });
-      return failure('FORBIDDEN');
-    }
-
     const admin = this.createAdminClient();
     const { error } = await admin
       .from('profiles')
@@ -90,6 +86,36 @@ export class EntitlementService {
 
     if (error) return toDbFailure(error);
     return success(undefined);
+  }
+
+  /**
+   * Fenced variant used by the Stripe webhook. The freshness check and the
+   * entitlement mutation run in one database transaction
+   * (`apply_entitlement_fenced`), which locks the subscription mirror row. A
+   * concurrent newer cancellation/downgrade therefore either commits first
+   * (and this older snapshot reports `stale`) or waits for this write and then
+   * replaces it with its own newer plan. The previous check-then-write left a
+   * window where an older paid plan could overwrite the newer downgrade.
+   */
+  async applyPlanFenced(
+    owner: EntitlementOwner,
+    planKey: string,
+    fence: EntitlementFence,
+  ): Promise<ServiceResult<EntitlementApplyOutcome>> {
+    const planResult = await this.resolveWritablePlan(owner, planKey);
+    if (isFailure(planResult)) return planResult;
+
+    const admin = this.createAdminClient();
+    const { data, error } = await admin.rpc('apply_entitlement_fenced', {
+      p_owner_type: owner.type,
+      p_owner_id: owner.type === 'org' ? owner.orgId : owner.userId,
+      p_plan: planKey,
+      p_subscription_id: fence.stripeSubscriptionId,
+      p_event_created: fence.eventCreated,
+    });
+
+    if (error) return toDbFailure(error);
+    return success(data ? 'applied' : 'stale');
   }
 
   /**
@@ -108,6 +134,49 @@ export class EntitlementService {
     if (isFailure(freeResult)) return freeResult;
 
     return this.applyPlan(owner, freeResult.data.key);
+  }
+
+  /** Fenced counterpart of `downgradeToFree` (see `applyPlanFenced`). */
+  async downgradeToFreeFenced(
+    owner: EntitlementOwner,
+    previousPlanKey: string | null,
+    fence: EntitlementFence,
+  ): Promise<ServiceResult<EntitlementApplyOutcome>> {
+    const freeResult = await this.resolveFreePlan(owner, previousPlanKey);
+    if (isFailure(freeResult)) return freeResult;
+
+    return this.applyPlanFenced(owner, freeResult.data.key, fence);
+  }
+
+  /**
+   * Validate a catalog plan before it is written: it must exist, and a paid
+   * organization plan must never be written to a profile (ADR-0007).
+   */
+  private async resolveWritablePlan(
+    owner: EntitlementOwner,
+    planKey: string,
+  ): Promise<ServiceResult<EntitlementPlan>> {
+    const planResult = await this.getPlan(planKey);
+    if (isFailure(planResult)) return planResult;
+
+    const plan = planResult.data;
+    if (!plan) {
+      logError('billing.plan_not_found', { planKey, ownerType: owner.type });
+      return failure('BAD_REQUEST');
+    }
+
+    // ADR-0007: a manager plan is an organization plan. Writing it to a profile
+    // would widen that manager's limits in every organization they belong to,
+    // so reject + alert instead of silently corrupting the entitlement.
+    if (owner.type === 'user' && this.isOrganizationPlan(plan)) {
+      logError('billing.manager_plan_to_profile', {
+        planKey,
+        userId: owner.userId,
+      });
+      return failure('FORBIDDEN');
+    }
+
+    return success(plan);
   }
 
   private isOrganizationPlan(plan: EntitlementPlan): boolean {

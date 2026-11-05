@@ -2410,6 +2410,16 @@ export type Database = {
     Functions: {
       admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
       admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
+      apply_entitlement_fenced: {
+        Args: {
+          p_event_created: number;
+          p_owner_id: string;
+          p_owner_type: string;
+          p_plan: string;
+          p_subscription_id: string;
+        };
+        Returns: boolean;
+      };
       apply_org_plan: { Args: { p_org_id: string; p_plan: string }; Returns: undefined };
       bulk_create_flashcards: {
         Args: {

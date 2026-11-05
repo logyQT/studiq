@@ -19,6 +19,7 @@ interface FakePlanRow {
 interface FakeAdminOptions {
   plans?: FakePlanRow[];
   rpcError?: { code: string; message: string } | null;
+  rpcData?: unknown;
   updateError?: { code: string; message: string } | null;
   selectError?: { code: string; message: string } | null;
 }
@@ -38,7 +39,9 @@ function createFakeAdmin(options: FakeAdminOptions = {}) {
     column: string;
     value: unknown;
   }> = [];
-  const rpc = vi.fn().mockResolvedValue({ error: options.rpcError ?? null });
+  const rpc = vi
+    .fn()
+    .mockResolvedValue({ data: options.rpcData ?? null, error: options.rpcError ?? null });
 
   const planQuery = () => {
     const filters: Record<string, unknown> = {};
@@ -217,6 +220,96 @@ describe('EntitlementService', () => {
         error: 'NOT_FOUND',
       });
       expect(updates).toHaveLength(0);
+    });
+  });
+
+  describe('applyPlanFenced', () => {
+    const fence = { stripeSubscriptionId: 'sub_1', eventCreated: 1_700_000_700 };
+
+    it('writes an organization plan through the database fence', async () => {
+      const { admin, rpc, updates } = createFakeAdmin({ plans: PLANS, rpcData: true });
+      const service = new EntitlementService(() => admin);
+
+      await expect(service.applyPlanFenced(ORG, 'hub', fence)).resolves.toEqual({
+        success: true,
+        data: 'applied',
+      });
+      expect(rpc).toHaveBeenCalledWith('apply_entitlement_fenced', {
+        p_owner_type: 'org',
+        p_owner_id: 'org-1',
+        p_plan: 'hub',
+        p_subscription_id: 'sub_1',
+        p_event_created: 1_700_000_700,
+      });
+      expect(updates).toHaveLength(0);
+    });
+
+    it('writes a personal plan through the database fence', async () => {
+      const { admin, rpc } = createFakeAdmin({ plans: PLANS, rpcData: true });
+      const service = new EntitlementService(() => admin);
+
+      await expect(service.applyPlanFenced(USER, 'spark', fence)).resolves.toEqual({
+        success: true,
+        data: 'applied',
+      });
+      expect(rpc).toHaveBeenCalledWith('apply_entitlement_fenced', {
+        p_owner_type: 'user',
+        p_owner_id: 'u-1',
+        p_plan: 'spark',
+        p_subscription_id: 'sub_1',
+        p_event_created: 1_700_000_700,
+      });
+    });
+
+    it('reports stale when the mirror has a newer event', async () => {
+      const { admin } = createFakeAdmin({ plans: PLANS, rpcData: false });
+      const service = new EntitlementService(() => admin);
+
+      await expect(service.applyPlanFenced(USER, 'spark', fence)).resolves.toEqual({
+        success: true,
+        data: 'stale',
+      });
+    });
+
+    it('rejects a manager plan before calling the fence (ADR-0007)', async () => {
+      const { admin, rpc } = createFakeAdmin({ plans: PLANS, rpcData: true });
+      const service = new EntitlementService(() => admin);
+
+      await expect(service.applyPlanFenced(USER, 'hub', fence)).resolves.toEqual({
+        success: false,
+        error: 'FORBIDDEN',
+      });
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    it('downgrades through the same fence', async () => {
+      const { admin, rpc } = createFakeAdmin({ plans: PLANS, rpcData: true });
+      const service = new EntitlementService(() => admin);
+
+      await expect(service.downgradeToFreeFenced(USER, 'spark', fence)).resolves.toEqual({
+        success: true,
+        data: 'applied',
+      });
+      expect(rpc).toHaveBeenCalledWith('apply_entitlement_fenced', {
+        p_owner_type: 'user',
+        p_owner_id: 'u-1',
+        p_plan: 'base',
+        p_subscription_id: 'sub_1',
+        p_event_created: 1_700_000_700,
+      });
+    });
+
+    it('maps a fence RPC failure onto the service result', async () => {
+      const { admin } = createFakeAdmin({
+        plans: PLANS,
+        rpcError: { code: '42501', message: 'permission denied' },
+      });
+      const service = new EntitlementService(() => admin);
+
+      await expect(service.applyPlanFenced(ORG, 'hub', fence)).resolves.toEqual({
+        success: false,
+        error: 'FORBIDDEN',
+      });
     });
   });
 

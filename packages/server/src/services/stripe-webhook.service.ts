@@ -13,6 +13,8 @@ import {
 } from '@studiq/server/lib/payment/stripe-webhook.repository';
 import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import {
+  type EntitlementApplyOutcome,
+  type EntitlementFence,
   type EntitlementOwner,
   type EntitlementService,
   entitlementService,
@@ -49,7 +51,7 @@ export interface StripeWebhookServiceOptions {
   webhookSecret: string;
   livemode: boolean;
   repository?: StripeWebhookRepository;
-  entitlements?: Pick<EntitlementService, 'applyPlan' | 'downgradeToFree'>;
+  entitlements?: Pick<EntitlementService, 'applyPlanFenced' | 'downgradeToFreeFenced'>;
   now?: () => Date;
 }
 
@@ -157,7 +159,10 @@ export class StripeWebhookService {
   private readonly webhookSecret: string;
   private readonly livemode: boolean;
   private readonly repository: StripeWebhookRepository;
-  private readonly entitlements: Pick<EntitlementService, 'applyPlan' | 'downgradeToFree'>;
+  private readonly entitlements: Pick<
+    EntitlementService,
+    'applyPlanFenced' | 'downgradeToFreeFenced'
+  >;
   private readonly now: () => Date;
 
   constructor(options: StripeWebhookServiceOptions) {
@@ -608,10 +613,21 @@ export class StripeWebhookService {
         owner.owner,
         resolved,
         status,
-        subscription.id,
+        { stripeSubscriptionId: subscription.id, eventCreated: input.eventCreated },
         input.forceDowngrade,
       );
       if (isFailure(entitlement)) throw new Error('entitlement write failed');
+      if (entitlement.data === 'stale') {
+        // The database fence lost to a newer snapshot after the read above:
+        // the newer event owns the entitlement now.
+        log('billing.webhook_stale_subscription', {
+          eventId: input.eventId,
+          subscriptionId: subscription.id,
+          eventCreated: input.eventCreated,
+          phase: 'entitlement',
+        });
+        return { ignored: true, stale: true };
+      }
 
       // The pending marker is display-only and now describes the applied plan
       // (a scheduled downgrade reached its phase, or the upgrade price landed).
@@ -840,9 +856,9 @@ export class StripeWebhookService {
     owner: EntitlementOwner,
     resolved: ResolvedPlan,
     status: string,
-    subscriptionId: string,
+    fence: EntitlementFence,
     forceDowngrade?: boolean,
-  ): Promise<ServiceResult<void>> {
+  ): Promise<ServiceResult<EntitlementApplyOutcome>> {
     if (forceDowngrade || DOWNGRADE_STATUSES.has(status)) {
       // A duplicate subscription that was refused at activation can be
       // cancelled later (§5.5 manual refund). Its `deleted` event must not
@@ -850,23 +866,23 @@ export class StripeWebhookService {
       const active = await this.repository.findActiveSubscription(owner, this.livemode);
       if (isFailure(active)) return active;
 
-      if (active.data && active.data.stripeSubscriptionId !== subscriptionId) {
+      if (active.data && active.data.stripeSubscriptionId !== fence.stripeSubscriptionId) {
         logWarn('billing.downgrade_skipped_active_subscription', {
-          subscriptionId,
+          subscriptionId: fence.stripeSubscriptionId,
           activeSubscriptionId: active.data.stripeSubscriptionId,
           ownerType: owner.type,
         });
-        return success(undefined);
+        return success('applied');
       }
 
-      return this.entitlements.downgradeToFree(owner, resolved.plan.key);
+      return this.entitlements.downgradeToFreeFenced(owner, resolved.plan.key, fence);
     }
     if (ENTITLED_STATUSES.has(status)) {
-      return this.entitlements.applyPlan(owner, resolved.plan.key);
+      return this.entitlements.applyPlanFenced(owner, resolved.plan.key, fence);
     }
     // `incomplete` and anything unknown: keep the previous plan until the
     // invoice is paid or the subscription is deleted.
-    return success(undefined);
+    return success('applied');
   }
 
   /** Owner priority (§6.4): mirror → metadata → customer mapping. */
