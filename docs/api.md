@@ -136,12 +136,11 @@ signed.
 | `SERVICE_UNAVAILABLE`  | Checkout kill switch, Managed Payments misconfiguration, missing/mismatched `stripe_prices`, or a provider outage |
 
 Entitlements (`organizations.plan`, `profiles.personal_plan_key`) are written
-**only** by `EntitlementService` from the webhook path. The write is fenced in
-the database against `billing_subscriptions.last_event_created`, so an older
-event can never restore a plan after a newer cancellation or downgrade has won.
-`POST /billing/reconcile`
-does not write them directly either: it reuses the same idempotent activation
-path, so the write still happens inside `EntitlementService`. `change-plan`,
+**only** by `EntitlementService`. Stripe webhook activation and
+`POST /billing/reconcile` use the fenced path (`apply_entitlement_fenced`,
+locked against `billing_subscriptions.last_event_created`), so an older event
+can never restore a plan after a newer cancellation or downgrade has won.
+The mock and other non-webhook flows use the unfenced writer. `change-plan`,
 `cancel` and `release-scheduled-plan` never write an entitlement.
 
 ## Request Flow
