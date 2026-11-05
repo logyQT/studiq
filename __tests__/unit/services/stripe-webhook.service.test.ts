@@ -227,7 +227,6 @@ function createRepository(): FakeRepository {
     ),
     upsertSubscription: vi.fn().mockResolvedValue(success({ outcome: 'applied', generation: 1 })),
     attachCheckoutSession: vi.fn().mockResolvedValue(success(undefined)),
-    updateSubscriptionStatus: vi.fn().mockResolvedValue(success('applied')),
     clearPendingPlanIfApplied: vi.fn().mockResolvedValue(success(undefined)),
     clearPendingPlan: vi.fn().mockResolvedValue(success(undefined)),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
@@ -1183,10 +1182,13 @@ describe('StripeWebhookService', () => {
       expect(harness.repository.payments[0]).toMatchObject({ userId: 'u-admin-current' });
     });
 
-    it('keeps the plan unchanged on invoice.payment_failed', async () => {
+    it('syncs the current subscription and keeps paid access on invoice.payment_failed', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
         success(makeMirror()),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
+        makeSubscription({ status: 'past_due' }),
       );
       const event = makeEvent(
         'invoice.payment_failed',
@@ -1196,21 +1198,28 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.repository.updateSubscriptionStatus).toHaveBeenCalledWith(
-        'sub_1',
-        'past_due',
-        1_700_000_700,
-        0,
+      expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'past_due', expectedGeneration: 0 }),
+      );
+      expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
+        { type: 'user', userId: 'u-1' },
+        'spark',
+        expect.objectContaining({
+          stripeSubscriptionId: 'sub_1',
+          eventCreated: 1_700_000_700,
+        }),
       );
       expect(harness.repository.insertPayment).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
     });
 
-    it('marks a first invoice failure incomplete without changing the plan', async () => {
+    it('keeps the previous plan on a first-invoice payment problem', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
         success(makeMirror({ status: 'incomplete' })),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
+        makeSubscription({ status: 'incomplete' }),
       );
       const event = makeEvent(
         'invoice.payment_action_required',
@@ -1220,66 +1229,8 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      expect(harness.repository.updateSubscriptionStatus).toHaveBeenCalledWith(
-        'sub_1',
-        'incomplete',
-        1_700_000_700,
-        0,
-      );
-      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
-      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
-    });
-
-    it('acknowledges a stale status write without touching the plan', async () => {
-      const harness = createHarness();
-      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
-        success(makeMirror({ snapshotGeneration: 4 })),
-      );
-      vi.mocked(harness.repository.updateSubscriptionStatus).mockResolvedValueOnce(
-        success('stale'),
-      );
-      const event = makeEvent(
-        'invoice.payment_failed',
-        makeInvoice({ billing_reason: 'subscription_cycle' }),
-        { created: 1_700_000_700 },
-      );
-
-      const result = await sign(harness, event);
-
-      expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
-      expect(harness.repository.updateSubscriptionStatus).toHaveBeenCalledWith(
-        'sub_1',
-        'past_due',
-        1_700_000_700,
-        4,
-      );
-      expect(harness.repository.insertPayment).not.toHaveBeenCalled();
-      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
-      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
-    });
-
-    it('retries when a concurrent writer moved the status generation', async () => {
-      const harness = createHarness();
-      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
-        success(makeMirror()),
-      );
-      vi.mocked(harness.repository.updateSubscriptionStatus).mockResolvedValueOnce(
-        success('conflict'),
-      );
-      const event = makeEvent(
-        'invoice.payment_failed',
-        makeInvoice({ billing_reason: 'subscription_cycle' }),
-        { created: 1_700_000_700 },
-      );
-
-      const result = await sign(harness, event);
-
-      expect(result).toEqual({ success: false, error: 'INTERNAL_SERVER' });
-      expect(harness.repository.finishEvent).toHaveBeenCalledWith(
-        event.id,
-        CLAIM_TOKEN,
-        'failed',
-        expect.any(String),
+      expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'incomplete' }),
       );
       expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();

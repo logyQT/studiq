@@ -154,6 +154,13 @@ function invoicePayload(event: Stripe.Event): Stripe.Invoice {
   return event.data.object as Stripe.Invoice;
 }
 
+/**
+ * Deliberately has no module-level singleton: it depends on boot-validated
+ * options (Stripe client, webhook secret, livemode) and is constructed lazily
+ * by `StripePaymentGateway.webhookService()`, which wraps it with `wrapService`
+ * (`stripe-webhook.service`). Importing this module must not require Stripe
+ * configuration; a singleton export would run that check at import time.
+ */
 export class StripeWebhookService {
   private readonly client: StripeClient;
   private readonly webhookSecret: string;
@@ -832,18 +839,19 @@ export class StripeWebhookService {
       return { ignored: true };
     }
 
-    if (actionRequired && invoice.hosted_invoice_url) {
+    if (actionRequired) {
       log('billing.invoice_action_required', {
         eventId: event.id,
         invoiceId: invoice.id,
       });
     }
 
-    // D14: a failed or 3DS-pending payment keeps access. Only the mirror status
-    // moves, so the billing page can show the problem without a plan change.
-    const mirror = await this.repository.getSubscriptionByStripeId(subscriptionId);
-    if (isFailure(mirror)) throw new Error('subscription mirror read failed');
-    if (!mirror.data) {
+    // Read the mirror before the provider snapshot so its generation fences a
+    // same-second concurrent write.
+    const mirrorResult = await this.repository.getSubscriptionByStripeId(subscriptionId);
+    if (isFailure(mirrorResult)) throw new Error('subscription mirror read failed');
+    const mirror = mirrorResult.data;
+    if (!mirror) {
       logError('billing.subscription_unresolved', {
         eventId: event.id,
         subscriptionId,
@@ -851,59 +859,63 @@ export class StripeWebhookService {
       });
       return { ignored: true };
     }
-    if (event.created < mirror.data.lastEventCreated) {
+    if (event.created < mirror.lastEventCreated) {
       log('billing.webhook_out_of_order', {
         eventId: event.id,
         subscriptionId,
         eventCreated: event.created,
-        lastEventCreated: mirror.data.lastEventCreated,
+        lastEventCreated: mirror.lastEventCreated,
       });
       return { ignored: true };
     }
 
-    const status = invoice.billing_reason === 'subscription_create' ? 'incomplete' : 'past_due';
-
-    // Same fence as `syncSubscription`: a stalled attempt whose lease was
-    // reclaimed must not overwrite the newer handler's status.
-    if (!(await this.ensureClaimOwner(event.id, claimToken))) {
-      logWarn('billing.webhook_claim_lost', {
+    const subscription = await this.retrieveSubscription(subscriptionId, null);
+    if (!subscription) {
+      logError('billing.subscription_unresolved', {
         eventId: event.id,
         subscriptionId,
-        phase: 'invoice_status',
+        object: 'invoice',
       });
       return { ignored: true };
     }
 
-    const update = await this.repository.updateSubscriptionStatus(
-      subscriptionId,
-      status,
-      event.created,
-      mirror.data.snapshotGeneration,
-    );
-    if (isFailure(update)) throw new Error('subscription status write failed');
-    if (update.data === 'conflict') {
-      // A concurrent writer moved the mirror after we read its generation.
-      // Retry the delivery so a same-second cancellation is not overwritten by
-      // this older status snapshot.
-      logWarn('billing.webhook_snapshot_conflict', {
+    const owner =
+      this.ownerFromMirror(mirror) ??
+      this.ownerFromMetadata(subscription.metadata) ??
+      this.ownerFromMetadata(invoice.parent?.subscription_details?.metadata ?? null) ??
+      (objectId(invoice.customer)
+        ? await this.ownerFromCustomer(objectId(invoice.customer)!)
+        : null);
+    if (!owner) {
+      logError('billing.owner_unresolved', {
         eventId: event.id,
-        subscriptionId,
-        phase: 'invoice_status',
-      });
-      throw new Error('subscription status conflict');
-    }
-    if (update.data === 'stale') {
-      // A concurrent newer event already wrote the mirror between our read and
-      // the write; the newer snapshot wins and this one is a no-op.
-      log('billing.webhook_stale_subscription', {
-        eventId: event.id,
-        subscriptionId,
-        eventCreated: event.created,
+        objectId: invoice.id,
+        object: 'invoice',
       });
       return { ignored: true };
     }
 
-    return { ignored: false };
+    const resolved = await this.resolvePlan(subscription, subscription.metadata, owner);
+    if (!resolved) {
+      logError('billing.price_unmapped', { eventId: event.id, subscriptionId });
+      return { ignored: true };
+    }
+
+    // D14: a failed or 3DS-pending payment keeps access. The mirror follows the
+    // **current** subscription status: `past_due`/`active` re-apply the same
+    // plan, while `incomplete` leaves the entitlement untouched.
+    return this.syncSubscription({
+      eventId: event.id,
+      eventCreated: event.created,
+      claimToken,
+      subscription,
+      owner,
+      resolved,
+      mirror,
+      expectedGeneration: mirror.snapshotGeneration,
+      checkoutSessionId: mirror.checkoutSessionId,
+      applyEntitlement: true,
+    });
   }
 
   private async applyEntitlement(

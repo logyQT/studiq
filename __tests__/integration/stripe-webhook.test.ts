@@ -536,7 +536,16 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     expect(renewalRows[0].stripe_checkout_session_id).toBeNull();
     expect(await paymentsForInvoice(invoiceId)).toHaveLength(1);
 
-    // A failed renewal keeps the plan and writes no payments row.
+    // A failed renewal keeps the plan and writes no payments row. Stripe now
+    // reports the subscription as past_due, and the handler follows that
+    // current snapshot instead of synthesising a status from the invoice.
+    currentSubscription = subscriptionFixture({
+      id: stripeSubscriptionId,
+      customer: stripeCustomerId,
+      metadata,
+      priceId: PRICE_SPARK,
+      status: 'past_due',
+    });
     const failedInvoiceId = tagId('in_failed');
     invoiceIds.push(failedInvoiceId);
     const failedId = tagId('evt_invoice_failed');
