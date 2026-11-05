@@ -23,6 +23,8 @@ export type EntitlementOwner = { type: 'user'; userId: string } | { type: 'org';
 export interface EntitlementFence {
   stripeSubscriptionId: string;
   eventCreated: number;
+  /** The mirror generation this snapshot wrote; must still own the row. */
+  snapshotGeneration: number;
 }
 
 /** `stale` = a newer event already owns the subscription mirror. */
@@ -112,6 +114,7 @@ export class EntitlementService {
       p_plan: planKey,
       p_subscription_id: fence.stripeSubscriptionId,
       p_event_created: fence.eventCreated,
+      p_snapshot_generation: fence.snapshotGeneration,
     });
 
     if (error) return toDbFailure(error);

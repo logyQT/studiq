@@ -316,18 +316,15 @@ export class StripeWebhookService {
       return { ignored: true };
     }
 
-    // Read the mirror *before* retrieving the subscription. A webhook that wins
-    // the race after this read makes the freshness CAS below reject our older
-    // snapshot (`lte(last_event_created, eventCreated)`), so reconcile can never
-    // rewind a newer plan.
+    // Read the mirror *before* retrieving the subscription. Its generation is
+    // the write-order tiebreaker for same-second events, and a webhook that
+    // wins the race after this read makes the CAS below reject our older
+    // snapshot, so reconcile can never rewind a newer plan.
+    const existing = await this.repository.getSubscriptionByStripeId(subscriptionId);
+    if (isFailure(existing)) throw new Error('subscription mirror read failed');
+    const mirror = existing.data;
     let eventCreated = source.eventCreated;
-    let mirror: SubscriptionMirror | null | undefined;
-    if (eventCreated === null) {
-      const existing = await this.repository.getSubscriptionByStripeId(subscriptionId);
-      if (isFailure(existing)) throw new Error('subscription mirror read failed');
-      mirror = existing.data;
-      eventCreated = mirror?.lastEventCreated ?? 0;
-    }
+    if (eventCreated === null) eventCreated = mirror?.lastEventCreated ?? 0;
 
     const subscription = await this.retrieveSubscription(subscriptionId, null);
     if (!subscription) {
@@ -361,6 +358,7 @@ export class StripeWebhookService {
       owner: metadataOwner,
       resolved,
       mirror,
+      expectedGeneration: mirror?.snapshotGeneration ?? 0,
       checkoutSessionId: session.id,
       applyEntitlement,
     });
@@ -415,17 +413,12 @@ export class StripeWebhookService {
     claimToken: string,
   ): Promise<DispatchResult> {
     const payload = subscriptionPayload(event);
-    const subscription = await this.retrieveSubscription(payload.id, deleted ? payload : null);
-    if (!subscription) {
-      logError('billing.subscription_unresolved', {
-        eventId: event.id,
-        subscriptionId: payload.id,
-        object: 'subscription',
-      });
-      return { ignored: true };
-    }
 
-    const mirror = await this.repository.getSubscriptionByStripeId(subscription.id);
+    // Read the mirror *before* retrieving the provider snapshot. Its generation
+    // is the write-order tiebreaker for same-second events: a concurrent writer
+    // bumps it and our upsert reports `conflict` instead of overwriting a
+    // fresher snapshot.
+    const mirror = await this.repository.getSubscriptionByStripeId(payload.id);
     if (isFailure(mirror)) throw new Error('subscription mirror read failed');
 
     if (mirror.data && event.created < mirror.data.lastEventCreated) {
@@ -433,9 +426,19 @@ export class StripeWebhookService {
       // snapshot could regress the plan, so skip the entitlement entirely.
       log('billing.webhook_out_of_order', {
         eventId: event.id,
-        subscriptionId: subscription.id,
+        subscriptionId: payload.id,
         eventCreated: event.created,
         lastEventCreated: mirror.data.lastEventCreated,
+      });
+      return { ignored: true };
+    }
+
+    const subscription = await this.retrieveSubscription(payload.id, deleted ? payload : null);
+    if (!subscription) {
+      logError('billing.subscription_unresolved', {
+        eventId: event.id,
+        subscriptionId: payload.id,
+        object: 'subscription',
       });
       return { ignored: true };
     }
@@ -481,6 +484,7 @@ export class StripeWebhookService {
       owner,
       resolved,
       mirror: mirror.data,
+      expectedGeneration: mirror.data?.snapshotGeneration ?? 0,
       checkoutSessionId: mirror.data?.checkoutSessionId ?? null,
       applyEntitlement: true,
       forceDowngrade: deleted,
@@ -502,6 +506,8 @@ export class StripeWebhookService {
     owner: ResolvedOwner;
     resolved: ResolvedPlan;
     mirror?: SubscriptionMirror | null;
+    /** Generation read before the provider snapshot was retrieved. */
+    expectedGeneration: number;
     checkoutSessionId: string | null;
     applyEntitlement: boolean;
     forceDowngrade?: boolean;
@@ -572,6 +578,7 @@ export class StripeWebhookService {
       canceledAt: secondsToIso(subscription.canceled_at),
       lastEventCreated: Math.max(input.mirror?.lastEventCreated ?? 0, input.eventCreated),
       eventCreated: input.eventCreated,
+      expectedGeneration: input.expectedGeneration,
       livemode: this.livemode,
     });
 
@@ -588,7 +595,7 @@ export class StripeWebhookService {
       throw new Error('subscription mirror write failed');
     }
 
-    if (upsert.data === 'stale') {
+    if (upsert.data.outcome === 'stale') {
       // A newer event already wrote this subscription. Do not apply our older
       // snapshot; still record the checkout session id if the winner lacked it.
       log('billing.webhook_stale_subscription', {
@@ -605,6 +612,22 @@ export class StripeWebhookService {
       }
       return { ignored: true, stale: true };
     }
+
+    if (upsert.data.outcome === 'conflict') {
+      // A concurrent writer changed the mirror after we read its generation.
+      // This attempt may carry an older same-second snapshot, so never apply
+      // it. Throwing makes the delivery retryable: the retry re-reads the
+      // mirror and the provider snapshot, so a cancellation is not dropped.
+      logWarn('billing.webhook_snapshot_conflict', {
+        eventId: input.eventId,
+        subscriptionId: subscription.id,
+        expectedGeneration: input.expectedGeneration,
+      });
+      throw new Error('subscription snapshot conflict');
+    }
+
+    const snapshotGeneration = upsert.data.generation;
+    if (snapshotGeneration === null) throw new Error('missing snapshot generation');
 
     if (input.applyEntitlement) {
       // Re-read immediately before the entitlement write. If a newer event won
@@ -625,7 +648,11 @@ export class StripeWebhookService {
         owner.owner,
         resolved,
         status,
-        { stripeSubscriptionId: subscription.id, eventCreated: input.eventCreated },
+        {
+          stripeSubscriptionId: subscription.id,
+          eventCreated: input.eventCreated,
+          snapshotGeneration,
+        },
         input.forceDowngrade,
       );
       if (isFailure(entitlement)) throw new Error('entitlement write failed');
@@ -680,6 +707,12 @@ export class StripeWebhookService {
       return { ignored: true };
     }
 
+    // Read the mirror before the provider snapshot so its generation fences a
+    // same-second concurrent write (see `onSubscriptionChanged`).
+    const mirrorResult = await this.repository.getSubscriptionByStripeId(subscriptionId);
+    if (isFailure(mirrorResult)) throw new Error('subscription mirror read failed');
+    const mirror = mirrorResult.data;
+
     const subscription = await this.retrieveSubscription(subscriptionId, null);
     if (!subscription) {
       logError('billing.subscription_unresolved', {
@@ -689,10 +722,6 @@ export class StripeWebhookService {
       });
       return { ignored: true };
     }
-
-    const mirrorResult = await this.repository.getSubscriptionByStripeId(subscriptionId);
-    if (isFailure(mirrorResult)) throw new Error('subscription mirror read failed');
-    const mirror = mirrorResult.data;
 
     const owner =
       this.ownerFromMirror(mirror) ??
@@ -726,6 +755,7 @@ export class StripeWebhookService {
       owner,
       resolved,
       mirror,
+      expectedGeneration: mirror?.snapshotGeneration ?? 0,
       checkoutSessionId: mirror?.checkoutSessionId ?? null,
       applyEntitlement: ENTITLED_STATUSES.has(subscription.status),
     });

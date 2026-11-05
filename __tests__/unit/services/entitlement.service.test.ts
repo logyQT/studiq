@@ -224,7 +224,11 @@ describe('EntitlementService', () => {
   });
 
   describe('applyPlanFenced', () => {
-    const fence = { stripeSubscriptionId: 'sub_1', eventCreated: 1_700_000_700 };
+    const fence = {
+      stripeSubscriptionId: 'sub_1',
+      eventCreated: 1_700_000_700,
+      snapshotGeneration: 3,
+    };
 
     it('writes an organization plan through the database fence', async () => {
       const { admin, rpc, updates } = createFakeAdmin({ plans: PLANS, rpcData: true });
@@ -240,6 +244,7 @@ describe('EntitlementService', () => {
         p_plan: 'hub',
         p_subscription_id: 'sub_1',
         p_event_created: 1_700_000_700,
+        p_snapshot_generation: 3,
       });
       expect(updates).toHaveLength(0);
     });
@@ -258,6 +263,7 @@ describe('EntitlementService', () => {
         p_plan: 'spark',
         p_subscription_id: 'sub_1',
         p_event_created: 1_700_000_700,
+        p_snapshot_generation: 3,
       });
     });
 
@@ -296,6 +302,7 @@ describe('EntitlementService', () => {
         p_plan: 'base',
         p_subscription_id: 'sub_1',
         p_event_created: 1_700_000_700,
+        p_snapshot_generation: 3,
       });
     });
 

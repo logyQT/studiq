@@ -183,6 +183,7 @@ function makeMirror(overrides: Partial<SubscriptionMirror> = {}): SubscriptionMi
     cancelAt: null,
     canceledAt: null,
     lastEventCreated: 1_600_000_000,
+    snapshotGeneration: 0,
     livemode: false,
     ...overrides,
   };
@@ -224,7 +225,7 @@ function createRepository(): FakeRepository {
         }),
       ),
     ),
-    upsertSubscription: vi.fn().mockResolvedValue(success('applied')),
+    upsertSubscription: vi.fn().mockResolvedValue(success({ outcome: 'applied', generation: 1 })),
     attachCheckoutSession: vi.fn().mockResolvedValue(success(undefined)),
     updateSubscriptionStatus: vi.fn().mockResolvedValue(success('applied')),
     clearPendingPlanIfApplied: vi.fn().mockResolvedValue(success(undefined)),
@@ -705,7 +706,9 @@ describe('StripeWebhookService', () => {
       vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
         success(makeMirror()),
       );
-      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(success('stale'));
+      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(
+        success({ outcome: 'stale', generation: null }),
+      );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
       const event = makeEvent('customer.subscription.updated', makeSubscription(), {
         created: 1_700_000_600,
@@ -758,10 +761,54 @@ describe('StripeWebhookService', () => {
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
         'spark',
-        { stripeSubscriptionId: 'sub_1', eventCreated: 1_700_000_700 },
+        { stripeSubscriptionId: 'sub_1', eventCreated: 1_700_000_700, snapshotGeneration: 1 },
       );
       expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
       expect(harness.repository.clearPendingPlanIfApplied).not.toHaveBeenCalled();
+    });
+
+    it('passes the pre-retrieval mirror generation into the write and the fence', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror({ snapshotGeneration: 4 })),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_700,
+      });
+
+      await sign(harness, event);
+
+      expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
+        expect.objectContaining({ expectedGeneration: 4 }),
+      );
+    });
+
+    it('retries the delivery when a same-second writer moved the generation', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror()),
+      );
+      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(
+        success({ outcome: 'conflict', generation: null }),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_700,
+      });
+
+      const result = await sign(harness, event);
+
+      // A concurrent snapshot changed the mirror after we read its generation.
+      // The event must be retried, not applied or silently ignored.
+      expect(result).toEqual({ success: false, error: 'INTERNAL_SERVER' });
+      expect(harness.repository.finishEvent).toHaveBeenCalledWith(
+        event.id,
+        CLAIM_TOKEN,
+        'failed',
+        expect.any(String),
+      );
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
     it('does not write when the claim lease was lost to a retry', async () => {
@@ -1047,7 +1094,9 @@ describe('StripeWebhookService', () => {
       vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
         success(makeMirror()),
       );
-      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(success('stale'));
+      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(
+        success({ outcome: 'stale', generation: null }),
+      );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
       const event = makeEvent('invoice.paid', makeInvoice({ id: 'in_stale' }), {
         created: 1_700_000_800,
@@ -1317,7 +1366,9 @@ describe('StripeWebhookService', () => {
     it('reports activated when a newer webhook already won the mirror', async () => {
       const harness = createHarness();
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
-      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(success('stale'));
+      vi.mocked(harness.repository.upsertSubscription).mockResolvedValueOnce(
+        success({ outcome: 'stale', generation: null }),
+      );
 
       await expect(
         harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession())),

@@ -80,6 +80,8 @@ export interface SubscriptionMirror {
   cancelAt: string | null;
   canceledAt: string | null;
   lastEventCreated: number;
+  /** Write-order tiebreaker for same-second events. */
+  snapshotGeneration: number;
   livemode: boolean;
 }
 
@@ -103,14 +105,34 @@ export interface SubscriptionUpsert {
   /**
    * The event's own timestamp. The write is conditional on
    * `last_event_created <= eventCreated`, so an older event can never overwrite
-   * a newer snapshot. Equal timestamps are allowed (Stripe has 1 s resolution).
+   * a newer snapshot. Equal timestamps are ordered by `expectedGeneration`.
    */
   eventCreated: number;
+  /**
+   * Generation read before the Stripe snapshot was retrieved. The update only
+   * lands while the mirror still carries it; a concurrent write bumps the row
+   * and makes this attempt a `conflict` (retryable) instead of overwriting a
+   * fresher snapshot.
+   */
+  expectedGeneration: number;
   livemode: boolean;
 }
 
-/** `stale` = a newer event already wrote this subscription; skip entitlement. */
-export type SubscriptionSyncOutcome = 'applied' | 'stale';
+/**
+ * - `applied`: this snapshot owns the mirror; `generation` is what it wrote.
+ * - `stale`: the event itself is older than the mirror; skip it.
+ * - `conflict`: a concurrent writer changed the mirror after we read it. The
+ *   caller must retry the delivery rather than apply a possibly older snapshot
+ *   (this is what stops a same-second cancellation from being dropped).
+ */
+export interface SubscriptionSyncResult {
+  outcome: 'applied' | 'stale' | 'conflict';
+  /** `snapshot_generation` written by this call; null unless `applied`. */
+  generation: number | null;
+}
+
+/** `stale` = a newer event already wrote this subscription; skip the update. */
+export type SubscriptionStatusOutcome = 'applied' | 'stale';
 
 export interface ActiveSubscriptionRef {
   stripeSubscriptionId: string;
@@ -148,7 +170,7 @@ export interface StripeWebhookRepository {
     livemode: boolean,
   ): Promise<ServiceResult<CustomerRow | null>>;
   ensureCustomer(input: EnsureCustomerInput): Promise<ServiceResult<CustomerRow>>;
-  upsertSubscription(input: SubscriptionUpsert): Promise<ServiceResult<SubscriptionSyncOutcome>>;
+  upsertSubscription(input: SubscriptionUpsert): Promise<ServiceResult<SubscriptionSyncResult>>;
   attachCheckoutSession(
     stripeSubscriptionId: string,
     checkoutSessionId: string,
@@ -162,7 +184,7 @@ export interface StripeWebhookRepository {
     stripeSubscriptionId: string,
     status: string,
     lastEventCreated: number,
-  ): Promise<ServiceResult<SubscriptionSyncOutcome>>;
+  ): Promise<ServiceResult<SubscriptionStatusOutcome>>;
   /**
    * Clear the display-only pending marker when the plan it described actually
    * landed. Conditional on the marker still equalling `planKey`, so a newer
@@ -234,6 +256,7 @@ function mapSubscription(
     cancelAt: row.cancel_at,
     canceledAt: row.canceled_at,
     lastEventCreated: row.last_event_created,
+    snapshotGeneration: row.snapshot_generation,
     livemode: row.livemode,
   };
 }
@@ -427,8 +450,9 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
    */
   async upsertSubscription(
     input: SubscriptionUpsert,
-  ): Promise<ServiceResult<SubscriptionSyncOutcome>> {
+  ): Promise<ServiceResult<SubscriptionSyncResult>> {
     const supabase = this.createAdminClient();
+    const nextGeneration = input.expectedGeneration + 1;
     const payload = {
       stripe_subscription_id: input.stripeSubscriptionId,
       billing_customer_id: input.billingCustomerId,
@@ -446,6 +470,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
       cancel_at: input.cancelAt,
       canceled_at: input.canceledAt,
       last_event_created: input.lastEventCreated,
+      snapshot_generation: nextGeneration,
       livemode: input.livemode,
     };
 
@@ -454,27 +479,62 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
         .from('billing_subscriptions')
         .update(payload)
         .eq('stripe_subscription_id', input.stripeSubscriptionId)
+        .eq('snapshot_generation', input.expectedGeneration)
         .lte('last_event_created', input.eventCreated)
-        .select('id');
+        .select('id, snapshot_generation');
+
+    // A zero-row write is either an older event (`stale`, ignore) or a
+    // concurrent same-second writer that moved the generation (`conflict`,
+    // retry the delivery). Never guess: read the row and classify.
+    const classifyUnapplied = async (): Promise<ServiceResult<SubscriptionSyncResult>> => {
+      const { data, error } = await supabase
+        .from('billing_subscriptions')
+        .select('last_event_created')
+        .eq('stripe_subscription_id', input.stripeSubscriptionId)
+        .maybeSingle();
+      if (error) return toDbFailure(error);
+      if (!data) return failure('INTERNAL_SERVER');
+      if (data.last_event_created > input.eventCreated) {
+        return success({ outcome: 'stale', generation: null });
+      }
+      return success({ outcome: 'conflict', generation: null });
+    };
 
     const existing = await conditionalUpdate();
     if (existing.error) return toDbFailure(existing.error);
-    if (existing.data && existing.data.length > 0) return success('applied');
+    if (existing.data && existing.data.length > 0) {
+      return success({ outcome: 'applied', generation: existing.data[0].snapshot_generation });
+    }
 
-    const inserted = await supabase.from('billing_subscriptions').insert(payload);
-    if (!inserted.error) return success('applied');
+    const current = await supabase
+      .from('billing_subscriptions')
+      .select('id')
+      .eq('stripe_subscription_id', input.stripeSubscriptionId)
+      .maybeSingle();
+    if (current.error) return toDbFailure(current.error);
+    if (current.data) return classifyUnapplied();
 
-    if (inserted.error.code !== '23505') return toDbFailure(inserted.error);
-
-    // The row appeared between the update and the insert. Retry the
-    // conditional update once; 0 rows now means the stored row is newer.
-    if (inserted.error.message.includes('billing_subscriptions_one_active')) {
+    const inserted = await supabase
+      .from('billing_subscriptions')
+      .insert(payload)
+      .select('id, snapshot_generation')
+      .maybeSingle();
+    if (!inserted.error && inserted.data) {
+      return success({ outcome: 'applied', generation: inserted.data.snapshot_generation });
+    }
+    if (inserted.error && inserted.error.code !== '23505') return toDbFailure(inserted.error);
+    if (inserted.error?.message.includes('billing_subscriptions_one_active')) {
       return failure('CONFLICT');
     }
 
+    // The row appeared between the read and the insert. Retry the conditional
+    // update once; 0 rows now means a newer generation or an older event.
     const retried = await conditionalUpdate();
     if (retried.error) return toDbFailure(retried.error);
-    return success(retried.data && retried.data.length > 0 ? 'applied' : 'stale');
+    if (retried.data && retried.data.length > 0) {
+      return success({ outcome: 'applied', generation: retried.data[0].snapshot_generation });
+    }
+    return classifyUnapplied();
   }
 
   /**
@@ -502,7 +562,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     stripeSubscriptionId: string,
     status: string,
     lastEventCreated: number,
-  ): Promise<ServiceResult<SubscriptionSyncOutcome>> {
+  ): Promise<ServiceResult<SubscriptionStatusOutcome>> {
     const supabase = this.createAdminClient();
     const { data, error } = await supabase
       .from('billing_subscriptions')

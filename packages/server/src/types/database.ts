@@ -228,6 +228,7 @@ export type Database = {
           plan_key: string;
           price_id: string;
           purchaser_user_id: string | null;
+          snapshot_generation: number;
           status: string;
           stripe_subscription_id: string;
           updated_at: string;
@@ -252,6 +253,7 @@ export type Database = {
           plan_key: string;
           price_id: string;
           purchaser_user_id?: string | null;
+          snapshot_generation?: number;
           status: string;
           stripe_subscription_id: string;
           updated_at?: string;
@@ -275,6 +277,7 @@ export type Database = {
           plan_key?: string;
           price_id?: string;
           purchaser_user_id?: string | null;
+          snapshot_generation?: number;
           status?: string;
           stripe_subscription_id?: string;
           updated_at?: string;
@@ -2416,6 +2419,7 @@ export type Database = {
           p_owner_id: string;
           p_owner_type: string;
           p_plan: string;
+          p_snapshot_generation: number;
           p_subscription_id: string;
         };
         Returns: boolean;
