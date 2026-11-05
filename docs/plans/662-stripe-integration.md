@@ -956,6 +956,7 @@ If none resolves, mark the event `ignored`, log `billing.owner_unresolved` with 
 1. `stripe_prices` by `price.id` + `livemode` + `active`.
 2. Fallback: subscription `metadata.studiq_plan_key`, validated against `subscription_plans` (`is_active`, `for_account_type`).
 3. If neither resolves → `ignored` + `billing.price_unmapped` **error** metric/log. Do not 500 (a retry would loop forever).
+4. Exception: `customer.subscription.deleted` may resolve a **deactivated** catalog row. Cancellation cleanup must not depend on the plan still being sellable; the deletion path only downgrades, so it can never re-apply the retired paid plan. It logs `billing.plan_retired_cancellation`.
 
 Metadata is trustworthy here because it is set by our own signed API call, and it is re-validated against the catalog.
 

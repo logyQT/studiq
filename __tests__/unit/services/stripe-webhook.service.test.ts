@@ -642,6 +642,64 @@ describe('StripeWebhookService', () => {
       expect(harness.repository.clearPendingPlan).toHaveBeenCalledWith('sub_1');
     });
 
+    it('downgrades on deletion even after the catalog plan was deactivated', async () => {
+      const harness = createHarness();
+      const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror({ status: 'canceled' })),
+      );
+      vi.mocked(harness.repository.getPlan).mockResolvedValue(
+        success({ ...CATALOG.spark, isActive: false }),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
+        makeSubscription({ status: 'canceled', canceled_at: 1_700_000_600 }),
+      );
+      const event = makeEvent('customer.subscription.deleted', makeSubscription(), {
+        created: 1_700_000_700,
+      });
+
+      await expect(sign(harness, event)).resolves.toEqual({
+        success: true,
+        data: { received: true },
+      });
+
+      // Cancellation cleanup is not blocked by sellability: the mirror becomes
+      // canceled and the retirement is reported to operators.
+      expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
+        expect.objectContaining({ planKey: 'spark', status: 'canceled' }),
+      );
+      expect(harness.entitlements.downgradeToFreeFenced).toHaveBeenCalledWith(
+        { type: 'user', userId: 'u-1' },
+        'spark',
+        expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
+      );
+      expect(consoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('billing.plan_retired_cancellation'),
+      );
+    });
+
+    it('does not re-apply a deactivated plan outside cancellation', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror()),
+      );
+      vi.mocked(harness.repository.getPlan).mockResolvedValue(
+        success({ ...CATALOG.spark, isActive: false }),
+      );
+      vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
+      const event = makeEvent('customer.subscription.updated', makeSubscription(), {
+        created: 1_700_000_700,
+      });
+
+      await expect(sign(harness, event)).resolves.toEqual({
+        success: true,
+        data: { received: true, ignored: true },
+      });
+
+      expect(harness.repository.upsertSubscription).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+    });
+
     it('skips entitlement when a newer event already owns the subscription', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(

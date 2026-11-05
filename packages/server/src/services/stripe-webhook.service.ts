@@ -455,10 +455,22 @@ export class StripeWebhookService {
       return { ignored: true };
     }
 
-    const resolved = await this.resolvePlan(subscription, subscription.metadata, owner);
+    const resolved = await this.resolvePlan(subscription, subscription.metadata, owner, {
+      // Cancellation cleanup must not depend on the plan still being sellable.
+      // A deleted event only downgrades, so a retired catalog row is enough to
+      // pick the free-plan family; it can never re-apply the paid plan here.
+      allowInactive: deleted,
+    });
     if (!resolved) {
       logError('billing.price_unmapped', { eventId: event.id, subscriptionId: subscription.id });
       return { ignored: true };
+    }
+    if (deleted && !resolved.plan.isActive) {
+      log('billing.plan_retired_cancellation', {
+        eventId: event.id,
+        subscriptionId: subscription.id,
+        planKey: resolved.plan.key,
+      });
     }
 
     return this.syncSubscription({
@@ -960,6 +972,7 @@ export class StripeWebhookService {
     subscription: Stripe.Subscription,
     metadata: Stripe.Metadata | null | undefined,
     owner: ResolvedOwner,
+    options: { allowInactive?: boolean } = {},
   ): Promise<ResolvedPlan | null> {
     const priceId = firstPriceId(subscription);
     if (!priceId) return null;
@@ -968,7 +981,8 @@ export class StripeWebhookService {
       if (!planKey) return null;
       const plan = await this.repository.getPlan(planKey);
       if (isFailure(plan)) throw new Error('plan lookup failed');
-      if (!plan.data?.isActive || !this.planMatchesOwner(plan.data, owner)) return null;
+      if (!plan.data || !this.planMatchesOwner(plan.data, owner)) return null;
+      if (!plan.data.isActive && !options.allowInactive) return null;
       return { plan: plan.data, priceId };
     };
 
