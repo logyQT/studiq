@@ -778,7 +778,6 @@ export class StripeWebhookService {
       log('billing.invoice_action_required', {
         eventId: event.id,
         invoiceId: invoice.id,
-        hostedInvoiceUrl: invoice.hosted_invoice_url,
       });
     }
 
@@ -823,6 +822,16 @@ export class StripeWebhookService {
       event.created,
     );
     if (isFailure(update)) throw new Error('subscription status write failed');
+    if (update.data === 'stale') {
+      // A concurrent newer event already wrote the mirror between our read and
+      // the write; the newer snapshot wins and this one is a no-op.
+      log('billing.webhook_stale_subscription', {
+        eventId: event.id,
+        subscriptionId,
+        eventCreated: event.created,
+      });
+      return { ignored: true };
+    }
 
     return { ignored: false };
   }

@@ -30,6 +30,9 @@ export async function register() {
 async function startTelemetry(logReady: () => Promise<void>): Promise<void> {
   if (process.env.OTEL_SDK_DISABLED === 'true') return;
 
+  // `register()` already validated the environment through
+  // `getPaymentGateway()`, so resolving it here cannot throw.
+  const { resolveAppEnv } = await import('@studiq/server/lib/app-env');
   const { NodeSDK } = await import('@opentelemetry/sdk-node');
   const { getNodeAutoInstrumentations } = await import('@opentelemetry/auto-instrumentations-node');
   const { OTLPTraceExporter } = await import('@opentelemetry/exporter-trace-otlp-http');
@@ -47,8 +50,7 @@ async function startTelemetry(logReady: () => Promise<void>): Promise<void> {
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? 'studiq',
       // APP_ENV is the deployment posture; NODE_ENV is 'production' in QA too.
-      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]:
-        process.env.APP_ENV ?? process.env.NODE_ENV ?? 'development',
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: resolveAppEnv(),
     }),
     traceExporter: new OTLPTraceExporter(),
     metricReaders: [

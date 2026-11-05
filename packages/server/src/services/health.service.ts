@@ -9,6 +9,7 @@ import type {
   SupabaseClient,
   SupabaseClient as UntypedSupabaseClient,
 } from '@supabase/supabase-js';
+import { resolveAppEnv } from '../lib/app-env';
 import type { Database } from '../types/database';
 
 type HealthStatus = HealthStatusResponse;
@@ -33,7 +34,7 @@ export class HealthService {
       status,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      environment: process.env.APP_ENV || process.env.NODE_ENV || 'development',
+      environment: resolveAppEnv(),
       services,
       responseTime: Date.now() - start,
     };

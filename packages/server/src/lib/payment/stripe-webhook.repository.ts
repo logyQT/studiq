@@ -153,11 +153,16 @@ export interface StripeWebhookRepository {
     stripeSubscriptionId: string,
     checkoutSessionId: string,
   ): Promise<ServiceResult<void>>;
+  /**
+   * Compare-and-set on freshness: the update only lands when
+   * `last_event_created <= lastEventCreated`, so a concurrent newer event can
+   * never be overwritten. `stale` means no row moved.
+   */
   updateSubscriptionStatus(
     stripeSubscriptionId: string,
     status: string,
     lastEventCreated: number,
-  ): Promise<ServiceResult<void>>;
+  ): Promise<ServiceResult<SubscriptionSyncOutcome>>;
   /**
    * Clear the display-only pending marker when the plan it described actually
    * landed. Conditional on the marker still equalling `planKey`, so a newer
@@ -497,15 +502,17 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     stripeSubscriptionId: string,
     status: string,
     lastEventCreated: number,
-  ): Promise<ServiceResult<void>> {
+  ): Promise<ServiceResult<SubscriptionSyncOutcome>> {
     const supabase = this.createAdminClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('billing_subscriptions')
       .update({ status, last_event_created: lastEventCreated })
-      .eq('stripe_subscription_id', stripeSubscriptionId);
+      .eq('stripe_subscription_id', stripeSubscriptionId)
+      .lte('last_event_created', lastEventCreated)
+      .select('id');
 
     if (error) return toDbFailure(error);
-    return success(undefined);
+    return success(data && data.length > 0 ? 'applied' : 'stale');
   }
 
   async clearPendingPlanIfApplied(

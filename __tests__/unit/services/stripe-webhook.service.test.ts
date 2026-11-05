@@ -226,7 +226,7 @@ function createRepository(): FakeRepository {
     ),
     upsertSubscription: vi.fn().mockResolvedValue(success('applied')),
     attachCheckoutSession: vi.fn().mockResolvedValue(success(undefined)),
-    updateSubscriptionStatus: vi.fn().mockResolvedValue(success(undefined)),
+    updateSubscriptionStatus: vi.fn().mockResolvedValue(success('applied')),
     clearPendingPlanIfApplied: vi.fn().mockResolvedValue(success(undefined)),
     clearPendingPlan: vi.fn().mockResolvedValue(success(undefined)),
     findActiveSubscription: vi.fn().mockResolvedValue(success(null)),
@@ -1083,6 +1083,33 @@ describe('StripeWebhookService', () => {
         'incomplete',
         1_700_000_700,
       );
+      expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
+    });
+
+    it('acknowledges a stale status write without touching the plan', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror()),
+      );
+      vi.mocked(harness.repository.updateSubscriptionStatus).mockResolvedValueOnce(
+        success('stale'),
+      );
+      const event = makeEvent(
+        'invoice.payment_failed',
+        makeInvoice({ billing_reason: 'subscription_cycle' }),
+        { created: 1_700_000_700 },
+      );
+
+      const result = await sign(harness, event);
+
+      expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
+      expect(harness.repository.updateSubscriptionStatus).toHaveBeenCalledWith(
+        'sub_1',
+        'past_due',
+        1_700_000_700,
+      );
+      expect(harness.repository.insertPayment).not.toHaveBeenCalled();
       expect(harness.entitlements.applyPlan).not.toHaveBeenCalled();
       expect(harness.entitlements.downgradeToFree).not.toHaveBeenCalled();
     });

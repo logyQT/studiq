@@ -1,5 +1,5 @@
 import type { PaymentDriver } from '@studiq/server/lib/payment/payment-gateway';
-import { failure, success, type ServiceResult } from '@studiq/server/lib/service-result';
+import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import type { Database } from '@studiq/server/types/database';
@@ -122,46 +122,50 @@ export class SupabasePaymentHistoryWriter implements PaymentHistoryWriter {
     // The provider key already owns a row: return its identity so the caller
     // can reject a replay that tries to turn one purchase into another.
     const existing = await this.findRecordedByProviderKey(input);
-    if (!existing) {
+    if (isFailure(existing)) return existing;
+    if (!existing.data) {
       // A unique violation that does not resolve to this provider's key is a
       // real integrity problem (e.g. the other provider's key), not a replay.
       return failure('CONFLICT');
     }
 
-    return success({ outcome: 'duplicate', existing });
+    return success({ outcome: 'duplicate', existing: existing.data });
   }
 
   private async findRecordedByProviderKey(
     input: PaymentHistoryInput,
-  ): Promise<RecordedPayment | null> {
+  ): Promise<ServiceResult<RecordedPayment | null>> {
     const supabase = this.createAdminClient();
 
     if (input.provider === 'mock') {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('payments')
         .select(RECORDED_PAYMENT_COLUMNS)
         .eq('session_id', input.sessionId)
         .maybeSingle();
-      return data ? toRecordedPayment(data) : null;
+      if (error) return toDbFailure(error);
+      return success(data ? toRecordedPayment(data) : null);
     }
 
     // `stripe_checkout_session_id` is unique too (first invoice only); a retry
     // may collide on either index depending on which row won.
     if (input.stripeCheckoutSessionId) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('payments')
         .select(RECORDED_PAYMENT_COLUMNS)
         .eq('stripe_checkout_session_id', input.stripeCheckoutSessionId)
         .maybeSingle();
-      if (data) return toRecordedPayment(data);
+      if (error) return toDbFailure(error);
+      if (data) return success(toRecordedPayment(data));
     }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('payments')
       .select(RECORDED_PAYMENT_COLUMNS)
       .eq('stripe_invoice_id', input.stripeInvoiceId)
       .maybeSingle();
-    return data ? toRecordedPayment(data) : null;
+    if (error) return toDbFailure(error);
+    return success(data ? toRecordedPayment(data) : null);
   }
 }
 
