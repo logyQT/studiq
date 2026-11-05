@@ -1200,6 +1200,7 @@ describe('StripeWebhookService', () => {
         'sub_1',
         'past_due',
         1_700_000_700,
+        0,
       );
       expect(harness.repository.insertPayment).not.toHaveBeenCalled();
       expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
@@ -1223,6 +1224,7 @@ describe('StripeWebhookService', () => {
         'sub_1',
         'incomplete',
         1_700_000_700,
+        0,
       );
       expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
@@ -1231,7 +1233,7 @@ describe('StripeWebhookService', () => {
     it('acknowledges a stale status write without touching the plan', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
-        success(makeMirror()),
+        success(makeMirror({ snapshotGeneration: 4 })),
       );
       vi.mocked(harness.repository.updateSubscriptionStatus).mockResolvedValueOnce(
         success('stale'),
@@ -1249,8 +1251,36 @@ describe('StripeWebhookService', () => {
         'sub_1',
         'past_due',
         1_700_000_700,
+        4,
       );
       expect(harness.repository.insertPayment).not.toHaveBeenCalled();
+      expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
+      expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
+    });
+
+    it('retries when a concurrent writer moved the status generation', async () => {
+      const harness = createHarness();
+      vi.mocked(harness.repository.getSubscriptionByStripeId).mockResolvedValue(
+        success(makeMirror()),
+      );
+      vi.mocked(harness.repository.updateSubscriptionStatus).mockResolvedValueOnce(
+        success('conflict'),
+      );
+      const event = makeEvent(
+        'invoice.payment_failed',
+        makeInvoice({ billing_reason: 'subscription_cycle' }),
+        { created: 1_700_000_700 },
+      );
+
+      const result = await sign(harness, event);
+
+      expect(result).toEqual({ success: false, error: 'INTERNAL_SERVER' });
+      expect(harness.repository.finishEvent).toHaveBeenCalledWith(
+        event.id,
+        CLAIM_TOKEN,
+        'failed',
+        expect.any(String),
+      );
       expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
       expect(harness.entitlements.downgradeToFreeFenced).not.toHaveBeenCalled();
     });

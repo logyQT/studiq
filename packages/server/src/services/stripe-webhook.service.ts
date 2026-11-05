@@ -878,8 +878,20 @@ export class StripeWebhookService {
       subscriptionId,
       status,
       event.created,
+      mirror.data.snapshotGeneration,
     );
     if (isFailure(update)) throw new Error('subscription status write failed');
+    if (update.data === 'conflict') {
+      // A concurrent writer moved the mirror after we read its generation.
+      // Retry the delivery so a same-second cancellation is not overwritten by
+      // this older status snapshot.
+      logWarn('billing.webhook_snapshot_conflict', {
+        eventId: event.id,
+        subscriptionId,
+        phase: 'invoice_status',
+      });
+      throw new Error('subscription status conflict');
+    }
     if (update.data === 'stale') {
       // A concurrent newer event already wrote the mirror between our read and
       // the write; the newer snapshot wins and this one is a no-op.

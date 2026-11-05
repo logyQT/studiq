@@ -214,4 +214,23 @@ describe('entitlement freshness fence (#662)', () => {
       data: { outcome: 'applied', generation: 2 },
     });
   });
+
+  it('orders status-only updates by generation as well', async () => {
+    await setMirrorFreshness(200);
+    await setMirrorGeneration(5);
+
+    // A status snapshot read at generation 4 loses to the current generation.
+    await expect(
+      repository.updateSubscriptionStatus(subscriptionId, 'past_due', 200, 4),
+    ).resolves.toEqual({ success: true, data: 'conflict' });
+
+    await expect(
+      repository.updateSubscriptionStatus(subscriptionId, 'past_due', 200, 5),
+    ).resolves.toEqual({ success: true, data: 'applied' });
+
+    // Strictly older events stay `stale` (ignored), not retried forever.
+    await expect(
+      repository.updateSubscriptionStatus(subscriptionId, 'past_due', 100, 6),
+    ).resolves.toEqual({ success: true, data: 'stale' });
+  });
 });

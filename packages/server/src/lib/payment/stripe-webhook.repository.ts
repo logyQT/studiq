@@ -131,8 +131,8 @@ export interface SubscriptionSyncResult {
   generation: number | null;
 }
 
-/** `stale` = a newer event already wrote this subscription; skip the update. */
-export type SubscriptionStatusOutcome = 'applied' | 'stale';
+/** `stale` = newer event; `conflict` = a concurrent write moved the mirror. */
+export type SubscriptionStatusOutcome = 'applied' | 'stale' | 'conflict';
 
 export interface ActiveSubscriptionRef {
   stripeSubscriptionId: string;
@@ -176,14 +176,18 @@ export interface StripeWebhookRepository {
     checkoutSessionId: string,
   ): Promise<ServiceResult<void>>;
   /**
-   * Compare-and-set on freshness: the update only lands when
-   * `last_event_created <= lastEventCreated`, so a concurrent newer event can
-   * never be overwritten. `stale` means no row moved.
+   * Compare-and-set on freshness and snapshot generation: the update only
+   * lands when `last_event_created <= lastEventCreated` **and** the row still
+   * carries `expectedGeneration`. The write advances the generation, so a
+   * same-second status write cannot overwrite a newer snapshot. `stale` means
+   * this event is older than the mirror; `conflict` means a concurrent writer
+   * moved it (retry the delivery).
    */
   updateSubscriptionStatus(
     stripeSubscriptionId: string,
     status: string,
     lastEventCreated: number,
+    expectedGeneration: number,
   ): Promise<ServiceResult<SubscriptionStatusOutcome>>;
   /**
    * Clear the display-only pending marker when the plan it described actually
@@ -562,17 +566,35 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     stripeSubscriptionId: string,
     status: string,
     lastEventCreated: number,
+    expectedGeneration: number,
   ): Promise<ServiceResult<SubscriptionStatusOutcome>> {
     const supabase = this.createAdminClient();
     const { data, error } = await supabase
       .from('billing_subscriptions')
-      .update({ status, last_event_created: lastEventCreated })
+      .update({
+        status,
+        last_event_created: lastEventCreated,
+        snapshot_generation: expectedGeneration + 1,
+      })
       .eq('stripe_subscription_id', stripeSubscriptionId)
+      .eq('snapshot_generation', expectedGeneration)
       .lte('last_event_created', lastEventCreated)
       .select('id');
 
     if (error) return toDbFailure(error);
-    return success(data && data.length > 0 ? 'applied' : 'stale');
+    if (data && data.length > 0) return success('applied');
+
+    // Zero rows: either this event is older than the mirror (`stale`, ignore)
+    // or a concurrent write moved the generation (`conflict`, retry).
+    const current = await supabase
+      .from('billing_subscriptions')
+      .select('last_event_created')
+      .eq('stripe_subscription_id', stripeSubscriptionId)
+      .maybeSingle();
+    if (current.error) return toDbFailure(current.error);
+    if (!current.data) return success('stale');
+    if (current.data.last_event_created > lastEventCreated) return success('stale');
+    return success('conflict');
   }
 
   async clearPendingPlanIfApplied(
