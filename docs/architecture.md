@@ -47,7 +47,7 @@ graph TB
 - `src/components/providers/AuthProvider.tsx` — client-side auth state
 - `src/components/providers/ThemeProvider.tsx` — dark/light mode
 - `src/components/providers/QueryProvider.tsx` — TanStack React Query
-- `packages/ui/src/components/ui/` — 60+ shadcn/ui components (re-exported from `packages/ui/src/index.ts`)
+- `packages/ui/src/components/ui/` — 60+ shadcn/ui components, re-exported via the package entrypoint `packages/ui/src/index.ts` (the only allowed barrel file — all other imports use direct file paths)
 - `src/components/layout/` — layout components (navbar, footer, sidebar)
 - `src/components/flashcards/` — flashcard-specific UI components
 - `src/hooks/` — custom React hooks (API calls, real-time subscriptions, flashcard generation)
