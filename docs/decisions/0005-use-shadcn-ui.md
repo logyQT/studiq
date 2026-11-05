@@ -12,6 +12,8 @@ The application needed a consistent, accessible, and customizable component libr
 
 `shadcn/ui` was selected as the UI component library.
 
+Primitives are hand-maintained in `packages/ui/src/components/ui/` and re-exported from `packages/ui/src/index.ts`.
+
 ## Consequences
 
 ### Positive

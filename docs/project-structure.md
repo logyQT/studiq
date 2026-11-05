@@ -98,7 +98,6 @@ studiq/
 ├── lefthook.yml                      # Git hooks
 ├── knip.json                         # Unused-code detection
 ├── tsconfig.json                     # Root TS config with workspace path aliases
-├── components.json                   # shadcn/ui config
 ├── docker-compose.yml
 ├── .env.local                        # Optional root env, loaded by Vitest (gitignored)
 └── README.md
