@@ -147,6 +147,7 @@ describe('MockPaymentGateway', () => {
     await expect(
       gateway.cancelAtPeriodEnd({
         owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+        customerId: 'cus_1',
         subscriptionId: 'sub_1',
         cancel: true,
       }),
@@ -157,6 +158,7 @@ describe('MockPaymentGateway', () => {
         owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
         customerId: 'cus_1',
         subscriptionId: 'sub_1',
+        currentPlanKey: 'spark',
       }),
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
   });

@@ -263,6 +263,9 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       await service.from('profiles').update({ personal_plan_key: 'launch' }).eq('id', manager.id);
     }
     if (orgId) await cleanupOrganizationDeep(orgId);
+    for (const user of [student, manager]) {
+      if (user) await service.auth.admin.deleteUser(user.id).catch(() => {});
+    }
   });
 
   it('activates a personal plan once, then downgrades on deletion', async () => {

@@ -250,7 +250,7 @@ describe('billing schema (#662)', () => {
   describe('stripe_prices and stripe_webhook_events', () => {
     it('keys prices by plan, cycle and live mode with a unique Price id', async () => {
       const price = {
-        plan_key: 'spark',
+        plan_key: `plan_${RUN}`,
         billing_cycle: 'monthly',
         stripe_price_id: `price_test_${tag('spark')}`,
         currency: 'PLN',
@@ -270,7 +270,7 @@ describe('billing schema (#662)', () => {
 
       const duplicatePriceId = await service.from('stripe_prices').insert({
         ...price,
-        plan_key: 'ace',
+        plan_key: `plan_ace_${RUN}`,
         stripe_price_id: price.stripe_price_id,
       });
       expect(duplicatePriceId.error?.code).toBe('23505');
