@@ -156,11 +156,17 @@ export function isProductTaxCodeConfirmed(
 export interface BootstrapStripePrice {
   active: boolean;
   type: string;
-  product: string;
+  /** The SDK may return the expanded Product object instead of its id. */
+  product: string | { id: string };
   currency: string;
   unit_amount: number | null;
   recurring: { interval: string; interval_count: number } | null;
   tax_behavior: string | null;
+}
+
+function objectId(value: string | { id: string } | null | undefined): string | null {
+  if (!value) return null;
+  return typeof value === 'string' ? value : value.id;
 }
 
 /**
@@ -176,7 +182,7 @@ export function priceMatches(
   return (
     price.active &&
     price.type === 'recurring' &&
-    price.product === productId &&
+    objectId(price.product) === productId &&
     price.currency.toLowerCase() === row.currency &&
     price.unit_amount === row.unitAmount &&
     price.recurring?.interval === row.interval &&
@@ -187,7 +193,8 @@ export function priceMatches(
 
 export interface BootstrapStripeProduct {
   name: string;
-  tax_code?: string | null;
+  /** The SDK returns a TaxCode object (or its id) once a code is assigned. */
+  tax_code?: string | { id: string } | null;
 }
 
 /**
@@ -200,7 +207,7 @@ export function productUpdateFor(
   taxCode: string | null,
 ): { name?: string; tax_code?: string } | null {
   const needsName = existing.name !== row.productName;
-  const needsTaxCode = Boolean(taxCode) && existing.tax_code !== taxCode;
+  const needsTaxCode = Boolean(taxCode) && objectId(existing.tax_code) !== taxCode;
   if (!needsName && !needsTaxCode) return null;
 
   return {
