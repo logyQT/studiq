@@ -1,3 +1,4 @@
+// Scope-filter validation (#1022): test-only change, no behaviour change.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
 import {
