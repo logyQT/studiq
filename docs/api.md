@@ -75,8 +75,10 @@ call returns `429 RATE_LIMITED` with `Retry-After`. `CHECKOUT_KILL_SWITCH=1`
 stops new Checkout Sessions (503) without touching the payment driver or
 webhooks.
 
-Every endpoint below is authenticated by `withAuth()` (the proxy skips
-`/api/*`). The billing **owner is the authenticated user** (`ctx.userId`) for
+Every endpoint below except `POST /api/v1/stripe/webhook` in `stripe` mode is
+authenticated by `withAuth()` (the proxy skips `/api/*`); the webhook is public
+and verified by its signature over the raw body. The billing **owner is the
+authenticated user** (`ctx.userId`) for
 personal plans and the **active organization** (`ctx.activeOrgId`,
 `ctx.accountType`) for organization plans — with one documented exception:
 `create-checkout-session` accepts an `orgId` because a manager can buy for a
@@ -84,16 +86,16 @@ non-active organization. That id is only a hint: the server re-checks
 `org_members` + the `admin` role before using it. The client never supplies a
 customer id, subscription id, price id or amount.
 
-| Method | Endpoint                                 | Body                           | Notes                                                                                                                              |
-| ------ | ---------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/v1/billing/subscription`           | —                              | Shared read model: effective plan, billed plan, status, period, cancel/pending flags, portal/change/cancel capability, invoice URL |
-| `POST` | `/api/v1/stripe/create-checkout-session` | `{ planKey, orgId?, locale? }` | Returns `{ url }`: hosted Stripe Checkout, or the local mock form. `orgId` is required for manager plans and must be a uuid        |
-| `GET`  | `/api/v1/stripe/portal?locale=pl\|en`    | —                              | Returns `{ url }` for the hosted Billing Portal; `404` when the owner has no Stripe customer mapping                               |
-| `POST` | `/api/v1/billing/change-plan`            | `{ planKey }`                  | Upgrade applies now (anchor reset + unused-time credit); downgrade schedules at the period boundary. No entitlement write          |
-| `POST` | `/api/v1/billing/cancel`                 | `{ cancel: boolean }`          | `true` = cancel at period end, `false` = reactivate. No entitlement write                                                          |
-| `POST` | `/api/v1/billing/release-scheduled-plan` | —                              | “Keep current plan”: releases a scheduled downgrade and clears the display marker. No entitlement write                            |
-| `POST` | `/api/v1/billing/reconcile`              | `{ sessionId }`                | Success-page reconcile: verifies session ownership, reuses the idempotent activation path, activate-only, per-user rate-limited    |
-| `POST` | `/api/v1/stripe/webhook`                 | raw Stripe event               | `stripe` mode: public + `stripe-signature` verified over the raw body. `mock` mode: `withAuth`, caller's own account only          |
+| Method | Endpoint                                 | Body                           | Notes                                                                                                                                                          |
+| ------ | ---------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/v1/billing/subscription`           | —                              | Shared read model: effective plan, billed plan, status, period, cancel/pending flags, portal/change/cancel capability, invoice URL                             |
+| `POST` | `/api/v1/stripe/create-checkout-session` | `{ planKey, orgId?, locale? }` | Returns `{ url }`: hosted Stripe Checkout, or the local mock form. `orgId` is required for manager plans and must be a uuid                                    |
+| `GET`  | `/api/v1/stripe/portal?locale=pl\|en`    | —                              | Returns `{ url }` for the hosted Billing Portal; `404` when the owner has no Stripe customer mapping                                                           |
+| `POST` | `/api/v1/billing/change-plan`            | `{ planKey }`                  | Upgrade applies now (anchor reset + unused-time credit); downgrade schedules at the period boundary. No entitlement write                                      |
+| `POST` | `/api/v1/billing/cancel`                 | `{ cancel: boolean }`          | `true` = cancel at period end, `false` = reactivate. No entitlement write                                                                                      |
+| `POST` | `/api/v1/billing/release-scheduled-plan` | —                              | “Keep current plan”: releases a scheduled downgrade and clears the display marker. No entitlement write; returns `{ released: false }` when no schedule exists |
+| `POST` | `/api/v1/billing/reconcile`              | `{ sessionId }`                | Success-page reconcile: verifies session ownership, reuses the idempotent activation path, activate-only, per-user rate-limited                                |
+| `POST` | `/api/v1/stripe/webhook`                 | raw Stripe event               | `stripe` mode: public + `stripe-signature` verified over the raw body. `mock` mode: `withAuth`, caller's own account only                                      |
 
 ### Read model
 
@@ -124,7 +126,7 @@ signed.
 
 | Code                   | When                                                                                                              |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `BAD_REQUEST`          | Free plan, unknown plan/cadence, missing org id, no schedule to release                                           |
+| `BAD_REQUEST`          | Free plan, unknown plan/cadence, missing org id, change to the current plan                                       |
 | `UNAUTHORIZED`         | No session (every route except the Stripe webhook)                                                                |
 | `FORBIDDEN`            | Wrong plan family, non-admin org caller, foreign checkout session                                                 |
 | `NOT_FOUND`            | No active subscription/customer mapping (mock driver returns this for provider actions)                           |

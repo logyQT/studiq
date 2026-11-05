@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { releaseScheduledPlan, withAuthMock } = vi.hoisted(() => ({
+const { releaseScheduledPlan, withAuthMock, rateLimitCheck } = vi.hoisted(() => ({
   releaseScheduledPlan: vi.fn(),
   withAuthMock: vi.fn(),
+  rateLimitCheck: vi.fn(),
 }));
 
 vi.mock('@studiq/server/controllers/billing.controller', () => ({
@@ -11,6 +12,10 @@ vi.mock('@studiq/server/controllers/billing.controller', () => ({
 }));
 
 vi.mock('@studiq/server/lib/with-auth', () => ({ withAuth: withAuthMock }));
+
+vi.mock('@studiq/server/lib/rate-limiter', () => ({
+  createRateLimiter: () => ({ check: rateLimitCheck }),
+}));
 
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { POST } from '@/app/(backend)/api/v1/billing/release-scheduled-plan/route';
@@ -36,6 +41,7 @@ const ctx = {
 describe('POST /api/v1/billing/release-scheduled-plan', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    rateLimitCheck.mockReturnValue({ allowed: true });
     vi.mocked(withAuth).mockImplementation((_req, handler) => handler(ctx));
   });
 
@@ -65,5 +71,17 @@ describe('POST /api/v1/billing/release-scheduled-plan', () => {
     const response = await POST(releaseRequest());
 
     expect(response.status).toBe(403);
+  });
+
+  it('returns 429 and skips the controller when the per-user bucket is full', async () => {
+    rateLimitCheck.mockReturnValue({ allowed: false, retryAfterMs: 5_000 });
+
+    const response = await POST(releaseRequest());
+
+    expect(rateLimitCheck).toHaveBeenCalledWith('u-1');
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ success: false, error: 'RATE_LIMITED' });
+    expect(response.headers.get('retry-after')).toBe('5');
+    expect(releaseScheduledPlan).not.toHaveBeenCalled();
   });
 });

@@ -94,7 +94,11 @@ export interface StripeClient {
  * change request/response semantics unnoticed.
  */
 export function createStripeClient(secretKey: string): StripeClient {
-  const stripe = new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION });
+  const stripe = new Stripe(secretKey, {
+    apiVersion: STRIPE_API_VERSION,
+    maxNetworkRetries: 2,
+    timeout: 20_000,
+  });
 
   return {
     customers: {

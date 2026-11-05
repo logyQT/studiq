@@ -430,7 +430,7 @@ export function CheckoutMockForm() {
                   <Label htmlFor="cardName">{ct('card_name')}</Label>
                   <Input
                     id="cardName"
-                    placeholder="John Doe"
+                    placeholder={ct('card_name_placeholder')}
                     value={cardName}
                     onChange={(e) => setCardName(e.target.value)}
                     disabled={isProcessing || isDone}

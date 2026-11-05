@@ -19,17 +19,17 @@ StudiQ is delivered as a course project. **The scope is this roadmap and nothing
 
 ## Status at a glance
 
-| Phase | Topic                         | Status                                                                                    |
-| ----- | ----------------------------- | ----------------------------------------------------------------------------------------- |
-| 0     | Foundation                    | ✅                                                                                        |
-| 1     | Org hierarchy — groups        | ✅                                                                                        |
-| 2     | Resource sharing & visibility | ✅                                                                                        |
-| 3     | Teacher tools                 | 🏗️ quiz builder + assignments done; question-bank polish, documents, dashboard open       |
-| 4     | AI integration                | 🏗️ agent + security done; 4B extensions open                                              |
-| 5     | Student experience            | 🏗️ stats and SRS basics done; dashboard, goals, extra stats open                          |
-| 6     | Subscription gating           | 🏗️ gating + seats + Stripe driver done; mock remains default, pilot open                  |
-| 7     | Admin dashboard & analytics   | 🏗️ admin panel done; global stats open                                                    |
-| 8     | Polish & launch               | 🏗️ branding, onboarding checklists, SEO done; notifications, shortcuts, empty states open |
+| Phase | Topic                         | Status                                                                                             |
+| ----- | ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| 0     | Foundation                    | ✅                                                                                                 |
+| 1     | Org hierarchy — groups        | ✅                                                                                                 |
+| 2     | Resource sharing & visibility | ✅                                                                                                 |
+| 3     | Teacher tools                 | 🏗️ quiz builder + assignments done; question-bank polish, documents, dashboard open                |
+| 4     | AI integration                | 🏗️ agent + security done; 4B extensions open                                                       |
+| 5     | Student experience            | 🏗️ stats and SRS basics done; dashboard, goals, extra stats open                                   |
+| 6     | Subscription gating           | 🏗️ gating + seats + Stripe driver done; production is Stripe-only, mock is the dev/test/QA default |
+| 7     | Admin dashboard & analytics   | 🏗️ admin panel done; global stats open                                                             |
+| 8     | Polish & launch               | 🏗️ branding, onboarding checklists, SEO done; notifications, shortcuts, empty states open          |
 
 Terminology: the roadmap was written when organizations were called universities. The code now uses **organizations** (`organizations`, `org_members`, `org_roles`), **groups** and **plans / features / limits**; the old `university_*` names no longer exist.
 
@@ -182,7 +182,7 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 | Feature flags                            | ✅     | DB-backed `features`, `feature_flags`, per-plan and per-role (`org_role_features`), user overrides, admin UI                                                    |
 | Plans, limits and gating                 | ✅     | `subscription_plans`, `plan_features`, `plan_limits`, `/pricing`, upgrade prompts, plan limits resolved live                                                    |
 | Seat-based licensing                     | ✅     | `org_seat_pools`, assignments, `/manage/seats` ([plan](plans/seat-based-licensing.md))                                                                          |
-| Checkout, billing pages, payment history | ✅     | Mock simulation by default; hosted Stripe Checkout/Portal behind `PAYMENT_DRIVER=stripe`                                                                        |
+| Checkout, billing pages, payment history | ✅     | Mock simulation is the dev/test/QA default; hosted Stripe Checkout/Portal is the production path behind `PAYMENT_DRIVER=stripe`                                 |
 | Real Stripe                              | 🏗️     | [#662](https://github.com/logyQT/studiq/issues/662) production uses Stripe (`APP_ENV=production`, no mock); dev/test/QA explicitly use the mock contract double |
 
 ---
