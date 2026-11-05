@@ -12,6 +12,8 @@ The application needed a consistent, accessible, and customizable component libr
 
 `shadcn/ui` was selected as the UI component library.
 
+Primitives are hand-maintained in `packages/ui/src/components/ui/` and re-exported from `packages/ui/src/index.ts`.
+
 ## Consequences
 
 ### Positive
@@ -25,5 +27,4 @@ The application needed a consistent, accessible, and customizable component libr
 ### Negative
 
 - Components must be updated manually (no npm updates)
-- Initial setup requires running `npx shadcn-ui@latest add` for each component
 - Larger codebase footprint compared to importing a library
