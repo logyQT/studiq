@@ -137,7 +137,7 @@ signed.
 
 Entitlements (`organizations.plan`, `profiles.personal_plan_key`) are written
 **only** by `EntitlementService`. Stripe webhook activation and
-`POST /billing/reconcile` use the fenced path (`apply_entitlement_fenced`,
+`POST /api/v1/billing/reconcile` use the fenced path (`apply_entitlement_fenced`,
 locked against `billing_subscriptions.last_event_created`), so an older event
 can never restore a plan after a newer cancellation or downgrade has won.
 The mock and other non-webhook flows use the unfenced writer. `change-plan`,
