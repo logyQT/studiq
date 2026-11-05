@@ -7,9 +7,10 @@ import { EntitlementService } from '@studiq/server/services/entitlement.service'
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { asJson } from '#test/helpers/json';
-import { createServiceClient, TEST_USERS } from '#test/integration/helpers';
+import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
+import { createServiceClient } from '#test/integration/helpers';
 
 /**
  * Opt-in verification of the real Stripe sandbox (#662).
@@ -34,6 +35,7 @@ if (requested && !process.env.STRIPE_SECRET_KEY) {
 const enabled = requested && Boolean(process.env.STRIPE_SECRET_KEY);
 
 const API_VERSION = '2026-10-28.endive';
+const SANDBOX_PASSWORD = 'StripeSandbox662!';
 
 type PaidPlan = {
   key: string;
@@ -48,6 +50,9 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
   let products: Stripe.Product[];
   let monthlyPrices: Stripe.Price[];
   let portal: Stripe.BillingPortal.Configuration | undefined;
+  // Dedicated per-run owner: the checkout check deletes billing rows, so it
+  // must never touch the shared dev-seed student.
+  let checkoutUser: TestUserFixture;
 
   beforeAll(async () => {
     const secretKey = process.env.STRIPE_SECRET_KEY!;
@@ -55,6 +60,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
 
     stripe = new Stripe(secretKey, { apiVersion: API_VERSION });
     service = createServiceClient();
+    checkoutUser = await createTestUser({ role: 'student', password: SANDBOX_PASSWORD });
 
     const { data, error } = await service
       .from('subscription_plans')
@@ -86,6 +92,14 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
     }
     portal = await stripe.billingPortal.configurations.retrieve(portalId);
   }, 30_000);
+
+  afterAll(async () => {
+    if (!checkoutUser) return;
+    await service.from('payments').delete().eq('user_id', checkoutUser.id);
+    await service.from('billing_subscriptions').delete().eq('user_id', checkoutUser.id);
+    await service.from('billing_customers').delete().eq('user_id', checkoutUser.id);
+    await service.auth.admin.deleteUser(checkoutUser.id).catch(() => {});
+  });
 
   it('runs against a PL account that presents PLN in test mode', async () => {
     const account = await stripe.accounts.retrieve();
@@ -184,7 +198,7 @@ describe.skipIf(!enabled)('Stripe test-mode sandbox (#662)', () => {
   });
 
   it('creates a real test-mode Checkout Session for a mapped Price', async () => {
-    const studentId = TEST_USERS.STUDENT.id;
+    const studentId = checkoutUser.id;
     const plan = plans[0];
 
     // A crashed earlier run or a manual sandbox purchase must not turn this
@@ -318,7 +332,11 @@ function eventSubscriptionId(event: Stripe.Event): string | null {
 }
 
 describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 §10.3)', () => {
-  const userId = TEST_USERS.STUDENT.id;
+  // A dedicated owner per suite: lifecycle cleanup resets payments,
+  // subscriptions, customers and the plan, so it must never touch the shared
+  // dev-seed student.
+  let userId: string;
+  let lifecycleUser: TestUserFixture;
   // Unique per run: makes clock names, customer emails and idempotency keys
   // replay-safe even if a previous clock was leaked.
   const tag = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -340,6 +358,8 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
 
     service = createServiceClient();
     stripe = new Stripe(secretKey, { apiVersion: API_VERSION });
+    lifecycleUser = await createTestUser({ role: 'student', password: SANDBOX_PASSWORD });
+    userId = lifecycleUser.id;
     webhookService = new StripeWebhookService({
       client: createStripeClient(secretKey),
       webhookSecret: LIFECYCLE_WEBHOOK_SECRET,
@@ -394,6 +414,12 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
       );
     }
   }, 30_000);
+
+  afterAll(async () => {
+    if (!lifecycleUser) return;
+    await resetBilling();
+    await service.auth.admin.deleteUser(lifecycleUser.id).catch(() => {});
+  });
 
   function metadata(planKey: string) {
     return {

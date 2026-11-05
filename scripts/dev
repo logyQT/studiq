@@ -367,6 +367,12 @@ resolve_contract() {
   fi
   SUPABASE_START_EXCLUDE=$(printf '%s' "$SUPABASE_START_EXCLUDE" | tr -d '[:space:]')
 
+  # Export the posture before any mode branch: stack mode returns early, and
+  # every mode must render APP_ENV into `apps/web/.env`. The app treats
+  # production as the default; a local checkout is explicitly development
+  # unless the operator sets APP_ENV in root `.env`.
+  env_set APP_ENV "${ENV[APP_ENV]:-development}" force
+
   # ── Local mode: experimental `supabase stack` backend ─────────────────────
   # No port math and no project-id derivation: the CLI assigns ports and scopes
   # data by project root + git branch + optional SUPABASE_STACK name. Endpoints
@@ -532,9 +538,6 @@ resolve_contract() {
   fi
 
   # Export the resolved contract (force: derived values win over stale .env).
-  # The app treats production as the default posture; a local checkout is
-  # explicitly development unless the operator sets APP_ENV in root `.env`.
-  env_set APP_ENV "${ENV[APP_ENV]:-development}" force
   env_set SUPABASE_PROJECT_ID "$SUPABASE_PROJECT_ID" force
   env_set APP_PORT "$APP_PORT" force
   env_set APP_URL "$APP_URL" force
