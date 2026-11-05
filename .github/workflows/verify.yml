@@ -49,16 +49,18 @@ jobs:
   # browsers does not need to sit idle for 28 s behind lint. The trade-off is
   # deliberate — a lint failure no longer stops the test jobs before they start,
   # so it also burns their runners.
-  # A QA-suite PR only touches qa/** and __tests__/** (specs and helpers); the
-  # app, its unit/integration tests and the e2e matrix are skipped there.
-  # `checks` (lint/typecheck, which does cover qa specs) and the `qa-suite` job
-  # still run. A Markdown-only docs PR (every changed file is `*.md`, none under
-  # qa/cases/) is treated the same way and then some: no app code and no spec
-  # can change, so `checks` is the only job that does any real work (the e2e legs
-  # still report, but as no-ops — see the note on top — and the QA suite starts no
-  # shard at all). A non-Markdown file under docs/ (e.g. docs/image.png) is still
-  # `app=false`, but the QA router cannot attribute it, so it starts all four
-  # shards.
+  # A QA-suite PR only touches qa/** and __tests__/qa/**; the app, its
+  # unit/integration tests and the e2e matrix cannot change there, so they are
+  # skipped. `checks` (lint/typecheck, which does cover qa specs) and the
+  # `qa-suite` job still run. Everything else under __tests__/ (unit,
+  # integration, e2e, helpers, setup) is app code: a test-only change there must
+  # run the suite it edits, so `app` stays true. A Markdown-only docs PR (every
+  # changed file is `*.md`, none under qa/cases/) is treated the same way and
+  # then some: no app code and no spec can change, so `checks` is the only job
+  # that does any real work (the e2e legs still report, but as no-ops — see the
+  # note on top — and the QA suite starts no shard at all). A non-Markdown file
+  # under docs/ (e.g. docs/image.png) is still `app=false`, but the QA router
+  # cannot attribute it, so it starts all four shards.
   #
   # Why the `scope` gate stays (#1022, 36 runs): `scope` takes 5-8 s (median
   # 6 s) and the first gated job starts ~3 s after it, so removing the gate is
@@ -99,7 +101,9 @@ jobs:
             # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
             # the first match and the writer gets SIGPIPE (141), which flipped
             # `app` to false and skipped the unit/integration/e2e jobs.
-            if ! grep -qvE '^(qa/|__tests__/|docs/)|\.md$' <<< "$changed"; then
+            # Only the QA subtree is non-app: a test-only change under
+            # __tests__/unit|integration|e2e must run the suite it edits.
+            if ! grep -qvE '^(qa/|__tests__/qa/|docs/)|\.md$' <<< "$changed"; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
