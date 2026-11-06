@@ -29,15 +29,19 @@ the grep after any route change; a new one outside that set is a finding on its 
 
 ## C. Mass assignment / trust of client fields
 
-| #   | probe                                                                                                                                             | expected                                                                                                                                                                                                                     |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C1  | Create or update a resource with extra fields (`account_type`, `organization_id`, `created_by`, `plan`, `visibility` where not a feature, `role`) | unknown fields ignored or `422`; protected fields never taken from the body                                                                                                                                                  |
-| C2  | Register through `POST /api/v1/auth/register` with `accountType: "manager"` (the schema's camelCase field)                                        | **allowed today**: signup may self-select `student`/`educator`/`manager` — record the effective `app_metadata.account_type` after signup. If the product decision is student-only signup, an accepted `manager` is a finding |
-| C3  | Any endpoint that echoes back the row it just wrote                                                                                               | **protected** fields (`account_type`, `organization_id`, `created_by`, `plan`, `role`) keep their authorized values; server-managed columns (`updated_at`, `search_vector`, …) may legitimately change                       |
+| #   | probe                                                                                                                                             | expected                                                                                                                                                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| C1  | Create or update a resource with extra fields (`account_type`, `organization_id`, `created_by`, `plan`, `visibility` where not a feature, `role`) | unknown fields ignored or `422`; protected fields never taken from the body                                                                                                                            |
+| C2  | Any endpoint that echoes back the row it just wrote                                                                                               | **protected** fields (`account_type`, `organization_id`, `created_by`, `plan`, `role`) keep their authorized values; server-managed columns (`updated_at`, `search_vector`, …) may legitimately change |
 
-`account_type` is the escalation to watch on **update** paths, not at signup: `withAuth` reads it
-from the token, so a writable `account_type` on a profile edit is a role switch, not a profile
-edit. Signup self-selection is the documented product behaviour until that changes.
+`account_type` is the escalation to watch on **update** paths: `withAuth` reads it from the token,
+so a writable `account_type` on a profile edit is a role switch, not a profile edit.
+
+Signup is the one deliberate exception, so it is not a deny probe: `POST /api/v1/auth/register`
+takes `accountType` (camelCase) and stores it as `app_metadata.account_type` with no
+restriction, so a new account may be `student`, `educator` or `manager` by product decision.
+Record the effective type after signup; it becomes a finding only if the policy changes to
+student-only signup.
 
 ## D. Invites, join codes, session codes
 
