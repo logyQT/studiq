@@ -1,7 +1,7 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 
 /** The student plan the landing page presents as "Premium" (the popular one on /pricing/student). */
-export const LANDING_PREMIUM_KEY = 'ace';
+const LANDING_PREMIUM_KEY = 'ace';
 
 export type LandingPricing = {
   /** Free student plan (price 0). */

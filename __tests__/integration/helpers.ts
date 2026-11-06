@@ -9,7 +9,7 @@ import { vi } from 'vitest';
 // Test User Constants (from supabase/seeds/01_users.sql)
 // Password for all accounts: 'pass'
 // ============================================================
-export const TEST_USERS = {
+const TEST_USERS = {
   UNIVERSITY_ADMIN: {
     id: '00000000-0000-4000-8001-000000000002',
     email: 'manager@dev.local',
@@ -45,7 +45,7 @@ export const TEST_USERS = {
 // ============================================================
 // Real Supabase Client (bypasses the global mock)
 // ============================================================
-export function createRealClient() {
+function createRealClient() {
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -249,7 +249,7 @@ export async function cleanupOrganizationByName(namePrefix: string) {
 // ============================================================
 // Cleanup Functions (use service role client to bypass RLS)
 // ============================================================
-export async function cleanupSubjects(userId: string, namePrefix?: string) {
+async function cleanupSubjects(userId: string, namePrefix?: string) {
   const supabase = createLegacyServiceClient();
   let query = supabase.from('subjects').delete().eq('created_by', userId);
   if (namePrefix) {

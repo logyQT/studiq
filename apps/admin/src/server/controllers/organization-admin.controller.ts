@@ -11,7 +11,7 @@ import {
   type OrganizationService as OrganizationServiceType,
 } from '@studiq/server/services/organization.service';
 
-export class OrganizationAdminController {
+class OrganizationAdminController {
   constructor(private organizationService: OrganizationServiceType) {}
 
   async getAll(): Promise<ControllerResponse> {

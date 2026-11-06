@@ -37,31 +37,21 @@ const config: KnipConfig = {
   ],
 
   ignoreIssues: {
-    // TODO(knip-baseline): unused exports/types in a generated Supabase types
-    // file — removed in the dead-code/unused-package cleanup PR.
+    // TODO(knip-baseline): generated Supabase types file, converted to a
+    // documented policy in the follow-up PR.
     'packages/server/src/types/database.ts': ['exports', 'types'],
-    // TODO(knip-baseline): unused test fixture/helper exports — removed in the
-    // dead-code/unused-package cleanup PR.
-    '__tests__/e2e/fixtures/profiles.ts': ['exports'],
+    // TODO(knip-baseline): unused exports/types whose declarations are still
+    // referenced or are kept for a follow-up — deleting them would change a
+    // declaration, which this pass deliberately avoids.
     '__tests__/integration/helpers.ts': ['exports'],
-    // TODO(knip-baseline): unused admin controller export — removed in the
-    // dead-code/unused-package cleanup PR.
-    'apps/admin/src/server/controllers/organization-admin.controller.ts': ['exports'],
-    // TODO(knip-baseline): unused admin model exports/types — removed in the
-    // dead-code/unused-package cleanup PR.
     'apps/admin/src/server/models/feature-flag.model.ts': ['types'],
     'apps/admin/src/server/models/plan-feature.model.ts': ['exports', 'types'],
     'apps/admin/src/server/models/plan-limit.model.ts': ['exports', 'types'],
     'apps/admin/src/server/models/platform-stats.model.ts': ['types'],
-    'apps/admin/src/server/models/user-admin.model.ts': ['exports', 'types'],
+    'apps/admin/src/server/models/user-admin.model.ts': ['types'],
     'apps/admin/src/server/models/user-feature-override.model.ts': ['types'],
-    // TODO(knip-baseline): unused web exports — removed in the
-    // dead-code/unused-package cleanup PR.
-    'apps/web/src/hooks/use-notifications.ts': ['exports'],
     'apps/web/src/lib/color-utils.ts': ['exports'],
     'apps/web/src/lib/datetime.ts': ['exports'],
-    'apps/web/src/lib/landing-pricing.ts': ['exports'],
-    'apps/web/src/lib/pricing-limits.ts': ['exports'],
     'apps/web/src/lib/query-keys.ts': ['exports'],
   },
 
