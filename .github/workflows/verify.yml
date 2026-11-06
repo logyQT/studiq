@@ -463,8 +463,26 @@ jobs:
         # QA runs headless, and since Playwright 1.49 a headless launch drives
         # `chromium_headless_shell`, not the full browser: ~275 MB instead of
         # ~675 MB for both, which is also what the cache entry above carries.
-        # `--with-deps` still installs the system libraries.
-        run: bunx playwright install --with-deps --only-shell chromium
+        #
+        # No `--with-deps`: on `ubuntu-24.04` all 21 libraries in Playwright's
+        # chromium list (libnss3, libatk*1.0-0t64, libcups2t64, libgbm1,
+        # libxkbcommon0, ...) are already on the image — apt reports every one
+        # "already the newest version". The flag therefore adds only the `tools`
+        # group, and of that group only nine packages are missing: the font and
+        # xfont set (fonts-freefont-ttf, fonts-ipafont-gothic,
+        # fonts-tlwg-loma-otf, fonts-unifont, fonts-wqy-zenhei, xfonts-*) —
+        # 21.1 MB whose download is what turned a 13 s step into 709 s on a
+        # throttled mirror (2026-11-05 21:41Z, verify run 42114794505). Those
+        # nine only add Thai, CJK and last-resort glyphs: the suite renders
+        # pl/en, and fontconfig resolves sans-serif/serif/monospace/Arial to the
+        # same DejaVu and Liberation files with or without them.
+        run: bunx playwright install --only-shell chromium
+
+      - name: Assert the browser runtime is complete
+        # What `--with-deps` used to guarantee implicitly. `ldd` names the
+        # missing soname in ~1 s instead of failing the first spec ten minutes
+        # in, and the launch proves the shell actually starts.
+        run: bash scripts/check-playwright-runtime.sh chromium
 
       - name: Save Playwright browsers
         # A cache write is an optimisation: never let it fail the job. One
@@ -667,9 +685,33 @@ jobs:
           restore-keys: |
             playwright-ubuntu-24.04-${{ matrix.project }}-
 
-      - name: Install browsers
-        run: bunx playwright install --with-deps ${{ matrix.project }}
-        if: matrix.project != 'admin-api' && needs.scope.outputs.app == 'true'
+      - name: Install browsers (chromium)
+        # Chromium needs no apt on `ubuntu-24.04`: all 21 libs in Playwright's
+        # chromium list are already there, so `--with-deps` only pulls the
+        # font/xfont `tools` group (21.1 MB) — the download that once took
+        # 709 s. Same reasoning as the QA shard's install above.
+        if: matrix.project == 'chromium' && needs.scope.outputs.app == 'true'
+        run: bunx playwright install chromium
+
+      - name: Install browsers (firefox)
+        # Firefox needs no apt either, for a different reason: none of the 36
+        # packages `--with-deps` adds (libavcodec60, libx264-164, libx265-199,
+        # librsvg2-2, libvpx9, the VA-API set, ...) is a DT_NEEDED of any file
+        # in the Firefox build. They are *dlopened* media codecs, so the browser
+        # starts and the suite runs without them; only HTML5 audio/video decode
+        # regresses. `__tests__/e2e` has no <audio>/<video> (the QA spec that
+        # renders `<audio controls>` is chromium-only and asserts markup), and
+        # the GTK/X/pango/fontconfig libraries Firefox does link are already on
+        # the image. The guard below launches the browser, so a future Firefox
+        # build that links a system codec fails at install time, not silently.
+        if: matrix.project == 'firefox' && needs.scope.outputs.app == 'true'
+        run: bunx playwright install firefox
+
+      - name: Assert the browser runtime is complete
+        # Also ldd's the firefox executable and starts it. Playwright's own host
+        # validation only fires on the first launch of a fresh install.
+        if: needs.scope.outputs.app == 'true'
+        run: bash scripts/check-playwright-runtime.sh ${{ matrix.project }}
 
       - name: Save Playwright browsers
         # A cache write is an optimisation: never let it fail the job.
@@ -791,7 +833,14 @@ jobs:
             echo "MAILPIT_URL=$MAILPIT_URL"
           } > apps/admin/.env
       - name: Install browsers
-        run: bunx playwright install --with-deps chromium
+        # `admin-api` is an HTTP-level project (the `request` fixture; the admin
+        # UI cannot sign PEM requests), so no browser is launched here — but the
+        # install stays as a smoke test of the binary the other legs use. No
+        # `--with-deps`: `ubuntu-24.04` ships every library in Playwright's
+        # chromium list (see the QA shard's install above).
+        run: bunx playwright install chromium
+      - name: Assert the chromium runtime is complete
+        run: bash scripts/check-playwright-runtime.sh chromium
       - name: Run Playwright (admin-api)
         run: bunx playwright test --project=admin-api --shuffle --reporter=line
       - name: Upload report

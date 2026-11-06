@@ -309,7 +309,7 @@ describe('the three insight cards report failures (#657 review)', () => {
 describe('insight cards, second review round (#657)', () => {
   it('draws no bar for a retention bucket without reviews', () => {
     const card = readFileSync('apps/web/src/components/stats/retention-curve-card.tsx', 'utf8');
-    expect(card).toContain('if (!props.reviews) return null;');
+    expect(card).toContain('if (!reviews) return null;');
     expect(card).not.toContain('minPointSize');
   });
 

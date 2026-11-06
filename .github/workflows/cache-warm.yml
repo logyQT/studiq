@@ -134,7 +134,10 @@ jobs:
           # never be re-saved under the current lockfile.
           key: playwright-ubuntu-24.04-${{ matrix.key }}-${{ hashFiles('bun.lock') }}
       - name: Install browser
-        # Browser binaries only; the test jobs still run --with-deps for apt.
+        # Browser binaries only. Neither test leg needs apt on ubuntu-24.04 any
+        # more: chromium's dependency list is already on the image, and
+        # firefox's 36 extra packages are dlopened media codecs, not linked
+        # libraries (see scripts/check-playwright-runtime.sh).
         run: bunx playwright install ${{ matrix.install }}
       - name: Save Playwright cache
         if: github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
