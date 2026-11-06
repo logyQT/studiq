@@ -134,7 +134,9 @@ jobs:
           # never be re-saved under the current lockfile.
           key: playwright-ubuntu-24.04-${{ matrix.key }}-${{ hashFiles('bun.lock') }}
       - name: Install browser
-        # Browser binaries only; the test jobs still run --with-deps for apt.
+        # Browser binaries only. The test jobs match per leg: chromium installs
+        # without `--with-deps` (ubuntu-24.04 ships every library in its list),
+        # firefox keeps it (36 packages / 48.8 MB the image does not have).
         run: bunx playwright install ${{ matrix.install }}
       - name: Save Playwright cache
         if: github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
