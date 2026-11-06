@@ -13,7 +13,7 @@ Organizacja z wgranym logo na planie Hub.
 
 ## Steps
 
-1. W panelu admina zmień plan organizacji / wyłącz funkcję branding (ADM-OVR lub ADM-PLN).
+1. Obniż plan organizacji do Launch przez symulowany webhook płatności (`POST /api/v1/stripe/webhook` → `apply_org_plan`), aby wyłączyć funkcję branding.
 2. Odśwież /manage.
 
 ## Expected result
@@ -44,11 +44,7 @@ bun scripts/qa-tenant.ts MGR-SET-05 --fresh
   sam schemat co fixture'y e2e. `--fresh` nadaje nowy sufiks przebiegu, więc każdy
   niezależny przebieg dostaje świeżą organizację; identyfikatory są deterministyczne w
   obrębie przebiegu (bez losowanych UUID).
-- Krok 1 przypadku („w panelu admina zmień plan organizacji / wyłącz funkcję branding"):
-  w tym buildzie panel admina (`apps/admin`) **nie ma** edytora planu organizacji (tylko
-  odczyt listy organizacji), a ADM-OVR / ADM-PLN operują na wspólnych wierszach
-  (`user_feature_overrides`, `plan_features`) i katalogu planów, których test suite nie
-  może zmieniać. Odpowiednikiem tej czynności jest więc zmiana uprawnienia **tej samej**
+- Krok 1 przypadku (zmiana planu organizacji): zmiana uprawnienia **tej samej**
   organizacji przez webhook symulowanej płatności (`POST /api/v1/stripe/webhook` →
   `MockStripeService.handleWebhook` → `apply_org_plan`) — dokładnie ta sama ścieżka, przez
   którą przechodzi realna zmiana planu. Obniżenie do `launch` (darmowy plan managera bez

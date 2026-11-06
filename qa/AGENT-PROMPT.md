@@ -32,7 +32,6 @@ share **one app** (`http://localhost:3010`) and **one Supabase**
 | ------------- | ---------------------------------------------- |
 | `envId`       | `qa-env-1` … `qa-env-8`                        |
 | `appUrl`      | shared web app (`http://localhost:3010`)       |
-| `adminUrl`    | shared admin app (`http://localhost:4010`)     |
 | `supabaseUrl` | shared Supabase API (`http://localhost:54421`) |
 | `dbContainer` | shared DB (`supabase_db_qa-env-1`)             |
 | `sharedEnv`   | `qa-env-1` — the only running stack            |
@@ -70,17 +69,15 @@ operator sees in tile `qa-env-N`, so leave the dashboard open while you work.
   They resolve the env from `qa/env.json`; pass `env: "qa-env-N"` only if a tool
   reports the wrong env.
 - **Env operations — `qa_env` server, no arguments at all:**
-  `qa_env_status`, `qa_env_restart_browser`, `qa_env_admin_up`,
-  `qa_env_admin_down`, `qa_env_lock`.
+  `qa_env_status`, `qa_env_restart_browser`, `qa_env_lock`.
   **Do not call `qa_env_reset`, `qa_env_reseed` or `qa_env_restart_app`** — the
   stack is shared, so a reset wipes every worker. Create data through the
-  app/API instead. Admin is exclusive across all slots: `qa_env_admin_up` fails
-  with the current holder instead of stealing the panel. Prefer these over raw
-  `docker`, `supabase` or `scripts/qa-env` commands.
-- **Admin is off by default.** For `ADM-*` and any step that uses the admin app,
-  call `qa_env_admin_up` first, then `qa_env_admin_down` when done. It is
-  exclusive across slots — if another env holds it, wait or tell the manager.
-  Never ask a human to start an admin panel.
+  app/API instead. Prefer these over raw `docker`, `supabase` or
+  `scripts/qa-env` commands.
+- **`apps/admin` (the internal system-admin surface) is out of scope for QA;
+  do not start it, sign requests for it, or file findings against it.** It is an
+  internal tool with no app-level auth, protected only at the edge. No QA case
+  requires it.
 - **Guaranteed fallback — shell CLI** (works even if MCP is unavailable):
 
   ```bash
@@ -112,14 +109,12 @@ Optional `--env qa-env-N` overrides the detected env.
 ### Only these need a human before you start
 
 Everything else — accounts, orgs, groups, seeded content, plan/feature overrides —
-you set up yourself via the app, the admin app, or the local DB.
+you set up yourself via the app API or the local DB.
 
 - **An LLM API key** (`LLM_API_KEY` in `apps/web/.env`): required only for
   `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49`. If it is absent, mark those
   scenarios `N/D` — do not fabricate AI output or file a bug for the missing key.
 - **Local test fixtures** from the „Studiq dane testowe" pack — not in the repo:
-  - `admin_podpisz_zadanie.mjs` (Ed25519 signer) — `ADM-SEC-01`, `ADM-SEC-02`.
-    It cannot be improvised under the "never change code" rule; mark `N/D` without it.
   - `fiszki_poprawne.csv` / `fiszki_bledne.csv` — `STU-05`, `STU-19`, `STU-20`, `STU-42`.
   - `logo.png` (< 1 MB) — `MGR-SET-02`.
   - a text PDF — `STU-49`.
@@ -134,8 +129,7 @@ never substitute invented data and never file a `bug` for the missing fixture.
 2. `grep OTEL_SDK_DISABLED apps/web/.env` → must print **nothing** or `OTEL_SDK_DISABLED=false`. Next reads `apps/web/.env`, not the repo root; `true` disables all telemetry.
 3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health` → `200`.
 4. `curl -s -o /dev/null -w '%{http_code}' "$APP_URL/login"` → `200`, where `APP_URL` is `appUrl` from `qa/env.json`.
-5. For `ADM-*` scenarios, `curl -s -o /dev/null -w '%{http_code}' "$ADMIN_URL"` must not be `000`, where `ADMIN_URL` is `adminUrl` from `qa/env.json`. If it is `000`, start the panel with `qa_env_admin_up` (exclusive; another slot may hold it), then continue.
-6. `curl -s http://localhost:5000/healthz` → `browsersOk: true` and four `up: true` entries. If not, the dashboard browser for your slot is down: report it as `env` (do not retry forever).
+5. `curl -s http://localhost:5000/healthz` → `browsersOk: true` and four `up: true` entries. If not, the dashboard browser for your slot is down: report it as `env` (do not retry forever).
 
 If any preflight check fails, that is an **environment problem, not a product defect** — fix it or report it as `env`, and NEVER file it as a `bug`.
 

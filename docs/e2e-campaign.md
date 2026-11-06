@@ -61,7 +61,7 @@ only fixed values are product constants (plan keys, permission scope names).
 
 | case(s)                                                                               | change                                                                                   |
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `LIM-02`, `LIM-06`, `ADM-FLG-01..04`                                                  | create their own plan / flag row through the admin API instead of mutating seeded config |
+| `LIM-02`                                                                              | creates its own plan-limit row through the product API instead of mutating seeded config |
 | `LIM-03` → `BIL-03`, `LIM-04` → `EDU-GRP-04` + `ONB-10`                               | the prerequisite chain becomes fixture setup, not a manual step                          |
 | `EDU-ASG-10`, `EDU-QZ-04`, `LIM-02`, `NFR-03`, `NFR-05`, `NFR-06`, `NFR-07`, `NFR-08` | stay **semantic** — see below                                                            |
 
@@ -80,7 +80,7 @@ Generated, never hand-edited: `@case:` tags plus the last run produce
 `untriaged` · `drafted` · `red · bug #n` · `red · case` (the case doc is wrong) · `flaky` ·
 `green` · `semantic`.
 
-Triage today: **194 e2e · 12 API-level · 8 semantic** (of 214 cases).
+Triage today: **170 e2e · 10 API-level · 8 semantic** (of 188 cases).
 
 ## CI
 
@@ -92,11 +92,10 @@ Triage today: **194 e2e · 12 API-level · 8 semantic** (of 214 cases).
 
 ## Batches
 
-One spec per case, in batches of 8, area order: **STU** (52) → **EDU** (41) → **MGR** (28) →
-**ADM** (21) → **AUT** (19) → **SEC** (13) → **ONB** (10) → **PUB** (8) → **BIL** (7) →
-**LIM** (7) → **NFR** (8), P1 cases first inside each area. The counts are the full per-area
-totals from [`qa/coverage.md`](../qa/coverage.md): 194 e2e + 12 API-level + 8 semantic = 214
-cases. Each batch: write → run → triage (red opens an issue) → merge what is green.
+One spec per case, in batches of 8, area order: **STU** (51) → **EDU** (41) → **MGR** (28) →
+**AUT** (19) → **SEC** (13) → **ONB** (10) → **PUB** (8) → **BIL** (6) → **LIM** (4) →
+**NFR** (8), P1 cases first inside each area. The counts are the full per-area totals from
+[`qa/coverage.md`](../qa/coverage.md): 170 e2e + 10 API-level + 8 semantic = 188 cases. Each batch: write → run → triage (red opens an issue) → merge what is green.
 
 ## Done
 

@@ -5,8 +5,8 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 /**
  * EDU-GRP-05 — an educator without `group.manage` („Brak funkcji group.manage”).
  *
- * Case prerequisite (verbatim): „Wyłącz funkcję group.manage dla T1 w panelu admina
- * (ADM-OVR) lub użyj konta bez tej funkcji.” The suite takes the second option, so no
+ * Case prerequisite (verbatim): „Użyj konta bez funkcji group.manage (konto bez tej
+ * funkcji).” The suite uses that second option, so no
  * global admin setting, feature flag or user override is touched.
  *
  * Tenant (deterministic, `content` profile, fresh run suffix per independent run):

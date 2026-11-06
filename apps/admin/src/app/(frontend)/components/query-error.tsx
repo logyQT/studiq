@@ -5,8 +5,8 @@ import { ApiError } from '@/lib/api';
 
 /**
  * One error state for every admin list/detail query. A 401/403 means the admin
- * API rejected the request (e.g. unsigned browser call in PEM mode) — show that
- * explicitly instead of an endless loading state or a misleading empty table.
+ * API rejected the request — show that explicitly instead of an endless loading
+ * state or a misleading empty table.
  */
 export function QueryError({ error }: { error: unknown }) {
   const t = useTranslations('Common');

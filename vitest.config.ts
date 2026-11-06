@@ -24,7 +24,11 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'node',
       setupFiles: ['./__tests__/setup.ts'],
-      include: ['__tests__/unit/**/*.test.ts', '__tests__/integration/**/*.test.ts'],
+      include: [
+        '__tests__/unit/**/*.test.ts',
+        '__tests__/integration/**/*.test.ts',
+        '__tests__/admin/**/*.test.ts',
+      ],
       exclude: ['node_modules', 'dist', '.next'],
       // ── Concurrency ──────────────────────────────────────────
       // fileParallelism: files run in parallel across workers (one worker per file).

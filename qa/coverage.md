@@ -4,7 +4,7 @@ Every case in `qa/cases/` mapped to the test that should own it. This is the cov
 checklist for the phase-2 gate on #173: the lint-debt clean-up must not start until the
 automated cases below are green.
 
-- **214 cases**: 194 end-to-end, 12 API-level,
+- **188 cases**: 170 end-to-end, 10 API-level,
   8 manual-only (listed with a reason at the bottom).
 - First pass, generated from each case's front-matter and steps; a case that mixes UI and
   API work is filed under `e2e`, because the UI is what has to be exercised either way.
@@ -15,44 +15,22 @@ automated cases below are green.
 
 | area      |     e2e |    api | manual |   total |
 | --------- | ------: | -----: | -----: | ------: |
-| ADM       |      19 |      2 |      0 |      21 |
 | AUT       |      19 |      0 |      0 |      19 |
-| BIL       |       7 |      0 |      0 |       7 |
+| BIL       |       6 |      0 |      0 |       6 |
 | EDU       |      39 |      0 |      2 |      41 |
-| LIM       |       5 |      1 |      1 |       7 |
+| LIM       |       2 |      1 |      1 |       4 |
 | MGR       |      28 |      0 |      0 |      28 |
 | NFR       |       3 |      0 |      5 |       8 |
 | ONB       |      10 |      0 |      0 |      10 |
 | PUB       |       8 |      0 |      0 |       8 |
 | SEC       |       5 |      8 |      0 |      13 |
-| STU       |      51 |      1 |      0 |      52 |
-| **total** | **194** | **12** |  **8** | **214** |
+| STU       |      50 |      1 |      0 |      51 |
+| **total** | **170** | **10** |  **8** | **188** |
 
 ## Cases
 
 | case        | area | prio | owner  | note                                                                 |
 | ----------- | ---- | ---- | ------ | -------------------------------------------------------------------- |
-| ADM-01      | ADM  | P2   | e2e    |                                                                      |
-| ADM-FLG-01  | ADM  | P2   | e2e    |                                                                      |
-| ADM-FLG-02  | ADM  | P1   | e2e    |                                                                      |
-| ADM-FLG-03  | ADM  | P2   | e2e    |                                                                      |
-| ADM-FLG-04  | ADM  | P2   | e2e    |                                                                      |
-| ADM-ORG-01  | ADM  | P2   | e2e    |                                                                      |
-| ADM-ORG-02  | ADM  | P2   | e2e    |                                                                      |
-| ADM-OVR-01  | ADM  | P2   | e2e    |                                                                      |
-| ADM-PLN-01  | ADM  | P2   | e2e    |                                                                      |
-| ADM-PLN-02  | ADM  | P1   | e2e    |                                                                      |
-| ADM-PLN-03  | ADM  | P1   | e2e    |                                                                      |
-| ADM-PLN-04  | ADM  | P2   | e2e    |                                                                      |
-| ADM-SEC-01  | ADM  | P2   | api    | drives the HTTP API directly - Playwright request / integration test |
-| ADM-SEC-02  | ADM  | P2   | e2e    |                                                                      |
-| ADM-SEC-03  | ADM  | P2   | api    | drives the HTTP API directly - Playwright request / integration test |
-| ADM-USR-01  | ADM  | P2   | e2e    |                                                                      |
-| ADM-USR-02  | ADM  | P1   | e2e    |                                                                      |
-| ADM-USR-03  | ADM  | P2   | e2e    |                                                                      |
-| ADM-USR-04  | ADM  | P1   | e2e    |                                                                      |
-| ADM-USR-05  | ADM  | P2   | e2e    |                                                                      |
-| ADM-USR-06  | ADM  | P2   | e2e    |                                                                      |
 | AUT-01      | AUT  | P1   | e2e    |                                                                      |
 | AUT-02      | AUT  | P2   | e2e    |                                                                      |
 | AUT-03      | AUT  | P2   | e2e    |                                                                      |
@@ -78,7 +56,6 @@ automated cases below are green.
 | BIL-04      | BIL  | P1   | e2e    |                                                                      |
 | BIL-05      | BIL  | P1   | e2e    |                                                                      |
 | BIL-06      | BIL  | P1   | e2e    |                                                                      |
-| BIL-07      | BIL  | P2   | e2e    |                                                                      |
 | EDU-01      | EDU  | P2   | e2e    |                                                                      |
 | EDU-02      | EDU  | P2   | e2e    |                                                                      |
 | EDU-ASG-01  | EDU  | P1   | e2e    |                                                                      |
@@ -120,13 +97,10 @@ automated cases below are green.
 | EDU-ST-03   | EDU  | P2   | e2e    |                                                                      |
 | EDU-ST-04   | EDU  | P2   | e2e    |                                                                      |
 | EDU-TOP-01  | EDU  | P2   | e2e    |                                                                      |
-| LIM-01      | LIM  | P2   | e2e    |                                                                      |
 | LIM-02      | LIM  | P1   | manual | mutates plan_limits directly in SQL before the UI check              |
 | LIM-03      | LIM  | P2   | e2e    |                                                                      |
 | LIM-04      | LIM  | P2   | e2e    |                                                                      |
 | LIM-05      | LIM  | P1   | api    | drives the HTTP API directly - Playwright request / integration test |
-| LIM-06      | LIM  | P2   | e2e    |                                                                      |
-| LIM-07      | LIM  | P2   | e2e    |                                                                      |
 | MGR-01      | MGR  | P2   | e2e    |                                                                      |
 | MGR-02      | MGR  | P2   | e2e    |                                                                      |
 | MGR-03      | MGR  | P2   | e2e    |                                                                      |
@@ -238,7 +212,6 @@ automated cases below are green.
 | STU-43      | STU  | P2   | e2e    |                                                                      |
 | STU-44      | STU  | P2   | e2e    |                                                                      |
 | STU-45      | STU  | P2   | e2e    |                                                                      |
-| STU-46      | STU  | P2   | e2e    |                                                                      |
 | STU-47      | STU  | P2   | e2e    |                                                                      |
 | STU-48      | STU  | P2   | e2e    |                                                                      |
 | STU-49      | STU  | P2   | e2e    |                                                                      |

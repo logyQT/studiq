@@ -10,7 +10,7 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  * password `pass`) after LIM-02 lowered the **global** Base limits to 2 and
  * reset the database. A QA-suite spec must not mutate the shared plan catalogue,
  * so the tenant reproduces the same starting point at the real Base cap (10
- * decks, the value LIM-01 documents and `/app/billing` shows):
+ * decks, the value `/app/billing` shows):
  *
  *   bun scripts/qa-tenant.ts LIM-03 --fresh   # profile: __tests__/qa/profiles/LIM-03.json
  *
@@ -175,7 +175,7 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
     const planBefore = await personalPlan(page);
     expect(planBefore.key, 'the case starts on the free Base plan').toBe('base');
     const baseCap = planBefore.limits.max_decks;
-    expect(baseCap, 'Base caps decks at the LIM-01 value').toBe(10);
+    expect(baseCap, 'Base caps decks at the documented Base value').toBe(10);
     expect((await decks(page)).items, 'the student starts with no decks').toHaveLength(0);
 
     // --- Precondition: the tenant is already at the Base deck cap ----------
@@ -266,7 +266,7 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
     const planAfter = await personalPlan(page);
     expect(planAfter.key, 'the student is on Spark').toBe('spark');
     expect(planAfter.name, 'Spark is the plan the checkout showed').toBe(UI.sparkName);
-    expect(planAfter.limits, 'the Spark limits from LIM-01').toMatchObject({
+    expect(planAfter.limits, 'the documented Spark limits').toMatchObject({
       max_decks: 50,
       max_flashcards: 500,
       max_questions: 200,

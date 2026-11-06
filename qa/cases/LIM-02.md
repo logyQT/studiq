@@ -47,7 +47,7 @@ bun scripts/qa-tenant.ts LIM-02 --fresh   # profil: __tests__/qa/profiles/LIM-02
   `org_members`; `personal_plan_key = base` ustawia trigger `handle_new_user`. `--fresh`
   nadaje nowy sufiks przebiegu, więc każdy niezależny przebieg dostaje świeże konto bez
   treści (5 przebiegów = 5 sufiksów).
-- Limit Base (`GET /api/v1/me/personal-plan`, wartości z LIM-01): talie 10, fiszki 100,
+- Limit Base (`GET /api/v1/me/personal-plan`, wartości z katalogu planów widoczne w `/app/billing`): talie 10, fiszki 100,
   pytania 50, banki pytań 5. Spec tworzy treść wyłącznie przez API produktu:
   10 talii (`POST /api/v1/flashcards/decks`), 100 fiszek w jednej talii
   (`POST /api/v1/flashcards/batch/create`), 5 banków (`POST /api/v1/questions/banks`) i 50

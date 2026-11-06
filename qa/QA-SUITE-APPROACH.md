@@ -42,6 +42,10 @@ spec sequentially — they are not eight parallel Playwright processes.
 
 ## Hard limits
 
+`apps/admin` (the internal system-admin surface) is out of scope for QA: do not
+start it, sign requests for it, or file findings against it. It has no app-level
+auth and is protected only at the edge. No QA case requires it.
+
 These still need serialization or separate fixtures:
 
 - global admin settings, feature flags, platform stats, plan catalog, singleton rows

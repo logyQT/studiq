@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-27",
-  "scope": "Current state after the e2e tenant migration: chromium + firefox + admin-api green, WebKit deferred, integration green serially.",
+  "scope": "Current state after the e2e tenant migration: chromium + firefox green, WebKit deferred, integration green serially.",
   "commands": {
     "integration": "bun run test:integration",
     "unit": "bun run test:unit",
@@ -10,7 +10,7 @@
   "layers": {
     "unit": "__tests__/unit — in-process; Supabase client is mocked. No app server, no database.",
     "integration": "__tests__/integration — in-process; imports route handlers (36 files) or services/RPCs directly (17 files). No app HTTP server. Requires only Supabase: API :54321 (PostgREST, GoTrue, Storage) and Postgres :54322.",
-    "e2e": "__tests__/e2e — the only layer that needs the app. Playwright's webServer boots :3000; the admin-api project also boots :4000. Not run for this report."
+    "e2e": "__tests__/e2e — the only layer that needs the app. Playwright's webServer boots :3000. Not run for this report."
   },
   "summary": {
     "integration": {
@@ -47,10 +47,6 @@
       },
       "firefox": {
         "tests": 119,
-        "failed": 0
-      },
-      "adminApi": {
-        "tests": 3,
         "failed": 0
       },
       "webkit": {
@@ -105,9 +101,9 @@
     }
   ],
   "environmentNotes": [
-    "No test under __tests__/integration needs the web app on :3000 or the admin app on :4000. The `http://localhost` URLs in those tests are only parsed by createNextRequest (__tests__/integration/test-utils.ts); no request is sent to them. The only real HTTP calls go to Supabase REST/Storage on :54321.",
+    "No test under __tests__/integration needs the web app on :3000. The `http://localhost` URLs in those tests are only parsed by createNextRequest (__tests__/integration/test-utils.ts); no request is sent to them. The only real HTTP calls go to Supabase REST/Storage on :54321.",
     "If Supabase local is not running, integration suites fail during setup with `seed <email>: fetch failed` from __tests__/helpers/tenant-seed.ts (ensureAccount). That is an environment failure, not a test failure; start Supabase and re-run.",
-    "Playwright e2e was not run. It is the only layer that needs the app: Playwright boots :3000 itself via `webServer`, and the admin-api project also boots :4000 (skip locally with E2E_SKIP_ADMIN_WS=1).",
+    "Playwright e2e was not run. It is the only layer that needs the app: Playwright boots :3000 itself via `webServer`.",
     "Integration under `--file-parallelism` (the vitest default) can flake on __tests__/integration/members.test.ts: two DELETE-member cases fail only when other files run concurrently (documented above with `onlyWithFileParallelism: true`). The serial run is the baseline: 524/525 with the single pre-existing logout failure."
   ],
   "deferredWork": [
@@ -122,8 +118,8 @@
       "evidence": "Filling the same field on a settled page survives in all three engines (chromium/firefox/webkit: immediate === after 1 s === second fill). The value is only lost when the fill happens during the first render, so this is a hydration race that WebKit loses consistently because it hydrates slower — not a WebKit form/cookie incompatibility. The same symptom appeared once on chromium during a loaded run.",
       "suggestedFix": "Prefer moving the remaining dev-seed specs to an API login helper (POST /api/v1/auth/login through page.request, then navigate) — the tenant fixture already proves that path is stable on all three engines. If the form must stay under test, wait for a hydration marker before filling and assert `toHaveValue` before submitting.",
       "baseline": "Chromium and Firefox are green (116/119, 3 skipped). WebKit is out of the merged baseline until this pass; do not treat its failures as regressions.",
-      "latestRun": "Full matrix at 16 workers with --shuffle: 324 passed / 8 skipped / 28 failed, and every one of the 28 is webkit. Chromium, Firefox and admin-api had zero failures on the same shuffled order, so the deferral does not hide any cross-test coupling outside WebKit.",
-      "howToRun": "The webkit project is opt-in: `E2E_INCLUDE_WEBKIT=1 bunx playwright test`. Default runs are chromium + firefox + admin-api (241 tests, 8 workers, ~2.6 min)."
+      "latestRun": "Full matrix at 16 workers with --shuffle: 324 passed / 8 skipped / 28 failed, and every one of the 28 is webkit. Chromium and Firefox had zero failures on the same shuffled order, so the deferral does not hide any cross-test coupling outside WebKit.",
+      "howToRun": "The webkit project is opt-in: `E2E_INCLUDE_WEBKIT=1 bunx playwright test`. Default runs are chromium + firefox (238 tests, 8 workers, ~2.6 min)."
     }
   ]
 }

@@ -87,15 +87,6 @@ student-only signup.
 | H2  | Password reset for an unknown address | same response as for a known one                  |
 | H3  | Invite-code / join-code brute force   | throttled                                         |
 
-## I. Admin app
-
-| #   | probe                                                                   | expected                                                                                               |
-| --- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| I1  | `/api/*` on `:4000` with no signature and a **non-empty** keyring       | `401`                                                                                                  |
-| I2  | `/api/*` in a production build with an **empty** keyring                | `401` (fail closed)                                                                                    |
-| I3  | A signed key with scope `feature-flags:read` calling an org/users route | `403`                                                                                                  |
-| I4  | Every id-taking admin route                                             | no reach beyond the route's own scope (see ADR-0007 admin API auth for the target authorization model) |
-
 ## J. Direct database surface (PostgREST)
 
 The anon key ships in the browser, so this is a real attack surface, not a theoretical one.
@@ -116,4 +107,3 @@ The anon key ships in the browser, so this is a real attack surface, not a theor
    usually are.
 3. **C + D** — mass assignment and invite flows.
 4. **E + F + G + H** — hardening, unless something in 1–3 already looks wrong.
-5. **I** — admin, following the scoped-key model in ADR-0007 (admin API auth); before the DB-backed grants land, the gate is the whole story.

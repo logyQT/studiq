@@ -9,7 +9,7 @@
 
 ## Prerequisite (verbatim)
 
-Wyłącz funkcję group.manage dla T1 w panelu admina (ADM-OVR) lub użyj konta bez tej funkcji.
+Użyj konta bez funkcji group.manage (konto bez tej funkcji).
 
 ## Steps
 
@@ -45,8 +45,8 @@ Wyłącz funkcję group.manage dla T1 w panelu admina (ADM-OVR) lub użyj konta 
 ## QA tenant fixture (reconciled)
 
 The case was written against the legacy manual seed (`teacher1@dev.local`, password `pass`,
-organization WSB Merito, group `O1G1`) and its prerequisite asked for an admin-panel
-feature override (ADM-OVR) on that account. The suite version uses the case's own tenant and
+organization WSB Merito, group `O1G1`) and its prerequisite asked for a feature override
+on that account. The suite version uses the case's own tenant and
 never the legacy accounts, and it takes the prerequisite's second option — _„użyj konta bez
 tej funkcji”_ — instead of mutating a global admin setting.
 

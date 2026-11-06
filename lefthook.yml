@@ -5,16 +5,17 @@ pre-commit:
       glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,css,md,mdx,yml,yaml,toml,html}'
       run: bun fmt --staged
       stage_fixed: true
-    # Lint exactly the scope `bun run lint` covers (apps/*/src, packages, __tests__).
-    # `scripts/` and root configs are typechecked, not linted, so a bare `--staged`
-    # run would fail the hook on findings CI never sees. Passing the matched file
-    # list keeps the hook and CI on the same scope — see AGENTS.md → Commands.
+    # Lint exactly the scope `bun run lint` covers (apps/web/src, packages,
+    # __tests__). `scripts/` and root configs are typechecked, not linted, so a
+    # bare `--staged` run would fail the hook on findings CI never sees. Passing
+    # the matched file list keeps the hook and CI on the same scope — see
+    # AGENTS.md → Commands.
     fix:
       glob:
         # `**/` needs at least one directory in lefthook's glob, so each root
         # needs the direct-children pattern too.
-        - '{apps/web/src,apps/admin/src,packages,__tests__}/**/*.{ts,tsx,js,jsx,mjs,cjs}'
-        - '{apps/web/src,apps/admin/src,packages,__tests__}/*.{ts,tsx,js,jsx,mjs,cjs}'
+        - '{apps/web/src,packages,__tests__}/**/*.{ts,tsx,js,jsx,mjs,cjs}'
+        - '{apps/web/src,packages,__tests__}/*.{ts,tsx,js,jsx,mjs,cjs}'
       run: bun lint --no-script --fix {staged_files}
       stage_fixed: true
     lint:

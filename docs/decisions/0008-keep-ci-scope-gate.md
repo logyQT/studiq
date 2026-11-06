@@ -8,13 +8,15 @@ Accepted (2026-11-04). Resolves #1022. No workflow behaviour changes.
 
 `verify.yml` starts `unit`, `integration`, `qa-suite` and `e2e` with
 `needs: [scope]`. `scope` is a diff router: it publishes `app` (does the PR
-touch anything outside `qa/`, `__tests__/`, `docs/` and `*.md`?) and
-`qa_shards` (which QA areas a PR touches). A Markdown-only docs PR (every
+touch anything outside `qa/`, `__tests__/`, `docs/`, `apps/admin/` and `*.md`?)
+and `qa_shards` (which QA areas a PR touches). A Markdown-only docs PR (every
 changed file is `*.md`, none under `qa/cases/`) selects no QA shards; a
 non-Markdown `docs/` file (e.g. `docs/image.png`) is `app=false` but selects
-all four, because the router cannot attribute it. Issue #1022 asked whether
-that gate should be removed so the test/build jobs start immediately. `checks`
-and `e2e-admin` are already ungated; `cache-warm.yml` keeps its own
+all four, because the router cannot attribute it. An `apps/admin`-only change
+is not a product change (admin is an internal tool outside the product gates
+and QA — ADR-0009): it is `app=false` and selects no shard. Issue #1022 asked
+whether that gate should be removed so the test/build jobs start immediately.
+`checks` is already ungated; `cache-warm.yml` keeps its own
 `needs: [checks]`, which is unrelated and must stay.
 
 The constraint is the branch ruleset, not classic protection. `main` requires
@@ -34,7 +36,7 @@ names disappear and stay pending.
 ## Decision
 
 Keep `needs: [scope]` on `unit`, `integration`, `qa-suite` and `e2e`.
-`checks` and `e2e-admin` stay ungated. `cache-warm.yml` is untouched.
+`checks` stays ungated. `cache-warm.yml` is untouched.
 
 ## Measurements
 

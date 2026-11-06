@@ -44,7 +44,7 @@ studiq/
 │   │   ├── tsconfig.json
 │   │   └── .env                      # Local environment (gitignored)
 │   │
-│   └── admin/                        # Admin panel — @studiq/admin (port 4000)
+│   └── admin/                        # Internal admin panel — @studiq/admin (port 4000, no app-level auth; edge-protected)
 │       ├── src/
 │       │   ├── app/
 │       │   │   ├── (frontend)/       # Admin pages (orgs, feature-flags, subscription-plans, user-overrides)
@@ -87,7 +87,7 @@ studiq/
 │   └── setup.ts                      # Test bootstrap
 │
 ├── docs/                             # Project documentation (onboarding, architecture, api, ai...)
-│   ├── decisions/                    # Architecture Decision Records (0001-0007)
+│   ├── decisions/                    # Architecture Decision Records (0001-0009)
 │   └── plans/                        # Implementation plans (+ archive/)
 │
 ├── scripts/                          # Repo tooling (spin, pr, switch-branch, lint guards)

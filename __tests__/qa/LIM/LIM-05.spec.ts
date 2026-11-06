@@ -22,9 +22,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * colour), then drop the plan to `launch` through the app's mock checkout webhook
  * (`POST /api/v1/stripe/webhook` → `MockStripeService.handleWebhook` →
  * `apply_org_plan`) — the entitlement path a real plan change takes, and the
- * equivalent of MGR-SET-05's admin-panel downgrade (this build's admin panel has
- * no per-org plan editor, and the ADM-OVR / ADM-PLN switches are shared rows a
- * suite test must not mutate).
+ * equivalent of MGR-SET-05's downgrade, scoped to this tenant.
  *
  * Step 2 is the case's own check: as that now-featureless manager, `PUT
  * /api/v1/organization/:id` with `brandColor` and `POST /api/v1/organization/:id/logo`

@@ -74,9 +74,9 @@ The suite version uses the case's own tenant and never the legacy accounts.
 - Public leg (step 2): the landing page footer toggle needs no session and no tenant rows; the
   spec visits it in a fresh browser context (no `NEXT_LOCALE` cookie), so the default `pl`
   render is deterministic.
-- Admin panel leg (step 2): **N/A** — `apps/admin` has no language switcher (its i18n only
-  reads `NEXT_LOCALE`); the shared suite app is `:3010`, the admin panel is a separate `:4010`
-  app. There is nothing to repeat there.
+- `apps/admin` leg (step 2): **N/A** — `apps/admin` is an internal tool outside QA scope
+  and has no language switcher (its i18n only reads `NEXT_LOCALE`). There is nothing to
+  repeat there.
 - Not used: global admin settings, feature flags, plan rows/catalogues, platform stats,
   singleton rows or another tenant.
 

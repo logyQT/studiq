@@ -5,7 +5,8 @@ manual scenarios end-to-end and file defects with real root causes.
 
 Source of truth: `source/Studiq_Dokument_Testera_v1.3.docx`
 (Dokument testera v1.3, 2026-10-17 — 215 scenarios, P1 60 / P2 150 / P3 5; STU-25, M:N flashcard
-linking, is dropped as not planned (#893), so 214 cases remain).
+linking, is dropped as not planned (#893), and the admin module + 5 admin-dependent cases
+are out of scope, so 188 cases remain).
 
 Automation: the campaign that turns these cases into the Playwright suite is
 [`docs/e2e-campaign.md`](../docs/e2e-campaign.md); current mapping in
@@ -18,7 +19,7 @@ qa/
   README.md        this file
   AGENT-PROMPT.md  the copy-paste agent prompt (includes the scenario slot)
   context.md       global rules: accounts, org+seed data, plans, priorities, defect template (PL, verbatim)
-  index.md         all 214 scenarios: ID | Prio | Title | Prereqs | Module
+  index.md         all 188 scenarios: ID | Prio | Title | Prereqs | Module
   cases/<ID>.md    one scenario per file, steps verbatim (PL) + embedded prerequisite context
   source/          the original .docx (regeneration source)
   tools/           convert_docx.py (regenerator)
@@ -31,7 +32,7 @@ index, agent prompt) is English, matching the repo/issue convention.
 
 Eight slots are provisioned ahead of time by `scripts/qa-env` (run it from the
 main checkout): **`qa-env-1` … `qa-env-8`**. Each slot is a detached `main`
-worktree with its own Supabase stack, web app, admin app and `qa/env.json`. Agents do **not** create, reset or tear down environments.
+worktree with its own Supabase stack, web app and `qa/env.json`. Agents do **not** create, reset or tear down environments.
 
 1. Bring the slots up once: `scripts/qa-env up all` (check with
    `scripts/qa-env status`; stop with `scripts/qa-env down all`).
@@ -40,10 +41,13 @@ worktree with its own Supabase stack, web app, admin app and `qa/env.json`. Agen
 3. Copy the prompt from `AGENT-PROMPT.md` and set the scenario ID on the last
    line (`## SCENARIO ▶ <ID>`).
 4. The agent reads `qa/context.md` → `qa/index.md` → `cases/<ID>.md` (plus any
-   prerequisite case), uses the slot's `appUrl` / `adminUrl` / `dbContainer`,
+   prerequisite case), uses the slot's `appUrl` / `dbContainer`,
    runs the steps and files the issue. It does not touch the stack.
 
-Ports per slot N: web `3009+N`, admin `4009+N`, Supabase `54321+100N`.
+Ports per slot N: web `3009+N`, Supabase `54321+100N`.
+
+`apps/admin` (the internal system-admin surface) is out of scope for QA: do not
+start it, sign requests for it, or file findings against it. No case requires it.
 Supabase runs without realtime / analytics / edge-runtime / imgproxy / vector /
 pooler — the app uses none of them.
 
@@ -83,17 +87,16 @@ unobservable browser. The dashboard and its Chromiums are operator-managed
 A handful of cases depend on something only a person can provide. Treat them as
 `N/D` unless the input exists; don't fake it.
 
-| Input                                                                            | Scenarios                                   | Without it                                                                    |
-| -------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
-| An LLM API key (`LLM_API_KEY` in `apps/web/.env`)                                | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features unavailable → `N/D` (the cases say so explicitly)                 |
-| `admin_podpisz_zadanie.mjs` (Ed25519 signer from the „Studiq dane testowe" pack) | `ADM-SEC-01`, `ADM-SEC-02`                  | PEM gate can't be exercised; not improvised under "never change code" → `N/D` |
-| `fiszki_poprawne.csv` / `fiszki_bledne.csv`                                      | `STU-05`, `STU-19`, `STU-20`, `STU-42`      | Import steps can't run → `N/D`                                                |
-| `logo.png` (< 1 MB)                                                              | `MGR-SET-02`                                | Branding upload can't run → `N/D`                                             |
-| A text PDF                                                                       | `STU-49`                                    | PDF extraction can't run → `N/D`                                              |
-| A PNG/JPG image and an MP3 file                                                  | `STU-22`                                    | Media upload can't run → `N/D`                                                |
+| Input                                             | Scenarios                                   | Without it                                                    |
+| ------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- |
+| An LLM API key (`LLM_API_KEY` in `apps/web/.env`) | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features unavailable → `N/D` (the cases say so explicitly) |
+| `fiszki_poprawne.csv` / `fiszki_bledne.csv`       | `STU-05`, `STU-19`, `STU-20`, `STU-42`      | Import steps can't run → `N/D`                                |
+| `logo.png` (< 1 MB)                               | `MGR-SET-02`                                | Branding upload can't run → `N/D`                             |
+| A text PDF                                        | `STU-49`                                    | PDF extraction can't run → `N/D`                              |
+| A PNG/JPG image and an MP3 file                   | `STU-22`                                    | Media upload can't run → `N/D`                                |
 
 Everything else — plan/feature overrides, org switching, group setup, seeded
-content — is done by the agent through the app, the admin app, or the local DB.
+content — is done by the agent through the app API or the local DB.
 
 Because a scenario often depends on state created by an earlier one (the
 `Prereqs` column), run prerequisites first or re-create the required state.
