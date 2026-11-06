@@ -46,7 +46,7 @@ research and build the mechanism yourself (see Implementation below).
   `vi.fn(actual.createClient)`; integration tests call `useRealSupabase()` (defined in
   `__tests__/integration/helpers.ts`) to hit the real DB. Investigate whether this mock
   state is worker-scoped or module-scoped — a top flake source under concurrency.
-- Units mock Supabase (`__tests__/mocks/supabase.ts`, `__tests__/helpers/supabase-mock.ts`).
+- Units mock Supabase (`__tests__/helpers/supabase-mock.ts`).
 - Env via `loadEnv(mode, cwd, '')` — `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (from `.env`).
 - `bun test:integration` = `vitest run __tests__/integration` — 19 files / 186 tests,

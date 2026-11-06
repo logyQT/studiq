@@ -28,56 +28,30 @@ const config: KnipConfig = {
   ignoreExportsUsedInFile: { interface: true, type: true },
 
   ignoreFiles: [
-    // TODO(knip-baseline): one-off maintenance scripts with no caller — removed
-    // in the dead-code/unused-package cleanup PR.
+    // TODO(knip-baseline): operator scripts knip cannot discover as entry
+    // points — manifest entry points arrive in the follow-up PR.
     'scripts/admin-sign.ts',
     'scripts/dev-registry.ts',
-    'scripts/fix-all-imports.ts',
-    'scripts/fix-broken-imports.ts',
-    'scripts/migrate-authz-imports.ts',
-    'scripts/migrate-imports.ts',
     'scripts/qa-issue.ts',
     'scripts/storage-orphan-sweep.ts',
-    // TODO(knip-baseline): test mock with no importer — removed in the
-    // dead-code/unused-package cleanup PR.
-    '__tests__/mocks/supabase.ts',
-    // TODO(knip-baseline): unreferenced web components/hooks/libs — removed in
-    // the dead-code/unused-package cleanup PR.
-    'apps/web/src/components/ai/agent-call-block.tsx',
-    'apps/web/src/components/assignments/answer-image-upload.tsx',
-    'apps/web/src/components/flashcards/dashboard-panel.tsx',
-    'apps/web/src/components/flashcards/editor/flashcard-editor.tsx',
-    'apps/web/src/hooks/use-mobile.ts',
-    'apps/web/src/hooks/use-toast.ts',
-    'apps/web/src/lib/permissions.ts',
   ],
 
   ignoreIssues: {
-    // TODO(knip-baseline): unused exports/types in a generated Supabase types
-    // file — removed in the dead-code/unused-package cleanup PR.
+    // TODO(knip-baseline): generated Supabase types file, converted to a
+    // documented policy in the follow-up PR.
     'packages/server/src/types/database.ts': ['exports', 'types'],
-    // TODO(knip-baseline): unused test fixture/helper exports — removed in the
-    // dead-code/unused-package cleanup PR.
-    '__tests__/e2e/fixtures/profiles.ts': ['exports'],
+    // TODO(knip-baseline): unused exports/types whose declarations are still
+    // referenced or are kept for a follow-up — deleting them would change a
+    // declaration, which this pass deliberately avoids.
     '__tests__/integration/helpers.ts': ['exports'],
-    // TODO(knip-baseline): unused admin controller export — removed in the
-    // dead-code/unused-package cleanup PR.
-    'apps/admin/src/server/controllers/organization-admin.controller.ts': ['exports'],
-    // TODO(knip-baseline): unused admin model exports/types — removed in the
-    // dead-code/unused-package cleanup PR.
     'apps/admin/src/server/models/feature-flag.model.ts': ['types'],
     'apps/admin/src/server/models/plan-feature.model.ts': ['exports', 'types'],
     'apps/admin/src/server/models/plan-limit.model.ts': ['exports', 'types'],
     'apps/admin/src/server/models/platform-stats.model.ts': ['types'],
-    'apps/admin/src/server/models/user-admin.model.ts': ['exports', 'types'],
+    'apps/admin/src/server/models/user-admin.model.ts': ['types'],
     'apps/admin/src/server/models/user-feature-override.model.ts': ['types'],
-    // TODO(knip-baseline): unused web exports — removed in the
-    // dead-code/unused-package cleanup PR.
-    'apps/web/src/hooks/use-notifications.ts': ['exports'],
     'apps/web/src/lib/color-utils.ts': ['exports'],
     'apps/web/src/lib/datetime.ts': ['exports'],
-    'apps/web/src/lib/landing-pricing.ts': ['exports'],
-    'apps/web/src/lib/pricing-limits.ts': ['exports'],
     'apps/web/src/lib/query-keys.ts': ['exports'],
   },
 

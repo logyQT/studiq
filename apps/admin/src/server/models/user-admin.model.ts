@@ -1,7 +1,7 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
-export const ACCOUNT_TYPES = ['student', 'educator', 'manager'] as const;
+const ACCOUNT_TYPES = ['student', 'educator', 'manager'] as const;
 
 export const ListUsersQuerySchema = registry.register(
   'ListUsersQuery',

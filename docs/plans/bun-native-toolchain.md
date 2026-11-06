@@ -79,13 +79,12 @@ tree the diff is **34 files (~300 insertions / ~230 deletions)**, of which:
   that fit on one line are collapsed (`| A | B` → `A | B`), `supabase.from(…).select(…)` chains
   re-wrap, `await import(...)` destructuring wraps differently, and CSS string quotes become
   single quotes (CSS only; values unchanged).
-- **3 files carry comment-only edits**: `chart.tsx` rewrites the old
+- **2 files carry comment-only edits**: `chart.tsx` rewrites the old
   `// biome-ignore lint/security/noDangerouslySetInnerHtml` into
   `// eslint-disable-next-line react/no-danger` (and `react/no-danger` is enabled at `error`, so
   the suppression still covers the only raw-HTML injection site);
   `report-thread-screen.tsx` **drops** its old `biome-ignore` for
-  `useExhaustiveDependencies` because the new engine does not report that site;
-  `scripts/fix-all-imports.ts` updates a comment.
+  `useExhaustiveDependencies` because the new engine does not report that site.
 - **2 files carry the lint fixes** listed below.
 - the rest is config/docs (`bunfig.toml`, package manifests, lockfile, hooks, devcontainer,
   AGENTS/README/project-structure, this plan, `scripts/check-bun-version.ts`).

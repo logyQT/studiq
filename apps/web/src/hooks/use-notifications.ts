@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApiMutation } from '@/hooks/use-api';
 import { apiGet, apiPost } from '@/lib/api';
 
-export const notificationKeys = {
+const notificationKeys = {
   all: ['notifications'] as const,
 };
 

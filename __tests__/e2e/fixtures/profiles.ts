@@ -11,7 +11,7 @@
 export type SeedProfile = 'bare' | 'content';
 
 /** Specs that read pre-existing content instead of creating it. */
-export const PROFILE_BY_FILE: Record<string, SeedProfile> = {
+const PROFILE_BY_FILE: Record<string, SeedProfile> = {
   'edu-stats-data-roster.spec.ts': 'content',
   'flashcard-detail.spec.ts': 'content',
   'flashcard-selection.spec.ts': 'content',

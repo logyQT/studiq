@@ -40,7 +40,7 @@ function generateGradients(): string[] {
   return gradients;
 }
 
-export const GRADIENTS = generateGradients();
+const GRADIENTS = generateGradients();
 
 export const PANEL_GRADIENTS: Record<string, string> = {
   decks: 'from-emerald-400 to-teal-600',
@@ -62,7 +62,7 @@ function fnv1a(str: string): number {
   return hash >>> 0;
 }
 
-export function getGradient(id: string) {
+function getGradient(id: string) {
   const hash = fnv1a(id);
   return GRADIENTS[hash % GRADIENTS.length];
 }

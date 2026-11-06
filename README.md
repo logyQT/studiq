@@ -222,7 +222,7 @@ apps/
       components/             # Domain + layout components, providers (flashcards, questions, stats...)
       hooks/                  # Custom React hooks (use-api, use-ai-chat, use-permissions...)
       i18n/                   # next-intl request config + messages/ (en, pl)
-      lib/                    # Client utilities (api, query-keys, permissions, utils)
+      lib/                    # Client utilities (api, query-keys, utils)
       styles/                 # Global CSS (highlight.css)
       types/                  # TS type definitions
       proxy.ts                # Next.js middleware: session + RBAC route rules
