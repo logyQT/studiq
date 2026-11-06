@@ -455,6 +455,32 @@ developer/agent already runs the app on the same `APP_PORT`, change it in this
 checkout's `.env` (`bun dev:ports` prints a free port). Never run
 `supabase stop --all`; `bun dev:down --all` only stops this branch's stack.
 
+### Code review (CodeRabbit)
+
+`.coderabbit.yaml` runs `reviews.profile: 'assertive'` and reviews incrementally
+by default (`auto_incremental_review`), so each push only re-checks the changed
+hunks and deeper findings can arrive one at a time. Request a full pass over the
+whole PR with:
+
+```text
+@coderabbitai full review
+```
+
+`@coderabbitai review` is incremental; `@coderabbitai full review` ignores
+earlier comments and reviews the entire diff.
+
+To catch findings before pushing, run a local CLI review (requires the
+[CodeRabbit CLI](https://docs.coderabbit.ai/cli) and `coderabbit auth login`):
+
+```bash
+coderabbit review --agent                  # tracked changes
+coderabbit review --agent --base main      # whole branch against main
+```
+
+Guard scripts under `scripts/check-*.ts` have a dedicated checklist in
+`.coderabbit.yaml` (errno handling, tracked-but-absent inputs, `--staged` parity,
+exit codes) so a full pass reports all error-handling issues together.
+
 ---
 
 ## Useful Commands
