@@ -3,6 +3,7 @@ import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
 
 /**
  * AUT-13 — ustawienie nowego hasła z linku resetującego.
@@ -222,6 +223,7 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
   test('mismatch is rejected, the save redirects to /app, new password works and the old one does not', async ({
     page,
   }) => {
+    skipBrandedAuthTemplateTest();
     test.setTimeout(240_000);
 
     const tenant = loadTenant(CASE);

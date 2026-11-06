@@ -66,7 +66,6 @@ export function TopicDialogs({
     setTopicActionIds(null);
     // Opening, closing or switching card must all clear the pending selection, so both values
     // stay in the dependency list even though the body only calls a state setter.
-    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- reset on open/close/card switch.
   }, [manageTopicOpen, activeFlashcardId]);
 
   // Same keys the deck-detail screen invalidates after card mutations

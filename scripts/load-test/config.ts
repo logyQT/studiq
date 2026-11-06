@@ -7,12 +7,12 @@
  *
  * Everything is dependency-free (Bun + Node builtins + global fetch). Bun
  * auto-loads `.env` / `.env.local`, so any value below can be overridden by an
- * env var of the same name; otherwise the value recorded by `scripts/dev` in
- * `supabase/.env`, or the well-known local Supabase defaults, are used.
+ * env var of the same name; otherwise the values `scripts/dev` writes to
+ * `apps/web/.env`, or the well-known local Supabase defaults, are used.
  */
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 
 export type AccountType = 'student' | 'educator' | 'manager';
 
@@ -67,16 +67,16 @@ function envPort(name: string): number | null {
 }
 
 const ROOT = join(import.meta.dir, '..', '..');
-const GENERATED_SUPABASE_ENV = join(ROOT, 'supabase', '.env');
+const WEB_ENV = join(ROOT, 'apps', 'web', '.env');
 
 /**
- * Raw value recorded in the generated `supabase/.env` (written by `scripts/dev`).
- * Bun does not auto-load that file, so this is how start-time overrides reach
- * the harness. Missing file/key (shared mode, never started) is fine.
+ * Value from the generated `apps/web/.env` (what the app itself uses). Stack
+ * mode writes the discovered URLs/keys there, so it is the primary source for
+ * the load-test harness too. Missing file/key is fine.
  */
-function generatedValue(name: string): string | null {
+function webValue(name: string): string | null {
   try {
-    const raw = readFileSync(GENERATED_SUPABASE_ENV, 'utf8');
+    const raw = readFileSync(WEB_ENV, 'utf8');
     for (const line of raw.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
@@ -85,179 +85,199 @@ function generatedValue(name: string): string | null {
       return trimmed.slice(eq + 1).trim();
     }
   } catch {
-    /* no generated file yet */
+    /* no generated app env yet */
   }
   return null;
 }
 
-function generatedPort(name: string): number | null {
-  return parsePort(generatedValue(name));
-}
-
-/** Same resolution as `scripts/dev` (registry lives outside the repo). */
-function registryDir(): string {
-  const configured = process.env.STUDIQ_DEV_REGISTRY?.trim();
-  if (configured) return isAbsolute(configured) ? configured : join(ROOT, configured);
-  const runtime = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || '/tmp';
-  return join(runtime, `studiq-dev-${process.getuid?.() ?? 0}`);
-}
-
-interface RegistryEntry {
-  projectId?: string;
-  worktree?: string;
-  apiPort?: number;
-}
-
-/**
- * Read (and lightly validate) this checkout's registry entry for a project.
- * Mirrors `scripts/dev`: ignore symlinks, foreign-owned dirs and entries whose
- * file name disagrees with their project id. Missing data returns null.
- */
-function registryEntry(projectId: string): RegistryEntry | null {
+function liveApiHealth(url: string): ImplicitTargetCheck {
   try {
-    const dir = registryDir();
-    const dirStat = lstatSync(dir);
-    if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) return null;
-    const uid = process.getuid?.();
-    if (uid !== undefined && dirStat.uid !== uid) return null;
+    execFileSync(
+      'curl',
+      ['-sf', '--max-time', '2', '-o', '/dev/null', `${url.replace(/\/$/, '')}/auth/v1/health`],
+      { stdio: 'ignore', timeout: 10_000 },
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: `no healthy Supabase API at ${url}` };
+  }
+}
 
-    const file = join(dir, `${projectId}.json`);
-    const fileStat = lstatSync(file);
-    if (fileStat.isSymbolicLink() || !fileStat.isFile()) return null;
-
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as RegistryEntry;
-    if (parsed.projectId !== projectId) return null;
-    return parsed;
+/** Current branch, or null on a detached HEAD. */
+function currentBranch(): string | null {
+  try {
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10_000,
+    }).trim();
+    return branch === 'HEAD' ? null : branch;
   } catch {
     return null;
   }
 }
 
-export type ImplicitTargetCheck = { ok: true } | { ok: false; reason: string };
-
-/**
- * Prove the recorded stack is actually running here: `docker ps` (running
- * containers only) must list a container with the project label and the
- * recorded API port mapping. Fail closed when Docker cannot answer.
- */
-function liveStackPublishes(projectId: string, apiPort: number): ImplicitTargetCheck {
-  let ports: string;
+/** Fresh `supabase status --output-format json`, or null when it cannot answer. */
+function freshStackStatus(): Record<string, unknown> | null {
   try {
-    ports = String(
-      execFileSync(
-        'docker',
-        ['ps', '--filter', `label=com.supabase.cli.project=${projectId}`, '--format', '{{.Ports}}'],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
-      ),
-    );
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return {
-      ok: false,
-      reason:
-        code === 'ENOENT'
-          ? 'docker is not installed, so a running stack cannot be verified'
-          : 'docker could not inspect running containers, so the stack cannot be verified',
-    };
+    const stack = process.env.SUPABASE_STACK?.trim();
+    const args = ['supabase', 'status', '--output-format', 'json'];
+    if (stack) args.push('--stack', stack);
+    const raw = execFileSync('bunx', args, {
+      cwd: ROOT,
+      env: { ...process.env, SUPABASE_EXPERIMENTAL_STACK: '1' },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 20_000,
+    });
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- CLI status JSON; fields are checked below
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
   }
-  if (!ports.trim()) {
-    return {
-      ok: false,
-      reason: `no running container carries project label ${projectId} (is the stack up?)`,
-    };
-  }
-  if (!ports.includes(`:${apiPort}->`)) {
-    return {
-      ok: false,
-      reason: `no running ${projectId} container publishes the target API port :${apiPort}`,
-    };
-  }
-  return { ok: true };
 }
 
 /**
- * Seeding writes accounts, so a target taken from the generated
- * `supabase/.env` must be proven to belong to this checkout. Only an explicit
- * URL (`SUPABASE_URL`, `--supabase-url`) skips the check; a
- * `SUPABASE_API_PORT` override selects the effective port but must still match
- * the registry entry and the live container.
+ * Prove a generated `apps/web/.env` URL still belongs to this checkout, branch
+ * and named stack before destructive seeding. A branch switch can leave the old
+ * URL (and service-role key) in the file while the old stack stays healthy.
+ */
+function stackIdentityMatches(generatedUrl: string): ImplicitTargetCheck | null {
+  const status = freshStackStatus();
+  if (!status) return null;
+
+  const identity = status.identity;
+  if (!identity || typeof identity !== 'object') return null;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- CLI stack identity; fields are type-checked below
+  const fields = identity as Record<string, unknown>;
+  const projectRoot = typeof fields.project_root === 'string' ? fields.project_root : '';
+  const branchContext = typeof fields.branch_context === 'string' ? fields.branch_context : '';
+  const stackName = typeof fields.name === 'string' ? fields.name : '';
+
+  let actualRoot: string;
+  let expectedRoot: string;
+  try {
+    actualRoot = realpathSync(projectRoot);
+    expectedRoot = realpathSync(ROOT);
+  } catch {
+    return {
+      ok: false,
+      reason: `cannot resolve the generated stack's project root (${projectRoot})`,
+    };
+  }
+  if (actualRoot !== expectedRoot) {
+    return { ok: false, reason: `generated target belongs to ${actualRoot}, not ${expectedRoot}` };
+  }
+
+  const branch = currentBranch();
+  const actualBranch = branchContext.replace(/^refs\/heads\//, '');
+  if (branch && actualBranch && actualBranch !== branch) {
+    return {
+      ok: false,
+      reason: `generated target belongs to branch ${actualBranch}, not ${branch}`,
+    };
+  }
+
+  const expectedName = process.env.SUPABASE_STACK?.trim() || 'default';
+  if (stackName && stackName !== expectedName) {
+    return {
+      ok: false,
+      reason: `generated target belongs to stack ${stackName}, not ${expectedName}`,
+    };
+  }
+
+  const envMap = status.env;
+  const apiUrl =
+    envMap &&
+    typeof envMap === 'object' &&
+    'API_URL' in envMap &&
+    typeof envMap.API_URL === 'string'
+      ? envMap.API_URL
+      : '';
+  if (!apiUrl) return null;
+  if (apiUrl.replace(/\/$/, '') !== generatedUrl.replace(/\/$/, '')) {
+    return { ok: false, reason: `CLI reports ${apiUrl}, but apps/web/.env has ${generatedUrl}` };
+  }
+
+  return { ok: true };
+}
+
+export type ImplicitTargetCheck = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Seeding writes accounts, so an implicit target read from `apps/web/.env` must
+ * be loopback. Stack-mode targets (STUDIQ_STACK_MODE=1) additionally re-check
+ * the fresh CLI identity (project root, branch, stack name, API URL). Non-stack
+ * and shared targets must pass `--supabase-url` / `SUPABASE_URL`.
  */
 export function implicitTargetOwnership(): ImplicitTargetCheck {
   if (env('SUPABASE_URL', '')) return { ok: true };
 
-  const projectId = generatedValue('SUPABASE_PROJECT_ID');
-  const apiPort = envPort('SUPABASE_API_PORT') ?? generatedPort('SUPABASE_API_PORT');
-  if (!projectId || apiPort === null) {
-    return { ok: false, reason: 'supabase/.env has no generated project/API port' };
-  }
-
-  const entry = registryEntry(projectId);
-  if (!entry) {
+  // Stack mode: `apps/web/.env` is generated by `scripts/dev` for this
+  // checkout's stack. Check its fresh identity (root + branch + name) before a
+  // destructive seed/reset; a branch switch can leave a stale URL behind.
+  const generatedUrl = webValue('NEXT_PUBLIC_SUPABASE_URL');
+  if (generatedUrl) {
+    try {
+      const url = new URL(generatedUrl);
+      if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+        return { ok: false, reason: `generated API URL is not loopback: ${generatedUrl}` };
+      }
+    } catch {
+      return { ok: false, reason: `generated API URL is invalid: ${generatedUrl}` };
+    }
+    if (webValue('STUDIQ_STACK_MODE') === '1') {
+      const identity = stackIdentityMatches(generatedUrl) ?? {
+        ok: false as const,
+        reason: 'cannot read fresh supabase status to verify the generated stack identity',
+      };
+      if (!identity.ok) return identity;
+      return liveApiHealth(generatedUrl);
+    }
     return {
       ok: false,
-      reason: `no private registry entry for project ${projectId} (run a bun dev:* command)`,
+      reason:
+        'apps/web/.env is not stack-generated (STUDIQ_STACK_MODE missing) — pass --supabase-url / SUPABASE_URL for a shared or non-stack target',
     };
   }
-  if (!entry.worktree) {
-    return { ok: false, reason: `registry entry for ${projectId} has no worktree` };
-  }
 
-  let entryRoot: string;
-  let repoRoot: string;
-  try {
-    entryRoot = realpathSync(entry.worktree);
-    repoRoot = realpathSync(ROOT);
-  } catch {
-    return { ok: false, reason: `registry entry for ${projectId} points at a missing worktree` };
-  }
-  if (entryRoot !== repoRoot) {
-    return { ok: false, reason: `project ${projectId} is owned by ${entry.worktree}` };
-  }
-  if (Number(entry.apiPort) !== apiPort) {
-    return {
-      ok: false,
-      reason: `registry records :${entry.apiPort} but the target API port is :${apiPort}`,
-    };
-  }
-  return liveStackPublishes(projectId, apiPort);
-}
-
-/**
- * A stale generated API port that disagrees with this checkout's current
- * contract. Teardown keeps `supabase/.env` (so plain `bunx supabase ...` keeps
- * working), and the retired port can later be bound by another checkout. A
- * destructive caller must fail closed instead of silently targeting it.
- */
-export function staleGeneratedTarget(): { generated: number; expected: number } | null {
-  if (env('SUPABASE_URL', '')) return null; // explicit target
-  if (envPort('SUPABASE_API_PORT') !== null) return null; // explicit port
-  const generated = generatedPort('SUPABASE_API_PORT');
-  if (generated === null) return null; // nothing recorded
-  const expected = (envPort('SUPABASE_PORT_BASE') ?? 54320) + 1;
-  return generated === expected ? null : { generated, expected };
+  return {
+    ok: false,
+    reason:
+      'no generated stack target (run a bun dev:* command) — or pass --supabase-url / SUPABASE_URL explicitly',
+  };
 }
 
 export function resolveConfig(overrides: Partial<LoadTestConfig> = {}): LoadTestConfig {
   const outDir = overrides.outDir ?? env('LOADTEST_DIR', '.dev/load-test');
   const emailDomain =
     overrides.emailDomain ?? env('LOADTEST_EMAIL_DOMAIN', 'loadtest.studiq.local');
-  // No fixed port fallbacks: a checkout can run on any block. Derive the local
-  // defaults from APP_PORT / the Supabase block so the load test targets the
-  // stack this checkout actually started. Explicit APP_URL / SUPABASE_URL /
-  // overrides still win; the absent-variable defaults stay 3000 / 54321.
+  // No fixed-port derivation: stack mode supplies apps/web/.env, and
+  // SUPABASE_API_PORT is the non-stack/CI escape hatch. Defaults are
+  // 3000 and 54321 when nothing is configured.
   const appPort = envPort('APP_PORT') ?? 3000;
-  const supabasePortBase = envPort('SUPABASE_PORT_BASE') ?? 54320;
-  // Precedence: explicit SUPABASE_API_PORT, then the port `scripts/dev`
-  // recorded in supabase/.env, then the block's default (base + 1).
-  const supabaseApiPort =
-    envPort('SUPABASE_API_PORT') ?? generatedPort('SUPABASE_API_PORT') ?? supabasePortBase + 1;
+  // Stack mode writes the real URL to apps/web/.env; explicit env still wins.
+  // SUPABASE_API_PORT is the non-stack/CI escape hatch.
+  const supabaseApiPort = envPort('SUPABASE_API_PORT') ?? 54321;
+  const generatedSupabaseUrl = webValue('NEXT_PUBLIC_SUPABASE_URL');
+  const generatedAppUrl = webValue('NEXT_PUBLIC_SITE_URL');
   return {
     supabaseUrl:
-      overrides.supabaseUrl ?? env('SUPABASE_URL', `http://127.0.0.1:${supabaseApiPort}`),
-    anonKey: overrides.anonKey ?? env('SUPABASE_ANON_KEY', LOCAL_ANON_KEY),
+      overrides.supabaseUrl ??
+      env('SUPABASE_URL', generatedSupabaseUrl ?? `http://127.0.0.1:${supabaseApiPort}`),
+    anonKey:
+      overrides.anonKey ??
+      env('SUPABASE_ANON_KEY', webValue('NEXT_PUBLIC_SUPABASE_ANON_KEY') ?? LOCAL_ANON_KEY),
     serviceRoleKey:
-      overrides.serviceRoleKey ?? env('SUPABASE_SERVICE_ROLE_KEY', LOCAL_SERVICE_ROLE_KEY),
-    appUrl: overrides.appUrl ?? env('APP_URL', `http://localhost:${appPort}`),
+      overrides.serviceRoleKey ??
+      env(
+        'SUPABASE_SERVICE_ROLE_KEY',
+        webValue('SUPABASE_SERVICE_ROLE_KEY') ?? LOCAL_SERVICE_ROLE_KEY,
+      ),
+    appUrl: overrides.appUrl ?? env('APP_URL', generatedAppUrl ?? `http://localhost:${appPort}`),
     outDir,
     accountsFile: overrides.accountsFile ?? `${outDir}/accounts.json`,
     password: overrides.password ?? env('LOADTEST_PASSWORD', 'Password123!'),
@@ -427,6 +447,7 @@ export class AppClient {
         ok: false,
         ms: performance.now() - t0,
         traceId: null,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- API error bodies are typed by the caller at this boundary
         body: { networkError: String(error) } as T,
       };
     }
@@ -435,9 +456,10 @@ export class AppClient {
     const ms = performance.now() - t0;
     const traceId = res.headers.get('x-trace-id');
 
-    let body: T | null = null;
+    let body: T | null;
     try {
       const text = await res.text();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON response body, typed by the caller at this boundary
       body = text ? (JSON.parse(text) as T) : null;
     } catch {
       body = null;
@@ -470,10 +492,13 @@ export class AppClient {
 export function extractItems(body: unknown): Record<string, unknown>[] {
   if (!body || typeof body !== 'object') return [];
   const data = (body as { data?: unknown }).data;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Array.isArray proves the list; members are read as records
   if (Array.isArray(data)) return data as Record<string, unknown>[];
   if (data && typeof data === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- plain object check above; keys are probed below
     const obj = data as Record<string, unknown>;
     for (const key of ['items', 'decks', 'topics', 'cards', 'flashcards', 'banks']) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Array.isArray proves the list; members are read as records
       if (Array.isArray(obj[key])) return obj[key] as Record<string, unknown>[];
     }
   }
@@ -534,7 +559,7 @@ export class Stats {
 
   percentile(p: number): number {
     if (this.latencies.length === 0) return 0;
-    const sorted = [...this.latencies].sort((a, b) => a - b);
+    const sorted = [...this.latencies].toSorted((a, b) => a - b);
     const index = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
     return sorted[index];
   }

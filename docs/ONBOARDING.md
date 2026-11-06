@@ -240,13 +240,11 @@ bun install
 cp .env.example .env
 ```
 
-Root `.env` is the only hand-edited env file. Every value is optional: the
-checkout gets a unique `SUPABASE_PROJECT_ID` (derived from its path), but every
-checkout defaults to the same port block (`SUPABASE_PORT_BASE=54320` → API
-`:54321`, DB `:54322`, Studio `:54323`, Mail `:54324`). When another developer
-or agent is already running a stack, set `APP_PORT`, `SUPABASE_PROJECT_ID` and
-`SUPABASE_PORT_BASE` explicitly — see the examples at the bottom of
-`.env.example` and `bun dev:ports --suggest` for a free block.
+Root `.env` is the only hand-edited env file. Every value is optional: local
+mode uses the experimental `supabase stack` backend, which assigns ports and
+keeps a separate database per **project root + git branch + optional
+`SUPABASE_STACK` name**. Only `APP_PORT` can collide between checkouts — set a
+different one per worktree (`bun dev:ports` prints a free port).
 
 ### 3. Start the stack
 
@@ -256,9 +254,10 @@ bun dev:up
 
 > First run may take several minutes while Docker pulls images.
 
-`dev:up` starts **this checkout's** Supabase (if needed), renders the generated
-`apps/web/.env` and `supabase/.env` (mode `600`, Git-ignored), and starts the web
-server on `APP_PORT`. It never installs, builds or resets anything.
+`dev:up` starts (or resumes) **this branch's** Supabase stack, renders the
+generated `apps/web/.env` and `supabase/.env` (mode `600`, Git-ignored), and
+starts the web server on `APP_PORT`. It never installs, builds or resets
+anything.
 
 Agents (and anyone running several checkouts) should use the production server
 instead of `next dev`:
@@ -271,21 +270,28 @@ bun dev:build && bun dev:serve   # or: bun dev:up --prod
 
 `apps/web/.env` and `supabase/.env` are **generated** — do not edit or commit
 them; `dev:up` / `dev:build` rewrite them from root `.env` +
-`supabase status -o env`. A key you put in root `.env` is never overwritten.
+`supabase status --output-format json`. A key you put in root `.env` is never
+overwritten.
 
-If you need the raw keys (e.g. shared mode, or a tool that does not go through
-`scripts/dev`):
+If you need the stack's raw URLs/keys (e.g. shared mode, or a tool that does not
+go through `scripts/dev`):
 
 ```bash
-bunx supabase status -o env   # this checkout's project
+bunx supabase status            # human-readable endpoints + service state
+bunx supabase status --env      # exportable KEY=VALUE
 ```
 
-Studio (default ports): [http://127.0.0.1:54323/](http://127.0.0.1:54323/).
+For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and
+add `--stack "$SUPABASE_STACK"` to `status`, `start`, `stop`, `logs` and
+`bunx supabase stack destroy`. Database commands do not accept `--stack`; use the
+`DB_URL` + `--remote` form shown in the team workflow above.
 
-Optional local e-mail delivery uses the Inbucket container
-([http://127.0.0.1:54324](http://127.0.0.1:54324)); uncomment `smtp_port` in
-`supabase/config.toml` first (and offset it per parallel checkout). Without it
-the copyable invite link is the only delivery path.
+Studio, Mailpit and API URLs are assigned per stack; `bun dev:status` prints the
+authoritative ones for this branch.
+
+Optional local e-mail delivery uses the Mailpit container (URL from
+`bun dev:status`). Without an SMTP adapter the copyable invite link is the only
+delivery path.
 
 OpenTelemetry: `.env.example` ships `OTEL_SDK_DISABLED=true`, so the standard
 `cp .env.example .env` setup leaves telemetry **off**. Remove or comment out
@@ -380,11 +386,11 @@ Stop the stack with `docker compose down`.
 bun dev:down --all
 ```
 
-> Stops only **this checkout's** Supabase project and keeps the data volume.
-> It refuses when `SUPABASE_SHARED=1` and never touches another checkout's
-> stack. Do not use `supabase stop --all` on a shared machine. To deliberately
-> wipe this checkout's database, use `bun dev:reset-db` (not `--no-backup`,
-> which deletes the volumes).
+> Stops only **this branch's** Supabase stack and keeps its data. It refuses
+> when `SUPABASE_SHARED=1` and never touches another checkout's stack. Do not use
+> `supabase stop --all` on a shared machine. To deliberately wipe this branch's
+> database, use `bun dev:reset-db`; `bunx supabase stack destroy` (add
+> `--stack "$SUPABASE_STACK"` for a named stack) also deletes the project (including data).
 
 ---
 
@@ -397,6 +403,8 @@ Local data is **not synced via git** — each team member has their own local da
 After modifying tables in Supabase Studio, generate a migration:
 
 ```bash
+# Default stack; for a named stack use the selected-stack conditional in the
+# Author workflow below.
 bunx supabase db diff -f migration_name
 ```
 
@@ -409,9 +417,15 @@ Edit files in `supabase/seeds/` to manage test data. These files are committed t
 ### Author workflow
 
 ```bash
-# 1. Make changes in Studio (http://127.0.0.1:54323)
-# 2. Generate migration
-bunx supabase db diff -f migration_name
+# 1. Make changes in Studio (see `bun dev:status` for the current URL)
+# 2. Generate migration from the selected stack (default or SUPABASE_STACK)
+STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env 2>/dev/null | tail -n1 | tr -d "'\"")}
+if [ -n "$STACK" ]; then
+  DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  bunx supabase db diff -f migration_name --remote="$DB_URL"
+else
+  bunx supabase db diff -f migration_name
+fi
 # 3. Update seeds if needed
 # 4. Commit and push
 git add supabase/
@@ -422,71 +436,114 @@ git commit -m "migration: migration_name"
 
 ```bash
 git pull
-bun dev:up                      # this checkout's Supabase (+ web); does NOT migrate a running stack
-bunx supabase db push --local   # apply new migrations to the running stack
-bun dev:reset-db                # (optional) reloads fresh seed data, this checkout only
+bun dev:up                      # this branch's Supabase stack (+ web); does NOT migrate a running stack
+
+# Apply new migrations to the selected stack (default or SUPABASE_STACK)
+STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env 2>/dev/null | tail -n1 | tr -d "'\"")}
+if [ -n "$STACK" ]; then
+  DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  bunx supabase db push --remote="$DB_URL" --yes
+else
+  bunx supabase db push
+fi
+
+bun dev:reset-db                # (optional) reloads fresh seed data, this branch only
 ```
 
-Every checkout gets its own `SUPABASE_PROJECT_ID`; ports default to the same
-block. If another developer/agent already runs a stack, set `APP_PORT`,
-`SUPABASE_PROJECT_ID` and `SUPABASE_PORT_BASE` in this checkout's `.env` first
-(`bun dev:ports --suggest` prints a free block). Never run
-`supabase stop --all`; `bun dev:down --all` only stops this checkout's stack.
+Every worktree/branch gets its own stack and database automatically. If another
+developer/agent already runs the app on the same `APP_PORT`, change it in this
+checkout's `.env` (`bun dev:ports` prints a free port). Never run
+`supabase stop --all`; `bun dev:down --all` only stops this branch's stack.
+
+### Code review (CodeRabbit)
+
+`.coderabbit.yaml` runs `reviews.profile: 'assertive'` and reviews incrementally
+by default (`auto_incremental_review`), so each push only re-checks the changed
+hunks and deeper findings can arrive one at a time. Request a full pass over the
+whole PR with:
+
+```text
+@coderabbitai full review
+```
+
+`@coderabbitai review` is incremental; `@coderabbitai full review` ignores
+earlier comments and reviews the entire diff.
+
+To catch findings before pushing, run a local CLI review (requires the
+[CodeRabbit CLI](https://docs.coderabbit.ai/cli) and `coderabbit auth login`):
+
+```bash
+coderabbit review --agent                  # tracked changes
+coderabbit review --agent --base main      # whole branch against main
+```
+
+Guard scripts under `scripts/check-*.ts` have a dedicated checklist in
+`.coderabbit.yaml` (errno handling, tracked-but-absent inputs, `--staged` parity,
+exit codes) so a full pass reports all error-handling issues together.
 
 ---
 
 ## Useful Commands
 
-| Command                              | Description                                                     |
-| ------------------------------------ | --------------------------------------------------------------- |
-| `bun dev:up`                         | Start this checkout's stack + web server                        |
-| `bun dev:up --prod`                  | Production build (if missing) + `next start`                    |
-| `bun dev:serve`                      | `next start` on `APP_PORT` (no dev server)                      |
-| `bun dev:status`                     | Health, project id, ports, owner (`--json`)                     |
-| `bun dev:down [--all]`               | Stop this checkout's web (+ Supabase with `--all`)              |
-| `bun dev:reset-db`                   | Reset this checkout's DB + load seeds                           |
-| `bun dev:doctor`                     | Explain missing / owned / colliding state                       |
-| `bun dev:ports --suggest`            | Print a free `APP_PORT` / `SUPABASE_PORT_BASE`                  |
-| `bunx supabase status -o env`        | This checkout's URLs and keys                                   |
-| `bunx supabase db diff -f <name>`    | Generate migration from current changes                         |
-| `bunx supabase migration new <name>` | Create an empty migration manually                              |
-| `bunx supabase db push --local`      | Push migrations to this checkout's local database               |
-| `bun dev`                            | Next.js dev server (agents should not use it)                   |
-| `bun test`                           | Bun's built-in test runner — **not** Vitest; use `bun run test` |
-| `bun run test`                       | Vitest: all unit + integration tests (no DB reset)              |
-| `bun test:unit`                      | Run unit tests only                                             |
-| `bun test:integration`               | Run integration tests only                                      |
-| `bun lint`                           | Lint + import/migration/URL guards (does **not** type-check)    |
-| `bun lint:all`                       | Type-check + lint                                               |
-| `gh auth status`                     | Check GitHub CLI authentication                                 |
-| `scripts/pr`                         | Create a PR from current branch via `gh`                        |
-| `scripts/spin <branch>`              | Create worktree + branch for isolated work                      |
+| Command                              | Description                                                                      |
+| ------------------------------------ | -------------------------------------------------------------------------------- |
+| `bun dev:up`                         | Start this checkout's stack + web server                                         |
+| `bun dev:up --prod`                  | Production build (if missing) + `next start`                                     |
+| `bun dev:serve`                      | `next start` on `APP_PORT` (no dev server)                                       |
+| `bun dev:status`                     | Health, stack id/endpoints (`--json`)                                            |
+| `bun dev:down [--all]`               | Stop this checkout's web (+ this stack with `--all`)                             |
+| `bun dev:reset-db`                   | Reset this branch's DB + load seeds                                              |
+| `bun dev:doctor`                     | Explain missing / owned / colliding state                                        |
+| `bun dev:ports`                      | Print a free `APP_PORT` (stack ports are dynamic)                                |
+| `bunx supabase status`               | This stack's URLs, keys and service state                                        |
+| `bunx supabase db diff -f <name>`    | Generate migration from current changes                                          |
+| `bunx supabase migration new <name>` | Create an empty migration manually                                               |
+| `bunx supabase db push`              | Push migrations to the **default** stack (named stack: see Team member workflow) |
+| `bun dev`                            | Next.js dev server (agents should not use it)                                    |
+| `bun test`                           | Bun's built-in test runner — **not** Vitest; use `bun run test`                  |
+| `bun run test`                       | Vitest: all unit + integration tests (no DB reset)                               |
+| `bun test:unit`                      | Run unit tests only                                                              |
+| `bun test:integration`               | Run integration tests only                                                       |
+| `bun lint`                           | Lint + import/migration/URL guards (does **not** type-check)                     |
+| `bun lint:all`                       | Type-check + lint                                                                |
+| `gh auth status`                     | Check GitHub CLI authentication                                                  |
+| `scripts/pr`                         | Create a PR from current branch via `gh`                                         |
+| `scripts/spin <branch>`              | Create worktree + branch for isolated work                                       |
 
-> Plain `bunx supabase start|stop|status|db ...` follows this checkout because
-> `scripts/dev` renders `supabase/.env`. Prefer the `bun dev:*` commands — they
-> add ownership/collision guards.
+> Plain `bunx supabase start|stop|status|db ...` targets this branch's **default**
+> stack because `supabase/config.toml` enables `[experimental] stack = true`.
+> For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`)
+> and add `--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`;
+> database commands do not take `--stack` — read the URL and pass it as a remote
+> target:
+>
+> ```bash
+> DB_URL=$(bunx supabase status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+> bunx supabase db reset --remote="$DB_URL" --yes
+> ```
+>
+> Prefer the `bun dev:*` commands — they add the app port checks, build lock and
+> generated env files.
 
 ---
 
-## Local URLs (defaults for the first checkout)
+## Local URLs
 
-| Service                 | URL                            |
-| ----------------------- | ------------------------------ |
-| Supabase Studio         | http://127.0.0.1:54323         |
-| API (REST)              | http://127.0.0.1:54321         |
-| Auth                    | http://127.0.0.1:54321/auth/v1 |
-| Inbucket (emails)       | http://127.0.0.1:54324         |
-| App                     | http://localhost:3000          |
-| Grafana (observability) | http://localhost:3001          |
-| Prometheus              | http://localhost:9090          |
-| Tempo (traces API)      | http://localhost:3200          |
-| Loki (logs API)         | http://localhost:3100          |
-| OTLP intake (collector) | http://localhost:4318          |
+Supabase stack endpoints (API, DB, Studio, Mailpit) are assigned per project
+(20000-32767) and printed by `bun dev:status`. Fixed services:
 
-A second checkout escalates the block (`SUPABASE_PORT_BASE=54520` → API
-`:54521`, DB `:54522`, …; `54420` is reserved for the shared QA stack) and
-picks a free `APP_PORT`. `bun dev:status` prints the authoritative URLs for the
-checkout you are in.
+| Service                 | URL                                           |
+| ----------------------- | --------------------------------------------- |
+| App                     | `http://localhost:$APP_PORT` (default `3000`) |
+| Grafana (observability) | http://localhost:3001                         |
+| Prometheus              | http://localhost:9090                         |
+| Tempo (traces API)      | http://localhost:3200                         |
+| Loki (logs API)         | http://localhost:3100                         |
+| OTLP intake (collector) | http://localhost:4318                         |
+
+A second worktree/branch gets its own stack automatically; only `APP_PORT` needs
+a distinct value. The shared QA stack keeps its fixed ports (`:54421` API,
+`:54424` Mailpit) until the dashboard can discover stack ports.
 
 ---
 

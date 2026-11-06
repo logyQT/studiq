@@ -17,11 +17,38 @@
  */
 import { execSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 
 const MIGRATIONS_DIR = 'supabase/migrations';
 // Matches Supabase migration filenames: {timestamp}_{name}.sql
 const MIGRATION_RE = /^(\d{14,})_(.+)\.sql$/;
+
+/**
+ * Migration filenames on disk. An absent working-tree directory is only a valid
+ * "nothing to check" state when git does not track migrations here; if it does,
+ * skipping would silently disable the guard, so fail instead.
+ */
+function migrationFileNames(): string[] {
+  try {
+    return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
+  } catch (error) {
+    // Only a missing directory is recoverable; other read errors (e.g. EACCES)
+    // must fail loudly rather than skip the collision guard.
+    if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) {
+      throw error;
+    }
+    // `-z` keeps paths verbatim (no core.quotePath quoting), and NUL cannot
+    // appear in a filename, so splitting on it cannot merge or split a path.
+    const tracked = execSync(`git ls-files -z -- ${MIGRATIONS_DIR}`, { encoding: 'utf8' })
+      .split('\0')
+      .filter((f) => f.endsWith('.sql'));
+    if (tracked.length === 0) return [];
+    throw new Error(
+      `✖ ${MIGRATIONS_DIR} is missing from the working tree but git tracks ${tracked.length} migration file(s) — restore the directory so the timestamp guard can run.`,
+      { cause: error },
+    );
+  }
+}
 
 function getMigrationFiles(): string[] {
   if (process.argv.includes('--staged')) {
@@ -40,12 +67,7 @@ function getMigrationFiles(): string[] {
     return staged;
   }
 
-  try {
-    return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
-  } catch {
-    console.log('✓ no migrations directory found — skipping check.');
-    process.exit(0);
-  }
+  return migrationFileNames();
 }
 
 function extractTimestamp(filename: string): string | null {
@@ -54,7 +76,7 @@ function extractTimestamp(filename: string): string | null {
 }
 
 const stagedMode = process.argv.includes('--staged');
-const allFiles = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
+const allFiles = migrationFileNames();
 const targetFiles = stagedMode ? getMigrationFiles() : allFiles;
 
 if (targetFiles.length === 0) {
