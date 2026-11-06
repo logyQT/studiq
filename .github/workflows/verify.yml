@@ -273,6 +273,8 @@ jobs:
         run: bun run format:check
       - name: Lint
         run: bun run lint
+      - name: Knip
+        run: bun run knip
       - name: Typecheck
         run: bun run typecheck:all
 

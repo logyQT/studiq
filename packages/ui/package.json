@@ -8,7 +8,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./utils": "./src/utils.ts",
-    "./globals.css": "./src/globals.css",
     "./package.json": "./package.json"
   },
   "scripts": {
