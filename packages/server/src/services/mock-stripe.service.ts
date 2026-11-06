@@ -1,21 +1,20 @@
-import { isOrgAdminRole, type Nullable } from '@studiq/authz';
+import type { AccountType } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import {
+  resolveApplicablePlan,
+  resolveCheckoutOwner,
+} from '@studiq/server/lib/payment/checkout-rules';
+import {
+  type PaymentHistoryWriter,
+  paymentHistoryWriter,
+} from '@studiq/server/lib/payment/payment-history.repository';
+import type { StripeBillingRepository } from '@studiq/server/lib/payment/stripe-repository';
+import { stripeBillingRepository } from '@studiq/server/lib/payment/stripe-repository';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
-import { getSiteUrl } from '@studiq/server/lib/site-url';
-import { createClient } from '@studiq/server/lib/supabase/server';
-import { createServiceClient } from '@studiq/server/lib/supabase/service';
-import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../types/database';
-
-export type MockCheckoutSession = {
-  id: string;
-  planId: string;
-  userId: string;
-  orgId: Nullable<string>;
-  status: 'open' | 'completed' | 'expired';
-  url: string;
-};
+import {
+  type EntitlementService,
+  entitlementService,
+} from '@studiq/server/services/entitlement.service';
 
 /**
  * The (mock) Stripe event fields the service may trust. The caller identity is
@@ -29,161 +28,104 @@ export type MockWebhookEvent = {
   org_id?: string;
 };
 
+type MockCheckoutRules = Pick<StripeBillingRepository, 'getPlan' | 'isOrgAdmin'>;
+type MockEntitlements = Pick<EntitlementService, 'applyPlan'>;
+
+/**
+ * Completion half of the simulated provider (workstream A).
+ *
+ * The mock checkout page posts one authenticated command per purchase (and the
+ * QA fixtures use the same command to simulate a lifecycle change). This
+ * service applies exactly the same downstream domain behaviour as the Stripe
+ * webhook path:
+ *
+ * 1. plan/owner rules come from the shared `checkout-rules` validator, so the
+ *    mock cannot accept a plan or an org the real path would refuse;
+ * 2. the entitlement is written only by `EntitlementService`, never here;
+ * 3. a **paid** plan writes the purchase history row through the shared
+ *    provider-neutral writer (`provider='mock'`, `session_id` uniqueness). A
+ *    free plan is a lifecycle change (like Stripe's `customer.subscription.deleted`)
+ *    and writes no history row.
+ *
+ * Replay is record-first: a session id that already owns a different purchase
+ * is rejected with `CONFLICT` before any entitlement is written, so a forged or
+ * stale `session_id` cannot re-entitle another owner or another plan. A replay
+ * of the *same* purchase is a no-op that also re-applies the absolute
+ * entitlement, which self-heals a crash between the two writes.
+ *
+ * There is deliberately no `stripe_webhook_events` row: the mock webhook is a
+ * single authenticated command, not a provider retry stream.
+ */
 export class MockStripeService {
   constructor(
-    private clientFactory: () => Promise<SupabaseClient<Database>>,
-    private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
+    private readonly rules: MockCheckoutRules = stripeBillingRepository,
+    private readonly entitlements: MockEntitlements = entitlementService,
+    private readonly payments: PaymentHistoryWriter = paymentHistoryWriter,
   ) {}
-
-  /**
-   * A plan can be bought only if it exists, is active and is meant for the buyer's account type.
-   * Reports whether it is an organization plan (bought for an org, not for the buyer) and the
-   * catalog values that are snapshotted into the purchase history.
-   */
-  private async assertPlanPurchasable(
-    planKey: string,
-    accountType: string,
-  ): Promise<
-    ServiceResult<{ isOrgPlan: boolean; planName: string; amount: number; currency: string }>
-  > {
-    const supabase = await this.clientFactory();
-
-    const { data: plan } = await supabase
-      .from('subscription_plans')
-      .select('key, name, is_active, for_account_type, price_monthly, currency')
-      .eq('key', planKey)
-      .maybeSingle();
-
-    if (!plan?.is_active) return failure('BAD_REQUEST');
-    if (plan.for_account_type && plan.for_account_type !== accountType) {
-      return failure('FORBIDDEN');
-    }
-    return success({
-      isOrgPlan: plan.for_account_type === 'manager',
-      planName: plan.name ?? plan.key,
-      amount: plan.price_monthly ?? 0,
-      currency: plan.currency ?? 'PLN',
-    });
-  }
-
-  /** An organization plan can be bought only by an admin of that organization. */
-  private async assertOrgAdmin(
-    orgId: string | undefined,
-    userId: string,
-  ): Promise<ServiceResult<string>> {
-    if (!orgId) return failure('BAD_REQUEST');
-
-    const supabase = await this.clientFactory();
-    const { data: membership, error } = await supabase
-      .from('org_members')
-      .select('org_roles!inner(name)')
-      .eq('organization_id', orgId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error) return toDbFailure(error);
-
-    const role = membership?.org_roles as { name?: string } | { name?: string }[] | undefined;
-    const roleName = Array.isArray(role) ? role[0]?.name : role?.name;
-    if (!isOrgAdminRole(roleName)) return failure('FORBIDDEN');
-    return success(orgId);
-  }
-
-  async createCheckoutSession(
-    planId: string,
-    accountType: string,
-    userId: string,
-    orgId?: string,
-  ): Promise<ServiceResult<{ url: string; sessionId: string }>> {
-    const purchasable = await this.assertPlanPurchasable(planId, accountType);
-    if (isFailure(purchasable)) return purchasable;
-
-    if (purchasable.data.isOrgPlan) {
-      const admin = await this.assertOrgAdmin(orgId, userId);
-      if (isFailure(admin)) return admin;
-    }
-
-    const sessionId = crypto.randomUUID();
-    const baseUrl = getSiteUrl();
-    const orgParam = purchasable.data.isOrgPlan ? `&org_id=${orgId}` : '';
-    const url = `${baseUrl}/checkout?session_id=${sessionId}&plan_id=${planId}${orgParam}`;
-
-    return success({ url, sessionId });
-  }
 
   async handleWebhook(
     event: MockWebhookEvent,
-    accountType: string,
+    accountType: AccountType,
     // The authenticated caller (ctx.userId), never the request body.
     userId: string,
   ): Promise<ServiceResult<void>> {
     if (event.type !== 'checkout.session.completed') return success(undefined);
 
-    const purchasable = await this.assertPlanPurchasable(event.plan_id, accountType);
-    if (isFailure(purchasable)) return purchasable;
+    const applicable = await resolveApplicablePlan(this.rules, event.plan_id, accountType);
+    if (isFailure(applicable)) return applicable;
 
-    // `profiles` is write-locked for `authenticated` (see migration
-    // 20261022000001_profiles_write_lockdown.sql) and `apply_org_plan` is
-    // service-role only, so entitlement writes use the admin client, never the
-    // caller's session.
-    const admin = this.createAdminClient();
+    const owner = await resolveCheckoutOwner(
+      this.rules,
+      applicable.data,
+      { userId, accountType },
+      event.org_id,
+    );
+    if (isFailure(owner)) return owner;
 
-    if (purchasable.data.isOrgPlan) {
-      const adminMembership = await this.assertOrgAdmin(event.org_id, userId);
-      if (isFailure(adminMembership)) return adminMembership;
-      const orgId = adminMembership.data;
+    const organizationId = owner.data.type === 'org' ? owner.data.orgId : null;
+    const plan = applicable.data.plan;
 
-      // organizations.plan alone changes nothing: features and limits are
-      // snapshots, so the DB function moves the plan and re-syncs them.
-      const { error: planError } = await admin.rpc('apply_org_plan', {
-        p_org_id: orgId,
-        p_plan: event.plan_id,
+    if (plan.priceMonthly > 0) {
+      // Append-only purchase log for "Historia płatności" (#392), through the
+      // same writer the Stripe `invoice.paid` handler uses.
+      const payment = await this.payments.record({
+        provider: 'mock',
+        userId,
+        organizationId,
+        planKey: plan.key,
+        planName: plan.name,
+        amount: plan.priceMonthly,
+        currency: plan.currency,
+        sessionId: event.session_id,
       });
-      if (planError) return toDbFailure(planError);
-    } else {
-      // An organization purchase changes the organization, never the buyer's
-      // personal plan: a manager's personal plan is the free `launch` tier and
-      // applies only outside an organization (#228). Only a plan bought for the
-      // buyer themselves updates `profiles.personal_plan_key`.
-      const { error } = await admin
-        .from('profiles')
-        .update({ personal_plan_key: event.plan_id })
-        .eq('id', userId);
+      if (isFailure(payment)) return payment;
 
-      if (error) return toDbFailure(error);
+      // `duplicate` only proves the key exists, not that it is this purchase.
+      // Refuse before the entitlement write so a stolen/stale session id cannot
+      // re-entitle a different owner or plan.
+      if (payment.data.outcome === 'duplicate') {
+        const existing = payment.data.existing;
+        const samePurchase =
+          existing?.userId === userId &&
+          existing.organizationId === organizationId &&
+          existing.planKey === plan.key;
+        if (!samePurchase) {
+          return failure('CONFLICT');
+        }
+      }
     }
 
-    // Append-only purchase log for "Historia płatności" (#392). The entitlement
-    // write above (`organizations.plan` or `profiles.personal_plan_key`) stays
-    // the source of truth; this row only records what was bought, at the
-    // catalog price read during this request.
-    // `session_id` is unique, so a replayed webhook collapses onto the same row
-    // (`ignoreDuplicates` → ON CONFLICT DO NOTHING).
-    const { error: paymentError } = await admin.from('payments').upsert(
-      {
-        user_id: userId,
-        organization_id: purchasable.data.isOrgPlan ? (event.org_id ?? null) : null,
-        plan_key: event.plan_id,
-        plan_name: purchasable.data.planName,
-        amount: purchasable.data.amount,
-        currency: purchasable.data.currency,
-        session_id: event.session_id,
-      },
-      { onConflict: 'session_id', ignoreDuplicates: true },
+    // The only entitlement writer (#662 §6.6). Absolute writes make a genuine
+    // replay harmless; an org purchase never touches the buyer's personal plan.
+    const entitlement = await this.entitlements.applyPlan(
+      owner.data.type === 'org'
+        ? { type: 'org', orgId: owner.data.orgId }
+        : { type: 'user', userId: owner.data.userId },
+      plan.key,
     );
-
-    if (paymentError) return toDbFailure(paymentError);
+    if (isFailure(entitlement)) return entitlement;
 
     return success(undefined);
   }
-
-  // eslint-disable-next-line @typescript-eslint/require-await -- service methods expose a Promise contract consumed via await.
-  async createPortalSession(_userId: string): Promise<ServiceResult<{ url: string }>> {
-    const baseUrl = getSiteUrl();
-    return success({ url: `${baseUrl}/app/billing` });
-  }
 }
-export const mockStripeService = wrapService(
-  new MockStripeService(createClient),
-  'mock-stripe.service',
-);
+export const mockStripeService = wrapService(new MockStripeService(), 'mock-stripe.service');

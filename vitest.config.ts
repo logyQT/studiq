@@ -15,6 +15,10 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       env: {
+        // Tests are a non-production posture by contract: the mock driver is
+        // allowed here and only here (never in an unset/production APP_ENV).
+        APP_ENV: 'test',
+        PAYMENT_DRIVER: 'mock',
         OTEL_SDK_DISABLED: 'true',
       },
       globals: true,

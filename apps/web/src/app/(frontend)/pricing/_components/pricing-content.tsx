@@ -134,7 +134,7 @@ export function PlanCard({
 
         {user && PLAN_ID_MAP[plan.key] ? (
           <CheckoutButton
-            planId={PLAN_ID_MAP[plan.key]!}
+            planKey={PLAN_ID_MAP[plan.key]!}
             orgId={plan.forAccountType === 'manager' ? orgId : undefined}
             className="w-full"
           >

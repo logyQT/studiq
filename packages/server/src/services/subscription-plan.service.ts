@@ -152,12 +152,13 @@ export class SubscriptionPlanService {
     if (!planKey) {
       // Unseated non-managers (and managers without an org plan) use their
       // personal plan.
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('personal_plan_key')
         .eq('id', ctx.userId)
         .maybeSingle();
 
+      if (profileError) return toDbFailure(profileError);
       if (profile?.personal_plan_key) {
         planKey = profile.personal_plan_key;
       }
@@ -205,11 +206,13 @@ export class SubscriptionPlanService {
   async getPersonalPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('personal_plan_key')
       .eq('id', ctx.userId)
       .maybeSingle();
+
+    if (profileError) return toDbFailure(profileError);
 
     const planKey = profile?.personal_plan_key;
     if (!planKey) return failure('NOT_FOUND');

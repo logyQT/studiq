@@ -1,15 +1,14 @@
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@studiq/server/types/database';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import { createTestUser, seedViaApi, type TestUserFixture } from '#test/helpers/test-user';
 import {
   cleanupOrganizationDeep,
   createServiceClient,
   seedOrgMembership,
 } from '#test/integration/helpers';
-import { json } from '#test/helpers/json';
 import { createNextRequest } from '#test/integration/test-utils';
 import { GET as getMyOrgs } from '@/app/(backend)/api/v1/me/orgs/route';
 import { POST as createCheckoutSession } from '@/app/(backend)/api/v1/stripe/create-checkout-session/route';
@@ -29,13 +28,13 @@ const BASE_URL = 'http://localhost';
 
 interface Session {
   user: TestUserFixture;
-  build: () => SupabaseClient<Database>;
+  build: () => SupabaseClient;
 }
 
 async function signIn(email: string, user: TestUserFixture): Promise<Session> {
   const jar = new Map<string, string>();
   const build = () =>
-    createServerClient<Database>(
+    createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -55,7 +54,7 @@ async function signIn(email: string, user: TestUserFixture): Promise<Session> {
 }
 
 function actAs(session: Session) {
-  vi.mocked(supabaseModule.createClient).mockImplementation(() => Promise.resolve(session.build()));
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => session.build());
 }
 
 function checkoutRequest(body: unknown, cookies?: Record<string, string>) {
@@ -90,8 +89,7 @@ describe('org checkout resolves the target organization (#225)', () => {
       .select('id')
       .eq('organization_id', orgId)
       .eq('name', 'teacher')
-      .single()
-      .overrideTypes<{ id: string }, { merge: false }>();
+      .single();
     if (roleError || !teacherRole) throw new Error('[setup] teacher org role missing');
 
     // Same account type as the buyer (manager) but a non-admin org role: this is
@@ -143,7 +141,7 @@ describe('org checkout resolves the target organization (#225)', () => {
 
   it('creates a checkout session whose URL carries the resolved org', async () => {
     actAs(admin);
-    const res = await createCheckoutSession(checkoutRequest({ planId: 'hub', orgId }));
+    const res = await createCheckoutSession(checkoutRequest({ planKey: 'hub', orgId }));
     const body = await json<{ data: { url: string } }>(res);
 
     expect(res.status).toBe(200);
@@ -153,14 +151,14 @@ describe('org checkout resolves the target organization (#225)', () => {
 
   it('rejects a manager who is not an org admin', async () => {
     actAs(teacher);
-    const res = await createCheckoutSession(checkoutRequest({ planId: 'hub', orgId }));
+    const res = await createCheckoutSession(checkoutRequest({ planKey: 'hub', orgId }));
 
     expect(res.status).toBe(403);
   });
 
   it('rejects an org plan purchase without an org id', async () => {
     actAs(admin);
-    const res = await createCheckoutSession(checkoutRequest({ planId: 'hub' }));
+    const res = await createCheckoutSession(checkoutRequest({ planKey: 'hub' }));
 
     expect(res.status).toBe(400);
   });

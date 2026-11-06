@@ -57,12 +57,12 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
 - `/app/upgrade` (student) shows exactly the student catalogue in catalogue order:
   StudiQ Base (0 zł, features Fiszki/Testy, „Zacznij za Darmo”), StudiQ Spark
   (9,99 zł/miesiąc, „Przejdź na Spark”), StudiQ Ace (19,99 zł/miesiąc,
-  „Najpopularniejszy”, „Wybierz Ace”), StudiQ Pro (49,99 zł/miesiąc, „Wybierz Pro”).
+  „Najpopularniejszy”, „Wybierz Ace”), StudiQ Pro (39,99 zł/miesiąc, „Wybierz Pro”).
   The Base card carries the „Obecny Plan” badge.
 - `/edu/upgrade` (educator) shows exactly the educator catalogue: StudiQ Lite (0 zł,
-  „Zacznij za Darmo”), StudiQ Guide (9,99 zł/miesiąc, „Przejdź na Guide”), StudiQ Creator
-  (19,99 zł/miesiąc, „Najpopularniejszy”, „Wybierz Creator”), StudiQ Master
-  (49,99 zł/miesiąc, „Wybierz Master”). The Lite card carries the „Obecny Plan” badge.
+  „Zacznij za Darmo”), StudiQ Guide (19,99 zł/miesiąc, „Przejdź na Guide”), StudiQ Creator
+  (39,99 zł/miesiąc, „Najpopularniejszy”, „Wybierz Creator”), StudiQ Master
+  (79,99 zł/miesiąc, „Wybierz Master”). The Lite card carries the „Obecny Plan” badge.
 - Each page shows only its own account type's plans; no student plan appears on the
   educator page and vice versa.
 - The purchase buttons are live: „Przejdź na Spark” creates a mock checkout session and

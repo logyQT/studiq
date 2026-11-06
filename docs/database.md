@@ -79,62 +79,70 @@ supabase/
 │   ├── 20260609065731_rbac_updated.sql
 │   ├── 20260610053450_orphan_flashcards_cleanup_function.sql
 │   └── z_realtime.sql
-└── schemas/                 # Logical groupings
+└── schemas/                 # Logical groupings (selected domains)
     ├── 00_enums.sql
-    ├── 03_universities.sql
+    ├── 01_config.sql
+    ├── 03_organizations.sql
     ├── 04_profiles.sql
+    ├── 05_org_members.sql
     ├── 07_invitations.sql
-    ├── 09_university_subscriptions.sql
-    ├── 12_user_subscriptions.sql
-    ├── 21_subjects.sql
     ├── 24_questions.sql
-    ├── 27_question_answers.sql
+    ├── 27_question_options.sql
     ├── 30_flashcards.sql
-    ├── 31_flashcard_topics.sql
-    ├── 32_flashcard_topic_assignments.sql
+    ├── 31_topics.sql
     ├── 34_flashcard_decks.sql
-    ├── 35_flashcard_deck_assignments.sql
-    ├── 36_orphan_flashcards_cleanup.sql
     ├── 39_quiz_attempts.sql
-    ├── 40_quiz_attempt_questions.sql
-    ├── 42_quiz_answers.sql
+    ├── 42_student_answers.sql
     ├── 45_flashcard_practice.sql
     ├── 46_flashcard_review_state.sql
-    ├── 48_func_update_updated_at.sql
-    ├── 51_quiz_refactor.sql
     ├── 55_rbac_permissions.sql
-    └── 99_realtime.sql
+    ├── 56_org_roles.sql
+    ├── 65_payments.sql
+    ├── 66_billing.sql
+    └── 68_activity_organization.sql
 ```
 
 ## Seed Data
 
 Seed files are located in `supabase/seeds/` and are organized by domain:
 
-| File                        | Purpose                               |
-| --------------------------- | ------------------------------------- |
-| `01_users.sql`              | Auth users, identities, profile roles |
-| `02_subjects.sql`           | Sample subjects                       |
-| `03_questions.sql`          | Sample questions                      |
-| `04_question_answers.sql`   | Question answers                      |
-| `05_flashcards.sql`         | Sample flashcards                     |
-| `06_flashcard_topics.sql`   | Flashcard topics                      |
-| `06_quiz_attempts.sql`      | Quiz attempts                         |
-| `07_flashcard_decks.sql`    | Flashcard decks                       |
-| `08_flashcard_practice.sql` | Practice history                      |
-| `09_perms.sql`              | RBAC permissions                      |
+| File                | Purpose                                            |
+| ------------------- | -------------------------------------------------- |
+| `00_plans.sql`      | Plan catalog, features, limits, default free plans |
+| `01_seed.sql`       | Auth users, organizations, content and tenants     |
+| `09_perms.sql`      | RBAC permissions                                   |
+| `99_dev_grants.sql` | Local-only grants                                  |
+| `99_realtime.sql`   | Local realtime publication                         |
 
 ## Table Domains
 
 ### Users & Profiles
 
-| Table                      | Description                                          |
-| -------------------------- | ---------------------------------------------------- |
-| `profiles`                 | User profiles with role, university_id, and metadata |
-| `universities`             | University organizations                             |
-| `university_members`       | University membership records                        |
-| `invitations`              | Token-based invitation system                        |
-| `university_subscriptions` | University subscription plans                        |
-| `user_subscriptions`       | Individual user subscriptions                        |
+| Table           | Description                                         |
+| --------------- | --------------------------------------------------- |
+| `profiles`      | User profiles, account type, `personal_plan_key`    |
+| `organizations` | Organizations, default group and `plan` entitlement |
+| `org_members`   | Membership + `org_role_id`                          |
+| `org_roles`     | Role names (`admin`, `manager`, `teacher`, …)       |
+| `invitations`   | Token-based invitation system                       |
+
+### Billing & Payments
+
+| Table                   | Description                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `billing_customers`     | One Stripe customer per owner and `livemode` (`user_id` XOR `organization_id`). Never exposed to clients.                                                                                                                                                                                                                                                                                                              |
+| `billing_subscriptions` | Stripe subscription mirror: plan/price key, status, period, cancel/pending flags, `last_event_created` freshness fence. Own-row and org-manager reads (RLS).                                                                                                                                                                                                                                                           |
+| `stripe_prices`         | Plan → Stripe Price map per `(plan_key, billing_cycle, livemode)`; validated on every checkout (amount, currency, monthly interval). No client grants.                                                                                                                                                                                                                                                                 |
+| `stripe_webhook_events` | Idempotency/claim/lease table keyed by Stripe `event.id`; stores type/status/error only, never the payload. No client grants.                                                                                                                                                                                                                                                                                          |
+| `payments`              | One row per purchase: a paid invoice for Stripe, one row per mock checkout. `provider` is `mock` or `stripe`; each provider has one replay-safe key (`session_id` for mock, `stripe_invoice_id` for Stripe). The Stripe columns are `stripe_customer_id`, `stripe_subscription_id`, `stripe_invoice_id` (unique), `stripe_checkout_session_id` (unique, create-invoice only), `hosted_invoice_url`, `invoice_pdf_url`. |
+
+RLS: `payments` is own-row readable and has no client write policy;
+`billing_subscriptions` is own-row readable and readable by a manager of the
+subscription's organization (any organization they manage, not just the active
+one). `billing_customers`, `stripe_prices` and `stripe_webhook_events` have
+**no** client grants — all writes go through the service-role client
+(`EntitlementService`, `payment-history.repository.ts` and the webhook
+repositories). Do not add a browser-side Supabase client for billing.
 
 ### Learning System
 
@@ -175,7 +183,7 @@ Seed files are located in `supabase/seeds/` and are organized by domain:
 
 The application accesses the database through the Supabase client:
 
-- **Server-side:** `@/lib/supabase/server` — uses SSR cookies for user context
-- **Client-side:** `@/lib/supabase/client` — uses browser session
-- **Service role:** `@/lib/supabase/service` — admin-level access for server-only operations
-- **Tests:** `createRealClient()` — uses anon key for direct access
+- **Server API routes/services:** `@studiq/server/lib/supabase/server` — SSR cookies and the caller's JWT, so RLS applies
+- **Service role:** `@studiq/server/lib/supabase/service` — webhook, entitlement and bootstrap writes only
+- **Browser:** the frontend talks to the REST API through `apps/web/src/lib/api.ts`; there is no browser-side Supabase client
+- **Tests:** `createRealClient()` — anon key for direct RLS checks

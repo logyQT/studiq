@@ -30,20 +30,32 @@ DELETE FROM public.subscription_plans;
 -- 5. Subscription plans (12 brand plans)
 -- Note: `description` column is for admin internal use only.
 -- Public-facing descriptions are managed via i18n keys (`plan_{key}_desc`).
+--
+-- Approved flat monthly PLN ladder (#662, operator 2026-11-04):
+--   student  Spark 9.99 · Ace 19.99 · Pro 39.99
+--   educator Guide 19.99 · Creator 39.99 · Master 79.99
+--   org      Team 99 · Hub 299 · Campus 699
+-- The bootstrap creates each Stripe Price with `tax_behavior = 'inclusive'`,
+-- so these amounts are final consumer prices (Managed Payments is the merchant
+-- of record). After changing any price_monthly, re-run the test-mode bootstrap
+-- (not just --check) so `stripe_prices` rotates to the new amount; Stripe-mode
+-- checkout fails closed while the catalog and the mapped Price disagree.
+-- The production catalog is updated by the operator runbook in
+-- docs/deployment.md before the live bootstrap.
 -- ==========================================================
 INSERT INTO public.subscription_plans (key, name, price_monthly, currency, sort_order, for_account_type) VALUES
   ('base',     'StudiQ Base',    0,     'PLN', 1,    'student'),
   ('lite',     'StudiQ Lite',    0,     'PLN', 2,    'educator'),
   ('launch',   'StudiQ Launch',  0,     'PLN', 3,    'manager'),
   ('spark',    'StudiQ Spark',   999,   'PLN', 4,    'student'),
-  ('guide',    'StudiQ Guide',   999,   'PLN', 5,    'educator'),
-  ('team',     'StudiQ Team',    999,   'PLN', 6,    'manager'),
+  ('guide',    'StudiQ Guide',   1999,  'PLN', 5,    'educator'),
+  ('team',     'StudiQ Team',    9900,  'PLN', 6,    'manager'),
   ('ace',      'StudiQ Ace',     1999,  'PLN', 7,    'student'),
-  ('creator',  'StudiQ Creator', 1999,  'PLN', 8,    'educator'),
-  ('hub',      'StudiQ Hub',     1999,  'PLN', 9,    'manager'),
-  ('pro',      'StudiQ Pro',     4999,  'PLN', 10,   'student'),
-  ('master',   'StudiQ Master',  4999,  'PLN', 11,   'educator'),
-  ('campus',   'StudiQ Campus',  4999,  'PLN', 12,   'manager')
+  ('creator',  'StudiQ Creator', 3999,  'PLN', 8,    'educator'),
+  ('hub',      'StudiQ Hub',     29900, 'PLN', 9,    'manager'),
+  ('pro',      'StudiQ Pro',     3999,  'PLN', 10,   'student'),
+  ('master',   'StudiQ Master',  7999,  'PLN', 11,   'educator'),
+  ('campus',   'StudiQ Campus',  69900, 'PLN', 12,   'manager')
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================

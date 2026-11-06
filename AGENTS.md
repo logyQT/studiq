@@ -170,6 +170,7 @@ bun dev:down           # stop this checkout's web; `--all` also stops this branc
 | ------------------------------- | ---------------------------------------------------------------------------------------- |
 | `APP_PORT`                      | root `.env` (default `3000`)                                                             |
 | `APP_URL`                       | root `.env` (defaults to `http://localhost:$APP_PORT`)                                   |
+| `APP_ENV`                       | root `.env` (default `development` in `scripts/dev`; the app defaults to `production`)   |
 | `NEXT_PUBLIC_SITE_URL`          | root `.env` (defaults to `APP_URL`)                                                      |
 | `SUPABASE_STACK`                | root `.env`; named stack in this checkout (blank = branch default)                       |
 | `SUPABASE_START_EXCLUDE`        | root `.env`; `supabase stack start -x` capabilities (default skips unused; empty = full) |
@@ -535,6 +536,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. Public-by-design prefixes must be added to the catch-all exclusion in `packages/server/src/config/routes.config.ts`.
 - **New UI routes**: add a `RouteRule` to `packages/server/src/config/routes.config.ts` if the route needs auth, account-type restrictions, or a logged-in redirect.
 - **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it) and schema in `supabase/schemas/`
+- **Payment posture uses `APP_ENV`, never `NODE_ENV`** — production is the default; `PAYMENT_DRIVER=mock` is a boot error there (no override), production rejects test keys and needs an `https://` non-localhost site URL. Dev/test/QA must set `APP_ENV` explicitly. See `packages/server/src/lib/app-env.ts` and `docs/deployment.md`.
 - **Supabase `eq(col, null)` is not `IS NULL`** — `.eq('organization_id', ctx.activeOrgId)` with `activeOrgId === null` serialises to `organization_id=eq.null`, which Postgres rejects on a `uuid` column (`22P02`, surfacing as a 500 — #148). For NOT NULL org columns guard first (`if (!ctx.activeOrgId) return failure('FORBIDDEN')`); for nullable-org personal content apply the org filter only when set (`if (ctx.activeOrgId) query = query.eq(...)`), matching `accessibleFilter`'s `own` scope.
 - **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun lint's `oxc/no-barrel-file` rule enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `oxc/no-barrel-file` is disabled for those two files.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — a hand-run root `bun check` must stay at zero errors; use the per-workspace scripts for app code.

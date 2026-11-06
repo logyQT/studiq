@@ -32,9 +32,10 @@ and the limits resolver did not honour that decision.
 **Option A — managers have no paid personal plan.**
 
 1. An organization purchase changes only the organization
-   (`apply_org_plan` + the `payments` row). `MockStripeService.handleWebhook`
-   writes `profiles.personal_plan_key` only for a plan bought for the buyer
-   themselves.
+   (`apply_org_plan` + the `payments` row). The entitlement writer
+   (`EntitlementService.applyPlan`) writes `profiles.personal_plan_key` only for
+   a plan bought for the buyer themselves; the mock completion path and the
+   Stripe webhook both go through it.
 2. A manager's personal plan is the free manager tier (`launch`) and applies
    only outside any organization.
 3. In a verified organization, limits come from the organization plan only.

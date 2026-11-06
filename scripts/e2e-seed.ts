@@ -22,8 +22,8 @@
  * Playwright then starts with `E2E_SKIP_SEED=1`; locally `global-setup.ts` still
  * runs it so `bunx playwright test` works with no extra step.
  */
+import { isRecord, readString } from '@studiq/server/lib/record';
 import { SQL } from 'bun';
-import type { Database } from '@studiq/server/types/database';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { shortHash, tenantKey, uuidv5 } from '#test/e2e/fixtures/ids';
@@ -75,7 +75,7 @@ const ROOT = join(import.meta.dir, '..');
 const SEED_DIR = join(ROOT, '__tests__/e2e/.seed');
 const INDEX = join(SEED_DIR, 'index.json');
 function env(name: string, fallback?: string): string {
-  if (process.env[name]) return process.env[name]!;
+  if (process.env[name]) return process.env[name];
   if (fallback) return fallback;
   // local convenience: reuse the web app's dev env
   try {
@@ -103,6 +103,21 @@ const writeAccounts: AccountWriter = createSqlAccountWriter(sql);
 
 /* ------------------------------------------------------------------ manifest */
 
+function isTenant(value: unknown): value is Tenant {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.key === 'string' &&
+    typeof value.file === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.project === 'string' &&
+    typeof value.profile === 'string' &&
+    isRecord(value.org) &&
+    typeof value.org.id === 'string' &&
+    isRecord(value.users) &&
+    isRecord(value.ids)
+  );
+}
+
 async function listTests(): Promise<Array<{ file: string; title: string; project: string }>> {
   const proc = Bun.spawn(['bunx', 'playwright', 'test', '--list', '--reporter=json'], {
     cwd: ROOT,
@@ -111,29 +126,37 @@ async function listTests(): Promise<Array<{ file: string; title: string; project
   });
   const out = await new Response(proc.stdout).text();
   await proc.exited;
-  const report = JSON.parse(out) as {
-    suites?: Array<{
-      file?: string;
-      specs?: Array<{ title: string; tests?: Array<{ projectName: string }> }>;
-      suites?: unknown[];
-    }>;
-  };
+
+  const parsed: unknown = JSON.parse(out);
   const found: Array<{ file: string; title: string; project: string }> = [];
-  const walk = (suites: Array<Record<string, unknown>>) => {
-    for (const s of suites) {
-      const file = (s.file as string) ?? '';
-      for (const spec of (s.specs as Array<{
-        title: string;
-        tests?: Array<{ projectName: string }>;
-      }>) ?? []) {
-        for (const t of spec.tests ?? []) {
-          found.push({ file, title: spec.title, project: t.projectName });
+
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) walk(entry);
+      return;
+    }
+    if (!isRecord(value)) return;
+
+    const file = readString(value, 'file') ?? '';
+    const specs = value.specs;
+    if (Array.isArray(specs)) {
+      for (const spec of specs) {
+        if (!isRecord(spec)) continue;
+        const title = readString(spec, 'title') ?? '';
+        const tests = spec.tests;
+        if (!Array.isArray(tests)) continue;
+        for (const test of tests) {
+          if (!isRecord(test)) continue;
+          const project = readString(test, 'projectName');
+          if (project) found.push({ file, title, project });
         }
       }
-      walk((s.suites as Array<Record<string, unknown>>) ?? []);
     }
+
+    walk(value.suites);
   };
-  walk((report.suites as Array<Record<string, unknown>>) ?? []);
+
+  walk(parsed);
   return found;
 }
 
@@ -310,11 +333,7 @@ async function seedTenant(t: Tenant): Promise<void> {
           organization_id: t.org.id,
           created_by: teacher.id,
           content: `Question ${b + 1}-${i + 1}?`,
-          type: (i < 3
-            ? 'mcq'
-            : i === 3
-              ? 'true_false'
-              : 'open') as Database['public']['Enums']['question_type'],
+          type: i < 3 ? 'mcq' : i === 3 ? 'true_false' : 'open',
           visibility: 'group' as const,
         })),
       ),
@@ -455,9 +474,11 @@ async function main(): Promise<void> {
   const index: Record<string, Tenant> = {};
   if (project && !wipe) {
     try {
-      const previous = JSON.parse(readFileSync(INDEX, 'utf8')) as Record<string, Tenant>;
-      for (const [key, tenant] of Object.entries(previous)) {
-        if (tenant.project !== project) index[key] = tenant;
+      const previous: unknown = JSON.parse(readFileSync(INDEX, 'utf8'));
+      if (isRecord(previous)) {
+        for (const [key, tenant] of Object.entries(previous)) {
+          if (isTenant(tenant) && tenant.project !== project) index[key] = tenant;
+        }
       }
     } catch {
       // No manifest yet (or unreadable) — nothing to preserve.

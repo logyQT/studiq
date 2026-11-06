@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "bun ../../scripts/payment-preflight.ts && next start",
     "typecheck": "bun check",
     "lint": "bun lint --no-script src/",
     "test": "vitest run",

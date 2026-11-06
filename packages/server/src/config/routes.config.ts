@@ -62,6 +62,13 @@ export const routeRules: RouteRule[] = [
     allowedAccountTypes: [AccountType.EDUCATOR],
   },
 
+  // The post-checkout landing page calls authenticated billing endpoints and
+  // cannot function signed out; an expired session must go through /login.
+  {
+    matcher: /^\/billing(\/.*)?$/,
+    requireAuth: true,
+  },
+
   // --- CHECKOUT ROUTES ---
   // The checkout resolves the target organization from the session-scoped
   // `/api/v1/me/orgs`, so it cannot function signed out. The proxy keeps the

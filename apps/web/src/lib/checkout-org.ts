@@ -7,7 +7,7 @@
  * page never learns a name it is not allowed to see.
  *
  * This is a *cosmetic* gate: the server re-checks admin membership in
- * `createCheckoutSession` and `handleWebhook` (`assertOrgAdmin`).
+ * `createCheckoutSession` and `handleWebhook` through the shared checkout rules.
  */
 import { isOrgAdminRole } from '@studiq/authz';
 

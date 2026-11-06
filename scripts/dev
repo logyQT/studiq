@@ -162,7 +162,7 @@ load_env_file() {
 # before this script assigns anything, then mirror it into ENV first so the
 # file loader's `keep` mode never overwrites an explicit override.
 CONTRACT_KEYS=(
-  APP_PORT APP_URL NEXT_PUBLIC_SITE_URL
+  APP_PORT APP_URL NEXT_PUBLIC_SITE_URL APP_ENV PAYMENT_DRIVER
   SUPABASE_PROJECT_ID SUPABASE_PORT_BASE SUPABASE_API_PORT SUPABASE_DB_PORT
   SUPABASE_STUDIO_PORT SUPABASE_MAIL_PORT SUPABASE_ANALYTICS_PORT
   SUPABASE_EDGE_INSPECTOR_PORT SUPABASE_SHADOW_PORT SUPABASE_POOLER_PORT
@@ -366,6 +366,12 @@ resolve_contract() {
     SUPABASE_START_EXCLUDE=$DEFAULT_START_EXCLUDE
   fi
   SUPABASE_START_EXCLUDE=$(printf '%s' "$SUPABASE_START_EXCLUDE" | tr -d '[:space:]')
+
+  # Export the posture before any mode branch: stack mode returns early, and
+  # every mode must render APP_ENV into `apps/web/.env`. The app treats
+  # production as the default; a local checkout is explicitly development
+  # unless the operator sets APP_ENV in root `.env`.
+  env_set APP_ENV "${ENV[APP_ENV]:-development}" force
 
   # ── Local mode: experimental `supabase stack` backend ─────────────────────
   # No port math and no project-id derivation: the CLI assigns ports and scopes
@@ -1691,6 +1697,27 @@ print_ready_block() {
 }
 
 # ── Commands ─────────────────────────────────────────────────────────────────
+
+assert_local_app_env() {
+  # A local checkout is always http://localhost; production needs a live Stripe
+  # key and an https site URL, so it can never run from here (#662 workstream B).
+  # Normalize exactly like `resolveAppEnv` (trim + lowercase) so `QA` and
+  # `" qa "` are accepted by both.
+  local app_env
+  app_env=$(trim "${ENV[APP_ENV]:-development}")
+  app_env=${app_env,,}
+  case "$app_env" in
+    development | test | qa) ;;
+    production)
+      fail "APP_ENV=production cannot serve this local checkout (it requires a live Stripe key and an https site URL).
+  Set APP_ENV=development (or test/qa) in root .env."
+      ;;
+    *)
+      fail "APP_ENV='$app_env' is not valid; use development, test or qa for a local checkout."
+      ;;
+  esac
+}
+
 preflight_app_port() {
   port_in_use "$APP_PORT" || return 0
   if pid=$(read_web_pid 2>/dev/null) && [[ -n "$pid" ]]; then return 0; fi
@@ -1708,6 +1735,7 @@ cmd_up() {
 
   load_root_env
   resolve_contract
+  assert_local_app_env
   note_missing_env_file
   guard_qa_stack
   ensure_bun
@@ -1757,6 +1785,7 @@ cmd_up() {
 cmd_build() {
   load_root_env
   resolve_contract
+  assert_local_app_env
   note_missing_env_file
   guard_qa_stack
   ensure_bun
@@ -1782,6 +1811,7 @@ cmd_build() {
 cmd_serve() {
   load_root_env
   resolve_contract
+  assert_local_app_env
   note_missing_env_file
   guard_qa_stack
   ensure_bun
@@ -1794,8 +1824,10 @@ cmd_serve() {
       render_web_env
     elif [[ -f "$WEB_ENV_FILE" ]]; then
       # Stack stopped: load the generated keys so the build fingerprint (and
-      # any rebuild) uses them, not just the `next start` child.
+      # any rebuild) uses them, not just the `next start` child. Re-render so
+      # `apps/web/.env` cannot keep a stale APP_ENV/PAYMENT_DRIVER posture.
       load_web_env_fallback
+      render_web_env
     else
       fail "No generated apps/web/.env and no running stack for this checkout.
   Run 'bun dev:up' (or 'bun dev:build') first."

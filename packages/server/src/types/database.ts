@@ -181,6 +181,113 @@ export type Database = {
           },
         ];
       };
+      billing_customers: {
+        Row: {
+          created_at: string;
+          id: string;
+          livemode: boolean;
+          organization_id: string | null;
+          stripe_customer_id: string;
+          user_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          id?: string;
+          livemode: boolean;
+          organization_id?: string | null;
+          stripe_customer_id: string;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          livemode?: boolean;
+          organization_id?: string | null;
+          stripe_customer_id?: string;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
+      billing_subscriptions: {
+        Row: {
+          billing_cycle: string;
+          billing_customer_id: string;
+          cancel_at: string | null;
+          cancel_at_period_end: boolean;
+          canceled_at: string | null;
+          checkout_session_id: string | null;
+          created_at: string;
+          current_period_end: string | null;
+          current_period_start: string | null;
+          entitlement_applied_plan_key: string | null;
+          id: string;
+          last_event_created: number;
+          livemode: boolean;
+          organization_id: string | null;
+          pending_plan_key: string | null;
+          plan_key: string;
+          price_id: string;
+          purchaser_user_id: string | null;
+          snapshot_generation: number;
+          status: string;
+          stripe_subscription_id: string;
+          updated_at: string;
+          user_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          billing_cycle?: string;
+          billing_customer_id: string;
+          cancel_at?: string | null;
+          cancel_at_period_end?: boolean;
+          canceled_at?: string | null;
+          checkout_session_id?: string | null;
+          created_at?: string;
+          current_period_end?: string | null;
+          current_period_start?: string | null;
+          entitlement_applied_plan_key?: string | null;
+          id?: string;
+          last_event_created?: number;
+          livemode: boolean;
+          organization_id?: string | null;
+          pending_plan_key?: string | null;
+          plan_key: string;
+          price_id: string;
+          purchaser_user_id?: string | null;
+          snapshot_generation?: number;
+          status: string;
+          stripe_subscription_id: string;
+          updated_at?: string;
+          user_id?: string | null;
+        };
+        Update: {
+          billing_cycle?: string;
+          billing_customer_id?: string;
+          cancel_at?: string | null;
+          cancel_at_period_end?: boolean;
+          canceled_at?: string | null;
+          checkout_session_id?: string | null;
+          created_at?: string;
+          current_period_end?: string | null;
+          current_period_start?: string | null;
+          entitlement_applied_plan_key?: string | null;
+          id?: string;
+          last_event_created?: number;
+          livemode?: boolean;
+          organization_id?: string | null;
+          pending_plan_key?: string | null;
+          plan_key?: string;
+          price_id?: string;
+          purchaser_user_id?: string | null;
+          snapshot_generation?: number;
+          status?: string;
+          stripe_subscription_id?: string;
+          updated_at?: string;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       deck_groups: {
         Row: {
           deck_id: string;
@@ -1028,35 +1135,59 @@ export type Database = {
         Row: {
           amount: number;
           currency: string;
+          hosted_invoice_url: string | null;
           id: string;
+          invoice_pdf_url: string | null;
           organization_id: string | null;
           paid_at: string;
           plan_key: string;
           plan_name: string;
-          session_id: string;
+          provider: string;
+          session_id: string | null;
+          status: string;
+          stripe_checkout_session_id: string | null;
+          stripe_customer_id: string | null;
+          stripe_invoice_id: string | null;
+          stripe_subscription_id: string | null;
           user_id: string;
         };
         ComputedFields: never;
         Insert: {
           amount: number;
           currency?: string;
+          hosted_invoice_url?: string | null;
           id?: string;
+          invoice_pdf_url?: string | null;
           organization_id?: string | null;
           paid_at?: string;
           plan_key: string;
           plan_name: string;
-          session_id: string;
+          provider?: string;
+          session_id?: string | null;
+          status?: string;
+          stripe_checkout_session_id?: string | null;
+          stripe_customer_id?: string | null;
+          stripe_invoice_id?: string | null;
+          stripe_subscription_id?: string | null;
           user_id: string;
         };
         Update: {
           amount?: number;
           currency?: string;
+          hosted_invoice_url?: string | null;
           id?: string;
+          invoice_pdf_url?: string | null;
           organization_id?: string | null;
           paid_at?: string;
           plan_key?: string;
           plan_name?: string;
-          session_id?: string;
+          provider?: string;
+          session_id?: string | null;
+          status?: string;
+          stripe_checkout_session_id?: string | null;
+          stripe_customer_id?: string | null;
+          stripe_invoice_id?: string | null;
+          stripe_subscription_id?: string | null;
           user_id?: string;
         };
         Relationships: [
@@ -1747,6 +1878,80 @@ export type Database = {
           },
         ];
       };
+      stripe_prices: {
+        Row: {
+          active: boolean;
+          billing_cycle: string;
+          currency: string;
+          interval: string;
+          livemode: boolean;
+          plan_key: string;
+          stripe_price_id: string;
+          synced_at: string;
+          unit_amount: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          active?: boolean;
+          billing_cycle: string;
+          currency: string;
+          interval: string;
+          livemode: boolean;
+          plan_key: string;
+          stripe_price_id: string;
+          synced_at?: string;
+          unit_amount: number;
+        };
+        Update: {
+          active?: boolean;
+          billing_cycle?: string;
+          currency?: string;
+          interval?: string;
+          livemode?: boolean;
+          plan_key?: string;
+          stripe_price_id?: string;
+          synced_at?: string;
+          unit_amount?: number;
+        };
+        Relationships: [];
+      };
+      stripe_webhook_events: {
+        Row: {
+          api_version: string | null;
+          error: string | null;
+          event_created: number;
+          id: string;
+          livemode: boolean;
+          processed_at: string | null;
+          received_at: string;
+          status: string;
+          type: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          api_version?: string | null;
+          error?: string | null;
+          event_created: number;
+          id: string;
+          livemode: boolean;
+          processed_at?: string | null;
+          received_at?: string;
+          status?: string;
+          type: string;
+        };
+        Update: {
+          api_version?: string | null;
+          error?: string | null;
+          event_created?: number;
+          id?: string;
+          livemode?: boolean;
+          processed_at?: string | null;
+          received_at?: string;
+          status?: string;
+          type?: string;
+        };
+        Relationships: [];
+      };
       student_answers: {
         Row: {
           ai_graded: boolean;
@@ -2211,6 +2416,17 @@ export type Database = {
     Functions: {
       admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
       admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
+      apply_entitlement_fenced: {
+        Args: {
+          p_event_created: number;
+          p_owner_id: string;
+          p_owner_type: string;
+          p_plan: string;
+          p_snapshot_generation: number;
+          p_subscription_id: string;
+        };
+        Returns: boolean;
+      };
       apply_org_plan: { Args: { p_org_id: string; p_plan: string }; Returns: undefined };
       bulk_create_flashcards: {
         Args: {

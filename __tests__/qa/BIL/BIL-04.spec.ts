@@ -180,7 +180,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
     await expect(hubCard, 'the Hub card shows the organization plan name').toContainText(
       UI.hubName,
     );
-    await expect(hubCard, 'the Hub card shows the monthly price').toContainText(/19,99/);
+    await expect(hubCard, 'the Hub card shows the monthly price').toContainText(/299\s*zł/);
     const hubCta = hubCard.getByRole('button', { name: UI.hubCta, exact: true });
     await expect(hubCta, 'the Hub card offers its purchase button').toBeVisible();
     await hubCta.click();
@@ -196,7 +196,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
       tenant.org!.name,
     );
     await expect(summary, 'the summary names the bought plan').toContainText(UI.hubName);
-    await expect(summary, 'the summary shows the monthly price').toContainText(/19,99/);
+    await expect(summary, 'the summary shows the monthly price').toContainText(/299,00/);
     await expect(summary.getByText(UI.total, { exact: true }), 'the summary total').toBeVisible();
 
     // Expected result: the development-payment warning is on the page.
@@ -285,7 +285,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
       'the recorded payment carries the catalogue name and price',
     ).toMatchObject({
       planName: UI.hubName,
-      amount: 1999,
+      amount: 29900,
       currency: 'PLN',
     });
 

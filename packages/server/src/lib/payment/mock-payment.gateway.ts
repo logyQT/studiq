@@ -1,0 +1,118 @@
+import type {
+  CancelAtPeriodEndInput,
+  ChangePlanInput,
+  ChangePlanResult,
+  CreateCheckoutSessionInput,
+  CreatePortalSessionInput,
+  PaymentGateway,
+  PaymentWebhookEnvelope,
+  PortalSessionResult,
+  ReconcileCheckoutInput,
+  ReconcileCheckoutResult,
+  ReleaseScheduledPlanInput,
+  ReleaseScheduledPlanResult,
+  WebhookOutcome,
+} from '@studiq/server/lib/payment/payment-gateway';
+import { getSiteUrl } from '@studiq/server/lib/site-url';
+import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import {
+  type MockStripeService,
+  mockStripeService,
+} from '@studiq/server/services/mock-stripe.service';
+
+/**
+ * Minimal surface of the simulated provider used by the gateway. The checkout
+ * URL is provider I/O and lives here; completion (domain writes) stays in
+ * `MockStripeService`.
+ */
+export type MockStripePort = Pick<MockStripeService, 'handleWebhook'>;
+
+/**
+ * The simulation adapter. Behaviour is intentionally identical to the old
+ * controller → `MockStripeService` path: the fake checkout URL, and an
+ * authenticated webhook whose downstream domain behaviour matches Stripe.
+ *
+ * Domain validation (purchasable plan, org admin) already ran in
+ * `BillingService.startCheckout` through the shared checkout rules, so this
+ * adapter never re-implements it.
+ *
+ * The Billing Portal is not simulated: `BillingService` builds the
+ * account-type-aware local billing page and the adapter returns it unchanged.
+ * Plan changes and cancellation only exist once a real provider owns a
+ * subscription, so the mock reports `NOT_FOUND` rather than pretending.
+ */
+export class MockPaymentGateway implements PaymentGateway {
+  readonly driver = 'mock' as const;
+  readonly livemode = false;
+
+  constructor(
+    private readonly purchases: MockStripePort = mockStripeService,
+    private readonly siteUrl: () => string = getSiteUrl,
+  ) {}
+
+  createCheckoutSession(
+    input: CreateCheckoutSessionInput,
+  ): Promise<ServiceResult<{ url: string; sessionId: string }>> {
+    const sessionId = crypto.randomUUID();
+    const orgParam = input.owner.type === 'org' ? `&org_id=${input.owner.orgId}` : '';
+
+    return Promise.resolve(
+      success({
+        url: `${this.siteUrl()}/checkout?session_id=${sessionId}&plan_id=${input.planKey}${orgParam}`,
+        sessionId,
+      }),
+    );
+  }
+
+  createPortalSession(
+    input: CreatePortalSessionInput,
+  ): Promise<ServiceResult<PortalSessionResult>> {
+    // There is no hosted portal in the simulation. `BillingService` already
+    // built the account-type-aware page, so the mock "portal" is that page.
+    return Promise.resolve(success({ url: input.returnUrl }));
+  }
+
+  changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
+    return Promise.resolve(failure('NOT_FOUND'));
+  }
+
+  cancelAtPeriodEnd(
+    _input: CancelAtPeriodEndInput,
+  ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>> {
+    return Promise.resolve(failure('NOT_FOUND'));
+  }
+
+  releaseScheduledPlan(
+    _input: ReleaseScheduledPlanInput,
+  ): Promise<ServiceResult<ReleaseScheduledPlanResult>> {
+    // The simulation has no provider schedule to release.
+    return Promise.resolve(failure('NOT_FOUND'));
+  }
+
+  reconcileCheckout(
+    _input: ReconcileCheckoutInput,
+  ): Promise<ServiceResult<ReconcileCheckoutResult>> {
+    // The simulation never creates a Stripe Checkout Session.
+    return Promise.resolve(failure('NOT_FOUND'));
+  }
+
+  async handleWebhook(envelope: PaymentWebhookEnvelope): Promise<ServiceResult<WebhookOutcome>> {
+    if (envelope.kind !== 'mock') {
+      // The route only builds a mock envelope behind `withAuth`; a Stripe
+      // envelope on the mock driver is a wiring bug, not a webhook.
+      return failure('BAD_REQUEST');
+    }
+
+    const result = await this.purchases.handleWebhook(
+      envelope.event,
+      envelope.ctx.accountType,
+      envelope.ctx.userId,
+    );
+
+    if (!result.success) return result;
+
+    return success({ received: true });
+  }
+}
+
+export const mockPaymentGateway = new MockPaymentGateway();
