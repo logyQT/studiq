@@ -26,6 +26,7 @@ const view: BillingSubscriptionView = {
   planName: 'StudiQ Spark',
   billedPlanKey: 'spark',
   billedPlanName: 'StudiQ Spark',
+  entitlementAppliedPlanKey: null,
   status: 'active',
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,

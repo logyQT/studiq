@@ -404,22 +404,25 @@ export class StripePaymentGateway implements PaymentGateway {
    * Create a schedule, reusing the deterministic idempotency key. A replay
    * inside Stripe's 24 h window can return a schedule that was subsequently
    * released (e.g. a downgrade followed by cancel); that snapshot cannot be
-   * updated, so read the live state and create a replacement under a key that
-   * includes the stale id.
+   * updated. Every replacement is retrieved and validated too, and the loop
+   * continues under a key that includes the stale id until an active schedule
+   * is confirmed.
    */
   private async createSchedule(input: ChangePlanInput): Promise<Stripe.SubscriptionSchedule> {
-    const created = await this.client.subscriptionSchedules.create(
+    let created = await this.client.subscriptionSchedules.create(
       { from_subscription: input.subscriptionId },
       { idempotencyKey: `${input.idempotencyKey}:schedule` },
     );
 
-    const live = await this.client.subscriptionSchedules.retrieve(created.id);
-    if (live.status !== 'released' && live.status !== 'canceled') return created;
+    for (;;) {
+      const live = await this.client.subscriptionSchedules.retrieve(created.id);
+      if (live.status !== 'released' && live.status !== 'canceled') return live;
 
-    return this.client.subscriptionSchedules.create(
-      { from_subscription: input.subscriptionId },
-      { idempotencyKey: `${input.idempotencyKey}:schedule:${created.id}` },
-    );
+      created = await this.client.subscriptionSchedules.create(
+        { from_subscription: input.subscriptionId },
+        { idempotencyKey: `${input.idempotencyKey}:schedule:${created.id}` },
+      );
+    }
   }
 
   async cancelAtPeriodEnd(

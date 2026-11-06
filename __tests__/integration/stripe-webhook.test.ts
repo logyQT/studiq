@@ -436,7 +436,9 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
   });
 
   it('writes one payments row per paid invoice, even on replay', async () => {
-    const stripeCustomerId = tagId('cus_invoice');
+    // One Stripe customer per owner/mode: the earlier checkout test already
+    // created this user's mapping, so reuse the same customer id.
+    const stripeCustomerId = tagId('cus_student');
     const stripeSubscriptionId = tagId('sub_invoice');
     const invoiceId = tagId('in_first');
     invoiceIds.push(invoiceId);
@@ -569,6 +571,21 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     const mirrors = await subscriptionsFor(stripeSubscriptionId);
     expect(mirrors[0].status).toBe('past_due');
     expect(await paymentsForInvoice(failedInvoiceId)).toHaveLength(0);
+  });
+
+  it('rejects a second Stripe customer for an owner that is already mapped', async () => {
+    const repository = new SupabaseStripeWebhookRepository(() => service);
+    const foreignCustomerId = tagId('cus_foreign');
+    customerIds.push(foreignCustomerId);
+
+    await expect(
+      repository.ensureCustomer({
+        stripeCustomerId: foreignCustomerId,
+        userId: student.id,
+        organizationId: null,
+        livemode: false,
+      }),
+    ).resolves.toEqual({ success: false, error: 'CONFLICT' });
   });
 
   it('applies an organization purchase through apply_org_plan only', async () => {

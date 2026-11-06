@@ -1005,9 +1005,13 @@ describe('StripePaymentGateway', () => {
       vi.mocked(client.subscriptionSchedules.create)
         .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_released' }))
         .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_new' }));
-      vi.mocked(client.subscriptionSchedules.retrieve).mockResolvedValueOnce(
-        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_released', status: 'released' }),
-      );
+      vi.mocked(client.subscriptionSchedules.retrieve)
+        .mockResolvedValueOnce(
+          asJson<Stripe.SubscriptionSchedule>({ id: 'sched_released', status: 'released' }),
+        )
+        .mockResolvedValueOnce(
+          asJson<Stripe.SubscriptionSchedule>({ id: 'sched_new', status: 'active' }),
+        );
       vi.mocked(client.subscriptionSchedules.update).mockResolvedValueOnce(
         asJson<Stripe.SubscriptionSchedule>({ id: 'sched_new' }),
       );
@@ -1025,6 +1029,47 @@ describe('StripePaymentGateway', () => {
         'sched_new',
         expect.any(Object),
         { idempotencyKey: 'change-key:phases:sched_new' },
+      );
+    });
+
+    it('keeps replacing schedules until a retrieved one is active', async () => {
+      vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
+      vi.mocked(client.subscriptionSchedules.create)
+        .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1' }))
+        .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_2' }))
+        .mockResolvedValueOnce(asJson<Stripe.SubscriptionSchedule>({ id: 'sched_3' }));
+      vi.mocked(client.subscriptionSchedules.retrieve)
+        .mockResolvedValueOnce(
+          asJson<Stripe.SubscriptionSchedule>({ id: 'sched_1', status: 'released' }),
+        )
+        .mockResolvedValueOnce(
+          asJson<Stripe.SubscriptionSchedule>({ id: 'sched_2', status: 'canceled' }),
+        )
+        .mockResolvedValueOnce(
+          asJson<Stripe.SubscriptionSchedule>({ id: 'sched_3', status: 'active' }),
+        );
+      vi.mocked(client.subscriptionSchedules.update).mockResolvedValueOnce(
+        asJson<Stripe.SubscriptionSchedule>({ id: 'sched_3' }),
+      );
+
+      await expect(
+        gateway.changePlan({ ...changePlanInput, direction: 'downgrade' }),
+      ).resolves.toEqual(success({ status: 'scheduled' }));
+
+      expect(client.subscriptionSchedules.create).toHaveBeenNthCalledWith(
+        2,
+        { from_subscription: 'sub_1' },
+        { idempotencyKey: 'change-key:schedule:sched_1' },
+      );
+      expect(client.subscriptionSchedules.create).toHaveBeenNthCalledWith(
+        3,
+        { from_subscription: 'sub_1' },
+        { idempotencyKey: 'change-key:schedule:sched_2' },
+      );
+      expect(client.subscriptionSchedules.update).toHaveBeenCalledWith(
+        'sched_3',
+        expect.any(Object),
+        { idempotencyKey: 'change-key:phases:sched_3' },
       );
     });
 

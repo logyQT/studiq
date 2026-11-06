@@ -187,6 +187,21 @@ describe('entitlement freshness fence (#662)', () => {
     expect(await profilePlan()).toBe('spark');
   });
 
+  it('refuses an entitlement write for a different owner', async () => {
+    await setMirrorFreshness(200);
+    await setMirrorGeneration(0);
+
+    await expect(
+      entitlements.applyPlanFenced(
+        { type: 'user', userId: '00000000-0000-4000-8000-000000000001' },
+        'ace',
+        { stripeSubscriptionId: subscriptionId, eventCreated: 200, snapshotGeneration: 0 },
+      ),
+    ).resolves.toEqual({ success: true, data: 'stale' });
+
+    expect(await profilePlan()).toBe('spark');
+  });
+
   it('orders two same-second snapshots by generation instead of event time', async () => {
     await setMirrorFreshness(200);
     await setMirrorGeneration(0);

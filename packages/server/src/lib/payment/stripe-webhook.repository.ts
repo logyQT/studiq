@@ -433,7 +433,12 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
       .maybeSingle();
 
     if (ownerError) return toDbFailure(ownerError);
-    if (ownerRow) return success(mapCustomer(ownerRow));
+    if (ownerRow) {
+      // The owner is already mapped to a different Stripe customer. Returning
+      // that row would attach a new customer's events to the old owner.
+      if (ownerRow.stripe_customer_id !== input.stripeCustomerId) return failure('CONFLICT');
+      return success(mapCustomer(ownerRow));
+    }
 
     return failure('INTERNAL_SERVER');
   }

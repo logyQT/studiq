@@ -2,11 +2,13 @@
 
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import type { OrgMembership } from '@/hooks/use-orgs';
 import { apiGet, apiPost } from '@/lib/api';
 import { dashboardPathForAccountType, pollBillingActivation } from '@/lib/billing-success';
 import { activatedPlanLabel } from '@/lib/billing-subscription';
@@ -31,6 +33,7 @@ function accountTypeOf(user: { app_metadata?: Record<string, unknown> } | null):
 function BillingSuccessContent() {
   const t = useTranslations('BillingSuccessPage');
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const { user, isLoading: isAuthLoading } = useAuth();
 
@@ -69,6 +72,12 @@ function BillingSuccessContent() {
       if (orgId) {
         try {
           await apiPost('/api/v1/me/orgs/switch', { orgId });
+          // Match `useOrgs`: flip the cached active flag before the refetch so
+          // org-scoped keys re-resolve on this tick, then refresh the list.
+          queryClient.setQueryData<OrgMembership[]>(['orgs'], (previous) =>
+            previous?.map((org) => ({ ...org, isActive: org.id === orgId })),
+          );
+          void queryClient.invalidateQueries({ queryKey: ['orgs'] });
         } catch {
           // Reconcile will refuse a foreign org; fall through to its error path.
         }
@@ -98,7 +107,7 @@ function BillingSuccessContent() {
       cancelled = true;
       if (sleepTimer !== undefined) clearTimeout(sleepTimer);
     };
-  }, [sessionId, orgId, isAuthLoading, dashboardPath, router, purchasedPlanKey]);
+  }, [sessionId, orgId, isAuthLoading, dashboardPath, router, purchasedPlanKey, queryClient]);
 
   if (isAuthLoading) {
     return (

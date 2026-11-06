@@ -18,6 +18,15 @@ import { asJson } from '#test/helpers/json';
 import { asService } from '#test/helpers/service-double';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const { FIXED_SITE_URL } = vi.hoisted(() => ({ FIXED_SITE_URL: 'https://studiq.test' }));
+
+// Keep portal return URLs independent of NEXT_PUBLIC_SITE_URL/APP_URL injected
+// by the test runner or a developer shell.
+vi.mock('@studiq/server/lib/site-url', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@studiq/server/lib/site-url')>();
+  return { ...actual, getSiteUrl: () => FIXED_SITE_URL };
+});
+
 const studentCtx: RequestContext = {
   traceId: 'test',
   userId: 'u-1',
@@ -491,10 +500,10 @@ describe('BillingService.createPortalSession', () => {
 
     const result = await service.createPortalSession(studentCtx, 'pl');
 
-    expect(result).toEqual(success({ url: 'http://localhost:3000/app/billing' }));
+    expect(result).toEqual(success({ url: 'https://studiq.test/app/billing' }));
     expect(gateway.createPortalSession).toHaveBeenCalledWith({
       owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
-      returnUrl: 'http://localhost:3000/app/billing',
+      returnUrl: 'https://studiq.test/app/billing',
       locale: 'pl',
     });
     expect(repository.findCustomer).not.toHaveBeenCalled();
@@ -509,7 +518,7 @@ describe('BillingService.createPortalSession', () => {
     await service.createPortalSession(educatorCtx);
 
     expect(gateway.createPortalSession).toHaveBeenCalledWith(
-      expect.objectContaining({ returnUrl: 'http://localhost:3000/edu/billing' }),
+      expect.objectContaining({ returnUrl: 'https://studiq.test/edu/billing' }),
     );
   });
 
@@ -526,7 +535,7 @@ describe('BillingService.createPortalSession', () => {
     expect(gateway.createPortalSession).toHaveBeenCalledWith(
       expect.objectContaining({
         owner: { type: 'user', userId: 'u-1', accountType: AccountType.EDUCATOR },
-        returnUrl: 'http://localhost:3000/edu/billing',
+        returnUrl: 'https://studiq.test/edu/billing',
       }),
     );
   });
@@ -540,7 +549,7 @@ describe('BillingService.createPortalSession', () => {
     expect(gateway.createPortalSession).toHaveBeenCalledWith(
       expect.objectContaining({
         owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
-        returnUrl: 'http://localhost:3000/manage/billing',
+        returnUrl: 'https://studiq.test/manage/billing',
       }),
     );
   });
@@ -556,7 +565,7 @@ describe('BillingService.createPortalSession', () => {
     expect(gateway.createPortalSession).toHaveBeenCalledWith({
       owner: { type: 'org', orgId: 'org-1', userId: 'u-9', accountType: AccountType.MANAGER },
       customerId: 'cus_1',
-      returnUrl: 'http://localhost:3000/manage/billing',
+      returnUrl: 'https://studiq.test/manage/billing',
       locale: 'en',
     });
   });
