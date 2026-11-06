@@ -52,9 +52,9 @@
     "stripe:preflight": "bun scripts/stripe-preflight.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.102",
-    "@ai-sdk/openai-compatible": "^3.0.78",
-    "@ai-sdk/react": "^4.0.157",
+    "@ai-sdk/openai": "^4.0.108",
+    "@ai-sdk/openai-compatible": "^3.0.84",
+    "@ai-sdk/react": "^4.0.166",
     "@studiq/server": "workspace:*",
     "@dicebear/core": "^10.7.0",
     "@dicebear/styles": "^10.6.0",
