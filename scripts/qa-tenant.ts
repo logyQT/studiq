@@ -260,32 +260,56 @@ function loadEnv(): void {
   }
 }
 
-/** Shared QA databases a security seed must never write to. */
-const SHARED_QA_PORTS = new Set(['54421']);
+/**
+ * Ports the shared QA stack keeps fixed: its API and its Postgres. A security
+ * seed must never write to either, so both endpoints are checked.
+ */
+const SHARED_QA_PORTS = new Set(['54421', '54422']);
+
+/** Parse an endpoint, returning `undefined` when it is missing or malformed. */
+function parseEndpoint(raw: string | undefined): URL | undefined {
+  try {
+    return raw ? new URL(raw) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Require one endpoint to be a loopback URL that is not the shared QA stack. */
+function assertLocalEndpoint(name: string, raw: string | undefined): URL {
+  const url = parseEndpoint(raw);
+  const isLocal = url?.hostname === 'localhost' || url?.hostname === '127.0.0.1';
+
+  if (!url || !isLocal) {
+    throw new Error(
+      `--dedicated refuses to seed ${raw ?? `(unset ${name})`}: ` +
+        'security seeding needs your own local Supabase',
+    );
+  }
+  if (SHARED_QA_PORTS.has(url.port)) {
+    throw new Error(
+      `--dedicated refuses to seed ${raw}: the shared QA stack (${url.port}) is off limits`,
+    );
+  }
+  return url;
+}
 
 /**
- * `--dedicated` preflight, run just before `createSeedDb()`. It runs after
- * `loadEnv()` so it sees the URL `qa/env.json` injected — that override is how
- * a QA worktree would otherwise silently point the seeder at the shared stack.
+ * `--dedicated` preflight, run after `loadEnv()` and **before either writer
+ * exists**: the REST client (`NEXT_PUBLIC_SUPABASE_URL`, which `qa/env.json`
+ * may have overridden) and the optional SQL writer (`SUPABASE_DB_URL`) that
+ * creates auth users directly. Both endpoints must be loopback and off the
+ * shared QA ports; `dev:up` renders the pair from one `supabase status` call,
+ * so a passing pair normally belongs to this checkout's own stack.
  */
 function assertDedicatedStack(): void {
   if (!dedicated) return;
 
-  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  let url: URL | undefined;
-  try {
-    url = raw ? new URL(raw) : undefined;
-  } catch {
-    url = undefined;
-  }
-  const isLocal = url?.hostname === 'localhost' || url?.hostname === '127.0.0.1';
+  assertLocalEndpoint('NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const dbRaw = process.env.SUPABASE_DB_URL;
+  if (!dbRaw) return;
 
-  if (!url || !isLocal || SHARED_QA_PORTS.has(url.port)) {
-    throw new Error(
-      `--dedicated refuses to seed ${raw ?? '(unset NEXT_PUBLIC_SUPABASE_URL)'}: ` +
-        'security seeding needs your own local Supabase, not the shared QA stack (:54421)',
-    );
-  }
+  assertLocalEndpoint('SUPABASE_DB_URL', dbRaw);
 }
 
 /**
@@ -878,6 +902,15 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
 
 loadEnv();
 
+// `--dedicated` runs before either writer is constructed, so no SQL writer can
+// reach a non-local or shared stack even when the REST client would be fine.
+try {
+  assertDedicatedStack();
+} catch (error) {
+  console.error((error as Error).message);
+  process.exit(2);
+}
+
 // A direct Postgres URL unlocks SQL account seeding (see `createSqlAccountWriter`).
 // `dev:up` renders it into `apps/web/.env` and CI exports it, but it stays
 // optional: without it accounts go through GoTrue's admin API.
@@ -908,7 +941,6 @@ if (all) {
   // One suffix for the whole batch: a suite run is one tenant set, and every
   // spec still owns its own tenant inside it.
   const runSuffix = option('run') ?? `r${Date.now().toString(36)}${randomTag(4)}`;
-  assertDedicatedStack();
   const db = createSeedDb();
   // Every tenant is a handful of sequential round-trips, so cases are seeded with
   // a bounded pool instead of one after another. Without `SUPABASE_DB_URL` the pool is
@@ -954,7 +986,6 @@ if (!caseArg || !CASE_ID_PATTERN.test(caseArg)) {
 const runSuffix = option('run') ?? (fresh ? `r${Date.now().toString(36)}${randomTag(4)}` : '');
 
 try {
-  assertDedicatedStack();
   await seedCase(createSeedDb(), caseArg, {
     profile: option('profile'),
     role: option('role'),

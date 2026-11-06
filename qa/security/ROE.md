@@ -29,10 +29,12 @@ as an action.
 
 1. **Own Supabase first.** If this checkout already has a stack running, stop it with
    `bun dev:down --all` (never `supabase stop --all`, which stops every stack on the
-   machine), then `bunx supabase start` for the run. Before seeding, check the resolved
-   URL: `NEXT_PUBLIC_SUPABASE_URL` must be your own local stack
-   (`http://127.0.0.1:54321`) — `qa/env.json` overrides the environment, so a QA worktree
-   silently points at `:54421`.
+   machine), then `bunx supabase start` for the run. Before seeding, read the endpoints
+   from `bunx supabase status --output-format json` (`API_URL`, `DB_URL`) rather than
+   assuming the default `:54321` — stack mode assigns ports per checkout.
+   `NEXT_PUBLIC_SUPABASE_URL` must be that `API_URL` and `SUPABASE_DB_URL` (when set)
+   must be that `DB_URL`; `qa/env.json` overrides the environment, so a QA worktree
+   silently points at the shared `:54421`.
 2. **Point both apps and the seeder at that stack before building.** `NEXT_PUBLIC_*`
    values are baked in at build time, and the seeder reads `apps/web/.env` (falling back
    to root `.env`) before `qa/env.json` may override it. Set
@@ -48,7 +50,8 @@ as an action.
    surfaces) and findings do not transfer.
 4. **Seed your own tenants.** Seed with
    `bun scripts/qa-tenant.ts SEC-02 --profile two-org --fresh --dedicated`; `--dedicated`
-   refuses any non-local URL and the shared port `:54421`. Never point probes at `:54421`
+   checks both writers (REST and `SUPABASE_DB_URL`) and refuses any non-local endpoint or
+   the shared QA ports (`:54421`/`:54422`). Never point probes at `:54421`
    (the shared QA database) — a mass IDOR scan would write noise into other people's
    tenants. The `two-org` profile creates one manager who is admin of
    both organizations: org A has that manager plus a teacher and a student, org B has the

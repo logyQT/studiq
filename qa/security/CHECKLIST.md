@@ -29,14 +29,15 @@ the grep after any route change; a new one outside that set is a finding on its 
 
 ## C. Mass assignment / trust of client fields
 
-| #   | probe                                                                                                                                             | expected                                                                    |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| C1  | Create or update a resource with extra fields (`account_type`, `organization_id`, `created_by`, `plan`, `visibility` where not a feature, `role`) | unknown fields ignored or `422`; protected fields never taken from the body |
-| C2  | Register with `account_type: manager` (or `educator`) in the body                                                                                 | the account gets the default type, not the requested one                    |
-| C3  | Any endpoint that echoes back the row it just wrote                                                                                               | no field the caller did not ask for changed                                 |
+| #   | probe                                                                                                                                             | expected                                                                                                                                                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | Create or update a resource with extra fields (`account_type`, `organization_id`, `created_by`, `plan`, `visibility` where not a feature, `role`) | unknown fields ignored or `422`; protected fields never taken from the body                                                                                                                                                  |
+| C2  | Register through `POST /api/v1/auth/register` with `accountType: "manager"` (the schema's camelCase field)                                        | **allowed today**: signup may self-select `student`/`educator`/`manager` — record the effective `app_metadata.account_type` after signup. If the product decision is student-only signup, an accepted `manager` is a finding |
+| C3  | Any endpoint that echoes back the row it just wrote                                                                                               | **protected** fields (`account_type`, `organization_id`, `created_by`, `plan`, `role`) keep their authorized values; server-managed columns (`updated_at`, `search_vector`, …) may legitimately change                       |
 
-`account_type` is the escalation to watch: `withAuth` reads it from the token, so a writable
-`account_type` is a role switch, not a profile edit.
+`account_type` is the escalation to watch on **update** paths, not at signup: `withAuth` reads it
+from the token, so a writable `account_type` on a profile edit is a role switch, not a profile
+edit. Signup self-selection is the documented product behaviour until that changes.
 
 ## D. Invites, join codes, session codes
 
@@ -59,12 +60,12 @@ the grep after any route change; a new one outside that set is a finding on its 
 
 ## F. Payments and entitlements
 
-| #   | probe                                                                         | expected                                                                                          |
-| --- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| F1  | `POST /api/v1/stripe/webhook` with no session                                 | `401` (today it is `withAuth`-gated; a real Stripe integration must instead verify the signature) |
-| F2  | With a session, a webhook body naming **another** org or plan                 | the caller's own plan only; no foreign org changed                                                |
-| F3  | Buy/grant a plan without going through checkout (mock or direct RPC)          | not reachable without the checkout path                                                           |
-| F4  | Downgrade/upgrade leaves limits consistent (`/api/v1/me/plan`, feature flags) | snapshot updated, no stale entitlement                                                            |
+| #   | probe                                                                                                                         | expected                                                                                                                                                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1  | `POST /api/v1/stripe/webhook` with no session: `PAYMENT_DRIVER=mock`, then `PAYMENT_DRIVER=stripe` with no `stripe-signature` | `401` on the mock driver (`withAuth`-gated); `400` (`BAD_REQUEST`) on the Stripe driver, never a plan change. A valid Stripe signature authenticates **without** a session — the signature is the credential, so verify it over the raw body |
+| F2  | With a session, a webhook body naming **another** org or plan                                                                 | the caller's own plan only; no foreign org changed                                                                                                                                                                                           |
+| F3  | Buy/grant a plan without going through checkout (mock or direct RPC)                                                          | not reachable without the checkout path                                                                                                                                                                                                      |
+| F4  | Downgrade/upgrade leaves limits consistent (`/api/v1/me/plan`, feature flags)                                                 | snapshot updated, no stale entitlement                                                                                                                                                                                                       |
 
 ## G. Files and public buckets
 
