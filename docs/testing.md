@@ -144,6 +144,5 @@ are reported with the underlying span/log evidence instead of a bare status code
 ## Test Configuration
 
 - **Setup file:** `__tests__/setup.ts` — configures Supabase mock passthrough
-- **Mocks:** `__tests__/mocks/supabase.ts` — reusable Supabase mock
-- **Helpers:** `__tests__/helpers/supabase-mock.ts` — mock utilities
+- **Mocks/helpers:** `__tests__/helpers/supabase-mock.ts` — reusable Supabase mock utilities
 - **Config:** `vitest.config.ts` — defines test environment, aliases, and sequential execution

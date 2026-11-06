@@ -28,28 +28,12 @@ const config: KnipConfig = {
   ignoreExportsUsedInFile: { interface: true, type: true },
 
   ignoreFiles: [
-    // TODO(knip-baseline): one-off maintenance scripts with no caller — removed
-    // in the dead-code/unused-package cleanup PR.
+    // TODO(knip-baseline): operator scripts knip cannot discover as entry
+    // points — manifest entry points arrive in the follow-up PR.
     'scripts/admin-sign.ts',
     'scripts/dev-registry.ts',
-    'scripts/fix-all-imports.ts',
-    'scripts/fix-broken-imports.ts',
-    'scripts/migrate-authz-imports.ts',
-    'scripts/migrate-imports.ts',
     'scripts/qa-issue.ts',
     'scripts/storage-orphan-sweep.ts',
-    // TODO(knip-baseline): test mock with no importer — removed in the
-    // dead-code/unused-package cleanup PR.
-    '__tests__/mocks/supabase.ts',
-    // TODO(knip-baseline): unreferenced web components/hooks/libs — removed in
-    // the dead-code/unused-package cleanup PR.
-    'apps/web/src/components/ai/agent-call-block.tsx',
-    'apps/web/src/components/assignments/answer-image-upload.tsx',
-    'apps/web/src/components/flashcards/dashboard-panel.tsx',
-    'apps/web/src/components/flashcards/editor/flashcard-editor.tsx',
-    'apps/web/src/hooks/use-mobile.ts',
-    'apps/web/src/hooks/use-toast.ts',
-    'apps/web/src/lib/permissions.ts',
   ],
 
   ignoreIssues: {
