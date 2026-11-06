@@ -96,7 +96,7 @@ studiq/
 ├── playwright.config.ts              # Playwright config
 ├── bunfig.toml                       # Lint/format config for Bun's native tools
 ├── lefthook.yml                      # Git hooks
-├── knip.ts                           # Dead-code/unused-dependency config (baseline suppressions)
+├── knip.ts                           # Dead-code/unused-dependency config (documented policy suppressions)
 ├── tsconfig.json                     # Root TS config with workspace path aliases
 ├── docker-compose.yml
 ├── .env.local                        # Optional root env, loaded by Vitest (gitignored)
