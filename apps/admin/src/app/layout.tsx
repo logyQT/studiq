@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 
 import { Providers } from '@/lib/providers';
+// eslint-disable-next-line import/no-unassigned-import -- side-effect import: global stylesheet.
 import '@/app/globals.css';
 
 const geistSans = Geist({

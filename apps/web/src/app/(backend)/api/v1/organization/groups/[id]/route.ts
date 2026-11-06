@@ -9,7 +9,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     req,
     async (ctx) => {
       const { id } = await params;
-      const body = await req.json();
+      const body: unknown = await req.json();
       return toNextResponse(await groupController.updateGroup(ctx, id, body));
     },
     { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },

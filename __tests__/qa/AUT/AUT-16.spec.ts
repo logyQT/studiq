@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Response } from '@playwright/test';
+import { expect, test, type APIResponse, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -37,6 +38,12 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  * locale — so the test only uses URLs, roles and the tenant's own account data.
  */
 
+declare global {
+  interface Window {
+    qaPanelChrome?: string[];
+  }
+}
+
 const CASE = 'AUT-16';
 const APP_URL = process.env.QA_APP_URL ?? 'http://localhost:3010';
 const STUDENT_HOME = '/app';
@@ -62,7 +69,7 @@ const PANEL_CHROME = 'a[href="/edu"], a[href^="/edu/"], a[href="/manage"], a[hre
 async function recordForeignPanelChrome(page: Page): Promise<() => Promise<string[]>> {
   await page.addInitScript((selector: string) => {
     const seen: string[] = [];
-    (window as unknown as { __qaPanelChrome?: string[] }).__qaPanelChrome = seen;
+    window.qaPanelChrome = seen;
     const scan = () => {
       for (const anchor of document.querySelectorAll(selector)) {
         const href = anchor.getAttribute('href') ?? '';
@@ -78,14 +85,11 @@ async function recordForeignPanelChrome(page: Page): Promise<() => Promise<strin
     document.addEventListener('DOMContentLoaded', scan);
   }, PANEL_CHROME);
 
-  return () =>
-    page.evaluate(
-      () => (window as unknown as { __qaPanelChrome?: string[] }).__qaPanelChrome ?? [],
-    );
+  return () => page.evaluate<string[]>(() => window.qaPanelChrome ?? []);
 }
 
 /** Path a redirect points at, resolved against the app origin. */
-function redirectTarget(response: Response): string {
+function redirectTarget(response: APIResponse): string {
   const location = response.headers().location;
   expect(location, 'a redirect must carry a Location header').toBeTruthy();
   return new URL(location, APP_URL).pathname;
@@ -108,7 +112,9 @@ test('a student is redirected from every teacher, manager and onboarding route t
 
   const me = await page.request.get('/api/v1/auth/me');
   expect(me.status(), 'GET /api/v1/auth/me').toBe(200);
-  expect((await me.json()).data?.user?.email).toBe(student!.email);
+  expect((await json<{ data?: { user?: { email?: string } | null } }>(me)).data?.user?.email).toBe(
+    student.email,
+  );
 
   // Every document response of this test, so a protected page served as HTML
   // (200) would stand out from the proxy's redirect (3xx).
@@ -180,7 +186,9 @@ test('the role gate still lets a teacher into the teacher routes', async ({ page
   await expect(page.locator('a[href="/edu/questions"]').first()).toBeVisible();
 
   const me = await page.request.get('/api/v1/auth/me');
-  expect((await me.json()).data?.user?.email).toBe(teacher!.email);
+  expect((await json<{ data?: { user?: { email?: string } | null } }>(me)).data?.user?.email).toBe(
+    teacher.email,
+  );
 });
 
 test('the role gate still lets a manager into the manager routes', async ({ page }) => {
@@ -203,5 +211,5 @@ test('the role gate still lets a manager into the manager routes', async ({ page
   expect(new URL(page.url()).pathname).toBe('/manage/members');
   await expect(page.locator('a[href="/manage/roles"]').first()).toBeVisible();
   // The manager sees this tenant's own members, not another worker's.
-  await expect(page.getByText(teacher!.email).first()).toBeVisible();
+  await expect(page.getByText(teacher.email).first()).toBeVisible();
 });

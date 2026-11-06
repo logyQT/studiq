@@ -6,10 +6,10 @@ export function createMockSupabase() {
       select: vi.fn((_columns?: string) => ({
         eq: vi.fn((_col: string, _val: unknown) => ({
           single: vi.fn(() => ({ data: null, error: null })),
-          order: vi.fn((_col: string, _opts: unknown) => ({ data: [], error: null })),
+          order: vi.fn((_orderCol: string, _orderOpts: unknown) => ({ data: [], error: null })),
         })),
         in: vi.fn((_col: string, _vals: unknown[]) => ({
-          order: vi.fn((_col: string, _opts: unknown) => ({ data: [], error: null })),
+          order: vi.fn((_orderCol: string, _orderOpts: unknown) => ({ data: [], error: null })),
         })),
         single: vi.fn(() => ({ data: null, error: null })),
         order: vi.fn((_col: string, _opts: unknown) => ({ data: [], error: null })),

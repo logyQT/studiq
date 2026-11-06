@@ -9,6 +9,8 @@ import {
 } from '@studiq/server/models/student-insights.model';
 import { StudentInsightsService } from '@studiq/server/services/student-insights.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { asService } from '#test/helpers/service-double';
 import {
   busiestWeekday,
   hiddenMasteryCount,
@@ -175,8 +177,9 @@ const insights: StudentInsights = {
 };
 
 describe('StudentInsightsService', () => {
-  const rpc = vi.fn();
-  const service = new StudentInsightsService(async () => ({ rpc }) as any);
+  const client = mockSupabaseClient();
+  const rpc = client.rpc;
+  const service = new StudentInsightsService(() => Promise.resolve(client));
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -212,7 +215,9 @@ describe('StudentInsightsService', () => {
 
 describe('StudentInsightsController', () => {
   const insightsService = { getInsights: vi.fn() };
-  const controller = new StudentInsightsController(insightsService as any);
+  const controller = new StudentInsightsController(
+    asService<StudentInsightsService>(insightsService),
+  );
 
   beforeEach(() => vi.clearAllMocks());
 
@@ -242,17 +247,17 @@ describe('StudentInsightsController', () => {
   });
 });
 
-describe('hiddenMasteryCount (#657 review)', () => {
-  const item = (n: number, activity = 1): TopicMasteryItem => ({
-    topicId: `t${n}`,
-    name: `Topic ${n}`,
-    quizAnswers: activity,
-    quizAccuracy: 50,
-    flashcardReviews: 0,
-    flashcardAccuracy: null,
-    accuracy: 50,
-  });
+const item = (n: number, activity = 1): TopicMasteryItem => ({
+  topicId: `t${n}`,
+  name: `Topic ${n}`,
+  quizAnswers: activity,
+  quizAccuracy: 50,
+  flashcardReviews: 0,
+  flashcardAccuracy: null,
+  accuracy: 50,
+});
 
+describe('hiddenMasteryCount (#657 review)', () => {
   it('is the number of active topics the card cannot show', () => {
     const items = Array.from({ length: 14 }, (_, i) => item(i));
     expect(hiddenMasteryCount(items, 10)).toBe(4);
@@ -304,7 +309,7 @@ describe('the three insight cards report failures (#657 review)', () => {
 describe('insight cards, second review round (#657)', () => {
   it('draws no bar for a retention bucket without reviews', () => {
     const card = readFileSync('apps/web/src/components/stats/retention-curve-card.tsx', 'utf8');
-    expect(card).toContain('if (!props.reviews) return null;');
+    expect(card).toContain('if (!reviews) return null;');
     expect(card).not.toContain('minPointSize');
   });
 

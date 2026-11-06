@@ -74,7 +74,7 @@ export function ReportsListScreen({ basePath }: { basePath: string }) {
 
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
     observer.observe(el);
     return () => observer.disconnect();

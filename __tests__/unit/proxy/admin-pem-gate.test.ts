@@ -15,7 +15,11 @@ import {
   signAdminRequest,
 } from '#test/helpers/admin-pem';
 
-const logger = vi.hoisted(() => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+const logger = vi.hoisted(() => ({
+  log: vi.fn<(message: string, attributes: Record<string, unknown>) => void>(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
 
 vi.mock('@studiq/server/lib/log', () => logger);
 
@@ -81,7 +85,7 @@ function signed(
   return request(pathWithQuery, { ...init, headers });
 }
 
-async function expectPassed(res: Response) {
+function expectPassed(res: Response) {
   expect(res.status).toBe(200);
   expect(res.headers.get('x-middleware-next')).toBe('1');
 }
@@ -228,15 +232,15 @@ describe('admin PEM gate — scope map', () => {
   });
 });
 
-describe('admin PEM gate — proxy status matrix', () => {
-  const ffRead = () => createAdminTestKey('ff-read');
-  const usersRead = () => createAdminTestKey('users-read');
+const ffRead = () => createAdminTestKey('ff-read');
+const usersRead = () => createAdminTestKey('users-read');
 
+describe('admin PEM gate — proxy status matrix', () => {
   it('lets a signed GET through when the key holds the read scope', async () => {
     const key = ffRead();
     const proxy = await loadProxy({ keys: ring({ key, scopes: ['feature-flags:read'] }) });
 
-    await expectPassed(await proxy(signed(key, '/api/v1/feature-flags')));
+    expectPassed(await proxy(signed(key, '/api/v1/feature-flags')));
   });
 
   it('denies a path outside the key scopes (users with only feature-flags:read)', async () => {
@@ -329,7 +333,7 @@ describe('admin PEM gate — proxy status matrix', () => {
     });
 
     // Re-ordered params canonicalise to the same string → allowed.
-    await expectPassed(await proxy(request('/api/v1/users?page=2&status=active', { headers })));
+    expectPassed(await proxy(request('/api/v1/users?page=2&status=active', { headers })));
 
     // A different filter does not verify → 403.
     await expectDenied(
@@ -353,9 +357,7 @@ describe('admin PEM gate — proxy status matrix', () => {
       body,
     });
 
-    await expectPassed(
-      await proxy(request('/api/v1/feature-flags', { method: 'POST', headers, body })),
-    );
+    expectPassed(await proxy(request('/api/v1/feature-flags', { method: 'POST', headers, body })));
 
     await expectDenied(
       await proxy(
@@ -387,7 +389,7 @@ describe('admin PEM gate — proxy status matrix', () => {
       403,
       FORBIDDEN,
     );
-    await expectPassed(await proxy(signed(writeKey, deletePath, { method: 'DELETE' })));
+    expectPassed(await proxy(signed(writeKey, deletePath, { method: 'DELETE' })));
 
     const purgePath = '/api/v1/users/user-1/purge';
     await expectDenied(
@@ -395,7 +397,7 @@ describe('admin PEM gate — proxy status matrix', () => {
       403,
       FORBIDDEN,
     );
-    await expectPassed(await proxy(signed(purgeKey, purgePath, { method: 'POST', body: '' })));
+    expectPassed(await proxy(signed(purgeKey, purgePath, { method: 'POST', body: '' })));
 
     const purgeExpired = '/api/v1/users/purge-expired';
     await expectDenied(
@@ -403,7 +405,7 @@ describe('admin PEM gate — proxy status matrix', () => {
       403,
       FORBIDDEN,
     );
-    await expectPassed(await proxy(signed(purgeKey, purgeExpired, { method: 'POST', body: '' })));
+    expectPassed(await proxy(signed(purgeKey, purgeExpired, { method: 'POST', body: '' })));
   });
 
   it('keeps the valid key working when another entry is malformed', async () => {
@@ -414,7 +416,7 @@ describe('admin PEM gate — proxy status matrix', () => {
     ]);
     const proxy = await loadProxy({ keys });
 
-    await expectPassed(await proxy(signed(valid, '/api/v1/feature-flags')));
+    expectPassed(await proxy(signed(valid, '/api/v1/feature-flags')));
     expect(logger.warn).toHaveBeenCalledWith(
       'admin_pem_key_rejected',
       expect.objectContaining({ index: 0, key_id: 'broken' }),
@@ -435,12 +437,12 @@ describe('admin PEM gate — proxy status matrix', () => {
     await expectDenied(await prod(request('/api/v1/feature-flags')), 401, UNAUTHORIZED);
 
     const dev = await loadProxy({ keys: '', nodeEnv: 'development' });
-    await expectPassed(await dev(request('/api/v1/feature-flags')));
+    expectPassed(await dev(request('/api/v1/feature-flags')));
   });
 
   it('passes UI pages through regardless of the ring', async () => {
     const proxy = await loadProxy({ keys: undefined, nodeEnv: 'production' });
-    await expectPassed(await proxy(request('/feature-flags')));
+    expectPassed(await proxy(request('/feature-flags')));
   });
 
   it('denies an unknown /api/v1 path even with a valid signature', async () => {
@@ -464,7 +466,7 @@ describe('admin PEM gate — proxy status matrix', () => {
       }),
     );
 
-    await expectPassed(res);
+    expectPassed(res);
     expect(res.headers.get('x-middleware-request-x-admin-key-id')).toBe('ff-read');
     expect(res.headers.get('x-middleware-override-headers')).toContain('x-admin-key-id');
   });
@@ -478,10 +480,10 @@ describe('admin PEM gate — proxy status matrix', () => {
         headers: { 'x-admin-key-id': 'forged' },
       }),
     );
-    await expectPassed(res);
+    expectPassed(res);
 
     expect(logger.log).toHaveBeenCalledTimes(1);
-    const [message, attributes] = logger.log.mock.calls[0] as [string, Record<string, unknown>];
+    const [message, attributes] = logger.log.mock.calls[0];
     expect(message).toBe('admin_api_request');
     expect(attributes).toEqual({
       key_id: 'users-read',

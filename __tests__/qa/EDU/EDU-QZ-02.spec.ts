@@ -1,4 +1,5 @@
 import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -113,7 +114,7 @@ function account(tenant: QaTenant) {
 }
 
 async function expectApi<T>(response: APIResponse, label: string): Promise<T> {
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(response.status(), `${label} → ${response.status()} ${JSON.stringify(body)}`).toBeLessThan(
     300,
   );
@@ -388,14 +389,14 @@ test.describe('@case:EDU-QZ-02 @area:EDU @prio:P1 add questions to a quiz', () =
     );
     expect(detail.quiz_questions, 'exactly three quiz questions').toHaveLength(3);
     expect(
-      detail.quiz_questions.map((row) => row.question_id).sort(),
+      detail.quiz_questions.map((row) => row.question_id).toSorted(),
       'the quiz stores each case question exactly once',
-    ).toEqual(questions.map((question) => question.id).sort());
+    ).toEqual(questions.map((question) => question.id).toSorted());
     for (const row of detail.quiz_questions) {
       expect(row.points, 'stored points').toBe(DEFAULT_POINTS);
     }
     expect(
-      detail.quiz_questions.map((row) => row.order_index).sort((a, b) => a - b),
+      detail.quiz_questions.map((row) => row.order_index).toSorted((a, b) => a - b),
       'stored order is contiguous',
     ).toEqual([0, 1, 2]);
 

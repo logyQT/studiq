@@ -1,7 +1,7 @@
 import { buildCsv, neutralizeCsvFormula } from '@studiq/server/lib/csv';
 import {
   TRANSFER_MAX_ANSWERS,
-  type TransferQuestion,
+  type RawTransferQuestion,
 } from '@studiq/server/models/question-transfer.model';
 
 /**
@@ -79,7 +79,7 @@ function textCell(value: string): string {
 }
 
 /** Serialises questions in the bank layout: the BOM and fixed header first, one row per question. */
-export function questionsToCsv(questions: TransferQuestion[]): string {
+export function questionsToCsv(questions: RawTransferQuestion[]): string {
   const rows: string[][] = [[...TRANSFER_CSV_COLUMNS]];
 
   for (const question of questions) {
@@ -116,10 +116,10 @@ export interface CsvReadIssue {
  * left to `TransferQuestionSchema`, which is the single place that validates a question.
  */
 export function csvRecordsToQuestions(records: Array<Record<string, string | undefined>>): {
-  questions: TransferQuestion[];
+  questions: RawTransferQuestion[];
   issues: CsvReadIssue[];
 } {
-  const questions: TransferQuestion[] = [];
+  const questions: RawTransferQuestion[] = [];
   const issues: CsvReadIssue[] = [];
 
   records.forEach((record, index) => {
@@ -153,7 +153,7 @@ export function csvRecordsToQuestions(records: Array<Record<string, string | und
 
     const explanation = cell('explanation');
     questions.push({
-      type: cell('type').toLowerCase() as TransferQuestion['type'],
+      type: cell('type').toLowerCase(),
       content: cell('content'),
       ...(explanation ? { explanation } : {}),
       topics: splitTopics(cell('topics')),

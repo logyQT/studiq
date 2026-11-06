@@ -2,10 +2,11 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { groupService } from '@studiq/server/services/group.service';
 import { teacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { asJson } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import { createTestUser } from '#test/helpers/test-user';
 import {
   cleanupOrganizationDeep,
-  createServiceClient,
   mockUser,
   seedGroupMembership,
   seedOrganization,
@@ -21,7 +22,7 @@ import {
  * in the application/data layer, not because a policy happens to hide the rows.
  */
 describe('Org member removal cleans group membership (#249)', () => {
-  const service = createServiceClient();
+  const service = createSeedDb();
 
   let orgId: string;
   let memberRoleId: string;
@@ -32,7 +33,7 @@ describe('Org member removal cleans group membership (#249)', () => {
 
   beforeAll(async () => {
     const seeded = await seedOrganization(`org-removal-249-${Date.now()}`);
-    orgId = seeded.org.id;
+    orgId = asJson<{ id: string }>(seeded.org).id;
     memberRoleId = seeded.memberRoleId;
 
     const teacher = await createTestUser({ role: 'educator' });
@@ -109,7 +110,7 @@ describe('Org member removal cleans group membership (#249)', () => {
 
     const listed = await teacherAssignmentService.listForStudent(ctx);
     expect(listed.success).toBe(true);
-    if (listed.success) expect(listed.data).toEqual([]);
+    if (listed.success) expect(asJson<unknown>(listed.data)).toEqual([]);
 
     const single = await teacherAssignmentService.getForStudent(assignmentId, ctx);
     expect(single.success).toBe(false);
@@ -127,7 +128,8 @@ describe('Org member removal cleans group membership (#249)', () => {
 
     const listed = await teacherAssignmentService.listForStudent(ctx);
     expect(listed.success).toBe(true);
-    if (listed.success) expect(listed.data.map((a) => a.id)).toContain(assignmentId);
+    if (listed.success)
+      expect(asJson<Array<{ id: string }>>(listed.data).map((a) => a.id)).toContain(assignmentId);
 
     const single = await teacherAssignmentService.getForStudent(assignmentId, ctx);
     expect(single.success).toBe(true);

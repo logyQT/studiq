@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -129,7 +130,7 @@ interface AssignmentDetail extends AssignmentRow {
 async function getData<T>(api: APIRequestContext, url: string): Promise<T> {
   const response = await api.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -138,7 +139,7 @@ async function getData<T>(api: APIRequestContext, url: string): Promise<T> {
 async function postData<T>(api: APIRequestContext, url: string, data: unknown): Promise<T> {
   const response = await api.post(url, { data });
   expect(response.ok(), `POST ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -192,7 +193,7 @@ async function ensureQuiz(api: APIRequestContext, questions: QuestionRow[]): Pro
 
   if (existing) {
     const detail = await getData<QuizDetail>(api, `${QUIZZES_URL}/${existing.id}`);
-    const stored = [...detail.quiz_questions].sort((a, b) => a.order_index - b.order_index);
+    const stored = [...detail.quiz_questions].toSorted((a, b) => a.order_index - b.order_index);
     const matches =
       stored.length === expectedIds.length &&
       stored.every(
@@ -335,7 +336,7 @@ test.describe('@case:EDU-QZ-05 @area:EDU @prio:P2 create an assignment from a qu
       expect(position, `„${QUESTION_CONTENTS[index]}” is listed`).toBeGreaterThanOrEqual(0);
     }
     expect(positions, 'the questions keep the quiz order').toEqual(
-      [...positions].sort((a, b) => a - b),
+      [...positions].toSorted((a, b) => a - b),
     );
 
     // The API confirms the questions were copied, not merely linked.
@@ -344,7 +345,7 @@ test.describe('@case:EDU-QZ-05 @area:EDU @prio:P2 create an assignment from a qu
     expect(assignment.quiz_id, 'the assignment remembers its source quiz').toBe(quiz.id);
     expect(assignment.question_count).toBe(QUESTION_CONTENTS.length);
     expect(assignment.total_points).toBe(QUESTION_CONTENTS.length * POINTS_PER_QUESTION);
-    const copied = [...assignment.assignment_questions].sort(
+    const copied = [...assignment.assignment_questions].toSorted(
       (a, b) => a.order_index - b.order_index,
     );
     expect(

@@ -56,7 +56,6 @@ export function LearnContent() {
 
   const showDue = totalDue > 0;
   const showNew = !showDue && remainingNew > 0;
-  const _showAllCaughtUp = !showDue && !showNew;
   const hasAnyCards = showDue || showNew;
 
   function startReview() {
@@ -143,7 +142,9 @@ export function LearnContent() {
                 <ToggleGroup
                   type="single"
                   value={studyMode}
-                  onValueChange={(v) => v && setStudyMode(v as 'endless' | 'limited')}
+                  onValueChange={(v) => {
+                    if (v === 'endless' || v === 'limited') setStudyMode(v);
+                  }}
                 >
                   <ToggleGroupItem value="endless" className="flex-1">
                     {t('mode_endless')}

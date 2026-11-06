@@ -27,8 +27,17 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
      public.user_feature_overrides,
      public.profiles,
      public.payments,
-     public.notifications
+     public.notifications,
+     public.billing_subscriptions
   FROM authenticated;
+
+-- Service-role-only billing tables: no PostgREST surface at all. Without this,
+-- `GRANT ALL ON ALL TABLES` above would leave SELECT granted and RLS would
+-- silently return zero rows instead of failing closed.
+REVOKE ALL ON public.billing_customers,
+              public.stripe_prices,
+              public.stripe_webhook_events
+  FROM authenticated, anon;
 
 REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated, anon;
 
@@ -60,6 +69,8 @@ GRANT EXECUTE ON FUNCTION public.get_due_flashcards(uuid, text, uuid, integer, u
 GRANT EXECUTE ON FUNCTION public.get_practice_state_breakdown(uuid, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_student_insights(uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_teacher_problematic_questions(uuid, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_teacher_group_performance(uuid, uuid, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_teacher_activity_feed(uuid, uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_teacher_stats(uuid[], uuid, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_user_group_ids(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.search_flashcards(text, integer, uuid, uuid) TO authenticated;

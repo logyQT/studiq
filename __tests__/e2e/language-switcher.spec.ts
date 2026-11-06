@@ -31,12 +31,15 @@ async function login(page: Page) {
 /** A marker that only survives a client-side refresh, not a document reload. */
 async function markPage(page: Page) {
   await page.evaluate(() => {
-    (window as unknown as { __localeMarker?: string }).__localeMarker = 'alive';
+    Object.assign(window, { localeMarker: 'alive' });
   });
 }
 
-async function pageMarker(page: Page) {
-  return page.evaluate(() => (window as unknown as { __localeMarker?: string }).__localeMarker);
+async function pageMarker(page: Page): Promise<string | undefined> {
+  return page.evaluate(() => {
+    const marker: unknown = Reflect.get(window, 'localeMarker');
+    return typeof marker === 'string' ? marker : undefined;
+  });
 }
 
 test.describe('language switcher — desktop select', () => {
@@ -85,9 +88,7 @@ test.describe('language switcher — desktop select', () => {
     expect(await pageMarker(page)).toBe('alive');
     await expect(page.getByRole('heading', { name: en.PricingPage.title })).toBeVisible();
     // One polite announcement, in the language the user was reading.
-    await expect(
-      page.locator('[role="status"][aria-live="polite"][aria-atomic="true"]'),
-    ).toHaveText(ANNOUNCED_EN);
+    await expect(page.locator('[aria-live="polite"][aria-atomic="true"]')).toHaveText(ANNOUNCED_EN);
 
     const cookie = (await context.cookies()).find((entry) => entry.name === 'NEXT_LOCALE');
     expect(cookie?.value).toBe('en');

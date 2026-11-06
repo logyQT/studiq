@@ -7,9 +7,9 @@ import { SmtpMailer } from '@studiq/server/lib/mailer/smtp-mailer';
 
 const sendMail = vi.fn();
 const close = vi.fn();
-const createTransport = vi.fn(() => ({ sendMail, close }));
+const createTransport = vi.fn((..._args: unknown[]) => ({ sendMail, close }));
 vi.mock('nodemailer', () => ({
-  createTransport: (...args: unknown[]) => createTransport(...(args as [])),
+  createTransport: (...args: unknown[]) => createTransport(...args),
 }));
 
 const mail: InvitationMail = {
@@ -139,13 +139,14 @@ describe('SmtpMailer', () => {
     expect(createTransport).toHaveBeenCalledWith(
       expect.objectContaining({ host: '127.0.0.1', port: 54325, secure: false }),
     );
+    const joinUrlMatcher: unknown = expect.stringContaining(mail.joinUrl);
     expect(sendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         from: config.from,
         to: 'ola@example.com',
         subject: 'Zaproszenie do WSB Merito w StudiQ',
-        text: expect.stringContaining(mail.joinUrl),
-        html: expect.stringContaining(mail.joinUrl),
+        text: joinUrlMatcher,
+        html: joinUrlMatcher,
       }),
     );
     expect(close).toHaveBeenCalledOnce();

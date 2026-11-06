@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {
     const { id } = await params;
-    const body = await req.json();
+    const body: unknown = await req.json();
     return toNextResponse(await questionController.update(id, body, ctx));
   });
 }

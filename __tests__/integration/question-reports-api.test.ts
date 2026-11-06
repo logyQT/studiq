@@ -1,14 +1,12 @@
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
+import type { Database } from '@studiq/server/types/database';
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestUser, seedViaApi, type TestUserFixture } from '#test/helpers/test-user';
-import {
-  cleanupOrganizationDeep,
-  createServiceClient,
-  seedOrgMembership,
-} from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { json } from '#test/helpers/json';
+import { cleanupOrganizationDeep, seedOrgMembership } from '#test/integration/helpers';
+import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
 import { POST as createGroupReport } from '@/app/(backend)/api/v1/organization/groups/[id]/reports/route';
 import { POST as postMessage } from '@/app/(backend)/api/v1/question-reports/[id]/messages/route';
 import { POST as markReportRead } from '@/app/(backend)/api/v1/question-reports/[id]/read/route';
@@ -46,14 +44,14 @@ interface Session {
   /** The signed-in user, for assertions and cleanup. */
   user: TestUserFixture;
   /** Cookie jar written by GoTrue on sign-in. */
-  build: () => SupabaseClient;
+  build: () => SupabaseClient<Database>;
 }
 
 /** Signs a user in for real and returns a factory for their request-scoped client. */
 async function signIn(email: string, user: TestUserFixture): Promise<Session> {
   const jar = new Map<string, string>();
   const build = () =>
-    createServerClient(
+    createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -74,11 +72,15 @@ async function signIn(email: string, user: TestUserFixture): Promise<Session> {
 
 /** Makes the app's `createClient()` resolve to the acting user's real session. */
 function actAs(session: Session) {
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => session.build());
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => Promise.resolve(session.build()));
+}
+
+function withId(id: string) {
+  return { params: Promise.resolve({ id }) };
 }
 
 describe('Question reports API — org-wide manager inbox (#276)', () => {
-  const service = createServiceClient();
+  const service = createTypedServiceClient();
   const tag = `${Date.now()}`;
 
   let orgId: string;
@@ -107,10 +109,6 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       },
       { active_org_id: orgId },
     );
-  }
-
-  function withId(id: string) {
-    return { params: Promise.resolve({ id }) };
   }
 
   beforeAll(async () => {
@@ -234,7 +232,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       withId(questionId),
     );
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { data: { id: string } };
+    const body = await json<{ data: { id: string } }>(res);
     questionReportId = body.data.id;
     expect(questionReportId).toBeTruthy();
   });
@@ -248,7 +246,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       withId(defaultGroupId),
     );
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { data: { id: string; teacher_id: string } };
+    const body = await json<{ data: { id: string; teacher_id: string } }>(res);
     groupReportId = body.data.id;
     // The default group has no owner -> the recipient is the org admin.
     expect(body.data.teacher_id).toBe(manager.user.id);
@@ -259,7 +257,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
     const res = await listReports(jsonRequest('/api/v1/question-reports', 'GET'));
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
+    const body = await json<{
       data: {
         items: Array<{
           id: string;
@@ -268,7 +266,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
           group: { name: string } | null;
         }>;
       };
-    };
+    }>(res);
     const ids = body.data.items.map((r) => r.id);
     expect(ids).toEqual(expect.arrayContaining([questionReportId, groupReportId]));
     expect(ids).not.toContain(foreignReportId);
@@ -295,12 +293,12 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
     );
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
+    const body = await json<{
       data: {
         report: { reported_by: string; teacher_id: string };
         messages: Array<{ body: string; sender_id: string }>;
       };
-    };
+    }>(res);
     expect(body.data.report).toMatchObject({
       reported_by: student.user.id,
       teacher_id: teacher.user.id,
@@ -324,7 +322,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       withId(questionReportId),
     );
     expect(thread.status).toBe(200);
-    const body = (await thread.json()) as {
+    const body = await json<{
       data: {
         messages: Array<{
           body: string;
@@ -332,7 +330,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
           sender: { id: string; full_name: string | null; email: string } | null;
         }>;
       };
-    };
+    }>(thread);
     // The thread UI attributes every bubble by `sender` (#373) — keep that embed
     // in the contract, including for a manager who is not a thread participant.
     expect(body.data.messages).toEqual(
@@ -340,7 +338,10 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
         expect.objectContaining({
           body: 'manager reply #276',
           sender_id: manager.user.id,
-          sender: expect.objectContaining({ id: manager.user.id, email: manager.user.email }),
+          sender: expect.objectContaining({
+            id: manager.user.id,
+            email: manager.user.email,
+          }) as unknown,
         }),
       ]),
     );
@@ -396,7 +397,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
     );
     expect(res.status).toBe(200);
 
-    const body = (await res.json()) as { data: { items: Array<{ id: string }> } };
+    const body = await json<{ data: { items: Array<{ id: string }> } }>(res);
     expect(body.data.items.map((r) => r.id)).toEqual([groupReportId]);
   });
 
@@ -422,9 +423,9 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
     );
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
+    const body = await json<{
       data: { status: string; resolved_at: string | null; resolved_by: string | null };
-    };
+    }>(res);
     expect(body.data).toMatchObject({
       status: 'resolved',
       resolved_by: teacher.user.id,
@@ -439,17 +440,17 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       jsonRequest('/api/v1/question-reports?status=resolved', 'GET'),
     );
     expect(resolvedRes.status).toBe(200);
-    const resolvedBody = (await resolvedRes.json()) as {
+    const resolvedBody = await json<{
       data: { items: Array<{ id: string; status: string }> };
-    };
+    }>(resolvedRes);
     expect(resolvedBody.data.items.map((r) => r.id)).toEqual([questionReportId]);
     expect(resolvedBody.data.items.every((r) => r.status === 'resolved')).toBe(true);
 
     const openRes = await listReports(jsonRequest('/api/v1/question-reports?status=open', 'GET'));
     expect(openRes.status).toBe(200);
-    const openBody = (await openRes.json()) as {
+    const openBody = await json<{
       data: { items: Array<{ id: string; status: string }> };
-    };
+    }>(openRes);
     expect(openBody.data.items.map((r) => r.id)).toEqual([groupReportId]);
     expect(openBody.data.items.every((r) => r.status === 'open')).toBe(true);
   });
@@ -459,9 +460,9 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
 
     const firstRes = await listReports(jsonRequest('/api/v1/question-reports?limit=1', 'GET'));
     expect(firstRes.status).toBe(200);
-    const firstBody = (await firstRes.json()) as {
+    const firstBody = await json<{
       data: { items: Array<{ id: string }>; nextCursor: string | null; hasMore: boolean };
-    };
+    }>(firstRes);
     expect(firstBody.data.items).toHaveLength(1);
     expect(firstBody.data.hasMore).toBe(true);
     expect(firstBody.data.nextCursor).toBeTruthy();
@@ -473,9 +474,9 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       ),
     );
     expect(secondRes.status).toBe(200);
-    const secondBody = (await secondRes.json()) as {
+    const secondBody = await json<{
       data: { items: Array<{ id: string }> };
-    };
+    }>(secondRes);
     expect(secondBody.data.items).toHaveLength(1);
 
     const firstId = firstBody.data.items[0].id;
@@ -502,9 +503,9 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       withId(questionReportId),
     );
     expect(resolveRes.status).toBe(200);
-    const body = (await resolveRes.json()) as {
+    const body = await json<{
       data: { status: string; resolved_by: string | null };
-    };
+    }>(resolveRes);
     expect(body.data).toMatchObject({
       status: 'resolved',
       resolved_by: manager.user.id,
@@ -526,7 +527,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
       withId(questionReportId),
     );
     expect(thread.status).toBe(200);
-    const body = (await thread.json()) as {
+    const body = await json<{
       data: {
         report: {
           status: string;
@@ -536,7 +537,7 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
           canReopen: boolean;
         };
       };
-    };
+    }>(thread);
     expect(body.data.report).toMatchObject({
       status: 'open',
       resolved_at: null,

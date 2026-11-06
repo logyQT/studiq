@@ -41,13 +41,13 @@ export default function StatusPage() {
 
       <Card className="mt-8">
         <CardContent className="space-y-3">
-          <div role="status" aria-live="polite" className="flex items-center gap-3">
+          <output aria-live="polite" className="flex items-center gap-3">
             <span
               aria-hidden="true"
               className={`h-3 w-3 shrink-0 rounded-full ${DOT_CLASS_NAME[state]}`}
             />
             <span className="text-lg font-medium">{t(state)}</span>
-          </div>
+          </output>
 
           {checkedAt ? (
             <p className="text-sm text-muted-foreground">

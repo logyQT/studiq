@@ -1,6 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { questionReportService } from '@studiq/server/services/question-report.service';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { asJson } from '#test/helpers/json';
 import { createTestUser } from '#test/helpers/test-user';
 import {
   cleanupOrganizationDeep,
@@ -22,6 +23,15 @@ import {
  * the #191 policies. The production read/reply path under a real user session
  * (RLS enforced) is covered by `question-reports-api.test.ts`.
  */
+/** What `seedOrganization` hands back (the fields this file reads). */
+interface SeededOrganization {
+  org: { id: string };
+  adminRoleId: string;
+  teacherRoleId: string;
+  memberRoleId: string;
+  defaultGroupId: string;
+}
+
 describe('Question reports org-wide manager scope (#276)', () => {
   const service = createServiceClient();
   const tag = `${Date.now()}`;
@@ -74,7 +84,8 @@ describe('Question reports org-wide manager scope (#276)', () => {
         group_id: data.groupId ?? null,
       })
       .select('id')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     if (error || !report) throw new Error(`[setup] report: ${error?.message}`);
 
     const { error: messageError } = await service.from('question_report_messages').insert({
@@ -88,13 +99,13 @@ describe('Question reports org-wide manager scope (#276)', () => {
   }
 
   beforeAll(async () => {
-    const seeded = await seedOrganization(`qreport-276-${tag}`);
+    const seeded = asJson<SeededOrganization>(await seedOrganization(`qreport-276-${tag}`));
     orgId = seeded.org.id;
     adminRoleId = seeded.adminRoleId;
     teacherRoleId = seeded.teacherRoleId;
     memberRoleId = seeded.memberRoleId;
 
-    const other = await seedOrganization(`qreport-276-other-${tag}`);
+    const other = asJson<SeededOrganization>(await seedOrganization(`qreport-276-other-${tag}`));
     otherOrgId = other.org.id;
 
     const manager = await createTestUser({ role: 'manager' });
@@ -119,7 +130,8 @@ describe('Question reports org-wide manager scope (#276)', () => {
         visibility: 'group',
       })
       .select('id')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     if (bankError || !bank) throw new Error(`[setup] bank: ${bankError?.message}`);
 
     const { data: question, error: questionError } = await service
@@ -133,7 +145,8 @@ describe('Question reports org-wide manager scope (#276)', () => {
         visibility: 'group',
       })
       .select('id')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     if (questionError || !question) throw new Error(`[setup] question: ${questionError?.message}`);
 
     // The issue scenario: a student reports the teacher's question.
@@ -197,7 +210,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
 
     expect(result.success).toBe(true);
     if (!result.success) return;
-    const ids = (result.data as { items: Array<{ id: string }> }).items.map((r) => r.id);
+    const ids = asJson<{ items: Array<{ id: string }> }>(result.data).items.map((r) => r.id);
     expect(ids).toEqual(expect.arrayContaining([questionReportId, groupReportId, legacyReportId]));
     expect(ids).not.toContain(otherOrgReportId);
     // Org rows are added on top of the admin's own participant threads.
@@ -221,7 +234,9 @@ describe('Question reports org-wide manager scope (#276)', () => {
     );
     expect(teacherResult.success).toBe(true);
     if (teacherResult.success) {
-      const ids = (teacherResult.data as { items: Array<{ id: string }> }).items.map((r) => r.id);
+      const ids = asJson<{ items: Array<{ id: string }> }>(teacherResult.data).items.map(
+        (r) => r.id,
+      );
       // The teacher reported the group thread, received the question thread and
       // reported the legacy NULL-org thread.
       expect(ids).toEqual(
@@ -239,7 +254,9 @@ describe('Question reports org-wide manager scope (#276)', () => {
     );
     expect(studentResult.success).toBe(true);
     if (studentResult.success) {
-      const ids = (studentResult.data as { items: Array<{ id: string }> }).items.map((r) => r.id);
+      const ids = asJson<{ items: Array<{ id: string }> }>(studentResult.data).items.map(
+        (r) => r.id,
+      );
       expect(ids).toEqual([questionReportId]);
     }
   });
@@ -274,7 +291,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
     );
     expect(teacherView.success).toBe(true);
     if (teacherView.success) {
-      const messages = (teacherView.data as { messages: Array<{ body: string }> }).messages;
+      const messages = asJson<{ messages: Array<{ body: string }> }>(teacherView.data).messages;
       expect(messages.map((m) => m.body)).toContain('manager reply #276');
     }
   });
@@ -304,7 +321,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
     const listed = await questionReportService.list(teacherRoleCtx);
     expect(listed.success).toBe(true);
     if (listed.success) {
-      const ids = (listed.data as { items: Array<{ id: string }> }).items.map((r) => r.id);
+      const ids = asJson<{ items: Array<{ id: string }> }>(listed.data).items.map((r) => r.id);
       expect(ids).not.toContain(questionReportId);
     }
 

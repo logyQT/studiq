@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
@@ -11,6 +12,7 @@ import type {
   NotificationType,
 } from '@studiq/server/models/notification.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database, Json } from '../types/database';
 
 /**
  * What the rest of the server tells the notification centre. Every method is best effort and
@@ -49,17 +51,15 @@ interface NewNotification {
   userId: string;
   organizationId: string | null;
   type: NotificationType;
-  payload: Record<string, unknown>;
+  /** Rendered by the client; the `jsonb` column accepts exactly this shape. */
+  payload: Json;
 }
 
-interface NotificationRow {
-  id: string;
-  type: NotificationType;
-  payload: Record<string, unknown> | null;
-  organization_id: string | null;
-  read_at: string | null;
-  created_at: string;
-}
+/** The `notifications` row `list()` projects; `type` is narrowed by `toItem`. */
+type NotificationRow = Pick<
+  Database['public']['Tables']['notifications']['Row'],
+  'id' | 'type' | 'payload' | 'organization_id' | 'read_at' | 'created_at'
+>;
 
 /** Inserts are sent in batches so one big class does not become one huge statement. */
 const INSERT_BATCH = 500;
@@ -84,11 +84,23 @@ function errorCode(err: unknown): string {
   return 'UNKNOWN';
 }
 
+const NOTIFICATION_TYPES: readonly NotificationType[] = [
+  'assignment_published',
+  'assignment_graded',
+  'report_message',
+  'invitation_accepted',
+];
+
+function isNotificationType(value: unknown): value is NotificationType {
+  return typeof value === 'string' && (NOTIFICATION_TYPES as readonly string[]).includes(value);
+}
+
 function toItem(row: NotificationRow): NotificationItem {
   return {
     id: row.id,
-    type: row.type,
-    payload: row.payload ?? {},
+    // The column is a checked `text`; an unknown value is skipped by the reader below.
+    type: isNotificationType(row.type) ? row.type : 'report_message',
+    payload: isRecord(row.payload) ? row.payload : {},
     organizationId: row.organization_id,
     readAt: row.read_at,
     createdAt: row.created_at,
@@ -97,9 +109,9 @@ function toItem(row: NotificationRow): NotificationItem {
 
 export class NotificationService implements Notifier {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     /** Writes and the lookups of recipients: a user can read only their own rows. */
-    private createAdminClient: () => SupabaseClient = createServiceClient,
+    private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
   ) {}
 
   // ---- reading and marking, for the signed-in user
@@ -108,7 +120,7 @@ export class NotificationService implements Notifier {
     ctx: RequestContext,
     options: { limit: number; unread: boolean },
   ): Promise<ServiceResult<NotificationList>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let items = supabase
       .from('notifications')
@@ -133,14 +145,14 @@ export class NotificationService implements Notifier {
     if (unread.error) return toDbFailure(unread.error);
 
     return success({
-      items: ((list.data ?? []) as NotificationRow[]).map(toItem),
+      items: (list.data ?? []).map(toItem),
       unreadCount: unread.count ?? 0,
     });
   }
 
   /** Marks one of the caller's notifications read; reading it again is not an error. */
   async markRead(ctx: RequestContext, id: string): Promise<ServiceResult<null>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: own, error } = await supabase
       .from('notifications')
       .select('id')
@@ -217,7 +229,9 @@ export class NotificationService implements Notifier {
             .order('id', { ascending: true })
             .range(from, from + READ_PAGE - 1);
           if (membersError) throw membersError;
-          for (const member of members ?? []) recipients.add(member.user_id as string);
+          for (const member of members ?? []) {
+            if (member.user_id) recipients.add(member.user_id);
+          }
           if ((members ?? []).length < READ_PAGE) break;
         }
       }
@@ -235,7 +249,7 @@ export class NotificationService implements Notifier {
             .eq('organization_id', assignment.organizationId)
             .in('user_id', ids.slice(i, i + IN_CHUNK));
           if (orgError) throw orgError;
-          for (const member of orgMembers ?? []) inOrg.add(member.user_id as string);
+          for (const member of orgMembers ?? []) inOrg.add(member.user_id);
         }
         for (const id of ids) if (!inOrg.has(id)) recipients.delete(id);
       }
@@ -335,8 +349,8 @@ export class NotificationService implements Notifier {
       .maybeSingle();
     if (!data) return null;
     return {
-      title: data.title as string,
-      organizationId: (data.organization_id as string) ?? null,
+      title: data.title,
+      organizationId: data.organization_id,
     };
   }
 
@@ -348,8 +362,8 @@ export class NotificationService implements Notifier {
       .eq('id', userId)
       .maybeSingle();
     if (!data) return null;
-    const fullName = (data.full_name as string | null)?.trim();
-    return fullName || (data.email as string).split('@')[0] || null;
+    const fullName = data.full_name?.trim();
+    return fullName || data.email.split('@')[0] || null;
   }
 
   private async safely(type: NotificationType, run: () => Promise<void>): Promise<void> {

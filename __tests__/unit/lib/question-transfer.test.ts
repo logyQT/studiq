@@ -4,7 +4,7 @@ import {
   ImportQuestionsSchema,
   TransferQuestionSchema,
 } from '@studiq/server/models/question-transfer.model';
-import Papa from 'papaparse';
+import { parse } from 'papaparse';
 import { describe, expect, it } from 'vitest';
 
 // #652: a bank is exported as CSV or JSON and imported back. The CSV <-> question mapping is a
@@ -34,7 +34,7 @@ const trueFalse = {
 const open = { type: 'open' as const, content: 'Opisz fotosyntezę', topics: [], answers: [] };
 
 function readCsv(csv: string) {
-  const parsed = Papa.parse<Record<string, string>>(csv, {
+  const parsed = parse<Record<string, string>>(csv, {
     header: true,
     skipEmptyLines: true,
     transformHeader: (h) => h.trim(),
@@ -217,12 +217,14 @@ describe('ImportQuestionsSchema', () => {
   it('needs at least one question and at most the import limit', () => {
     expect(ImportQuestionsSchema.safeParse({ questions: [] }).success).toBe(false);
     expect(
-      ImportQuestionsSchema.safeParse({ questions: Array(IMPORT_MAX_QUESTIONS + 1).fill(open) })
-        .success,
+      ImportQuestionsSchema.safeParse({
+        questions: Array.from({ length: IMPORT_MAX_QUESTIONS + 1 }, () => open),
+      }).success,
     ).toBe(false);
     expect(
-      ImportQuestionsSchema.safeParse({ questions: Array(IMPORT_MAX_QUESTIONS).fill(open) })
-        .success,
+      ImportQuestionsSchema.safeParse({
+        questions: Array.from({ length: IMPORT_MAX_QUESTIONS }, () => open),
+      }).success,
     ).toBe(true);
   });
 

@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
+import { isRecord } from '@studiq/server/lib/record';
 import {
   IN_PROGRESS_QUESTION_SELECT,
   REVIEW_QUESTION_SELECT,
@@ -13,12 +14,17 @@ import type {
   SaveQuizAnswersInput,
   SubmitQuizAttemptInput,
 } from '@studiq/server/models/quiz-attempt.model';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-interface DraftAnswer {
+/**
+ * One entry of the `draft_answers` jsonb column. Declared as a type alias (not
+ * an interface) so it is assignable to the generated `Json` type on write.
+ */
+type DraftAnswer = {
   selected_answer_id: string | null;
   text_answer: string | null;
-}
+};
 
 /**
  * Normalise the `draft_answers` jsonb column into the answer map served to the
@@ -26,12 +32,11 @@ interface DraftAnswer {
  * anything beyond the student's own selection (#331).
  */
 function readDraftAnswers(value: unknown): Record<string, DraftAnswer> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if (!isRecord(value) || Array.isArray(value)) return {};
 
   const draft: Record<string, DraftAnswer> = {};
-  for (const [questionId, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (!raw || typeof raw !== 'object') continue;
-    const entry = raw as Record<string, unknown>;
+  for (const [questionId, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) continue;
     draft[questionId] = {
       selected_answer_id:
         typeof entry.selected_answer_id === 'string' ? entry.selected_answer_id : null,
@@ -41,11 +46,31 @@ function readDraftAnswers(value: unknown): Record<string, DraftAnswer> {
   return draft;
 }
 
-export class QuizAttemptService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+/** One row of the attempt history: the list columns plus the gradable-question
+ * denominator derived from the attempt snapshot (score is withheld — `null` —
+ * for assignments whose results are hidden). */
+export type QuizAttemptListItem = Omit<
+  Pick<
+    Database['public']['Tables']['quiz_attempts']['Row'],
+    | 'id'
+    | 'user_id'
+    | 'score'
+    | 'total_questions'
+    | 'total_points'
+    | 'config'
+    | 'started_at'
+    | 'completed_at'
+    | 'assignment_id'
+    | 'graded_at'
+  >,
+  'score'
+> & { score: number | null; gradable_questions: number };
 
-  async list(ctx: RequestContext): Promise<ServiceResult<any[]>> {
-    const supabase = await this.createClient();
+export class QuizAttemptService {
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
+
+  async list(ctx: RequestContext): Promise<ServiceResult<QuizAttemptListItem[]>> {
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('quiz_attempts')
@@ -101,7 +126,7 @@ export class QuizAttemptService {
     attemptId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<Record<string, unknown>>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
@@ -148,7 +173,7 @@ export class QuizAttemptService {
     if (answersError) return toDbFailure(answersError);
 
     const questions = (attemptQuestions ?? [])
-      .sort((a, b) => a.order_index - b.order_index)
+      .toSorted((a, b) => a.order_index - b.order_index)
       .map((aq) => aq.questions);
 
     const answerObj: Record<
@@ -163,6 +188,10 @@ export class QuizAttemptService {
     > = {};
     if (isCompleted) {
       (answers ?? []).forEach((a) => {
+        // `student_answers.question_id` is nullable (`ON DELETE SET NULL`); a row
+        // whose question is gone cannot be keyed, and `question_id = NULL`
+        // never reached a client answer before either.
+        if (!a.question_id) return;
         answerObj[a.question_id] = {
           selected_answer_id: a.selected_option_id,
           text_answer: a.text_answer,
@@ -192,7 +221,7 @@ export class QuizAttemptService {
     data: SaveQuizAnswersInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<{ saved: number }>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
@@ -243,7 +272,7 @@ export class QuizAttemptService {
     data: SubmitQuizAttemptInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<{ score: number | null; totalQuestions: number }>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: attempt, error: attemptCheckError } = await supabase
       .from('quiz_attempts')
@@ -287,6 +316,9 @@ export class QuizAttemptService {
 
       if (pointsError) return toDbFailure(pointsError);
       for (const row of rows ?? []) {
+        // `question_id` is nullable (`ON DELETE SET NULL`); a row without a
+        // question cannot award points to any answer.
+        if (!row.question_id) continue;
         assignmentPoints.set(row.question_id, row.points ?? 0);
       }
     }

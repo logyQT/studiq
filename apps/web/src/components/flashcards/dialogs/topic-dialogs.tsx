@@ -64,13 +64,15 @@ export function TopicDialogs({
   // closes or switches card, covering every close path.
   useEffect(() => {
     setTopicActionIds(null);
+    // Opening, closing or switching card must all clear the pending selection, so both values
+    // stay in the dependency list even though the body only calls a state setter.
   }, [manageTopicOpen, activeFlashcardId]);
 
   // Same keys the deck-detail screen invalidates after card mutations
   // (the card list is `['flashcards', deckId, ...]`, deck counts live under `decks`).
   const invalidateDeckCards = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
-    queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+    void queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
+    void queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
   }, [queryClient, deckId]);
 
   const handleCreateAndLinkTopic = useCallback(async () => {
@@ -91,7 +93,7 @@ export function TopicDialogs({
         back: fc.back,
         topicIds: newIds,
       });
-      queryClient.invalidateQueries({ queryKey: topicKeys.all });
+      void queryClient.invalidateQueries({ queryKey: topicKeys.all });
       invalidateDeckCards();
       setNewTopicName('');
       onAddTopicOpenChange(false);
@@ -239,7 +241,7 @@ export function TopicDialogs({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newTopicName.trim()) {
                   e.preventDefault();
-                  handleCreateAndLinkTopic();
+                  void handleCreateAndLinkTopic();
                 }
               }}
             />
@@ -259,6 +261,7 @@ export function TopicDialogs({
                   <>
                     {newTopicName.trim() && !exactMatch && (
                       <button
+                        type="button"
                         onClick={handleCreateAndLinkTopic}
                         disabled={creatingTopic}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
@@ -272,17 +275,18 @@ export function TopicDialogs({
                     {filtered.map((topic) => (
                       <button
                         key={topic.id}
+                        type="button"
                         onClick={async () => {
                           const currentIds = getTopicIds(
                             flashcards.find((f) => f.id === activeFlashcardId),
                           );
                           const newIds = [...new Set([...currentIds, topic.id])];
-                          const fc = flashcards.find((f) => f.id === activeFlashcardId);
-                          if (!fc) return;
+                          const linkedCard = flashcards.find((f) => f.id === activeFlashcardId);
+                          if (!linkedCard) return;
                           try {
-                            await apiPut(`/api/v1/flashcards/${fc.id}`, {
-                              front: fc.front,
-                              back: fc.back,
+                            await apiPut(`/api/v1/flashcards/${linkedCard.id}`, {
+                              front: linkedCard.front,
+                              back: linkedCard.back,
                               topicIds: newIds,
                             });
                             invalidateDeckCards();

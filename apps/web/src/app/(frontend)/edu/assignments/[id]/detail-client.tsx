@@ -55,7 +55,7 @@ import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
-import { apiPost } from '@/lib/api';
+import { apiPost, apiPut } from '@/lib/api';
 import { dbToDatetimeLocal } from '@/lib/datetime';
 import { assignmentKeys, groupKeys, questionKeys, topicKeys } from '@/lib/query-keys';
 
@@ -153,6 +153,7 @@ function SortableQuestionRow({
       className={`flex items-center gap-3 p-3 rounded-lg border ${isDragging ? 'z-10' : ''}`}
     >
       <button
+        type="button"
         className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
         {...attributes}
         {...listeners}
@@ -170,6 +171,7 @@ function SortableQuestionRow({
         {question.points} pts
       </span>
       <button
+        type="button"
         className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
         onClick={onRemove}
       >
@@ -213,7 +215,7 @@ export default function AssignmentDetailClient() {
     url: '/api/v1/questions/banks?limit=100',
   });
 
-  const banksList = (banks as PaginatedBanks)?.items ?? [];
+  const banksList = banks?.items ?? [];
 
   const groupOptions = (groups ?? []).map((g) => ({ label: g.name, value: g.id }));
   const studentOptions = (students ?? []).map((s) => ({
@@ -270,14 +272,7 @@ export default function AssignmentDetailClient() {
       const body: Record<string, string | undefined> = {};
       if (deadline) body.deadline = deadline;
       if (startTime) body.startTime = startTime;
-      const res = await fetch(`/api/v1/teacher/assignments/${id}/publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
+      return apiPost<unknown>(`/api/v1/teacher/assignments/${id}/publish`, body);
     },
     invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
   });
@@ -287,14 +282,7 @@ export default function AssignmentDetailClient() {
       const body: Record<string, string[]> = {};
       if (targetGroupIds.length > 0) body.groupIds = targetGroupIds;
       if (targetStudentIds.length > 0) body.studentIds = targetStudentIds;
-      const res = await fetch(`/api/v1/teacher/assignments/${id}/targets`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
+      return apiPut<unknown>(`/api/v1/teacher/assignments/${id}/targets`, body);
     },
     invalidateKeys: [assignmentKeys.detail(id)],
   });
@@ -334,7 +322,7 @@ export default function AssignmentDetailClient() {
 
   const handleUnpublish = async () => {
     await unpublishMutation.mutateAsync(undefined);
-    refetch();
+    void refetch();
   };
 
   const addQuestionsMutation = useApiMutation<unknown, { questionIds: string[] }>({
@@ -381,7 +369,7 @@ export default function AssignmentDetailClient() {
 
   useEffect(() => {
     if (assignment?.assignment_questions) {
-      const sorted = [...assignment.assignment_questions].sort(
+      const sorted = assignment.assignment_questions.toSorted(
         (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
       );
       setLocalQuestions(sorted);
@@ -770,7 +758,7 @@ export default function AssignmentDetailClient() {
                           });
                           setSelectedQuestionIds([]);
                           setBrowseOpen(false);
-                          refetch();
+                          void refetch();
                         }}
                       >
                         {t('add_selected')} ({selectedQuestionIds.length})
@@ -832,7 +820,7 @@ export default function AssignmentDetailClient() {
                                 onChange={() =>
                                   setRandomizeTypes((prev) =>
                                     prev.includes(type)
-                                      ? prev.filter((t) => t !== type)
+                                      ? prev.filter((quizType) => quizType !== type)
                                       : [...prev, type],
                                   )
                                 }
@@ -868,7 +856,7 @@ export default function AssignmentDetailClient() {
                             types: randomizeTypes.length > 0 ? randomizeTypes : undefined,
                           });
                           setRandomizeOpen(false);
-                          refetch();
+                          void refetch();
                         }}
                       >
                         {t('add_random')}
@@ -986,7 +974,7 @@ export default function AssignmentDetailClient() {
               disabled={deleteMutation.isPending}
               onClick={(e) => {
                 e.preventDefault();
-                handleDelete();
+                void handleDelete();
               }}
               className="bg-destructive text-destructive-foreground"
             >

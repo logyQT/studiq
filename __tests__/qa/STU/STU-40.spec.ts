@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -123,7 +124,7 @@ interface ReportDetail {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -141,8 +142,7 @@ async function sendData<T>(
     response.status(),
     `${method.toUpperCase()} ${url} → ${response.status()} ${await response.text()}`,
   ).toBe(status);
-  const text = await response.text();
-  return (text ? (JSON.parse(text) as ApiEnvelope<T>).data : undefined) as T;
+  return (await json<ApiEnvelope<T>>(response)).data;
 }
 
 /** The case's question bank, created once per tenant (idempotent for CI retries). */
@@ -341,7 +341,7 @@ test.describe('@case:STU-40 @area:STU @prio:P2 student report thread replies', (
     await textarea.press('Enter');
     const postedResponse = await posted;
     expect(postedResponse.status(), `POST ${REPORTS_URL}/${report.id}/messages`).toBe(201);
-    const postedMessage = (await postedResponse.json()) as ApiEnvelope<ReportMessage>;
+    const postedMessage = await json<ApiEnvelope<ReportMessage>>(postedResponse);
     expect(postedMessage.data.sender_id, 'the answer is authored by the student').toBe(student.id);
     expect(postedMessage.data.body).toBe(STUDENT_REPLY);
 
@@ -367,7 +367,7 @@ test.describe('@case:STU-40 @area:STU @prio:P2 student report thread replies', (
     ]);
     const timestamps = detail.messages.map((message) => Date.parse(message.created_at));
     expect(timestamps, 'messages are stored in chronological order').toEqual(
-      [...timestamps].sort((a, b) => a - b),
+      [...timestamps].toSorted((a, b) => a - b),
     );
     expect(detail.report.status, 'answering an open report keeps it open').toBe('open');
 

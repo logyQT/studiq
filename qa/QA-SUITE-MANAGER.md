@@ -26,7 +26,7 @@ or databases.
 
 ## Durable memory
 
-`.qa-memory/qa-suite.md` is your ledger: one row per case (215), the current batch and the
+`.qa-memory/qa-suite.md` is your ledger: one row per case (214), the current batch and the
 environment. **Read it before dispatching**, and update a row the moment a case changes state
 (`pending → running → pr → green → merged`, or `issue`). It is what survives a rotation — a new
 session is seeded with this prompt plus that file, so never rely on remembering a case in chat.

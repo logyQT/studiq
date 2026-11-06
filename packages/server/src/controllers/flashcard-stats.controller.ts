@@ -15,7 +15,7 @@ import {
 } from '@studiq/server/services/flashcard-stats.service';
 
 export class FlashcardStatsController {
-  constructor(private flashcardStatsService: FlashcardStatsService) {}
+  constructor(private service: FlashcardStatsService) {}
 
   async getTeacherStats(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = TeacherFlashcardStatsQuerySchema.safeParse(query);
@@ -24,7 +24,7 @@ export class FlashcardStatsController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardStatsService.getTeacherStats(ctx, parsed.data);
+    const result = await this.service.getTeacherStats(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -43,7 +43,7 @@ export class FlashcardStatsController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.flashcardStatsService.getDifficultyCards(ctx, parsed.data);
+    const result = await this.service.getDifficultyCards(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

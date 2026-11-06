@@ -87,21 +87,21 @@ export default function FeatureFlagsPage() {
   const missingKeys = FEATURES.filter((key) => !existingKeys.has(key));
   const canCreate = !isLoading && !isError && missingKeys.length > 0;
 
-  function mapError(error: Error): string {
-    if (error.message === 'CONFLICT') return t('error_exists');
-    if (error.message === 'UNPROCESSABLE_ENTITY') return t('error_validation');
-    return t('save_failed', { code: error.message });
+  function mapError(err: Error): string {
+    if (err.message === 'CONFLICT') return t('error_exists');
+    if (err.message === 'UNPROCESSABLE_ENTITY') return t('error_validation');
+    return t('save_failed', { code: err.message });
   }
 
   const createMutation = useMutation({
     mutationFn: (data: FormData) => apiPost('/feature-flags', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDialogOpen(false);
       setForm(EMPTY_FORM);
       setFormError(null);
     },
-    onError: (error: Error) => setFormError(mapError(error)),
+    onError: (err: Error) => setFormError(mapError(err)),
   });
 
   const updateMutation = useMutation({
@@ -114,19 +114,19 @@ export default function FeatureFlagsPage() {
     }: FormData & { id: string }) =>
       apiPut(`/feature-flags/${id}`, { name, description, isEnabled, rolloutPercentage }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDialogOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
       setFormError(null);
     },
-    onError: (error: Error) => setFormError(mapError(error)),
+    onError: (err: Error) => setFormError(mapError(err)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/feature-flags/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDeleteTarget(null);
     },
   });

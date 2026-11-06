@@ -1,7 +1,26 @@
 import { AuthController } from '@studiq/server/controllers/auth.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import type { AuthService } from '@studiq/server/services/auth.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
+
+type FailureResponse = Extract<ControllerResponse, { success: false }>;
+
+/**
+ * The controller answers with a union. Tests assert the branch themselves first,
+ * then read the payload through this view instead of casting the response to `any`.
+ */
+function envelope(response: ControllerResponse) {
+  return response as {
+    success: boolean;
+    statusCode: number;
+    data?: unknown;
+    error?: FailureResponse['error'];
+    details?: FailureResponse['details'];
+  };
+}
 
 function createMockAuthService() {
   return {
@@ -21,7 +40,7 @@ describe('AuthController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockAuthService();
-    controller = new AuthController(mockService as any);
+    controller = new AuthController(asService<AuthService>(mockService));
   });
 
   describe('register', () => {
@@ -37,7 +56,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(202);
-      expect((response as any).data).toEqual({ message: 'SUCCESS_ACTIVATION_LINK_SENT' });
+      expect(envelope(response).data).toEqual({ message: 'SUCCESS_ACTIVATION_LINK_SENT' });
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
@@ -45,7 +64,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -60,7 +79,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(envelope(response).error).toBe('INTERNAL_SERVER');
     });
 
     // #311: an invite token that died between the /join preview and submit maps
@@ -78,7 +97,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(410);
-      expect((response as any).error).toBe('GONE');
+      expect(envelope(response).error).toBe('GONE');
     });
 
     // #303 / AUT-04: a whitespace-only name is not a name — the shared schema
@@ -148,9 +167,7 @@ describe('AuthController', () => {
     const mockUser = { id: 'user-1', email: 'john@example.com' };
 
     it('returns user when login succeeds', async () => {
-      mockService.login.mockResolvedValueOnce(
-        success({ user: mockUser as any, session: mockSession as any }),
-      );
+      mockService.login.mockResolvedValueOnce(success({ user: mockUser, session: mockSession }));
 
       const response = await controller.login({
         email: 'john@example.com',
@@ -159,7 +176,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ user: mockUser, session: mockSession });
+      expect(envelope(response).data).toEqual({ user: mockUser, session: mockSession });
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
@@ -167,7 +184,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -180,7 +197,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(401);
-      expect((response as any).error).toBe('UNAUTHORIZED');
+      expect(envelope(response).error).toBe('UNAUTHORIZED');
     });
   });
 
@@ -292,7 +309,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
-      expect((response as any).error).toBe('INVALID_CURRENT_PASSWORD');
+      expect(envelope(response).error).toBe('INVALID_CURRENT_PASSWORD');
     });
 
     it('returns UNPROCESSABLE_ENTITY when service returns same_password', async () => {

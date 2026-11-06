@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -104,31 +105,31 @@ interface FeaturesResponse {
 async function readPlan(page: Page): Promise<PlanInfo> {
   const res = await page.request.get('/api/v1/me/plan');
   expect(res.status(), 'GET /api/v1/me/plan').toBe(200);
-  return (await res.json()).data as PlanInfo;
+  return (await json<{ data: PlanInfo }>(res)).data;
 }
 
 async function readPersonalPlan(page: Page): Promise<PlanInfo> {
   const res = await page.request.get('/api/v1/me/personal-plan');
   expect(res.status(), 'GET /api/v1/me/personal-plan').toBe(200);
-  return (await res.json()).data as PlanInfo;
+  return (await json<{ data: PlanInfo }>(res)).data;
 }
 
 async function readFeatures(page: Page): Promise<string[]> {
   const res = await page.request.get('/api/v1/features/me');
   expect(res.status(), 'GET /api/v1/features/me').toBe(200);
-  return ((await res.json()).data as FeaturesResponse).features;
+  return (await json<{ data: FeaturesResponse }>(res)).data.features;
 }
 
 async function readOrganization(page: Page, orgId: string): Promise<OrganizationDetail> {
   const res = await page.request.get(`/api/v1/organization/${orgId}`);
   expect(res.status(), `GET /api/v1/organization/${orgId}`).toBe(200);
-  return (await res.json()).data as OrganizationDetail;
+  return (await json<{ data: OrganizationDetail }>(res)).data;
 }
 
 async function readPayments(page: Page): Promise<PaymentItem[]> {
   const res = await page.request.get('/api/v1/me/payments');
   expect(res.status(), 'GET /api/v1/me/payments').toBe(200);
-  return (await res.json()).data as PaymentItem[];
+  return (await json<{ data: PaymentItem[] }>(res)).data;
 }
 
 test.describe('BIL-04 — organization plan purchase', () => {
@@ -179,7 +180,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
     await expect(hubCard, 'the Hub card shows the organization plan name').toContainText(
       UI.hubName,
     );
-    await expect(hubCard, 'the Hub card shows the monthly price').toContainText(/19,99/);
+    await expect(hubCard, 'the Hub card shows the monthly price').toContainText(/299\s*zł/);
     const hubCta = hubCard.getByRole('button', { name: UI.hubCta, exact: true });
     await expect(hubCta, 'the Hub card offers its purchase button').toBeVisible();
     await hubCta.click();
@@ -195,7 +196,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
       tenant.org!.name,
     );
     await expect(summary, 'the summary names the bought plan').toContainText(UI.hubName);
-    await expect(summary, 'the summary shows the monthly price').toContainText(/19,99/);
+    await expect(summary, 'the summary shows the monthly price').toContainText(/299,00/);
     await expect(summary.getByText(UI.total, { exact: true }), 'the summary total').toBeVisible();
 
     // Expected result: the development-payment warning is on the page.
@@ -284,7 +285,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
       'the recorded payment carries the catalogue name and price',
     ).toMatchObject({
       planName: UI.hubName,
-      amount: 1999,
+      amount: 29900,
       currency: 'PLN',
     });
 
@@ -375,7 +376,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
         type: 'checkout.session.completed',
         session_id: `${CASE}-teacher-${crypto.randomUUID()}`,
         plan_id: 'hub',
-        user_id: teacher!.id,
+        user_id: teacher.id,
         org_id: orgId,
       },
     });

@@ -7,7 +7,7 @@ The project uses two testing frameworks:
 | Framework  | Purpose                    | Location                                    |
 | ---------- | -------------------------- | ------------------------------------------- |
 | Vitest     | Unit and integration tests | `__tests__/unit/`, `__tests__/integration/` |
-| Playwright | End-to-end tests           | `e2e/`                                      |
+| Playwright | End-to-end tests           | `__tests__/e2e/`                            |
 
 ## Unit Tests
 
@@ -54,21 +54,85 @@ Cross-test interference is a tenant leak, not a flake.
 
 **Covered flows today:** login and registration, student flashcard practice, teacher question
 management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/coverage.md) —
-195 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
+194 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
 
 ## Running Tests
 
 ```bash
-bun test              # Reset DB + run all tests
-bun test:unit         # Run unit tests only
-bun test:integration  # Run integration tests only
-bun test:watch        # Watch mode (re-runs on file changes)
-bun test:coverage     # Run with coverage report
+bun run test              # Run the full Vitest unit/integration suite
+bun run test:unit         # Run unit tests only
+bun run test:integration  # Run integration tests only
+bun run test:watch        # Watch mode (re-runs on file changes)
+bun run test:coverage     # Run with coverage report
 ```
+
+Vitest sets `APP_ENV=test` and `PAYMENT_DRIVER=mock` in `vitest.config.ts`, so
+unit and integration tests never need Stripe configuration. Those two values
+are the only reason the mock driver may run in CI; production is the default
+posture when `APP_ENV` is unset and rejects `PAYMENT_DRIVER=mock` outright.
+E2E and QA set `APP_ENV=qa` + `PAYMENT_DRIVER=mock` in the workflow env files.
+
+## Stripe secrets in CI and forks
+
+- Unit and integration tests need no Stripe secret **by default**:
+  `vitest.config.ts` forces `APP_ENV=test` + `PAYMENT_DRIVER=mock`.
+- Fork PRs receive no repository/environment secrets from GitHub and run the
+  full gate with the mock driver. No workflow references Stripe secrets today;
+  any future sandbox job must be manual/trusted-branch dispatch behind an
+  `environment:` with reviewers, never a fork PR.
+- The opt-in sandbox suite is **not wired into CI today**; `bun run test:stripe`
+  is a local one-off. Its key is broader than the runtime key: Accounts (read),
+  Products (read), Test Helpers (write), Payment Methods (write), Events (read),
+  Billing Portal Configurations (read), plus the runtime set.
+- Never echo a key in a test, script or CI step; CI masking is not permission to
+  print. Each developer uses their own Stripe sandbox and a restricted
+  `rk_test_` key (not the `rkcs_test_` value printed by `stripe sandbox
+create`). See `docs/deployment.md` → "Team access and secrets".
+
+## Stripe sandbox (opt-in)
+
+The real-Stripe suites need the network, a **test-mode** secret and a reachable
+local Supabase stack. They are skipped unless `RUN_STRIPE_TESTS=1`, and they
+must **never** run on PRs from forks.
+
+```bash
+# One-off, after scripts/stripe-bootstrap.ts and with this checkout's DB up:
+bun run test:stripe
+```
+
+Prerequisites (root `.env`; Vitest already forces the test posture, so the
+sandbox suite needs no `APP_ENV`):
+
+- `STRIPE_SECRET_KEY=rk_test_…` or `sk_test_…` (never a live key for this suite)
+- `STRIPE_PORTAL_CONFIGURATION_ID=bpc_…` and the catalog/prices created by
+  `bun scripts/stripe-bootstrap.ts` (`STRIPE_PRODUCT_TAX_CODE` and
+  `STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1` are required for any bootstrap write run,
+  test mode included; Managed Payments needs an eligible product tax code,
+  confirmed in the Dashboard)
+- `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for a reachable local
+  Supabase, plus the seeded `TEST_USERS` and at least two mapped student plans
+- `RUN_STRIPE_TESTS=1` (the script sets it)
+
+Run `bun run test:stripe` on its own, not as part of a full
+`bun run test:integration` run: the lifecycle cases use the seeded student and
+reset that user's billing rows.
+
+What it covers:
+
+- catalog/price/portal/checkout-session shape against the real sandbox;
+- subscription lifecycle via **test clocks**: renewal → second `payments` row
+  (replay stays idempotent), dunning with `4000 0000 0000 0341` → mirror
+  `past_due` + unchanged plan, cancel-at-period-end → `deleted` → free plan,
+  upgrade anchor reset, and downgrade applying at the period boundary.
+
+Test-clock limits: at most **3 customers per clock** and **3 subscriptions per
+customer**; advance at most two service periods at a time; clocks auto-delete
+after 30 days. Each case creates one clock/customer/subscription and deletes the
+clock again.
 
 ## Manual QA (agent-driven)
 
-The manual test plan lives in [`qa/`](../qa/README.md) — 215 scenarios with
+The manual test plan lives in [`qa/`](../qa/README.md) — 214 scenarios with
 steps, expected results and prerequisite chains. Agents run them in a real
 browser against the observability stack (Tempo + Loki + Prometheus) so failures
 are reported with the underlying span/log evidence instead of a bare status code.

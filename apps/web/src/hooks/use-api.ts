@@ -35,21 +35,23 @@ export function useApiMutation<TData, TVars, TContext = unknown>(opts: {
   onMutate?: (vars: TVars) => TContext | Promise<TContext>;
   onError?: (error: Error, vars: TVars, context: TContext | undefined) => void;
   onSettled?: () => void;
-}): UseMutationResult<TData, Error, TVars, TContext> {
+}): UseMutationResult<TData, Error, TVars, TContext | undefined> {
   const queryClient = useQueryClient();
-  let snapshot: unknown;
+  let snapshot: TData | undefined;
 
-  return useMutation<TData, Error, TVars, TContext>({
+  return useMutation<TData, Error, TVars, TContext | undefined>({
     mutationFn: opts.mutationFn,
     onMutate: async (vars) => {
       snapshot = undefined;
       if (opts.optimisticUpdate) {
         const { queryKey, updater } = opts.optimisticUpdate;
         await queryClient.cancelQueries({ queryKey });
-        snapshot = queryClient.getQueryData(queryKey);
-        queryClient.setQueryData(queryKey, updater(snapshot as TData | undefined, vars));
+        snapshot = queryClient.getQueryData<TData>(queryKey);
+        queryClient.setQueryData(queryKey, updater(snapshot, vars));
       }
-      return opts.onMutate?.(vars) as TContext;
+      // No context when the caller supplies none: `onMutate` is optional, so the
+      // context type of the mutation carries `undefined`.
+      return await opts.onMutate?.(vars);
     },
     onError: (error, vars, context) => {
       if (opts.optimisticUpdate && snapshot !== undefined) {
@@ -62,7 +64,7 @@ export function useApiMutation<TData, TVars, TContext = unknown>(opts: {
       snapshot = undefined;
       if (opts.invalidateKeys?.length) {
         for (const key of opts.invalidateKeys) {
-          queryClient.invalidateQueries({ queryKey: key });
+          void queryClient.invalidateQueries({ queryKey: key });
         }
       }
       opts.onSettled?.();

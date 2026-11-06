@@ -9,6 +9,7 @@ import type {
 } from '@studiq/server/models/subscription-plan.model';
 import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export interface PlanInfo {
   id: string;
@@ -25,13 +26,15 @@ export interface PlanInfo {
   forAccountType: string | null;
 }
 
+type SubscriptionPlanRow = Database['public']['Tables']['subscription_plans']['Row'];
+
 export class SubscriptionPlanService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   private async fetchLimitsByPlan(
     planKeys: string[],
   ): Promise<Map<string, Record<string, number>>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data: planLimits } = await supabase
       .from('plan_limits')
       .select('plan_key, limit_key, limit_value')
@@ -48,28 +51,28 @@ export class SubscriptionPlanService {
   }
 
   private toPlanInfo(
-    plan: Record<string, unknown>,
+    plan: SubscriptionPlanRow,
     features: string[],
     limits: Record<string, number>,
   ): PlanInfo {
     return {
-      id: plan.id as string,
-      key: plan.key as string,
-      name: plan.name as string,
-      description: (plan.description as string) ?? null,
-      priceMonthly: (plan.price_monthly as number) ?? 0,
-      priceYearly: (plan.price_yearly as number) ?? 0,
-      currency: (plan.currency as string) ?? 'PLN',
-      sortOrder: (plan.sort_order as number) ?? 0,
-      isActive: (plan.is_active as boolean) ?? true,
-      forAccountType: (plan.for_account_type as string) ?? null,
+      id: plan.id,
+      key: plan.key,
+      name: plan.name,
+      description: plan.description ?? null,
+      priceMonthly: plan.price_monthly ?? 0,
+      priceYearly: plan.price_yearly ?? 0,
+      currency: plan.currency ?? 'PLN',
+      sortOrder: plan.sort_order ?? 0,
+      isActive: plan.is_active ?? true,
+      forAccountType: plan.for_account_type ?? null,
       features,
       limits,
     };
   }
 
   async listActive(forAccountType?: string): Promise<ServiceResult<PlanInfo[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let query = supabase.from('subscription_plans').select('*').eq('is_active', true);
 
@@ -124,7 +127,7 @@ export class SubscriptionPlanService {
    * (#228), so the fallback is the manager's own free `launch` tier.
    */
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     let planKey: string | null = null;
 
@@ -149,12 +152,13 @@ export class SubscriptionPlanService {
     if (!planKey) {
       // Unseated non-managers (and managers without an org plan) use their
       // personal plan.
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('personal_plan_key')
         .eq('id', ctx.userId)
         .maybeSingle();
 
+      if (profileError) return toDbFailure(profileError);
       if (profile?.personal_plan_key) {
         planKey = profile.personal_plan_key;
       }
@@ -200,13 +204,15 @@ export class SubscriptionPlanService {
    * copied from.
    */
   async getPersonalPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('personal_plan_key')
       .eq('id', ctx.userId)
       .maybeSingle();
+
+    if (profileError) return toDbFailure(profileError);
 
     const planKey = profile?.personal_plan_key;
     if (!planKey) return failure('NOT_FOUND');
@@ -262,7 +268,7 @@ export class SubscriptionPlanService {
   }
 
   async getAllAdmin(): Promise<ServiceResult<PlanInfo[]>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: plans, error } = await supabase
       .from('subscription_plans')
@@ -298,7 +304,7 @@ export class SubscriptionPlanService {
   }
 
   async getByKey(key: string): Promise<ServiceResult<PlanInfo>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: plan, error } = await supabase
       .from('subscription_plans')
@@ -324,7 +330,7 @@ export class SubscriptionPlanService {
   }
 
   async getById(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('subscription_plans')
@@ -339,7 +345,7 @@ export class SubscriptionPlanService {
   }
 
   async create(input: CreateSubscriptionPlanInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('subscription_plans')
@@ -363,9 +369,9 @@ export class SubscriptionPlanService {
   }
 
   async update(id: string, input: UpdateSubscriptionPlanInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: Database['public']['Tables']['subscription_plans']['Update'] = {};
     if (input.key !== undefined) updateData.key = input.key;
     if (input.name !== undefined) updateData.name = input.name;
     if (input.description !== undefined) updateData.description = input.description;
@@ -389,7 +395,7 @@ export class SubscriptionPlanService {
   }
 
   async delete(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: exists } = await supabase
       .from('subscription_plans')

@@ -37,7 +37,7 @@ export function AppSearch() {
         setOpen(true);
       }
       if (e.key === '/' && !open) {
-        const tag = (document.activeElement as HTMLElement)?.tagName;
+        const tag = document.activeElement?.tagName;
         if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
           e.preventDefault();
           setOpen(true);

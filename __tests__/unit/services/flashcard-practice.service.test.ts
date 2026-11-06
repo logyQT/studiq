@@ -1,6 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardPracticeService } from '@studiq/server/services/flashcard-practice.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => ({
@@ -31,79 +32,289 @@ const defaultSettings = {
 
 const defaultSettingsRow = { data: defaultSettings, error: null };
 
+type QueryResult = { data: unknown; error: unknown };
+
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  in: Mock<(...args: unknown[]) => QueryChain>;
+  or: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  limit: Mock<(...args: unknown[]) => QueryChain>;
+  gt: Mock<(...args: unknown[]) => QueryChain>;
+  filter: Mock<(...args: unknown[]) => QueryChain>;
+  not: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  upsert: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  then: Promise<QueryResult>['then'];
+};
+
+/** The narrow chain the load-balancing lookup uses: `eq`/`gte` chain, `lt` resolves. */
+type LookupChain = {
+  eq: Mock<(...args: unknown[]) => LookupChain>;
+  gte: Mock<(...args: unknown[]) => LookupChain>;
+  lt: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+};
+
 /** Creates a mock Supabase chain where all intermediate methods return the chain,
  *  terminal methods (single, maybeSingle) resolve with `terminal`,
  *  and the chain itself is thenable for `await query` patterns. */
-function chain(terminal: any = { data: null, error: null }) {
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.gt = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.not = vi.fn(() => c);
-  c.single = vi.fn().mockResolvedValue(terminal);
-  c.maybeSingle = vi.fn().mockResolvedValue(terminal);
-  c.insert = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(terminal).then(onfulfilled);
+function chain(terminal: QueryResult = { data: null, error: null }) {
+  const promise = Promise.resolve(terminal);
+  const c: QueryChain = {
+    select: vi.fn(() => c),
+    eq: vi.fn(() => c),
+    in: vi.fn(() => c),
+    or: vi.fn(() => c),
+    order: vi.fn(() => c),
+    limit: vi.fn(() => c),
+    gt: vi.fn(() => c),
+    filter: vi.fn(() => c),
+    not: vi.fn(() => c),
+    single: vi.fn().mockResolvedValue(terminal),
+    maybeSingle: vi.fn().mockResolvedValue(terminal),
+    insert: vi.fn(() => c),
+    upsert: vi.fn(() => c),
+    update: vi.fn(() => c),
+    then: promise.then.bind(promise),
+  };
   return c;
 }
 
-function settingsChain(settings: any = defaultSettings) {
+function settingsChain(settings: unknown = defaultSettings) {
   const c = chain({ data: settings, error: null });
   c.update = vi.fn(() => c);
   return c;
 }
 
+/**
+ * The service answers `ServiceResult<unknown>`; these helpers narrow the payload
+ * the test reads, failing loudly when the real shape drifts.
+ */
+type CardPage = { items: Array<{ id: string } & Record<string, unknown>> };
+
+type PracticeLogPayload = {
+  practice: Record<string, unknown> | null;
+  reviewState: (Record<string, unknown> & { repetitions: number; interval_days: number }) | null;
+};
+
+type BatchPayload = {
+  success: boolean;
+  results: Array<{ flashcardId: string; isLeech: boolean }>;
+};
+
+/** What `log`/`batch` write into `flashcard_review_state`. */
+type PracticeUpsertPayload = {
+  learning_state?: string;
+  learning_step?: number;
+  interval_days?: number;
+  interval_unit?: string;
+  easiness_factor?: number;
+};
+
+type DueBreakdown = {
+  total: number;
+  byTopic: Record<string, number>;
+  byDeck: Record<string, number>;
+};
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isPracticeLogPayload(value: unknown): value is PracticeLogPayload {
+  return isRecord(value) && 'practice' in value && 'reviewState' in value;
+}
+
+function logPayload(result: ServiceResult<unknown>): PracticeLogPayload {
+  const data = expectSuccess(result);
+  if (!isPracticeLogPayload(data)) throw new Error('expected the practice log payload');
+  return data;
+}
+
+function isBatchPayload(value: unknown): value is BatchPayload {
+  return isRecord(value) && 'results' in value && Array.isArray(value.results);
+}
+
+function batchPayload(result: ServiceResult<unknown>): BatchPayload {
+  const data = expectSuccess(result);
+  if (!isBatchPayload(data)) throw new Error('expected the batch payload');
+  return data;
+}
+
+function isDueBreakdown(value: unknown): value is DueBreakdown {
+  return (
+    isRecord(value) &&
+    'total' in value &&
+    typeof value.total === 'number' &&
+    'byTopic' in value &&
+    isRecord(value.byTopic) &&
+    'byDeck' in value &&
+    isRecord(value.byDeck)
+  );
+}
+
+function breakdownOf(result: ServiceResult<unknown>): DueBreakdown {
+  const data = expectSuccess(result);
+  if (!isDueBreakdown(data)) throw new Error('expected the due breakdown payload');
+  return data;
+}
+
+function dueCount(result: ServiceResult<unknown>): number {
+  const data = expectSuccess(result);
+  if (!isRecord(data) || !('count' in data) || typeof data.count !== 'number') {
+    throw new Error('expected a due count payload');
+  }
+  return data.count;
+}
+
+function isCardPage(value: unknown): value is CardPage {
+  return isRecord(value) && 'items' in value && Array.isArray(value.items);
+}
+
+function cardPage(result: ServiceResult<unknown>): CardPage {
+  const data = expectSuccess(result);
+  if (!isCardPage(data)) throw new Error('expected a card page payload');
+  return data;
+}
+
+function isCardId(value: unknown): value is { id: string } {
+  return isRecord(value) && 'id' in value && typeof value.id === 'string';
+}
+
+function cardIdList(result: ServiceResult<unknown>): string[] {
+  const data = expectSuccess(result);
+  if (!Array.isArray(data)) throw new Error('expected a card list payload');
+  return data.map((card: unknown) => {
+    if (!isCardId(card)) throw new Error('expected a card with an id');
+    return card.id;
+  });
+}
+
+async function mockAccessibleFilter(filter: Record<string, unknown>) {
+  const { accessibleFilter } = await import('@studiq/server/lib/authz');
+  vi.mocked(accessibleFilter).mockResolvedValueOnce(filter);
+}
+
+/** `pickLoadBalancedDate` is private; the load-balancing tests exercise it directly. */
+interface PickLoadBalancedDate {
+  pickLoadBalancedDate(ctx: RequestContext, baseDate: Date, fuzzRangeDays: number): Promise<Date>;
+}
+
+function hasPickLoadBalancedDate(target: object): target is PickLoadBalancedDate {
+  return 'pickLoadBalancedDate' in target && typeof target.pickLoadBalancedDate === 'function';
+}
+
+function lbChain(rows: Array<{ next_review_at: string }>): LookupChain {
+  const c: LookupChain = {
+    eq: vi.fn(() => c),
+    gte: vi.fn(() => c),
+    lt: vi.fn().mockResolvedValue({ data: rows, error: null }),
+  };
+  return c;
+}
+
 describe('FlashcardPracticeService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
-  const service = new FlashcardPracticeService(async () => mock as any);
+  const service = new FlashcardPracticeService(() => Promise.resolve(mock));
+
+  /** `pickLoadBalancedDate` is private; the load-balancing tests exercise it directly. */
+  function pickLoadBalancedDate(baseDate: Date, fuzzRangeDays: number): Promise<Date> {
+    const target: object = service;
+    if (!hasPickLoadBalancedDate(target)) throw new Error('pickLoadBalancedDate is missing');
+    return target.pickLoadBalancedDate(ctx, baseDate, fuzzRangeDays);
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
   });
 
-  describe('log', () => {
-    function setupMocks(practiceResult: any, existingState: any, upsertResult: any) {
-      const maybeSingleMock = vi.fn().mockResolvedValue({ data: existingState, error: null });
-      const getStateEq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
-      const getStateEq1Mock = vi.fn().mockReturnValue({ eq: getStateEq2Mock });
-      const getStateSelectMock = vi.fn().mockReturnValue({ eq: getStateEq1Mock });
+  function setupMocks(practiceResult: unknown, existingState: unknown, upsertResult: unknown) {
+    const maybeSingleMock = vi.fn().mockResolvedValue({ data: existingState, error: null });
+    const getStateEq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
+    const getStateEq1Mock = vi.fn().mockReturnValue({ eq: getStateEq2Mock });
+    const getStateSelectMock = vi.fn().mockReturnValue({ eq: getStateEq1Mock });
 
-      const upsertSingleMock = vi.fn().mockResolvedValue(upsertResult);
-      const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
-      const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
+    const upsertSingleMock = vi.fn().mockResolvedValue(upsertResult);
+    const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
+    const upsertMock = vi
+      .fn<(payload: PracticeUpsertPayload) => unknown>()
+      .mockReturnValue({ select: upsertSelectMock });
 
-      const practiceSingleMock = vi.fn().mockResolvedValue(practiceResult);
-      const practiceSelectMock = vi.fn().mockReturnValue({ single: practiceSingleMock });
-      const insertMock = vi.fn().mockReturnValue({ select: practiceSelectMock });
+    const practiceSingleMock = vi.fn().mockResolvedValue(practiceResult);
+    const practiceSelectMock = vi.fn().mockReturnValue({ single: practiceSingleMock });
+    const insertMock = vi.fn().mockReturnValue({ select: practiceSelectMock });
 
-      mock.from.mockImplementation((table: string) => {
-        if (table === 'flashcard_practice') return { insert: insertMock };
-        if (table === 'flashcard_review_state')
-          return { select: getStateSelectMock, upsert: upsertMock };
-        if (table === 'user_study_settings')
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi
-                .fn()
-                .mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue(defaultSettingsRow) }),
-            }),
-            update: vi
+    mock.from.mockImplementation((table: string) => {
+      if (table === 'flashcard_practice') return { insert: insertMock };
+      if (table === 'flashcard_review_state')
+        return { select: getStateSelectMock, upsert: upsertMock };
+      if (table === 'user_study_settings')
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi
               .fn()
-              .mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
-          };
-        return chain();
-      });
-      return upsertMock;
-    }
+              .mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue(defaultSettingsRow) }),
+          }),
+          update: vi
+            .fn()
+            .mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+        };
+      return chain();
+    });
+    return upsertMock;
+  }
 
+  function setupBatchMocks(
+    insertResults: Array<{ error: unknown }>,
+    upsertResults: Array<{ data: unknown; error: unknown }>,
+  ) {
+    let insertCall = 0;
+    const practiceInsert = vi.fn().mockImplementation(() => {
+      const res = insertResults[insertCall];
+      insertCall++;
+      return res;
+    });
+
+    let upsertCall = 0;
+    const upsertSingleMock = vi.fn().mockImplementation(() => {
+      const res = upsertResults[upsertCall];
+      upsertCall++;
+      return Promise.resolve(res);
+    });
+    const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
+    const upsertMock = vi
+      .fn<(payload: PracticeUpsertPayload) => unknown>()
+      .mockReturnValue({ select: upsertSelectMock });
+
+    const maybeSingleMock = vi.fn().mockResolvedValue({ data: null, error: null });
+    const eq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
+    const eq1Mock = vi.fn().mockReturnValue({ eq: eq2Mock });
+    const reviewSelectMock = vi.fn().mockReturnValue({ eq: eq1Mock });
+
+    mock.from.mockImplementation((table: string) => {
+      if (table === 'flashcard_practice') return { insert: practiceInsert };
+      if (table === 'flashcard_review_state')
+        return { select: reviewSelectMock, upsert: upsertMock };
+      if (table === 'user_study_settings') {
+        const c = settingsChain();
+        return { select: vi.fn(() => c), update: vi.fn(() => c) };
+      }
+      return chain();
+    });
+  }
+
+  describe('log', () => {
     it('inserts practice record and returns it with review state', async () => {
       const mockPractice = {
         id: 'p-1',
@@ -127,8 +338,8 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.practice).toEqual(mockPractice);
-      expect(result.data.reviewState).toEqual(mockReviewState);
+      expect(logPayload(result).practice).toEqual(mockPractice);
+      expect(logPayload(result).reviewState).toEqual(mockReviewState);
     });
 
     it('inserts practice record with optional fields', async () => {
@@ -154,8 +365,8 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx, 1500, 4, 'session-1');
 
       expect(result.success).toBe(true);
-      expect(result.data.practice).toEqual(mockPractice);
-      expect(result.data.reviewState).toEqual(mockReviewState);
+      expect(logPayload(result).practice).toEqual(mockPractice);
+      expect(logPayload(result).reviewState).toEqual(mockReviewState);
     });
 
     it('returns error on insert failure', async () => {
@@ -202,9 +413,9 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx, undefined, 4);
 
       expect(result.success).toBe(true);
-      expect(result.data.practice).toEqual(mockPractice);
-      expect(result.data.reviewState.repetitions).toBe(2);
-      expect(result.data.reviewState.interval_days).toBeGreaterThan(6);
+      expect(logPayload(result).practice).toEqual(mockPractice);
+      expect(logPayload(result).reviewState?.repetitions).toBe(2);
+      expect(logPayload(result).reviewState?.interval_days).toBeGreaterThan(6);
     });
 
     it('maps confidenceLevel 3 (Good) on a new card to step 1, 10 min and EF 2.36', async () => {
@@ -280,14 +491,15 @@ describe('FlashcardPracticeService', () => {
         error: null,
       });
       const upsertMock = vi
-        .fn()
+        .fn<(payload: PracticeUpsertPayload) => unknown>()
         .mockReturnValue({ select: vi.fn().mockReturnValue({ single: upsertSingleMock }) });
 
       // Load-balancing reads `next_review_at`; the review-state lookup uses `select('*')`.
-      const loadBalanceChain: any = {};
-      loadBalanceChain.eq = vi.fn(() => loadBalanceChain);
-      loadBalanceChain.gte = vi.fn(() => loadBalanceChain);
-      loadBalanceChain.lt = vi.fn().mockResolvedValue({ data: [], error: null });
+      const loadBalanceChain: LookupChain = {
+        eq: vi.fn(() => loadBalanceChain),
+        gte: vi.fn(() => loadBalanceChain),
+        lt: vi.fn().mockResolvedValue({ data: [], error: null }),
+      };
       const lookupChain = chain({ data: existingState, error: null });
 
       mock.from.mockImplementation((table: string) => {
@@ -344,43 +556,6 @@ describe('FlashcardPracticeService', () => {
   });
 
   describe('batch', () => {
-    function setupBatchMocks(
-      insertResults: Array<{ error: any }>,
-      upsertResults: Array<{ data: any; error: any }>,
-    ) {
-      let insertCall = 0;
-      const practiceInsert = vi.fn().mockImplementation(() => {
-        const res = insertResults[insertCall];
-        insertCall++;
-        return res;
-      });
-
-      let upsertCall = 0;
-      const upsertSingleMock = vi.fn().mockImplementation(() => {
-        const res = upsertResults[upsertCall];
-        upsertCall++;
-        return Promise.resolve(res);
-      });
-      const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
-      const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
-
-      const maybeSingleMock = vi.fn().mockResolvedValue({ data: null, error: null });
-      const eq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
-      const eq1Mock = vi.fn().mockReturnValue({ eq: eq2Mock });
-      const reviewSelectMock = vi.fn().mockReturnValue({ eq: eq1Mock });
-
-      mock.from.mockImplementation((table: string) => {
-        if (table === 'flashcard_practice') return { insert: practiceInsert };
-        if (table === 'flashcard_review_state')
-          return { select: reviewSelectMock, upsert: upsertMock };
-        if (table === 'user_study_settings') {
-          const c = settingsChain();
-          return { select: vi.fn(() => c), update: vi.fn(() => c) };
-        }
-        return chain();
-      });
-    }
-
     it('returns results array with isLeech per card', async () => {
       setupBatchMocks(
         [{ error: null }, { error: null }],
@@ -402,10 +577,11 @@ describe('FlashcardPracticeService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data.success).toBe(true);
-      expect(result.data.results).toHaveLength(2);
-      expect(result.data.results[0]).toEqual({ flashcardId: 'fc-1', isLeech: false });
-      expect(result.data.results[1]).toEqual({ flashcardId: 'fc-2', isLeech: true });
+      const data = batchPayload(result);
+      expect(data.success).toBe(true);
+      expect(data.results).toHaveLength(2);
+      expect(data.results[0]).toEqual({ flashcardId: 'fc-1', isLeech: false });
+      expect(data.results[1]).toEqual({ flashcardId: 'fc-2', isLeech: true });
     });
 
     it('returns error on failed insert', async () => {
@@ -596,7 +772,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getDueCount(ctx, {});
 
       expect(result.success).toBe(true);
-      expect(result.data.count).toBe(5);
+      expect(dueCount(result)).toBe(5);
     });
 
     it('returns 0 when RPC returns no data', async () => {
@@ -607,7 +783,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getDueCount(ctx, {});
 
       expect(result.success).toBe(true);
-      expect(result.data.count).toBe(0);
+      expect(dueCount(result)).toBe(0);
     });
   });
 
@@ -617,7 +793,7 @@ describe('FlashcardPracticeService', () => {
       vi.mocked(buildQueryFilter).mockReturnValueOnce({
         _useRpc: true,
         organization_id: 'org-1',
-      } as any);
+      });
 
       const c = settingsChain();
       mock.from.mockReturnValue({ select: vi.fn(() => c), update: vi.fn(() => c) });
@@ -632,7 +808,7 @@ describe('FlashcardPracticeService', () => {
         p_organization_id: 'org-1',
       });
       expect(result.success).toBe(true);
-      expect((result.data as any).totalNewCards).toBe(3);
+      expect(result).toHaveProperty('data.totalNewCards', 3);
     });
   });
 
@@ -659,9 +835,10 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getDueBreakdown(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.total).toBe(2);
-      expect(result.data.byTopic).toEqual({ 'topic-1': 1, 'topic-2': 1 });
-      expect(result.data.byDeck).toEqual({ 'deck-1': 1, 'deck-2': 1 });
+      const data = breakdownOf(result);
+      expect(data.total).toBe(2);
+      expect(data.byTopic).toEqual({ 'topic-1': 1, 'topic-2': 1 });
+      expect(data.byDeck).toEqual({ 'deck-1': 1, 'deck-2': 1 });
     });
   });
 
@@ -671,7 +848,7 @@ describe('FlashcardPracticeService', () => {
       vi.mocked(buildQueryFilter).mockReturnValueOnce({
         created_by: 'test-user-id',
         organization_id: 'org-1',
-      } as any);
+      });
 
       const breakdown = {
         totalCards: 8,
@@ -695,7 +872,7 @@ describe('FlashcardPracticeService', () => {
         p_organization_id: 'org-1',
       });
       expect(result.success).toBe(true);
-      expect(result.data as any).toEqual(breakdown);
+      expect(result).toHaveProperty('data', breakdown);
     });
 
     it('returns the full zero envelope when the RPC fails', async () => {
@@ -704,7 +881,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getStateBreakdown(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data as any).toEqual({
+      expect(result).toHaveProperty('data', {
         totalCards: 0,
         neverPracticed: 0,
         learning: 0,
@@ -719,27 +896,24 @@ describe('FlashcardPracticeService', () => {
 
     it('returns the zero envelope without querying when the filter is impossible', async () => {
       const { buildQueryFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
+      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true });
 
       const result = await service.getStateBreakdown(ctx);
 
       expect(mock.rpc).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
-      expect(result.data as any).toMatchObject({
-        totalCards: 0,
-        practicedCards: 0,
-        averageAccuracy: 0,
-        averageEasinessFactor: 0,
+      expect(result).toMatchObject({
+        data: {
+          totalCards: 0,
+          practicedCards: 0,
+          averageAccuracy: 0,
+          averageEasinessFactor: 0,
+        },
       });
     });
   });
 
   describe('getAllCardStats (#343)', () => {
-    async function mockAccessibleFilter(filter: Record<string, unknown>) {
-      const { accessibleFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(accessibleFilter).mockResolvedValueOnce(filter as any);
-    }
-
     it('applies the resolved group filter so other groups/users are excluded', async () => {
       await mockAccessibleFilter({
         organization_id: 'org-1',
@@ -764,7 +938,7 @@ describe('FlashcardPracticeService', () => {
       expect(result.success).toBe(true);
       expect(cardQuery.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
       expect(cardQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
-      expect((result.data as any).items.map((i: any) => i.id)).toEqual(['fc-1']);
+      expect(cardPage(result).items.map((i) => i.id)).toEqual(['fc-1']);
     });
 
     it('returns an empty page when the filter is impossible', async () => {
@@ -851,7 +1025,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.getAllCardStats(ctx, { limit: 100 });
 
       expect(result.success).toBe(true);
-      const items = (result.data as any).items as any[];
+      const items = cardPage(result).items;
       const byId = new Map(items.map((i) => [i.id, i]));
 
       expect(byId.get('fc-review')).toMatchObject({
@@ -884,7 +1058,7 @@ describe('FlashcardPracticeService', () => {
       vi.mocked(accessibleFilter).mockResolvedValueOnce({
         organization_id: 'org-1',
         or: 'created_by.eq.test-user-id,id.in.(fc-1)',
-      } as any);
+      });
 
       const matching = chain({ data: [{ id: 'fc-1' }], error: null });
       const reviewStates = chain({ data: [], error: null });
@@ -902,26 +1076,18 @@ describe('FlashcardPracticeService', () => {
       expect(result.success).toBe(true);
       expect(matching.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
       expect(matching.in).toHaveBeenCalledWith('deck_id', ['deck-1']);
-      const ids = (result.data as any[]).map((c) => c.id);
+      const ids = cardIdList(result);
       expect(ids).toEqual(['fc-1']);
       expect(ids).not.toContain('fc-2');
     });
   });
 
   describe('pickLoadBalancedDate (SRS load balancing)', () => {
-    function lbChain(rows: Array<{ next_review_at: string }>) {
-      const c: any = {};
-      c.eq = vi.fn(() => c);
-      c.gte = vi.fn(() => c);
-      c.lt = vi.fn().mockResolvedValue({ data: rows, error: null });
-      return c;
-    }
-
     it('keeps the base date when nothing else is scheduled nearby', async () => {
       mock.from.mockReturnValue({ select: vi.fn(() => lbChain([])) });
 
       const base = new Date('2026-01-10T00:00:00.000Z');
-      const result = await (service as any).pickLoadBalancedDate(ctx, base, 2);
+      const result = await pickLoadBalancedDate(base, 2);
 
       expect(result.toISOString()).toBe(base.toISOString());
     });
@@ -935,7 +1101,7 @@ describe('FlashcardPracticeService', () => {
       ];
       mock.from.mockReturnValue({ select: vi.fn(() => lbChain(rows)) });
 
-      const result = await (service as any).pickLoadBalancedDate(ctx, base, 2);
+      const result = await pickLoadBalancedDate(base, 2);
 
       expect(result.toISOString()).toBe(new Date('2026-01-09T00:00:00.000Z').toISOString());
     });

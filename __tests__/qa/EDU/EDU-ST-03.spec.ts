@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -150,7 +151,7 @@ function rangeButton(page: Page, label: string): Locator {
 /** `POST` and require the created (201) envelope, returning its `data`. */
 async function postData<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
-  const body = (await response.json()) as Envelope<T>;
+  const body = await json<Envelope<T>>(response);
   expect(response.status(), `POST ${url} → ${response.status()} ${JSON.stringify(body)}`).toBe(201);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
@@ -281,7 +282,7 @@ async function seedStudentActivity(
       },
     });
     expect(submitted.status(), `POST /api/v1/quiz/${attempt.id}`).toBe(200);
-    expect((await submitted.json()) as Envelope<{ score: number }>).toMatchObject({
+    expect(await json<Envelope<{ score: number }>>(submitted)).toMatchObject({
       data: { score: 1, totalQuestions: 1 },
     });
   } finally {
@@ -302,7 +303,7 @@ async function switchRange(page: Page, range: (typeof RANGES)[number]): Promise<
   await rangeButton(page, range.label).click();
   const response = await pending;
   expect(response.status(), `GET ${expected}`).toBe(200);
-  const body = (await response.json()) as Envelope<ActivityData>;
+  const body = await json<Envelope<ActivityData>>(response);
   expect(body.success, `GET ${expected} success flag`).toBe(true);
   expect(body.data.dailyActivity, `GET ${expected} covers ${range.points} days`).toHaveLength(
     range.points,

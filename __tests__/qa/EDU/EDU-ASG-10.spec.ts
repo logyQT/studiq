@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -106,7 +107,7 @@ interface ApiEnvelope<T> {
 
 async function postJson<T>(page: Page, url: string, data: unknown): Promise<T> {
   const response = await page.request.post(url, { data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(response.status(), `POST ${url} → ${response.status()} ${JSON.stringify(body)}`).toBe(201);
   expect(body.success, `POST ${url} success flag`).toBe(true);
   return body.data;
@@ -114,7 +115,7 @@ async function postJson<T>(page: Page, url: string, data: unknown): Promise<T> {
 
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(response.status(), `GET ${url} → ${response.status()} ${JSON.stringify(body)}`).toBe(200);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
@@ -212,7 +213,7 @@ async function createAssignmentWithQuestions(page: Page, label: string): Promise
 
   const detail = await page.request.get(`${ASSIGNMENTS_URL}/${assignment.id}`);
   expect(detail.status(), 'the seeded assignment is readable').toBe(200);
-  const detailBody = (await detail.json()) as ApiEnvelope<{ question_count: number }>;
+  const detailBody = await json<ApiEnvelope<{ question_count: number }>>(detail);
   expect(detailBody.data.question_count, 'all three questions are attached').toBe(3);
 
   return {

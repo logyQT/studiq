@@ -3,29 +3,40 @@
  * before the suite starts, so every spec owns its org, users and content.
  *
  * Design notes:
- * - Auth users are inserted straight into `auth.users` (bcrypt), like
- *   `supabase/seeds/01_seed.sql`; GoTrue accepts them without `auth.identities`.
+ * - Auth users go in as one SQL statement per tenant (`createSqlAccountWriter`),
+ *   the way `supabase/seeds/01_users.sql` did: GoTrue bcrypts every password it
+ *   creates, and with a shared test password the batch only needs one hash. The
+ *   writer also writes the `auth.identities` row GoTrue would have written.
  * - Domain rows go through the service-role client, typed against the generated
  *   `Database` type, so a schema change breaks this file at compile time.
  * - Every id is a uuidv5 of `<tenant>:<entity>`, so a test can address its rows
  *   without a query and a failing run reproduces the same ids.
  *
  * Usage:
- *   bun scripts/e2e-seed.ts            # seed everything the suite will run
- *   bun scripts/e2e-seed.ts --reset    # drop e2e tenants first
+ *   bun scripts/e2e-seed.ts                     # seed everything the suite runs
+ *   bun scripts/e2e-seed.ts --reset             # drop e2e tenants first
+ *   bun scripts/e2e-seed.ts --project chromium  # one CI leg (its own tenants only)
  *   bun scripts/e2e-seed.ts --only <key>
+ *
+ * In CI the seeder runs as its own workflow step (one per browser leg) and
+ * Playwright then starts with `E2E_SKIP_SEED=1`; locally `global-setup.ts` still
+ * runs it so `bunx playwright test` works with no extra step.
  */
+import { isRecord, readString } from '@studiq/server/lib/record';
 import { SQL } from 'bun';
-import type { Database } from '@studiq/server/types/database';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { shortHash, tenantKey, uuidv5 } from '#test/e2e/fixtures/ids';
 import { profileFor } from '#test/e2e/fixtures/profiles';
 import {
   buildAccount,
+  concurrencyFromEnv,
   createSeedDb,
+  createSqlAccountWriter,
+  runBounded,
   seedTenantGraph,
   tenantId,
+  type AccountWriter,
   type SeedAccount,
 } from '#test/helpers/tenant-seed';
 
@@ -64,7 +75,7 @@ const ROOT = join(import.meta.dir, '..');
 const SEED_DIR = join(ROOT, '__tests__/e2e/.seed');
 const INDEX = join(SEED_DIR, 'index.json');
 function env(name: string, fallback?: string): string {
-  if (process.env[name]) return process.env[name]!;
+  if (process.env[name]) return process.env[name];
   if (fallback) return fallback;
   // local convenience: reuse the web app's dev env
   try {
@@ -79,14 +90,33 @@ function env(name: string, fallback?: string): string {
   throw new Error(`missing env ${name}`);
 }
 
-const DB_URL = env('SUPABASE_DB_URL', 'postgresql://postgres:postgres@127.0.0.1:54322/postgres');
-const SUPABASE_URL = env('NEXT_PUBLIC_SUPABASE_URL', 'http://127.0.0.1:54321');
+// No port fallbacks on purpose: a checkout can run on any port block, and a
+// silent fallback would seed another checkout's database. `bun dev:up` renders
+// apps/web/.env (and loads SUPABASE_DB_URL above), so a local run just works.
+const DB_URL = env('SUPABASE_DB_URL');
+const SUPABASE_URL = env('NEXT_PUBLIC_SUPABASE_URL');
 const SERVICE_KEY = env('SUPABASE_SERVICE_ROLE_KEY');
 
 const sql = new SQL(DB_URL);
 const db = createSeedDb({ url: SUPABASE_URL, serviceKey: SERVICE_KEY });
+const writeAccounts: AccountWriter = createSqlAccountWriter(sql);
 
 /* ------------------------------------------------------------------ manifest */
+
+function isTenant(value: unknown): value is Tenant {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.key === 'string' &&
+    typeof value.file === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.project === 'string' &&
+    typeof value.profile === 'string' &&
+    isRecord(value.org) &&
+    typeof value.org.id === 'string' &&
+    isRecord(value.users) &&
+    isRecord(value.ids)
+  );
+}
 
 async function listTests(): Promise<Array<{ file: string; title: string; project: string }>> {
   const proc = Bun.spawn(['bunx', 'playwright', 'test', '--list', '--reporter=json'], {
@@ -96,29 +126,37 @@ async function listTests(): Promise<Array<{ file: string; title: string; project
   });
   const out = await new Response(proc.stdout).text();
   await proc.exited;
-  const report = JSON.parse(out) as {
-    suites?: Array<{
-      file?: string;
-      specs?: Array<{ title: string; tests?: Array<{ projectName: string }> }>;
-      suites?: unknown[];
-    }>;
-  };
+
+  const parsed: unknown = JSON.parse(out);
   const found: Array<{ file: string; title: string; project: string }> = [];
-  const walk = (suites: Array<Record<string, unknown>>) => {
-    for (const s of suites) {
-      const file = (s.file as string) ?? '';
-      for (const spec of (s.specs as Array<{
-        title: string;
-        tests?: Array<{ projectName: string }>;
-      }>) ?? []) {
-        for (const t of spec.tests ?? []) {
-          found.push({ file, title: spec.title, project: t.projectName });
+
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) walk(entry);
+      return;
+    }
+    if (!isRecord(value)) return;
+
+    const file = readString(value, 'file') ?? '';
+    const specs = value.specs;
+    if (Array.isArray(specs)) {
+      for (const spec of specs) {
+        if (!isRecord(spec)) continue;
+        const title = readString(spec, 'title') ?? '';
+        const tests = spec.tests;
+        if (!Array.isArray(tests)) continue;
+        for (const test of tests) {
+          if (!isRecord(test)) continue;
+          const project = readString(test, 'projectName');
+          if (project) found.push({ file, title, project });
         }
       }
-      walk((s.suites as Array<Record<string, unknown>>) ?? []);
     }
+
+    walk(value.suites);
   };
-  walk((report.suites as Array<Record<string, unknown>>) ?? []);
+
+  walk(parsed);
   return found;
 }
 
@@ -176,15 +214,19 @@ async function seedTenant(t: Tenant): Promise<void> {
   const teacher: SeedAccount = { ...t.users.teacher, role: 'educator' };
   const student: SeedAccount = { ...t.users.student, role: 'student' };
 
-  await seedTenantGraph(db, {
-    key: t.key,
-    org: t.org,
-    defaultGroup: { id: t.ids.group, name: 'G1', isDefault: false },
-    extraGroups: [],
-    owner: teacher,
-    members: [student],
-    ownerOrgRole: 'teacher',
-  });
+  await seedTenantGraph(
+    db,
+    {
+      key: t.key,
+      org: t.org,
+      defaultGroup: { id: t.ids.group, name: 'G1', isDefault: false },
+      extraGroups: [],
+      owner: teacher,
+      members: [student],
+      ownerOrgRole: 'teacher',
+    },
+    writeAccounts,
+  );
 
   type Res = { error: { message: string; details?: string | null } | null };
   const run = async (batch: Array<PromiseLike<Res>>) => {
@@ -291,11 +333,7 @@ async function seedTenant(t: Tenant): Promise<void> {
           organization_id: t.org.id,
           created_by: teacher.id,
           content: `Question ${b + 1}-${i + 1}?`,
-          type: (i < 3
-            ? 'mcq'
-            : i === 3
-              ? 'true_false'
-              : 'open') as Database['public']['Enums']['question_type'],
+          type: i < 3 ? 'mcq' : i === 3 ? 'true_false' : 'open',
           visibility: 'group' as const,
         })),
       ),
@@ -373,13 +411,30 @@ async function reset(): Promise<void> {
 
 /* ---------------------------------------------------------------------- main */
 
+/** `--name value` or `--name=value`; `undefined` when the flag is absent. */
+function option(args: string[], name: string): string | undefined {
+  const inline = args.find((arg) => arg.startsWith(`--${name}=`));
+  if (inline) return inline.slice(`--${name}=`.length);
+  const index = args.indexOf(`--${name}`);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : undefined;
+  // A browser leg seeds only its own tenants: keys include the project, and each
+  // leg has its own Supabase instance, so the other project's tenants would be
+  // pure waste (~135 orgs and ~270 users).
+  const projectFlag = args.some((arg) => arg === '--project' || arg.startsWith('--project='));
+  const project = option(args, 'project');
+  // Without a value `--project` would fall through to "no filter" and seed every
+  // project — after `--reset` has already deleted the tenants.
+  if (projectFlag && !project?.trim()) {
+    throw new Error('--project needs a project name (e.g. --project chromium)');
+  }
 
-  if (args.includes('--reset')) await reset();
+  const wipe = args.includes('--reset');
 
-  const started = performance.now();
   const tests = only
     ? [
         {
@@ -390,26 +445,50 @@ async function main(): Promise<void> {
       ]
     : await listTests();
 
+  const scoped = project ? tests.filter((test) => test.project === project) : tests;
+  if (project && scoped.length === 0) {
+    throw new Error(
+      `--project ${project} matched no tests (is it a project name in playwright.config.ts?)`,
+    );
+  }
+
+  // Only after the request is known to be valid: `--reset` deletes every e2e
+  // tenant, so a typo in `--project` must fail before anything is destroyed.
+  if (wipe) await reset();
+
+  const started = performance.now();
   const tenants = [
     ...new Map(
-      tests.map((t) => {
+      scoped.map((t) => {
         const tenant = buildTenant(t.file, t.title, t.project);
         return [tenant.key, tenant] as const;
       }),
     ).values(),
   ];
+  // A per-project run owns only its own tenants: keep the other projects'
+  // manifest entries so seeding one leg does not hide the other leg's tenants
+  // from a later `--project` run. The selected project is always rebuilt from
+  // this run's test list. `--reset` wipes every e2e tenant, so the manifest
+  // starts empty there — entries for the other project would point at deleted
+  // rows.
   const index: Record<string, Tenant> = {};
-  const concurrency = Number(process.env.E2E_SEED_CONCURRENCY ?? 8);
-
-  for (let i = 0; i < tenants.length; i += concurrency) {
-    const chunk = tenants.slice(i, i + concurrency);
-    await Promise.all(
-      chunk.map(async (t) => {
-        await seedTenant(t);
-        index[t.key] = t;
-      }),
-    );
+  if (project && !wipe) {
+    try {
+      const previous: unknown = JSON.parse(readFileSync(INDEX, 'utf8'));
+      if (isRecord(previous)) {
+        for (const [key, tenant] of Object.entries(previous)) {
+          if (isTenant(tenant) && tenant.project !== project) index[key] = tenant;
+        }
+      }
+    } catch {
+      // No manifest yet (or unreadable) — nothing to preserve.
+    }
   }
+
+  await runBounded(tenants, concurrencyFromEnv('E2E_SEED_CONCURRENCY'), async (t) => {
+    await seedTenant(t);
+    index[t.key] = t;
+  });
 
   mkdirSync(SEED_DIR, { recursive: true });
   writeFileSync(INDEX, JSON.stringify(index, null, 0));

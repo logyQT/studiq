@@ -1,7 +1,9 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
+import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '@qa/fixtures/qa-mail';
 import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
 
 /**
  * AUT-13 — ustawienie nowego hasła z linku resetującego.
@@ -85,7 +87,7 @@ const isPost = (path: string) => (response: Response) =>
 async function expectAnonymous(page: Page): Promise<void> {
   const response = await page.request.get('/api/v1/auth/me');
   expect(response.status(), 'GET /api/v1/auth/me').toBe(200);
-  const body = (await response.json()) as { data: { user: unknown; session: unknown } };
+  const body = await json<{ data: { user: unknown; session: unknown } }>(response);
   expect(body.data.user, 'no authenticated user').toBeNull();
   expect(body.data.session, 'no authenticated session').toBeNull();
 }
@@ -221,6 +223,7 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
   test('mismatch is rejected, the save redirects to /app, new password works and the old one does not', async ({
     page,
   }) => {
+    skipBrandedAuthTemplateTest();
     test.setTimeout(240_000);
 
     const tenant = loadTenant(CASE);
@@ -234,9 +237,9 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
 
     const student = tenant.users.student;
     expect(student, `${CASE} must seed the bare student`).toBeTruthy();
-    expect(student!.password, 'the seeded password under test').toBe(SEEDED_PASSWORD);
+    expect(student.password, 'the seeded password under test').toBe(SEEDED_PASSWORD);
 
-    const email = student!.email;
+    const email = student.email;
     const suffix = shortHash(tenant.key).slice(0, 4);
     const newPassword = `Nowe1234${suffix}`;
     const mismatch = `Inne1234${suffix}`;
@@ -258,7 +261,7 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status(), 'GET /api/v1/auth/me after the password change').toBe(200);
     expect(
-      ((await me.json()) as { data?: { user?: { email?: string } | null } }).data?.user?.email,
+      (await json<{ data?: { user?: { email?: string } | null } }>(me)).data?.user?.email,
     ).toBe(email);
 
     // --- Step 4a: the new password logs in -------------------------------

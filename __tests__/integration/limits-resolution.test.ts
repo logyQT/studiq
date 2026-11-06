@@ -1,13 +1,11 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
+import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BeforeResult, before } from '#test/helpers/test-user';
-import {
-  useRealSupabase,
-  cleanupOrganizationDeep,
-  createServiceClient,
-} from '#test/integration/helpers';
+import { useRealSupabase, cleanupOrganizationDeep } from '#test/integration/helpers';
+import { createTypedServiceClient } from '#test/integration/test-utils';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
@@ -23,7 +21,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 // cookie.
 describe(`Limits resolve live from organizations.plan`, () => {
   let fixture!: BeforeResult;
-  let service!: SupabaseClient;
+  let service!: SupabaseClient<Database>;
   let resolver!: LimitsResolver;
   let adminRoleId!: string;
   let foreignOrgId!: string;
@@ -45,7 +43,7 @@ describe(`Limits resolve live from organizations.plan`, () => {
     };
   }
 
-  async function orgPlan(): Promise<string> {
+  async function orgPlan(): Promise<string | undefined> {
     const { data } = await service
       .from('organizations')
       .select('plan')
@@ -56,8 +54,8 @@ describe(`Limits resolve live from organizations.plan`, () => {
 
   beforeAll(async () => {
     fixture = await before({ role: 'manager', org: true });
-    service = createServiceClient();
-    resolver = new LimitsResolver(async () => service);
+    service = createTypedServiceClient();
+    resolver = new LimitsResolver(() => Promise.resolve(service));
 
     const { data: role, error } = await service
       .from('org_roles')
@@ -184,7 +182,7 @@ describe(`Limits resolve live from organizations.plan`, () => {
       .select('personal_plan_key')
       .eq('id', fixture.user.id)
       .single();
-    const originalPlan = profile!.personal_plan_key!;
+    const originalPlan = profile!.personal_plan_key;
 
     await service.from('profiles').update({ personal_plan_key: 'pro' }).eq('id', fixture.user.id);
 
@@ -274,7 +272,7 @@ describe(`Limits resolve live from organizations.plan`, () => {
     const { data: personalLimit } = await service
       .from('plan_limits')
       .select('limit_value')
-      .eq('plan_key', profile!.personal_plan_key!)
+      .eq('plan_key', profile!.personal_plan_key)
       .eq('limit_key', 'max_flashcards')
       .single();
 

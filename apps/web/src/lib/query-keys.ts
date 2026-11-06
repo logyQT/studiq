@@ -143,6 +143,14 @@ export const studentStatsKeys = {
   insights: (days: number) => ['stats', 'student', 'insights', days] as const,
 };
 
+export const teacherStatsKeys = {
+  all: ['stats', 'teacher'] as const,
+  overview: (orgId: string | null) => ['stats', 'teacher', 'overview', orgId] as const,
+  groups: (orgId: string | null, days: number) =>
+    ['stats', 'teacher', 'groups', orgId, days] as const,
+  feed: (orgId: string | null) => ['stats', 'teacher', 'feed', orgId] as const,
+};
+
 export const searchKeys = {
   all: ['search'] as const,
   query: (q: string) => ['search', q] as const,
@@ -155,4 +163,13 @@ export const paymentKeys = {
 export const statusKeys = {
   all: ['status'] as const,
   health: ['status', 'health'] as const,
+};
+
+// Billing endpoints resolve the owner from the request context (and, for a
+// manager, the `active_org_id` cookie). Keying the cache by the active org
+// prevents an org switch from serving the previous org's status/invoice (#135).
+export const billingKeys = {
+  all: ['billing'] as const,
+  subscription: (orgId?: string | null) => ['billing', 'subscription', orgId ?? null] as const,
+  seatPools: (orgId?: string | null) => ['organization', 'seats', 'pools', orgId ?? null] as const,
 };

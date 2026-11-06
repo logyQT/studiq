@@ -23,7 +23,7 @@ export const createPlanTool = tool({
       .boolean()
       .describe('Whether you need to ask the user for more information'),
   }),
-  execute: async (args) => {
+  execute: (args) => {
     const cid = conversationStorage.getStore()?.conversationId;
     enqueueTrace({
       conversationId: cid,

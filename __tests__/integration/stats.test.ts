@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import {
   type BeforeResult,
   before,
@@ -12,10 +13,9 @@ import {
   cleanupQuestions,
   cleanupQuizAttempts,
   cleanupTeacherAssignments,
-  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
 import { GET as flashcardTeacherStatsGet } from '@/app/(backend)/api/v1/flashcards/stats/teacher/route';
 import { GET as studentGet } from '@/app/(backend)/api/v1/stats/student/route';
 import { GET as activityGet } from '@/app/(backend)/api/v1/stats/teacher/activity/route';
@@ -23,6 +23,64 @@ import { GET as quizzesGet } from '@/app/(backend)/api/v1/stats/teacher/quizzes/
 import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+interface ProblematicQuestion {
+  id: string;
+  correctRate: number;
+  totalAnswers: number;
+}
+
+interface BySubjectRow {
+  subjectId: string;
+  subjectName: string | null;
+  questionCount: number;
+}
+
+/** `GET /api/v1/stats/teacher` body — only the fields these tests read. */
+interface TeacherStatsBody {
+  success: boolean;
+  error?: string;
+  data: {
+    totalQuestions: number;
+    totalFlashcards: number;
+    bySubject: BySubjectRow[];
+    subject: {
+      byType: Record<string, number>;
+      problematicQuestions: ProblematicQuestion[];
+    };
+  };
+}
+
+/** `GET /api/v1/stats/student` body. */
+interface StudentStatsBody {
+  success: boolean;
+  data: {
+    totalQuizzes: number;
+    avgScore: number | null;
+    bestScore: number | null;
+    flashcardsPracticed: number;
+    attemptsOverTime: Array<{ score: number; total: number; percentage: number }>;
+  };
+}
+
+interface QuizStatsRow {
+  title: string | null;
+  totalAttempts: number;
+  avgScore: number;
+  avgCompletionRate: number;
+}
+
+/** `GET /api/v1/stats/teacher/quizzes` body. */
+interface QuizStatsBody {
+  success: boolean;
+  data: QuizStatsRow[];
+}
+
+/** Failure bodies only carry `success` (and sometimes `error`). */
+interface StatsErrorBody {
+  success: boolean;
+  error?: string;
+}
 
 describe(`Stats Integration`, () => {
   let teacher!: BeforeResult;
@@ -47,7 +105,7 @@ describe(`Stats Integration`, () => {
     // Subject/type breakdown setup: the API-seeded questions all land in one
     // mcq bank; add a second bank holding a true_false + an open question so
     // the type split and the per-subject distribution can be exercised.
-    const service = createServiceClient();
+    const service = createTypedServiceClient();
     const { data: seededQuestions } = await service
       .from('questions')
       .select('id, bank_id')
@@ -212,7 +270,7 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -225,21 +283,17 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.totalQuestions).toBe(5);
       expect(body.data.subject.byType).toEqual({ mcq: 3, true_false: 1, open: 1 });
 
-      const bySubject = body.data.bySubject as Array<{
-        subjectId: string;
-        subjectName: string | null;
-        questionCount: number;
-      }>;
+      const bySubject = body.data.bySubject;
       expect(bySubject).toHaveLength(2);
       expect(bySubject.find((s) => s.subjectId === seedBankId)).toMatchObject({
         questionCount: 3,
-        subjectName: expect.stringContaining('seed-bank-'),
+        subjectName: expect.stringContaining('seed-bank-') as unknown,
       });
       expect(bySubject.find((s) => s.subjectId === extraBankId)).toMatchObject({
         subjectName: `seed-bank-extra-${suiteId}`,
@@ -254,7 +308,7 @@ describe(`Stats Integration`, () => {
         `http://localhost/api/v1/stats/teacher?subjectId=${extraBankId}`,
       );
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.subject.byType).toEqual({ true_false: 1, open: 1 });
@@ -270,7 +324,7 @@ describe(`Stats Integration`, () => {
         `http://localhost/api/v1/stats/teacher?subjectId=${extraBankId.toUpperCase()}`,
       );
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.subject.byType).toEqual({ true_false: 1, open: 1 });
@@ -286,7 +340,7 @@ describe(`Stats Integration`, () => {
         `http://localhost/api/v1/stats/teacher?subjectId=${seedBankId}`,
       );
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.subject.byType).toEqual({ mcq: 3 });
@@ -299,7 +353,7 @@ describe(`Stats Integration`, () => {
         'http://localhost/api/v1/stats/teacher?subjectId=00000000-0000-4000-8020-000000000099',
       );
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.subject.byType).toEqual({});
@@ -311,7 +365,7 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher?subjectId=not-a-uuid');
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
@@ -323,7 +377,7 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<StatsErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -360,7 +414,7 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/student');
       const response = await studentGet(req);
-      const body = await response.json();
+      const body = await json<StudentStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -375,7 +429,7 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/student');
       const response = await studentGet(req);
-      const body = await response.json();
+      const body = await json<StudentStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.totalQuizzes).toBe(0);
@@ -391,7 +445,7 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/student');
       const response = await studentGet(req);
-      const body = await response.json();
+      const body = await json<StatsErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -404,7 +458,7 @@ describe(`Stats Integration`, () => {
   describe('GET /api/v1/stats/student practice denominators (#619)', () => {
     let mixedStudent!: TestUserFixture;
     let openOnlyStudent!: TestUserFixture;
-    let service!: ReturnType<typeof createServiceClient>;
+    let service!: ReturnType<typeof createTypedServiceClient>;
 
     /** One practice attempt whose linked questions are exactly `types`. */
     async function seedPracticeAttempt(
@@ -463,11 +517,11 @@ describe(`Stats Integration`, () => {
       );
       if (linkError) throw new Error(`[setup] attempt questions: ${linkError.message}`);
 
-      return attempt.id as string;
+      return attempt.id;
     }
 
     beforeAll(async () => {
-      service = createServiceClient();
+      service = createTypedServiceClient();
       mixedStudent = await createTestUser({ role: 'student' });
       openOnlyStudent = await createTestUser({ role: 'student' });
 
@@ -494,7 +548,7 @@ describe(`Stats Integration`, () => {
       mockUser(mixedStudent);
 
       const response = await studentGet(createNextRequest('http://localhost/api/v1/stats/student'));
-      const body = await response.json();
+      const body = await json<StudentStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.totalQuizzes).toBe(1);
@@ -512,7 +566,7 @@ describe(`Stats Integration`, () => {
       mockUser(openOnlyStudent);
 
       const response = await studentGet(createNextRequest('http://localhost/api/v1/stats/student'));
-      const body = await response.json();
+      const body = await json<StudentStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.totalQuizzes).toBe(1);
@@ -535,32 +589,28 @@ describe(`Stats Integration`, () => {
         active_org_id: scopedTeacher.orgId!,
       });
       const response = await quizzesGet(req);
-      const body = await response.json();
+      const body = await json<QuizStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
       expect(body.data).toHaveLength(2);
-      const titled = body.data.find((row: { title: string | null }) => row.title === inOrgTitle);
+      const titled = body.data.find((row) => row.title === inOrgTitle);
       // One completed (8/10) plus one started-but-unfinished attempt: the
       // unfinished one only enters the attempts denominator (#212).
       expect(titled).toMatchObject({ totalAttempts: 2, avgScore: 80, avgCompletionRate: 50 });
       // The assignment attempt is normalised to its own scale (6/8 = 75 %) and
       // named after the quiz behind the assignment, not „Untitled Quiz” (#207).
-      const assignmentRow = body.data.find(
-        (row: { title: string | null }) => row.title === quizName,
-      );
+      const assignmentRow = body.data.find((row) => row.title === quizName);
       expect(assignmentRow).toMatchObject({
         totalAttempts: 1,
         avgScore: 75,
         avgCompletionRate: 100,
       });
-      expect(body.data.some((row: { title: string | null }) => row.title === null)).toBe(false);
-      expect(
-        body.data.some(
-          (row: { title: string }) => row.title === `seed-quizstats-assignment-${suiteId}`,
-        ),
-      ).toBe(false);
-      expect(body.data.some((row: { title: string }) => row.title === outsiderTitle)).toBe(false);
+      expect(body.data.some((row) => row.title === null)).toBe(false);
+      expect(body.data.some((row) => row.title === `seed-quizstats-assignment-${suiteId}`)).toBe(
+        false,
+      );
+      expect(body.data.some((row) => row.title === outsiderTitle)).toBe(false);
     });
 
     it('returns no stats without an active organization (no global fallback)', async () => {
@@ -568,7 +618,7 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher/quizzes');
       const response = await quizzesGet(req);
-      const body = await response.json();
+      const body = await json<QuizStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
@@ -580,7 +630,7 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher/quizzes');
       const response = await quizzesGet(req);
-      const body = await response.json();
+      const body = await json<StatsErrorBody>(response);
 
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
@@ -619,7 +669,7 @@ describe(`Stats Integration`, () => {
       const orgId = pqTeacher.orgId;
       if (!orgId) throw new Error('[setup] org not created');
 
-      const service = createServiceClient();
+      const service = createTypedServiceClient();
       pqMember = await createTestUser({ role: 'student' });
       pqOutsider = await createTestUser({ role: 'student' });
       pqOtherTeacher = await createTestUser({ role: 'educator' });
@@ -714,7 +764,7 @@ describe(`Stats Integration`, () => {
       const questionId = (content: string) => {
         const row = questions.find((q) => q.content === content);
         if (!row) throw new Error(`[setup] question ${content} not found`);
-        return row.id as string;
+        return row.id;
       };
       problematicId = questionId(`seed-problematic-${suiteId}`);
       healthyId = questionId(`seed-healthy-${suiteId}`);
@@ -740,8 +790,8 @@ describe(`Stats Integration`, () => {
       }
       // Worst-first within the fixture: the first two attempts answer correctly.
       const attemptIds = [...memberAttempts]
-        .sort((a, b) => (a.started_at as string).localeCompare(b.started_at as string))
-        .map((a) => a.id as string);
+        .toSorted((a, b) => (a.started_at ?? '').localeCompare(b.started_at ?? ''))
+        .map((a) => a.id);
 
       const { data: extraAttempts, error: extraAttemptsError } = await service
         .from('quiz_attempts')
@@ -851,16 +901,12 @@ describe(`Stats Integration`, () => {
         active_org_id: pqTeacher.orgId!,
       });
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
 
-      const problematic = body.data.subject.problematicQuestions as Array<{
-        id: string;
-        correctRate: number;
-        totalAnswers: number;
-      }>;
+      const problematic = body.data.subject.problematicQuestions;
       const reported = problematic.find((q) => q.id === problematicId);
       expect(reported).toBeDefined();
       expect(reported?.correctRate).toBeCloseTo(0.4, 4);
@@ -884,15 +930,9 @@ describe(`Stats Integration`, () => {
         active_org_id: pqTeacher.orgId!,
       });
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
-      const multi = (
-        body.data.subject.problematicQuestions as Array<{
-          id: string;
-          correctRate: number;
-          totalAnswers: number;
-        }>
-      ).find((q) => q.id === multiId);
+      const multi = body.data.subject.problematicQuestions.find((q) => q.id === multiId);
       expect(multi).toBeDefined();
       // 10 answer rows → 5 attempts, 2 of them correct.
       expect(multi?.totalAnswers).toBe(5);
@@ -906,12 +946,10 @@ describe(`Stats Integration`, () => {
         active_org_id: pqTeacher.orgId!,
       });
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
-      const rates = (body.data.subject.problematicQuestions as Array<{ correctRate: number }>).map(
-        (q) => q.correctRate,
-      );
-      expect(rates).toEqual([...rates].sort((a, b) => a - b));
+      const rates = body.data.subject.problematicQuestions.map((q) => q.correctRate);
+      expect(rates).toEqual([...rates].toSorted((a, b) => a - b));
     });
 
     it('narrows the list to the ?subjectId= bank', async () => {
@@ -923,7 +961,7 @@ describe(`Stats Integration`, () => {
         { active_org_id: pqTeacher.orgId! },
       );
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
       expect(body.data.subject.problematicQuestions).toEqual([]);
@@ -934,12 +972,10 @@ describe(`Stats Integration`, () => {
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
-      const body = await response.json();
+      const body = await json<TeacherStatsBody>(response);
 
       expect(response.status).toBe(200);
-      const reported = (
-        body.data.subject.problematicQuestions as Array<{ id: string; totalAnswers: number }>
-      ).find((q) => q.id === problematicId);
+      const reported = body.data.subject.problematicQuestions.find((q) => q.id === problematicId);
       expect(reported?.totalAnswers).toBe(5);
     });
   });

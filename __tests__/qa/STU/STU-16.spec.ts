@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -89,7 +90,7 @@ interface DeckResponse {
 async function getDeck(page: Page, deckId: string): Promise<DeckResponse> {
   const response = await page.request.get(`${DECKS_URL}/${deckId}`);
   expect(response.ok(), `GET ${DECKS_URL}/${deckId} → ${response.status()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<DeckResponse>;
+  const body = await json<ApiEnvelope<DeckResponse>>(response);
   expect(body.success, `GET ${DECKS_URL}/${deckId} success flag`).toBe(true);
   return body.data;
 }
@@ -185,7 +186,7 @@ test.describe('@case:STU-16 @area:STU @prio:P2 deck edit', () => {
       createResponse.status(),
       `POST ${DECKS_URL} → ${createResponse.status()} ${await createResponse.text()}`,
     ).toBe(201);
-    const created = (await createResponse.json()) as ApiEnvelope<DeckResponse>;
+    const created = await json<ApiEnvelope<DeckResponse>>(createResponse);
     expect(created.success, 'POST deck success flag').toBe(true);
     expect(created.data.id, 'deck id').toBeTruthy();
     expect(created.data.visibility, 'the deck stays personal („Tylko ja”)').toBe('personal');

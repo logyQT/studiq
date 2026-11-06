@@ -181,6 +181,113 @@ export type Database = {
           },
         ];
       };
+      billing_customers: {
+        Row: {
+          created_at: string;
+          id: string;
+          livemode: boolean;
+          organization_id: string | null;
+          stripe_customer_id: string;
+          user_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          id?: string;
+          livemode: boolean;
+          organization_id?: string | null;
+          stripe_customer_id: string;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          livemode?: boolean;
+          organization_id?: string | null;
+          stripe_customer_id?: string;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
+      billing_subscriptions: {
+        Row: {
+          billing_cycle: string;
+          billing_customer_id: string;
+          cancel_at: string | null;
+          cancel_at_period_end: boolean;
+          canceled_at: string | null;
+          checkout_session_id: string | null;
+          created_at: string;
+          current_period_end: string | null;
+          current_period_start: string | null;
+          entitlement_applied_plan_key: string | null;
+          id: string;
+          last_event_created: number;
+          livemode: boolean;
+          organization_id: string | null;
+          pending_plan_key: string | null;
+          plan_key: string;
+          price_id: string;
+          purchaser_user_id: string | null;
+          snapshot_generation: number;
+          status: string;
+          stripe_subscription_id: string;
+          updated_at: string;
+          user_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          billing_cycle?: string;
+          billing_customer_id: string;
+          cancel_at?: string | null;
+          cancel_at_period_end?: boolean;
+          canceled_at?: string | null;
+          checkout_session_id?: string | null;
+          created_at?: string;
+          current_period_end?: string | null;
+          current_period_start?: string | null;
+          entitlement_applied_plan_key?: string | null;
+          id?: string;
+          last_event_created?: number;
+          livemode: boolean;
+          organization_id?: string | null;
+          pending_plan_key?: string | null;
+          plan_key: string;
+          price_id: string;
+          purchaser_user_id?: string | null;
+          snapshot_generation?: number;
+          status: string;
+          stripe_subscription_id: string;
+          updated_at?: string;
+          user_id?: string | null;
+        };
+        Update: {
+          billing_cycle?: string;
+          billing_customer_id?: string;
+          cancel_at?: string | null;
+          cancel_at_period_end?: boolean;
+          canceled_at?: string | null;
+          checkout_session_id?: string | null;
+          created_at?: string;
+          current_period_end?: string | null;
+          current_period_start?: string | null;
+          entitlement_applied_plan_key?: string | null;
+          id?: string;
+          last_event_created?: number;
+          livemode?: boolean;
+          organization_id?: string | null;
+          pending_plan_key?: string | null;
+          plan_key?: string;
+          price_id?: string;
+          purchaser_user_id?: string | null;
+          snapshot_generation?: number;
+          status?: string;
+          stripe_subscription_id?: string;
+          updated_at?: string;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       deck_groups: {
         Row: {
           deck_id: string;
@@ -303,6 +410,7 @@ export type Database = {
           confidence_level: number | null;
           flashcard_id: string | null;
           id: string;
+          organization_id: string | null;
           practiced_at: string | null;
           response_time_ms: number | null;
           session_id: string | null;
@@ -314,6 +422,7 @@ export type Database = {
           confidence_level?: number | null;
           flashcard_id?: string | null;
           id?: string;
+          organization_id?: string | null;
           practiced_at?: string | null;
           response_time_ms?: number | null;
           session_id?: string | null;
@@ -324,6 +433,7 @@ export type Database = {
           confidence_level?: number | null;
           flashcard_id?: string | null;
           id?: string;
+          organization_id?: string | null;
           practiced_at?: string | null;
           response_time_ms?: number | null;
           session_id?: string | null;
@@ -336,6 +446,13 @@ export type Database = {
             columns: ['flashcard_id'];
             isOneToOne: false;
             referencedRelation: 'flashcards';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'flashcard_practice_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
             referencedColumns: ['id'];
           },
           {
@@ -707,6 +824,51 @@ export type Database = {
           },
         ];
       };
+      notifications: {
+        Row: {
+          created_at: string;
+          id: string;
+          organization_id: string | null;
+          payload: Json;
+          read_at: string | null;
+          type: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          organization_id?: string | null;
+          payload?: Json;
+          read_at?: string | null;
+          type: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          organization_id?: string | null;
+          payload?: Json;
+          read_at?: string | null;
+          type?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'notifications_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       org_members: {
         Row: {
           id: string;
@@ -973,35 +1135,59 @@ export type Database = {
         Row: {
           amount: number;
           currency: string;
+          hosted_invoice_url: string | null;
           id: string;
+          invoice_pdf_url: string | null;
           organization_id: string | null;
           paid_at: string;
           plan_key: string;
           plan_name: string;
-          session_id: string;
+          provider: string;
+          session_id: string | null;
+          status: string;
+          stripe_checkout_session_id: string | null;
+          stripe_customer_id: string | null;
+          stripe_invoice_id: string | null;
+          stripe_subscription_id: string | null;
           user_id: string;
         };
         ComputedFields: never;
         Insert: {
           amount: number;
           currency?: string;
+          hosted_invoice_url?: string | null;
           id?: string;
+          invoice_pdf_url?: string | null;
           organization_id?: string | null;
           paid_at?: string;
           plan_key: string;
           plan_name: string;
-          session_id: string;
+          provider?: string;
+          session_id?: string | null;
+          status?: string;
+          stripe_checkout_session_id?: string | null;
+          stripe_customer_id?: string | null;
+          stripe_invoice_id?: string | null;
+          stripe_subscription_id?: string | null;
           user_id: string;
         };
         Update: {
           amount?: number;
           currency?: string;
+          hosted_invoice_url?: string | null;
           id?: string;
+          invoice_pdf_url?: string | null;
           organization_id?: string | null;
           paid_at?: string;
           plan_key?: string;
           plan_name?: string;
-          session_id?: string;
+          provider?: string;
+          session_id?: string | null;
+          status?: string;
+          stripe_checkout_session_id?: string | null;
+          stripe_customer_id?: string | null;
+          stripe_invoice_id?: string | null;
+          stripe_subscription_id?: string | null;
           user_id?: string;
         };
         Relationships: [
@@ -1511,6 +1697,7 @@ export type Database = {
           graded_at: string | null;
           id: string;
           is_assignment_attempt: boolean;
+          organization_id: string | null;
           score: number;
           started_at: string | null;
           total_points: number | null;
@@ -1526,6 +1713,7 @@ export type Database = {
           graded_at?: string | null;
           id?: string;
           is_assignment_attempt?: boolean;
+          organization_id?: string | null;
           score?: number;
           started_at?: string | null;
           total_points?: number | null;
@@ -1540,6 +1728,7 @@ export type Database = {
           graded_at?: string | null;
           id?: string;
           is_assignment_attempt?: boolean;
+          organization_id?: string | null;
           score?: number;
           started_at?: string | null;
           total_points?: number | null;
@@ -1552,6 +1741,13 @@ export type Database = {
             columns: ['assignment_id'];
             isOneToOne: false;
             referencedRelation: 'teacher_assignments';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'quiz_attempts_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
             referencedColumns: ['id'];
           },
           {
@@ -1681,6 +1877,80 @@ export type Database = {
             referencedColumns: ['id'];
           },
         ];
+      };
+      stripe_prices: {
+        Row: {
+          active: boolean;
+          billing_cycle: string;
+          currency: string;
+          interval: string;
+          livemode: boolean;
+          plan_key: string;
+          stripe_price_id: string;
+          synced_at: string;
+          unit_amount: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          active?: boolean;
+          billing_cycle: string;
+          currency: string;
+          interval: string;
+          livemode: boolean;
+          plan_key: string;
+          stripe_price_id: string;
+          synced_at?: string;
+          unit_amount: number;
+        };
+        Update: {
+          active?: boolean;
+          billing_cycle?: string;
+          currency?: string;
+          interval?: string;
+          livemode?: boolean;
+          plan_key?: string;
+          stripe_price_id?: string;
+          synced_at?: string;
+          unit_amount?: number;
+        };
+        Relationships: [];
+      };
+      stripe_webhook_events: {
+        Row: {
+          api_version: string | null;
+          error: string | null;
+          event_created: number;
+          id: string;
+          livemode: boolean;
+          processed_at: string | null;
+          received_at: string;
+          status: string;
+          type: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          api_version?: string | null;
+          error?: string | null;
+          event_created: number;
+          id: string;
+          livemode: boolean;
+          processed_at?: string | null;
+          received_at?: string;
+          status?: string;
+          type: string;
+        };
+        Update: {
+          api_version?: string | null;
+          error?: string | null;
+          event_created?: number;
+          id?: string;
+          livemode?: boolean;
+          processed_at?: string | null;
+          received_at?: string;
+          status?: string;
+          type?: string;
+        };
+        Relationships: [];
       };
       student_answers: {
         Row: {
@@ -2144,6 +2414,19 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
+      admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
+      apply_entitlement_fenced: {
+        Args: {
+          p_event_created: number;
+          p_owner_id: string;
+          p_owner_type: string;
+          p_plan: string;
+          p_snapshot_generation: number;
+          p_subscription_id: string;
+        };
+        Returns: boolean;
+      };
       apply_org_plan: { Args: { p_org_id: string; p_plan: string }; Returns: undefined };
       bulk_create_flashcards: {
         Args: {
@@ -2305,15 +2588,27 @@ export type Database = {
         Args: { p_days?: number; p_user_id: string };
         Returns: Json;
       };
+      get_teacher_activity_feed: {
+        Args: { p_limit?: number; p_organization_id: string; p_user_id: string };
+        Returns: Json;
+      };
+      get_teacher_group_performance: {
+        Args: { p_days?: number; p_organization_id: string; p_user_id: string };
+        Returns: Json;
+      };
       get_teacher_problematic_questions: {
-        Args: { p_bank_id?: string; p_organization_id?: string; p_user_id: string };
+        Args: {
+          p_bank_id?: string | null;
+          p_organization_id?: string | null;
+          p_user_id: string;
+        };
         Returns: Json;
       };
       get_teacher_stats: {
         Args: {
-          p_deck_id?: string;
+          p_deck_id?: string | null;
           p_flashcard_ids: string[];
-          p_organization_id?: string;
+          p_organization_id?: string | null;
           p_user_id: string;
         };
         Returns: Json;
@@ -2360,8 +2655,8 @@ export type Database = {
       };
       search_flashcards: {
         Args: {
-          p_organization_id?: string;
-          p_user_id?: string;
+          p_organization_id?: string | null;
+          p_user_id?: string | null;
           result_limit?: number;
           search_query: string;
         };
@@ -2478,6 +2773,7 @@ export type Enums<
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
+    // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- generated Supabase types: this schema has no composite types, so `keyof` is `never`.
     keyof DefaultSchema['CompositeTypes'] | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;

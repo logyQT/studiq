@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -67,7 +68,7 @@ interface ApiEnvelope<T> {
 async function getJson<T>(page: Page, url: string): Promise<T> {
   const res = await page.request.get(url);
   expect(res.ok(), `GET ${url} → ${res.status()} ${await res.text()}`).toBe(true);
-  const body = (await res.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(res);
   expect(body.success, `GET ${url} success`).toBe(true);
   return body.data;
 }
@@ -115,7 +116,7 @@ test('creates „Asystent”, renames it with a description and keeps the custom
     before.filter((role) => !role.isSystem).map((role) => role.name),
     'a fresh tenant starts without custom roles',
   ).toEqual([]);
-  expect(before.map((role) => role.name).sort()).toEqual(['admin', 'member', 'teacher']);
+  expect(before.map((role) => role.name).toSorted()).toEqual(['admin', 'member', 'teacher']);
   expect(
     before.some((role) => role.name === ROLE_NAME),
     `„${ROLE_NAME}” does not exist yet`,

@@ -71,7 +71,10 @@ export function UserMenu({ className }: UserMenuProps) {
     );
   }
 
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
+  // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
+  const rawName: unknown = user?.user_metadata?.name;
+  const storedName = typeof rawName === 'string' ? rawName : '';
+  const userName = storedName || user?.email?.split('@')[0] || 'User';
 
   const triggerContent = (
     <>

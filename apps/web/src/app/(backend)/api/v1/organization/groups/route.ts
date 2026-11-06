@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   return withAuth(
     req,
     async (ctx) => {
-      const body = await req.json();
+      const body: unknown = await req.json();
       return toNextResponse(await groupController.createGroup(ctx, body));
     },
     { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },

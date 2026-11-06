@@ -115,7 +115,9 @@ export async function withRequestInstrumentation(
         ? null
         : exception instanceof Error
           ? exception
-          : new Error(String(exception));
+          : new Error(
+              typeof exception === 'string' ? exception : (JSON.stringify(exception) ?? ''),
+            );
     if (err) span.recordException(err);
 
     span.setStatus(

@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 type VerifyState = 'idle' | 'verifying' | 'valid' | 'invalid';
@@ -32,31 +33,33 @@ export default function JoinPage() {
     if (!code) {
       setInviteData(null);
       setVerifyState('idle');
-      return;
+      return undefined;
     }
 
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
+      void verify();
+    }, 500);
+
+    async function verify() {
       setVerifyState('verifying');
       try {
-        const res = await fetch(`/api/v1/organization/invites?token=${encodeURIComponent(code)}`);
-        const result = await res.json();
-        if (!res.ok || !result.success) {
-          setVerifyState('invalid');
-          setInviteData(null);
-        } else {
-          setVerifyState('valid');
-          setInviteData({
-            organizationName: result.data.organizationName,
-            organizationId: result.data.organizationId,
-            orgRoleName: result.data.orgRoleName,
-            token: code,
-          });
-        }
+        const invitation = await apiGet<{
+          organizationName: string;
+          organizationId: string;
+          orgRoleName: string;
+        }>(`/api/v1/organization/invites?token=${encodeURIComponent(code)}`);
+        setVerifyState('valid');
+        setInviteData({
+          organizationName: invitation.organizationName,
+          organizationId: invitation.organizationId,
+          orgRoleName: invitation.orgRoleName,
+          token: code,
+        });
       } catch {
         setVerifyState('invalid');
         setInviteData(null);
       }
-    }, 500);
+    }
 
     return () => clearTimeout(timer);
   }, [inviteCode]);
@@ -65,20 +68,7 @@ export default function JoinPage() {
     if (!inviteData) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/organization/invites/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: inviteData.token }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).
-        if (err.error === 'USAGE_LIMIT_EXCEEDED' || err.error === 'ERROR_USAGE_LIMIT_EXCEEDED') {
-          toast.error(t('org_full'));
-          return;
-        }
-        throw new Error();
-      }
+      await apiPost('/api/v1/organization/invites/accept', { token: inviteData.token });
       // #310: the accept route made this org active (the `active_org_id` cookie is
       // set), but `['orgs']` still holds the empty list cached at login. Without
       // this, `/edu` sees zero orgs and bounces back to `/setup`.
@@ -89,12 +79,18 @@ export default function JoinPage() {
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
       // Permission scopes, plan features and question reports are resolved from the
       // active org and cached. They are only marked stale here and refetch on mount.
-      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
-      queryClient.invalidateQueries({ queryKey: featureKeys.all });
-      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+      void queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      void queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
       router.push('/edu');
-    } catch {
-      toast.error(t('join_failed'));
+    } catch (error) {
+      // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).
+      const code = error instanceof ApiError ? error.code : null;
+      toast.error(
+        code === 'USAGE_LIMIT_EXCEEDED' || code === 'ERROR_USAGE_LIMIT_EXCEEDED'
+          ? t('org_full')
+          : t('join_failed'),
+      );
     } finally {
       setLoading(false);
     }

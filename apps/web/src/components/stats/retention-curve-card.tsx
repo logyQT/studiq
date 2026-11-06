@@ -11,12 +11,13 @@ import {
   Skeleton,
 } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 import {
   Bar,
   BarChart,
+  type BarShapeProps,
   CartesianGrid,
   Rectangle,
-  type RectangleProps,
   Tooltip,
   XAxis,
   YAxis,
@@ -30,16 +31,46 @@ const DAYS = 30;
 /** Smallest bar drawn for a real 0 %, in pixels. */
 const MIN_BAR_PX = 4;
 
-interface BarShapeProps extends RectangleProps {
-  reviews?: number;
+/** recharts types bar coordinates as SVG values; they are numbers by the time a shape runs. */
+function toPx(value: number | string | undefined): number {
+  const parsed = typeof value === 'number' ? value : Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** `BarShapeProps.payload` is the original chart datum, typed loosely by recharts. */
+function readReviews(payload: unknown): number | undefined {
+  if (!isRecord(payload)) return undefined;
+  const reviews = payload.reviews;
+  return typeof reviews === 'number' ? reviews : undefined;
 }
 
 function RetentionBar(props: BarShapeProps) {
-  if (!props.reviews) return null;
-  const height = Math.max(props.height ?? 0, MIN_BAR_PX);
+  const reviews = readReviews(props.payload);
+  if (!reviews) return null;
+  const height = Math.max(toPx(props.height), MIN_BAR_PX);
   return (
-    <Rectangle {...props} height={height} y={(props.y ?? 0) - (height - (props.height ?? 0))} />
+    <Rectangle
+      fill={props.fill}
+      radius={props.radius}
+      className={props.className}
+      x={toPx(props.x)}
+      y={toPx(props.y) - (height - toPx(props.height))}
+      width={toPx(props.width)}
+      height={height}
+    />
   );
+}
+
+/**
+ * recharts types `shape` as always returning an element, but a bucket without reviews must
+ * draw nothing — the component itself returns `null`, so the adapter carries the node type.
+ */
+function renderRetentionBar(props: BarShapeProps): ReactNode {
+  return <RetentionBar {...props} />;
 }
 
 /**
@@ -88,7 +119,7 @@ export function RetentionCurveCard() {
                   content={
                     // The shared tooltip renders no value when it is 0; a real 0 % bucket is
                     // drawn as a 4 px sliver and must still read "0 %".
-                    <ChartTooltipContent formatter={(value) => `${value}%`} />
+                    <ChartTooltipContent formatter={(value) => `${String(value)}%`} />
                   }
                 />
                 {/* A bucket without reviews is drawn as no bar at all; a real 0 % keeps a sliver. */}
@@ -96,8 +127,7 @@ export function RetentionCurveCard() {
                   dataKey="accuracy"
                   fill="var(--color-accuracy)"
                   radius={[6, 6, 0, 0]}
-                  // recharts types a shape as always returning an element; this one may draw nothing.
-                  shape={RetentionBar as never}
+                  shape={renderRetentionBar}
                 />
               </BarChart>
             </ChartContainer>

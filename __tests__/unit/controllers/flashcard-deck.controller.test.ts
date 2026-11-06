@@ -1,17 +1,21 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardDeckController } from '@studiq/server/controllers/flashcard-deck.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
+import { FlashcardDeckService } from '@studiq/server/services/flashcard-deck.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new FlashcardDeckService(() => Promise.reject(new Error('unused'))), {
     create: vi.fn(),
     list: vi.fn(),
     getById: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
     bulkCreate: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -20,7 +24,7 @@ let controller: FlashcardDeckController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -29,11 +33,20 @@ const mockCtx: RequestContext = {
   permissionScopes: {},
 };
 
+function dataOf<T>(response: ControllerResponse<T>): T | undefined {
+  return response.success ? response.data : undefined;
+}
+
+/** The failure branch of a controller response, so `error` / `details` are typed. */
+function failureOf(response: ControllerResponse) {
+  return response.success ? undefined : response;
+}
+
 describe('FlashcardDeckController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardDeckController(mockService as any);
+    controller = new FlashcardDeckController(mockService);
   });
 
   describe('create', () => {
@@ -46,7 +59,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
-      expect((response as any).data).toEqual(created);
+      expect(dataOf(response)).toEqual(created);
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
@@ -54,7 +67,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -64,7 +77,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
 
     // #361 — a whitespace-only name is empty, and never reaches the service.
@@ -73,9 +86,9 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
-      expect((response as any).details[0].path).toEqual(['name']);
-      expect((response as any).details[0].message).toBe('VALIDATION_REQUIRED');
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.details?.[0]?.path).toEqual(['name']);
+      expect(failureOf(response)?.details?.[0]?.message).toBe('VALIDATION_REQUIRED');
       expect(mockService.create).not.toHaveBeenCalled();
     });
 
@@ -97,8 +110,8 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
-      expect((response as any).details[0].path).toEqual(['groupIds']);
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.details?.[0]?.path).toEqual(['groupIds']);
       expect(mockService.create).not.toHaveBeenCalled();
     });
 
@@ -110,7 +123,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
       expect(mockService.create).not.toHaveBeenCalled();
     });
   });
@@ -124,7 +137,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(decks);
+      expect(dataOf(response)).toEqual(decks);
     });
 
     it('returns error when service returns failure', async () => {
@@ -134,7 +147,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -147,7 +160,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(deck);
+      expect(dataOf(response)).toEqual(deck);
     });
 
     it('returns NOT_FOUND when service returns failure', async () => {
@@ -157,7 +170,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(404);
-      expect((response as any).error).toBe('NOT_FOUND');
+      expect(failureOf(response)?.error).toBe('NOT_FOUND');
     });
 
     it('returns error when service returns failure', async () => {
@@ -167,7 +180,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -180,7 +193,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(updated);
+      expect(dataOf(response)).toEqual(updated);
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
@@ -188,7 +201,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     // #361 — a whitespace-only name is empty, and never reaches the service.
@@ -197,8 +210,8 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
-      expect((response as any).details[0].path).toEqual(['name']);
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.details?.[0]?.path).toEqual(['name']);
       expect(mockService.update).not.toHaveBeenCalled();
     });
 
@@ -209,7 +222,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect((response as any).error).toBe('FORBIDDEN');
+      expect(failureOf(response)?.error).toBe('FORBIDDEN');
     });
 
     it('returns error when service returns failure', async () => {
@@ -219,7 +232,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -240,7 +253,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(failureOf(response)?.error).toBe('UNPROCESSABLE_ENTITY');
       expect(mockService.bulkCreate).not.toHaveBeenCalled();
     });
   });
@@ -253,7 +266,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ success: true });
+      expect(dataOf(response)).toEqual({ success: true });
     });
 
     it('returns error when service returns failure', async () => {
@@ -263,7 +276,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect((response as any).error).toBe('FORBIDDEN');
+      expect(failureOf(response)?.error).toBe('FORBIDDEN');
     });
 
     it('returns error when service returns failure', async () => {
@@ -273,7 +286,7 @@ describe('FlashcardDeckController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(failureOf(response)?.error).toBe('INTERNAL_SERVER');
     });
   });
 });

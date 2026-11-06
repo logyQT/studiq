@@ -7,7 +7,7 @@ import { ActivityQuerySchema } from '@studiq/server/models/activity.model';
 import { type ActivityService, activityService } from '@studiq/server/services/activity.service';
 
 export class ActivityController {
-  constructor(private activityService: ActivityService) {}
+  constructor(private service: ActivityService) {}
 
   async getActivity(ctx: RequestContext, query: unknown): Promise<ControllerResponse> {
     const parsed = ActivityQuerySchema.safeParse(query);
@@ -21,7 +21,7 @@ export class ActivityController {
       };
     }
 
-    const result = await this.activityService.getClassActivity(ctx, parsed.data);
+    const result = await this.service.getClassActivity(ctx, parsed.data);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

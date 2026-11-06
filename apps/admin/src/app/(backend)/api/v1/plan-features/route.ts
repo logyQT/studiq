@@ -6,6 +6,6 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  const body: unknown = await request.json();
   return toNextResponse(await planFeatureController.create(body));
 }

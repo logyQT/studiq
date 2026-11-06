@@ -1,0 +1,147 @@
+name: cache-warm
+
+# Refreshes the shared caches after a merge to main without re-running the test
+# suite. Branches only restore caches; main is the only writer (see the guards
+# below), so feature-branch runs can never fill or thrash the cache budget.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cache-warm-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.4.4-canary.20261027.1
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - name: Restore bun install cache (exact)
+        id: bun-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore bun install cache (fallback)
+        id: bun-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck:all
+
+  bun:
+    needs: [checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - name: Restore bun install cache (exact)
+        id: bun-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          # Main-only writer: pin the exact lockfile key so an older cache can
+          # never be re-saved under the current lockfile.
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore bun install cache (fallback)
+        id: bun-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
+      - run: bun install --frozen-lockfile
+      - name: Save bun install cache
+        if: github.ref == 'refs/heads/main' && steps.bun-cache-main.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ steps.bun-cache-main.outputs.cache-primary-key }}
+
+  browsers:
+    needs: [checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Keys must match the ones in verify.yml.
+          - key: chromium-shell
+            install: --only-shell chromium
+          - key: chromium
+            install: chromium
+          - key: firefox
+            install: firefox
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - name: Restore bun install cache (exact)
+        id: bun-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore bun install cache (fallback)
+        id: bun-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
+      - run: bun install --frozen-lockfile
+      - name: Restore Playwright cache
+        id: pw-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          # Main-only workflow: pin the exact key so an old browser revision can
+          # never be re-saved under the current lockfile.
+          key: playwright-ubuntu-24.04-${{ matrix.key }}-${{ hashFiles('bun.lock') }}
+      - name: Install browser
+        # Browser binaries only. Neither test leg needs apt on ubuntu-24.04 any
+        # more: chromium's dependency list is already on the image, and
+        # firefox's 36 extra packages are dlopened media codecs, not linked
+        # libraries (see scripts/check-playwright-runtime.sh).
+        run: bunx playwright install ${{ matrix.install }}
+      - name: Save Playwright cache
+        if: github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.pw-cache.outputs.cache-primary-key }}

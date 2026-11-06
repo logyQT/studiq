@@ -28,13 +28,14 @@ export const LIMITS = {
 
 export type LimitKey = keyof typeof LIMITS;
 
-export const LIMIT_KEYS = Object.keys(LIMITS) as readonly LimitKey[];
-
-const LIMIT_KEY_SET: ReadonlySet<string> = new Set<string>(LIMIT_KEYS);
+const LIMIT_KEY_SET: ReadonlySet<string> = new Set(Object.keys(LIMITS));
 
 export function isLimitKey(key: string): key is LimitKey {
   return LIMIT_KEY_SET.has(key);
 }
+
+/** Every limit key, narrowed from the catalog's own keys (no cast). */
+export const LIMIT_KEYS: readonly LimitKey[] = Object.keys(LIMITS).filter(isLimitKey);
 
 export const USER_LIMIT_KEYS: readonly LimitKey[] = LIMIT_KEYS.filter(
   (key) => LIMITS[key].scope === 'user',

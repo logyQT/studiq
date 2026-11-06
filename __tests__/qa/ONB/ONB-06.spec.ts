@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
@@ -97,7 +98,7 @@ interface ApiEnvelope<T> {
 function workerEnv(): { appUrl: string; supabaseUrl?: string } {
   try {
     const raw = readFileSync(join(process.cwd(), 'qa', 'env.json'), 'utf8');
-    return JSON.parse(raw) as { appUrl: string; supabaseUrl?: string };
+    return asJson<{ appUrl: string; supabaseUrl?: string }>(JSON.parse(raw));
   } catch {
     // qa/env.json is worker-local and gitignored; absence is fine.
     return { appUrl: 'http://localhost:3010' };
@@ -142,7 +143,7 @@ async function managerApi(): Promise<APIRequestContext> {
 async function memberRoleId(api: APIRequestContext): Promise<string> {
   const response = await api.get('/api/v1/organization/roles');
   expect(response.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const body = (await response.json()) as ApiEnvelope<Array<{ id: string; name: string }>>;
+  const body = await json<ApiEnvelope<Array<{ id: string; name: string }>>>(response);
   const role = body.data.find((candidate) => candidate.name === 'member');
   if (!role) throw new Error(`tenant ${CASE}: the org has no "member" role`);
   return role.id;
@@ -158,10 +159,12 @@ async function mintInvite(
     data: { email, targetOrgRoleId, organizationId: ORG.id, locale: 'pl' },
   });
   expect(created.status(), `POST ${INVITES_PATH}`).toBe(201);
-  const body = (await created.json()) as ApiEnvelope<{
-    invitationId: string;
-    inviteCode: string;
-  }>;
+  const body = await json<
+    ApiEnvelope<{
+      invitationId: string;
+      inviteCode: string;
+    }>
+  >(created);
   expect(body.success).toBe(true);
   expect(body.data.inviteCode).toMatch(/^[0-9a-f]{32}$/);
   return { token: body.data.inviteCode, id: body.data.invitationId };
@@ -174,7 +177,7 @@ let expiredInvite: Invite;
 async function currentOrgs(page: Page): Promise<OrgMembership[]> {
   const response = await page.request.get('/api/v1/me/orgs');
   expect(response.status(), 'GET /api/v1/me/orgs').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: OrgMembership[] };
+  const body = await json<{ success: boolean; data: OrgMembership[] }>(response);
   expect(body.success).toBe(true);
   return body.data;
 }

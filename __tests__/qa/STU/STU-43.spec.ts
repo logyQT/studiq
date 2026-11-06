@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -148,7 +149,7 @@ async function api<T>(
   data?: unknown,
 ): Promise<T> {
   const response = await request.fetch(url, { method, data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   if (!response.ok() || !body.success) {
     throw new Error(`${method} ${url} → ${response.status()} ${JSON.stringify(body)}`);
   }
@@ -211,9 +212,9 @@ async function generateAttempt(
     QUESTIONS.length,
   );
   expect(
-    attempt.questions.map((question) => question.content).sort(),
+    attempt.questions.map((question) => question.content).toSorted(),
     'the quiz is generated from the case bank only',
-  ).toEqual(QUESTIONS.map((question) => question.content).sort());
+  ).toEqual(QUESTIONS.map((question) => question.content).toSorted());
   return attempt;
 }
 
@@ -257,7 +258,7 @@ function completedAttempts(attempts: QuizAttempt[]): Array<QuizAttempt & { compl
     .filter((attempt): attempt is QuizAttempt & { completed_at: string } =>
       Boolean(attempt.completed_at),
     )
-    .sort((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at));
+    .toSorted((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at));
 }
 
 /** `NN%` as `formatScorePercent` renders a card value; `—` when there is no result. */

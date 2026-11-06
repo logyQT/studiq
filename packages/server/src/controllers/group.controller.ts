@@ -15,10 +15,10 @@ import {
 import { type GroupService, groupService } from '@studiq/server/services/group.service';
 
 export class GroupController {
-  constructor(private groupService: GroupService) {}
+  constructor(private service: GroupService) {}
 
   async listGroups(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.groupService.listGroups(ctx);
+    const result = await this.service.listGroups(ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -36,7 +36,7 @@ export class GroupController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.groupService.createGroup(ctx, parsed.data);
+    const result = await this.service.createGroup(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -60,7 +60,7 @@ export class GroupController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.groupService.updateGroup(ctx, paramsParsed.data.id, parsed.data);
+    const result = await this.service.updateGroup(ctx, paramsParsed.data.id, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -78,7 +78,7 @@ export class GroupController {
       return controllerResponse.error('BAD_REQUEST');
     }
 
-    const result = await this.groupService.deleteGroup(ctx, paramsParsed.data.id);
+    const result = await this.service.deleteGroup(ctx, paramsParsed.data.id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -94,7 +94,7 @@ export class GroupController {
       return controllerResponse.error('BAD_REQUEST');
     }
 
-    const result = await this.groupService.getGroupMembers(ctx, paramsParsed.data.id);
+    const result = await this.service.getGroupMembers(ctx, paramsParsed.data.id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -110,7 +110,7 @@ export class GroupController {
       return controllerResponse.error('BAD_REQUEST');
     }
 
-    const result = await this.groupService.listAddableMembers(ctx, paramsParsed.data.id);
+    const result = await this.service.listAddableMembers(ctx, paramsParsed.data.id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -138,7 +138,7 @@ export class GroupController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.groupService.setGroupMembers(ctx, paramsParsed.data.id, parsed.data);
+    const result = await this.service.setGroupMembers(ctx, paramsParsed.data.id, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -148,7 +148,7 @@ export class GroupController {
   }
 
   async listMyGroups(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.groupService.listMyGroups(ctx);
+    const result = await this.service.listMyGroups(ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

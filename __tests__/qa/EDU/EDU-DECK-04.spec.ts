@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -109,7 +110,7 @@ interface GroupMemberRow {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -193,7 +194,7 @@ async function ensureTopic(page: Page): Promise<TopicRow> {
     response.status(),
     `POST /api/v1/flashcards/topics → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<TopicRow>).data;
+  return (await json<ApiEnvelope<TopicRow>>(response)).data;
 }
 
 /** The deck screen's card element (`<Card id="fc-<flashcard id>">`). */
@@ -253,7 +254,7 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
       deckResponse.status(),
       `POST /api/v1/flashcards/decks → ${deckResponse.status()} ${await deckResponse.text()}`,
     ).toBe(201);
-    const deck = ((await deckResponse.json()) as ApiEnvelope<DeckRow>).data;
+    const deck = (await json<ApiEnvelope<DeckRow>>(deckResponse)).data;
     expect(deck.visibility, 'the prerequisite deck is shared with the group').toBe('group');
     expect(deck.groupIds).toEqual([groupId]);
 
@@ -296,9 +297,9 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
 
     const [created] = await listCards(page, deck.id);
     expect(created, 'the card is stored in the teacher deck').toBeTruthy();
-    expect({ front: created!.front, back: created!.back }).toEqual(CARD);
+    expect({ front: created.front, back: created.back }).toEqual(CARD);
 
-    const card = cardById(page, created!.id);
+    const card = cardById(page, created.id);
     await expect(card).toBeVisible();
     await expect(card).toContainText(CARD.front);
     await expect(card).toContainText(CARD.back);
@@ -322,8 +323,8 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
     await expect(card).toContainText(EDITED.back);
 
     const [updated] = await listCards(page, deck.id);
-    expect(updated!.id, 'the edit keeps the same card').toBe(created!.id);
-    expect({ front: updated!.front, back: updated!.back }).toEqual(EDITED);
+    expect(updated.id, 'the edit keeps the same card').toBe(created.id);
+    expect({ front: updated.front, back: updated.back }).toEqual(EDITED);
 
     // ── Step 2b: delete it ─────────────────────────────────────────────────
     await openCardMenu(page, card);
@@ -337,7 +338,7 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
     await expect(dialog(page)).toHaveCount(0);
     await expectCardsCount(page, 0);
     await expect(page.getByText(COPY.empty, { exact: true })).toBeVisible();
-    await expect(cardById(page, created!.id), 'the deleted card is gone').toHaveCount(0);
+    await expect(cardById(page, created.id), 'the deleted card is gone').toHaveCount(0);
     expect(await listCards(page, deck.id), 'the deleted card is gone from the API').toEqual([]);
 
     // ── Step 3: create again, this time with a topic ────────────────────────
@@ -367,11 +368,11 @@ test.describe('@case:EDU-DECK-04 @area:EDU @prio:P2 teacher deck flashcards CRUD
 
     const [tagged] = await listCards(page, deck.id);
     expect(
-      tagged!.flashcard_topic_assignments.map((assignment) => assignment.topic_id),
+      tagged.flashcard_topic_assignments.map((assignment) => assignment.topic_id),
       'the topic is assigned to the card',
     ).toEqual([topic.id]);
 
-    const taggedCard = cardById(page, tagged!.id);
+    const taggedCard = cardById(page, tagged.id);
     await expect(taggedCard).toBeVisible();
     await expect(taggedCard).toContainText(TOPIC_CARD.front);
     // Each card renders a mobile and a desktop copy of its chips, so pin the

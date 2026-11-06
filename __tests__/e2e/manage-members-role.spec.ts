@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { asJson, json } from '#test/helpers/json';
 
 const PASSWORD = 'pass';
 const MEMBERS_URL = '/api/v1/organization/members';
@@ -43,11 +44,9 @@ function roleTrigger(page: Page) {
 }
 
 async function getRoleId(page: Page, name: string) {
-  const body = await page.evaluate(async () => {
-    const res = await fetch('/api/v1/organization/roles');
-    return res.json();
-  });
-  const role = (body.data as { id: string; name: string }[]).find((r) => r.name === name);
+  const res = await page.request.get('/api/v1/organization/roles');
+  const body = await json<{ data: { id: string; name: string }[] }>(res);
+  const role = body.data.find((r) => r.name === name);
   expect(role, `role "${name}" missing from /api/v1/organization/roles`).toBeDefined();
   return role!.id;
 }
@@ -119,7 +118,9 @@ test.describe('Manage members — role change confirmation (#246)', () => {
         await route.continue();
         return;
       }
-      putBodies.push(route.request().postDataJSON());
+      putBodies.push(
+        asJson<{ targetUserId: string; newOrgRoleId: string }>(route.request().postDataJSON()),
+      );
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

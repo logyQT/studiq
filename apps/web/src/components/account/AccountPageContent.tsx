@@ -31,19 +31,24 @@ export function AccountPageContent() {
   // `null` until the user edits, so the field follows the stored name as it loads (hard reload)
   // without overwriting what has been typed.
   const [draftName, setDraftName] = useState<string | null>(null);
-  const name = draftName ?? user?.user_metadata?.name ?? '';
+  // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
+  const rawStoredName: unknown = user?.user_metadata?.name;
+  const storedName = typeof rawStoredName === 'string' ? rawStoredName : undefined;
+  const name = draftName ?? storedName ?? '';
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSavingName, setIsSavingName] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || '';
-  const role = (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) as string;
+  const userName = storedName || user?.email?.split('@')[0] || '';
+  // `account_type` is part of the untyped Supabase map too; only a string is renderable.
+  const rawRole: unknown = activeOrg?.orgRoleName ?? user?.app_metadata?.account_type;
+  const role = typeof rawRole === 'string' ? rawRole : '';
   const createdAt = user?.created_at ? formatDate(user.created_at, locale) : '';
 
   async function handleSaveName() {
-    if (!name.trim() || name === user?.user_metadata?.name) return;
+    if (!name.trim() || name === storedName) return;
     setIsSavingName(true);
     try {
       await apiPut('/api/v1/auth/profile', { name: name.trim() });
@@ -154,7 +159,7 @@ export function AccountPageContent() {
               </div>
               <Button
                 onClick={handleSaveName}
-                disabled={isSavingName || !name.trim() || name === user?.user_metadata?.name}
+                disabled={isSavingName || !name.trim() || name === storedName}
               >
                 {isSavingName && <Loader2 className="size-4 mr-2 animate-spin" />}
                 {isSavingName ? t('saving') : t('save_name')}

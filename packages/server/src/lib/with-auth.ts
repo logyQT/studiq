@@ -1,5 +1,6 @@
-import type { AccountType, PermissionScope, RequestContext } from '@studiq/authz';
+import { AccountType, type PermissionScope, type RequestContext } from '@studiq/authz';
 import { ACTIVE_ORG_COOKIE } from '@studiq/server/lib/active-org-cookie';
+import { isAccountType, isPermissionScope } from '@studiq/server/lib/authz';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { withRequestInstrumentation } from '@studiq/server/lib/request-instrumentation';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -35,7 +36,13 @@ export async function withAuth(
       return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
     }
 
-    const accountType = user.app_metadata?.account_type as AccountType;
+    // Every account is stamped with its type at signup; without a valid claim
+    // nothing can be authorized, so the request fails closed.
+    const rawAccountType: unknown = user.app_metadata?.account_type;
+    if (!isAccountType(rawAccountType)) {
+      return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
+    }
+    const accountType: AccountType = rawAccountType;
     const cookieOrgId = req.cookies.get(ACTIVE_ORG_COOKIE)?.value ?? null;
     // The cookie is only a *hint*. It becomes the tenant scope exclusively when
     // the caller has an `org_members` row for that exact org — membership-row
@@ -70,7 +77,8 @@ export async function withAuth(
           .eq('org_role_id', orgRoleId);
 
         for (const row of perms ?? []) {
-          permissionScopes[row.permission_name] = row.scope as PermissionScope;
+          if (!isPermissionScope(row.scope)) continue;
+          permissionScopes[row.permission_name] = row.scope;
         }
       }
     }

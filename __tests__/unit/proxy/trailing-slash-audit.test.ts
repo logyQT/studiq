@@ -32,21 +32,21 @@ describe('proxy matcher — trailing slash passthrough', () => {
 });
 
 // ---- Test routeRules regex patterns ----
+// Helper: extract the rule that matches a given path (order matters!)
+function matchRule(path: string) {
+  return routeRules.find((rule) => rule.matcher.test(path)) ?? null;
+}
+
+// Helper: test that two paths resolve to the SAME rule
+function assertSameRule(a: string, b: string) {
+  const ruleA = matchRule(a);
+  const ruleB = matchRule(b);
+  expect(ruleA).not.toBeNull();
+  expect(ruleB).not.toBeNull();
+  expect(ruleA?.matcher.source).toBe(ruleB?.matcher.source);
+}
+
 describe('routeRules — trailing slash consistency', () => {
-  // Helper: extract the rule that matches a given path (order matters!)
-  function matchRule(path: string) {
-    return routeRules.find((rule) => rule.matcher.test(path)) ?? null;
-  }
-
-  // Helper: test that two paths resolve to the SAME rule
-  function assertSameRule(a: string, b: string) {
-    const ruleA = matchRule(a);
-    const ruleB = matchRule(b);
-    expect(ruleA).not.toBeNull();
-    expect(ruleB).not.toBeNull();
-    expect(ruleA?.matcher.source).toBe(ruleB?.matcher.source);
-  }
-
   // --- Teacher API ---
   describe('teacher API routes', () => {
     it('matches /api/v1/teacher and /api/v1/teacher/ to the same rule', () => {

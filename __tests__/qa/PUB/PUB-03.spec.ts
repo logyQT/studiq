@@ -1,3 +1,4 @@
+import { json } from '#test/helpers/json';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -137,7 +138,7 @@ async function expectPlanPage(page: Page, tile: (typeof TILES)[number]) {
   // this account type, in catalogue order, under the catalogue names.
   const response = await page.request.get(`/api/v1/subscription-plans?for=${tile.plansFor}`);
   expect(response.status(), `${tile.plansFor} plan catalogue`).toBe(200);
-  const { data } = (await response.json()) as { data: PlanSummary[] };
+  const { data } = await json<{ data: PlanSummary[] }>(response);
   expect(data.map((plan) => plan.key)).toEqual([...tile.planKeys]);
   for (const name of tile.planNames) {
     expect(data.map((plan) => plan.name)).toContain(`StudiQ ${name}`);
@@ -172,7 +173,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing tiles', () => {
     // Prerequisite "Brak sesji": the visitor is not authenticated.
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status()).toBe(200);
-    const meBody = (await me.json()) as { data?: { user?: unknown } };
+    const meBody = await json<{ data?: { user?: unknown } }>(me);
     expect(meBody.data?.user ?? null).toBeNull();
 
     await expectPicker(page);

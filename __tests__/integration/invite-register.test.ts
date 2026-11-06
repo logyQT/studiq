@@ -1,4 +1,6 @@
+import { createClient } from '@supabase/supabase-js';
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
+import type { Database } from '@studiq/server/types/database';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
@@ -7,6 +9,7 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
+import { json } from '#test/helpers/json';
 import { createNextRequest } from '#test/integration/test-utils';
 import { GET as callbackGet } from '@/app/(backend)/api/v1/auth/callback/route';
 import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
@@ -14,6 +17,52 @@ import { GET as orgsGet } from '@/app/(backend)/api/v1/me/orgs/route';
 import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+function uniqueEmail(label: string) {
+  return `invite-register-${suiteId}-${label}-${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2, 8)}@example.com`;
+}
+
+function register(body: Record<string, unknown>) {
+  return registerPost(
+    createNextRequest('http://localhost/api/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+/** Make the activation callback verify an already-created user. */
+function mockActivation(user: { id: string; user_metadata: Record<string, unknown> }) {
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => {
+    // A Database-typed service client: `createServiceClient()` is untyped and the
+    // mocked `createClient` must hand back the typed shape the routes import.
+    const client = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } },
+    );
+    // The real overloads are structurally irrelevant for the one call the callback
+    // route makes; `Object.assign` swaps the implementation without an assertion.
+    Object.assign(client.auth, {
+      verifyOtp: () => Promise.resolve({ data: { user, session: null }, error: null }),
+    });
+    return Promise.resolve(client);
+  });
+}
+
+async function profileByEmail(email: string): Promise<{ id: string } | null> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle()
+    .overrideTypes<{ id: string }, { merge: false }>();
+  return data;
+}
 
 // #311 / ONB-08: registering from /join?token=… must end with the new user as a
 // member of the inviting organization (with the invited role) once the e-mail is
@@ -36,7 +85,8 @@ describe(`Invite-link registration`, () => {
       .select('id')
       .eq('organization_id', orgId)
       .eq('name', 'member')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
     memberRoleId = memberRole!.id;
   });
 
@@ -50,7 +100,8 @@ describe(`Invite-link registration`, () => {
     const { data: profiles } = await supabase
       .from('profiles')
       .select('id')
-      .like('email', `invite-register-${suiteId}-%`);
+      .like('email', `invite-register-${suiteId}-%`)
+      .overrideTypes<{ id: string }[], { merge: false }>();
     for (const profile of profiles ?? []) {
       await supabase.auth.admin.deleteUser(profile.id);
     }
@@ -60,12 +111,6 @@ describe(`Invite-link registration`, () => {
     vi.clearAllMocks();
     useRealSupabase();
   });
-
-  function uniqueEmail(label: string) {
-    return `invite-register-${suiteId}-${label}-${Date.now()}-${Math.random()
-      .toString(16)
-      .slice(2, 8)}@example.com`;
-  }
 
   /** Manager creates an invitation through the real API; returns its token. */
   async function invite(email: string): Promise<string> {
@@ -89,37 +134,10 @@ describe(`Invite-link registration`, () => {
       .select('token')
       .eq('email', email)
       .eq('organization_id', orgId)
-      .single();
+      .single()
+      .overrideTypes<{ token: string }, { merge: false }>();
     expect(invitation).toBeTruthy();
     return invitation!.token;
-  }
-
-  function register(body: Record<string, unknown>) {
-    return registerPost(
-      createNextRequest('http://localhost/api/v1/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }),
-    );
-  }
-
-  /** Make the activation callback verify an already-created user. */
-  function mockActivation(user: { id: string; user_metadata: Record<string, unknown> }) {
-    vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
-      const client = createServiceClient();
-      client.auth.verifyOtp = (async () => ({
-        data: { user, session: null },
-        error: null,
-      })) as never;
-      return client as never;
-    });
-  }
-
-  async function profileByEmail(email: string) {
-    const supabase = createServiceClient();
-    const { data } = await supabase.from('profiles').select('id').eq('email', email).maybeSingle();
-    return data;
   }
 
   it('adds the invitee to the organization after activation', async () => {
@@ -189,11 +207,9 @@ describe(`Invite-link registration`, () => {
     // ONB-08 acceptance signal: /me/orgs lists the inviting organization.
     mockUser({ id: profile!.id, role: 'student' });
     const orgsRes = await orgsGet(createNextRequest('http://localhost/api/v1/me/orgs'));
-    const orgsBody = await orgsRes.json();
+    const orgsBody = await json<{ data: { id: string; orgRoleName: string }[] }>(orgsRes);
     expect(orgsRes.status).toBe(200);
-    const joined = (orgsBody.data as Array<{ id: string; orgRoleName: string }>).find(
-      (org) => org.id === orgId,
-    );
+    const joined = orgsBody.data.find((org) => org.id === orgId);
     expect(joined?.orgRoleName).toBe('member');
   });
 
@@ -209,7 +225,7 @@ describe(`Invite-link registration`, () => {
       accountType: 'student',
       inviteToken: token,
     });
-    const body = await registerRes.json();
+    const body = await json<{ error: string }>(registerRes);
 
     expect(registerRes.status).toBe(400);
     expect(body.error).toBe('BAD_REQUEST');
@@ -246,7 +262,7 @@ describe(`Invite-link registration`, () => {
       accountType: 'student',
       inviteToken: token,
     });
-    const body = await registerRes.json();
+    const body = await json<{ error: string }>(registerRes);
 
     expect(registerRes.status).toBe(410);
     expect(body.error).toBe('GONE');
@@ -267,7 +283,7 @@ describe(`Invite-link registration`, () => {
       accountType: 'student',
       inviteToken: token,
     });
-    const body = await registerRes.json();
+    const body = await json<{ error: string }>(registerRes);
 
     expect(registerRes.status).toBe(410);
     expect(body.error).toBe('GONE');
@@ -286,7 +302,8 @@ describe(`Invite-link registration`, () => {
       .select('id')
       .eq('organization_id', fullOrgId)
       .eq('name', 'member')
-      .single();
+      .single()
+      .overrideTypes<{ id: string }, { merge: false }>();
 
     const email = uniqueEmail('full-org');
     mockUser(full.user);

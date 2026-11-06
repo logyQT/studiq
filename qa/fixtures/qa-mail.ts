@@ -2,22 +2,24 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Read the shared stack's mail catcher — the "Inbucket" of the QA environment.
+ * Read the QA mailbox (Mailpit).
  *
- * A spec that needs an e-mail (activation, reset) must not care which catcher the
- * stack runs: the shared QA box exposes **Mailpit** (`/api/v1/search`), while a
- * `supabase start` (CI) still calls the service inbucket and may answer with the
- * classic Inbucket REST API (`/api/v1/mailbox/<name>`). Both are read here.
+ * A spec that needs an e-mail (activation, reset) must not care which stack it
+ * runs against. Local `supabase stack` projects get random ports, so prefer the
+ * advertised `MAILPIT_URL` (from the app env / `qa/env.json` / process env);
+ * fall back to the classic "API port + 3" layout used by the shared QA stack
+ * and by CI's non-stack `supabase start`.
  *
  * Only reads: a spec looks up the message addressed to **its own** unique address
  * and never lists, deletes or mutates another worker's mail.
  */
 
-/** Supabase CLI places inbucket three ports above the API port. */
-const INBUCKET_PORT_OFFSET = 3;
+/** Non-stack Supabase CLI places Mailpit three ports above the API port. */
+const MAIL_PORT_OFFSET = 3;
 
 interface QaEnvFile {
   supabaseUrl?: string;
+  mailpitUrl?: string;
 }
 
 function supabaseUrlFromProject(): string | undefined {
@@ -26,6 +28,7 @@ function supabaseUrlFromProject(): string | undefined {
   const envJson = join(root, 'qa', 'env.json');
   if (existsSync(envJson)) {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- qa/env.json is local test config; optional fields are checked below
       const parsed = JSON.parse(readFileSync(envJson, 'utf8')) as QaEnvFile;
       if (parsed.supabaseUrl) return parsed.supabaseUrl;
     } catch {
@@ -46,21 +49,50 @@ function supabaseUrlFromProject(): string | undefined {
   return process.env.NEXT_PUBLIC_SUPABASE_URL;
 }
 
+function mailpitUrlFromProject(): string | undefined {
+  const root = process.cwd();
+
+  const envJson = join(root, 'qa', 'env.json');
+  if (existsSync(envJson)) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- qa/env.json is local test config; optional fields are checked below
+      const parsed = JSON.parse(readFileSync(envJson, 'utf8')) as QaEnvFile;
+      if (parsed.mailpitUrl) return parsed.mailpitUrl;
+    } catch {
+      // Ignore; try the app env next.
+    }
+  }
+
+  const dotenv = join(root, 'apps', 'web', '.env');
+  if (existsSync(dotenv)) {
+    for (const line of readFileSync(dotenv, 'utf8').split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('MAILPIT_URL=')) {
+        return trimmed.slice('MAILPIT_URL='.length).trim();
+      }
+    }
+  }
+
+  return process.env.MAILPIT_URL;
+}
+
 function mailUrlFor(supabaseUrl: string | undefined): string | undefined {
   if (!supabaseUrl) return undefined;
   try {
     const url = new URL(supabaseUrl);
-    url.port = String(Number(url.port) + INBUCKET_PORT_OFFSET);
+    url.port = String(Number(url.port) + MAIL_PORT_OFFSET);
     return url.origin;
   } catch {
     return undefined;
   }
 }
 
-/** Explicit override first, then the stack's API port + 3, then the defaults. */
+/** Explicit override > advertised Mailpit URL > API+3 (non-stack) > defaults. */
 function candidates(): string[] {
   return [
     process.env.QA_MAIL_URL,
+    process.env.MAILPIT_URL,
+    mailpitUrlFromProject(),
     mailUrlFor(process.env.NEXT_PUBLIC_SUPABASE_URL),
     mailUrlFor(supabaseUrlFromProject()),
     'http://localhost:54424',
@@ -96,6 +128,7 @@ async function messagesFor(base: string, email: string): Promise<MailMessage[]> 
     signal: AbortSignal.timeout(5_000),
   });
   if (mailpit.ok) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Mailpit is an external test fixture; every field is checked below
     const body = (await mailpit.json()) as {
       messages?: Array<{ ID: string; To?: Array<{ Address: string }> }>;
     };
@@ -108,6 +141,7 @@ async function messagesFor(base: string, email: string): Promise<MailMessage[]> 
           signal: AbortSignal.timeout(5_000),
         });
         if (!res.ok) return null;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Mailpit message payload; only HTML/Text are read
         const detail = (await res.json()) as { HTML?: string; Text?: string };
         return { id: message.ID, html: detail.HTML ?? detail.Text ?? '' };
       }),
@@ -121,6 +155,7 @@ async function messagesFor(base: string, email: string): Promise<MailMessage[]> 
     signal: AbortSignal.timeout(5_000),
   });
   if (!mailbox.ok) return [];
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- legacy Inbucket mailbox listing; only ids are read
   const listed = (await mailbox.json()) as Array<{ id: string }>;
   const detailed = await Promise.all(
     listed.map(async (message) => {
@@ -131,6 +166,7 @@ async function messagesFor(base: string, email: string): Promise<MailMessage[]> 
         },
       );
       if (!res.ok) return null;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- legacy Inbucket message payload; only the body is read
       const detail = (await res.json()) as { body?: { html?: string; text?: string } };
       return { id: message.id, html: detail.body?.html ?? detail.body?.text ?? '' };
     }),
@@ -180,4 +216,57 @@ export async function waitForMailLink(
   timeoutMs = 30_000,
 ): Promise<string> {
   return (await waitForMailLinkMatch(email, pattern, timeoutMs)).link;
+}
+
+export interface DefaultAuthPath {
+  /** App callback path rebuilt from the default auth link. */
+  path: string;
+  tokenHash: string;
+  type: string;
+  messageCount: number;
+}
+
+/**
+ * TEMPORARY non-branded-email helper for the `*-temp.spec.ts` variants.
+ *
+ * Stack projects (native or Docker) cannot serve auth `content_path` templates,
+ * so GoTrue sends its default link:
+ *
+ *   {API_URL}/auth/v1/verify?token=<token_hash>&type=<type>&redirect_to=<site>
+ *
+ * The app's `/auth/callback` still expects `token_hash`/`type`/`next`, so this
+ * reconstructs that path from the default link. Remove this helper (and the
+ * temp specs) once stack mode serves the branded templates.
+ */
+export async function waitForDefaultAuthPath(
+  email: string,
+  expectedType: string | undefined,
+  next: string,
+  timeoutMs = 60_000,
+): Promise<DefaultAuthPath> {
+  const mail = await waitForMailLinkMatch(
+    email,
+    /https?:\/\/[^"'\s]+\/auth\/v1\/verify\?[^"'\s]+/,
+    timeoutMs,
+  );
+  const link = new URL(mail.link);
+  const tokenHash = link.searchParams.get('token');
+  const type = link.searchParams.get('type') ?? expectedType;
+
+  if (!tokenHash) {
+    throw new Error(`default auth link has no token: ${mail.link}`);
+  }
+  if (!type) {
+    throw new Error(`default auth link has no type: ${mail.link}`);
+  }
+  if (expectedType !== undefined && type !== expectedType) {
+    throw new Error(`default auth link type ${type}, expected ${expectedType}: ${mail.link}`);
+  }
+
+  return {
+    path: `/auth/callback?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}&next=${next}`,
+    tokenHash,
+    type,
+    messageCount: mail.messageCount,
+  };
 }

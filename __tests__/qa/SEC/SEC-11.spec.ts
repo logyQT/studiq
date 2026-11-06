@@ -1,4 +1,5 @@
-import type { Browser, Page } from '@playwright/test';
+import type { APIResponse, Browser, Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import {
   expect,
   loadTenant,
@@ -122,23 +123,17 @@ function postFile(page: Page, url: string, file: UploadFile, fields: Record<stri
 }
 
 /** A rejected upload carries the app error code and — importantly — no URL. */
-async function expectRejected(
-  response: { status(): number; json(): Promise<unknown> },
-  label: string,
-) {
+async function expectRejected(response: APIResponse, label: string) {
   expect(response.status(), `${label} must be rejected server-side`).toBe(422);
-  const body = (await response.json()) as ApiEnvelope<{ url?: string; imageUrl?: string }>;
+  const body = await json<ApiEnvelope<{ url?: string; imageUrl?: string }>>(response);
   expect(body.success, `${label} success flag`).toBe(false);
   expect(body.error, `${label} error code`).toBe('UNPROCESSABLE_ENTITY');
   expect(body.data, `${label} must not mint a storage URL`).toBeUndefined();
 }
 
-async function expectTooLarge(
-  response: { status(): number; json(): Promise<unknown> },
-  label: string,
-) {
+async function expectTooLarge(response: APIResponse, label: string) {
   expect(response.status(), `${label} must exceed the surface cap`).toBe(413);
-  const body = (await response.json()) as ApiEnvelope<unknown>;
+  const body = await json<ApiEnvelope<unknown>>(response);
   expect(body.success, `${label} success flag`).toBe(false);
   expect(body.error, `${label} error code`).toBe('PAYLOAD_TOO_LARGE');
 }
@@ -177,7 +172,7 @@ async function expectFlashcardMediaRules(page: Page): Promise<void> {
     disguised.status(),
     'POST /api/v1/flashcards/media/upload (real PNG named evil.html)',
   ).toBe(200);
-  const body = (await disguised.json()) as ApiEnvelope<{ url: string }>;
+  const body = await json<ApiEnvelope<{ url: string }>>(disguised);
   expect(body.success).toBe(true);
   await expectInertImage(page, body.data!.url, 'flashcard media');
 
@@ -193,7 +188,7 @@ async function expectOrganizationLogoRules(page: Page): Promise<void> {
 
   const before = await page.request.get(detailUrl);
   expect(before.status(), `GET ${detailUrl}`).toBe(200);
-  const previousLogo = ((await before.json()) as ApiEnvelope<{ logo_url: string | null }>).data
+  const previousLogo = (await json<ApiEnvelope<{ logo_url: string | null }>>(before)).data
     ?.logo_url;
 
   for (const file of ACTIVE_FILES) {
@@ -215,7 +210,7 @@ async function expectOrganizationLogoRules(page: Page): Promise<void> {
 
   const afterRejections = await page.request.get(detailUrl);
   const logoAfterRejections = (
-    (await afterRejections.json()) as ApiEnvelope<{ logo_url: string | null }>
+    await json<ApiEnvelope<{ logo_url: string | null }>>(afterRejections)
   ).data?.logo_url;
   expect(logoAfterRejections, 'rejected uploads must not change the organization logo').toBe(
     previousLogo,
@@ -228,7 +223,7 @@ async function expectOrganizationLogoRules(page: Page): Promise<void> {
     bytes: VALID_PNG,
   });
   expect(accepted.status(), `POST ${url} (valid PNG)`).toBe(200);
-  const logoUrl = ((await accepted.json()) as ApiEnvelope<{ logo_url: string }>).data?.logo_url;
+  const logoUrl = (await json<ApiEnvelope<{ logo_url: string }>>(accepted)).data?.logo_url;
   expect(logoUrl, 'accepted logo URL').toContain(`/org-logos/${ORG_ID}/`);
   await expectInertImage(page, logoUrl!, 'organization logo');
 }
@@ -247,13 +242,13 @@ async function createAssignmentAttempt(teacher: Page, student: Page): Promise<As
     data: { name: `SEC-11 bank ${suffix}` },
   });
   expect(bank.status(), `POST /api/v1/questions/banks → ${await bank.text()}`).toBe(201);
-  const bankId = ((await bank.json()) as ApiEnvelope<{ id: string }>).data!.id;
+  const bankId = (await json<ApiEnvelope<{ id: string }>>(bank)).data!.id;
 
   const question = await teacher.request.post('/api/v1/questions', {
     data: { bankId, content: `SEC-11 answer photo ${suffix}`, type: 'open' },
   });
   expect(question.status(), `POST /api/v1/questions → ${await question.text()}`).toBe(201);
-  const questionId = ((await question.json()) as ApiEnvelope<{ id: string }>).data!.id;
+  const questionId = (await json<ApiEnvelope<{ id: string }>>(question)).data!.id;
 
   const assignment = await teacher.request.post('/api/v1/teacher/assignments', {
     data: { title: `SEC-11 kartkówka ${suffix}` },
@@ -261,7 +256,7 @@ async function createAssignmentAttempt(teacher: Page, student: Page): Promise<As
   expect(assignment.status(), `POST /api/v1/teacher/assignments → ${await assignment.text()}`).toBe(
     201,
   );
-  const id = ((await assignment.json()) as ApiEnvelope<{ id: string }>).data!.id;
+  const id = (await json<ApiEnvelope<{ id: string }>>(assignment)).data!.id;
 
   const added = await teacher.request.post(`/api/v1/teacher/assignments/${id}/questions`, {
     data: { questionIds: [questionId] },
@@ -280,7 +275,7 @@ async function createAssignmentAttempt(teacher: Page, student: Page): Promise<As
 
   const started = await student.request.post(`/api/v1/assignments/${id}/start`);
   expect(started.status(), `POST /api/v1/assignments/${id}/start`).toBe(200);
-  const attemptId = ((await started.json()) as ApiEnvelope<{ id: string }>).data!.id;
+  const attemptId = (await json<ApiEnvelope<{ id: string }>>(started)).data!.id;
 
   return { id, attemptId, questionId };
 }
@@ -314,7 +309,7 @@ async function expectAnswerPhotoRules(teacher: Page, student: Page): Promise<Ass
     fields,
   );
   expect(accepted.status(), `POST ${url} (valid PNG)`).toBe(200);
-  const imageUrl = ((await accepted.json()) as ApiEnvelope<{ imageUrl: string }>).data?.imageUrl;
+  const imageUrl = (await json<ApiEnvelope<{ imageUrl: string }>>(accepted)).data?.imageUrl;
   await expectInertImage(student, imageUrl!, 'answer photo');
 
   return setup;
@@ -325,7 +320,7 @@ async function expectCsvImportRejectsBinary(page: Page): Promise<void> {
   const decksBefore = await page.request.get('/api/v1/flashcards/decks?limit=200');
   expect(decksBefore.status(), 'GET /api/v1/flashcards/decks').toBe(200);
   const beforeIds = (
-    (await decksBefore.json()) as ApiEnvelope<{ items: Array<{ id: string }> }>
+    await json<ApiEnvelope<{ items: Array<{ id: string }> }>>(decksBefore)
   ).data!.items.map((deck) => deck.id);
 
   const response = await page.request.post('/api/v1/flashcards/import/csv', {
@@ -333,12 +328,12 @@ async function expectCsvImportRejectsBinary(page: Page): Promise<void> {
     data: EXE_PAYLOAD,
   });
   expect(response.status(), 'POST /api/v1/flashcards/import/csv (binary body)').toBe(400);
-  const body = (await response.json()) as ApiEnvelope<unknown>;
+  const body = await json<ApiEnvelope<unknown>>(response);
   expect(body.success).toBe(false);
 
   const decksAfter = await page.request.get('/api/v1/flashcards/decks?limit=200');
   const afterIds = (
-    (await decksAfter.json()) as ApiEnvelope<{ items: Array<{ id: string }> }>
+    await json<ApiEnvelope<{ items: Array<{ id: string }> }>>(decksAfter)
   ).data!.items.map((deck) => deck.id);
   expect(afterIds, 'a rejected CSV payload must not create a deck').toEqual(beforeIds);
 }

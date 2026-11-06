@@ -4,10 +4,10 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { type HealthService, healthService } from '@studiq/server/services/health.service';
 
 export class HealthController {
-  constructor(private healthService: HealthService) {}
+  constructor(private service: HealthService) {}
 
   async getStatus(): Promise<ControllerResponse> {
-    const health = await this.healthService.checkHealth();
+    const health = await this.service.checkHealth();
 
     const statusCode = mapStatusToHttp(health.status);
 

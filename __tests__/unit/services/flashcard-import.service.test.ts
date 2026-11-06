@@ -1,4 +1,5 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
+import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardImportService } from '@studiq/server/services/flashcard-import.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -8,22 +9,53 @@ vi.mock('@studiq/server/lib/authz', () => ({
   Permission: { DECK_UPDATE: 'deck.update' },
 }));
 
-function qb(data: any, error: any = null) {
-  const promise = Promise.resolve({ data: data ?? null, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.insert = vi.fn(() => b);
-  b.update = vi.fn(() => b);
-  b.delete = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.in = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
-  return b;
+type ChainMock = ReturnType<typeof vi.fn>;
+
+/** A thenable PostgREST builder stand-in: every chain method returns itself. */
+interface QueryBuilder {
+  select: ChainMock;
+  insert: ChainMock;
+  update: ChainMock;
+  delete: ChainMock;
+  eq: ChainMock;
+  in: ChainMock;
+  order: ChainMock;
+  single: ChainMock;
+  maybeSingle: ChainMock;
+  then: ChainMock;
+  catch: ChainMock;
+  finally: ChainMock;
+}
+
+const CHAIN_METHODS = ['select', 'insert', 'update', 'delete', 'eq', 'in', 'order'] as const;
+
+function qb(data: unknown, error: unknown = null): QueryBuilder {
+  const result = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const builder: QueryBuilder = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
+    then: vi.fn(promise.then.bind(promise)),
+    catch: vi.fn(promise.catch.bind(promise)),
+    finally: vi.fn(promise.finally.bind(promise)),
+  };
+  for (const method of CHAIN_METHODS) {
+    builder[method].mockReturnValue(builder);
+  }
+  return builder;
+}
+
+/** Narrows a service result to its data, failing the test when the call failed. */
+function expectSuccess<T>(result: ServiceResult<T>): T {
+  if (!result.success) throw new Error(`expected success, got ${result.error}`);
+  return result.data;
 }
 
 describe('FlashcardImportService', () => {
@@ -31,7 +63,7 @@ describe('FlashcardImportService', () => {
   let service: FlashcardImportService;
   const ctx: RequestContext = {
     userId: 'user-1',
-    accountType: 'student' as any,
+    accountType: AccountType.STUDENT,
     traceId: 'test',
     url: '',
     method: 'POST',
@@ -44,7 +76,7 @@ describe('FlashcardImportService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new FlashcardImportService(async () => mock as any);
+    service = new FlashcardImportService(() => Promise.resolve(mock));
   });
 
   describe('importCsv', () => {
@@ -67,7 +99,7 @@ describe('FlashcardImportService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data.imported).toBe(2);
+      expect(expectSuccess(result).imported).toBe(2);
     });
 
     it('returns NOT_FOUND for invalid deckId', async () => {
@@ -92,7 +124,7 @@ describe('FlashcardImportService', () => {
       const result = await service.importCsv({ cards: [{ front: 'Hello', back: 'Cześć' }] }, ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data.imported).toBe(1);
+      expect(expectSuccess(result).imported).toBe(1);
     });
 
     it('handles cards with topics', async () => {

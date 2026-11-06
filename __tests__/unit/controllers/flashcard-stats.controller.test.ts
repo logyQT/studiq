@@ -1,12 +1,15 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardStatsController } from '@studiq/server/controllers/flashcard-stats.controller';
+import { FlashcardStatsService } from '@studiq/server/services/flashcard-stats.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
-  return {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new FlashcardStatsService(() => Promise.reject(new Error('unused'))), {
     getTeacherStats: vi.fn(),
     getDifficultyCards: vi.fn(),
-  };
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -15,7 +18,7 @@ let controller: FlashcardStatsController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'educator' as any,
+  accountType: AccountType.EDUCATOR,
   orgRoleId: null,
   activeOrgId: 'org-1',
   url: 'http://localhost',
@@ -28,7 +31,8 @@ describe('FlashcardStatsController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new FlashcardStatsController(mockService as any);
+    // Only the two stats methods are exercised; nothing else is reached.
+    controller = new FlashcardStatsController(mockService);
   });
 
   describe('getTeacherStats', () => {

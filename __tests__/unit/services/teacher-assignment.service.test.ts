@@ -1,40 +1,66 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { asJson } from '#test/helpers/json';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-function chain(result: any, count?: number) {
-  const resolved =
+type QueryResult = { data: unknown; error: unknown; count?: number };
+type QueryChain = {
+  select: Mock<(columns: string) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  in: Mock<(...args: unknown[]) => QueryChain>;
+  or: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  filter: Mock<(...args: unknown[]) => QueryChain>;
+  is: Mock<(...args: unknown[]) => QueryChain>;
+  limit: Mock<(...args: unknown[]) => QueryChain>;
+  single: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  maybeSingle: Mock<(...args: unknown[]) => Promise<QueryResult>>;
+  insert: Mock<(...args: unknown[]) => QueryChain>;
+  update: Mock<(...args: unknown[]) => QueryChain>;
+  delete: Mock<(...args: unknown[]) => QueryChain>;
+  upsert: Mock<(...args: unknown[]) => QueryChain>;
+  then: Promise<QueryResult>['then'];
+};
+
+function chain(result: unknown, count?: number) {
+  const resolved: QueryResult =
     count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
+  const promise = Promise.resolve(resolved);
   const terminal = vi.fn().mockResolvedValue(resolved);
-  const c: any = {};
-  c.select = vi.fn(() => c);
-  c.eq = vi.fn(() => c);
-  c.in = vi.fn(() => c);
-  c.or = vi.fn(() => c);
-  c.order = vi.fn(() => c);
-  c.filter = vi.fn(() => c);
-  c.is = vi.fn(() => c);
-  c.limit = vi.fn(() => c);
-  c.single = terminal;
-  c.maybeSingle = terminal;
-  c.insert = vi.fn(() => c);
-  c.update = vi.fn(() => c);
-  c.delete = vi.fn(() => c);
-  c.upsert = vi.fn(() => c);
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  const c: QueryChain = {
+    select: vi.fn(() => c),
+    eq: vi.fn(() => c),
+    in: vi.fn(() => c),
+    or: vi.fn(() => c),
+    order: vi.fn(() => c),
+    filter: vi.fn(() => c),
+    is: vi.fn(() => c),
+    limit: vi.fn(() => c),
+    single: terminal,
+    maybeSingle: terminal,
+    insert: vi.fn(() => c),
+    update: vi.fn(() => c),
+    delete: vi.fn(() => c),
+    upsert: vi.fn(() => c),
+    then: promise.then.bind(promise),
+  };
   return c;
 }
 
 /** A chain whose every terminal (await, `.single()`, `.maybeSingle()`) fails. */
-function failingChain(error: { code: string; message: string }) {
+function failingChain(failure: { code: string; message: string }) {
   const c = chain(null);
-  const resolved = { data: null, error };
+  const resolved: QueryResult = { data: null, error: failure };
+  const promise = Promise.resolve(resolved);
   c.single = vi.fn().mockResolvedValue(resolved);
   c.maybeSingle = c.single;
-  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  c.then = promise.then.bind(promise);
   return c;
 }
+
+/** `expect.any` is typed `any`; hoisted to `unknown` so expected objects stay typed. */
+const anyTimestamp: unknown = expect.any(String);
 
 const userId = 'owner-user-id';
 const orgId = '00000000-0000-4000-8000-000000000001';
@@ -42,7 +68,7 @@ const assignmentId = 'assignment-1';
 
 const ctx: RequestContext = {
   userId,
-  accountType: 'teacher',
+  accountType: AccountType.EDUCATOR,
   traceId: 't',
   url: '',
   method: 'GET',
@@ -59,6 +85,10 @@ function withOrgScope(): RequestContext {
   };
 }
 
+const owned = () => chain({ id: assignmentId, created_by: userId, organization_id: orgId });
+const ownedAssignment = () =>
+  chain({ id: assignmentId, created_by: userId, organization_id: orgId });
+
 describe('TeacherAssignmentService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: TeacherAssignmentService;
@@ -66,7 +96,7 @@ describe('TeacherAssignmentService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new TeacherAssignmentService(async () => mock as any);
+    service = new TeacherAssignmentService(() => Promise.resolve(mock));
   });
 
   function expectOwnershipCheck() {
@@ -602,8 +632,6 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('setTargets', () => {
-    const owned = () => chain({ id: assignmentId, created_by: userId, organization_id: orgId });
-
     it('sets group and student targets', async () => {
       mock.from
         .mockReturnValueOnce(owned())
@@ -811,7 +839,7 @@ describe('TeacherAssignmentService', () => {
       const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect((result.data as { id: string }).id).toBe('attempt-1');
+      if (result.success) expect(asJson<{ id: string }>(result.data).id).toBe('attempt-1');
     });
 
     it('attaches the per-question maximum and null for a removed question (#169)', async () => {
@@ -834,8 +862,8 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const rows = (
-          result.data as { quiz_attempt_questions: Array<{ max_points: number | null }> }
+        const rows = asJson<{ quiz_attempt_questions: Array<{ max_points: number | null }> }>(
+          result.data,
         ).quiz_attempt_questions;
         expect(rows.map((q) => q.max_points)).toEqual([2, null]);
       }
@@ -863,13 +891,13 @@ describe('TeacherAssignmentService', () => {
     });
   });
 
-  describe('gradeAnswer', () => {
-    const baseSetup = () => {
-      mock.from.mockReturnValueOnce(
-        chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
-      );
-    };
+  const baseSetup = () => {
+    mock.from.mockReturnValueOnce(
+      chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+    );
+  };
 
+  describe('gradeAnswer', () => {
     it('updates existing answer grade and recomputes the attempt score', async () => {
       const attemptChain = chain({ id: 'attempt-1' });
       const questionsChain = chain([
@@ -903,7 +931,7 @@ describe('TeacherAssignmentService', () => {
       // 1 auto-graded point + 2 manual points.
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 3,
-        graded_at: expect.any(String),
+        graded_at: anyTimestamp,
       });
     });
 
@@ -952,7 +980,7 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 2,
-        graded_at: expect.any(String),
+        graded_at: anyTimestamp,
       });
     });
 
@@ -1014,7 +1042,7 @@ describe('TeacherAssignmentService', () => {
       // 5 → clamped to 2, plus the new 1 point on q-other.
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 3,
-        graded_at: expect.any(String),
+        graded_at: anyTimestamp,
       });
     });
 
@@ -1041,7 +1069,7 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 0,
-        graded_at: expect.any(String),
+        graded_at: anyTimestamp,
       });
     });
 
@@ -1073,7 +1101,7 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 1,
-        graded_at: expect.any(String),
+        graded_at: anyTimestamp,
       });
     });
 
@@ -1100,7 +1128,7 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(true);
       expect(updateChain.update).toHaveBeenCalledWith({
         score: 5,
-        graded_at: expect.any(String),
+        graded_at: anyTimestamp,
       });
     });
 
@@ -1166,8 +1194,9 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveLength(1);
-        expect(result.data[0].attempt).toBeDefined();
+        const rows = asJson<Array<{ attempt: unknown }>>(result.data);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].attempt).toBeDefined();
       }
     });
 
@@ -1205,12 +1234,14 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = result.data as Array<{
-          max_attempts: number;
-          attempts_used: number;
-          attempt: { id: string };
-          last_completed_attempt: { id: string };
-        }>;
+        const [row] = asJson<
+          Array<{
+            max_attempts: number;
+            attempts_used: number;
+            attempt: { id: string };
+            last_completed_attempt: { id: string };
+          }>
+        >(result.data);
         expect(row.attempts_used).toBe(1);
         expect(row.attempt.id).toBe('attempt-1');
         expect(row.last_completed_attempt.id).toBe('attempt-1');
@@ -1262,11 +1293,13 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = result.data as Array<{
-          attempts_used: number;
-          attempt: { id: string; completed_at: string | null };
-          last_completed_attempt: { id: string };
-        }>;
+        const [row] = asJson<
+          Array<{
+            attempts_used: number;
+            attempt: { id: string; completed_at: string | null };
+            last_completed_attempt: { id: string };
+          }>
+        >(result.data);
         expect(row.attempts_used).toBe(1);
         expect(row.attempt.id).toBe('attempt-2');
         expect(row.attempt.completed_at).toBeNull();
@@ -1313,11 +1346,13 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = result.data as Array<{
-          attempts_used: number;
-          attempt: { id: string };
-          last_completed_attempt: { id: string };
-        }>;
+        const [row] = asJson<
+          Array<{
+            attempts_used: number;
+            attempt: { id: string };
+            last_completed_attempt: { id: string };
+          }>
+        >(result.data);
         expect(row.attempts_used).toBe(2);
         expect(row.attempt.id).toBe('attempt-2');
         expect(row.last_completed_attempt.id).toBe('attempt-2');
@@ -1369,7 +1404,7 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = result.data as Array<{ attempt: { id: string } }>;
+        const [row] = asJson<Array<{ attempt: { id: string } }>>(result.data);
         expect(row.attempt.id).toBe('attempt-newest');
       }
     });
@@ -1506,11 +1541,13 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = result.data as Array<{
-          attempts_used: number;
-          attempt: { id: string; score: number | null };
-          last_completed_attempt: { id: string; score: number | null; completed_at: string };
-        }>;
+        const [row] = asJson<
+          Array<{
+            attempts_used: number;
+            attempt: { id: string; score: number | null };
+            last_completed_attempt: { id: string; score: number | null; completed_at: string };
+          }>
+        >(result.data);
         expect(row.attempt.score).toBeNull();
         expect(row.last_completed_attempt.score).toBeNull();
         expect(row.last_completed_attempt.id).toBe('attempt-1');
@@ -1554,9 +1591,11 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const [row] = result.data as Array<{
-          last_completed_attempt: { score: number | null };
-        }>;
+        const [row] = asJson<
+          Array<{
+            last_completed_attempt: { score: number | null };
+          }>
+        >(result.data);
         expect(row.last_completed_attempt.score).toBe(3);
       }
     });
@@ -1612,11 +1651,11 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const data = result.data as {
+        const data = asJson<{
           attempt: { id: string; completed_at: string | null };
           last_completed_attempt: { id: string };
           attempts_used: number;
-        };
+        }>(result.data);
         expect(data.attempt.id).toBe('attempt-2');
         expect(data.attempt.completed_at).toBeNull();
         expect(data.last_completed_attempt.id).toBe('attempt-1');
@@ -1631,11 +1670,11 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const data = result.data as {
+        const data = asJson<{
           attempt: unknown;
           last_completed_attempt: unknown;
           attempts_used: number;
-        };
+        }>(result.data);
         expect(data.attempt).toBeNull();
         expect(data.last_completed_attempt).toBeNull();
         expect(data.attempts_used).toBe(0);
@@ -1798,12 +1837,12 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const data = result.data as {
+        const data = asJson<{
           last_completed_attempt: {
             id: string;
             score: number | null;
           };
-        };
+        }>(result.data);
         expect(data.last_completed_attempt.id).toBe('attempt-1');
         expect(data.last_completed_attempt.score).toBeNull();
       }
@@ -1828,9 +1867,9 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const data = result.data as {
+        const data = asJson<{
           last_completed_attempt: { score: number | null };
-        };
+        }>(result.data);
         expect(data.last_completed_attempt.score).toBe(3);
       }
     });
@@ -1877,7 +1916,7 @@ describe('TeacherAssignmentService', () => {
       const result = await service.startAttempt(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      const projection = questionsChain.select.mock.calls[0][0] as string;
+      const projection = questionsChain.select.mock.calls[0][0];
       expect(projection).not.toContain('*');
       expect(projection).not.toContain('is_correct');
       expect(projection).not.toContain('explanation');
@@ -2117,7 +2156,7 @@ describe('TeacherAssignmentService', () => {
         expect(result.data).not.toHaveProperty('draft_answers');
         expect(JSON.stringify(result.data)).not.toContain('opt-1');
       }
-      const projection = resumeQuestionsChain.select.mock.calls[0][0] as string;
+      const projection = resumeQuestionsChain.select.mock.calls[0][0];
       expect(projection).not.toContain('is_correct');
       expect(projection).not.toContain('explanation');
       expect(projection).not.toContain('search_vector');
@@ -2171,9 +2210,6 @@ describe('TeacherAssignmentService', () => {
   });
 
   describe('exportAnswers', () => {
-    const ownedAssignment = () =>
-      chain({ id: assignmentId, created_by: userId, organization_id: orgId });
-
     it('maps every attempt to the results-view row', async () => {
       const attempts = [
         {

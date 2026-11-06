@@ -1,17 +1,41 @@
-import type { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
-import {
-  useRealSupabase,
-  cleanupOrganizationDeep,
-  createServiceClient,
-  mockUser,
-} from '#test/integration/helpers';
+import { useRealSupabase, cleanupOrganizationDeep, mockUser } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 import { GET as listOrgsGet } from '@/app/(backend)/api/v1/me/orgs/route';
 import { POST } from '@/app/(backend)/api/v1/organization/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** `POST /api/v1/organization` body — the fields the assertions below read. */
+interface CreatedOrganizationBody {
+  success: boolean;
+  data: {
+    id: string;
+    name: string;
+    adminRoleId?: string;
+    teacherRoleId?: string;
+    memberRoleId?: string;
+    defaultGroupId?: string;
+  };
+}
+
+/** `GET /api/v1/me/orgs` body — the fields the assertions below read. */
+interface OrganizationListBody {
+  success: boolean;
+  data: Array<{ id: string; isActive: boolean; orgRoleName: string }>;
+}
+
+/** Error envelope (`{ success: false, error }`) of the routes under test. */
+type ErrorBody = { success: boolean; error?: string };
+
+/** `withAuth` returns `NextResponse | Response`; only the former carries `cookies`. */
+function activeOrgIdOf(res: NextResponse | Response): string | undefined {
+  return res instanceof NextResponse ? res.cookies.get('active_org_id')?.value : undefined;
+}
 
 describe(`POST /api/v1/organization`, () => {
   let educator!: TestUserFixture;
@@ -46,7 +70,7 @@ describe(`POST /api/v1/organization`, () => {
     });
 
     const response = await POST(req);
-    const body = await response.json();
+    const body = await json<CreatedOrganizationBody>(response);
 
     expect(response.status).toBe(201);
     expect(body.success).toBe(true);
@@ -66,7 +90,7 @@ describe(`POST /api/v1/organization`, () => {
     });
 
     const response = await POST(req);
-    const body = await response.json();
+    const body = await json<CreatedOrganizationBody>(response);
 
     expect(response.status).toBe(201);
     expect(body.success).toBe(true);
@@ -84,11 +108,11 @@ describe(`POST /api/v1/organization`, () => {
     });
 
     const response = await POST(req);
-    const body = await response.json();
+    const body = await json<CreatedOrganizationBody>(response);
     expect(response.status).toBe(201);
     createdOrgIds.push(body.data.id);
 
-    const supabase = createServiceClient();
+    const supabase = createSeedDb();
     const { data: members } = await supabase
       .from('org_members')
       .select('*, org_roles!inner(name)')
@@ -109,7 +133,7 @@ describe(`POST /api/v1/organization`, () => {
     });
 
     const response = await POST(req);
-    const body = await response.json();
+    const body = await json<CreatedOrganizationBody>(response);
 
     expect(response.status).toBe(201);
     expect(body.success).toBe(true);
@@ -117,7 +141,7 @@ describe(`POST /api/v1/organization`, () => {
     expect(body.data.teacherRoleId).toBeDefined();
     expect(body.data.memberRoleId).toBeDefined();
     expect(body.data.defaultGroupId).toBeDefined();
-    expect((response as NextResponse).cookies.get('active_org_id')?.value).toBe(body.data.id);
+    expect(activeOrgIdOf(response)).toBe(body.data.id);
     createdOrgIds.push(body.data.id);
   });
 
@@ -131,25 +155,25 @@ describe(`POST /api/v1/organization`, () => {
     });
 
     const response = await POST(req);
-    const body = await response.json();
+    const body = await json<CreatedOrganizationBody>(response);
 
     expect(response.status).toBe(201);
     createdOrgIds.push(body.data.id);
 
     // Creating the organization is what makes it the caller's active org — the
     // setup screen relies on this instead of calling POST /api/v1/me/orgs/switch (#306).
-    const activeOrgId = (response as NextResponse).cookies.get('active_org_id')?.value;
+    const activeOrgId = activeOrgIdOf(response);
     expect(activeOrgId).toBe(body.data.id);
 
     const listResponse = await listOrgsGet(
       createNextRequest('http://localhost/api/v1/me/orgs', undefined, {
-        active_org_id: activeOrgId as string,
+        active_org_id: activeOrgId!,
       }),
     );
-    const listBody = await listResponse.json();
+    const listBody = await json<OrganizationListBody>(listResponse);
 
     expect(listResponse.status).toBe(200);
-    const created = listBody.data.find((org: { id: string }) => org.id === body.data.id);
+    const created = listBody.data.find((org) => org.id === body.data.id);
     expect(created).toMatchObject({ isActive: true, orgRoleName: 'admin' });
   });
 
@@ -163,7 +187,7 @@ describe(`POST /api/v1/organization`, () => {
     });
 
     const response = await POST(req);
-    const body = await response.json();
+    const body = await json<ErrorBody>(response);
 
     expect(response.status).toBe(403);
     expect(body.success).toBe(false);
@@ -179,7 +203,7 @@ describe(`POST /api/v1/organization`, () => {
     });
 
     const response = await POST(req);
-    const body = await response.json();
+    const body = await json<ErrorBody>(response);
 
     expect(response.status).toBe(401);
     expect(body.success).toBe(false);
@@ -195,7 +219,7 @@ describe(`POST /api/v1/organization`, () => {
     });
 
     const response = await POST(req);
-    const body = await response.json();
+    const body = await json<ErrorBody>(response);
 
     expect(response.status).toBe(422);
     expect(body.success).toBe(false);

@@ -1,7 +1,52 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { InvitationController } from '@studiq/server/controllers/invitation.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
+import type { InvitationService } from '@studiq/server/services/invitation.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asService } from '#test/helpers/service-double';
+
+type FailureResponse = Extract<ControllerResponse, { success: false }>;
+
+/** One `createBulk` row, as the controller puts it in `data.results`. */
+interface BulkInviteResponse {
+  results: Array<{
+    email: string;
+    success: boolean;
+    data: { success: boolean; invitationId: string; inviteLink: string };
+  }>;
+}
+
+/**
+ * The controller answers with a union. Tests assert the branch themselves first,
+ * then read the payload through this view instead of casting the response to `any`.
+ */
+function envelope(response: ControllerResponse) {
+  return response as {
+    success: boolean;
+    statusCode: number;
+    data?: unknown;
+    error?: FailureResponse['error'];
+    details?: FailureResponse['details'];
+  };
+}
+
+/** `createBulk` answers with one result per invitation. */
+function isBulkInviteResponse(value: unknown): value is BulkInviteResponse {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'results' in value &&
+    Array.isArray(value.results)
+  );
+}
+
+/** `createBulk` answers with one result per invitation. */
+function bulkData(response: ControllerResponse): BulkInviteResponse {
+  const data = envelope(response).data;
+  if (!isBulkInviteResponse(data)) throw new Error('expected the bulk invitation payload');
+  return data;
+}
 
 function createMockInvitationService() {
   return {
@@ -15,7 +60,7 @@ function createMockInvitationService() {
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student',
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: '/test',
@@ -31,7 +76,7 @@ describe('InvitationController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockInvitationService();
-    controller = new InvitationController(mockService as any);
+    controller = new InvitationController(asService<InvitationService>(mockService));
   });
 
   describe('create', () => {
@@ -59,7 +104,7 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns NOT_FOUND when inviter profile not found', async () => {
@@ -164,8 +209,8 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
-      expect(((response as any).details ?? []).map((issue: any) => issue.path)).toContainEqual([
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((envelope(response).details ?? []).map((issue) => issue.path)).toContainEqual([
         'token',
       ]);
       expect(mockService.acceptInvitation).not.toHaveBeenCalled();
@@ -214,17 +259,17 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data.results.length).toBe(2);
-      expect((response as any).data.results[0].data.invitationId).toBe('inv-1');
+      expect(bulkData(response).results.length).toBe(2);
+      expect(bulkData(response).results[0].data.invitationId).toBe('inv-1');
       // #313: the controller passes the copyable link through unchanged.
-      expect((response as any).data.results[0].data.inviteLink).toBe(
+      expect(bulkData(response).results[0].data.inviteLink).toBe(
         'http://localhost:3000/join?token=token-1',
       );
-      expect((response as any).data.results[1].data.inviteLink).toBe(
+      expect(bulkData(response).results[1].data.inviteLink).toBe(
         'http://localhost:3000/join?token=token-2',
       );
       // MGR-INV-02: every row is attributable to the address that was submitted.
-      expect((response as any).data.results.map((r: any) => r.email)).toEqual([
+      expect(bulkData(response).results.map((r) => r.email)).toEqual([
         'john@example.com',
         'jane@example.com',
       ]);
@@ -237,8 +282,8 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
-      expect(((response as any).details ?? []).map((issue: any) => issue.path)).toContainEqual([
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((envelope(response).details ?? []).map((issue) => issue.path)).toContainEqual([
         'invitations',
         0,
         'targetOrgRoleId',
@@ -267,9 +312,9 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
-      expect((response as any).data).toBeUndefined();
-      expect((response as any).details).toEqual([
+      expect(envelope(response).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(envelope(response).data).toBeUndefined();
+      expect(envelope(response).details).toEqual([
         expect.objectContaining({ path: ['invitations', 1, 'targetOrgRoleId'] }),
       ]);
     });
@@ -285,7 +330,7 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).data).toBeUndefined();
+      expect(envelope(response).data).toBeUndefined();
     });
   });
 });

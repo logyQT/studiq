@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { CreditCard, Loader2 } from 'lucide-react';
+import { CreditCard, ExternalLink, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -81,6 +81,7 @@ export function PaymentHistoryContent({ billingHref }: PaymentHistoryContentProp
                   <TableHead>{t('payment_plan')}</TableHead>
                   <TableHead className="text-right">{t('payment_amount')}</TableHead>
                   <TableHead className="text-right">{t('payment_date')}</TableHead>
+                  <TableHead className="text-right">{t('invoice_link')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -96,6 +97,21 @@ export function PaymentHistoryContent({ billingHref }: PaymentHistoryContentProp
                     <TableCell className="text-right">
                       {new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(
                         new Date(payment.paidAt),
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {payment.hostedInvoiceUrl ? (
+                        <a
+                          href={payment.hostedInvoiceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                        >
+                          {t('invoice_link')}
+                          <ExternalLink className="size-3" />
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
                   </TableRow>

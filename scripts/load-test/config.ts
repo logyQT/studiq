@@ -5,10 +5,14 @@
  *   - scripts/load-test/seed.ts  → creates the account pool via the Supabase Admin API
  *   - scripts/load-test/bots.ts  → drives concurrent "bot" users against the running app
  *
- * Everything is dependency-free (Bun + global fetch). Bun auto-loads `.env` /
- * `.env.local`, so any value below can be overridden by an env var of the same
- * name; otherwise the well-known local Supabase defaults are used.
+ * Everything is dependency-free (Bun + Node builtins + global fetch). Bun
+ * auto-loads `.env` / `.env.local`, so any value below can be overridden by an
+ * env var of the same name; otherwise the values `scripts/dev` writes to
+ * `apps/web/.env`, or the well-known local Supabase defaults, are used.
  */
+import { execFileSync } from 'node:child_process';
+import { readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 
 export type AccountType = 'student' | 'educator' | 'manager';
 
@@ -40,7 +44,6 @@ export interface LoadTestConfig {
 }
 
 /** supabase start defaults (legacy JWTs) — safe to hardcode for local dev. */
-const LOCAL_SUPABASE_URL = 'http://127.0.0.1:54321';
 const LOCAL_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 const LOCAL_SERVICE_ROLE_KEY =
@@ -51,16 +54,230 @@ function env(name: string, fallback: string): string {
   return value && value.trim().length > 0 ? value.trim() : fallback;
 }
 
+function parsePort(raw: string | null | undefined): number | null {
+  const value = raw?.trim();
+  if (!value || !/^\d+$/.test(value)) return null;
+  const port = Number(value);
+  return port > 0 && port <= 65535 ? port : null;
+}
+
+/** A valid port from the environment, or null when unset/blank/invalid. */
+function envPort(name: string): number | null {
+  return parsePort(process.env[name]);
+}
+
+const ROOT = join(import.meta.dir, '..', '..');
+const WEB_ENV = join(ROOT, 'apps', 'web', '.env');
+
+/**
+ * Value from the generated `apps/web/.env` (what the app itself uses). Stack
+ * mode writes the discovered URLs/keys there, so it is the primary source for
+ * the load-test harness too. Missing file/key is fine.
+ */
+function webValue(name: string): string | null {
+  try {
+    const raw = readFileSync(WEB_ENV, 'utf8');
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq <= 0 || trimmed.slice(0, eq).trim() !== name) continue;
+      return trimmed.slice(eq + 1).trim();
+    }
+  } catch {
+    /* no generated app env yet */
+  }
+  return null;
+}
+
+function liveApiHealth(url: string): ImplicitTargetCheck {
+  try {
+    execFileSync(
+      'curl',
+      ['-sf', '--max-time', '2', '-o', '/dev/null', `${url.replace(/\/$/, '')}/auth/v1/health`],
+      { stdio: 'ignore', timeout: 10_000 },
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: `no healthy Supabase API at ${url}` };
+  }
+}
+
+/** Current branch, or null on a detached HEAD. */
+function currentBranch(): string | null {
+  try {
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10_000,
+    }).trim();
+    return branch === 'HEAD' ? null : branch;
+  } catch {
+    return null;
+  }
+}
+
+/** Fresh `supabase status --output-format json`, or null when it cannot answer. */
+function freshStackStatus(): Record<string, unknown> | null {
+  try {
+    const stack = process.env.SUPABASE_STACK?.trim();
+    const args = ['supabase', 'status', '--output-format', 'json'];
+    if (stack) args.push('--stack', stack);
+    const raw = execFileSync('bunx', args, {
+      cwd: ROOT,
+      env: { ...process.env, SUPABASE_EXPERIMENTAL_STACK: '1' },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 20_000,
+    });
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- CLI status JSON; fields are checked below
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prove a generated `apps/web/.env` URL still belongs to this checkout, branch
+ * and named stack before destructive seeding. A branch switch can leave the old
+ * URL (and service-role key) in the file while the old stack stays healthy.
+ */
+function stackIdentityMatches(generatedUrl: string): ImplicitTargetCheck | null {
+  const status = freshStackStatus();
+  if (!status) return null;
+
+  const identity = status.identity;
+  if (!identity || typeof identity !== 'object') return null;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- CLI stack identity; fields are type-checked below
+  const fields = identity as Record<string, unknown>;
+  const projectRoot = typeof fields.project_root === 'string' ? fields.project_root : '';
+  const branchContext = typeof fields.branch_context === 'string' ? fields.branch_context : '';
+  const stackName = typeof fields.name === 'string' ? fields.name : '';
+
+  let actualRoot: string;
+  let expectedRoot: string;
+  try {
+    actualRoot = realpathSync(projectRoot);
+    expectedRoot = realpathSync(ROOT);
+  } catch {
+    return {
+      ok: false,
+      reason: `cannot resolve the generated stack's project root (${projectRoot})`,
+    };
+  }
+  if (actualRoot !== expectedRoot) {
+    return { ok: false, reason: `generated target belongs to ${actualRoot}, not ${expectedRoot}` };
+  }
+
+  const branch = currentBranch();
+  const actualBranch = branchContext.replace(/^refs\/heads\//, '');
+  if (branch && actualBranch && actualBranch !== branch) {
+    return {
+      ok: false,
+      reason: `generated target belongs to branch ${actualBranch}, not ${branch}`,
+    };
+  }
+
+  const expectedName = process.env.SUPABASE_STACK?.trim() || 'default';
+  if (stackName && stackName !== expectedName) {
+    return {
+      ok: false,
+      reason: `generated target belongs to stack ${stackName}, not ${expectedName}`,
+    };
+  }
+
+  const envMap = status.env;
+  const apiUrl =
+    envMap &&
+    typeof envMap === 'object' &&
+    'API_URL' in envMap &&
+    typeof envMap.API_URL === 'string'
+      ? envMap.API_URL
+      : '';
+  if (!apiUrl) return null;
+  if (apiUrl.replace(/\/$/, '') !== generatedUrl.replace(/\/$/, '')) {
+    return { ok: false, reason: `CLI reports ${apiUrl}, but apps/web/.env has ${generatedUrl}` };
+  }
+
+  return { ok: true };
+}
+
+export type ImplicitTargetCheck = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Seeding writes accounts, so an implicit target read from `apps/web/.env` must
+ * be loopback. Stack-mode targets (STUDIQ_STACK_MODE=1) additionally re-check
+ * the fresh CLI identity (project root, branch, stack name, API URL). Non-stack
+ * and shared targets must pass `--supabase-url` / `SUPABASE_URL`.
+ */
+export function implicitTargetOwnership(): ImplicitTargetCheck {
+  if (env('SUPABASE_URL', '')) return { ok: true };
+
+  // Stack mode: `apps/web/.env` is generated by `scripts/dev` for this
+  // checkout's stack. Check its fresh identity (root + branch + name) before a
+  // destructive seed/reset; a branch switch can leave a stale URL behind.
+  const generatedUrl = webValue('NEXT_PUBLIC_SUPABASE_URL');
+  if (generatedUrl) {
+    try {
+      const url = new URL(generatedUrl);
+      if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+        return { ok: false, reason: `generated API URL is not loopback: ${generatedUrl}` };
+      }
+    } catch {
+      return { ok: false, reason: `generated API URL is invalid: ${generatedUrl}` };
+    }
+    if (webValue('STUDIQ_STACK_MODE') === '1') {
+      const identity = stackIdentityMatches(generatedUrl) ?? {
+        ok: false as const,
+        reason: 'cannot read fresh supabase status to verify the generated stack identity',
+      };
+      if (!identity.ok) return identity;
+      return liveApiHealth(generatedUrl);
+    }
+    return {
+      ok: false,
+      reason:
+        'apps/web/.env is not stack-generated (STUDIQ_STACK_MODE missing) — pass --supabase-url / SUPABASE_URL for a shared or non-stack target',
+    };
+  }
+
+  return {
+    ok: false,
+    reason:
+      'no generated stack target (run a bun dev:* command) — or pass --supabase-url / SUPABASE_URL explicitly',
+  };
+}
+
 export function resolveConfig(overrides: Partial<LoadTestConfig> = {}): LoadTestConfig {
   const outDir = overrides.outDir ?? env('LOADTEST_DIR', '.dev/load-test');
   const emailDomain =
     overrides.emailDomain ?? env('LOADTEST_EMAIL_DOMAIN', 'loadtest.studiq.local');
+  // No fixed-port derivation: stack mode supplies apps/web/.env, and
+  // SUPABASE_API_PORT is the non-stack/CI escape hatch. Defaults are
+  // 3000 and 54321 when nothing is configured.
+  const appPort = envPort('APP_PORT') ?? 3000;
+  // Stack mode writes the real URL to apps/web/.env; explicit env still wins.
+  // SUPABASE_API_PORT is the non-stack/CI escape hatch.
+  const supabaseApiPort = envPort('SUPABASE_API_PORT') ?? 54321;
+  const generatedSupabaseUrl = webValue('NEXT_PUBLIC_SUPABASE_URL');
+  const generatedAppUrl = webValue('NEXT_PUBLIC_SITE_URL');
   return {
-    supabaseUrl: overrides.supabaseUrl ?? env('SUPABASE_URL', LOCAL_SUPABASE_URL),
-    anonKey: overrides.anonKey ?? env('SUPABASE_ANON_KEY', LOCAL_ANON_KEY),
+    supabaseUrl:
+      overrides.supabaseUrl ??
+      env('SUPABASE_URL', generatedSupabaseUrl ?? `http://127.0.0.1:${supabaseApiPort}`),
+    anonKey:
+      overrides.anonKey ??
+      env('SUPABASE_ANON_KEY', webValue('NEXT_PUBLIC_SUPABASE_ANON_KEY') ?? LOCAL_ANON_KEY),
     serviceRoleKey:
-      overrides.serviceRoleKey ?? env('SUPABASE_SERVICE_ROLE_KEY', LOCAL_SERVICE_ROLE_KEY),
-    appUrl: overrides.appUrl ?? env('APP_URL', 'http://localhost:3000'),
+      overrides.serviceRoleKey ??
+      env(
+        'SUPABASE_SERVICE_ROLE_KEY',
+        webValue('SUPABASE_SERVICE_ROLE_KEY') ?? LOCAL_SERVICE_ROLE_KEY,
+      ),
+    appUrl: overrides.appUrl ?? env('APP_URL', generatedAppUrl ?? `http://localhost:${appPort}`),
     outDir,
     accountsFile: overrides.accountsFile ?? `${outDir}/accounts.json`,
     password: overrides.password ?? env('LOADTEST_PASSWORD', 'Password123!'),
@@ -230,6 +447,7 @@ export class AppClient {
         ok: false,
         ms: performance.now() - t0,
         traceId: null,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- API error bodies are typed by the caller at this boundary
         body: { networkError: String(error) } as T,
       };
     }
@@ -238,9 +456,10 @@ export class AppClient {
     const ms = performance.now() - t0;
     const traceId = res.headers.get('x-trace-id');
 
-    let body: T | null = null;
+    let body: T | null;
     try {
       const text = await res.text();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON response body, typed by the caller at this boundary
       body = text ? (JSON.parse(text) as T) : null;
     } catch {
       body = null;
@@ -273,10 +492,13 @@ export class AppClient {
 export function extractItems(body: unknown): Record<string, unknown>[] {
   if (!body || typeof body !== 'object') return [];
   const data = (body as { data?: unknown }).data;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Array.isArray proves the list; members are read as records
   if (Array.isArray(data)) return data as Record<string, unknown>[];
   if (data && typeof data === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- plain object check above; keys are probed below
     const obj = data as Record<string, unknown>;
     for (const key of ['items', 'decks', 'topics', 'cards', 'flashcards', 'banks']) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Array.isArray proves the list; members are read as records
       if (Array.isArray(obj[key])) return obj[key] as Record<string, unknown>[];
     }
   }
@@ -337,7 +559,7 @@ export class Stats {
 
   percentile(p: number): number {
     if (this.latencies.length === 0) return 0;
-    const sorted = [...this.latencies].sort((a, b) => a - b);
+    const sorted = [...this.latencies].toSorted((a, b) => a - b);
     const index = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
     return sorted[index];
   }

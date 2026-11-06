@@ -1,4 +1,6 @@
 import type { Browser, Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
+import { createQaSupabase } from '@qa/fixtures/qa-db';
 import {
   expect,
   loadTenant,
@@ -115,10 +117,22 @@ function expectCreated(response: { status(): number }, label: string): void {
   expect(response.status(), label).toBe(201);
 }
 
-async function createGroup(page: Page, name: string): Promise<string> {
+async function createGroup(page: Page, name: string, orgId: string): Promise<string> {
   const response = await page.request.post('/api/v1/organization/groups', { data: { name } });
+  if (response.status() === 409) {
+    // A retry after a transport error finds the group the interrupted attempt already created.
+    // The API's list hides groups without a teacher, so look the exact name up in this tenant.
+    const { data, error } = await createQaSupabase()
+      .from('groups')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', name)
+      .single();
+    expect(error, `existing group ${name}`).toBeNull();
+    return asJson<{ id: string }>(data).id;
+  }
   expectCreated(response, 'POST /api/v1/organization/groups');
-  return ((await response.json()) as ApiEnvelope<{ id: string }>).data.id;
+  return (await json<ApiEnvelope<{ id: string }>>(response)).data.id;
 }
 
 /** Replace a group's roster (the group page's own `PUT`). */
@@ -138,7 +152,7 @@ async function createDeck(page: Page, name: string, groupId: string): Promise<Na
     data: { name, visibility: 'group', groupIds: [groupId] },
   });
   expectCreated(response, 'POST /api/v1/flashcards/decks');
-  return ((await response.json()) as ApiEnvelope<NamedRow>).data;
+  return (await json<ApiEnvelope<NamedRow>>(response)).data;
 }
 
 async function createCard(page: Page, deckId: string, front: string): Promise<void> {
@@ -153,7 +167,7 @@ async function createBank(page: Page, name: string, groupId: string): Promise<Na
     data: { name, visibility: 'group', groupIds: [groupId] },
   });
   expectCreated(response, 'POST /api/v1/questions/banks');
-  return ((await response.json()) as ApiEnvelope<NamedRow>).data;
+  return (await json<ApiEnvelope<NamedRow>>(response)).data;
 }
 
 /**
@@ -171,7 +185,7 @@ async function seedCaseContent(browser: Browser, baseURL: string): Promise<Seede
   const manager = await apiSession(browser, baseURL, orgId, 'manager');
   let foreignGroupId: string;
   try {
-    foreignGroupId = await createGroup(manager.page, `G2 ${RUN}`);
+    foreignGroupId = await createGroup(manager.page, `G2 ${RUN}`, orgId);
     await setGroupMembers(manager.page, foreignGroupId, [
       { userId: account(TENANT, 'teacher').id, role: 'teacher' },
     ]);
@@ -212,7 +226,7 @@ async function seedCaseContent(browser: Browser, baseURL: string): Promise<Seede
   }
 }
 
-function listIds<T extends { id: string }>(body: ApiEnvelope<{ items: T[] }>): string[] {
+function listIds(body: ApiEnvelope<{ items: Array<{ id: string }> }>): string[] {
   return body.data.items.map((item) => item.id);
 }
 
@@ -259,7 +273,7 @@ test.describe('@case:SEC-01 @area:SEC @prio:P1 group content isolation', () => {
     expect(deckText, 'no foreign card in the response').not.toContain(
       content.foreignDeck.cardFront,
     );
-    const deckBody = JSON.parse(deckText) as { success: boolean; data?: unknown };
+    const deckBody = asJson<{ success: boolean; data?: unknown }>(JSON.parse(deckText));
     expect(deckBody.success).toBe(false);
     expect(deckBody.data).toBeUndefined();
 
@@ -268,15 +282,17 @@ test.describe('@case:SEC-01 @area:SEC @prio:P1 group content isolation', () => {
       `/api/v1/flashcards?deckIds=${content.foreignDeck.id}&limit=50`,
     );
     expect(cardsResponse.status(), 'GET /api/v1/flashcards?deckIds=<foreign>').toBe(200);
-    const cardsBody = (await cardsResponse.json()) as ApiEnvelope<{ items: { id: string }[] }>;
+    const cardsBody = await json<ApiEnvelope<{ items: { id: string }[] }>>(cardsResponse);
     expect(cardsBody.data.items, 'no cards from the other group').toEqual([]);
 
     // 4. The bank list contains only the bank shared with the student's group.
     const banksResponse = await page.request.get('/api/v1/questions/banks?limit=100');
     expect(banksResponse.status(), 'GET /api/v1/questions/banks').toBe(200);
-    const banksBody = (await banksResponse.json()) as ApiEnvelope<{
-      items: Array<{ id: string; name: string }>;
-    }>;
+    const banksBody = await json<
+      ApiEnvelope<{
+        items: Array<{ id: string; name: string }>;
+      }>
+    >(banksResponse);
     const bankIds = listIds(banksBody);
     expect(bankIds, 'own-group bank is listed').toContain(content.ownBank.id);
     expect(bankIds, "other group's bank is not listed").not.toContain(content.foreignBank.id);
@@ -298,9 +314,11 @@ test.describe('@case:SEC-01 @area:SEC @prio:P1 group content isolation', () => {
 
     const decksResponse = await page.request.get('/api/v1/flashcards/decks?limit=200');
     expect(decksResponse.status(), 'GET /api/v1/flashcards/decks').toBe(200);
-    const decksBody = (await decksResponse.json()) as ApiEnvelope<{
-      items: Array<{ id: string; name: string }>;
-    }>;
+    const decksBody = await json<
+      ApiEnvelope<{
+        items: Array<{ id: string; name: string }>;
+      }>
+    >(decksResponse);
     const deckIds = listIds(decksBody);
     expect(deckIds, 'own-group deck is listed').toContain(content.ownDeck.id);
     expect(deckIds, "other group's deck is not listed").not.toContain(content.foreignDeck.id);

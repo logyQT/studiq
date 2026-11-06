@@ -1,14 +1,15 @@
+import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const exportAnswersMock = vi.fn();
+const exportAnswersMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('@studiq/server/controllers/teacher-assignment.controller', () => ({
   teacherAssignmentController: {
     exportAnswers: (...args: unknown[]) => exportAnswersMock(...args),
   },
 }));
 
-const getLocaleMock = vi.fn();
-const getTranslationsMock = vi.fn();
+const getLocaleMock = vi.fn<(...args: unknown[]) => unknown>();
+const getTranslationsMock = vi.fn<(...args: unknown[]) => unknown>();
 vi.mock('next-intl/server', () => ({
   getLocale: () => getLocaleMock(),
   getTranslations: (opts: unknown) => getTranslationsMock(opts),
@@ -53,9 +54,9 @@ const enMessages: Record<string, string> = {
 };
 
 function request(query = '') {
-  return new Request(
+  return new NextRequest(
     `http://localhost/api/v1/teacher/assignments/${assignmentId}/export-answers${query}`,
-  ) as unknown as Parameters<typeof GET>[0];
+  );
 }
 
 function context(id: string) {
@@ -71,7 +72,7 @@ describe('GET /api/v1/teacher/assignments/[id]/export-answers', () => {
     vi.clearAllMocks();
     mockCtx = { userId: 'owner-user-id', accountType: 'teacher' };
     getLocaleMock.mockResolvedValue('pl');
-    getTranslationsMock.mockImplementation(async () => (key: string) => plMessages[key] ?? key);
+    getTranslationsMock.mockImplementation(() => (key: string) => plMessages[key] ?? key);
   });
 
   it('streams the results view as a downloadable, BOM-prefixed CSV', async () => {
@@ -150,7 +151,7 @@ describe('GET /api/v1/teacher/assignments/[id]/export-answers', () => {
 
   it('renders the English headers and status labels', async () => {
     getLocaleMock.mockResolvedValue('en');
-    getTranslationsMock.mockImplementation(async () => (key: string) => enMessages[key] ?? key);
+    getTranslationsMock.mockImplementation(() => (key: string) => enMessages[key] ?? key);
     exportAnswersMock.mockResolvedValue({
       success: true,
       statusCode: 200,

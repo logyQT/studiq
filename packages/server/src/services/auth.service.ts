@@ -11,6 +11,7 @@ import {
   type InvitationService,
 } from '@studiq/server/services/invitation.service';
 import type { AuthError, Session, SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * GoTrue reports a sign-up for an existing e-mail as `user_already_exists`
@@ -34,7 +35,7 @@ export class AuthService {
   private static readonly OTP_SESSION_MAX_AGE_SECONDS = 30 * 60;
 
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     private invitationService: InvitationService = defaultInvitationService,
   ) {}
 
@@ -60,7 +61,7 @@ export class AuthService {
       inviteToken = data.inviteToken;
     }
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const metadata: Record<string, unknown> = {
       name: data.name,
@@ -100,7 +101,7 @@ export class AuthService {
   async claimInvitation(
     user: Pick<User, 'id' | 'user_metadata'>,
   ): Promise<{ orgId: string } | null> {
-    const token = user.user_metadata?.invite_token;
+    const token: unknown = user.user_metadata?.invite_token;
     if (typeof token !== 'string' || token.trim() === '') return null;
 
     try {
@@ -130,7 +131,7 @@ export class AuthService {
   async login(
     data: LoginInput,
   ): Promise<ServiceResult<{ user: User; session: Session }, 'UNAUTHORIZED' | 'INTERNAL_SERVER'>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
@@ -149,7 +150,7 @@ export class AuthService {
   }
 
   async logout(): Promise<ServiceResult<void, 'INTERNAL_SERVER'>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { error } = await supabase.auth.signOut({ scope: 'local' });
 
@@ -161,7 +162,7 @@ export class AuthService {
   }
 
   async requestPasswordReset(email: string): Promise<ServiceResult<void, 'BAD_REQUEST'>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { error } = await supabase.auth.resetPasswordForEmail(email);
 
@@ -173,7 +174,7 @@ export class AuthService {
   }
 
   async updateProfile(data: { name: string }): Promise<ServiceResult<User, 'BAD_REQUEST'>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: updatedUser, error } = await supabase.auth.updateUser({
       data: { name: data.name },
@@ -199,7 +200,7 @@ export class AuthService {
       | 'BAD_REQUEST'
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     if (data.currentPassword !== undefined) {
       // Account flow: prove the caller knows the current password before
@@ -251,7 +252,7 @@ export class AuthService {
    * long an old OTP session can be replayed. Fails closed when the claim is
    * missing or carries no timestamp.
    */
-  private async isFreshOtpSession(supabase: SupabaseClient): Promise<boolean> {
+  private async isFreshOtpSession(supabase: SupabaseClient<Database>): Promise<boolean> {
     const { data, error } = await supabase.auth.getClaims();
 
     if (error || !data?.claims) {

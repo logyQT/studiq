@@ -1,7 +1,7 @@
 import { featuresController } from '@studiq/server/controllers/features.controller';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
-import type { FeatureKey } from '@studiq/server/services/feature.resolver';
+import { isFeatureKey } from '@studiq/server/services/feature.resolver';
 import type { NextRequest } from 'next/server';
 
 export async function GET(req: NextRequest) {
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     // "you're in the pilot / this is rolled out to N%" to users.
     if (result.success && result.data?.rollout) {
       const rollout = result.data.rollout;
-      const keys = Object.keys(rollout) as FeatureKey[];
+      const keys = Object.keys(rollout).filter(isFeatureKey);
       if (keys.length > 0) {
         const header = keys.map((k) => `${k}=${rollout[k]}`).join(',');
         response.headers.set('X-Feature-Rollout', header);

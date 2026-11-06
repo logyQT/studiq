@@ -41,14 +41,14 @@ only fixed values are product constants (plan keys, permission scope names).
 
 ## Fixtures (target API)
 
-| helper                                                                         | purpose                                                |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| `tenant` (via `test.extend`)                                                   | org + accounts + login state for the test              |
-| `loginAs('manager' \| 'teacher' \| 'student')`                                 | storage state for this test's account                  |
-| `makeDeck()`, `makeBank()`, `makeQuestion()`, `makeQuiz()`, `makeAssignment()` | API-seeded graph                                       |
-| `mailbox()`                                                                    | Inbucket token/link extraction (signup + invite cases) |
-| `stripeMock()`, `aiMock()`, `clock()`                                          | the other three flakiness sources                      |
-| `assertTenantIsolation(a, b)`                                                  | asserts 403/404 across tenants                         |
+| helper                                                                         | purpose                                               |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `tenant` (via `test.extend`)                                                   | org + accounts + login state for the test             |
+| `loginAs('manager' \| 'teacher' \| 'student')`                                 | storage state for this test's account                 |
+| `makeDeck()`, `makeBank()`, `makeQuestion()`, `makeQuiz()`, `makeAssignment()` | API-seeded graph                                      |
+| `mailbox()`                                                                    | Mailpit token/link extraction (signup + invite cases) |
+| `stripeMock()`, `aiMock()`, `clock()`                                          | the other three flakiness sources                     |
+| `assertTenantIsolation(a, b)`                                                  | asserts 403/404 across tenants                        |
 
 ## Spec contract
 
@@ -80,7 +80,7 @@ Generated, never hand-edited: `@case:` tags plus the last run produce
 `untriaged` · `drafted` · `red · bug #n` · `red · case` (the case doc is wrong) · `flaky` ·
 `green` · `semantic`.
 
-Triage today: **195 e2e · 12 API-level · 8 semantic** (of 215 cases).
+Triage today: **194 e2e · 12 API-level · 8 semantic** (of 214 cases).
 
 ## CI
 
@@ -92,14 +92,15 @@ Triage today: **195 e2e · 12 API-level · 8 semantic** (of 215 cases).
 
 ## Batches
 
-One spec per case, in batches of 8, area order: **STU** (52) → **EDU** (39) → **MGR** (28) →
+One spec per case, in batches of 8, area order: **STU** (52) → **EDU** (41) → **MGR** (28) →
 **ADM** (21) → **AUT** (19) → **SEC** (13) → **ONB** (10) → **PUB** (8) → **BIL** (7) →
-**LIM** (7) → **NFR** (8), P1 cases first inside each area. Each batch: write → run → triage
-(red opens an issue) → merge what is green.
+**LIM** (7) → **NFR** (8), P1 cases first inside each area. The counts are the full per-area
+totals from [`qa/coverage.md`](../qa/coverage.md): 194 e2e + 12 API-level + 8 semantic = 214
+cases. Each batch: write → run → triage (red opens an issue) → merge what is green.
 
 ## Done
 
-- 195 e2e + 12 API-level cases green on `main`;
+- 194 e2e + 12 API-level cases green on `main`;
 - the 8 semantic cases acknowledged as the only agentic coverage;
 - `--shuffle` at 1 and N workers gives identical results;
 - the coverage map shows 0 untriaged / 0 failing.

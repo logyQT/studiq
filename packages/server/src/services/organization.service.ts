@@ -9,16 +9,17 @@ import type {
   UpdateOrganizationInput,
 } from '@studiq/server/models/organization.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 export class OrganizationService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
     // RLS makes `organizations` / `groups` / `group_members` / `org_members`
     // invisible until the caller is a member of the org, so the provisioning
     // sequence (and org deletion, which has no DELETE policy at all) has to run
     // on the service-role client. `delete` therefore re-checks manager authority
     // explicitly before touching the admin client.
-    private createAdminClient: () => SupabaseClient = createServiceClient,
+    private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
   ) {}
 
   async create(ctx: RequestContext, data: CreateOrganizationInput) {
@@ -119,7 +120,7 @@ export class OrganizationService {
   }
 
   async getAll() {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: organizations, error } = await supabase
       .from('organizations')
@@ -164,7 +165,7 @@ export class OrganizationService {
   }
 
   async getById(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: organization, error } = await supabase
       .from('organizations')
@@ -182,7 +183,7 @@ export class OrganizationService {
   }
 
   async getByIdWithDetails(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: org, error } = await supabase
       .from('organizations')
@@ -242,11 +243,11 @@ export class OrganizationService {
 
     return success({
       ...org,
-      members: (membersResult.data ?? []).map((m: Record<string, unknown>) => ({
+      members: (membersResult.data ?? []).map((m) => ({
         id: m.user_id,
-        full_name: (m.profiles as Record<string, unknown>).full_name ?? null,
-        email: (m.profiles as Record<string, unknown>).email,
-        role_name: (m.org_roles as Record<string, unknown>).name,
+        full_name: m.profiles.full_name ?? null,
+        email: m.profiles.email,
+        role_name: m.org_roles.name,
         joined_at: m.joined_at,
       })),
       groups: (groupsResult.data ?? []).map((g: { id: string; name: string }) => ({
@@ -256,7 +257,12 @@ export class OrganizationService {
         teacher_count: teacherCountMap[g.id] ?? 0,
       })),
       roles: (rolesResult.data ?? []).map(
-        (r: { id: string; name: string; description: string | null; is_system: boolean }) => ({
+        (r: {
+          id: string;
+          name: string;
+          description: string | null;
+          is_system: boolean | null;
+        }) => ({
           id: r.id,
           name: r.name,
           description: r.description,
@@ -268,7 +274,7 @@ export class OrganizationService {
   }
 
   async update(id: string, data: UpdateOrganizationInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const updateData: Partial<CreateOrganizationInput> & {
       logo_url?: string;
@@ -298,12 +304,12 @@ export class OrganizationService {
     // must be their active org (the cookie is client-controlled).
     if (ctx.activeOrgId !== id) return failure('FORBIDDEN');
 
-    const userClient = await this.createClient();
+    const userClient = await this.clientFactory();
     const { data: isManager, error: managerError } = await userClient.rpc(
       'rls_caller_is_org_manager',
       { p_organization_id: id },
     );
-    if (managerError || isManager !== true) return failure('FORBIDDEN');
+    if (managerError || !isManager) return failure('FORBIDDEN');
 
     const supabase = this.createAdminClient();
 

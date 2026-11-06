@@ -25,6 +25,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts';
 
+import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 import { hasTeacherActivity } from '@/lib/stats';
 
@@ -109,9 +110,8 @@ export default function TeacherActivityPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/stats/teacher/activity?range=${range}`);
-      const json = await res.json();
-      setData(res.ok && json.success ? json.data : null);
+      const result = await apiGet<ActivityData>(`/api/v1/stats/teacher/activity?range=${range}`);
+      setData(result);
     } catch {
       setData(null);
     } finally {
@@ -120,7 +120,7 @@ export default function TeacherActivityPage() {
   }, [range]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [fetchData]);
 
   const summaryCards = data
@@ -255,7 +255,9 @@ export default function TeacherActivityPage() {
                   <Tooltip
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(value) => formatDate(parseDay(String(value)), locale)}
+                        labelFormatter={(value) =>
+                          formatDate(parseDay(typeof value === 'string' ? value : ''), locale)
+                        }
                       />
                     }
                   />

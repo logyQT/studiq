@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -109,7 +110,7 @@ interface Question {
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -135,7 +136,7 @@ async function ensureBank(page: Page): Promise<BankListItem> {
     response.status(),
     `POST ${BANKS_URL} (${BANK_NAME}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<BankListItem>;
+  const body = await json<ApiEnvelope<BankListItem>>(response);
   expect(body.success, `POST ${BANKS_URL} (${BANK_NAME}) success flag`).toBe(true);
   return body.data;
 }
@@ -271,7 +272,7 @@ test.describe('@case:EDU-Q-03 @area:EDU @prio:P2 true/false question', () => {
     expect(saved.type, 'the saved type is P/F').toBe('true_false');
     expect(saved.bank_id, 'the question belongs to „Fizyka”').toBe(bank.id);
 
-    const answers = [...saved.question_answers].sort((a, b) => a.order_index - b.order_index);
+    const answers = [...saved.question_answers].toSorted((a, b) => a.order_index - b.order_index);
     expect(
       answers.map((answer) => ({ content: answer.content, isCorrect: answer.is_correct })),
       'both options are stored, in order, with „Fałsz” correct',

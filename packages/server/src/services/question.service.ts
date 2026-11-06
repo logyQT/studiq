@@ -1,6 +1,8 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import type { FilterableBuilderWithExtra } from '@studiq/server/lib/postgrest';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -11,6 +13,7 @@ import type {
 } from '@studiq/server/models/question.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /** Shape of the `question_topic_assignments(topic_id, topics(id, name))` embed. */
 type QuestionTopicLink = {
@@ -18,8 +21,10 @@ type QuestionTopicLink = {
   topics: { id: string; name: string } | null;
 };
 
-type QuestionTopicRow = {
-  question_topic_assignments?: QuestionTopicLink[] | null;
+/** A question with its answers and flattened readable topics — the list/export shape. */
+export type QuestionWithAnswers = Database['public']['Tables']['questions']['Row'] & {
+  question_answers: Database['public']['Tables']['question_options']['Row'][];
+  topics: Array<{ id: string; name: string }>;
 };
 
 /**
@@ -41,11 +46,12 @@ function withTopics<T extends { question_topic_assignments?: QuestionTopicLink[]
 /**
  * Question read projection. `!inner` is required when filtering by topic, so
  * the embed narrows parent rows instead of only filtering the nested array.
+ * Both are literal constants: PostgREST only infers the row type from a literal.
  */
-function questionSelect(topicFilter = false) {
-  const embed = `question_topic_assignments${topicFilter ? '!inner' : ''}(topic_id, topics(id, name))`;
-  return `*, question_answers:question_options(*), ${embed}`;
-}
+const QUESTION_SELECT =
+  `*, question_answers:question_options(*), question_topic_assignments(topic_id, topics(id, name))` as const;
+const QUESTION_SELECT_BY_TOPIC =
+  `*, question_answers:question_options(*), question_topic_assignments!inner(topic_id, topics(id, name))` as const;
 
 /**
  * `%`, `_` and `\` are wildcards / escapes in LIKE: a search for "50%" must mean the text. PostgREST
@@ -60,19 +66,23 @@ function escapeLike(term: string): string {
 }
 
 export class QuestionService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async create(
     data: CreateQuestionInput,
     ctx: RequestContext,
     bankVisibility?: string,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const questionCount = await this.countOwned(supabase, ctx);
     await limitsResolver.checkLimit(ctx, 'max_questions', questionCount);
 
-    const visibility = bankVisibility ?? 'personal';
+    // `questions.visibility` is the two-value `visibility_type` enum. The bank's
+    // visibility arrives as a plain string; anything but `group` means the
+    // personal default this insert always used.
+    const visibility: Database['public']['Enums']['visibility_type'] =
+      bankVisibility === 'group' ? 'group' : 'personal';
 
     const { data: question, error: qError } = await supabase
       .from('questions')
@@ -121,25 +131,24 @@ export class QuestionService {
     ctx: RequestContext,
     filters?: Partial<QuestionListQuery>,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const page = filters?.page;
     const limit = filters?.limit ?? 25;
     const paged = page !== undefined;
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
-    if (filter._impossible) return success(paged ? { items: [], total: 0, page, limit } : []);
+    if (isImpossibleFilter(filter))
+      return success(paged ? { items: [], total: 0, page, limit } : []);
 
     const topicIds = filters?.topicIds ?? [];
     const hasTopicFilter = topicIds.length > 0;
-    const columns = questionSelect(hasTopicFilter);
+    const columns = hasTopicFilter ? QUESTION_SELECT_BY_TOPIC : QUESTION_SELECT;
 
-    // One place builds the filter chain, so the rows of a page and the total that drives the
+    // One place applies the filter chain, so the rows of a page and the total that drives the
     // pager can never be scoped differently.
-    const buildFiltered = (options?: { count: 'exact'; head?: boolean }) => {
-      let query = options
-        ? supabase.from('questions').select(columns, options)
-        : supabase.from('questions').select(columns);
+    const applyFilters = <T extends FilterableBuilderWithExtra<T>>(q: T): T => {
+      let query = q;
 
       if (filter.or) query = query.or(filter.or);
       if (filter.created_by) query = query.eq('created_by', filter.created_by);
@@ -159,7 +168,11 @@ export class QuestionService {
       return query;
     };
 
-    let query = buildFiltered(paged ? { count: 'exact' } : undefined);
+    let query = applyFilters(
+      paged
+        ? supabase.from('questions').select(columns, { count: 'exact' })
+        : supabase.from('questions').select(columns),
+    );
 
     if (filters?.sortBy || paged) {
       // `id` as the tie-breaker keeps pages stable when many rows share the sort value.
@@ -175,17 +188,14 @@ export class QuestionService {
     // paged through still has rows, so the answer carries the real total (the pager clamps to
     // the last page from it).
     if (paged && error?.code === 'PGRST103') {
-      const { count: total, error: countError } = await buildFiltered({
-        count: 'exact',
-        head: true,
-      });
+      const { count: total, error: countError } = await applyFilters(
+        supabase.from('questions').select(columns, { count: 'exact', head: true }),
+      );
       if (countError) return toDbFailure(countError);
       return success({ items: [], total: total ?? 0, page, limit });
     }
     if (error) return toDbFailure(error);
-    // `select()` receives a dynamic projection string, so PostgREST cannot infer
-    // the row shape here; the cast matches the embed declared above.
-    const rows = (data ?? []) as unknown as QuestionTopicRow[];
+    const rows = data ?? [];
     const items = rows.map((row) => withTopics(row));
     return success(paged ? { items, total: count ?? items.length, page, limit } : items);
   }
@@ -205,26 +215,26 @@ export class QuestionService {
    */
   async listBankQuestions(
     bankId: string,
-  ): Promise<ServiceResult<{ questions: unknown[]; total: number }>> {
-    const supabase = await this.createClient();
+  ): Promise<ServiceResult<{ questions: QuestionWithAnswers[]; total: number }>> {
+    const supabase = await this.clientFactory();
 
     const { data, error, count } = await supabase
       .from('questions')
-      .select(questionSelect(), { count: 'exact' })
+      .select(QUESTION_SELECT, { count: 'exact' })
       .eq('bank_id', bankId);
     if (error) return toDbFailure(error);
 
-    const rows = (data ?? []) as unknown as QuestionTopicRow[];
+    const rows = data ?? [];
     return success({ questions: rows.map((row) => withTopics(row)), total: count ?? rows.length });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
-    if (filter._impossible) return failure('NOT_FOUND');
+    if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
-    let query = supabase.from('questions').select(questionSelect()).eq('id', id);
+    let query = supabase.from('questions').select(QUESTION_SELECT).eq('id', id);
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
@@ -232,7 +242,7 @@ export class QuestionService {
 
     const { data: question, error } = await query.single();
     if (error || !question) return failure('NOT_FOUND');
-    return success(withTopics(question as unknown as QuestionTopicRow));
+    return success(withTopics(question));
   }
 
   async update(
@@ -241,9 +251,9 @@ export class QuestionService {
     ctx: RequestContext,
     bankVisibility?: string,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
-    const updateFields: Record<string, unknown> = {};
+    const updateFields: Database['public']['Tables']['questions']['Update'] = {};
     if (data.type) updateFields.type = data.type;
     if (data.content) updateFields.content = data.content;
     if (data.explanation !== undefined) updateFields.explanation = data.explanation;
@@ -279,8 +289,10 @@ export class QuestionService {
     }
 
     if (data.bankId !== undefined) {
-      const bFields: Record<string, unknown> = { bank_id: data.bankId };
-      if (bankVisibility !== undefined) bFields.visibility = bankVisibility;
+      const bFields: Database['public']['Tables']['questions']['Update'] = { bank_id: data.bankId };
+      if (bankVisibility !== undefined) {
+        bFields.visibility = bankVisibility === 'group' ? 'group' : 'personal';
+      }
       const { error: bError } = await supabase.from('questions').update(bFields).eq('id', id);
       if (bError) return toDbFailure(bError);
     }
@@ -300,7 +312,7 @@ export class QuestionService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data, error } = await supabase
       .from('questions')
@@ -321,7 +333,10 @@ export class QuestionService {
    * count is scoped to content owned by the caller **in that org**, so
    * personal-space questions never consume the org plan's capacity.
    */
-  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+  private async countOwned(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<number> {
     let query = supabase
       .from('questions')
       .select('*', { count: 'exact', head: true })

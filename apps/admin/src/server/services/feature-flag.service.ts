@@ -7,12 +7,13 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 
 export class FeatureFlagService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
   async getAll() {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('feature_flags')
       .select('*')
@@ -22,7 +23,7 @@ export class FeatureFlagService {
   }
 
   async getById(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('feature_flags')
       .select('*')
@@ -34,7 +35,7 @@ export class FeatureFlagService {
   }
 
   async create(input: CreateFeatureFlagInput) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { data, error } = await supabase
       .from('feature_flags')
       .insert({
@@ -51,8 +52,8 @@ export class FeatureFlagService {
   }
 
   async update(id: string, input: UpdateFeatureFlagInput) {
-    const supabase = await this.createClient();
-    const updateData: Record<string, unknown> = {};
+    const supabase = await this.clientFactory();
+    const updateData: Database['public']['Tables']['feature_flags']['Update'] = {};
     if (input.key !== undefined) updateData.key = input.key;
     if (input.name !== undefined) updateData.name = input.name;
     if (input.description !== undefined) updateData.description = input.description;
@@ -71,7 +72,7 @@ export class FeatureFlagService {
   }
 
   async delete(id: string) {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
     const { error } = await supabase.from('feature_flags').delete().eq('id', id);
     if (error) return toDbFailure(error);
     return success({ success: true });

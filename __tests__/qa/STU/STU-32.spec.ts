@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -153,7 +154,7 @@ function questionRow(page: Page, content: string): Locator {
 async function listBanks(page: Page): Promise<BankRow[]> {
   const response = await page.request.get(`${BANKS_URL}?limit=100`);
   expect(response.status(), `GET ${BANKS_URL} → ${response.status()}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<{ items: BankRow[] }>;
+  const body = await json<ApiEnvelope<{ items: BankRow[] }>>(response);
   expect(body.success, 'bank list success flag').toBe(true);
   return body.data.items;
 }
@@ -161,7 +162,7 @@ async function listBanks(page: Page): Promise<BankRow[]> {
 async function listQuestions(page: Page, bankId: string): Promise<QuestionRow[]> {
   const response = await page.request.get(`${QUESTIONS_URL}?bankId=${bankId}`);
   expect(response.status(), `GET ${QUESTIONS_URL}?bankId=${bankId}`).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<QuestionRow[]>;
+  const body = await json<ApiEnvelope<QuestionRow[]>>(response);
   expect(body.success, 'question list success flag').toBe(true);
   return body.data;
 }

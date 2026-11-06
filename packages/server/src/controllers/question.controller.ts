@@ -16,7 +16,7 @@ import {
 import { type QuestionService, questionService } from '@studiq/server/services/question.service';
 
 export class QuestionController {
-  constructor(private questionService: QuestionService) {}
+  constructor(private service: QuestionService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     if (!(await can(ctx, Permission.QUESTION_CREATE))) throw new AppError('FORBIDDEN');
@@ -44,7 +44,7 @@ export class QuestionController {
       bankVisibility = bank.visibility;
     }
 
-    const question = await this.questionService.create(parsed.data, ctx, bankVisibility);
+    const question = await this.service.create(parsed.data, ctx, bankVisibility);
 
     if (isFailure(question)) {
       return controllerResponse.error(question.error);
@@ -65,7 +65,7 @@ export class QuestionController {
       };
     }
 
-    const questions = await this.questionService.list(ctx, parsed.data);
+    const questions = await this.service.list(ctx, parsed.data);
 
     if (isFailure(questions)) {
       return controllerResponse.error(questions.error);
@@ -75,7 +75,7 @@ export class QuestionController {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const question = await this.questionService.getById(id, ctx);
+    const question = await this.service.getById(id, ctx);
 
     if (isFailure(question)) {
       return controllerResponse.error(question.error);
@@ -109,7 +109,7 @@ export class QuestionController {
       bankVisibility = bank.visibility;
     }
 
-    const question = await this.questionService.update(id, parsed.data, ctx, bankVisibility);
+    const question = await this.service.update(id, parsed.data, ctx, bankVisibility);
 
     if (isFailure(question)) {
       return controllerResponse.error(question.error);
@@ -119,7 +119,7 @@ export class QuestionController {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.questionService.delete(id, ctx);
+    const result = await this.service.delete(id, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

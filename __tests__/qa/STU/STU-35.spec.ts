@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -152,7 +153,7 @@ async function api<T>(
   data?: unknown,
 ): Promise<T> {
   const response = await request.fetch(url, { method, data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   if (!response.ok() || !body.success) {
     throw new Error(`${method} ${url} → ${response.status()} ${JSON.stringify(body)}`);
   }
@@ -312,7 +313,7 @@ async function answerOpenQuestion(page: Page): Promise<void> {
 
   const uploaded = await uploadResponse;
   expect(uploaded.status(), 'POST …/upload-image').toBe(200);
-  const body = (await uploaded.json()) as ApiEnvelope<{ imageUrl?: string }>;
+  const body = await json<ApiEnvelope<{ imageUrl?: string }>>(uploaded);
   expect(body.success, 'the upload succeeds').toBe(true);
   expect(body.data.imageUrl, 'the image lands in the assignment bucket').toContain(
     'assignment-images',
@@ -355,6 +356,13 @@ async function expectAnswerKept(page: Page, content: string): Promise<void> {
       'the attached photo still renders',
     ).toBeVisible();
   }
+}
+
+/** Id of the option whose content is `label` in a question of the attempt. */
+function correctOptionId(question: QuestionRow, label: string): string {
+  const option = question.question_answers?.find((answer) => answer.content === label);
+  if (!option) throw new Error(`question “${question.content}” has no “${label}” option`);
+  return option.id;
 }
 
 test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
@@ -414,7 +422,7 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     await page.getByRole('button', { name: COPY.start, exact: true }).click();
     const started = await startResponse;
     expect(started.status(), `POST …/${assignment.id}/start`).toBe(200);
-    const startedBody = (await started.json()) as ApiEnvelope<{ id: string }>;
+    const startedBody = await json<ApiEnvelope<{ id: string }>>(started);
 
     await expect(page, 'the start opens the take page with the new attempt id').toHaveURL(
       new RegExp(`/app/assignments/${assignment.id}/take\\?attemptId=[0-9a-f-]{36}$`),
@@ -473,11 +481,6 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     if (!mcqQuestion || !trueFalseQuestion || !openQuestion) {
       throw new Error('the attempt does not expose all three questions');
     }
-    const correctOptionId = (question: QuestionRow, label: string): string => {
-      const option = question.question_answers?.find((answer) => answer.content === label);
-      if (!option) throw new Error(`question “${question.content}” has no “${label}” option`);
-      return option.id;
-    };
     const mcqOptionId = correctOptionId(mcqQuestion, QUESTIONS.mcq.correct);
     const trueFalseOptionId = correctOptionId(trueFalseQuestion, QUESTIONS.trueFalse.correct);
 

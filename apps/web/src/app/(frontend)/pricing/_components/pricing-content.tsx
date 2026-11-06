@@ -134,7 +134,7 @@ export function PlanCard({
 
         {user && PLAN_ID_MAP[plan.key] ? (
           <CheckoutButton
-            planId={PLAN_ID_MAP[plan.key]!}
+            planKey={PLAN_ID_MAP[plan.key]!}
             orgId={plan.forAccountType === 'manager' ? orgId : undefined}
             className="w-full"
           >
@@ -177,7 +177,7 @@ export function PricingContent({ accountType }: { accountType: string }) {
     { q: t('faq_q4'), a: t('faq_a4') },
   ];
 
-  const allFeatures = plans ? [...new Set(plans.flatMap((p) => p.features))].sort() : [];
+  const allFeatures = plans ? [...new Set(plans.flatMap((p) => p.features))].toSorted() : [];
 
   const visibleLimitKeys = getVisibleLimitKeys(plans, accountType);
 

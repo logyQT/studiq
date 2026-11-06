@@ -20,7 +20,7 @@ import {
 } from '@studiq/server/services/question-bank.service';
 
 export class QuestionBankController {
-  constructor(private questionBankService: QuestionBankService) {}
+  constructor(private service: QuestionBankService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     if (!(await can(ctx, Permission.QUESTION_BANK_CREATE))) throw new AppError('FORBIDDEN');
@@ -35,7 +35,7 @@ export class QuestionBankController {
       };
     }
 
-    const bank = await this.questionBankService.create(parsed.data, ctx);
+    const bank = await this.service.create(parsed.data, ctx);
 
     if (isFailure(bank)) {
       return controllerResponse.error(bank.error);
@@ -56,7 +56,7 @@ export class QuestionBankController {
       };
     }
 
-    const result = await this.questionBankService.list(ctx, parsed.data);
+    const result = await this.service.list(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -66,7 +66,7 @@ export class QuestionBankController {
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const bank = await this.questionBankService.getById(id, ctx);
+    const bank = await this.service.getById(id, ctx);
 
     if (isFailure(bank)) {
       return controllerResponse.error(bank.error);
@@ -87,7 +87,7 @@ export class QuestionBankController {
       };
     }
 
-    const bank = await this.questionBankService.update(id, parsed.data, ctx);
+    const bank = await this.service.update(id, parsed.data, ctx);
 
     if (isFailure(bank)) {
       return controllerResponse.error(bank.error);
@@ -97,7 +97,7 @@ export class QuestionBankController {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.questionBankService.delete(id, ctx);
+    const result = await this.service.delete(id, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -118,7 +118,7 @@ export class QuestionBankController {
       };
     }
 
-    const banks = await this.questionBankService.bulkCreate(parsed.data, ctx);
+    const banks = await this.service.bulkCreate(parsed.data, ctx);
 
     if (isFailure(banks)) {
       return controllerResponse.error(banks.error);
@@ -139,7 +139,7 @@ export class QuestionBankController {
       };
     }
 
-    const result = await this.questionBankService.batchDelete(parsed.data, ctx);
+    const result = await this.service.batchDelete(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

@@ -34,9 +34,9 @@ test.describe('Manager organization switch', () => {
     const switcherText = await switcher.innerText();
     const activeOrg = Object.keys(ORG_STUDENT).find((name) => switcherText.includes(name));
     expect(activeOrg).toBeDefined();
-    const otherOrg = Object.keys(ORG_STUDENT).find((name) => name !== activeOrg) as string;
+    const otherOrg = Object.keys(ORG_STUDENT).find((name) => name !== activeOrg)!;
 
-    await expect(page.getByText(ORG_STUDENT[activeOrg as string])).toBeVisible();
+    await expect(page.getByText(ORG_STUDENT[activeOrg!])).toBeVisible();
 
     // Switch while already on the overview — this is the reported repro: the
     // route does not change, so nothing remounts the page.
@@ -46,14 +46,14 @@ test.describe('Manager organization switch', () => {
     await expect(switcher).toContainText(otherOrg);
     expect(new URL(page.url()).pathname).toBe('/manage');
     await expect(page.getByText(ORG_STUDENT[otherOrg])).toBeVisible();
-    await expect(page.getByText(ORG_STUDENT[activeOrg as string])).toHaveCount(0);
+    await expect(page.getByText(ORG_STUDENT[activeOrg!])).toHaveCount(0);
 
     // Symmetric: switch back on the same page and expect the first org again.
     await switcher.click();
-    await page.getByRole('menuitem', { name: new RegExp(activeOrg as string) }).click();
+    await page.getByRole('menuitem', { name: new RegExp(activeOrg!) }).click();
 
-    await expect(switcher).toContainText(activeOrg as string);
-    await expect(page.getByText(ORG_STUDENT[activeOrg as string])).toBeVisible();
+    await expect(switcher).toContainText(activeOrg!);
+    await expect(page.getByText(ORG_STUDENT[activeOrg!])).toBeVisible();
     await expect(page.getByText(ORG_STUDENT[otherOrg])).toHaveCount(0);
   });
 });

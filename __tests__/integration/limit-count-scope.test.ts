@@ -1,6 +1,7 @@
 import { ORG_LIMIT_KEYS, USER_LIMIT_KEYS } from '@studiq/server/services/limit.catalog';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   useRealSupabase,
@@ -35,7 +36,7 @@ async function postCard(front: string, orgId: string, deckId: string): Promise<A
     { active_org_id: orgId },
   );
   const response = await createFlashcardPost(req);
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await json<ApiResponse['body']>(response) };
 }
 
 describe(`Org-context limit count scope`, () => {
@@ -95,7 +96,8 @@ describe(`Org-context limit count scope`, () => {
           organization_id: fixture.orgId,
         },
       ])
-      .select('id, organization_id');
+      .select('id, organization_id')
+      .overrideTypes<Array<{ id: string; organization_id: string | null }>, { merge: false }>();
     if (decksError || !decks) {
       throw new Error(`[count-scope] deck create failed: ${decksError?.message}`);
     }
@@ -143,7 +145,7 @@ describe(`Org-context limit count scope`, () => {
 
   it('does not count personal-space cards against the org plan capacity', async () => {
     expect(await countFor(null)).toBe(1);
-    expect(await countFor(fixture.orgId!)).toBe(0);
+    expect(await countFor(fixture.orgId)).toBe(0);
 
     // CARD_LIMIT = 1: the personal card must not consume the slot.
     const first = await postCard(`org-a-${suiteId}`, fixture.orgId!, orgDeckId);
@@ -155,7 +157,7 @@ describe(`Org-context limit count scope`, () => {
     expect(second.body.success).toBe(false);
     expect(second.body.error).toBe('USAGE_LIMIT_EXCEEDED');
 
-    expect(await countFor(fixture.orgId!)).toBe(CARD_LIMIT);
+    expect(await countFor(fixture.orgId)).toBe(CARD_LIMIT);
     expect(await countFor(null)).toBe(1);
   });
 });

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaRole } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -69,9 +70,9 @@ const UI = {
 } as const;
 
 /** Sign in through the product API and keep the session in this page's context. */
-async function signIn(page: Page, role: QaRole): Promise<void> {
+async function signIn(page: Page, role: keyof typeof DASHBOARDS): Promise<void> {
   const tenant = loadTenant(CASE);
-  const dashboard = DASHBOARDS[role as keyof typeof DASHBOARDS];
+  const dashboard = DASHBOARDS[role];
   expect(dashboard, `${CASE} has no dashboard for role ${role}`).toBeTruthy();
   expect(tenant.users[role], `tenant ${CASE} has no seeded ${role}`).toBeTruthy();
 
@@ -92,9 +93,9 @@ async function expectTenantSession(page: Page, role: QaRole): Promise<void> {
   const tenant = loadTenant(CASE);
   const me = await page.request.get('/api/v1/auth/me');
   expect(me.ok(), 'GET /api/v1/auth/me').toBe(true);
-  const body = (await me.json()) as {
+  const body = await json<{
     data?: { user?: { email?: string; app_metadata?: { account_type?: string } } };
-  };
+  }>(me);
   expect(body.data?.user?.email, 'the session belongs to the tenant user').toBe(
     tenant.users[role]?.email,
   );
@@ -185,7 +186,7 @@ test.describe('AUT-17 — a teacher on the routes of other roles', () => {
     // settled with a membership, and this teacher is already in its tenant org.
     const orgs = await page.request.get('/api/v1/me/orgs');
     expect(orgs.ok(), 'GET /api/v1/me/orgs').toBe(true);
-    const orgList = (await orgs.json()) as { data?: Array<{ id: string; name: string }> };
+    const orgList = await json<{ data?: Array<{ id: string; name: string }> }>(orgs);
     expect(orgList.data, 'the teacher belongs to an organization').toHaveLength(1);
     expect(orgList.data?.[0]?.id).toBe(tenant.org!.id);
     expect(orgList.data?.[0]?.name).toBe(tenant.org!.name);

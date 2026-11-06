@@ -56,8 +56,8 @@ export function EmptyState({
             </EmptyMedia>
           )
         )}
-        <EmptyTitle role="heading" aria-level={3}>
-          {title}
+        <EmptyTitle>
+          <h3>{title}</h3>
         </EmptyTitle>
         {description && <EmptyDescription>{description}</EmptyDescription>}
       </EmptyHeader>

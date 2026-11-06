@@ -42,7 +42,7 @@ export function useSelection<T extends string>() {
   }, []);
 
   useEffect(() => {
-    if (!isSelecting) return;
+    if (!isSelecting) return undefined;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();

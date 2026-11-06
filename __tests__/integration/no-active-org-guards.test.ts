@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import {
   type BeforeResult,
   before,
@@ -9,7 +11,6 @@ import {
   cleanupOrganizationDeep,
   cleanupQuestions,
   cleanupTeacherAssignments,
-  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -22,6 +23,12 @@ import {
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
+/** Forbidden envelope returned by the guards under test. */
+type ForbiddenBody = { success: boolean; error?: string };
+
+/** `POST /teacher/assignments/:id/randomize` payload — the field read below. */
+type RandomizeBody = { data: { added: number } };
+
 /**
  * #148 — org-scoped services must not put `activeOrgId === null` into a PostgREST filter.
  *
@@ -30,7 +37,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
  * Postgres answered `22P02` and `toDbFailure` turned it into a 500 `INTERNAL_SERVER`.
  */
 describe(`No active org guards`, () => {
-  const service = createServiceClient();
+  const service = createSeedDb();
 
   let noOrgEducator!: BeforeResult;
   let noOrgStudent!: BeforeResult;
@@ -77,7 +84,7 @@ describe(`No active org guards`, () => {
     const res = await quizListGet(
       createNextRequest('http://localhost/api/v1/teacher/quizzes', { method: 'GET' }),
     );
-    const body = await res.json();
+    const body = await json<ForbiddenBody>(res);
 
     expect(res.status).toBe(403);
     expect(body).toEqual({ success: false, error: 'FORBIDDEN' });
@@ -93,7 +100,7 @@ describe(`No active org guards`, () => {
       body: JSON.stringify({ name: `no-org-quiz-${suiteId}` }),
     });
     const res = await quizCreatePost(req);
-    const body = await res.json();
+    const body = await json<ForbiddenBody>(res);
 
     expect(res.status).toBe(403);
     expect(body).toEqual({ success: false, error: 'FORBIDDEN' });
@@ -175,14 +182,14 @@ describe(`No active org guards`, () => {
     expect(res.status).toBe(403);
     if (res.status !== 403) return;
 
-    const body = await res.json();
+    const body = await json<ForbiddenBody>(res);
     expect(body).toEqual({ success: false, error: 'FORBIDDEN' });
     expect(res.headers.get('x-error-code')).toBe('FORBIDDEN');
   });
 
   it('POST /api/v1/teacher/assignments/{id}/randomize draws from the caller own questions', async () => {
     mockUser(noOrgEducator.user);
-    const assignmentId = noOrgEducator.created.assignmentId as string;
+    const assignmentId = noOrgEducator.created.assignmentId!;
     expect(assignmentId).toBeTruthy();
 
     const { request, params } = createNextRequestWithParams(
@@ -195,7 +202,7 @@ describe(`No active org guards`, () => {
       },
     );
     const res = await randomizePost(request, { params });
-    const body = await res.json();
+    const body = await json<RandomizeBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data).toEqual({ added: 1 });

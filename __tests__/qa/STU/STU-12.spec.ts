@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -100,7 +101,7 @@ async function callApi<T>(
     : page.request[method](url, { data }));
   const text = await response.text();
   expect(response.ok(), `${method.toUpperCase()} ${url} → ${response.status()} ${text}`).toBe(true);
-  const body = JSON.parse(text) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `${method.toUpperCase()} ${url} success`).toBe(true);
   return body.data;
 }

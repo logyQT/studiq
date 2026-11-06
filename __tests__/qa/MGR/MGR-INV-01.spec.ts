@@ -1,4 +1,5 @@
 import { expect, request as apiRequest, test } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -58,7 +59,7 @@ interface BulkInviteResult {
 async function orgRoles(page: import('@playwright/test').Page): Promise<OrgRole[]> {
   const response = await page.request.get('/api/v1/organization/roles');
   expect(response.status(), 'GET /api/v1/organization/roles').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: OrgRole[] };
+  const body = await json<{ success: boolean; data: OrgRole[] }>(response);
   expect(body.success).toBe(true);
   return body.data;
 }
@@ -66,7 +67,7 @@ async function orgRoles(page: import('@playwright/test').Page): Promise<OrgRole[
 async function pendingInvitations(page: import('@playwright/test').Page): Promise<InvitationRow[]> {
   const response = await page.request.get('/api/v1/organization/invites?isAccepted=false');
   expect(response.status(), 'GET /api/v1/organization/invites').toBe(200);
-  const body = (await response.json()) as { success: boolean; data: InvitationRow[] };
+  const body = await json<{ success: boolean; data: InvitationRow[] }>(response);
   expect(body.success).toBe(true);
   return body.data;
 }
@@ -129,19 +130,19 @@ test.describe('MGR-INV-01 — sending an invitation with a role', () => {
     // so this is the earliest point at which it is on screen.
     await expect(page.getByText('Wysłano 1 zaproszeń.', { exact: true })).toBeVisible();
 
-    const sentBody = bulkResponse.request().postDataJSON() as {
-      invitations: { email: string; targetOrgRoleId: string }[];
-    };
+    const sentBody = asJson<{ invitations: { email: string; targetOrgRoleId: string }[] }>(
+      bulkResponse.request().postDataJSON(),
+    );
     expect(sentBody.invitations).toHaveLength(1);
     expect(sentBody.invitations[0]).toMatchObject({
       email: INVITEE_EMAIL,
       targetOrgRoleId: memberRole!.id,
     });
 
-    const bulkJson = (await bulkResponse.json()) as {
+    const bulkJson = await json<{
       success: boolean;
       data: { results: BulkInviteResult[] };
-    };
+    }>(bulkResponse);
     expect(bulkJson.success).toBe(true);
     expect(bulkJson.data.results).toHaveLength(1);
     const [result] = bulkJson.data.results;
@@ -201,7 +202,7 @@ test.describe('MGR-INV-01 — sending an invitation with a role', () => {
         `/api/v1/organization/invites?token=${encodeURIComponent(inviteCode)}`,
       );
       expect(preview.status(), 'public invite preview').toBe(200);
-      const previewBody = (await preview.json()) as {
+      const previewBody = await json<{
         success: boolean;
         data: {
           email: string;
@@ -210,7 +211,7 @@ test.describe('MGR-INV-01 — sending an invitation with a role', () => {
           targetRole: string;
           orgRoleName: string;
         };
-      };
+      }>(preview);
       expect(previewBody.data).toMatchObject({
         email: INVITEE_EMAIL,
         organizationId: tenant.org.id,

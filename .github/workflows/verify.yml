@@ -8,6 +8,12 @@ name: verify
 # "Expected — waiting for status to be reported" and a docs-only PR could never
 # merge. The work is still scoped per job by the `scope` job below: a job skipped
 # with `if:` reports success and satisfies a required check.
+#
+# The e2e matrix is the exception, because `main` requires the *matrix-expanded*
+# names (`e2e (chromium)`, `e2e (firefox)`): a job skipped by `if:` never expands
+# its matrix, so those names are never created at all and stay pending forever.
+# That job therefore always runs and gates its steps on `scope` instead — a
+# skipped leg then reports success under its required name in a few seconds.
 on:
   workflow_dispatch:
   schedule:
@@ -23,18 +29,57 @@ concurrency:
 # step with scripts/check-bun-version.ts (>= 1.4.4).
 env:
   BUN_VERSION: 1.4.4-canary.20261027.1
+  # `supabase/config.toml` reads every configurable value through `env()`; an
+  # unset numeric variable makes the config fail to parse, so the whole job
+  # graph shares one explicit CI stack identity. Each job owns its own native
+  # stack (ports are assigned by the CLI per runner).
+  SUPABASE_PROJECT_ID: studiq-ci
+  # CI runs the native runtime: the experimental stack backend is required, the
+  # CLI assigns ports per runner, and no Docker daemon is used.
+  SUPABASE_EXPERIMENTAL_STACK: '1'
+  SUPABASE_RUNTIME: native
+  # QA specs that assert branded auth e-mail links skip in stack mode; the rest
+  # of the suite runs normally.
+  STUDIQ_STACK_MODE: '1'
 
 jobs:
   # Cheapest first, in the order a failure is cheapest to explain: lint, types.
-  # Everything else waits on this.
-  # A QA-suite PR only touches qa/** (plus, occasionally, __tests__ helpers).
-  # The app, its unit/integration tests and the e2e matrix cannot change there,
-  # so they are skipped; `checks` (lint/typecheck, which does cover qa specs) and
-  # the `qa-suite` job still run. A docs-only PR (docs/**, any *.md) is treated
-  # the same way: no app code can change, so only `checks` runs.
+  # This job is a merge gate, not a fan-out gate: the test jobs below wait only
+  # on `scope` (5-8 s), because a runner that boots Supabase, builds and installs
+  # browsers does not need to sit idle for 28 s behind lint. The trade-off is
+  # deliberate — a lint failure no longer stops the test jobs before they start,
+  # so it also burns their runners.
+  # A QA-suite PR only touches qa/** and __tests__/qa/**; the app, its
+  # unit/integration tests and the e2e matrix cannot change there, so they are
+  # skipped. `checks` (lint/typecheck, which does cover qa specs) and the
+  # `qa-suite` job still run. Everything else under __tests__/ (unit,
+  # integration, e2e, helpers, setup) is app code: a test-only change there must
+  # run the suite it edits, so `app` stays true. A Markdown-only docs PR (every
+  # changed file is `*.md`, none under qa/cases/) is treated the same way and
+  # then some: no app code and no spec can change, so `checks` is the only job
+  # that does any real work (the e2e legs still report, but as no-ops — see the
+  # note on top — and the QA suite starts no shard at all). A non-Markdown file
+  # under docs/ (e.g. docs/image.png) is still `app=false`, but the QA router
+  # cannot attribute it, so it starts all four shards.
+  #
+  # Why the `scope` gate stays (#1022, 36 runs): `scope` takes 5-8 s (median
+  # 6 s) and the first gated job starts ~3 s after it, so removing the gate is
+  # estimated to save ~9 s on the critical path (both components are measured;
+  # the saving itself is not an A/B run) — ~2 % of a 393 s app run and ~3.5 % of
+  # a 256 s QA-only run. On a Markdown-only docs PR the gate does not extend the
+  # run: the wall clock is `checks` (36 s total, 32 s in `checks`), which is
+  # ungated. Ungating the required jobs to recover those ~9 s would either run
+  # the full suite on non-app PRs — on a Markdown-only docs PR that is ~28
+  # runner-minutes (unit 47-53 s, integration 78-141 s, two e2e legs 177-378 s
+  # each, four QA shards 210-285 s each); on a non-Markdown docs PR the four QA
+  # shards already run, so it adds ~13 runner-minutes — or repeat this router
+  # inside each job, which still pays the same diff (~3 s, or ~0.6 s via the
+  # files API) before it can skip. `qa-suite` cannot be ungated at all: its
+  # matrix is `fromJSON(needs.scope.outputs.qa_shards)`. Decision record:
+  # docs/decisions/0008-keep-ci-scope-gate.md.
   # Schedule/dispatch runs everything.
   scope:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       app: ${{ steps.diff.outputs.app }}
       qa_shards: ${{ steps.diff.outputs.qa_shards }}
@@ -53,28 +98,58 @@ jobs:
             git fetch --no-tags origin "$BASE_REF"
             changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
             echo "changed files:"; echo "$changed"
-            if ! echo "$changed" | grep -qvE '^(qa/|__tests__/|docs/)|\.md$'; then
+            # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
+            # the first match and the writer gets SIGPIPE (141), which flipped
+            # `app` to false and skipped the unit/integration/e2e jobs.
+            # Only the QA subtree is non-app: a test-only change under
+            # __tests__/unit|integration|e2e must run the suite it edits.
+            if ! grep -qvE '^(qa/|__tests__/qa/|docs/)|\.md$' <<< "$changed"; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
           python3 - "${BASE_REF:-}" <<'PY' >> "$GITHUB_OUTPUT"
           import json, subprocess, sys
 
-          # Balanced on the last observed shard times (7 / 6 / 6 / 5 min): STU is the
-          # slowest area, so it carries the two light ones (LIM, NFR); AUT joins the
-          # SEC/PUB/BIL group it used to sit next to in the old four-area shard.
+          # Balanced on measured per-area test time, sampled from the per-spec
+          # durations of run 41569902675 (all four shards, no retries):
+          # STU 762 s, EDU 711, MGR 499, AUT 171, SEC 152, NFR 100, ONB 99,
+          # BIL 87, LIM 63, PUB 48 — 2692 s of tests, so the ideal shard is
+          # 673 s (~168 s of wall clock at QA_WORKERS=4).
+          #
+          # The old grouping (stu-lim-nfr / edu / aut-sec-pub-bil / mgr-onb)
+          # measured 244 / 185 / 165 / 136 s — a 108 s spread.
+          #
+          # STU (762) and EDU (711) are above the ideal on their own, and an
+          # area is not split across shards (`scope` narrows a PR to the shards
+          # whose areas it touches), so `stu` and `edu` stay single-area and the
+          # other eight divide as MGR+SEC+BIL / AUT+NFR+ONB+PUB+LIM. Measured in
+          # run 41569902675: 199 / 195 / 195 / 131 s.
+          #
+          # Equalising the sums instead (MGR+PUB+LIM 610 vs AUT+SEC+NFR+ONB+BIL
+          # 609) was tried in run 41570914752 and measured worse at the only
+          # number that gates the pipeline: the five-area shard took 215 s and
+          # used 2.83 of 4 workers, where this layout's shards use 3.7-3.8.
+          # Packing more areas into one runner costs worker efficiency faster
+          # than the extra balance buys, so this grouping keeps the lower max.
+          #
+          # ~199 s is the floor: STU alone is 28% of the suite. Going below it
+          # needs a split area (a PR touching STU would then run two shards) or
+          # a fifth runner — the operator's call, not a default.
           shards = [
               {"name": "edu", "paths": "__tests__/qa/EDU", "areas": ["EDU"]},
-              {"name": "mgr-onb", "paths": "__tests__/qa/MGR __tests__/qa/ONB", "areas": ["MGR", "ONB"]},
+              {"name": "stu", "paths": "__tests__/qa/STU", "areas": ["STU"]},
               {
-                  "name": "stu-lim-nfr",
-                  "paths": "__tests__/qa/STU __tests__/qa/LIM __tests__/qa/NFR",
-                  "areas": ["STU", "LIM", "NFR"],
+                  "name": "mgr-sec-bil",
+                  "paths": "__tests__/qa/MGR __tests__/qa/SEC __tests__/qa/BIL",
+                  "areas": ["MGR", "SEC", "BIL"],
               },
               {
-                  "name": "aut-sec-pub-bil",
-                  "paths": "__tests__/qa/AUT __tests__/qa/SEC __tests__/qa/PUB __tests__/qa/BIL",
-                  "areas": ["AUT", "SEC", "PUB", "BIL"],
+                  "name": "aut-nfr-onb-pub-lim",
+                  "paths": (
+                      "__tests__/qa/AUT __tests__/qa/NFR __tests__/qa/ONB "
+                      "__tests__/qa/PUB __tests__/qa/LIM"
+                  ),
+                  "areas": ["AUT", "NFR", "ONB", "PUB", "LIM"],
               },
           ]
 
@@ -89,32 +164,69 @@ jobs:
               ).stdout.split()
               # Shared QA files, anything outside qa/, or a QA PR that touches no
               # spec at all can change every area -> run all shards. Only a PR
-              # that touches specific __tests__/qa/<AREA>/ specs narrows.
+              # that pins a *known* area narrows (see `area_of` below).
+              # `__tests__/` is deliberately absent: it holds both the specs
+              # (usable for narrowing) and the helpers the suite imports
+              # (`__tests__/helpers/tenant-seed`, `__tests__/e2e/fixtures/ids`),
+              # so the narrowing decision is per file instead of per prefix.
               shared = (
                   "qa/fixtures/", "qa/playwright.qa.config.ts",
                   "scripts/qa-tenant.ts", "scripts/qa-issue.ts",
                   ".github/workflows/verify.yml", "package.json", "bun.lock",
-                  "apps/", "packages/", "supabase/", "__tests__/",
+                  "apps/", "packages/", "supabase/",
               )
-              force_all = any(f.startswith(shared) for f in changed)
-              # A case PR adds a spec under __tests__/qa/<AREA>/ and/or a profile at
-              # __tests__/qa/profiles/<CASE>.json; both map to the case's area, so a
-              # normal case PR runs exactly one shard.
-              areas = set()
-              for f in changed:
+              # A docs-only PR (markdown, no case catalogue entry) cannot reach a
+              # spec, a fixture or the app, so no shard has anything to prove:
+              # start none rather than four runners for ~6 min each. A case
+              # catalogue entry (qa/cases/<AREA>-*.md) is markdown too, but it
+              # does drive a shard's fixtures — it is excluded here and mapped to
+              # its area below. Anything else that touches no spec still runs
+              # every shard (see `not touched` below), because that is a QA PR
+              # changing shared behaviour we cannot attribute to one area.
+              docs_only = bool(changed) and all(
+                  f.endswith(".md") and not f.startswith("qa/cases/") for f in changed
+              )
+
+              area_names = {a for s in shards for a in s["areas"]}
+
+              def area_of(f):
+                  """The single area a changed file pins, or None if it pins none."""
                   if f.startswith("__tests__/qa/profiles/") and f.endswith(".json"):
-                      areas.add(f.rsplit("/", 1)[-1].split("-")[0])
-                  elif f.startswith("qa/cases/") and f.endswith(".md"):
-                      areas.add(f.rsplit("/", 1)[-1].split("-")[0])
-                  elif f.startswith("__tests__/qa/") and len(f.split("/")) > 3:
-                      areas.add(f.split("/")[2])
+                      return f.rsplit("/", 1)[-1].split("-")[0]
+                  if f.startswith("qa/cases/") and f.endswith(".md"):
+                      return f.rsplit("/", 1)[-1].split("-")[0]
+                  parts = f.split("/")
+                  if len(parts) > 3 and parts[:2] == ["__tests__", "qa"]:
+                      return parts[2]
+                  return None
+
+              # A case PR adds a spec under __tests__/qa/<AREA>/ and/or a profile at
+              # __tests__/qa/profiles/<CASE>.json; both pin the case's area, so a
+              # normal case PR runs exactly one shard.
+              areas = {a for a in map(area_of, changed) if a}
+              # Anything else under __tests__/ (helpers, e2e fixtures, setup,
+              # mocks, KNOWN-FAILURES.json), an area the shard list does not know
+              # yet, or a shared file still means "run everything": a silent
+              # under-run is worse than four runners.
+              force_all = (
+                  any(f.startswith(shared) for f in changed)
+                  or any(a not in area_names for a in areas)
+                  or any(
+                      f.startswith("__tests__/") and area_of(f) is None for f in changed
+                  )
+              )
               touched = [s for s in shards if set(s["areas"]) & areas]
-              selected = shards if force_all or not touched else touched
+              if docs_only:
+                  selected = []
+              else:
+                  selected = shards if force_all or not touched else touched
           print("qa_shards=" + json.dumps(selected))
           PY
 
+  # The required check that no test job waits on any more: a lint/type failure
+  # still blocks the merge, it just no longer holds the runners back first.
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -123,11 +235,40 @@ jobs:
           node-version: 22
       - name: Install Bun (pinned canary)
         run: npm install -g bun@${{ env.BUN_VERSION }}
-      - uses: actions/cache@v6
+      # The only job that *writes* the bun cache: every other job restores it,
+      # and this workflow never runs on a push to main, so the nightly/dispatch
+      # run is what refreshes it. One writer means no concurrent reserve races
+      # for the same key.
+      #
+      # A main run restores the exact key but never the fallback: `restore-keys`
+      # would seed the directory with the previous generation's tarballs and the
+      # save would carry every superseded package version into the new cache.
+      # PR jobs may fall back, because they never write.
+      - name: Restore bun install cache (exact)
+        id: bun-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore bun install cache (fallback)
+        id: bun-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
+      - name: Save bun install cache
+        # A cache write is an optimisation: never let it fail the gate.
+        continue-on-error: true
+        if: github.ref == 'refs/heads/main' && steps.bun-cache-main.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ steps.bun-cache-main.outputs.cache-primary-key }}
       - name: Format
         run: bun run format:check
       - name: Lint
@@ -136,9 +277,9 @@ jobs:
         run: bun run typecheck:all
 
   unit:
-    needs: [checks, scope]
+    needs: [scope]
     if: needs.scope.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -146,17 +287,21 @@ jobs:
         with:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - uses: actions/cache@v6
+      - name: Restore bun install cache
+        id: bun-cache-unit
+        uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
       - run: bun run test:unit
 
   integration:
-    needs: [checks, scope]
+    needs: [scope]
     if: needs.scope.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -164,26 +309,37 @@ jobs:
         with:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - uses: actions/cache@v6
+      - name: Restore bun install cache
+        id: bun-cache-integration
+        uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
       - name: Start Supabase
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
       - name: Write root .env
         # vitest's loadEnv() reads the repo root; integration imports the route
         # handlers directly, so no app server is needed.
         run: |
-          eval "$(bunx supabase status -o env)"
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "APP_ENV=test"
+            echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
           } > .env
       - name: Integration tests
@@ -192,15 +348,14 @@ jobs:
         run: bunx vitest run __tests__/integration --no-file-parallelism
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
 
   # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
   # job `__tests__/qa/**` would never run in CI.
   qa-suite:
-    needs: [checks, scope]
-    # Still runs when `unit` was skipped for a tests-only diff.
-    if: needs.checks.result == 'success' && needs.scope.outputs.qa_shards != '[]'
+    needs: [scope]
+    if: needs.scope.outputs.qa_shards != '[]'
     # Sharded by area, one runner per shard. The suite is one long serial job
     # (~12 min at 140 specs, growing), so splitting is what buys wall-clock time
     # now — not more workers: the runner is 4 vCPU and raising QA_WORKERS only
@@ -213,12 +368,15 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.scope.outputs.qa_shards) }}
     name: qa-suite (${{ matrix.shard.name }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       CI: '1'
       NEXT_TELEMETRY_DISABLED: '1'
       QA_APP_URL: http://localhost:3010
+      # The QA app is a non-production posture: never Stripe, never production.
+      APP_ENV: qa
+      PAYMENT_DRIVER: mock
       # Every test owns its tenant, so CI can run four at a time on a 4-vCPU
       # runner. Locally the same variable stays unset (workers: 1).
       QA_WORKERS: '4'
@@ -230,13 +388,12 @@ jobs:
       - run: npm install -g bun@${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
 
-      - name: Start Supabase
+      - name: Start Supabase (native)
         env:
           # `supabase/config.toml` resolves `auth.site_url` from `env(APP_URL)`;
           # without it the QA e-mails carry relative callback links.
           APP_URL: http://localhost:3010
-          SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
 
       - name: Write env files
         # The app reads apps/web/.env, but the QA seeder and the specs that seed
@@ -244,24 +401,128 @@ jobs:
         # environment they fall back to the shared-VM localhost:54421 and fail
         # with `fetch failed`. Export them to $GITHUB_ENV as well.
         run: |
-          eval "$(bunx supabase status -o env)"
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
+            # Lets the seeder write auth users straight into Postgres (one
+            # statement, one bcrypt for the whole batch) instead of one GoTrue
+            # admin call per account. Optional: without a direct URL (e.g. a
+            # hosted project) it falls back to the Admin API.
+            echo "SUPABASE_DB_URL=$DB_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3010"
+            echo "APP_ENV=qa"
+            echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
           } > apps/web/.env
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
+            echo "SUPABASE_DB_URL=$DB_URL"
             echo "OTEL_SDK_DISABLED=true"
+            echo "APP_ENV=qa"
+            echo "PAYMENT_DRIVER=mock"
             echo "QA_APP_URL=http://localhost:3010"
           } >> "$GITHUB_ENV"
 
+      # Same split as the e2e legs after #988: main restores only its exact key
+      # (Playwright never deletes superseded revisions, so a fallback would keep
+      # forwarding old browsers), PRs may fall back because they never write.
+      #
+      # `--only-shell` below installs the headless shell only, which is a
+      # different cache *content* from the e2e legs' `chromium`: own key, so the
+      # two cannot overwrite each other the way `playwright-Linux-<lock>` used
+      # to (whichever leg saved first owned the entry).
+      - name: Restore Playwright browsers (exact)
+        id: pw-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-24.04-chromium-shell-${{ hashFiles('bun.lock') }}
+      - name: Restore Playwright browsers (fallback)
+        id: pw-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-24.04-chromium-shell-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            playwright-ubuntu-24.04-chromium-shell-
+
       - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+        # QA runs headless, and since Playwright 1.49 a headless launch drives
+        # `chromium_headless_shell`, not the full browser: ~275 MB instead of
+        # ~675 MB for both, which is also what the cache entry above carries.
+        #
+        # No `--with-deps`: on `ubuntu-24.04` all 21 libraries in Playwright's
+        # chromium list (libnss3, libatk*1.0-0t64, libcups2t64, libgbm1,
+        # libxkbcommon0, ...) are already on the image — apt reports every one
+        # "already the newest version". The flag therefore adds only the `tools`
+        # group, and of that group only nine packages are missing: the font and
+        # xfont set (fonts-freefont-ttf, fonts-ipafont-gothic,
+        # fonts-tlwg-loma-otf, fonts-unifont, fonts-wqy-zenhei, xfonts-*) —
+        # 21.1 MB whose download is what turned a 13 s step into 709 s on a
+        # throttled mirror (2026-11-05 21:41Z, verify run 42114794505). Those
+        # nine only add Thai, CJK and last-resort glyphs: the suite renders
+        # pl/en, and fontconfig resolves sans-serif/serif/monospace/Arial to the
+        # same DejaVu and Liberation files with or without them.
+        run: bunx playwright install --only-shell chromium
+
+      - name: Assert the browser runtime is complete
+        # What `--with-deps` used to guarantee implicitly. `ldd` names the
+        # missing soname in ~1 s instead of failing the first spec ten minutes
+        # in, and the launch proves the shell actually starts.
+        run: bash scripts/check-playwright-runtime.sh chromium
+
+      - name: Save Playwright browsers
+        # A cache write is an optimisation: never let it fail the job. One
+        # writer, like the bun cache — every shard restores, `edu` saves.
+        continue-on-error: true
+        if: github.ref == 'refs/heads/main' && matrix.shard.name == 'edu' && steps.pw-cache-main.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.pw-cache-main.outputs.cache-primary-key }}
+
+      # `next build` is 36-46 s per job and six jobs build the same tree (four QA
+      # shards, two e2e legs). The `.next/cache` a build leaves behind is
+      # Turbopack's content-addressed module cache: restoring it turns most of
+      # that into cache hits (measured locally: 17.2 s cold -> 7.5 s with a
+      # restored cache, and 7.5 s after changing one source file). Only
+      # `.next/cache` is cached — never the whole `.next` — so no server chunk
+      # from another commit can be served.
+      #
+      # Key on the lockfile, not the commit: a per-sha key would add a ~250 MB
+      # entry to the 10 GB budget on every nightly (main is the only writer)
+      # and evict the bun/browser caches #988 just right-sized. Entries are
+      # content-addressed, so a cache from an older commit still hits for every
+      # unchanged module, and a lockfile bump (renovate) rotates it naturally.
+      - name: Restore Next build cache (exact)
+        id: next-cache-main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore Next build cache (fallback)
+        id: next-cache-pr
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            next-ubuntu-24.04-
 
       - name: Build and start the shared app
         run: |
@@ -273,12 +534,28 @@ jobs:
           done
           curl -sf -o /dev/null http://localhost:3010/login
 
-      - name: Seed every tenant once
+      - name: Save Next build cache
+        # One writer, like the bun and browser caches: every building job
+        # restores, the `edu` shard writes.
+        continue-on-error: true
+        if: github.ref == 'refs/heads/main' && matrix.shard.name == 'edu' && steps.next-cache-main.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: apps/web/.next/cache
+          key: ${{ steps.next-cache-main.outputs.cache-primary-key }}
+
+      - name: Seed this shard's tenants
         # Same shape as `scripts/e2e-seed.ts`: one process, one run suffix, before
         # Playwright starts. Seeding inside the run would stall the app and the
         # 4-worker suite against it; every spec still gets its own tenant because
         # the suffix is folded into each case's key.
-        run: bun scripts/qa-tenant.ts --all --run "ci${{ github.run_id }}"
+        #
+        # Only the areas this shard runs: a PR shard carries ~50 of the 170 cases,
+        # so seeding all of them is wall-clock spent on tenants nobody opens.
+        # `SUPABASE_DB_URL` (exported above) also lets the seeder write auth users with one
+        # SQL statement instead of one GoTrue admin call per account — GoTrue
+        # bcrypts every password it creates, which was most of the old 32 s.
+        run: bun scripts/qa-tenant.ts --all --areas "${{ join(matrix.shard.areas, ',') }}" --run "ci${{ github.run_id }}"
 
       - name: Run the QA suite
         run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line ${{ matrix.shard.paths }}
@@ -295,14 +572,20 @@ jobs:
 
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true
 
   # One leg per browser so a red platform re-runs alone. Each leg owns its
   # tenant set (keys include the project) and its own Supabase instance.
+  #
+  # No job-level `if:` on purpose: `main` requires `e2e (chromium)` and
+  # `e2e (firefox)`, and those names only exist once the matrix expands. Gating
+  # the job instead made a docs-only PR unmergeable — the legs were reported as a
+  # single skipped `e2e` check and the required names never appeared.
+  # `scope` still decides the work: when no app code changed every step below is
+  # skipped and the leg reports success immediately.
   e2e:
-    needs: [checks, scope]
-    if: needs.scope.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    needs: [scope]
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -313,52 +596,177 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       # ubuntu-latest is 4 vCPU; one project saturates at ~4 workers.
       E2E_WORKERS: '4'
+      APP_ENV: qa
+      PAYMENT_DRIVER: mock
+      # The workflow owns both, in explicit steps below: it builds/starts the app
+      # and seeds this leg's tenants, so Playwright must not repeat either.
+      E2E_SKIP_WEB_WS: '1'
+      E2E_SKIP_SEED: '1'
     steps:
+      - name: No app code changed
+        if: needs.scope.outputs.app != 'true'
+        run: echo "scope says no app code changed — ${{ matrix.project }} leg not needed"
       - uses: actions/checkout@v7
+        if: needs.scope.outputs.app == 'true'
       - uses: actions/setup-node@v7
+        if: needs.scope.outputs.app == 'true'
         with:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - name: Cache bun install
-        uses: actions/cache@v6
+        if: needs.scope.outputs.app == 'true'
+      - name: Restore bun install cache
+        id: bun-cache-e2e
+        if: needs.scope.outputs.app == 'true'
+        uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
+        if: needs.scope.outputs.app == 'true'
 
       - name: Start Supabase
+        if: needs.scope.outputs.app == 'true'
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
-        # studio/logflare/vector/edge-runtime are not used by the app; skipping
-        # them saves ~4 GB of pulls and a couple of minutes.
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+        # None of these services is reachable from the app, and each `-x` entry
+        # skips its native artifact/start cost too:
+        #   studio + postgres-meta  Studio/tooling only — the API and the QA
+        #                           specs talk to PostgREST, not pg-meta
+        #   realtime                no client: nothing in apps/ or packages/
+        #                           calls `.channel()` (the `supabase_realtime`
+        #                           publication is a plain Postgres object and
+        #                           still exists without the container)
+        #   functions/analytics/pooler  unused
+        # `storage` stays: QA `EDU-ASG-08` uploads and the integration storage
+        # suites need it.
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
 
       - name: Write env files
+        if: needs.scope.outputs.app == 'true'
         # Local Supabase keys are deterministic, so nothing here is a secret.
         run: |
-          eval "$(bunx supabase status -o env)"
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
+            echo "SUPABASE_DB_URL=$DB_URL"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "APP_ENV=qa"
+            echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
           } > apps/web/.env
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v6
+      # Same reason as the bun cache: Playwright never deletes previous browser
+      # revisions, so a main run restores only its exact key and saves a set
+      # that contains just the current one. PRs may fall back.
+      - name: Restore Playwright browsers (exact)
+        id: pw-cache-main
+        if: needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: playwright-ubuntu-24.04-${{ matrix.project }}-${{ hashFiles('bun.lock') }}
+      - name: Restore Playwright browsers (fallback)
+        id: pw-cache-pr
+        if: needs.scope.outputs.app == 'true' && github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ubuntu-24.04-${{ matrix.project }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            playwright-ubuntu-24.04-${{ matrix.project }}-
 
-      - name: Install browsers
-        run: bunx playwright install --with-deps ${{ matrix.project }}
-        if: matrix.project != 'admin-api'
+      - name: Install browsers (chromium)
+        # Chromium needs no apt on `ubuntu-24.04`: all 21 libs in Playwright's
+        # chromium list are already there, so `--with-deps` only pulls the
+        # font/xfont `tools` group (21.1 MB) — the download that once took
+        # 709 s. Same reasoning as the QA shard's install above.
+        if: matrix.project == 'chromium' && needs.scope.outputs.app == 'true'
+        run: bunx playwright install chromium
 
-      # Playwright's webServer builds and starts the app, so there is no
-      # separate build step to keep in sync.
+      - name: Install browsers (firefox)
+        # Firefox needs no apt either, for a different reason: none of the 36
+        # packages `--with-deps` adds (libavcodec60, libx264-164, libx265-199,
+        # librsvg2-2, libvpx9, the VA-API set, ...) is a DT_NEEDED of any file
+        # in the Firefox build. They are *dlopened* media codecs, so the browser
+        # starts and the suite runs without them; only HTML5 audio/video decode
+        # regresses. `__tests__/e2e` has no <audio>/<video> (the QA spec that
+        # renders `<audio controls>` is chromium-only and asserts markup), and
+        # the GTK/X/pango/fontconfig libraries Firefox does link are already on
+        # the image. The guard below launches the browser, so a future Firefox
+        # build that links a system codec fails at install time, not silently.
+        if: matrix.project == 'firefox' && needs.scope.outputs.app == 'true'
+        run: bunx playwright install firefox
+
+      - name: Assert the browser runtime is complete
+        # Also ldd's the firefox executable and starts it. Playwright's own host
+        # validation only fires on the first launch of a fresh install.
+        if: needs.scope.outputs.app == 'true'
+        run: bash scripts/check-playwright-runtime.sh ${{ matrix.project }}
+
+      - name: Save Playwright browsers
+        # A cache write is an optimisation: never let it fail the job.
+        continue-on-error: true
+        if: matrix.project != 'admin-api' && needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main' && steps.pw-cache-main.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.pw-cache-main.outputs.cache-primary-key }}
+
+      # Restore-only: the QA shard writes this cache (one writer, like the bun
+      # and browser caches). Same content as the QA build even though the two
+      # shape `NEXT_PUBLIC_SITE_URL` differently — Turbopack treats the env as an
+      # input of every module it inlines into, so a restore never leaks the
+      # other job's origin (verified: a build over a cache made with a different
+      # site URL contains none of the old value).
+      - name: Restore Next build cache (exact)
+        if: needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+      - name: Restore Next build cache (fallback)
+        if: needs.scope.outputs.app == 'true' && github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            next-ubuntu-24.04-
+
+      # Same shape as `qa-suite`: the workflow starts the app and seeds, and
+      # Playwright only drives the browser. Before this, the build hid inside
+      # Playwright's `webServer` (~40 s of the "Run Playwright" step) and the
+      # seeding inside `globalSetup`, so neither was visible as a step.
+      - name: Build and start the app
+        if: needs.scope.outputs.app == 'true'
+        run: |
+          bun run build
+          (cd apps/web && bunx next start -p 3000 > /tmp/e2e-app.log 2>&1 &)
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/login && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3000/login
+
+      - name: Seed this leg's tenants
+        if: needs.scope.outputs.app == 'true'
+        # One tenant per test of this project. `--reset` keeps a re-run from
+        # inheriting the previous run's decks and quiz attempts — specs mutate
+        # their own tenant and spend its plan limits.
+        run: bun scripts/e2e-seed.ts --reset --project ${{ matrix.project }}
+
       - name: Run Playwright (${{ matrix.project }})
+        if: needs.scope.outputs.app == 'true'
         run: bunx playwright test --project=${{ matrix.project }} --shuffle --reporter=line
 
       - name: Upload report
@@ -373,15 +781,14 @@ jobs:
           if-no-files-found: ignore
 
       - name: Stop Supabase
-        if: always()
-        run: bunx supabase stop --no-backup || true
+        if: always() && needs.scope.outputs.app == 'true'
+        run: bunx supabase stop || true
 
   # admin-api only needs the admin app; the web server is skipped so this leg
   # costs seconds rather than a second Next build.
   e2e-admin:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: [checks]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       CI: '1'
@@ -399,25 +806,41 @@ jobs:
         with:
           node-version: 22
       - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - uses: actions/cache@v6
+      - name: Restore bun install cache
+        id: bun-cache-admin
+        uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-24.04-
       - run: bun install --frozen-lockfile
       - name: Start Supabase
         env:
           APP_URL: http://localhost:3000
-          SUPABASE_URL: http://localhost:54321
-        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
       - name: Write admin env
         run: |
-          eval "$(bunx supabase status -o env)"
+          status=$(bunx supabase stack status --output-format json)
+          API_URL=$(jq -r .env.API_URL <<<"$status")
+          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
+          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
+          DB_URL=$(jq -r .env.DB_URL <<<"$status")
+          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MAILPIT_URL=$MAILPIT_URL"
           } > apps/admin/.env
       - name: Install browsers
-        run: bunx playwright install --with-deps chromium
+        # `admin-api` is an HTTP-level project (the `request` fixture; the admin
+        # UI cannot sign PEM requests), so no browser is launched here — but the
+        # install stays as a smoke test of the binary the other legs use. No
+        # `--with-deps`: `ubuntu-24.04` ships every library in Playwright's
+        # chromium list (see the QA shard's install above).
+        run: bunx playwright install chromium
+      - name: Assert the chromium runtime is complete
+        run: bash scripts/check-playwright-runtime.sh chromium
       - name: Run Playwright (admin-api)
         run: bunx playwright test --project=admin-api --shuffle --reporter=line
       - name: Upload report
@@ -432,4 +855,4 @@ jobs:
           if-no-files-found: ignore
       - name: Stop Supabase
         if: always()
-        run: bunx supabase stop --no-backup || true
+        run: bunx supabase stop || true

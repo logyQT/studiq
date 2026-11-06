@@ -1,20 +1,23 @@
 import { HealthController } from '@studiq/server/controllers/health.controller';
+import { HealthService } from '@studiq/server/services/health.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-function createMockHealthService() {
-  return {
+function createMockService() {
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new HealthService(() => Promise.reject(new Error('unused'))), {
     checkHealth: vi.fn(),
-  };
+  });
 }
 
 describe('HealthController', () => {
-  let mockService: ReturnType<typeof createMockHealthService>;
+  let mockService: ReturnType<typeof createMockService>;
   let controller: HealthController;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockService = createMockHealthService();
-    controller = new HealthController(mockService as any);
+    mockService = createMockService();
+    controller = new HealthController(mockService);
   });
 
   describe('getStatus', () => {
@@ -80,7 +83,7 @@ describe('HealthController', () => {
 
     it('returns 500 for unknown status', async () => {
       const healthStatus = {
-        status: 'unknown' as any,
+        status: 'unknown',
         timestamp: '2024-01-01T00:00:00.000Z',
         uptime: 100,
         environment: 'test',

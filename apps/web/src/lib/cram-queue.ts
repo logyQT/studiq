@@ -30,6 +30,9 @@ export function applyCramAction<T>(queue: T[], action: CramAction): T[] {
       return queue.slice(1);
     case 'remove':
       return queue.slice(1);
+    default:
+      // Unreachable for the `CramAction` union; keeps every path returning a queue.
+      return queue;
   }
 }
 

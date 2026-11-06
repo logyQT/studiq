@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
+import { json } from '#test/helpers/json';
 
 /**
  * Regression spec for #168 — the results table kept the cached `Przesłane` row
@@ -33,7 +34,7 @@ async function login(page: Page, email: string, redirectPattern: RegExp) {
       async () => {
         const res = await page.request.get('/api/v1/me/orgs');
         if (!res.ok()) return false;
-        const { data } = (await res.json()) as { data?: Array<{ isActive: boolean }> };
+        const { data } = await json<{ data?: Array<{ isActive: boolean }> }>(res);
         return (data ?? []).some((org) => org.isActive);
       },
       { timeout: 15_000 },
@@ -57,10 +58,10 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
 
       const questionsRes = await page.request.get('/api/v1/questions');
       expect(questionsRes.ok()).toBeTruthy();
-      const questions = ((await questionsRes.json()).data ?? []) as Array<{
-        id: string;
-        type: string;
-      }>;
+      const questionsBody = await json<{ data?: Array<{ id: string; type: string }> }>(
+        questionsRes,
+      );
+      const questions = questionsBody.data ?? [];
       const openQuestion = questions.find((question) => question.type === 'open');
       if (!openQuestion) {
         throw new Error('The Classroom seed must contain an open question');
@@ -70,7 +71,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
         data: { title: `E2E grading results #168 ${Date.now()}` },
       });
       expect(createRes.ok()).toBeTruthy();
-      const assignmentId = (await createRes.json()).data.id as string;
+      const assignmentId = (await json<{ data: { id: string } }>(createRes)).data.id;
       createdAssignmentId = assignmentId;
 
       const addRes = await page.request.post(
@@ -97,7 +98,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
 
       const startRes = await studentPage.request.post(`/api/v1/assignments/${assignmentId}/start`);
       expect(startRes.ok()).toBeTruthy();
-      const attemptId = (await startRes.json()).data.id as string;
+      const attemptId = (await json<{ data: { id: string } }>(startRes)).data.id;
       const answers = [{ questionId: openQuestion.id, textAnswer: 'E2E answer for #168' }];
 
       const submitRes = await studentPage.request.post(`/api/v1/quiz/${attemptId}`, {

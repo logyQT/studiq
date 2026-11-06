@@ -189,7 +189,7 @@ export function DeckDetailScreen({
 
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
     observer.observe(el);
     return () => observer.disconnect();
@@ -382,17 +382,13 @@ export function DeckDetailScreen({
   async function handleCopy() {
     if (!d.activeFlashcardId || !d.copyTargetDeckId) return;
     try {
-      const res = await fetch(`${apiBase}/${d.activeFlashcardId}/copy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetDeckId: d.copyTargetDeckId }),
+      const copy = await apiPost<{ id: string }>(`${apiBase}/${d.activeFlashcardId}/copy`, {
+        targetDeckId: d.copyTargetDeckId,
       });
-      if (!res.ok) throw new Error();
-      const body = await res.json();
       setD((prev) => ({
         ...prev,
         copyOpen: false,
-        copyResult: { id: body.data.id, deckId: d.copyTargetDeckId! },
+        copyResult: { id: copy.id, deckId: d.copyTargetDeckId! },
       }));
       toast.success(t('flashcard_copied'));
     } catch {
@@ -510,15 +506,33 @@ export function DeckDetailScreen({
     onMoveTargetDeckIdChange: (moveTargetDeckId) => setD((prev) => ({ ...prev, moveTargetDeckId })),
     onCopyTargetDeckIdChange: (copyTargetDeckId) => setD((prev) => ({ ...prev, copyTargetDeckId })),
 
-    onDelete: handleDelete,
-    onMove: handleMove,
-    onCopy: handleCopy,
-    onDeckUpdate: handleDeckUpdate,
-    onDeckDelete: handleDeckDelete,
-    onBulkDelete: handleBulkDelete,
-    onBulkTopics: handleBulkTopics,
-    onBulkMove: handleBulkMove,
-    onBulkCopy: handleBulkCopy,
+    onDelete: () => {
+      void handleDelete();
+    },
+    onMove: () => {
+      void handleMove();
+    },
+    onCopy: () => {
+      void handleCopy();
+    },
+    onDeckUpdate: (data) => {
+      void handleDeckUpdate(data);
+    },
+    onDeckDelete: () => {
+      void handleDeckDelete();
+    },
+    onBulkDelete: () => {
+      void handleBulkDelete();
+    },
+    onBulkTopics: () => {
+      void handleBulkTopics();
+    },
+    onBulkMove: () => {
+      void handleBulkMove();
+    },
+    onBulkCopy: () => {
+      void handleBulkCopy();
+    },
     onBulkTopicsOperationChange: (op) => setD((prev) => ({ ...prev, bulkTopicsOperation: op })),
     onBulkMoveTargetDeckIdChange: (bulkMoveTargetDeckId) =>
       setD((prev) => ({ ...prev, bulkMoveTargetDeckId })),
@@ -533,7 +547,7 @@ export function DeckDetailScreen({
 
   useEffect(() => {
     const el = document.querySelector('main');
-    if (!el) return;
+    if (!el) return undefined;
     const onScroll = () => setShowBackToTop(el.scrollTop > 400);
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -541,7 +555,7 @@ export function DeckDetailScreen({
 
   useEffect(() => {
     const main = document.querySelector('main');
-    if (!main) return;
+    if (!main) return undefined;
     const update = () => {
       const rect = main.getBoundingClientRect();
       setBarStyle({ left: rect.left, width: rect.width });
@@ -655,6 +669,7 @@ export function DeckDetailScreen({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    type="button"
                     className="group flex h-14 w-14 items-center justify-center rounded-lg bg-muted-foreground/10 hover:bg-muted-foreground/20 transition-colors cursor-pointer"
                     onClick={() => router.push(`${practiceHref}${currentDeck!.id}`)}
                   >

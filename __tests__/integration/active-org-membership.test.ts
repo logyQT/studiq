@@ -1,13 +1,12 @@
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@studiq/server/types/database';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { json } from '#test/helpers/json';
+import { createSeedDb } from '#test/helpers/tenant-seed';
 import { createTestUser, seedViaApi, type TestUserFixture } from '#test/helpers/test-user';
-import {
-  cleanupOrganizationDeep,
-  createServiceClient,
-  seedOrgMembership,
-} from '#test/integration/helpers';
+import { cleanupOrganizationDeep, seedOrgMembership } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
 import { GET as getMyOrgs } from '@/app/(backend)/api/v1/me/orgs/route';
@@ -27,13 +26,27 @@ const BASE_URL = 'http://localhost';
 
 interface Session {
   user: TestUserFixture;
-  build: () => SupabaseClient;
+  build: () => SupabaseClient<Database>;
+}
+
+/** `GET /api/v1/me/plan` body — the fields the assertions below read. */
+interface MyPlanBody {
+  data: {
+    key: string;
+    limits: { max_ai_tokens_per_day: number; max_decks: number };
+    features: string[];
+  };
+}
+
+/** `GET /api/v1/me/orgs` body — the fields the assertions below read. */
+interface MyOrgsBody {
+  data: Array<{ id: string; isActive: boolean }>;
 }
 
 async function signIn(email: string, user: TestUserFixture): Promise<Session> {
   const jar = new Map<string, string>();
   const build = () =>
-    createServerClient(
+    createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -53,11 +66,11 @@ async function signIn(email: string, user: TestUserFixture): Promise<Session> {
 }
 
 function actAs(session: Session) {
-  vi.mocked(supabaseModule.createClient).mockImplementation(async () => session.build());
+  vi.mocked(supabaseModule.createClient).mockImplementation(() => Promise.resolve(session.build()));
 }
 
 describe('active_org_id membership gate (#186)', () => {
-  const service = createServiceClient();
+  const service = createSeedDb();
   const tag = `${Date.now()}`;
 
   let orgId: string;
@@ -157,7 +170,7 @@ describe('active_org_id membership gate (#186)', () => {
     const res = await getMyPlan(
       createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data.key).toBe('base');
@@ -168,7 +181,7 @@ describe('active_org_id membership gate (#186)', () => {
     const res = await getMyPlan(
       createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data.key).toBe('ace');
@@ -182,7 +195,7 @@ describe('active_org_id membership gate (#186)', () => {
     const res = await getMyPlan(
       createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data.key).toBe('hub');
@@ -193,7 +206,7 @@ describe('active_org_id membership gate (#186)', () => {
     const res = await getMyPlan(
       createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data.key).toBe('base');
@@ -204,7 +217,7 @@ describe('active_org_id membership gate (#186)', () => {
     const res = await getMyPlan(
       createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data.key).toBe('launch');
@@ -215,7 +228,7 @@ describe('active_org_id membership gate (#186)', () => {
     const res = await getMyOrgs(
       createNextRequest(`${BASE_URL}/api/v1/me/orgs`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<MyOrgsBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data).toEqual([]);
@@ -226,7 +239,7 @@ describe('active_org_id membership gate (#186)', () => {
     const res = await getMyOrgs(
       createNextRequest(`${BASE_URL}/api/v1/me/orgs`, { method: 'GET' }, { active_org_id: orgId }),
     );
-    const body = await res.json();
+    const body = await json<MyOrgsBody>(res);
 
     expect(res.status).toBe(200);
     expect(body.data).toEqual([expect.objectContaining({ id: orgId, isActive: true })]);

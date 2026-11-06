@@ -4,6 +4,10 @@ import type {
   Rating,
 } from '@studiq/server/models/flashcard-spaced-repetition.model';
 
+function scheduleMinutes(delayMinutes: number): Date {
+  return new Date(Date.now() + delayMinutes * 60 * 1000);
+}
+
 export class FlashcardSpacedRepetitionService {
   private readonly MAX_INTERVAL_DAYS = 365;
   private readonly FUZZ_MIN_INTERVAL_DAYS = 3;
@@ -32,6 +36,8 @@ export class FlashcardSpacedRepetitionService {
         return this.handleReview(input);
       case 'relearning':
         return this.handleLearningStep('relearning', input);
+      default:
+        return this.handleReview(input);
     }
   }
 
@@ -73,11 +79,6 @@ export class FlashcardSpacedRepetitionService {
     const { currentStep, learningSteps, rating, easinessFactor, lapseCount, leechThreshold } =
       input;
     const totalSteps = learningSteps.length;
-
-    const scheduleMinutes = (delayMinutes: number) => {
-      const d = new Date(Date.now() + delayMinutes * 60 * 1000);
-      return d;
-    };
 
     switch (rating) {
       case 1: {
@@ -127,9 +128,8 @@ export class FlashcardSpacedRepetitionService {
           isLeech: this.checkLeech(lapseCount, leechThreshold),
         };
       }
-      case 4: {
+      default:
         return this.graduateToReview(easinessFactor, lapseCount, leechThreshold, rating);
-      }
     }
   }
 

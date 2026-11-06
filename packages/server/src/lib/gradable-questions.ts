@@ -1,6 +1,7 @@
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 /**
  * A question is auto-gradable unless it is an open answer (#329).
@@ -38,7 +39,7 @@ const ID_CHUNK_SIZE = 100;
  * and inflate every percentage.
  */
 export async function gradableQuestionCounts(
-  supabase: SupabaseClient,
+  supabase: SupabaseClient<Database>,
   attemptIds: readonly string[],
 ): Promise<ServiceResult<Map<string, number>>> {
   const ids = [...new Set(attemptIds)];

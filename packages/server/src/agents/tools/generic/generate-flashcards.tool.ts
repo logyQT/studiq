@@ -21,7 +21,7 @@ export const generateFlashcardsTool = tool({
       .array(flashcardSchema)
       .describe('The generated flashcards — one concept per card'),
   }),
-  execute: async ({ task, deck_name, flashcards }) => {
+  execute: ({ task, deck_name, flashcards }) => {
     try {
       const cid = conversationStorage.getStore()?.conversationId;
 

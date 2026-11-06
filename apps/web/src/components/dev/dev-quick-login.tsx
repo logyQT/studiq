@@ -33,8 +33,13 @@ export function DevQuickLogin() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: 'pass' }),
       });
-      const result = await res.json();
-      if (result.success) {
+      const result: unknown = await res.json();
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        'success' in result &&
+        result.success === true
+      ) {
         await refresh();
         router.refresh();
       }

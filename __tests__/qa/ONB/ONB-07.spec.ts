@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { asJson, json } from '#test/helpers/json';
 import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -70,7 +71,7 @@ interface TwoOrgTenant extends QaTenant {
   };
 }
 
-const TENANT = loadTenant(CASE) as TwoOrgTenant;
+const TENANT = asJson<TwoOrgTenant>(loadTenant(CASE));
 const TEACHER = TENANT.users.teacherA;
 
 type Side = 'A' | 'B';
@@ -113,7 +114,7 @@ async function apiData<T>(page: Page, path: string): Promise<T> {
   expect(response.status(), `GET ${path} → ${response.status()} ${await response.text()}`).toBe(
     200,
   );
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${path} success`).toBe(true);
   return body.data;
 }
@@ -148,7 +149,7 @@ async function ensureBank(page: Page, name: string, group: string): Promise<Enti
     response.status(),
     `POST /api/v1/questions/banks (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<Entity>;
+  const body = await json<ApiEnvelope<Entity>>(response);
   expect(body.success, `POST /api/v1/questions/banks (${name}) success`).toBe(true);
   return body.data;
 }
@@ -165,7 +166,7 @@ async function ensureDeck(page: Page, name: string, group: string): Promise<Enti
     response.status(),
     `POST /api/v1/flashcards/decks (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<Entity>;
+  const body = await json<ApiEnvelope<Entity>>(response);
   expect(body.success, `POST /api/v1/flashcards/decks (${name}) success`).toBe(true);
   return body.data;
 }
@@ -231,7 +232,7 @@ async function ensureOrgMember(inviter: Page, invitee: Page, org: TenantOrg): Pr
       created.status(),
       `POST /api/v1/organization/invites → ${created.status()} ${await created.text()}`,
     ).toBe(201);
-    const invitation = ((await created.json()) as ApiEnvelope<{ inviteCode: string }>).data;
+    const invitation = (await json<ApiEnvelope<{ inviteCode: string }>>(created)).data;
     expect(invitation.inviteCode, 'the invitation has a join code').toMatch(/^[0-9a-f]{32}$/);
 
     const accepted = await invitee.request.post('/api/v1/organization/invites/accept', {
@@ -266,8 +267,8 @@ async function ensureOrgMember(inviter: Page, invitee: Page, org: TenantOrg): Pr
 /** The third org the teacher must not reach: owned by the manager, no membership for them. */
 async function ensureForeignOrg(manager: Page): Promise<Entity> {
   const name = `ONB07 ${RUN} foreign`;
-  const memberships = await apiData<Entity[]>(manager, '/api/v1/me/orgs');
-  const existing = memberships.find((row) => row.name === name);
+  const foreignOrgs = await apiData<Entity[]>(manager, '/api/v1/me/orgs');
+  const existing = foreignOrgs.find((row) => row.name === name);
   if (existing) return existing;
 
   const response = await manager.request.post('/api/v1/organization', { data: { name } });
@@ -275,7 +276,7 @@ async function ensureForeignOrg(manager: Page): Promise<Entity> {
     response.status(),
     `POST /api/v1/organization (${name}) → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  return ((await response.json()) as ApiEnvelope<Entity>).data;
+  return (await json<ApiEnvelope<Entity>>(response)).data;
 }
 
 /** The case's own content for one org: its two groups, two banks and two decks. */
@@ -350,20 +351,20 @@ async function memberships(page: Page): Promise<OrgMembership[]> {
 }
 
 async function bankIds(page: Page): Promise<string[]> {
-  return (await bankItems(page)).map((bank) => bank.id).sort();
+  return (await bankItems(page)).map((bank) => bank.id).toSorted();
 }
 
 async function deckIds(page: Page): Promise<string[]> {
-  return (await deckItems(page)).map((deck) => deck.id).sort();
+  return (await deckItems(page)).map((deck) => deck.id).toSorted();
 }
 
 async function groupIds(page: Page): Promise<string[]> {
   const groups = await apiData<Entity[]>(page, '/api/v1/organization/groups');
-  return groups.map((group) => group.id).sort();
+  return groups.map((group) => group.id).toSorted();
 }
 
 function ids(entities: Entity[]): string[] {
-  return entities.map((entity) => entity.id).sort();
+  return entities.map((entity) => entity.id).toSorted();
 }
 
 function escapeRegExp(value: string): string {
@@ -508,7 +509,7 @@ test.describe('@case:ONB-07 @area:ONB @prio:P1 switching organizations', () => {
 
     // --- Step 1: the switcher lists exactly this teacher's two orgs ---------
     const listed = await memberships(page);
-    expect(listed.map((org) => org.id).sort()).toEqual(ids([orgA.org, orgB.org]));
+    expect(listed.map((org) => org.id).toSorted()).toEqual(ids([orgA.org, orgB.org]));
     expect(listed.map((org) => org.orgRoleName)).toEqual(['teacher', 'teacher']);
 
     const first = listed.find((org) => org.isActive)!;
@@ -562,7 +563,7 @@ test.describe('@case:ONB-07 @area:ONB @prio:P1 switching organizations', () => {
     expect(switched.status(), 'switch to a non-member org').toBe(404);
 
     const after = await memberships(page);
-    expect(after.map((org) => org.id).sort()).toEqual(before.map((org) => org.id).sort());
+    expect(after.map((org) => org.id).toSorted()).toEqual(before.map((org) => org.id).toSorted());
     expect(after.filter((org) => org.isActive).map((org) => org.id)).toEqual([activeBefore.id]);
 
     // The switcher never offers the foreign org either.

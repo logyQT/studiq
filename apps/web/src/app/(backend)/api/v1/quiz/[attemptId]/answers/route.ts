@@ -9,7 +9,7 @@ export async function PUT(
 ) {
   return withAuth(req, async (ctx) => {
     const { attemptId } = await params;
-    const body = await req.json();
+    const body: unknown = await req.json();
     return toNextResponse(await quizAttemptController.saveAnswers(body, attemptId, ctx));
   });
 }

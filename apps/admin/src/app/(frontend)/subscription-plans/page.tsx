@@ -67,6 +67,11 @@ const EMPTY_FORM: FormData = {
   forAccountType: '',
 };
 
+function formatPrice(cents: number | null) {
+  if (cents === null) return '—';
+  return `${(cents / 100).toFixed(2)} zł`;
+}
+
 function buildPayload(data: FormData) {
   return {
     key: data.key,
@@ -102,43 +107,43 @@ export default function SubscriptionPlansPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  function mapDeleteError(error: Error): string {
-    if (error instanceof ApiError && error.code === 'CONFLICT') return t('delete_failed_in_use');
-    return t('delete_failed', { code: error.message });
+  function mapDeleteError(err: Error): string {
+    if (err instanceof ApiError && err.code === 'CONFLICT') return t('delete_failed_in_use');
+    return t('delete_failed', { code: err.message });
   }
 
   const createMutation = useMutation({
     mutationFn: (data: FormData) => apiPost('/subscription-plans', buildPayload(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDialogOpen(false);
       setForm(EMPTY_FORM);
       setFormError(null);
     },
-    onError: (error: Error) => setFormError(error.message),
+    onError: (err: Error) => setFormError(err.message),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, ...data }: FormData & { id: string }) =>
       apiPut(`/subscription-plans/${id}`, buildPayload(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDialogOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
       setFormError(null);
     },
-    onError: (error: Error) => setFormError(error.message),
+    onError: (err: Error) => setFormError(err.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/subscription-plans/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDeleteTarget(null);
       setDeleteError(null);
     },
-    onError: (error: Error) => setDeleteError(mapDeleteError(error)),
+    onError: (err: Error) => setDeleteError(mapDeleteError(err)),
   });
 
   function openCreate() {
@@ -172,11 +177,6 @@ export default function SubscriptionPlansPage() {
     } else {
       createMutation.mutate(form);
     }
-  }
-
-  function formatPrice(cents: number | null) {
-    if (cents === null) return '—';
-    return `${(cents / 100).toFixed(2)} zł`;
   }
 
   return (

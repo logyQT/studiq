@@ -3,6 +3,7 @@
 import type { Session, User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { apiGet } from '@/lib/api';
 import { resetUserScopedCache } from '@/lib/query-cache';
 
 type AuthContextType = {
@@ -31,10 +32,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const refresh = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/v1/auth/me');
-      const json = await res.json();
+      const data = await apiGet<{ user: User | null; session: Session | null }>('/api/v1/auth/me');
 
-      const nextUser: User | null = json.success && json.data ? json.data.user : null;
+      const nextUser = data.user;
 
       // Drop the previous identity's cache (including any anonymous-phase 401)
       // before the next render, so consumers never read it under the new user.
@@ -43,7 +43,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       if (nextUser) {
         setUser(nextUser);
-        setSession(json.data.session);
+        setSession(data.session);
       } else {
         setUser(null);
         setSession(null);
@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [queryClient]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   return (

@@ -278,7 +278,7 @@ export function FlashcardsTab() {
                     <th className="py-3 px-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       {t('th_interval')}
                     </th>
-                    <th className="py-3 px-4" />
+                    <th className="py-3 px-4" aria-hidden="true" />
                   </tr>
                 </thead>
                 <tbody>

@@ -4,6 +4,16 @@ export interface FlashcardItem {
   topic?: string;
 }
 
+/**
+ * Model output is untrusted: coerce a field to text explicitly instead of
+ * relying on `Object#toString` (`[object Object]`) for non-primitive values.
+ */
+function toText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  return JSON.stringify(value) ?? '';
+}
+
 export function parseFlashcards(raw: unknown): FlashcardItem[] {
   let cards: unknown;
   if (typeof raw === 'string') {
@@ -16,8 +26,8 @@ export function parseFlashcards(raw: unknown): FlashcardItem[] {
     cards = raw;
   }
   return (Array.isArray(cards) ? cards : []).map((c: Record<string, unknown>) => ({
-    front: String(c.front ?? ''),
-    back: String(c.back ?? ''),
-    topic: c.topic ? String(c.topic) : undefined,
+    front: toText(c.front),
+    back: toText(c.back),
+    topic: c.topic ? toText(c.topic) : undefined,
   }));
 }

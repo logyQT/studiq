@@ -49,9 +49,9 @@ export function LocaleAnnouncerProvider({ children }: { children: React.ReactNod
   return (
     <LocaleAnnounceContext.Provider value={value}>
       {children}
-      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+      <output aria-live="polite" aria-atomic="true" className="sr-only">
         {announcement && <span key={announcement.seq}>{announcement.message}</span>}
-      </div>
+      </output>
     </LocaleAnnounceContext.Provider>
   );
 }

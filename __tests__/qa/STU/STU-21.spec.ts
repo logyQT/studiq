@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -145,7 +146,7 @@ async function createDeck(page: Page, tenant: QaTenant): Promise<DeckRow> {
     response.status(),
     `POST ${DECKS_URL} → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<DeckRow>;
+  const body = await json<ApiEnvelope<DeckRow>>(response);
   expect(body.success, 'POST deck success flag').toBe(true);
   expect(body.data.visibility ?? 'personal', 'a new deck is personal').toBe('personal');
   return body.data;
@@ -155,7 +156,7 @@ async function createDeck(page: Page, tenant: QaTenant): Promise<DeckRow> {
 async function listCards(page: Page, deckId: string): Promise<CardRow[]> {
   const response = await page.request.get(`${FLASHCARDS_URL}?deckIds=${deckId}&limit=50`);
   expect(response.status(), `GET ${FLASHCARDS_URL}?deckIds=${deckId}`).toBe(200);
-  return ((await response.json()) as ApiEnvelope<CardList>).data.items;
+  return (await json<ApiEnvelope<CardList>>(response)).data.items;
 }
 
 /** The deck's own card in the grid, addressed by the id the API assigned. */
@@ -336,7 +337,7 @@ test.describe('@case:STU-21 @area:STU @prio:P1 flashcard Markdown editor', () =>
     // The card is stored as typed (the client normalises the Markdown on save).
     const cards = await listCards(page, deck.id);
     expect(cards, 'the deck holds exactly the card this attempt created').toHaveLength(1);
-    const card = cards[0]!;
+    const card = cards[0];
     expect(card.deck_id, 'the card belongs to this deck').toBe(deck.id);
     expect(card.created_by, 'the card belongs to the signed-in student').toBe(studentOf(tenant).id);
     expect(card.front, 'stored front').toBe(CONTENT.front);

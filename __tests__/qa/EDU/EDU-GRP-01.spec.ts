@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -78,7 +79,7 @@ interface GroupRow {
 /** `GET` the group list as the signed-in educator and unwrap the envelope. */
 async function listGroups(page: Page): Promise<GroupRow[]> {
   const response = await page.request.get(GROUPS_URL);
-  const body = (await response.json()) as ApiEnvelope<GroupRow[]>;
+  const body = await json<ApiEnvelope<GroupRow[]>>(response);
   expect(response.status(), `GET ${GROUPS_URL} → ${JSON.stringify(body)}`).toBe(200);
   expect(body.success).toBe(true);
   return body.data;
@@ -106,7 +107,7 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
     // renders the write controls. A member-role educator would get a read-only list.
     const features = await page.request.get('/api/v1/features/me');
     expect(features.status(), 'GET /api/v1/features/me').toBe(200);
-    const enabled = ((await features.json()) as ApiEnvelope<{ features: string[] }>).data.features;
+    const enabled = (await json<ApiEnvelope<{ features: string[] }>>(features)).data.features;
     expect(enabled, 'the educator is entitled to group management').toContain('group.manage');
 
     // A retried run shares the tenant: remove its leftover group first, both to keep
@@ -198,9 +199,9 @@ test.describe('@case:EDU-GRP-01 @area:EDU @prio:P2 teacher group list and creati
         after
           .map((group) => group.id)
           .filter((id) => seededIds.includes(id))
-          .sort(),
+          .toSorted(),
         'only the case’s own group was added',
-      ).toEqual(seededIds.sort());
+      ).toEqual(seededIds.toSorted());
 
       expect(pageErrors, 'uncaught page errors on /edu/groups').toEqual([]);
     } finally {

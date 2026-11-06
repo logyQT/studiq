@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
@@ -59,6 +60,8 @@ const UI = {
   planColumn: 'Plan',
   amountColumn: 'Kwota',
   dateColumn: 'Data',
+  invoiceColumn: 'Faktura',
+  invoiceLink: 'Faktura',
 } as const;
 
 /** The plan BIL-03 buys and the catalogue snapshot the payment row keeps. */
@@ -77,6 +80,7 @@ interface PaymentHistoryItem {
   amount: number;
   currency: string;
   paidAt: string;
+  hostedInvoiceUrl: string | null;
 }
 
 interface ApiEnvelope<T> {
@@ -96,7 +100,7 @@ function normalise(text: string): string {
 async function paymentHistory(page: Page): Promise<PaymentHistoryItem[]> {
   const response = await page.request.get('/api/v1/me/payments');
   expect(response.status(), 'GET /api/v1/me/payments').toBe(200);
-  const body = (await response.json()) as ApiEnvelope<PaymentHistoryItem[]>;
+  const body = await json<ApiEnvelope<PaymentHistoryItem[]>>(response);
   expect(body.success, 'GET /api/v1/me/payments success flag').toBe(true);
   return body.data;
 }
@@ -141,7 +145,7 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     // --- Precondition: the case's own student, no purchases, Base plan -----
-    await resetPurchaseState(student!.id);
+    await resetPurchaseState(student.id);
 
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
@@ -188,7 +192,7 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
         type: 'checkout.session.completed',
         session_id: sessionId,
         plan_id: PURCHASE.planId,
-        user_id: student!.id,
+        user_id: student.id,
       },
     });
     expect(webhook.status(), 'POST /api/v1/stripe/webhook (spark)').toBe(200);
@@ -205,6 +209,17 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
     expect(Number.isNaN(new Date(payment.paidAt).getTime()), 'a parseable purchase date').toBe(
       false,
     );
+    // A mock purchase has no Stripe-hosted invoice, so the new column is empty.
+    expect(payment.hostedInvoiceUrl, 'a mock payment has no hosted invoice URL').toBeNull();
+
+    // Give this tenant's own row a hosted URL to exercise the invoice branch.
+    const db = createQaSupabase();
+    const hostedInvoiceUrl = `https://invoice.stripe.test/${CASE}-${crypto.randomUUID()}`;
+    const updated = await db
+      .from('payments')
+      .update({ hosted_invoice_url: hostedInvoiceUrl })
+      .eq('id', payment.id);
+    expect(updated.error, 'set the hosted invoice URL on the tenant payment').toBeNull();
 
     // --- Step 1 again, after the purchase: an entry appears ----------------
     await page.goto('/app/account/payments');
@@ -222,8 +237,8 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
     await expect(table, 'the payment history table').toBeVisible();
     await expect(
       table.getByRole('columnheader'),
-      'the table is the payment history (Plan / Kwota / Data)',
-    ).toHaveText([UI.planColumn, UI.amountColumn, UI.dateColumn]);
+      'the table is the payment history (Plan / Kwota / Data / Faktura)',
+    ).toHaveText([UI.planColumn, UI.amountColumn, UI.dateColumn, UI.invoiceColumn]);
 
     const rows = table.locator('tbody tr');
     await expect(rows, 'the bought plan is the only entry').toHaveCount(purchased.length);
@@ -243,6 +258,12 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
         new Intl.DateTimeFormat('pl', { dateStyle: 'medium' }).format(new Date(payment.paidAt)),
       ),
     );
+    const invoiceLink = cells.nth(3).getByRole('link', { name: UI.invoiceLink, exact: true });
+    await expect(invoiceLink, 'the entry links to the Stripe-hosted invoice').toHaveAttribute(
+      'href',
+      hostedInvoiceUrl,
+    );
+    await expect(invoiceLink, 'the invoice opens in a new tab').toHaveAttribute('target', '_blank');
 
     expect(pageErrors, 'uncaught page errors on the payment history page').toEqual([]);
   });

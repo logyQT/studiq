@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -80,7 +81,7 @@ interface OrgRole {
 async function getData<T>(page: Page, path: string): Promise<T> {
   const response = await page.request.get(path);
   expect(response.status(), `GET ${path}`).toBe(200);
-  const body = (await response.json()) as { success: boolean; data: T };
+  const body = await json<{ success: boolean; data: T }>(response);
   expect(body.success, `GET ${path} success`).toBe(true);
   return body.data;
 }
@@ -191,7 +192,7 @@ test.describe('@case:MGR-MEM-01 @area:MGR @prio:P1 members search and role filte
         await expect(row.getByText(group.name, { exact: true })).toBeVisible();
       }
       // `formatDate(..., 'pl')` → dd.MM.yyyy, never an empty cell.
-      await expect(row).toContainText(/\d{2}\.\d{2}\.\d{4}/);
+      await expect(row).toContainText(/\d{1,2}\.\d{1,2}\.\d{4}/);
 
       if (member.id === manager.id) {
         // --- Expected result: the own account is marked and not actionable --

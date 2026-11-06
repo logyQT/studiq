@@ -18,13 +18,18 @@ CREATE TABLE public.quiz_attempts (
   -- the assignment is deleted, this marker keeps the attempt out of the student's practice
   -- insights (see 20261028100200_student_insights.sql, #657).
   is_assignment_attempt boolean NOT NULL DEFAULT false,
-  graded_at        timestamptz
+  graded_at        timestamptz,
+  -- Organization that owns what was practised (see 68_activity_organization.sql); NULL for
+  -- personal resources, which are part of no organization aggregate.
+  organization_id  uuid REFERENCES public.organizations(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_quiz_attempts_user ON public.quiz_attempts(user_id);
 CREATE INDEX idx_quiz_attempts_assignment ON public.quiz_attempts(assignment_id);
 CREATE INDEX idx_quiz_attempts_completed_at
   ON public.quiz_attempts(completed_at) WHERE completed_at IS NOT NULL;
+CREATE INDEX idx_quiz_attempts_organization
+  ON public.quiz_attempts(organization_id, completed_at) WHERE organization_id IS NOT NULL;
 
 -- At most one *running* attempt per assignment and student (#369). Completed
 -- attempts stay unlimited — `max_attempts` is enforced by the service.

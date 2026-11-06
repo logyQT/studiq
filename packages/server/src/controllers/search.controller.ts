@@ -7,7 +7,7 @@ import { SearchQuerySchema } from '@studiq/server/models/search.model';
 import { type SearchService, searchService } from '@studiq/server/services/search.service';
 
 export class SearchController {
-  constructor(private searchService: SearchService) {}
+  constructor(private service: SearchService) {}
 
   async search(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = SearchQuerySchema.safeParse(body);
@@ -21,7 +21,7 @@ export class SearchController {
       };
     }
 
-    const result = await this.searchService.search(parsed.data.q, ctx, parsed.data.limit);
+    const result = await this.service.search(parsed.data.q, ctx, parsed.data.limit);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

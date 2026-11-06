@@ -1,18 +1,40 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { PaymentService } from '@studiq/server/services/payment.service';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-const ctx = { userId: 'u-1' } as unknown as Parameters<PaymentService['listMine']>[0];
+const ctx: RequestContext = {
+  userId: 'u-1',
+  accountType: AccountType.STUDENT,
+  traceId: 't',
+  url: '',
+  method: 'GET',
+  activeOrgId: null,
+  orgRoleId: null,
+  groupIds: [],
+  permissionScopes: {},
+};
+
+type QueryResult = { data: unknown; error: unknown };
+type QueryChain = {
+  select: Mock<(...args: unknown[]) => QueryChain>;
+  eq: Mock<(...args: unknown[]) => QueryChain>;
+  order: Mock<(...args: unknown[]) => QueryChain>;
+  then: Promise<QueryResult>['then'];
+  catch: Promise<QueryResult>['catch'];
+  finally: Promise<QueryResult>['finally'];
+};
 
 function qb(rows: unknown[] | null, error: unknown = null) {
-  const promise = Promise.resolve({ data: rows, error });
-  const b: any = {};
-  b.select = vi.fn(() => b);
-  b.eq = vi.fn(() => b);
-  b.order = vi.fn(() => b);
-  b.then = promise.then.bind(promise);
-  b.catch = promise.catch.bind(promise);
-  b.finally = promise.finally.bind(promise);
+  const promise = Promise.resolve<QueryResult>({ data: rows, error });
+  const b: QueryChain = {
+    select: vi.fn(() => b),
+    eq: vi.fn(() => b),
+    order: vi.fn(() => b),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  };
   return b;
 }
 
@@ -23,7 +45,7 @@ describe('PaymentService.listMine (#392)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new PaymentService(async () => mock as any);
+    service = new PaymentService(() => Promise.resolve(mock));
   });
 
   it('maps payment rows to camelCase, newest first', async () => {
@@ -35,6 +57,8 @@ describe('PaymentService.listMine (#392)', () => {
         amount: 1999,
         currency: 'PLN',
         paid_at: '2026-10-25T10:00:00.000Z',
+        provider: 'stripe',
+        hosted_invoice_url: 'https://invoice.stripe.test/in_2',
       },
       {
         id: 'p-1',
@@ -43,6 +67,8 @@ describe('PaymentService.listMine (#392)', () => {
         amount: 999,
         currency: 'PLN',
         paid_at: '2026-09-01T10:00:00.000Z',
+        provider: 'mock',
+        hosted_invoice_url: null,
       },
     ]);
     mock.from.mockReturnValueOnce(query);
@@ -50,7 +76,9 @@ describe('PaymentService.listMine (#392)', () => {
     const result = await service.listMine(ctx);
 
     expect(mock.from).toHaveBeenCalledWith('payments');
-    expect(query.select).toHaveBeenCalledWith('id, plan_key, plan_name, amount, currency, paid_at');
+    expect(query.select).toHaveBeenCalledWith(
+      'id, plan_key, plan_name, amount, currency, paid_at, provider, hosted_invoice_url',
+    );
     expect(query.eq).toHaveBeenCalledWith('user_id', 'u-1');
     expect(query.order).toHaveBeenCalledWith('paid_at', { ascending: false });
     expect(result).toEqual({
@@ -63,6 +91,8 @@ describe('PaymentService.listMine (#392)', () => {
           amount: 1999,
           currency: 'PLN',
           paidAt: '2026-10-25T10:00:00.000Z',
+          provider: 'stripe',
+          hostedInvoiceUrl: 'https://invoice.stripe.test/in_2',
         },
         {
           id: 'p-1',
@@ -71,6 +101,43 @@ describe('PaymentService.listMine (#392)', () => {
           amount: 999,
           currency: 'PLN',
           paidAt: '2026-09-01T10:00:00.000Z',
+          provider: 'mock',
+          hostedInvoiceUrl: null,
+        },
+      ],
+    });
+  });
+
+  it('keeps a Stripe row with no hosted invoice URL at null', async () => {
+    mock.from.mockReturnValueOnce(
+      qb([
+        {
+          id: 'p-3',
+          plan_key: 'pro',
+          plan_name: 'StudiQ Pro',
+          amount: 2999,
+          currency: 'PLN',
+          paid_at: '2026-10-31T10:00:00.000Z',
+          provider: 'stripe',
+          hosted_invoice_url: null,
+        },
+      ]),
+    );
+
+    const result = await service.listMine(ctx);
+
+    expect(result).toEqual({
+      success: true,
+      data: [
+        {
+          id: 'p-3',
+          planKey: 'pro',
+          planName: 'StudiQ Pro',
+          amount: 2999,
+          currency: 'PLN',
+          paidAt: '2026-10-31T10:00:00.000Z',
+          provider: 'stripe',
+          hostedInvoiceUrl: null,
         },
       ],
     });

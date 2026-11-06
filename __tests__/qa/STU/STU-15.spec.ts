@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -82,7 +83,7 @@ async function listDecks(page: Page): Promise<DeckItem[]> {
     response.status(),
     `GET /api/v1/flashcards/decks → ${response.status()} ${await response.text()}`,
   ).toBe(200);
-  const body = (await response.json()) as ApiEnvelope<{ items: DeckItem[] }>;
+  const body = await json<ApiEnvelope<{ items: DeckItem[] }>>(response);
   expect(body.success, 'deck list success flag').toBe(true);
   return body.data.items;
 }
@@ -146,7 +147,7 @@ async function createGroupDeck(
       response.status(),
       `POST /api/v1/flashcards/decks (group deck) → ${response.status()} ${await response.text()}`,
     ).toBe(201);
-    const body = (await response.json()) as ApiEnvelope<DeckItem>;
+    const body = await json<ApiEnvelope<DeckItem>>(response);
     expect(body.data.visibility, 'the manager created a group deck').toBe('group');
     expect(body.data.flashcard_count, 'the group deck starts empty').toBe(0);
     return { name, id: body.data.id };
@@ -223,7 +224,7 @@ test.describe('@case:STU-15 @area:STU @prio:P1 create a deck', () => {
     await expect(page.getByText(COPY.deckCreated, { exact: true })).toBeVisible();
     await expect(dialog).toHaveCount(0);
 
-    const createdDeck = ((await created.json()) as ApiEnvelope<DeckItem>).data;
+    const createdDeck = (await json<ApiEnvelope<DeckItem>>(created)).data;
     expect(createdDeck.name, 'the deck keeps the case’s name').toBe(DECK_NAME);
     expect(createdDeck.description, 'the deck keeps the case’s description').toBe(DECK_DESCRIPTION);
     expect(createdDeck.visibility, 'the case’s „Tylko ja” is a personal deck').toBe('personal');

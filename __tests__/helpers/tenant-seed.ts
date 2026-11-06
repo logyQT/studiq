@@ -1,16 +1,20 @@
 /**
  * Shared tenant seeder.
  *
- * The e2e suite (`scripts/e2e-seed.ts`) and the integration fixtures
- * (`__tests__/helpers/test-user.ts`) both provision isolated tenants through this
- * module, so account/org/group creation has one implementation.
+ * The e2e suite (`scripts/e2e-seed.ts`) and the QA suite (`scripts/qa-tenant.ts`)
+ * both provision isolated tenants through this module, so account/org/group
+ * creation has one implementation. What differs between them is the *shape* they
+ * ask for — the e2e seeder derives one tenant per Playwright test and adds
+ * content, the QA seeder derives one tenant per case with the case's own roster —
+ * not how a tenant is written.
  *
- * Accounts are created through the Supabase Admin API (`auth.admin.createUser`)
- * instead of raw SQL: the trigger `handle_new_user` then creates the profile and
- * copies `app_metadata.account_type`, and the module stays runnable inside
- * Vitest (which does not expose `bun:sql`).
+ * Accounts default to the Supabase Admin API (`auth.admin.createUser`); the two
+ * CLI seeders instead pass a SQL writer (`createSqlAccountWriter`) because they
+ * hold a direct Postgres connection. The default path must stay Admin-API based
+ * so this module keeps running inside Vitest (which does not expose `bun:sql`).
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SQL } from 'bun';
 import { randomBytes } from 'node:crypto';
 import type { Database } from '@studiq/server/types/database';
 import { shortHash, uuidv5 } from '#test/e2e/fixtures/ids';
@@ -114,6 +118,143 @@ export function buildAccount(
   };
 }
 
+/**
+ * How a batch of accounts is materialised. The default is the Supabase Admin API
+ * (one GoTrue call per account, which hashes the password with bcrypt — ~64 ms of
+ * CPU each, measured against the local stack). A caller that already holds a
+ * direct Postgres connection can pass a writer that inserts the batch in one
+ * statement instead; see `createSqlAccountWriter` in `scripts/qa-tenant.ts`.
+ */
+export type AccountWriter = (accounts: SeedAccount[]) => Promise<void>;
+
+/**
+ * Materialise a batch of accounts and return them with their ids resolved.
+ *
+ * Without a `write` hook every account goes through `ensureAccount`. With one,
+ * the batch is written in a single statement and the ids are read back once, so
+ * re-seeding an email that already exists under another id keeps working the
+ * same way the Admin-API path does.
+ */
+export async function ensureAccounts(
+  db: SeedDb,
+  accounts: SeedAccount[],
+  write?: AccountWriter,
+): Promise<SeedAccount[]> {
+  if (accounts.length === 0) return [];
+  if (!write) return Promise.all(accounts.map((account) => ensureAccount(db, account)));
+
+  await write(accounts);
+  const { data, error } = await db
+    .from('profiles')
+    .select('id,email')
+    .in(
+      'email',
+      accounts.map((account) => account.email),
+    );
+  if (error) throw new Error(`seed accounts: profiles lookup ${error.message}`);
+  const byEmail = new Map((data ?? []).map((row) => [row.email, row.id]));
+
+  return accounts.map((account) => {
+    const id = byEmail.get(account.email);
+    if (!id) throw new Error(`seed ${account.email}: the account insert did not create a profile`);
+    return { ...account, id };
+  });
+}
+
+/**
+ * Auth users through one SQL statement, the way `supabase/seeds/01_users.sql` did.
+ *
+ * GoTrue's admin `createUser` bcrypts the password for every account (~64 ms of
+ * CPU each, measured against the local stack), so a 500-tenant run spends ~30 s
+ * of CPU on what is one shared test password. Here the hash is computed once
+ * (pgcrypto, cost 10) and every row reuses it; the insert itself is ~0.1 ms per
+ * user.
+ *
+ * The four empty-token columns are load-bearing: the auth schema leaves
+ * `confirmation_token`, `recovery_token`, `email_change_token_new` and
+ * `email_change` nullable with no default, but GoTrue scans them into Go strings.
+ * Leaving them NULL makes password sign-in fail with `converting NULL to string
+ * is unsupported` (500), which is why `01_users.sql` set them to '' too.
+ *
+ * `handle_new_user` still runs on the insert, so profiles (and their plan key) are
+ * created exactly as they are for an Admin-API signup.
+ */
+export function createSqlAccountWriter(sql: SQL): AccountWriter {
+  // Cache the *pending* query, not just its result: `runBounded` reaches this
+  // writer from several tenants at once, and a value-only cache lets every
+  // first-batch caller hash the same password again (8 bcrypts instead of 1).
+  const hashes = new Map<string, Promise<string>>();
+
+  return async (accounts) => {
+    const password = accounts[0]?.password;
+    if (!password || accounts.some((account) => account.password !== password)) {
+      throw new Error('SQL account seeding needs one shared password per batch');
+    }
+
+    let pending = hashes.get(password);
+    if (!pending) {
+      pending = sql<{ hash: string }[]>`SELECT crypt(${password}, gen_salt('bf', 10)) AS hash`
+        .then(([row]) => row.hash)
+        .catch((error: unknown) => {
+          // A rejected query is not a result — the next tenant should retry it.
+          hashes.delete(password);
+          throw error;
+        });
+      hashes.set(password, pending);
+    }
+    const hash = await pending;
+
+    const ids = accounts.map((account) => account.id);
+    const emails = accounts.map((account) => account.email);
+    const types = accounts.map((account) => account.accountType);
+    const names = accounts.map((account) => account.name ?? account.role);
+
+    await sql`INSERT INTO auth.users (
+        instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+        created_at, updated_at, raw_app_meta_data, raw_user_meta_data,
+        confirmation_token, recovery_token, email_change_token_new, email_change
+      )
+      SELECT '00000000-0000-0000-0000-000000000000', r.id, 'authenticated', 'authenticated',
+             r.email, ${hash}, now(), now(), now(),
+             jsonb_build_object('account_type', r.account_type),
+             jsonb_build_object('name', r.name, 'email_verified', true, 'account_type', r.account_type),
+             '', '', '', ''
+      FROM unnest(${ids}::uuid[], ${emails}::text[], ${types}::text[], ${names}::text[])
+        AS r(id, email, account_type, name)
+      ON CONFLICT DO NOTHING`;
+
+    // Same identity row GoTrue writes on `createUser` (one per e-mail provider),
+    // so linked-provider reads and the session's `identities` stay identical.
+    await sql`INSERT INTO auth.identities (
+        provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+      )
+      SELECT u.id::text, u.id,
+             jsonb_build_object('sub', u.id::text, 'email', u.email,
+                                'email_verified', true, 'phone_verified', false),
+             'email', now(), now(), now()
+      FROM auth.users u
+      WHERE u.id = ANY(${ids}::uuid[])
+      ON CONFLICT DO NOTHING`;
+  };
+}
+
+/** Bounded pool for the seeders: at most `limit` tenants in flight. */
+export async function runBounded<T>(
+  items: T[],
+  limit: number,
+  run: (item: T) => Promise<void>,
+): Promise<void> {
+  const width = Number.isFinite(limit) && limit >= 1 ? Math.floor(limit) : 8;
+  for (let index = 0; index < items.length; index += width) {
+    await Promise.all(items.slice(index, index + width).map(run));
+  }
+}
+
+/** Pool width for a seeder: `QA_SEED_CONCURRENCY` / `E2E_SEED_CONCURRENCY`, default 8. */
+export function concurrencyFromEnv(name: string, fallback = 8): number {
+  return Number(process.env[name] ?? fallback);
+}
+
 /** Create the auth user (and, through the DB trigger, its profile). */
 export async function ensureAccount(db: SeedDb, account: SeedAccount): Promise<SeedAccount> {
   // A 4-worker CI run seeds several tenants at once; a dropped connection is a
@@ -157,9 +298,9 @@ export async function ensureAccount(db: SeedDb, account: SeedAccount): Promise<S
 export async function seedTenantGraph(
   db: SeedDb,
   spec: TenantGraphSpec,
+  write?: AccountWriter,
 ): Promise<SeededTenantGraph> {
-  const owner = await ensureAccount(db, spec.owner);
-  const members = await Promise.all(spec.members.map((member) => ensureAccount(db, member)));
+  const [owner, ...members] = await ensureAccounts(db, [spec.owner, ...spec.members], write);
 
   if (!spec.org) {
     return {

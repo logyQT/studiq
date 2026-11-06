@@ -1,3 +1,4 @@
+import { json } from '#test/helpers/json';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 /**
@@ -140,7 +141,7 @@ async function expectFeaturesPage(page: Page): Promise<void> {
 
   const badges = page.locator('main [data-slot="badge"]');
   await expect(badges).toHaveCount(FEATURES.length);
-  for (const [plan, total] of Object.entries(PLAN_TOTALS) as [Plan, number][]) {
+  for (const [plan, total] of Object.entries(PLAN_TOTALS)) {
     await expect(badges.filter({ hasText: plan }), `${plan} badges`).toHaveCount(total);
   }
 
@@ -219,7 +220,7 @@ test.describe('@case:PUB-02 @area:PUB @prio:P2 features page', () => {
     // Prerequisite "Brak sesji": the visitor is not authenticated.
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.status()).toBe(200);
-    const meBody = (await me.json()) as { data?: { user?: unknown } };
+    const meBody = await json<{ data?: { user?: unknown } }>(me);
     expect(meBody.data?.user ?? null).toBeNull();
 
     await expectFeaturesPage(page);

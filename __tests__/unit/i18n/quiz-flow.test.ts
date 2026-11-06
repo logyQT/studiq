@@ -56,8 +56,9 @@ describe.each([
   });
 });
 
+const read = (p: string) => fs.readFileSync(p, 'utf8');
+
 describe('quiz flow components', () => {
-  const read = (p: string) => fs.readFileSync(p, 'utf8');
   const taking = read('apps/web/src/app/(frontend)/app/study/session/quiz/[attemptId]/page.tsx');
   const form = read('apps/web/src/components/study/quiz-content.tsx');
 

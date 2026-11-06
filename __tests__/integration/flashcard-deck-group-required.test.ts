@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { json } from '#test/helpers/json';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   cleanupFlashcardDecks,
@@ -14,6 +15,26 @@ import {
 import { POST as createDeck } from '@/app/(backend)/api/v1/flashcards/decks/route';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
+
+/** Fields of the deck payloads these tests read. */
+interface DeckPayload {
+  id: string;
+  name: string;
+  visibility: string;
+  groupIds?: string[];
+}
+
+/** Deck API body: the error branch only carries `success`/`error`, the success branch `data`. */
+interface DeckBody {
+  success: boolean;
+  error?: string;
+  data: DeckPayload;
+}
+
+interface StoredDeck {
+  id: string;
+  visibility: string;
+}
 
 /**
  * #139: a deck could be created with `visibility = 'group'` and no `groupIds`, which left
@@ -41,7 +62,7 @@ describe(`Flashcard Deck Group Required`, () => {
         { active_org_id: orgId },
       ),
     );
-    return { res, body: await res.json() };
+    return { res, body: await json<DeckBody>(res) };
   }
 
   async function putDeck(deckId: string, body: Record<string, unknown>) {
@@ -57,7 +78,7 @@ describe(`Flashcard Deck Group Required`, () => {
       { active_org_id: orgId },
     );
     const res = await updateDeck(request, { params });
-    return { res, body: await res.json() };
+    return { res, body: await json<DeckBody>(res) };
   }
 
   async function getDeck(deckId: string) {
@@ -69,12 +90,16 @@ describe(`Flashcard Deck Group Required`, () => {
       { active_org_id: orgId },
     );
     const res = await getDeckById(request, { params });
-    return { res, body: await res.json() };
+    return { res, body: await json<DeckBody>(res) };
   }
 
   async function deckGroupIds(deckId: string): Promise<string[]> {
-    const { data } = await service.from('deck_groups').select('group_id').eq('deck_id', deckId);
-    return (data ?? []).map((r) => r.group_id as string);
+    const { data } = await service
+      .from('deck_groups')
+      .select('group_id')
+      .eq('deck_id', deckId)
+      .overrideTypes<{ group_id: string }[], { merge: false }>();
+    return (data ?? []).map((r) => r.group_id);
   }
 
   async function storedDeckByName(name: string) {
@@ -82,7 +107,8 @@ describe(`Flashcard Deck Group Required`, () => {
       .from('flashcard_decks')
       .select('id, visibility')
       .eq('created_by', teacher.user.id)
-      .eq('name', name);
+      .eq('name', name)
+      .overrideTypes<StoredDeck[], { merge: false }>();
     return data ?? [];
   }
 
@@ -170,7 +196,7 @@ describe(`Flashcard Deck Group Required`, () => {
       groupIds: [groupId],
     });
     expect(created.res.status).toBe(201);
-    const deckId = created.body.data.id as string;
+    const deckId = created.body.data.id;
 
     const { res, body } = await putDeck(deckId, { groupIds: [] });
 
@@ -192,7 +218,7 @@ describe(`Flashcard Deck Group Required`, () => {
       groupIds: [groupId],
     });
     expect(created.res.status).toBe(201);
-    const deckId = created.body.data.id as string;
+    const deckId = created.body.data.id;
 
     const { res, body } = await putDeck(deckId, { name: `group-required-renamed-${suiteId}` });
 

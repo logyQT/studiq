@@ -17,13 +17,13 @@ function unprocessable(details: ValidationDetails): ControllerResponse {
 }
 
 export class UserAdminController {
-  constructor(private userAdminService: UserAdminService) {}
+  constructor(private service: UserAdminService) {}
 
   async list(query: unknown): Promise<ControllerResponse> {
     const parsed = ListUsersQuerySchema.safeParse(query);
     if (!parsed.success) return unprocessable(parsed.error.issues);
 
-    const result = await this.userAdminService.listUsers(parsed.data);
+    const result = await this.service.listUsers(parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -32,7 +32,7 @@ export class UserAdminController {
     const parsed = UserIdParamSchema.safeParse(id);
     if (!parsed.success) return unprocessable(parsed.error.issues);
 
-    const result = await this.userAdminService.getUser(parsed.data);
+    const result = await this.service.getUser(parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -41,7 +41,7 @@ export class UserAdminController {
     const parsed = CreateUserSchema.safeParse(body);
     if (!parsed.success) return unprocessable(parsed.error.issues);
 
-    const result = await this.userAdminService.createUser(parsed.data);
+    const result = await this.service.createUser(parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.created(result.data);
   }
@@ -53,10 +53,7 @@ export class UserAdminController {
     const parsed = UpdateUserAccountTypeSchema.safeParse(body);
     if (!parsed.success) return unprocessable(parsed.error.issues);
 
-    const result = await this.userAdminService.updateAccountType(
-      parsedId.data,
-      parsed.data.accountType,
-    );
+    const result = await this.service.updateAccountType(parsedId.data, parsed.data.accountType);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -65,7 +62,7 @@ export class UserAdminController {
     const parsed = UserIdParamSchema.safeParse(id);
     if (!parsed.success) return unprocessable(parsed.error.issues);
 
-    const result = await this.userAdminService.softDeleteUser(parsed.data);
+    const result = await this.service.softDeleteUser(parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -74,7 +71,7 @@ export class UserAdminController {
     const parsed = UserIdParamSchema.safeParse(id);
     if (!parsed.success) return unprocessable(parsed.error.issues);
 
-    const result = await this.userAdminService.restoreUser(parsed.data);
+    const result = await this.service.restoreUser(parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -83,13 +80,13 @@ export class UserAdminController {
     const parsed = UserIdParamSchema.safeParse(id);
     if (!parsed.success) return unprocessable(parsed.error.issues);
 
-    const result = await this.userAdminService.purgeNow(parsed.data);
+    const result = await this.service.purgeNow(parsed.data);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async purgeExpired(): Promise<ControllerResponse> {
-    const result = await this.userAdminService.purgeExpired();
+    const result = await this.service.purgeExpired();
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

@@ -102,7 +102,7 @@ export function QuizContent() {
 
   function toggleQuizType(type: string) {
     setQuizTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+      prev.includes(type) ? prev.filter((quizType) => quizType !== type) : [...prev, type],
     );
   }
 

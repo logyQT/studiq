@@ -1,17 +1,20 @@
 import { AppError } from '@studiq/server/lib/errors';
 import {
   extensionForMimeType,
+  isUploadMimeType,
   sniffMimeType,
   UPLOAD_MIME_TYPES,
   type UploadMimeType,
 } from '@studiq/server/lib/file-signature';
 import { error as logError } from '@studiq/server/lib/log';
+import { isRecord } from '@studiq/server/lib/record';
 import {
   isStoragePathWithinPrefix,
   storagePathFromPublicUrl,
 } from '@studiq/server/lib/storage-objects';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 
 const BUCKET = 'flashcard-media';
 
@@ -53,7 +56,7 @@ async function validateUpload(
   allowed: readonly UploadMimeType[],
   maxBytes: number,
 ): Promise<UploadMimeType> {
-  if (!allowed.includes(file.type as UploadMimeType)) {
+  if (!isUploadMimeType(file.type) || !allowed.includes(file.type)) {
     throw new AppError('UNPROCESSABLE_ENTITY');
   }
   if (file.size === 0) {
@@ -74,9 +77,8 @@ async function validateUpload(
 
 /** Provider errors carry the HTTP status under two different keys. */
 function storageErrorStatus(error: unknown): number {
-  const status = Number(
-    (error as { status?: number }).status ?? (error as { statusCode?: string }).statusCode,
-  );
+  const raw = isRecord(error) ? (error.status ?? error.statusCode) : undefined;
+  const status = Number(raw);
   return Number.isFinite(status) ? status : 0;
 }
 
@@ -91,12 +93,12 @@ function throwStorageError(bucket: string, error: unknown): never {
 }
 
 export class StorageService {
-  constructor(private createClient: () => SupabaseClient = createServiceClient) {}
+  constructor(private clientFactory: () => SupabaseClient<Database> = createServiceClient) {}
 
   async uploadFile(userId: string, file: File): Promise<{ url: string }> {
     const mimeType = await validateUpload(file, UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES);
 
-    const supabase = this.createClient();
+    const supabase = this.clientFactory();
     // Path/extension/Content-Type all come from the sniffed bytes — never from
     // the attacker-controlled file name or declared type.
     const storagePath = `${userId}/${crypto.randomUUID()}.${extensionForMimeType(mimeType)}`;
@@ -121,7 +123,7 @@ export class StorageService {
   ): Promise<{ url: string }> {
     const mimeType = await validateUpload(file, IMAGE_MIME_TYPES, IMAGE_BUCKET_MAX_BYTES[bucket]);
 
-    const supabase = this.createClient();
+    const supabase = this.clientFactory();
     const storagePath = `${pathPrefix}/${crypto.randomUUID()}.${extensionForMimeType(mimeType)}`;
 
     const { error } = await supabase.storage.from(bucket).upload(storagePath, file, {
@@ -144,7 +146,7 @@ export class StorageService {
    */
   async deleteObject(bucket: ImageBucket, storagePath: string): Promise<boolean> {
     try {
-      const supabase = this.createClient();
+      const supabase = this.clientFactory();
       const { error } = await supabase.storage.from(bucket).remove([storagePath]);
 
       if (error) {

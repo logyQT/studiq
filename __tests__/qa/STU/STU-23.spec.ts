@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -87,7 +88,7 @@ interface FlashcardResponse {
 async function getCard(page: Page, cardId: string): Promise<FlashcardResponse> {
   const response = await page.request.get(`${FLASHCARDS_URL}/${cardId}`);
   expect(response.ok(), `GET ${FLASHCARDS_URL}/${cardId} → ${response.status()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<FlashcardResponse>;
+  const body = await json<ApiEnvelope<FlashcardResponse>>(response);
   expect(body.success, `GET ${FLASHCARDS_URL}/${cardId} success flag`).toBe(true);
   return body.data;
 }
@@ -155,7 +156,7 @@ test.describe('@case:STU-23 @area:STU @prio:P2 flashcard edit', () => {
       deckResponse.status(),
       `POST ${DECKS_URL} → ${deckResponse.status()} ${await deckResponse.text()}`,
     ).toBe(201);
-    const deck = ((await deckResponse.json()) as ApiEnvelope<DeckResponse>).data;
+    const deck = (await json<ApiEnvelope<DeckResponse>>(deckResponse)).data;
     expect(deck.organization_id, 'the deck belongs to the tenant organization').toBe(
       tenant.org!.id,
     );
@@ -167,7 +168,7 @@ test.describe('@case:STU-23 @area:STU @prio:P2 flashcard edit', () => {
       cardResponse.status(),
       `POST ${FLASHCARDS_URL} → ${cardResponse.status()} ${await cardResponse.text()}`,
     ).toBe(201);
-    const card = ((await cardResponse.json()) as ApiEnvelope<FlashcardResponse>).data;
+    const card = (await json<ApiEnvelope<FlashcardResponse>>(cardResponse)).data;
     expect(card.front).toBe(CARD.original.front);
     expect(card.back).toBe(CARD.original.back);
 

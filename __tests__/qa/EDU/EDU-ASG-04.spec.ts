@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -72,9 +73,13 @@ interface OrgMember {
   full_name: string | null;
 }
 
+/** Two-digit zero padding of a date field. */
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
 /** `YYYY-MM-DDTHH:mm` for a `datetime-local` input, in the runner's timezone. */
 function localDateTime(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
     date.getHours(),
   )}:${pad(date.getMinutes())}`;
@@ -86,14 +91,14 @@ async function postJson<T>(
   data: unknown,
 ): Promise<{ status: number; body: ApiEnvelope<T> }> {
   const response = await page.request.post(url, { data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   return { status: response.status(), body };
 }
 
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
   expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
@@ -315,7 +320,7 @@ test.describe('@case:EDU-ASG-04 @area:EDU @prio:P1 assignment publishing', () =>
     // The picker labels members by profile name; resolve the seeded student's own
     // label instead of hard-coding it.
     const members = await getData<OrgMember[]>(page, '/api/v1/organization/members?role=member');
-    const studentMember = members.find((member) => member.email === student!.email);
+    const studentMember = members.find((member) => member.email === student.email);
     expect(studentMember, 'the tenant student is an org member').toBeTruthy();
     const studentLabel = studentMember!.full_name ?? studentMember!.email;
 

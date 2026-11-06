@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -107,7 +108,7 @@ async function createDeck(page: Page, tenant: QaTenant): Promise<DeckRow> {
     response.status(),
     `POST ${DECKS_URL} → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<DeckRow>;
+  const body = await json<ApiEnvelope<DeckRow>>(response);
   expect(body.success, 'POST deck success flag').toBe(true);
   expect(body.data.flashcard_count, 'the fresh deck starts empty').toBe(0);
   return body.data;
@@ -125,7 +126,7 @@ async function createCard(
     response.status(),
     `POST ${FLASHCARDS_URL} → ${response.status()} ${await response.text()}`,
   ).toBe(201);
-  const body = (await response.json()) as ApiEnvelope<CardRow>;
+  const body = await json<ApiEnvelope<CardRow>>(response);
   expect(body.success, 'POST flashcard success flag').toBe(true);
   expect(body.data.deck_id, 'the card belongs to this deck').toBe(deckId);
   return body.data;
@@ -135,7 +136,7 @@ async function createCard(
 async function listCards(page: Page, deckId: string): Promise<CardRow[]> {
   const response = await page.request.get(`${FLASHCARDS_URL}?deckIds=${deckId}&limit=50`);
   expect(response.status(), `GET ${FLASHCARDS_URL}?deckIds=${deckId}`).toBe(200);
-  return ((await response.json()) as ApiEnvelope<CardList>).data.items;
+  return (await json<ApiEnvelope<CardList>>(response)).data.items;
 }
 
 /** The deck's own card in the grid, addressed by the id the API assigned. */

@@ -28,7 +28,7 @@ import {
   useSidebar,
 } from '@studiq/ui';
 import { GripVertical, Plus, ScrollText, Trash2 } from 'lucide-react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -36,6 +36,7 @@ import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { parsePointsInput } from '@/lib/quiz-editor';
+import { apiPut } from '@/lib/api';
 import { quizKeys } from '@/lib/query-keys';
 
 interface QuizQuestion {
@@ -66,6 +67,19 @@ interface SaveData {
   name: string;
   description: string | null;
   questions: QuizQuestion[];
+}
+
+function isBrowseQuestion(value: unknown): value is BrowseQuestion {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'content' in value &&
+    typeof value.content === 'string' &&
+    'type' in value &&
+    typeof value.type === 'string'
+  );
 }
 
 function PointsInput({
@@ -136,6 +150,7 @@ function SortableQuestion({
       className="rounded-lg border p-3 flex items-start gap-3 bg-card"
     >
       <button
+        type="button"
         {...attributes}
         {...listeners}
         className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
@@ -164,6 +179,7 @@ function SortableQuestion({
         </span>
       </div>
       <button
+        type="button"
         onClick={() => onRemove(question.question_id)}
         className="text-muted-foreground hover:text-destructive"
       >
@@ -198,7 +214,6 @@ function EmptyQuizDropzone({ label, description }: { label: string; description:
 export function EditQuizClient() {
   const t = useTranslations('EduQuizEditPage');
   const { id } = useParams<{ id: string }>();
-  const _router = useRouter();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -234,29 +249,21 @@ export function EditQuizClient() {
       initialLoaded.current = true;
       setName(quiz.name);
       setDescription(quiz.description ?? '');
-      setQuestions([...(quiz.quiz_questions ?? [])].sort((a, b) => a.order_index - b.order_index));
+      setQuestions((quiz.quiz_questions ?? []).toSorted((a, b) => a.order_index - b.order_index));
     }
   }, [quiz]);
 
   const saveMutation = useApiMutation<QuizDetail, SaveData>({
-    mutationFn: async (data) => {
-      const res = await fetch(`/api/v1/teacher/quizzes/${id}/bulk`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: data.name,
-          description: data.description ?? null,
-          questions: data.questions.map((q) => ({
-            question_id: q.question_id,
-            order_index: q.order_index,
-            points: q.points,
-          })),
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      return json.data;
-    },
+    mutationFn: async (data) =>
+      apiPut<QuizDetail>(`/api/v1/teacher/quizzes/${id}/bulk`, {
+        name: data.name,
+        description: data.description ?? null,
+        questions: data.questions.map((q) => ({
+          question_id: q.question_id,
+          order_index: q.order_index,
+          points: q.points,
+        })),
+      }),
     invalidateKeys: [quizKeys.all],
   });
 
@@ -264,7 +271,8 @@ export function EditQuizClient() {
     setHasUnsavedChanges(true);
     if (isSaving.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
+
+    const persist = async () => {
       if (isSaving.current) return;
       isSaving.current = true;
       try {
@@ -280,6 +288,10 @@ export function EditQuizClient() {
       } finally {
         isSaving.current = false;
       }
+    };
+
+    saveTimer.current = setTimeout(() => {
+      void persist();
     }, 5000);
   };
 
@@ -326,7 +338,8 @@ export function EditQuizClient() {
 
   const handleDragStart = (event: DragStartEvent) => {
     if (event.active.data.current?.source === 'browser') {
-      setActiveDragItem(event.active.data.current.question as BrowseQuestion);
+      const question: unknown = event.active.data.current.question;
+      if (isBrowseQuestion(question)) setActiveDragItem(question);
     } else {
       const q = questions.find((qq) => qq.question_id === event.active.id);
       if (q) setActiveDragItem(q);
@@ -341,7 +354,11 @@ export function EditQuizClient() {
     }
 
     if (active.data.current?.source === 'browser') {
-      const question = active.data.current.question as BrowseQuestion;
+      const dragged: unknown = active.data.current.question;
+      if (!isBrowseQuestion(dragged)) {
+        setActiveDragItem(null);
+        return;
+      }
       setQuestions((prev) => {
         const overIndex = prev.findIndex((q) => q.question_id === over.id);
         // Empty quiz → the only droppable is the placeholder → append (= index 0).
@@ -349,10 +366,10 @@ export function EditQuizClient() {
           over.id === QUIZ_EMPTY_DROPZONE_ID || overIndex < 0 ? prev.length : overIndex;
         const next = [...prev];
         next.splice(insertIndex, 0, {
-          question_id: question.id,
+          question_id: dragged.id,
           order_index: insertIndex,
           points: 1,
-          question: { id: question.id, content: question.content, type: question.type },
+          question: { id: dragged.id, content: dragged.content, type: dragged.type },
         });
         next.forEach((q, i) => {
           q.order_index = i;
@@ -487,7 +504,10 @@ export function EditQuizClient() {
         <DragOverlay>
           {activeDragItem ? (
             <div className="rounded-lg border p-3 flex items-start gap-3 bg-card shadow-lg">
-              <button className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground">
+              <button
+                type="button"
+                className="mt-1 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+              >
                 <GripVertical className="w-4 h-4" />
               </button>
               <div className="flex-1 min-w-0">
@@ -507,7 +527,7 @@ export function EditQuizClient() {
                   <span className="text-sm text-muted-foreground shrink-0">
                     {t('points_short', { points: activeDragItem.points })}
                   </span>
-                  <button className="text-muted-foreground">
+                  <button type="button" className="text-muted-foreground">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </>

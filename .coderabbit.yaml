@@ -23,10 +23,12 @@ tone_instructions: >-
   and PR text in English. Be terse; cite the file and the AGENTS.md rule broken.
 
 reviews:
-  # `chill` keeps the volume low: CI owns style, so the reviewer should spend
-  # its budget on architecture. Flip to `assertive` if convention drift starts
-  # slipping through.
-  profile: 'chill'
+  # `assertive` on purpose: CI owns style, but correctness and error-handling
+  # findings must surface in one pass. With `chill`, the guard script in #1015
+  # needed three pushes to shake out successive findings (missing-dir fallback →
+  # ENOENT-only catch → tracked-but-absent directory). Accept the extra volume
+  # repo-wide; the path instructions below keep it focused on real rules.
+  profile: 'assertive'
 
   # Report, never block: CodeRabbit may flag findings but must not hold a merge —
   # the gate is verify.yml. `request_changes_workflow` is a deprecated alias for
@@ -75,8 +77,11 @@ reviews:
     # Reviewing them burns tokens on code that is still moving.
     drafts: false
     # Only `main` is long-lived; feature branches target it directly.
+    # `experimental/stripe-integration` is the stacked branch for #662: small
+    # PRs land there first, then the whole feature is reviewed against main.
     base_branches:
       - 'main'
+      - 'experimental/stripe-integration'
       # QA-suite integration branch. PRs are normally tagged [QA-SUITE] below
       # and skipped; keeping the branch listed makes the intent explicit.
       - 'qa-suite'
@@ -252,6 +257,34 @@ reviews:
         - Message files must stay valid JSON with 2-space indent — `bun fmt`
           handles formatting, so do not comment on whitespace.
 
+    - path: 'scripts/check-*.ts'
+      instructions: |
+        Guard scripts (`check-import-paths`, `check-migration-timestamps`,
+        `check-bun-version`, `check-hardcoded-urls`, `check-suppressions-empty`)
+        run inside `bun run lint`, where a false pass silently removes a gate.
+        Review error handling against this whole checklist in ONE pass and report
+        every violation together; do not defer a deeper finding to a follow-up
+        push.
+        - Guarded `readdirSync` / `readFileSync` / `statSync` calls (and helpers
+          that wrap them) may swallow only `ENOENT`. Rethrow `EACCES`, `EPERM`,
+          `EIO` and every other errno. Flag bare `catch {}` and catches that turn
+          a read error into an empty file list.
+        - Distinguish working-tree state from the git index/HEAD. A path tracked
+          in the index but absent from the working tree (or a directory the guard
+          expects) must fail with a clear message — never skip as "nothing to
+          check". `existsSync` returning false is not evidence that the input set
+          is legitimately empty; the tracked-file check decides that.
+        - `--staged` must be parity with the full scan: same validations, same
+          error handling, same missing-file policy, and a non-zero exit on
+          violations. Flag staged mode that checks fewer rules or returns early.
+        - Exit codes: `0` only after the guard actually ran over its full input
+          set. "No violations" and "no checkable input" are different; an
+          inability to scan must exit non-zero (or print an explicit skip reason
+          that the PR justifies).
+        - Any loosening of a guard — a scope filter, an ignored path, a caught
+          error — needs a stated reason in the PR body. This applies to error
+          handling, not only to scope.
+
     - path: 'scripts/**'
       instructions: |
         Repo tooling (spin/switch-branch/pr, guards, load-test, e2e seeding).
@@ -259,9 +292,11 @@ reviews:
           non-interactive, idempotent, and safe to re-run. Flag destructive
           operations that are not explicitly opted into by a flag (e.g.
           `--reset`) or that lack a dry-run path.
-        - Guard scripts (`check-import-paths.ts`, `check-migration-timestamps.ts`,
-          `check-bun-version.ts`) run inside `bun run lint`; a change that
-          loosens a guard needs a stated reason in the PR body.
+        - Guard scripts (`scripts/check-*.ts`) run inside `bun run lint`; follow
+          the dedicated `scripts/check-*.ts` checklist for errno handling,
+          tracked-but-absent inputs, `--staged` parity and exit codes. A change
+          that loosens a guard — including its error handling — needs a stated
+          reason in the PR body.
         - Bash scripts must stay `set -euo pipefail` and quote paths.
         - No secrets or personal absolute paths; read configuration from env.
 
@@ -270,9 +305,23 @@ reviews:
         - `verify.yml` pins the Bun canary in `env.BUN_VERSION`, which must stay in
           step with `scripts/check-bun-version.ts` (the linter is canary-only).
           Flag a bump that touches one without the other.
-        - Jobs are ordered cheapest-first (`checks` gates the rest). Flag
-          reordering that makes an expensive job block a cheap one, or a new job
-          that does not `needs: checks`.
+        - `verify.yml` jobs start in parallel; `checks` is a reported result,
+          not a gate. Do not add `needs: checks` to test/build jobs — gating
+          delays every result by the lint/typecheck runtime. `cache-warm.yml`
+          is the exception: it may gate warming on `checks` so a commit that
+          fails simple checks cannot pollute the caches.
+        - `scope` gates `verify.yml` test/build jobs as a cheap diff router. It
+          was re-evaluated in #1022 and stays: it costs 5-8 s (median 6 s) plus
+          ~3 s of scheduling (the components are measured; the ~9 s saving if
+          removed is an estimate, not an A/B run), and keeps the two
+          unit/integration runners from starting on non-app PRs. A Markdown-only
+          docs PR (every changed file is `*.md`, none under `qa/cases/`) starts
+          no QA shards; a QA-only PR starts only the shards for the areas it
+          touches, or all four when a shared QA file changes. A non-Markdown
+          file under `docs/` (e.g. `docs/image.png`) is `app=false` but still
+          selects all four QA shards. Do not remove the gate without new
+          measurements, and do not add more `needs: [scope]` gates; the evidence
+          is in `docs/decisions/0008-keep-ci-scope-gate.md`.
         - Keep `pull_request.paths` in sync with what the suite actually
           exercises — a new top-level directory that affects tests must be added,
           and dropping a path silently disables CI for it.

@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -79,7 +80,7 @@ interface ApiEnvelope<T> {
 async function listGroups(page: Page): Promise<GroupRow[]> {
   const response = await page.request.get('/api/v1/organization/groups');
   expect(response.status(), 'GET /api/v1/organization/groups').toBe(200);
-  const body = (await response.json()) as ApiEnvelope<GroupRow[]>;
+  const body = await json<ApiEnvelope<GroupRow[]>>(response);
   expect(body.success, JSON.stringify(body)).toBe(true);
   return body.data;
 }
@@ -147,9 +148,8 @@ test.describe('EDU-GRP-04 — organization group limit (Launch: 3 groups)', () =
 
     // Re-run safety: remove only this spec's own groups (the teacher created
     // them, so `canManage` is true) before counting the baseline.
-    const leftovers = (await listGroups(page)).filter((group) =>
-      Object.values(GROUPS).includes(group.name as (typeof GROUPS)[keyof typeof GROUPS]),
-    );
+    const groupNames: readonly string[] = Object.values(GROUPS);
+    const leftovers = (await listGroups(page)).filter((group) => groupNames.includes(group.name));
     for (const leftover of leftovers) {
       expect(leftover.canManage, `leftover ${leftover.name} must be the teacher's own group`).toBe(
         true,
@@ -168,7 +168,7 @@ test.describe('EDU-GRP-04 — organization group limit (Launch: 3 groups)', () =
     // though the teacher's personal Lite plan allows only one group.
     const second = await createGroup(page, GROUPS.second);
     expect(second.response.status(), await second.response.text()).toBe(201);
-    const secondBody = (await second.response.json()) as ApiEnvelope<{ name: string }>;
+    const secondBody = await json<ApiEnvelope<{ name: string }>>(second.response);
     expect(secondBody.success, JSON.stringify(secondBody)).toBe(true);
     expect(secondBody.data.name).toBe(GROUPS.second);
     await expect(second.dialog).toBeHidden();
@@ -194,7 +194,7 @@ test.describe('EDU-GRP-04 — organization group limit (Launch: 3 groups)', () =
     // 2. The fourth group is refused by the Launch plan limit.
     const refused = await createGroup(page, GROUPS.refused);
     expect(refused.response.status(), 'the fourth group must be refused by the plan').toBe(429);
-    const refusedBody = (await refused.response.json()) as ApiEnvelope<unknown>;
+    const refusedBody = await json<ApiEnvelope<unknown>>(refused.response);
     expect(refusedBody.success).toBe(false);
     expect(refusedBody.error).toBe('USAGE_LIMIT_EXCEEDED');
 

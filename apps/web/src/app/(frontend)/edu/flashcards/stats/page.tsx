@@ -1,5 +1,5 @@
 import EduStatsClient from '@/app/(frontend)/edu/flashcards/stats/stats-client';
 
-export default async function EduFlashcardStatsPage() {
+export default function EduFlashcardStatsPage() {
   return <EduStatsClient />;
 }

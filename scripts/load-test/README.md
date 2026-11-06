@@ -18,23 +18,29 @@ Both run directly with Bun (no build step) and are dependency-free.
 
 ## 1. Prerequisites
 
-- Local Supabase running (`supabase start`) and a working app:
-  - app on `http://localhost:3000` (or pass `--app-url`), and
+- This checkout's local stack via `bun dev:up` — it generates `apps/web/.env`,
+  which seeding and reset use as the implicit target — and a working app:
+  - app on `http://localhost:$APP_PORT` (default `3000`, or pass `--app-url`), and
   - telemetry pointed at the OTel Collector — i.e. the app was started with
     `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and `OTEL_SDK_DISABLED`
     **not** `true`.
 - Connection settings are read from the environment (Bun auto-loads `.env` /
   `.env.local`) with local defaults:
 
-  | Variable                    | Default                  |
-  | --------------------------- | ------------------------ |
-  | `SUPABASE_URL`              | `http://127.0.0.1:54321` |
-  | `SUPABASE_ANON_KEY`         | local anon JWT           |
-  | `SUPABASE_SERVICE_ROLE_KEY` | local service-role JWT   |
-  | `APP_URL`                   | `http://localhost:3000`  |
-  | `LOADTEST_DIR`              | `.dev/load-test`         |
-  | `LOADTEST_PASSWORD`         | `Password123!`           |
-  | `LOADTEST_EMAIL_DOMAIN`     | `loadtest.studiq.local`  |
+  | Variable                    | Default                                                   |
+  | --------------------------- | --------------------------------------------------------- |
+  | `SUPABASE_URL`              | `http://127.0.0.1:${SUPABASE_API_PORT}` (default `54321`) |
+  | `SUPABASE_ANON_KEY`         | local anon JWT                                            |
+  | `SUPABASE_SERVICE_ROLE_KEY` | local service-role JWT                                    |
+  | `APP_URL`                   | `http://localhost:${APP_PORT}` (default `3000`)           |
+  | `LOADTEST_DIR`              | `.dev/load-test`                                          |
+  | `LOADTEST_PASSWORD`         | `Password123!`                                            |
+  | `LOADTEST_EMAIL_DOMAIN`     | `loadtest.studiq.local`                                   |
+
+  The target comes from the generated `apps/web/.env` (written by `scripts/dev`
+  from `supabase status`), so stack projects with random ports work without
+  configuration. Explicit `SUPABASE_URL` / `APP_URL` / `--supabase-url` /
+  `--app-url` still win. Shared/non-stack targets should pass an explicit URL.
 
 > `.dev/` is git-ignored, so generated pools and reports never get committed.
 
@@ -55,7 +61,7 @@ bots from one machine at once will trip it. Either:
   ```
 
   ```bash
-  supabase stop && supabase start
+  bun dev:down --all && bun dev:up   # this checkout only; never `supabase stop --all`
   ```
 
 Sessions are cookie-based and auto-refresh on each request, so bots log in once
@@ -70,20 +76,28 @@ per run and then keep their session alive without re-authenticating.
 bun scripts/load-test/seed.ts --count 1000
 ```
 
-| Flag                   | Default                 | Description                      |
-| ---------------------- | ----------------------- | -------------------------------- |
-| `--count <n>`          | `1000`                  | number of accounts               |
-| `--concurrency <n>`    | `20`                    | parallel Admin API requests      |
-| `--students <0-1>`     | `0.85`                  | student ratio                    |
-| `--educators <0-1>`    | `0.10`                  | educator ratio                   |
-| `--managers <0-1>`     | `0.05`                  | manager ratio                    |
-| `--password <pw>`      | `Password123!`          | shared password                  |
-| `--domain <domain>`    | `loadtest.studiq.local` | email domain                     |
-| `--supabase-url <url>` | env                     | Supabase API URL                 |
-| `--dry-run`            | –                       | print the plan, create nothing   |
-| `--reset`              | –                       | delete every account in the pool |
+| Flag                   | Default                 | Description                           |
+| ---------------------- | ----------------------- | ------------------------------------- |
+| `--count <n>`          | `1000`                  | number of accounts                    |
+| `--concurrency <n>`    | `20`                    | parallel Admin API requests           |
+| `--students <0-1>`     | `0.85`                  | student ratio                         |
+| `--educators <0-1>`    | `0.10`                  | educator ratio                        |
+| `--managers <0-1>`     | `0.05`                  | manager ratio                         |
+| `--password <pw>`      | `Password123!`          | shared password                       |
+| `--domain <domain>`    | `loadtest.studiq.local` | email domain                          |
+| `--supabase-url <url>` | env                     | Supabase API URL                      |
+| `--dry-run`            | –                       | print the plan, create/delete nothing |
+| `--reset`              | –                       | delete every account in the pool      |
 
 - **Idempotent** — re-running skips accounts that already exist.
+- **Ownership-checked** — when the target is implicit (no `--supabase-url` or
+  `SUPABASE_URL`), it must come from `apps/web/.env` and be loopback. Stack-mode
+  files (`STUDIQ_STACK_MODE=1`) are re-checked against a fresh
+  `supabase status --output-format json`: project root, current branch, stack
+  name (`SUPABASE_STACK` or `default`) and API URL must match. A stale file from
+  another branch, or a different stack, is refused. Shared/non-stack targets
+  need an explicit URL.
+
 - Accounts are created with `email_confirm: true`, so they can log in
   immediately even though local GoTrue has `enable_confirmations = true`.
 - The `handle_new_user` DB trigger creates the matching `profiles` row and
@@ -95,6 +109,10 @@ Reset the pool when you're done:
 ```bash
 bun scripts/load-test/seed.ts --reset
 ```
+
+`--reset` refuses a stale `apps/web/.env` (another branch/stack) and requires an
+explicit target for shared/non-stack stacks. Re-run a `bun dev:*` command to
+re-render the env files, or pass `--supabase-url <url>` explicitly.
 
 ### Convenience scripts
 

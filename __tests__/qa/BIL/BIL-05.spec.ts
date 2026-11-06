@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -16,8 +17,9 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  *
  * The verdict of the walk (shared app, pl): the concern in the case text — „student
  * może przypisać sobie plan organizacyjny/edukatora” — does not reproduce. The
- * server refuses the purchase (`MockStripeService.assertPlanPurchasable` compares
- * `subscription_plans.for_account_type` with the caller's `ctx.accountType`):
+ * server refuses the purchase (`resolveApplicablePlan` in
+ * `lib/payment/checkout-rules.ts` compares `subscription_plans.for_account_type`
+ * with the caller's `ctx.accountType`):
  *
  * - `/checkout?plan_id=campus` (the case's step) renders the Campus summary but no
  *   payment form: a student has no organization, so the page shows the blocking
@@ -76,13 +78,13 @@ interface PaymentHistoryItem {
 async function personalPlan(page: Page): Promise<PersonalPlan> {
   const res = await page.request.get('/api/v1/me/personal-plan');
   expect(res.status(), 'GET /api/v1/me/personal-plan').toBe(200);
-  return (await res.json()).data as PersonalPlan;
+  return (await json<{ data: PersonalPlan }>(res)).data;
 }
 
 async function paymentHistory(page: Page): Promise<PaymentHistoryItem[]> {
   const res = await page.request.get('/api/v1/me/payments');
   expect(res.status(), 'GET /api/v1/me/payments').toBe(200);
-  return (await res.json()).data as PaymentHistoryItem[];
+  return (await json<{ data: PaymentHistoryItem[] }>(res)).data;
 }
 
 test.describe('BIL-05 — plan must match the account type', () => {
@@ -147,7 +149,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
         type: 'checkout.session.completed',
         session_id: sessionId,
         plan_id: 'campus',
-        user_id: student!.id,
+        user_id: student.id,
       },
     });
     expect(webhook.status(), 'POST /api/v1/stripe/webhook (campus)').toBe(403);
@@ -158,7 +160,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
     });
 
     const session = await page.request.post('/api/v1/stripe/create-checkout-session', {
-      data: { planId: 'campus' },
+      data: { planKey: 'campus' },
     });
     expect(session.status(), 'POST /api/v1/stripe/create-checkout-session (campus)').toBe(403);
     expect(session.headers()['x-error-code'], 'the app error code').toBe('FORBIDDEN');
@@ -193,7 +195,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
         type: 'checkout.session.completed',
         session_id: `${CASE}-lite-${crypto.randomUUID()}`,
         plan_id: 'lite',
-        user_id: student!.id,
+        user_id: student.id,
       },
     });
     expect(educatorWebhook.status(), 'POST /api/v1/stripe/webhook (lite)').toBe(403);
@@ -251,7 +253,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
         type: 'checkout.session.completed',
         session_id: `${CASE}-spark-${crypto.randomUUID()}`,
         plan_id: 'spark',
-        user_id: student!.id,
+        user_id: student.id,
       },
     });
     expect(ownWebhook.status(), 'POST /api/v1/stripe/webhook (spark)').toBe(200);

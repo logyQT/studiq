@@ -13,6 +13,7 @@ import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
 import type { ZodIssue } from 'zod';
 import {
   type Notifier,
@@ -68,10 +69,10 @@ interface LoadedInvite {
 
 export class InvitationService {
   constructor(
-    private createClient: () => Promise<SupabaseClient>,
-    private createAdminClient: () => SupabaseClient = createServiceClient,
+    private clientFactory: () => Promise<SupabaseClient<Database>>,
+    private createAdminClient: () => SupabaseClient<Database> = createServiceClient,
     /** Null when no mail adapter is configured: the copyable link is then the only delivery path. */
-    private getMailer: () => Mailer | null = () => null,
+    private mailerFactory: () => Mailer | null = () => null,
     /** Tells the inviter that the invitation was accepted; none in unit tests. */
     private notifier: Notifier = noopNotifier,
   ) {}
@@ -93,7 +94,7 @@ export class InvitationService {
     jobs: InviteMailJob[],
   ): Promise<void> {
     try {
-      const mailer = this.getMailer();
+      const mailer = this.mailerFactory();
       if (!mailer || jobs.length === 0) return;
 
       const allowed = jobs.filter(() => inviteMailLimiter.check(organizationId).allowed);
@@ -111,8 +112,8 @@ export class InvitationService {
         admin.from('organizations').select('name').eq('id', organizationId).maybeSingle(),
         admin.from('profiles').select('full_name').eq('id', ctx.userId).maybeSingle(),
       ]);
-      const orgName = (org.data?.name as string | undefined) ?? 'StudiQ';
-      const inviterName = (inviter.data?.full_name as string | null | undefined) ?? null;
+      const orgName = org.data?.name ?? 'StudiQ';
+      const inviterName = inviter.data?.full_name ?? null;
 
       const outcomes = await Promise.allSettled(
         allowed.map((job) =>
@@ -167,9 +168,6 @@ export class InvitationService {
 
     if (error || !data) return null;
 
-    const org = data.organizations as unknown as { name: string } | null;
-    const role = data.org_roles as unknown as { name: string; organization_id: string } | null;
-
     return {
       email: data.email,
       inviterId: data.inviter_id ?? null,
@@ -177,9 +175,9 @@ export class InvitationService {
       expiresAt: data.expires_at,
       organizationId: data.organization_id ?? null,
       targetOrgRoleId: data.target_org_role_id,
-      organizationName: org?.name ?? '',
-      orgRoleName: role?.name ?? '',
-      roleOrganizationId: role?.organization_id ?? null,
+      organizationName: data.organizations?.name ?? '',
+      orgRoleName: data.org_roles?.name ?? '',
+      roleOrganizationId: data.org_roles?.organization_id ?? null,
     };
   }
 
@@ -189,7 +187,9 @@ export class InvitationService {
    * organization (a cross-tenant reference would leak that org's permission
    * scopes through the member row).
    */
-  private isInviteUsable(invite: LoadedInvite): boolean {
+  private isInviteUsable(
+    invite: LoadedInvite,
+  ): invite is LoadedInvite & { organizationId: string } {
     return (
       !invite.isAccepted &&
       new Date(invite.expiresAt) >= new Date() &&
@@ -213,7 +213,7 @@ export class InvitationService {
    * `activeOrgId`).
    */
   private async resolveTargetOrganization(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     ctx: RequestContext,
     requestedOrganizationId?: string,
   ): Promise<ServiceResult<string>> {
@@ -239,7 +239,7 @@ export class InvitationService {
 
   /** An invite may only grant a role that belongs to the target organization. */
   private async assertRoleBelongsToOrganization(
-    supabase: SupabaseClient,
+    supabase: SupabaseClient<Database>,
     organizationId: string,
     orgRoleId: string,
   ): Promise<ServiceResult<void>> {
@@ -269,7 +269,7 @@ export class InvitationService {
     });
 
     if (error) return toDbFailure(error);
-    return success(data === true);
+    return success(data);
   }
 
   /**
@@ -284,7 +284,7 @@ export class InvitationService {
     for (const orgRoleId of new Set(orgRoleIds)) {
       const authority = await this.canAssignRole(ctx.userId, orgRoleId);
       if (!authority.success) return authority;
-      if (authority.data !== true) return failure('FORBIDDEN');
+      if (!authority.data) return failure('FORBIDDEN');
     }
     return success(undefined);
   }
@@ -299,7 +299,7 @@ export class InvitationService {
 
     const authority = await this.canAssignRole(invite.inviterId, invite.targetOrgRoleId);
     // An RPC error means the invitation cannot be proven valid, as before.
-    return authority.success && authority.data === true;
+    return authority.success && authority.data;
   }
 
   async createInvitation(
@@ -313,7 +313,7 @@ export class InvitationService {
       inviteCode: string;
     }>
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // The body may only *select* one of the caller's memberships, never extend
     // the tenant: a foreign `organizationId` (or a forged `active_org_id`
@@ -403,7 +403,7 @@ export class InvitationService {
   > {
     if (invitations.length === 0) return failure('BAD_REQUEST');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Same membership gate as the single create: the body may only select one
     // of the caller's orgs, never extend the tenant (#242).
@@ -442,7 +442,7 @@ export class InvitationService {
 
     if (roleError) return toDbFailure(roleError);
 
-    const foundRoleIds = new Set((orgRoles ?? []).map((role) => role.id as string));
+    const foundRoleIds = new Set((orgRoles ?? []).map((role) => role.id));
     const roleIssues: ZodIssue[] = [];
     invitations.forEach((invite, index) => {
       if (!foundRoleIds.has(invite.targetOrgRoleId)) {
@@ -487,7 +487,7 @@ export class InvitationService {
     // interchangeable (each still gets its own row and token).
     const createdByEmail = new Map<string, Array<{ id: string; token: string }>>();
     for (const row of created) {
-      const key = row.email as string;
+      const key = row.email;
       const bucket = createdByEmail.get(key) ?? [];
       bucket.push({ id: row.id, token: row.token });
       createdByEmail.set(key, bucket);
@@ -563,7 +563,7 @@ export class InvitationService {
     // the org/role names.
     return success({
       email: invite.email,
-      organizationId: invite.organizationId as string,
+      organizationId: invite.organizationId,
       organizationName: invite.organizationName,
       targetRole: invite.targetOrgRoleId,
       orgRoleName: invite.orgRoleName,
@@ -719,13 +719,13 @@ export class InvitationService {
         email: string;
         targetOrgRoleId: string;
         orgRoleName: string;
-        isAccepted: boolean;
+        isAccepted: boolean | null;
         expiresAt: string;
         createdAt: string;
       }>
     >
   > {
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     // Same tenant boundary as create: the cookie is client-controlled, so the
     // list scope is the caller's verified membership, not the raw cookie (#242).
@@ -745,12 +745,11 @@ export class InvitationService {
 
     return success(
       (data ?? []).map((inv) => {
-        const role = inv.org_roles as unknown as { name: string } | null;
         return {
           id: inv.id,
           email: inv.email,
           targetOrgRoleId: inv.target_org_role_id,
-          orgRoleName: role?.name ?? '',
+          orgRoleName: inv.org_roles?.name ?? '',
           isAccepted: inv.is_accepted,
           expiresAt: inv.expires_at,
           createdAt: inv.created_at,
@@ -770,7 +769,7 @@ export class InvitationService {
     // invitation (MGR-INV-03).
     if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: invite, error: fetchError } = await supabase
       .from('invitations')
@@ -783,7 +782,7 @@ export class InvitationService {
     if (!invite) return failure('NOT_FOUND');
     if (invite.is_accepted) return failure('FORBIDDEN');
 
-    const updateData: Record<string, string> = {};
+    const updateData: Database['public']['Tables']['invitations']['Update'] = {};
 
     if (data.targetOrgRoleId) {
       // A role from another organization would let the acceptor inherit that
@@ -817,7 +816,7 @@ export class InvitationService {
     // See updateInvitation: the cookie alone proves nothing, orgRoleId does.
     if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
 
-    const supabase = await this.createClient();
+    const supabase = await this.clientFactory();
 
     const { data: invite, error: fetchError } = await supabase
       .from('invitations')

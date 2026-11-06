@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -125,7 +126,7 @@ async function api<T>(
   data?: unknown,
 ): Promise<T> {
   const response = await request.fetch(url, { method, data });
-  const body = (await response.json()) as ApiEnvelope<T>;
+  const body = await json<ApiEnvelope<T>>(response);
   if (!response.ok() || !body.success) {
     throw new Error(`${method} ${url} → ${response.status()} ${JSON.stringify(body)}`);
   }
@@ -435,7 +436,7 @@ test.describe('@case:EDU-ASG-09 @area:EDU @prio:P2 export quiz answers', () => {
         `${TEACHER_ASSIGNMENTS_URL}/${assignmentId}/export-answers`,
       );
       expect(denied.status(), 'a student cannot export the class answers').toBe(403);
-      expect((await denied.json()) as { error?: string }).toMatchObject({ error: 'FORBIDDEN' });
+      expect(await json<{ error?: string }>(denied)).toMatchObject({ error: 'FORBIDDEN' });
     } finally {
       await studentContext.close();
     }

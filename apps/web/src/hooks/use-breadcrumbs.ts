@@ -34,7 +34,7 @@ export function useBreadcrumbLabel(segment?: string, label?: string): void {
   const name = label?.trim() || undefined;
 
   useEffect(() => {
-    if (!segment || !name) return;
+    if (!segment || !name) return undefined;
     publish(segment, name, owner);
     return () => release(segment, owner);
   }, [segment, name, owner, publish, release]);

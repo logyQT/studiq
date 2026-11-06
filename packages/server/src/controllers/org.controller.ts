@@ -14,10 +14,10 @@ const SwitchOrgSchema = z.object({
 });
 
 export class OrgController {
-  constructor(private orgService: OrgService) {}
+  constructor(private service: OrgService) {}
 
   async listOrgs(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.orgService.listOrgs(ctx);
+    const result = await this.service.listOrgs(ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -37,7 +37,7 @@ export class OrgController {
       };
     }
 
-    const result = await this.orgService.verifyMembership(ctx.userId, parsed.data.orgId);
+    const result = await this.service.verifyMembership(ctx.userId, parsed.data.orgId);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

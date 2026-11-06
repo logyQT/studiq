@@ -1,6 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrganizationMemberController } from '@studiq/server/controllers/organization-member.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
+import { OrganizationMemberService } from '@studiq/server/services/organization-member.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/features', () => ({
@@ -9,7 +10,13 @@ vi.mock('@studiq/server/lib/features', () => ({
 }));
 
 function createMockService() {
-  return { listMembers: vi.fn(), changeRole: vi.fn(), removeMember: vi.fn() };
+  // The mocked methods never touch the database, so the client factory only
+  // has to satisfy the constructor's type.
+  return Object.assign(new OrganizationMemberService(() => Promise.reject(new Error('unused'))), {
+    listMembers: vi.fn(),
+    changeRole: vi.fn(),
+    removeMember: vi.fn(),
+  });
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -18,7 +25,7 @@ let controller: OrganizationMemberController;
 const mockCtx: RequestContext = {
   traceId: 'test-trace',
   userId: 'test-user-id',
-  accountType: 'student' as any,
+  accountType: AccountType.STUDENT,
   orgRoleId: null,
   activeOrgId: null,
   url: 'http://localhost',
@@ -31,7 +38,7 @@ describe('OrganizationMemberController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new OrganizationMemberController(mockService as any);
+    controller = new OrganizationMemberController(mockService);
   });
 
   describe('listMembers', () => {
@@ -43,7 +50,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual(members);
+      expect(response).toHaveProperty('data', members);
     });
 
     it('passes roleFilter to service', async () => {
@@ -61,7 +68,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(response).toHaveProperty('error', 'INTERNAL_SERVER');
     });
   });
 
@@ -79,7 +86,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ success: true });
+      expect(response).toHaveProperty('data', { success: true });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
@@ -90,7 +97,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(response).toHaveProperty('error', 'UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service returns failure', async () => {
@@ -103,7 +110,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect((response as any).error).toBe('FORBIDDEN');
+      expect(response).toHaveProperty('error', 'FORBIDDEN');
     });
 
     it('returns error when service returns failure', async () => {
@@ -116,7 +123,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(response).toHaveProperty('error', 'INTERNAL_SERVER');
     });
   });
 
@@ -128,7 +135,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ success: true });
+      expect(response).toHaveProperty('data', { success: true });
     });
 
     it('returns BAD_REQUEST when targetUserId is empty', async () => {
@@ -136,7 +143,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
-      expect((response as any).error).toBe('BAD_REQUEST');
+      expect(response).toHaveProperty('error', 'BAD_REQUEST');
     });
 
     it('returns error when service returns failure', async () => {
@@ -146,7 +153,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);
-      expect((response as any).error).toBe('FORBIDDEN');
+      expect(response).toHaveProperty('error', 'FORBIDDEN');
     });
 
     it('returns error when service returns failure', async () => {
@@ -156,7 +163,7 @@ describe('OrganizationMemberController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(response).toHaveProperty('error', 'INTERNAL_SERVER');
     });
   });
 });

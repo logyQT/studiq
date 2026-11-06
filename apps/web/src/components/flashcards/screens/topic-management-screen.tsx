@@ -99,7 +99,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     (entries: IntersectionObserverEntry[]) => {
       const [entry] = entries;
       if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
+        void fetchNextPage();
       }
     },
     [hasNextPage, isFetchingNextPage, fetchNextPage],
@@ -107,7 +107,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
     observer.observe(el);
     return () => observer.disconnect();
@@ -125,7 +125,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     }: {
       id: string;
       name: string;
-      visibility?: string;
+      visibility?: Topic['visibility'];
       groupIds?: string[];
     }) => apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data),
     invalidateKeys: [topicKeys.all],
@@ -133,7 +133,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       await queryClient.cancelQueries({ queryKey: topicKeys.all });
       const prev = queryClient.getQueryData<Topic[]>(topicKeys.all);
       queryClient.setQueryData<Topic[]>(topicKeys.all, (old) =>
-        old?.map((t) => (t.id === id ? ({ ...t, ...data } as Topic) : t)),
+        old?.map((topic) => (topic.id === id ? { ...topic, ...data } : topic)),
       );
       return { previous: prev };
     },
@@ -147,7 +147,9 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: topicKeys.all });
       const prev = queryClient.getQueryData<Topic[]>(topicKeys.all);
-      queryClient.setQueryData<Topic[]>(topicKeys.all, (old) => old?.filter((t) => t.id !== id));
+      queryClient.setQueryData<Topic[]>(topicKeys.all, (old) =>
+        old?.filter((topic) => topic.id !== id),
+      );
       return { previous: prev };
     },
     onError: (_err, _id, ctx) => {
@@ -194,7 +196,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const viewTopic = topics?.find((tp) => tp.id === viewTopicId);
 
   useEffect(() => {
-    if (!selectionIsActive) return;
+    if (!selectionIsActive) return undefined;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -219,7 +221,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     setEditing(topic);
     setFormData({
       name: topic.name,
-      visibility: (topic as any).visibility ?? 'personal',
+      visibility: topic.visibility ?? 'personal',
       groupIds: [],
     });
     setDialogOpen(true);
@@ -270,7 +272,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   function handleSelectAll() {
     if (!topics) return;
-    selection.handleSelectAll(topics.map((t) => t.id));
+    selection.handleSelectAll(topics.map((topic) => topic.id));
   }
 
   function handleDeselectAll() {

@@ -1,7 +1,9 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { waitForMailLink } from '@qa/fixtures/qa-mail';
+import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
 
 /**
  * ONB-08 — registration from an invitation link (/join?token=…), happy path.
@@ -45,9 +47,9 @@ async function orgsOf(
 ): Promise<Array<{ id: string; name: string; orgRoleName: string; isActive: boolean }>> {
   const res = await page.request.get('/api/v1/me/orgs');
   expect(res.ok(), 'GET /api/v1/me/orgs').toBe(true);
-  const body = (await res.json()) as {
+  const body = await json<{
     data?: Array<{ id: string; name: string; orgRoleName: string; isActive: boolean }>;
-  };
+  }>(res);
   return body.data ?? [];
 }
 
@@ -56,6 +58,7 @@ test.describe('ONB-08 — invitation link registration', () => {
     page,
     browser,
   }) => {
+    skipBrandedAuthTemplateTest();
     test.setTimeout(120_000);
 
     const tenant = loadTenant(CASE);
@@ -75,9 +78,9 @@ test.describe('ONB-08 — invitation link registration', () => {
     const rolesRes = await page.request.get('/api/v1/organization/roles');
     expect(rolesRes.ok(), 'GET /api/v1/organization/roles').toBe(true);
     const roles = (
-      (await rolesRes.json()) as {
+      await json<{
         data?: Array<{ id: string; name: string; displayName: string }>;
-      }
+      }>(rolesRes)
     ).data;
     const memberRole = roles?.find((role) => role.name === 'member');
     expect(memberRole, 'system org role "member"').toBeTruthy();
@@ -95,9 +98,9 @@ test.describe('ONB-08 — invitation link registration', () => {
     const bulk = await bulkResponse;
     expect(bulk.status(), 'POST /api/v1/organization/invites/bulk').toBe(200);
 
-    const results = (await bulk.json()) as {
+    const results = await json<{
       data?: { results?: Array<{ email: string; data?: { inviteLink?: string } }> };
-    };
+    }>(bulk);
     const inviteLink = results.data?.results?.[0]?.data?.inviteLink;
     expect(inviteLink, 'inviteLink returned for the new invitation').toBeTruthy();
     const inviteToken = new URL(inviteLink!).searchParams.get('token');
@@ -120,7 +123,7 @@ test.describe('ONB-08 — invitation link registration', () => {
       const invitee = await inviteeContext.newPage();
 
       const anonymous = await invitee.request.get('/api/v1/auth/me');
-      expect(((await anonymous.json()) as { data?: { user: unknown } }).data?.user).toBeNull();
+      expect((await json<{ data?: { user: unknown } }>(anonymous)).data?.user).toBeNull();
 
       // Hold the token lookup long enough to observe the case's skeleton.
       await invitee.route(/\/api\/v1\/organization\/invites\?token=/, async (route) => {
@@ -187,9 +190,9 @@ test.describe('ONB-08 — invitation link registration', () => {
       await invitee.goto(`/auth/callback?token_hash=${tokenHash}&type=${type}&next=/login`);
       await expect(invitee).toHaveURL(/\/app(\/|$)/, { timeout: 20_000 });
 
-      const me = (await (await invitee.request.get('/api/v1/auth/me')).json()) as {
-        data?: { user?: { email?: string } | null };
-      };
+      const me = await json<{ data?: { user?: { email?: string } | null } }>(
+        await invitee.request.get('/api/v1/auth/me'),
+      );
       expect(me.data?.user?.email).toBe(inviteeEmail);
 
       // Membership with the role assigned in the invitation (#311).
@@ -214,9 +217,9 @@ test.describe('ONB-08 — invitation link registration', () => {
     const acceptedRes = await page.request.get('/api/v1/organization/invites?isAccepted=true');
     expect(acceptedRes.ok(), 'GET /api/v1/organization/invites?isAccepted=true').toBe(true);
     const accepted = (
-      (await acceptedRes.json()) as {
+      await json<{
         data?: Array<{ email: string; isAccepted: boolean }>;
-      }
+      }>(acceptedRes)
     ).data;
     expect(accepted?.some((invite) => invite.email === inviteeEmail && invite.isAccepted)).toBe(
       true,

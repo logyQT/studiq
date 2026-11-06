@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { json } from '#test/helpers/json';
 import { createQaSupabase } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -116,7 +117,7 @@ async function resetRunState(page: Page, tenant: QaTenant, db: QaDb): Promise<vo
 
   const listResponse = await page.request.get(`${DECKS_URL}?limit=100`);
   expect(listResponse.status(), `GET ${DECKS_URL}`).toBe(200);
-  const list = (await listResponse.json()) as ApiEnvelope<{ items: Deck[] }>;
+  const list = await json<ApiEnvelope<{ items: Deck[] }>>(listResponse);
   for (const deck of list.data.items.filter((item) => item.name.startsWith(`${CASE} `))) {
     const deleted = await page.request.delete(`${DECKS_URL}/${deck.id}`);
     expect(deleted.status(), `DELETE ${DECKS_URL}/${deck.id} (${deck.name})`).toBe(200);
@@ -189,7 +190,8 @@ async function ageLearningCards(db: QaDb, studentId: string, cardIds: string[]):
     .from('flashcard_review_state')
     .select('flashcard_id, learning_state')
     .eq('user_id', studentId)
-    .in('flashcard_id', cardIds);
+    .in('flashcard_id', cardIds)
+    .overrideTypes<{ flashcard_id: string; learning_state: string | null }[], { merge: false }>();
   expect(error, 'read the run review state').toBeNull();
 
   const learningIds = (data ?? [])
@@ -244,7 +246,7 @@ test.describe('STU-05 — full flashcard study session', () => {
     // --- The case's deck: 8 cards, created through the product API ----------
     const deckResponse = await page.request.post(DECKS_URL, { data: { name: deckName } });
     expect(deckResponse.status(), `create deck ${deckName}`).toBe(201);
-    const deckId = ((await deckResponse.json()) as ApiEnvelope<{ id: string }>).data.id;
+    const deckId = (await json<ApiEnvelope<{ id: string }>>(deckResponse)).data.id;
 
     const cardIds: string[] = [];
     for (const cardContent of cards) {
@@ -252,7 +254,7 @@ test.describe('STU-05 — full flashcard study session', () => {
         data: { deckId, ...cardContent },
       });
       expect(created.status(), `create card ${cardContent.front}`).toBe(201);
-      cardIds.push(((await created.json()) as ApiEnvelope<{ id: string }>).data.id);
+      cardIds.push((await json<ApiEnvelope<{ id: string }>>(created)).data.id);
     }
     expect(cardIds).toHaveLength(CARD_COUNT);
 
@@ -336,9 +338,7 @@ test.describe('STU-05 — full flashcard study session', () => {
       .poll(
         async () => {
           const response = await page.request.get('/api/v1/flashcards/practice/states');
-          const body = (await response.json()) as {
-            data: { practicedCards: number };
-          };
+          const body = await json<{ data: { practicedCards: number } }>(response);
           return body.data.practicedCards;
         },
         { timeout: 20_000 },
@@ -350,7 +350,7 @@ test.describe('STU-05 — full flashcard study session', () => {
       .poll(
         async () => {
           const response = await page.request.get('/api/v1/flashcards/practice/due/count');
-          const body = (await response.json()) as { data: { count: number } };
+          const body = await json<{ data: { count: number } }>(response);
           return body.data.count;
         },
         { timeout: 20_000 },

@@ -53,8 +53,6 @@ interface QuestionFormDialogProps {
   t: ReturnType<typeof useTranslations>;
 }
 
-const _QUESTION_TYPES = ['mcq', 'true_false', 'open'] as const;
-
 export function QuestionFormDialog({
   open,
   onOpenChange,
@@ -113,7 +111,8 @@ export function QuestionFormDialog({
   // Clear a stale inline message as soon as the user edits the form.
   useEffect(() => {
     setError(null);
-  }, [content, type, answers, topicIds]);
+    // Every form field is listed on purpose: editing any of them must clear the stale error.
+  }, [content, type, explanation, answers, topicIds]);
 
   function addAnswer() {
     setAnswers([...answers, { content: '', isCorrect: false }]);

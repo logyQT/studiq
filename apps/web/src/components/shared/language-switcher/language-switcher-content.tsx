@@ -36,6 +36,8 @@ export function LanguageSwitcherContent({
 
   return (
     <PopoverContent
+      // Radix renders a portal div; the app's layer guards look for role=dialog.
+      // eslint-disable-next-line jsx-a11y/prefer-tag-over-role -- no tag can replace the portal content.
       role="dialog"
       aria-label={t('label')}
       align={align}

@@ -9,28 +9,28 @@ import {
 } from '@studiq/server/services/subscription-plan.service';
 
 export class SubscriptionPlanController {
-  constructor(private subscriptionPlanService: SubscriptionPlanService) {}
+  constructor(private service: SubscriptionPlanService) {}
 
   async listPublic(forAccountType?: string): Promise<ControllerResponse> {
-    const result = await this.subscriptionPlanService.listActive(forAccountType);
+    const result = await this.service.listActive(forAccountType);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async getMyPlan(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.subscriptionPlanService.getMyPlan(ctx);
+    const result = await this.service.getMyPlan(ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async getByKey(key: string): Promise<ControllerResponse> {
-    const result = await this.subscriptionPlanService.getByKey(key);
+    const result = await this.service.getByKey(key);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async getMyPersonalPlan(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.subscriptionPlanService.getPersonalPlan(ctx);
+    const result = await this.service.getPersonalPlan(ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

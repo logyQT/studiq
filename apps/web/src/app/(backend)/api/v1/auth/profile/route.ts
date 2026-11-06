@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server';
 
 export async function PUT(req: NextRequest) {
   return withAuth(req, async () => {
-    const body = await req.json();
+    const body: unknown = await req.json();
     const response = await authController.updateProfile(body);
     return toNextResponse(response);
   });

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test as base, expect, type Page } from '@playwright/test';
 import { tenantKey } from '#test/e2e/fixtures/ids';
+import { asJson } from '#test/helpers/json';
 
 export interface TenantUser {
   id: string;
@@ -36,7 +37,7 @@ const INDEX = join(process.cwd(), '__tests__/e2e/.seed/index.json');
 let cache: Record<string, Tenant> | undefined;
 
 function load(): Record<string, Tenant> {
-  if (!cache) cache = JSON.parse(readFileSync(INDEX, 'utf8')) as Record<string, Tenant>;
+  if (!cache) cache = asJson<Record<string, Tenant>>(JSON.parse(readFileSync(INDEX, 'utf8')));
   return cache;
 }
 
