@@ -19,6 +19,8 @@ pre-commit:
       stage_fixed: true
     lint:
       run: bun run lint
+    knip:
+      run: bun run knip
     typecheck:
       run: bun run typecheck:all
 
@@ -45,6 +47,8 @@ pre-push:
       run: bun run format:check
     lint:
       run: bun run lint
+    knip:
+      run: bun run knip
     typecheck:
       run: bun run typecheck:all
     test:
