@@ -40,18 +40,18 @@ GitHub Actions                staging environment
 
 ## 4. Decisions to lock before build
 
-| # | Decision | Proposed default |
-|---|---|---|
-| S1 | Staging web visibility | Public, registration disabled, `noindex`, test data only |
-| S2 | Admin protection | Vercel Authentication or Cloudflare Access; true VPN only if admin is self-hosted |
-| S3 | Supabase project | New cloud project, separate from production |
-| S4 | Stripe mode | Test mode only, `PAYMENT_DRIVER=stripe` on staging |
-| S5 | Registration | Supabase signups off + app-level `ALLOW_REGISTRATION=false` |
-| S6 | Deploy gate | GitHub `staging` environment with required reviewer |
-| S7 | Nightly | Deploy `main` at 02:00 UTC if it moved; tag `staging-YYYYMMDD` |
-| S8 | Data reset | Explicit operator action only; no automatic nightly reset |
-| S9 | Agent access | Web app + seeded test accounts; never admin |
-| S10 | Production promotion | Manual, separate workflow; staging never deploys to prod |
+| #   | Decision               | Proposed default                                                                                                                                   |
+| --- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | Staging web visibility | Public, registration disabled, `noindex`, test data only                                                                                           |
+| S2  | Admin protection       | Vercel Authentication or Cloudflare Access; true VPN only if admin is self-hosted                                                                  |
+| S3  | Supabase project       | New cloud project, separate from production                                                                                                        |
+| S4  | Stripe mode            | Test mode only, `PAYMENT_DRIVER=stripe` on staging                                                                                                 |
+| S5  | Registration           | Supabase signups off + app-level `ALLOW_REGISTRATION=false`                                                                                        |
+| S6  | Deploy gate            | GitHub `staging` environment with required reviewer                                                                                                |
+| S7  | Nightly                | Deploy `main` at 02:00 UTC if it moved; tag `staging-YYYYMMDD-HHMMSS-<short-sha>` so manual and nightly deploys on the same UTC date stay distinct |
+| S8  | Data reset             | Explicit operator action only; no automatic nightly reset                                                                                          |
+| S9  | Agent access           | Web app + seeded test accounts; never admin                                                                                                        |
+| S10 | Production promotion   | Manual, separate workflow; staging never deploys to prod                                                                                           |
 
 ## 5. Vercel
 
@@ -59,10 +59,10 @@ GitHub Actions                staging environment
 
 Two Vercel projects from the same repo:
 
-| Project | Root directory | Domain |
-|---|---|---|
-| web | `apps/web` | `staging.<domain>` |
-| admin | `apps/admin` | `admin.staging.<domain>` |
+| Project | Root directory | Domain                   |
+| ------- | -------------- | ------------------------ |
+| web     | `apps/web`     | `staging.<domain>`       |
+| admin   | `apps/admin`   | `admin.staging.<domain>` |
 
 Build settings:
 
@@ -104,13 +104,33 @@ Use Vercel environment scopes, not committed files. Never put the service-role k
 
 For manual + nightly gating, **disable Git auto-deploys for the staging projects** and deploy through GitHub Actions with the Vercel CLI. Otherwise a push bypasses the approval gate.
 
+Run one sequence per app, from that app's directory, so `vercel pull` writes
+`.vercel/project.json` for the matching project ID and `build`/`deploy` reuse
+that same project context:
+
 ```bash
-vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-vercel build --prod --token="$VERCEL_TOKEN"
-vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+# Web project
+(
+  cd apps/web
+  VERCEL_ORG_ID="$VERCEL_ORG_ID" \
+  VERCEL_PROJECT_ID="$VERCEL_PROJECT_ID_WEB" \
+    vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+  vercel build --prod --token="$VERCEL_TOKEN"
+  vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+)
+
+# Admin project
+(
+  cd apps/admin
+  VERCEL_ORG_ID="$VERCEL_ORG_ID" \
+  VERCEL_PROJECT_ID="$VERCEL_PROJECT_ID_ADMIN" \
+    vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+  vercel build --prod --token="$VERCEL_TOKEN"
+  vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+)
 ```
 
-Keep the deployment URL/ID as a workflow output for rollback.
+Keep each deployment URL/ID as a workflow output for rollback.
 
 ### Admin protection
 
@@ -165,6 +185,11 @@ Verify:
 - Test-mode secret key only; never `sk_live_`.
 - Staging webhook endpoint:
   `https://staging.<domain>/api/v1/stripe/webhook`
+- Vercel Deployment Protection blocks inbound webhooks unless the endpoint is
+  exempted. Either exempt `/api/v1/stripe/webhook` from protection (preferred)
+  or configure the Stripe endpoint URL with Vercel's automation bypass:
+  `https://staging.<domain>/api/v1/stripe/webhook?x-vercel-protection-bypass=<VERCEL_AUTOMATION_BYPASS_SECRET>`.
+  In both cases the route must keep verifying the Stripe signature.
 - Set `STRIPE_WEBHOOK_SECRET` from the staging endpoint or `stripe listen` (they differ).
 - Run the idempotent bootstrap against the staging test account:
   - Products/Prices `studiq_<plan>_monthly`
@@ -204,7 +229,7 @@ checks / lint / typecheck
   → deploy admin
   → smoke tests
   → notify Discord
-  → tag staging-YYYYMMDD
+  → tag staging-YYYYMMDD-HHMMSS-<short-sha>
 ```
 
 Use `concurrency` so only one staging deploy runs at a time.
@@ -315,6 +340,7 @@ VERCEL_TOKEN=...
 VERCEL_ORG_ID=...
 VERCEL_PROJECT_ID_WEB=...
 VERCEL_PROJECT_ID_ADMIN=...
+VERCEL_AUTOMATION_BYPASS_SECRET=...   # only if the Stripe webhook URL uses the bypass
 STAGING_SUPABASE_REF=...
 SUPABASE_ACCESS_TOKEN=...
 ```
