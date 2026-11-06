@@ -8,7 +8,8 @@ allowed. If a probe is not covered here, stop and ask; do not improvise against 
 The target is **this repository**, run **locally**, by the repository's owner. Testing is
 authorized for:
 
-- the web app (`apps/web`, production build started with `next start -p 3010`)
+- the web app (`apps/web`, production build started with `next start -p 3020` — **not**
+  `:3010`, which the shared QA app owns)
 - the admin app (`apps/admin`, built with `bun run build:admin` and started with
   `bun run start:admin`, which runs `next start -p 4000`)
 - a **dedicated** Supabase instance started for the test (never the shared QA database)
@@ -26,26 +27,36 @@ as an action.
 
 ## 2. Environment
 
-1. **Production build, dedicated stack.** Build both apps from the repo root with
+1. **Own Supabase first.** If this checkout already has a stack running, stop it with
+   `bun dev:down --all` (never `supabase stop --all`, which stops every stack on the
+   machine), then `bunx supabase start` for the run. Before seeding, check the resolved
+   URL: `NEXT_PUBLIC_SUPABASE_URL` must be your own local stack
+   (`http://127.0.0.1:54321`) — `qa/env.json` overrides the environment, so a QA worktree
+   silently points at `:54421`.
+2. **Point both apps and the seeder at that stack before building.** `NEXT_PUBLIC_*`
+   values are baked in at build time, and the seeder reads `apps/web/.env` (falling back
+   to root `.env`) before `qa/env.json` may override it. Set
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for `apps/web`,
+   `apps/admin` (plus its `SUPABASE_SERVICE_ROLE_KEY`) and the seeder, and verify each
+   one resolves to your dedicated stack. If either app still targets shared QA, seeded
+   users cannot authenticate against the app's database and probes hit the wrong
+   database.
+3. **Production build, dedicated stack.** Build both apps from the repo root with
    `bun run build` (web) and `bun run build:admin` (admin), then start them with
-   `cd apps/web && bunx next start -p 3010` and `bun run start:admin` (`next start -p 4000`
+   `cd apps/web && bunx next start -p 3020` and `bun run start:admin` (`next start -p 4000`
    in `apps/admin`). `next dev` behaves differently (middleware, source maps, error
    surfaces) and findings do not transfer.
-2. **Own Supabase.** `bunx supabase start` for the run. Before seeding, check the
-   resolved URL: `NEXT_PUBLIC_SUPABASE_URL` must be your own local stack
-   (`http://127.0.0.1:54321`) — `qa/env.json` overrides the environment, so a QA worktree
-   silently points at `:54421`. Then seed with
+4. **Seed your own tenants.** Seed with
    `bun scripts/qa-tenant.ts SEC-02 --profile two-org --fresh --dedicated`; `--dedicated`
    refuses any non-local URL and the shared port `:54421`. Never point probes at `:54421`
    (the shared QA database) — a mass IDOR scan would write noise into other people's
-   tenants.
-3. **Seed your own tenants.** The `two-org` profile creates one manager who is admin of
+   tenants. The `two-org` profile creates one manager who is admin of
    both organizations: org A has that manager plus a teacher and a student, org B has the
    manager plus a student, and each org has two groups and one pending invitation. It writes
    the ids and credentials to `qa/.tenants/SEC-02.json`. Create decks, cards, banks,
    questions and quizzes through the app as those users. Cross-tenant probes need a
    _foreign_ id, so you must create one deliberately.
-4. Throw the stack away afterwards. Findings are the artifact, not the environment.
+5. Throw the stack away afterwards. Findings are the artifact, not the environment.
 
 ## 3. Technique boundaries
 
