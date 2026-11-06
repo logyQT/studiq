@@ -10,6 +10,10 @@
  *   bun scripts/qa-tenant.ts ONB-10 --profile org-limit --fresh
  *   bun scripts/qa-tenant.ts MGR-ROL-02 --plan hub --fresh
  *
+ * Security runs (see `qa/security/ROE.md`) must seed their own local stack:
+ *
+ *   bun scripts/qa-tenant.ts SEC-02 --profile two-org --fresh --dedicated
+ *
  * Every case in one process (CI, before the suite starts — the same shape as
  * `scripts/e2e-seed.ts`, so seeding never runs while the suite is loading the app):
  *
@@ -107,6 +111,11 @@ const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
 const fresh = args.includes('--fresh');
 const all = args.includes('--all');
+/**
+ * Security seeds (see `qa/security/ROE.md`) must never touch the shared QA
+ * database, which holds other agents' tenants.
+ */
+const dedicated = args.includes('--dedicated');
 /** `--areas STU,LIM,NFR` — restrict `--all` to the areas a CI shard runs. */
 const areas = (option('areas') ?? '')
   .split(',')
@@ -146,7 +155,7 @@ interface ProfileShape {
 type ProfileEntry = string | ({ profile?: string; role?: string; plan?: string } & ProfileShape);
 
 const USAGE =
-  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--json] [--reset]';
+  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--dedicated] [--json] [--reset]';
 
 /**
  * The CI seed contract: `__tests__/qa/profiles/<CASE>.json` declares the tenant shape
@@ -249,6 +258,58 @@ function loadEnv(): void {
       // A malformed qa/env.json should not hide the real seeding error.
     }
   }
+}
+
+/**
+ * Ports the shared QA stack keeps fixed: its API and its Postgres. A security
+ * seed must never write to either, so both endpoints are checked.
+ */
+const SHARED_QA_PORTS = new Set(['54421', '54422']);
+
+/** Parse an endpoint, returning `undefined` when it is missing or malformed. */
+function parseEndpoint(raw: string | undefined): URL | undefined {
+  try {
+    return raw ? new URL(raw) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Require one endpoint to be a loopback URL that is not the shared QA stack. */
+function assertLocalEndpoint(name: string, raw: string | undefined): URL {
+  const url = parseEndpoint(raw);
+  const isLocal = url?.hostname === 'localhost' || url?.hostname === '127.0.0.1';
+
+  if (!url || !isLocal) {
+    throw new Error(
+      `--dedicated refuses to seed ${raw ?? `(unset ${name})`}: ` +
+        'security seeding needs your own local Supabase',
+    );
+  }
+  if (SHARED_QA_PORTS.has(url.port)) {
+    throw new Error(
+      `--dedicated refuses to seed ${raw}: the shared QA stack (${url.port}) is off limits`,
+    );
+  }
+  return url;
+}
+
+/**
+ * `--dedicated` preflight, run after `loadEnv()` and **before either writer
+ * exists**: the REST client (`NEXT_PUBLIC_SUPABASE_URL`, which `qa/env.json`
+ * may have overridden) and the optional SQL writer (`SUPABASE_DB_URL`) that
+ * creates auth users directly. Both endpoints must be loopback and off the
+ * shared QA ports; `dev:up` renders the pair from one `supabase status` call,
+ * so a passing pair normally belongs to this checkout's own stack.
+ */
+function assertDedicatedStack(): void {
+  if (!dedicated) return;
+
+  assertLocalEndpoint('NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const dbRaw = process.env.SUPABASE_DB_URL;
+  if (!dbRaw) return;
+
+  assertLocalEndpoint('SUPABASE_DB_URL', dbRaw);
 }
 
 /**
@@ -840,6 +901,15 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
 }
 
 loadEnv();
+
+// `--dedicated` runs before either writer is constructed, so no SQL writer can
+// reach a non-local or shared stack even when the REST client would be fine.
+try {
+  assertDedicatedStack();
+} catch (error) {
+  console.error((error as Error).message);
+  process.exit(2);
+}
 
 // A direct Postgres URL unlocks SQL account seeding (see `createSqlAccountWriter`).
 // `dev:up` renders it into `apps/web/.env` and CI exports it, but it stays
