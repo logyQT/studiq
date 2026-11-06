@@ -43,9 +43,9 @@ GitHub Actions                staging environment
 | #   | Decision               | Proposed default                                                                                                                                   |
 | --- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | S1  | Staging web visibility | Public, registration disabled, `noindex`, test data only                                                                                           |
-| S2  | Admin protection       | Vercel Authentication or Cloudflare Access; true VPN only if admin is self-hosted                                                                  |
+| S2  | Admin protection       | Vercel Authentication (All Deployments) or Cloudflare Access plus generated-URL protection; true VPN only if admin is self-hosted                  |
 | S3  | Supabase project       | New cloud project, separate from production                                                                                                        |
-| S4  | Stripe mode            | Test mode only, `PAYMENT_DRIVER=stripe` on staging                                                                                                 |
+| S4  | Stripe mode            | Test mode only; `PAYMENT_DRIVER=stripe` on staging after the real driver + signature-verified webhook land                                         |
 | S5  | Registration           | Supabase signups off + app-level `ALLOW_REGISTRATION=false`                                                                                        |
 | S6  | Deploy gate            | GitHub `staging` environment with required reviewer                                                                                                |
 | S7  | Nightly                | Deploy `main` at 02:00 UTC if it moved; tag `staging-YYYYMMDD-HHMMSS-<short-sha>` so manual and nightly deploys on the same UTC date stay distinct |
@@ -134,13 +134,24 @@ Keep each deployment URL/ID as a workflow output for rollback.
 
 ### Admin protection
 
-Vercel does not join a private VPN. Options, in order:
+Protection must cover **every URL that serves the admin app**, not just the
+custom domain: the production domain, generated Vercel deployment URLs
+(`<project>-<hash>.vercel.app`), and any aliases. It must cover admin UI pages
+as well as `/api/*`. The PEM gate in `apps/admin/src/proxy.ts` only guards API
+routes; UI pages pass through, so it is not a substitute for deployment
+protection.
 
-1. **Vercel Authentication / Deployment Protection** — team SSO, easiest.
-2. **Cloudflare Access** in front of `admin.staging.<domain>` — identity-aware proxy, Google/GitHub/OTP, closer to a VPN experience.
+Options, in order:
+
+1. **Vercel Authentication / Deployment Protection with "All Deployments"** — team SSO covering preview and production deployments, including generated URLs. Do not rely on Standard Protection alone: it leaves production deployments public.
+2. **Cloudflare Access** in front of the admin custom domain **plus** Vercel protection for the generated `*.vercel.app` URLs — identity-aware proxy, Google/GitHub/OTP, closer to a VPN experience. Custom-hostname-only Access is insufficient because generated Vercel URLs bypass it.
 3. **True VPN** — host `apps/admin` on a VM/container behind Tailscale/WireGuard, optionally with Cloudflare Tunnel. Vercel-only admin cannot be network-level private.
 
-Protect the **admin deployment/domain**, not only an `/admin` path on the web project. Check the admin app's auth mode: its API uses PEM signatures, and the browser panel cannot sign requests in PEM mode. If the operator needs the browser UI, Vercel protection alone may not make it usable; that needs an admin session design or a self-hosted admin.
+Whichever option is chosen, verify that both a UI page and an `/api/*` route
+return the protection challenge when signed out. Check the admin app's auth
+mode: its API uses PEM signatures, and the browser panel cannot sign requests
+in PEM mode. If the operator needs the browser UI, protection alone may not
+make it usable; that needs an admin session design or a self-hosted admin.
 
 ## 6. Supabase staging
 
@@ -182,14 +193,27 @@ Verify:
 
 ## 8. Stripe test mode
 
+- **Prerequisite: real Stripe driver + signed webhook.** The app currently
+  wires `stripeController` to `MockStripeService`
+  (`packages/server/src/controllers/stripe.controller.ts`), and the webhook
+  route authenticates the caller via `withAuth` and accepts
+  `MockWebhookEventSchema`. Setting `PAYMENT_DRIVER=stripe` alone enables
+  neither real checkout nor a secure webhook.
+- Before staging exercises Stripe, implement the real driver and webhook: create
+  sessions/prices with Stripe test keys, verify the `Stripe-Signature` header
+  against the raw request body using `STRIPE_WEBHOOK_SECRET`, make the webhook
+  route public (no user session) while keeping signature verification, and
+  handle events idempotently.
 - Test-mode secret key only; never `sk_live_`.
 - Staging webhook endpoint:
   `https://staging.<domain>/api/v1/stripe/webhook`
-- Vercel Deployment Protection blocks inbound webhooks unless the endpoint is
-  exempted. Either exempt `/api/v1/stripe/webhook` from protection (preferred)
-  or configure the Stripe endpoint URL with Vercel's automation bypass:
-  `https://staging.<domain>/api/v1/stripe/webhook?x-vercel-protection-bypass=<VERCEL_AUTOMATION_BYPASS_SECRET>`.
-  In both cases the route must keep verifying the Stripe signature.
+- Vercel Deployment Protection also covers production deployments, so a webhook
+  cannot reach the endpoint until protection is handled. Configure the Stripe
+  endpoint URL with Vercel's documented automation bypass:
+  `https://staging.<domain>/api/v1/stripe/webhook?x-vercel-protection-bypass=<VERCEL_AUTOMATION_BYPASS_SECRET>`
+  (keep the secret out of logs), or expose the webhook from an endpoint
+  arrangement that is genuinely public. Signature verification with
+  `STRIPE_WEBHOOK_SECRET` remains mandatory either way.
 - Set `STRIPE_WEBHOOK_SECRET` from the staging endpoint or `stripe listen` (they differ).
 - Run the idempotent bootstrap against the staging test account:
   - Products/Prices `studiq_<plan>_monthly`
@@ -197,7 +221,7 @@ Verify:
   - `stripe_prices` rows in staging DB
 - Success/cancel URLs point at staging.
 - Use Stripe test cards; no real money.
-- `PAYMENT_DRIVER=mock` stays the default in CI/QA; staging is the only place that exercises `stripe`.
+- `PAYMENT_DRIVER=mock` stays the default in CI/QA; once the prerequisites above land, staging is the only place that exercises `stripe`.
 
 ## 9. Access for agents
 
@@ -211,11 +235,18 @@ Verify:
 
 ### GitHub Environment
 
-Create `staging` with:
+Create `staging` (manual deploys) with:
 
 - required reviewers
 - environment-scoped secrets
 - deployment branch policy: `main`
+
+Create `staging-nightly` (scheduled deploys) with:
+
+- no required reviewers, because the run is unattended
+- the same environment-scoped secrets
+- deployment branch policy: `main`
+- referenced only by the schedule workflow, not by `workflow_dispatch`
 
 ### Pipeline
 
@@ -238,11 +269,22 @@ Use `concurrency` so only one staging deploy runs at a time.
 
 `workflow_dispatch` with a `ref` input (default `main`), gated by the `staging` environment.
 
+Do not trust the workflow run's `GITHUB_REF` as the deployment source. Resolve
+the input to an exact SHA independently, reject it unless it is `main` or an
+ancestor of `origin/main`, and check out that SHA for the deploy. The
+`staging` environment reviewer gate stays in place.
+
 ### Nightly release
 
 - Schedule `02:00 UTC`.
 - Skip if `main` equals the last deployed SHA.
-- Run the same pipeline.
+- Nightly runs are unattended: use the separate `staging-nightly` environment
+  (same secrets and `main` branch policy, no required reviewers) rather than
+  the reviewer-gated `staging` environment. This is a distinct controlled
+  path, not an approval bypass for manual deploys.
+- Run the same checks/build/deploy/smoke pipeline.
+- Migrations stay approval-gated: a nightly run with pending migrations stops
+  at the migration gate instead of applying them unattended.
 - Tag the deployed commit; publish URL + commit + tag to Discord.
 
 ### Migrations
@@ -251,10 +293,17 @@ Use `concurrency` so only one staging deploy runs at a time.
 - `supabase db push --remote --yes`.
 - Backup/snapshot first.
 - Never run a destructive reset as part of a normal nightly deploy.
+- The nightly workflow never auto-approves this job; pending migrations block
+  the nightly deploy until an operator approves them.
 
 ### Rollback
 
-- Redeploy the previous Vercel deployment ID.
+- Roll back production to the previous known-good Vercel deployment with
+  `vercel rollback <deployment-id-or-url>` (or Dashboard → Instant Rollback),
+  which re-aliases production without rebuilding.
+- After the incident is resolved, restore normal promotion: confirm the next
+  verified `main` deployment promotes to production as usual (or use Promote in
+  the dashboard) and remove any manual rollback pin.
 - Database migrations are forward-only; restore from backup if a migration must be reverted.
 - Do not delete the Supabase project.
 
