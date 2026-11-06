@@ -13,10 +13,6 @@
     "typecheck": "bun check",
     "lint": "bun lint --no-script src/"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.118.0",
-    "zod": "^4.6.7"
-  },
   "devDependencies": {
     "typescript": "^7.0.2"
   }
