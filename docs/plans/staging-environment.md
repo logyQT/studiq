@@ -301,9 +301,10 @@ ancestor of `origin/main`, and check out that SHA for the deploy. The
 - Roll back production to the previous known-good Vercel deployment with
   `vercel rollback <deployment-id-or-url>` (or Dashboard → Instant Rollback),
   which re-aliases production without rebuilding.
-- After the incident is resolved, restore normal promotion: confirm the next
-  verified `main` deployment promotes to production as usual (or use Promote in
-  the dashboard) and remove any manual rollback pin.
+- After the incident is resolved, restore normal promotion: rollback only
+  re-aliases production, so confirm the next verified `main` deployment promotes
+  to production as usual (or use Promote in the dashboard) before closing the
+  incident.
 - Database migrations are forward-only; restore from backup if a migration must be reverted.
 - Do not delete the Supabase project.
 
