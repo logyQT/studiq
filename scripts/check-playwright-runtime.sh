@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Guard the chromium steps that install browser *binaries* without `--with-deps`.
+# Guard the browser installs in verify.yml, which no longer use `--with-deps`.
 #
-# `ubuntu-24.04` already ships every library in Playwright's chromium dependency
-# list (21 libs, all reported "already the newest version" by apt), so verify.yml
-# installs chromium without apt. What `--with-deps` gave us for free was a loud
-# failure when a library goes missing from the runner image; this script puts
-# that back, in seconds instead of after the app build and seeding:
+# Neither browser needs apt on `ubuntu-24.04`: every library in Playwright's
+# chromium list is reported "already the newest version" by apt, and firefox's
+# extra packages are dlopened media codecs, not DT_NEEDED of the build. What
+# `--with-deps` gave us for free was a loud failure when a library goes missing
+# (from the runner image, or from a future browser build); this script puts that
+# back, in seconds instead of after the app build and seeding:
 #
 #   1. `ldd` every browser executable in the Playwright cache and fail on any
 #      "not found", naming the soname.
@@ -17,7 +18,6 @@
 # and its error is a package list rather than the shared object that is missing.
 #
 # Usage: bash scripts/check-playwright-runtime.sh [chromium|firefox]
-# Firefox still installs with `--with-deps`; passing `firefox` is optional.
 #
 # Fonts are deliberately not checked here: the only fonts `--with-deps` was
 # adding on this image were Thai (fonts-tlwg-loma-otf), CJK (fonts-ipafont-*,
@@ -31,8 +31,18 @@ browser="${1:-chromium}"
 cache="${PLAYWRIGHT_BROWSERS_PATH:-${HOME}/.cache/ms-playwright}"
 
 case "$browser" in
-  chromium) find_names=(-name chrome -o -name headless_shell -o -name chrome-headless-shell) ;;
-  firefox) find_names=(-name firefox) ;;
+  chromium)
+    # Only the executables: the bundled .so files come from CfT and are covered
+    # by the launch below.
+    find_names=(-name chrome -o -name headless_shell -o -name chrome-headless-shell)
+    ;;
+  firefox)
+    # The executable, not the bundled .so files: those resolve their siblings
+    # through the launcher's RUNPATH, so a bare `ldd` on them reports false
+    # "not found" (and versioned-symbol noise). The launch below runs
+    # Playwright's own directory-wide check, which does that walk correctly.
+    find_names=(-name firefox)
+    ;;
   *)
     echo "unknown browser: $browser (expected chromium or firefox)" >&2
     exit 1
@@ -64,7 +74,10 @@ for executable in "${executables[@]}"; do
     continue
   }
 
-  missing="$(awk '/not found/ {print $1}' <<<"$ldd_output" | sort -u | paste -sd' ' -)"
+  # Only the `libfoo.so => not found` form: `ldd` also prints
+  # `-` `version `NSS_3.101' not found` for unsatisfied symbol versions, which
+  # is not a missing library.
+  missing="$(awk '/=> not found/ {print $1}' <<<"$ldd_output" | sort -u | paste -sd' ' -)"
   if [ -n "$missing" ]; then
     echo "::error file=$executable::missing shared libraries: $missing" >&2
     status=1

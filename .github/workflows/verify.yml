@@ -659,15 +659,24 @@ jobs:
         run: bunx playwright install chromium
 
       - name: Install browsers (firefox)
-        # Firefox is the leg that genuinely needs apt: its list has 36 packages
-        # / 48.8 MB the image does not ship (libavcodec60, libx264-164,
-        # libx265-199, librsvg2-2, libvpx9, ffmpeg, ...). Keep `--with-deps`.
+        # Firefox needs no apt either, for a different reason: none of the 36
+        # packages `--with-deps` adds (libavcodec60, libx264-164, libx265-199,
+        # librsvg2-2, libvpx9, the VA-API set, ...) is a DT_NEEDED of any file
+        # in the Firefox build. They are *dlopened* media codecs, so the browser
+        # starts and the suite runs without them; only HTML5 audio/video decode
+        # regresses. `__tests__/e2e` has no <audio>/<video> (the QA spec that
+        # renders `<audio controls>` is chromium-only and asserts markup), and
+        # the GTK/X/pango/fontconfig libraries Firefox does link are already on
+        # the image. The guard below launches the browser, so a future Firefox
+        # build that links a system codec fails at install time, not silently.
         if: matrix.project == 'firefox' && needs.scope.outputs.app == 'true'
-        run: bunx playwright install --with-deps firefox
+        run: bunx playwright install firefox
 
-      - name: Assert the chromium runtime is complete
-        if: matrix.project == 'chromium' && needs.scope.outputs.app == 'true'
-        run: bash scripts/check-playwright-runtime.sh chromium
+      - name: Assert the browser runtime is complete
+        # Also ldd's the firefox executable and starts it. Playwright's own host
+        # validation only fires on the first launch of a fresh install.
+        if: needs.scope.outputs.app == 'true'
+        run: bash scripts/check-playwright-runtime.sh ${{ matrix.project }}
 
       - name: Save Playwright browsers
         # A cache write is an optimisation: never let it fail the job.
