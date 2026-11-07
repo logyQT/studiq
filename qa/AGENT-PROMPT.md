@@ -75,9 +75,9 @@ operator sees in tile `qa-env-N`, so leave the dashboard open while you work.
   app/API instead. Prefer these over raw `docker`, `supabase` or
   `scripts/qa-env` commands.
 - **`apps/admin` (the internal system-admin surface) is out of scope for QA;
-  do not start it, sign requests for it, or file findings against it.** It is an
-  internal tool with no app-level auth, protected only at the edge. No QA case
-  requires it.
+  do not start it, sign requests for it, or file findings against it.** It is not
+  deployed and has no app-level auth; an edge gate is required before deployment,
+  not something that already exists. No QA case requires it.
 - **Guaranteed fallback — shell CLI** (works even if MCP is unavailable):
 
   ```bash

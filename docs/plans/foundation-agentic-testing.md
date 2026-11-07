@@ -14,8 +14,9 @@ Last updated: 2026-10-24
 
 - Monorepo 3 apps: `packages/authz` + `packages/ui` + `packages/server` + `apps/web` + `apps/admin`
 - Admin auth: none today — `apps/admin` is internal and **not deployed**; the PEM
-  gate was removed. If it is ever deployed, the edge gate is required first, then
-  the app-level gate in [ADR-0009](../decisions/0009-admin-is-internal-not-deployed.md)
+  gate was removed. If it is ever deployed, the app-level gate
+  ([ADR-0009](../decisions/0009-admin-is-internal-not-deployed.md), blocker 2)
+  must land first; edge protection (blocker 5) remains mandatory at deployment.
 - Tests: API-first `before()` seeding everywhere
 - Feature-flag keys: flat keys everywhere (drop `FEATURE_FLAG_TO_FEATURE_KEY`)
 - No backward-compat layers (pre-market, delete old paths cleanly)

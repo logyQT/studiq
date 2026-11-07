@@ -11,7 +11,7 @@ Scenarios, steps and checkboxes for every application feature
 | Field                  | Value                                              |
 | ---------------------- | -------------------------------------------------- |
 | Document version       | 1.3 (2026-10-17)                                   |
-| Application under test | StudiQ – web app (shared QA: 3010; local: 3000)    |
+| Application under test | StudiQ – web app (port 3000)                       |
 | Code version           | `main` (record the commit under test before a run) |
 | Scenario count         | 188 (P1: 55, P2: 128, P3: 5)                       |
 | Tester (full name)     |                                                    |
