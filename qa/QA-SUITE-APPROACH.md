@@ -2,8 +2,7 @@
 
 Status: **infrastructure up; manager and PR→manager event wiring not built yet** (see
 §Manager flow). This document is the contract for the QA-suite generation loop. It replaces the old “one app + one Supabase per slot” model for
-QA-suite work; the old `qa-env-1..8` stacks are kept only as fallback and are not used as
-separate apps.
+QA-suite work; all workers share the single app/DB below instead of running separate apps.
 
 ## Goal
 
@@ -216,12 +215,10 @@ the integration branch until the suite is stable. WebKit remains blocked.
 
 ## Current shared infrastructure
 
-- App: `http://localhost:3010` (qa-env-1 app)
-- Supabase: `http://localhost:54421` (qa-env-1 DB)
+- App: `http://localhost:3010`
+- Supabase: `http://localhost:54421`
 - Browser tiles: `9221–9228` (one per worker)
-- Dashboard: `http://localhost:5000`
-- `qa-env-2..8/qa/env.json` point at the shared app/DB; their own app/Supabase remain down.
-- Supervisor is paused so it cannot restart the seven unused app stacks.
+- Every worker uses the same app/DB; no worker runs its own Supabase stack.
 - Discord/manager sessions are not started.
 
 ## Next step
@@ -262,7 +259,7 @@ python3 qa/tools/qa-manager.py suite PUB-01 --dry-run
 
 The dispatcher creates a fresh session in that worker's worktree with the
 `QA-SUITE-WORKER.md` prompt filled in (`CASE_ID`, worker, CDP port, shared app,
-shared Supabase), and titles it `[QA-SUITE] <CASEID> — qa-env-N`. It does not
+shared Supabase), and titles it `[QA-SUITE] <CASEID> — worker <N>`. It does not
 create branches or start app/DB stacks; the worker does that.
 
 `!run <ID>` remains the manual, report-only QA dispatch. `!suite` is the

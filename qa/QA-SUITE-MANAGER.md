@@ -42,9 +42,7 @@ message, end the turn, and wait. A `no-question` plugin rejects those calls outr
 - App: `http://localhost:3010`
 - Supabase: `http://localhost:54421`
 - Browser/CDP workers: `9221–9228`
-- Dashboard: `http://localhost:5000`
-- `qa-env-2..8` are configured to reuse the same app/DB; their own stacks stay down.
-- Do **not** run `scripts/qa-env up/down`, do not start extra Supabase stacks, and do not
+- Every worker reuses the same app/DB; do not start extra Supabase stacks, and do not
   change the shared app between cases.
 
 ## Hard rule — one worker, one spec, never the suite

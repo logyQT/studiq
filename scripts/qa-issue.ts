@@ -2,7 +2,7 @@
  * File a QA-suite defect without creating duplicates.
  *
  *   bun scripts/qa-issue.ts PUB-07 --title "404 page leaks the locale" --body-file /tmp/body.md \
- *     --attach dashboard/shots/qa-env-3-20261029-101500.png
+ *     --attach shots/<case-id>-<ts>.png
  *   bun scripts/qa-issue.ts PUB-07 --title "…" --body-file … --search "locale cookie" --attach …
  *
  * Behaviour:
@@ -41,15 +41,17 @@ if (!caseId || !title || !bodyFile) {
 // A local path is not evidence: nobody outside this box can open it. Refuse early
 // instead of publishing a dead reference into an issue.
 const bodyText = readFileSync(bodyFile, 'utf8');
+// Public URLs are valid evidence; only local filesystem paths are rejected.
+const localText = bodyText.replace(/https?:\/\/[^\s<>"'`()[\]]+/g, ' ');
 const pathPattern =
-  /(?:\/workspaces\/|\/home\/[^\s]+\/|\/tmp\/[^\s]+|dashboard\/shots\/|\.worktrees\/)[^\s`)\]]*/g;
-const leaked = [...new Set(bodyText.match(pathPattern) ?? [])];
+  /(?:\/workspaces\/|\/home\/[^\s]+\/|\/tmp\/[^\s]+|dashboard\/shots\/|\bshots\/|\.worktrees\/)[^\s`)\]]*/g;
+const leaked = [...new Set(localText.match(pathPattern) ?? [])];
 if (leaked.length > 0) {
   console.error(
     'refusing to file: the body contains local filesystem path(s), which no reader can open:\n' +
       leaked.map((l) => `  ${l}`).join('\n') +
       '\n\nUpload the image(s) with --attach and reference them only through the upload, e.g.\n' +
-      '  --attach dashboard/shots/qa-env-3-20261029-101500.png\n' +
+      '  --attach shots/<case-id>-<ts>.png\n' +
       'and drop the path from the markdown body.',
   );
   process.exit(3);

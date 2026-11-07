@@ -115,11 +115,11 @@ The project ships helper scripts that wrap `gh` for common workflows:
 scripts/spin feat/my-feature
 ```
 
-This creates a new git worktree under `.worktrees/` with its own branch off `main`.
-Move your agent session into it:
+This creates a new git worktree beside the repo (grouped by branch prefix)
+with its own branch off `main`. Move your agent session into it:
 
 ```bash
-cd .worktrees/feat/my-feature
+cd ../studiq-worktrees/feat/my-feature
 ```
 
 #### Committing and pushing
@@ -149,7 +149,7 @@ scripts/pr --view                   # open PR in browser
 scripts/spin feat/my-feature
 
 # 2. Move into the worktree
-cd .worktrees/feat/my-feature
+cd ../studiq-worktrees/feat/my-feature
 
 # 3. Install dependencies (first time in a new worktree)
 bun install
@@ -171,6 +171,11 @@ scripts/spin feat/my-feature --clean
 scripts/spin --list                 # see all active worktrees
 scripts/spin feat/my-feature --clean  # remove worktree + delete branch
 ```
+
+Worktrees are created beside the repo as `../<repo>-worktrees/<branch>`, so the
+branch hierarchy stays visible (`feat/my-feature` →
+`../studiq-worktrees/feat/my-feature`). `--clean` only removes worktrees that
+`scripts/spin` created.
 
 ### 6. Troubleshooting
 

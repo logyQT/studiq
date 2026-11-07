@@ -6,8 +6,10 @@
 #   scripts/spin feat/my-feature --clean  # remove worktree + branch
 #   scripts/spin --list                   # list all worktrees
 #
-# The worktree is created as a sibling directory:
-#   ../studiq-feat-my-feature/
+# The worktree is created beside the repository, preserving the branch
+# hierarchy so feature/fix/chore groups stay visible:
+#   ../studiq-worktrees/feat/my-feature/
+#   ../studiq-worktrees/fix/login-bug/
 #
 # After creating, move your OpenCode session into the worktree:
 #   /session-move <worktree-path>
@@ -25,10 +27,66 @@ warn()  { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
 fail()  { printf "${RED}✘${NC} %s\n" "$*" >&2; exit 1; }
 header(){ printf "\n${CYAN}▸${NC} %s\n" "$*"; }
 
+# Lock reason recorded on every worktree this script creates. Cleanup requires
+# it, so a path match alone cannot authorize removing someone else's worktree.
+PROVENANCE_REASON="created-by-scripts/spin"
+
 # ── Ensure we're in a git repo ─────────────────────────────────
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail "Not inside a git repository"
-REPO_NAME=$(basename "$REPO_ROOT")
-REPO_PARENT=$(dirname "$REPO_ROOT")
+
+# ── Helpers ────────────────────────────────────────────────────
+# Print the path of the primary checkout (the first worktree entry).
+primary_checkout_path() {
+  local record
+  while IFS= read -r -d '' record; do
+    case "$record" in
+      "worktree "*) printf '%s\n' "${record#worktree }"; return 0 ;;
+    esac
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
+  return 0
+}
+
+# Print the path of the worktree checked out for a branch, if any.
+# Parses the NUL-delimited form so paths are never C-quoted or split on
+# embedded newlines.
+worktree_path_for_branch() {
+  local record path=""
+  while IFS= read -r -d '' record; do
+    case "$record" in
+      "worktree "*) path="${record#worktree }" ;;
+      *) if [ "$record" = "branch refs/heads/$1" ]; then printf '%s\n' "$path"; return 0; fi ;;
+    esac
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
+  return 0
+}
+
+# Print the git lock reason of a worktree, if it is locked.
+worktree_lock_reason() {
+  local want="$1" record path=""
+  while IFS= read -r -d '' record; do
+    case "$record" in
+      "worktree "*) path="${record#worktree }" ;;
+      locked*)
+        if [ "$path" = "$want" ]; then
+          local reason="${record#locked}"
+          printf '%s\n' "${reason# }"
+          return 0
+        fi
+        ;;
+    esac
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
+  return 0
+}
+
+# The primary checkout is a stable anchor for cleanup commands, even when
+# this script runs from inside a linked worktree.
+PRIMARY_ROOT="$(primary_checkout_path)"
+[ -n "$PRIMARY_ROOT" ] || PRIMARY_ROOT="$REPO_ROOT"
+
+# Sibling paths derive from the primary checkout, so running the script from
+# inside a linked worktree still targets the documented layout.
+REPO_NAME=$(basename "$PRIMARY_ROOT")
+REPO_PARENT=$(dirname "$PRIMARY_ROOT")
 
 # ── Parse flags ────────────────────────────────────────────────
 case "${1:-}" in
@@ -45,7 +103,10 @@ case "${1:-}" in
     echo "  --clean         Remove the worktree and delete the branch"
     echo "  --list, -l      List all worktrees"
     echo ""
-    echo "Worktrees are created under .worktrees/ inside the repo."
+    echo "Worktrees are created beside the repo, preserving the branch hierarchy:"
+    echo "  ../${REPO_NAME}-worktrees/feat/my-feature"
+    echo ""
+    echo "--clean only removes worktrees that scripts/spin created."
     exit 0
     ;;
   "") fail "Missing branch name. Usage: scripts/spin <branch-name>" ;;
@@ -55,60 +116,130 @@ BRANCH="$1"
 CLEAN=false
 [[ "${2:-}" == "--clean" ]] && CLEAN=true
 
+# ── Validate the branch name ───────────────────────────────────
+if ! ref_error=$(git check-ref-format --branch "$BRANCH" 2>&1); then
+  fail "Invalid branch name '$BRANCH': $ref_error"
+fi
+
 # ── Derive worktree path ───────────────────────────────────────
-# Worktrees live inside the repo under .worktrees/
-# feat/my-feature → .worktrees/feat-my-feature
-WORKTREE_ROOT="${REPO_ROOT}/.worktrees"
+# Worktrees live beside the repo, grouped by branch prefix:
+# feat/my-feature → ../<repo>-worktrees/feat/my-feature
+WORKTREE_ROOT="${REPO_PARENT}/${REPO_NAME}-worktrees"
 WORKTREE_PATH="${WORKTREE_ROOT}/${BRANCH}"
 
 # ── Clean mode ─────────────────────────────────────────────────
 if $CLEAN; then
   header "Cleaning up worktree for '$BRANCH'"
 
-  if [ ! -d "$WORKTREE_PATH" ]; then
-    warn "Worktree directory not found: $WORKTREE_PATH"
+  REGISTERED_PATH="$(worktree_path_for_branch "$BRANCH" || true)"
+
+  if [ -n "$REGISTERED_PATH" ]; then
+    if [ "$REGISTERED_PATH" = "$PRIMARY_ROOT" ]; then
+      fail "Refusing to remove the primary checkout: $PRIMARY_ROOT"
+    fi
+
+    if [ "$REGISTERED_PATH" != "$WORKTREE_PATH" ]; then
+      fail "Refusing to clean a worktree scripts/spin did not create: $REGISTERED_PATH
+  Expected $WORKTREE_PATH.
+  Left untouched. To remove it manually:
+    git -C \"$PRIMARY_ROOT\" worktree remove --force \"$REGISTERED_PATH\"
+    git -C \"$PRIMARY_ROOT\" branch -D -- \"$BRANCH\""
+    fi
+
+    lock_reason="$(worktree_lock_reason "$REGISTERED_PATH")"
+    if [ "$lock_reason" != "$PROVENANCE_REASON" ]; then
+      fail "Refusing to clean a worktree without scripts/spin provenance: $REGISTERED_PATH
+  Expected lock reason \"$PROVENANCE_REASON\", found \"$lock_reason\".
+  Left untouched. To remove it manually:
+    git -C \"$PRIMARY_ROOT\" worktree remove -f -f \"$REGISTERED_PATH\"
+    git -C \"$PRIMARY_ROOT\" branch -D -- \"$BRANCH\""
+    fi
+
+    if [ -d "$REGISTERED_PATH" ]; then
+      # Two force flags: the provenance lock must survive a failed removal, so
+      # remove the locked worktree directly instead of unlocking it first.
+      if ! remove_error=$(git -C "$PRIMARY_ROOT" worktree remove --force --force "$REGISTERED_PATH" 2>&1); then
+        fail "Could not remove worktree $REGISTERED_PATH: $remove_error"
+      fi
+      info "Removed worktree: $REGISTERED_PATH"
+    else
+      warn "Worktree directory is missing: $REGISTERED_PATH"
+      # A locked registration is skipped by prune; drop the lock so the stale
+      # entry can be pruned before the branch is deleted.
+      if ! unlock_error=$(git -C "$PRIMARY_ROOT" worktree unlock "$REGISTERED_PATH" 2>&1); then
+        fail "Could not unlock stale worktree $REGISTERED_PATH: $unlock_error"
+      fi
+    fi
+  elif [ -d "$WORKTREE_PATH" ]; then
+    warn "Found a directory that is not a registered worktree: $WORKTREE_PATH"
+    warn "Left it untouched. Remove it manually, then re-run this command:"
+    echo "    rm -rf \"$WORKTREE_PATH\""
   else
-    git -C "$REPO_ROOT" worktree remove "$WORKTREE_PATH" --force 2>/dev/null \
-      && info "Removed worktree: $WORKTREE_PATH" \
-      || fail "Could not remove worktree: $WORKTREE_PATH"
+    warn "No worktree found for '$BRANCH' (expected $WORKTREE_PATH)"
+  fi
+
+  # Drop stale registrations before deleting the branch: a registration whose
+  # directory is gone still marks the branch as checked out.
+  if ! prune_error=$(git -C "$PRIMARY_ROOT" worktree prune 2>&1); then
+    warn "Could not prune stale worktree entries: $prune_error"
+  elif [ -n "$prune_error" ]; then
+    info "Pruned stale worktree entries: $prune_error"
+  else
+    info "Pruned stale worktree entries"
   fi
 
   # Delete the branch if it exists
-  if git -C "$REPO_ROOT" branch --list "$BRANCH" | grep -q .; then
-    git -C "$REPO_ROOT" branch -D "$BRANCH" 2>/dev/null \
-      && info "Deleted branch: $BRANCH" \
-      || warn "Could not delete branch (may have unmerged changes)"
+  if git -C "$PRIMARY_ROOT" branch --list -- "$BRANCH" | grep -q .; then
+    if ! delete_error=$(git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" 2>&1); then
+      warn "Could not delete branch '$BRANCH': $delete_error"
+    else
+      info "Deleted branch: $BRANCH"
+    fi
   else
     warn "Branch '$BRANCH' does not exist"
   fi
 
-  # Cleanup stale worktree metadata
-  git -C "$REPO_ROOT" worktree prune 2>/dev/null && info "Pruned stale worktree entries"
   exit 0
 fi
 
+# ── Preflight: the sibling root must be writable (create mode only) ──
+if [ ! -d "$REPO_PARENT" ] || [ ! -w "$REPO_PARENT" ] || [ ! -x "$REPO_PARENT" ]; then
+  fail "Cannot create a worktree: parent directory is not writable: $REPO_PARENT"
+fi
+if ! probe_error=$(mktemp -d "${REPO_PARENT}/.spin-write-test.XXXXXX" 2>&1); then
+  fail "Cannot create a worktree: parent directory is not writable: $REPO_PARENT ($probe_error)"
+fi
+rmdir "$probe_error" 2>/dev/null || true
+
 # ── Check branch doesn't already exist ─────────────────────────
-if git -C "$REPO_ROOT" branch --list "$BRANCH" | grep -q .; then
+if git -C "$PRIMARY_ROOT" branch --list -- "$BRANCH" | grep -q .; then
   fail "Branch '$BRANCH' already exists. Use it directly or pick a different name."
 fi
 
 # ── Check worktree path doesn't already exist ──────────────────
-if [ -d "$WORKTREE_PATH" ]; then
-  fail "Directory already exists: $WORKTREE_PATH"
+if [ -e "$WORKTREE_PATH" ]; then
+  fail "Directory already exists: $WORKTREE_PATH. Remove it or pick a different branch name."
 fi
-
-# ── Ensure .worktrees dir exists ───────────────────────────────
-mkdir -p "$WORKTREE_ROOT"
 
 # ── Create branch + worktree ───────────────────────────────────
 header "Creating branch '$BRANCH' from main"
-git -C "$REPO_ROOT" branch "$BRANCH" main 2>/dev/null \
-  || fail "Could not create branch '$BRANCH'"
+if ! branch_error=$(git -C "$PRIMARY_ROOT" branch -- "$BRANCH" main 2>&1); then
+  fail "Could not create branch '$BRANCH': $branch_error"
+fi
 info "Created branch '$BRANCH'"
 
 header "Creating worktree"
-git -C "$REPO_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH" 2>/dev/null \
-  || fail "Could not create worktree at $WORKTREE_PATH"
+mkdir -p "$(dirname "$WORKTREE_PATH")" \
+  || fail "Could not create worktree directory: $(dirname "$WORKTREE_PATH")"
+if ! add_error=$(git -C "$PRIMARY_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH" 2>&1); then
+  git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" >/dev/null 2>&1 || true
+  fail "Could not create worktree at $WORKTREE_PATH: $add_error (branch '$BRANCH' was deleted)"
+fi
+if ! lock_error=$(git -C "$PRIMARY_ROOT" worktree lock --reason "$PROVENANCE_REASON" "$WORKTREE_PATH" 2>&1); then
+  git -C "$PRIMARY_ROOT" worktree remove "$WORKTREE_PATH" --force >/dev/null 2>&1 || true
+  git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" >/dev/null 2>&1 || true
+  fail "Could not record worktree provenance at $WORKTREE_PATH: $lock_error (worktree and branch '$BRANCH' were rolled back)"
+fi
 info "Worktree ready at $WORKTREE_PATH"
 
 # ── Summary ────────────────────────────────────────────────────
@@ -118,7 +249,7 @@ printf "  Branch:   ${CYAN}%s${NC}\n" "$BRANCH"
 printf "  Worktree: ${CYAN}%s${NC}\n" "$WORKTREE_PATH"
 echo ""
 echo "  Next steps:"
-echo "    1. cd $WORKTREE_PATH"
+echo "    1. cd \"$WORKTREE_PATH\""
 echo "    2. Open an agent session in the worktree"
 echo "    3. When done: scripts/spin $BRANCH --clean"
 echo ""
