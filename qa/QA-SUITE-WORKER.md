@@ -44,8 +44,14 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 - **The spec must be retry-safe.** CI retries it twice; `scripts/qa-tenant.ts` seeds one
   tenant per attempt (`qa/.tenants/<CASE>.r<repeat>e<retry>.json`) and `loadTenant()` reads
   the one for the current attempt. Do not snapshot tenant-derived values at module scope, and
-  seed per-attempt data in `beforeEach` (not `beforeAll`). Prove it with
-  `--repeat-each=2 --retries=2`. See "Retry safety" in `qa/QA-SUITE-APPROACH.md`.
+  seed per-attempt data in `beforeEach` (not `beforeAll`).
+  - `--repeat-each=2` proves **repeat isolation**: each repeat gets its own tenant and re-runs
+    the file hooks. It does not prove the retry path, because a retry skips `beforeAll`.
+  - To verify **retry isolation**, run a controlled fail-once probe: temporarily fail attempt
+    0 (`throw` in a `beforeEach` guarded by an env flag plus `test.info().retry === 0`), run
+    with `--retries=1`, and confirm Playwright reports one flaky test whose retry **passes**
+    (it reads `.r0e1`). Remove the probe before committing. See "Retry safety" in
+    `qa/QA-SUITE-APPROACH.md`.
 - No `test.skip`, `test.fixme`, `test.soft`, expected-failure wrappers, or manual steps.
 - Do not rely on shared mutable data: global admin settings, feature flags, plans,
   platform stats, singleton rows, or another worker's tenant.

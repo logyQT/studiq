@@ -99,12 +99,32 @@ What a spec still has to do:
   retrying web-first matcher (`toHaveCount`, `toHaveText`, …). Reserve `expect.poll` for
   values that are not a single locator assertion (e.g. the text array of a table row).
   Never a fixed sleep.
-- **Test with the real flags** against a freshly seeded run:
+- **Test with the real flags** against a freshly seeded run. `--repeat-each=2` proves
+  **repeat isolation** (each repeat gets its own tenant and re-runs the file hooks); it does
+  not exercise the retry path, because a retry skips `beforeAll`:
 
   ```bash
   bun scripts/qa-tenant.ts --all --areas <AREA> --run retry-check --repeats 2
   CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> \
     --repeat-each=2 --retries=2 --workers=1
+  ```
+
+- **Prove retry isolation with a controlled fail-once probe.** Temporarily fail attempt 0 in
+  the spec's own `beforeEach`, run with one retry, and check that the retry passes against
+  `.r0e1` (then delete the probe):
+
+  ```ts
+  // TEMPORARY — never commit
+  test.beforeEach(() => {
+    if (process.env.QA_RETRY_PROBE === '1' && test.info().retry === 0) {
+      throw new Error('QA retry probe: fail attempt 0 once');
+    }
+  });
+  ```
+
+  ```bash
+  QA_RETRY_PROBE=1 CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> --retries=1
+  # expect: 1 flaky (retry #1 passed)
   ```
 
   If a spec only has the base tenant (`--attempts 1`), it can reset its own rows at attempt
