@@ -31,20 +31,45 @@ header(){ printf "\n${CYAN}▸${NC} %s\n" "$*"; }
 
 # ── Ensure we're in a git repo ─────────────────────────────────
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail "Not inside a git repository"
-REPO_NAME=$(basename "$REPO_ROOT")
-REPO_PARENT=$(dirname "$REPO_ROOT")
 
 # ── Helpers ────────────────────────────────────────────────────
 # feat/my-feature → feat-my-feature
 branch_slug() { printf '%s' "${1//\//-}"; }
 
-# Print the path of the worktree checked out for a branch, if any.
-worktree_path_for_branch() {
-  git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | awk -v ref="refs/heads/$1" '
-    /^worktree / { path = substr($0, 10) }
-    /^branch /   { if ($2 == ref) { print path; exit } }
-  '
+# Print the path of the primary checkout (the first worktree entry).
+primary_checkout_path() {
+  local record
+  while IFS= read -r -d '' record; do
+    case "$record" in
+      "worktree "*) printf '%s\n' "${record#worktree }"; return 0 ;;
+    esac
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z 2>/dev/null)
+  return 0
 }
+
+# Print the path of the worktree checked out for a branch, if any.
+# Parses the NUL-delimited form so paths are never C-quoted or split on
+# embedded newlines.
+worktree_path_for_branch() {
+  local record path=""
+  while IFS= read -r -d '' record; do
+    case "$record" in
+      "worktree "*) path="${record#worktree }" ;;
+      *) if [ "$record" = "branch refs/heads/$1" ]; then printf '%s\n' "$path"; return 0; fi ;;
+    esac
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z 2>/dev/null)
+  return 0
+}
+
+# The primary checkout is a stable anchor for cleanup commands, even when
+# this script runs from inside a linked worktree.
+PRIMARY_ROOT="$(primary_checkout_path)"
+[ -n "$PRIMARY_ROOT" ] || PRIMARY_ROOT="$REPO_ROOT"
+
+# Sibling paths derive from the primary checkout, so running the script from
+# inside a linked worktree still targets the documented layout.
+REPO_NAME=$(basename "$PRIMARY_ROOT")
+REPO_PARENT=$(dirname "$PRIMARY_ROOT")
 
 # ── Parse flags ────────────────────────────────────────────────
 case "${1:-}" in
@@ -82,7 +107,7 @@ WORKTREE_ROOT="$REPO_PARENT"
 WORKTREE_PATH="${WORKTREE_ROOT}/${REPO_NAME}-${BRANCH_SLUG}"
 
 # Older versions of this script nested worktrees under .worktrees/<branch>.
-LEGACY_WORKTREE_PATH="${REPO_ROOT}/.worktrees/${BRANCH}"
+LEGACY_WORKTREE_PATH="${PRIMARY_ROOT}/.worktrees/${BRANCH}"
 
 # ── Clean mode ─────────────────────────────────────────────────
 if $CLEAN; then
@@ -91,8 +116,8 @@ if $CLEAN; then
   REGISTERED_PATH="$(worktree_path_for_branch "$BRANCH" || true)"
 
   if [ -n "$REGISTERED_PATH" ]; then
-    if [ "$REGISTERED_PATH" = "$REPO_ROOT" ]; then
-      fail "Refusing to remove the main checkout: $REPO_ROOT"
+    if [ "$REGISTERED_PATH" = "$PRIMARY_ROOT" ]; then
+      fail "Refusing to remove the primary checkout: $PRIMARY_ROOT"
     fi
 
     if [ "$REGISTERED_PATH" = "$LEGACY_WORKTREE_PATH" ]; then
@@ -104,7 +129,8 @@ if $CLEAN; then
 
     if [ ! -d "$REGISTERED_PATH" ]; then
       warn "Worktree directory is missing: $REGISTERED_PATH (pruning stale metadata)"
-    elif git -C "$REPO_ROOT" worktree remove "$REGISTERED_PATH" --force 2>/dev/null; then
+      git -C "$PRIMARY_ROOT" worktree prune 2>/dev/null && info "Pruned stale worktree entries"
+    elif git -C "$PRIMARY_ROOT" worktree remove "$REGISTERED_PATH" --force 2>/dev/null; then
       info "Removed worktree: $REGISTERED_PATH"
     else
       fail "Could not remove worktree: $REGISTERED_PATH"
@@ -122,8 +148,8 @@ if $CLEAN; then
   fi
 
   # Delete the branch if it exists
-  if git -C "$REPO_ROOT" branch --list "$BRANCH" | grep -q .; then
-    git -C "$REPO_ROOT" branch -D "$BRANCH" 2>/dev/null \
+  if git -C "$PRIMARY_ROOT" branch --list "$BRANCH" | grep -q .; then
+    git -C "$PRIMARY_ROOT" branch -D "$BRANCH" 2>/dev/null \
       && info "Deleted branch: $BRANCH" \
       || warn "Could not delete branch (may have unmerged changes)"
   else
@@ -131,7 +157,7 @@ if $CLEAN; then
   fi
 
   # Cleanup stale worktree metadata
-  git -C "$REPO_ROOT" worktree prune 2>/dev/null && info "Pruned stale worktree entries"
+  git -C "$PRIMARY_ROOT" worktree prune 2>/dev/null && info "Pruned stale worktree entries"
   exit 0
 fi
 
