@@ -283,9 +283,10 @@ test.describe('NFR-05 — keyboard operability', () => {
 
     // The button is server-rendered, so it can be visible before React has hydrated its
     // onClick; pressing Enter once then does nothing and the dialog never appears (the
-    // observed flake). Let the page settle, then keep pressing while the dialog is absent —
-    // a keyboard user would do the same, and the guard never presses once it has opened.
-    await page.waitForLoadState('networkidle');
+    // observed flake). Keep pressing while the dialog is absent — a keyboard user would do
+    // the same once the page settles, and the guard never presses after it has opened.
+    // (No `networkidle` wait: it can hang on a page that keeps a request open, and the
+    // poll below already retries until hydration lands.)
     const dialog = page.getByRole('dialog');
     await expect
       .poll(
