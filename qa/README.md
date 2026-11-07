@@ -17,12 +17,11 @@ Automation: the campaign that turns these cases into the Playwright suite is
 ```
 qa/
   README.md        this file
-  AGENT-PROMPT.md  the copy-paste agent prompt (includes the scenario slot)
+  AGENT-PROMPT.md  the copy-paste agent prompt
   context.md       global rules: accounts, org+seed data, plans, priorities, defect template (PL, verbatim)
   index.md         all 188 scenarios: ID | Prio | Title | Prereqs | Module
   cases/<ID>.md    one scenario per file, steps verbatim (PL) + embedded prerequisite context
   source/          the original .docx (regeneration source)
-  tools/           convert_docx.py (regenerator)
 ```
 
 Scenario text is kept **verbatim in Polish**; the wrapper (headings, field keys,
@@ -30,70 +29,33 @@ index, agent prompt) is English, matching the repo/issue convention.
 
 ## Running a scenario
 
-Eight slots are provisioned ahead of time by `scripts/qa-env` (run it from the
-main checkout): **`qa-env-1` … `qa-env-8`**. Each slot is a detached `main`
-worktree with its own Supabase stack, web app and `qa/env.json`. Agents do **not** create, reset or tear down environments.
+The operator provisions the app, database, browser and telemetry for a run and
+assigns the scenario; that setup lives outside this repository. Copy the prompt
+from `AGENT-PROMPT.md`, set the scenario ID on the last line
+(`## SCENARIO ▶ <ID>`), then let the agent:
 
-1. Bring the slots up once: `scripts/qa-env up all` (check with
-   `scripts/qa-env status`; stop with `scripts/qa-env down all`).
-2. Open an agent session with its working directory set to one slot's worktree
-   (`.worktrees/qa-env-N`) so `qa/env.json` is found.
-3. Copy the prompt from `AGENT-PROMPT.md` and set the scenario ID on the last
-   line (`## SCENARIO ▶ <ID>`).
-4. The agent reads `qa/context.md` → `qa/index.md` → `cases/<ID>.md` (plus any
-   prerequisite case), uses the slot's `appUrl` / `dbContainer`,
-   runs the steps and files the issue. It does not touch the stack.
+1. Read `qa/context.md` once (accounts, seed data, plan limits, priorities, defect template).
+2. Find the scenario ID in `qa/index.md`.
+3. Read `cases/<ID>.md` plus any prerequisite case it embeds, run the steps in
+   the assigned browser, and file the issue.
 
-Ports per slot N: web `3009+N`, Supabase `54321+100N`.
+The agent does not provision, reset, restart or reconfigure the environment.
 
 `apps/admin` (the internal system-admin surface) is out of scope for QA: do not
 start it, sign requests for it, or file findings against it. No case requires it.
-Supabase runs without realtime / analytics / edge-runtime / imgproxy / vector /
-pooler — the app uses none of them.
-
-### Live QA browser dashboard
-
-The operator dashboard runs at **<http://localhost:5000/>** and shows four
-tiles, one per slot. Each tile is a live Chromium page at 1920×1080 (CDP
-screencast) with that slot's opencode chat in a collapsible drawer. The agent
-drives the **same** browser the operator sees:
-
-- **MCP** (preferred): `qa_browser_navigate`, `qa_browser_state`,
-  `qa_browser_click`, `qa_browser_type`, `qa_browser_press`,
-  `qa_browser_scroll`, `qa_browser_wait_for`, `qa_browser_evaluate`,
-  `qa_browser_screenshot`, `qa_browser_tabs`, `qa_browser_new_tab`,
-  `qa_browser_select_tab`, `qa_browser_close_tab`, `qa_browser_back`,
-  `qa_browser_forward`, `qa_browser_reload`, `qa_browser_network`,
-  `qa_browser_console`. The env defaults to `qa/env.json` in the session
-  workspace.
-- **CLI fallback** (works via the normal shell tool):
-
-  ```bash
-  bun /workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts navigate "$APP_URL/login"
-  bun /workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts click --text "M1"
-  bun /workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts screenshot --name login
-  ```
-
-  It reads `qa/env.json` from cwd (or `QA_ENV_ID` / `--env qa-env-N`) and prints
-  JSON. Screenshots are written to `dashboard/shots/qa-env-N-<ts>.png`; use the
-  returned absolute `path` with `gh issue create --attach`.
-
-Do **not** use opencode's built-in `browser.*` tools — they drive a different,
-unobservable browser. The dashboard and its Chromiums are operator-managed
-(`dashboard/run.sh`); agents do not start, stop or reset them.
 
 ### The few scenarios that need human input first
 
 A handful of cases depend on something only a person can provide. Treat them as
 `N/D` unless the input exists; don't fake it.
 
-| Input                                             | Scenarios                                   | Without it                                                    |
-| ------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- |
-| An LLM API key (`LLM_API_KEY` in `apps/web/.env`) | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features unavailable → `N/D` (the cases say so explicitly) |
-| `fiszki_poprawne.csv` / `fiszki_bledne.csv`       | `STU-05`, `STU-19`, `STU-20`, `STU-42`      | Import steps can't run → `N/D`                                |
-| `logo.png` (< 1 MB)                               | `MGR-SET-02`                                | Branding upload can't run → `N/D`                             |
-| A text PDF                                        | `STU-49`                                    | PDF extraction can't run → `N/D`                              |
-| A PNG/JPG image and an MP3 file                   | `STU-22`                                    | Media upload can't run → `N/D`                                |
+| Input                                       | Scenarios                                   | Without it                                                    |
+| ------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- |
+| An LLM API key configured for the app       | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features unavailable → `N/D` (the cases say so explicitly) |
+| `fiszki_poprawne.csv` / `fiszki_bledne.csv` | `STU-05`, `STU-19`, `STU-20`, `STU-42`      | Import steps can't run → `N/D`                                |
+| `logo.png` (< 1 MB)                         | `MGR-SET-02`                                | Branding upload can't run → `N/D`                             |
+| A text PDF                                  | `STU-49`                                    | PDF extraction can't run → `N/D`                              |
+| A PNG/JPG image and an MP3 file             | `STU-22`                                    | Media upload can't run → `N/D`                                |
 
 Everything else — plan/feature overrides, org switching, group setup, seeded
 content — is done by the agent through the app API or the local DB.
@@ -103,8 +65,7 @@ Because a scenario often depends on state created by an earlier one (the
 
 ## How the QA agent should use it
 
-> **Test-plan context.** Before testing any scenario, read: 0. Drive the slot's live browser through the `qa_browser_*` MCP tools or the
-> `browser-cli.ts` fallback described above — not the built-in browser.
+> **Test-plan context.** Before testing any scenario, read:
 >
 > 1. `qa/context.md` (accounts, seed data, plan limits, priorities, defect-template rules) — once per session.
 > 2. `qa/index.md` → find the scenario ID you were given.
@@ -123,58 +84,28 @@ lines you paste.
 
 ## Regenerate after a document update
 
-```bash
-# inside the container
-cd qa
-cp /path/to/new/Studiq_Dokument_Testera_v1.4.docx source/
-python3 tools/convert_docx.py source/Studiq_Dokument_Testera_v1.4.docx . "StudiQ Dokument Testera v1.4"
-```
-
-The third argument is the `- source:` label written into every case (defaults to
-the input filename). The converter clears `cases/*.md` before writing, so renamed
-or removed scenarios don't leave orphans. It is dependency-free (stdlib only) and
-prints the case count and any prerequisite IDs it could not resolve.
-
-## Ops supervisor (health checks)
-
-`qa/tools/qa-supervisor ensure` checks the slot web apps, dashboard, Chromium
-instances and Discord bots, and restarts only what is down. It is idempotent,
-rate-limited (90 s per component) and protected by a lock.
-
-- A Windows scheduled task `StudiQ QA Supervisor` runs it every 2 minutes via a
-  hidden launcher (`studiq-dev/qa-supervisor.vbs`), with a 10-minute timeout.
-- `qa-supervisor pause` / `resume` parks it without touching Docker.
-- State and locks live in `/tmp/studiq-qa-locks/`; the host log is
-  `studiq-dev/qa-supervisor.host.log` (rotated at 1 MB).
-- Session backstop: an active session with no new message for
-  `QA_STUCK_LIMIT_MS` (default 20 min) or older than `QA_SESSION_LIMIT_MS`
-  (default 60 min) is interrupted. Override the env vars for a one-off run.
-
-- Context rotation (manager only): the manager keeps durable notes in
-  `/workspaces/studiq/.qa-memory/manager.md`. When the last turn reaches
-  `QA_CONTEXT_LIMIT` (default 500k input+cache tokens), `qa-rotate` starts a
-  fresh manager session seeded from that file and restarts the bots. Env
-  sessions are always one per e2e case; investigations inject into the slot's
-  idle session instead of creating another one.
+The docx → markdown converter is part of the operator's QA tooling and is not
+tracked in this repository. Regenerate the corpus with that converter when the
+source document changes; it clears `cases/*.md` before writing, so renamed or
+removed scenarios do not leave orphans, and it prints the case count and any
+prerequisite IDs it could not resolve. Do not hand-edit generated case files to
+update the corpus from the source document; suite workers may still reconcile
+and commit a case's seed/prerequisite details for suite generation, as described
+in `QA-SUITE-APPROACH.md`.
 
 ## Notes
 
 - Seeded dev accounts use the password `pass` (see `context.md`); these are local
   test fixtures, not real credentials.
 - The corpus is generated from a customer-facing test document; regenerate it
-  from `source/` rather than hand-editing `cases/`.
+  from `source/` rather than hand-editing `cases/` to update the corpus.
+- QA environment setup is maintained outside this repository and is
+  intentionally not documented here.
 
-## QA suite generation (shared app)
+## QA suite generation
 
-`QA-SUITE-APPROACH.md` defines the new QA-suite loop: one shared app + one shared
-Supabase, eight browser workers, and one isolated tenant per case. Only tests that
-pass 3/3 independent runs are admitted to `qa-suite`; legacy `@dev.local` accounts
-are not used in the suite. Manager and worker prompts are in
-`QA-SUITE-MANAGER.md` and `QA-SUITE-WORKER.md`. The manager is not started
-automatically.
-
-### Dispatching a QA-suite worker
-
-`!suite <CASEID> [--env N]` in Discord starts one fresh QA-suite worker session
-using `QA-SUITE-WORKER.md`; `qa/tools/qa-manager.py suite <CASEID>` does the same
-from the shell. `!run <ID>` stays the manual report-only dispatch.
+`QA-SUITE-APPROACH.md` defines the QA-suite loop: one spec per case, a fresh
+browser session per run and one isolated tenant per case. Only tests that pass
+3/3 independent runs are admitted to `qa-suite`; legacy `@dev.local` accounts are
+not used in the suite. Manager and worker prompts are in
+`QA-SUITE-MANAGER.md` and `QA-SUITE-WORKER.md`.

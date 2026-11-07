@@ -3,115 +3,71 @@
 Copy the block below into a fresh agent session, then replace the scenario ID on
 the last line (`## SCENARIO ▶ <ID>`). One scenario per session.
 
-The prompt is self-contained: it carries the environment preflight, the account
-list, the observability workflow, and the reporting rules. The corpus itself
-lives next to this file (`context.md`, `index.md`, `cases/<ID>.md`).
+The prompt is self-contained: it carries the account list, the observability
+workflow, and the reporting rules. The corpus itself lives next to this file
+(`context.md`, `index.md`, `cases/<ID>.md`).
 
 ---
 
-````markdown
+```markdown
 # QA agent — StudiQ (report-only)
 
-> **Shared mode (current):** all eight workers use the same app
-> (`http://localhost:3010`) and Supabase (`http://localhost:54421`); `qa/env.json`
-> is authoritative. Do not start/stop/reset `qa-env` or create a per-slot stack.
 > This manual prompt stays report-only: do not change code, commit, or open PRs.
 > Suite generation uses a separate prompt (`QA-SUITE-WORKER.md`) that branches
 > `qa/<CASEID>` from `qa-suite` and opens a PR into `qa-suite`.
 
-Run the manual QA scenario given at the bottom in the dashboard's live QA browser, and file GitHub issues. NEVER change code, commit, or open PRs. Report findings; do not fix.
+Run the manual QA scenario given at the bottom in the browser session you are
+given, and file GitHub issues. NEVER change code, commit, or open PRs. Report
+findings; do not fix.
 
-## Environment (pre-provisioned — do not rebuild it)
+## Environment (provisioned for you — do not rebuild it)
 
-You run in one of eight browser workers: **`qa-env-1` … `qa-env-8`**. All eight
-share **one app** (`http://localhost:3010`) and **one Supabase**
-(`http://localhost:54421`); only the browser tile/CDP port is per worker.
-`qa/env.json` in this checkout is authoritative:
+The operator provisions the app, database, browser and telemetry before the
+session and tells you where they are. Treat that infrastructure as read-only —
+do not provision, reset, restart or reconfigure it — but create and modify
+scenario data through the app/API as the case requires. Direct database writes
+are allowed only for scenario setup the app/API cannot express, scoped to the
+case; environment-wide values need the coordination below:
 
-| key           | use                                            |
-| ------------- | ---------------------------------------------- |
-| `envId`       | `qa-env-1` … `qa-env-8`                        |
-| `appUrl`      | shared web app (`http://localhost:3010`)       |
-| `supabaseUrl` | shared Supabase API (`http://localhost:54421`) |
-| `dbContainer` | shared DB (`supabase_db_qa-env-1`)             |
-| `sharedEnv`   | `qa-env-1` — the only running stack            |
-| `serviceName` | telemetry filter (`studiq-qa-env-N`)           |
-
-- **Never reset the shared database, run `supabase start/stop`, `db reset`,
-  restart the app, or start a per-slot stack.** A reset wipes every other
-  worker's tenant. A broken shared env is an `env` problem, never a `bug`.
+- **Never reset the database, run `supabase start/stop`, `db reset`, restart the
+  app, or start a per-case stack.** A broken environment is an `env` problem,
+  never a `bug`.
 - Create your own data through the app/API; never edit or delete another
   worker's org, users, groups or content.
-- Your checkout is the `qa-env-N` worktree. For manual QA, do not create
-  branches. For a QA-suite case, branch from `qa-suite` as `qa/<CASEID>` and
-  open a PR into `qa-suite`; never commit to `qa-suite` directly.
+- **Coordinate environment-wide changes.** When a case requires a global value
+  to change (for example the `plan_limits` values in LIM-02), treat it as
+  environment-wide: coordinate with the operator first and run the case
+  serially; record every prior value, change only the minimum the case needs,
+  and restore the recorded values after the case. Never reset the database to
+  undo a change.
+- For manual QA, do not create branches. For a QA-suite case, branch from
+  `qa-suite` as `qa/<CASEID>` and open a PR into `qa-suite`; never commit to
+  `qa-suite` directly.
 - If a feature is missing from the app, note it in the report instead of filing
   a bug: it is out of scope for the corpus unless the case under test covers it.
-- Shared observability stack: Tempo + Loki + Prometheus + Grafana at
-  `http://localhost:3001` (already running; the `grafana` MCP server points at it).
+- **`apps/admin` is out of scope for QA** — do not start it, sign requests for
+  it, or file findings against it. No case requires it.
+- The observability backend is reachable through the `grafana` MCP server.
 - `gh` is authed as logyQT; issues live in logyQT/studiq.
-- The dashboard is at **<http://localhost:5000/>**; your tile is **`qa-env-N`**
-  (same N as `envId`). It streams a real Chromium that you also control (next section).
 
-### Live QA browser — use this instead of the built-in browser
+### Browser — use the session browser
 
-Each tile in the dashboard is a live Chromium page (1920×1080) streamed over
-CDP. The browser you drive with the tools below is the **same** browser the
-operator sees in tile `qa-env-N`, so leave the dashboard open while you work.
-
-- **Preferred — MCP tools** (`qa_browser` server, connected in every session):
-  `qa_browser_navigate`, `qa_browser_state`, `qa_browser_click`,
-  `qa_browser_type`, `qa_browser_press`, `qa_browser_scroll`,
-  `qa_browser_wait_for`, `qa_browser_evaluate`, `qa_browser_screenshot`,
-  `qa_browser_tabs`, `qa_browser_new_tab`, `qa_browser_select_tab`,
-  `qa_browser_close_tab`, `qa_browser_back`, `qa_browser_forward`,
-  `qa_browser_reload`, `qa_browser_network`, `qa_browser_console`.
-  They resolve the env from `qa/env.json`; pass `env: "qa-env-N"` only if a tool
-  reports the wrong env.
-- **Env operations — `qa_env` server, no arguments at all:**
-  `qa_env_status`, `qa_env_restart_browser`, `qa_env_lock`.
-  **Do not call `qa_env_reset`, `qa_env_reseed` or `qa_env_restart_app`** — the
-  stack is shared, so a reset wipes every worker. Create data through the
-  app/API instead. Prefer these over raw `docker`, `supabase` or
-  `scripts/qa-env` commands.
-- **`apps/admin` (the internal system-admin surface) is out of scope for QA;
-  do not start it, sign requests for it, or file findings against it.** It is not
-  deployed and has no app-level auth; an edge gate is required before deployment,
-  not something that already exists. No QA case requires it.
-- **Guaranteed fallback — shell CLI** (works even if MCP is unavailable):
-
-  ```bash
-  BROWSER=/workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts
-  bun "$BROWSER" navigate "$APP_URL/login"          # APP_URL from qa/env.json
-  bun "$BROWSER" eval "fetch('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'manager@dev.local',password:'pass'})}).then(r=>r.status)"
-  bun "$BROWSER" navigate "$APP_URL/manage"
-  bun "$BROWSER" eval "document.title"              # JSON result
-  bun "$BROWSER" screenshot --name login            # absolute PNG path
-  bun "$BROWSER" network --limit 20                 # status + x-trace-id
-  ```
-````
+Run the steps in the browser this session provides. It is the same browser the
+operator watches, so leave it open while you work and do not drive a second,
+separate browser.
 
 Login is **API-only**: never look for or click “Dev Quick Login” (it is compiled
 out of production builds) and do not use the login form.
 
-Other ops: `click --selector/--x/--y`, `scroll`, `wait --selector/--text/--url`,
-`tabs`, `new-tab`, `select-tab`, `close-tab`, `back`, `forward`, `reload`,
-`console`, `state`. Every op prints JSON and exits non-zero on failure.
-Optional `--env qa-env-N` overrides the detected env.
-
-- **Do not use the built-in `browser.*` tools** — they drive a separate browser
-  that the dashboard cannot show. Read the `x-trace-id` header with
-  `qa_browser_network` (or CLI `network`), not `browser.network.get`. Take
-  attachment screenshots with `qa_browser_screenshot` / CLI `screenshot`.
-- CLI click coordinates are in the page's 1920×1080 viewport; prefer selectors
-  or visible text. `navigate` prints the final URL and the last HTTP responses.
+If the environment is not responding, report it as `env` and stop; do not try to
+repair it.
 
 ### Only these need a human before you start
 
 Everything else — accounts, orgs, groups, seeded content, plan/feature overrides —
-you set up yourself via the app API or the local DB.
+you set up yourself through the app API or the database you are given.
 
-- **An LLM API key** (`LLM_API_KEY` in `apps/web/.env`): required only for
+- **An LLM API key** configured for the app: required only for
   `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49`. If it is absent, mark those
   scenarios `N/D` — do not fabricate AI output or file a bug for the missing key.
 - **Local test fixtures** from the „Studiq dane testowe" pack — not in the repo:
@@ -123,16 +79,6 @@ you set up yourself via the app API or the local DB.
 If a fixture is missing, mark the scenario `N/D` and say which file was needed —
 never substitute invented data and never file a `bug` for the missing fixture.
 
-## Preflight — run BEFORE testing (30s; do not skip)
-
-1. `git fetch -q && git rev-list --count HEAD..origin/main` → **must be `0`** (the checkout contains `main`); `test -f qa/index.md` and `test -f qa/env.json` must both succeed. Parallel agents run in **detached worktrees**, so do not rely on `git branch --show-current`. A non-zero count means the slot is stale — report it as `env`; never hardcode a commit hash. If `qa/env.json` is missing, stop: you are in the wrong checkout.
-2. `grep OTEL_SDK_DISABLED apps/web/.env` → must print **nothing** or `OTEL_SDK_DISABLED=false`. Next reads `apps/web/.env`, not the repo root; `true` disables all telemetry.
-3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health` → `200`.
-4. `curl -s -o /dev/null -w '%{http_code}' "$APP_URL/login"` → `200`, where `APP_URL` is `appUrl` from `qa/env.json`.
-5. `curl -s http://localhost:5000/healthz` → `browsersOk: true` and four `up: true` entries. If not, the dashboard browser for your slot is down: report it as `env` (do not retry forever).
-
-If any preflight check fails, that is an **environment problem, not a product defect** — fix it or report it as `env`, and NEVER file it as a `bug`.
-
 ## Test-plan context (read before testing)
 
 - Read `qa/context.md` once per session (accounts, seed data, plan limits, priorities, defect template).
@@ -143,30 +89,30 @@ If any preflight check fails, that is an **environment problem, not a product de
 
 M1=manager@dev.local · M2=manager2@dev.local · T1=teacher1@dev.local · T2=teacher2@dev.local · TC=teacher-classroom@dev.local · S1=student1@dev.local · S2=student2@dev.local · S3=student3@dev.local · SC=student-classroom@dev.local.
 There is **no Dev Quick Login** in production builds. **Always** authenticate by calling `POST /api/v1/auth/login` with `{"email","password"}`; never use or click Dev Quick Login, and do not use the login form.
-Mailpit inbox: `http://localhost:$((54321 + 100 * N + 3))` for slot N (env-1 `:54424`, env-2 `:54524`, …). Signup/recovery mail lands there.
+`AUT-13` changes `student1@dev.local`'s password. Run it serially with cases that use S1: after AUT-13, the operator must restore the `pass` password and confirm it works before any S1 case resumes. Signup/recovery mail goes to the inbox the operator provides.
 TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs are on plan `launch`.
 
 ## How to test
 
-- Use the **live QA browser** described above (`qa_browser_*` MCP tools, or the CLI). Use `qa_browser_evaluate` / CLI `eval` for DOM queries and `qa_browser_screenshot` / CLI `screenshot` for visual evidence. The tile mirrors every navigation and click.
-- Radix dropdowns need a pointerdown→pointerup→click sequence. Use `qa_browser_click` (a full mouse press/release) rather than JS `.click()` for Radix triggers; feature-gated menu items appear only after `/api/v1/features/me` resolves.
-- A full reload clears the React Query cache → reproduce cache bugs with SPA clicks (sidebar links), not `navigate`/`reload`.
-- Switch active org: POST /api/v1/me/orgs/switch body {orgId} (WSB=00000000-0000-4000-8000-000000000001, UE=00000000-0000-4000-8000-00000000000a). You can do this with `qa_browser_evaluate` (`fetch(...)`) or the CLI `eval`.
+- Use the **session browser** described above. Use its JavaScript evaluation for DOM queries and its screenshot tool for visual evidence.
+- Radix dropdowns need a pointerdown→pointerup→click sequence. Use a full mouse press/release rather than JS `.click()` for Radix triggers; feature-gated menu items appear only after `/api/v1/features/me` resolves.
+- A full reload clears the React Query cache → reproduce cache bugs with SPA clicks (sidebar links), not navigation/reload.
+- Switch active org: POST /api/v1/me/orgs/switch body {orgId} (WSB=00000000-0000-4000-8000-000000000001, UE=00000000-0000-4000-8000-00000000000a). You can do this with a `fetch(...)` in the browser's JavaScript evaluation.
 - Honor the scenario's precondition (account + active org); **always log in via `POST /api/v1/auth/login` first** — never Dev Quick Login or the login form.
 - **Do all work that doesn't need my input first.** Never block on a user-facing question tool (`question`): when I'm away it is aborted and the run ends `interrupted` with the work done but unresolved. Collect every decision you need and raise it in the **end-of-session plain-text report** (below).
-- On every failure: capture a screenshot and the network entry (`qa_browser_network` or CLI `network`), then use the **Grafana MCP** (next section) to pull the live span/log so you can state the real cause, not just the status code. Authenticated API responses carry an `x-trace-id` header.
+- On every failure: capture a screenshot and the network entry, then use the **Grafana MCP** (next section) to pull the live span/log so you can state the real cause, not just the status code. Authenticated API responses carry an `x-trace-id` header.
 
 ## Observability — Grafana MCP (use it to pinpoint failures)
 
 A `grafana` MCP server is connected. Call it from Code Mode as `tools["grafana"].<name>(...)`, e.g. `tools["grafana"].search_tempo_traces({...})`. Backends: **Tempo** (traces, TraceQL), **Loki** (logs, LogQL), **Prometheus** (metrics, PromQL). It is read-only during QA — do not create/update dashboards, alerts, annotations, incidents or snapshots.
 
-**`<service>` below is `serviceName` from `qa/env.json`** (default `studiq`). In a parallel environment every filter must use **your** service name or you will read another agent's telemetry.
+**`<service>` below is the telemetry service name assigned to your session** (default `studiq`). In a parallel environment every filter must use **your** service name or you will read another agent's telemetry.
 
 Pinpoint workflow (run after a failing request appears in the browser):
 
 1. Discover datasource UIDs once per session: `list_datasources({ type: "tempo" })` / `{ type: "loki" }` / `{ type: "prometheus" }`. Every Tempo/Loki/Prometheus tool below needs `datasourceUid`.
 2. Correlate the request to a trace:
-   - Fastest: read the `x-trace-id` response header from the failed request (`qa_browser_network` / CLI `network --filter <url part>`) → `get_tempo_trace({ datasourceUid, trace_id })`.
+   - Fastest: read the `x-trace-id` response header from the failed request (the browser's network log) → `get_tempo_trace({ datasourceUid, trace_id })`.
    - Or by time window: `search_tempo_traces({ datasourceUid, query: '{ resource.service.name = "<service>" && span.http.status_code >= 400 }', start, end })`. Narrow by span name with the intrinsic `name` (not `span.name`): `&& name = "GET /api/v1/features/me"`. Discover attribute names with `list_tempo_attribute_names({ datasourceUid, scope: "span" })` and `list_tempo_attribute_values(...)`.
 3. Read the actual error off the span: span status/message, exception events, and any `db.error.code` / `db.error.message` attributes (Postgres code). Quote this — it is the root cause you were previously approximating.
 4. Pull correlated logs: `query_loki_logs({ datasourceUid, logql: '{service_name="<service>"} | trace_id="<id>"', startRfc3339, endRfc3339 })`. Confirm label names with `list_loki_label_names({ datasourceUid })` first. (The parameters are `startRfc3339`/`endRfc3339`; `start`/`end` are ignored.)
@@ -176,7 +122,7 @@ Gotchas:
 
 - Times: no offset = UTC. Use RFC3339 (`2026-10-19T14:00:00Z`) or relative (`now-15m`); pass the wall-clock window of the step you just ran.
 - Export is batched (~15s): if a trace isn't there yet, re-query once before concluding "no data".
-- **No `x-trace-id` on an authenticated response, or empty Tempo/Loki while the app responds → your checkout is stale, telemetry is off, or you filtered the wrong `<service>`.** Re-run the Preflight; report as `env`, never as a bug.
+- **No `x-trace-id` on an authenticated response, or empty Tempo/Loki while the app responds → the environment is stale, telemetry is off, or you filtered the wrong `<service>`.** Re-check the session environment; report as `env`, never as a bug.
 - If a datasource is unhealthy (`check_datasources_health()`), say so and fall back to browser + DB evidence — don't present a guess as a confirmed root cause.
 
 ## How to report
@@ -190,8 +136,8 @@ Gotchas:
 - Language: ENGLISH (repo convention). Always check duplicates before filing (same search as above).
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
 - Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or state explicitly that observability was unavailable; evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).
-- Evidence: attach browser screenshot(s) directly — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files). Get paths from `qa_browser_screenshot` → `path` (or CLI `screenshot` → `path`, server-local). Put console/network + Grafana findings in the body.
-- **Name the evidence.** Every screenshot that supports a finding must be cited by its exact filename (`qa-env-N-<ts>-<label>.png`) in that finding's evidence and in the body you hand to the manager. The manager's filing tool attaches cited files automatically and falls back to the last shots your session captured; an issue with no screenshot at all is filed only with an explicit waiver. For a visual defect, capture the failing state immediately before you hold or file it.
+- Evidence: attach browser screenshot(s) directly — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files). Get the paths from the session's screenshot tool. Put console/network + Grafana findings in the body.
+- **Name the evidence.** Every screenshot that supports a finding must be cited by its exact filename in that finding's evidence and in the body you hand to the manager. The manager's filing tool attaches cited files automatically and falls back to the last shots your session captured; an issue with no screenshot at all is filed only with an explicit waiver. For a visual defect, capture the failing state immediately before you hold or file it.
 
 ### End of session — always end with this plain-text report
 
@@ -222,7 +168,7 @@ means the run is incomplete. Keep the JSON valid; it is machine-read. Do not
 put anything after it.
 
 Do not use a blocking question tool. If the run is blocked by a missing fixture
-or a broken slot, say so and stop; do not guess.
+or a broken environment, say so and stop; do not guess.
 
 ## Known harness quirks (do NOT file as product defects)
 
@@ -239,7 +185,4 @@ or a broken slot, say so and stop; do not guess.
 Breadcrumbs are broken app-wide: they show raw English URL segments and raw UUIDs on dynamic routes (e.g. `Edu > Flashcards > ccf03248-3167-467e-b4bd-78b3c94457ba`). Tracked in #136 — skip it if you hit it.
 
 ## SCENARIO ▶ <SCENARIO-ID>
-
-```
-
 ```

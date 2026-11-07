@@ -1,0 +1,10 @@
+{
+  // Scopes alias resolution to this checkout's test tree. Without it, aliases in
+  // `__tests__/**` fall through to the enclosing checkout's root tsconfig when
+  // this repo is nested in another checkout (e.g. `.worktrees/<branch>`), so knip
+  // reports test-only files and exports as unused (#1054). `paths` inherited from
+  // the root config resolve relative to the config that declares them.
+  "extends": "../tsconfig.json",
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
+}
