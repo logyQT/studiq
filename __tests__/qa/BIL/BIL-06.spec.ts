@@ -78,7 +78,12 @@ interface WebhookBody {
 
 const TENANT: QaTenant = loadTenant(CASE);
 /** Run suffix the seeder folded into the tenant key (stable tenants have none). */
-const RUN = TENANT.runSuffix ?? 'stable';
+let RUN: string;
+
+// The tenant is per attempt, so values derived from it are resolved per attempt.
+test.beforeEach(() => {
+  RUN = TENANT.runSuffix ?? 'stable';
+});
 
 function account(role: QaRole) {
   const user = TENANT.users[role];

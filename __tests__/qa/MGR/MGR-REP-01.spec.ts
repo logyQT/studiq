@@ -97,16 +97,29 @@ const TENANT = asJson<TwoOrgTenant>(loadTenant(CASE));
  * keyed by it, so a retry reuses the rows its tenant already has instead of
  * duplicating them.
  */
-const RUN = TENANT.runSuffix ?? 'stable';
+let RUN: string;
 
-const BANK_NAME = `QA MGR-REP-01 bank ${RUN}`;
-const QUESTION_CONTENT = `QA MGR-REP-01 question ${RUN}`;
-const QUESTION_REPORT_MESSAGE = `QA MGR-REP-01 question report ${RUN}`;
-const GROUP_REPORT_MESSAGE = `QA MGR-REP-01 group report ${RUN}`;
-const REPLY_MESSAGE = `QA MGR-REP-01 manager reply ${RUN}`;
-const FOREIGN_BANK_NAME = `QA MGR-REP-01 foreign bank ${RUN}`;
-const FOREIGN_QUESTION_CONTENT = `QA MGR-REP-01 foreign question ${RUN}`;
-const FOREIGN_REPORT_MESSAGE = `QA MGR-REP-01 foreign report ${RUN}`;
+let BANK_NAME: string;
+let QUESTION_CONTENT: string;
+let QUESTION_REPORT_MESSAGE: string;
+let GROUP_REPORT_MESSAGE: string;
+let REPLY_MESSAGE: string;
+let FOREIGN_BANK_NAME: string;
+let FOREIGN_QUESTION_CONTENT: string;
+let FOREIGN_REPORT_MESSAGE: string;
+
+// The tenant is per attempt: resolve the run-keyed names at attempt start.
+function resolveNames(): void {
+  RUN = TENANT.runSuffix ?? 'stable';
+  BANK_NAME = `QA MGR-REP-01 bank ${RUN}`;
+  QUESTION_CONTENT = `QA MGR-REP-01 question ${RUN}`;
+  QUESTION_REPORT_MESSAGE = `QA MGR-REP-01 question report ${RUN}`;
+  GROUP_REPORT_MESSAGE = `QA MGR-REP-01 group report ${RUN}`;
+  REPLY_MESSAGE = `QA MGR-REP-01 manager reply ${RUN}`;
+  FOREIGN_BANK_NAME = `QA MGR-REP-01 foreign bank ${RUN}`;
+  FOREIGN_QUESTION_CONTENT = `QA MGR-REP-01 foreign question ${RUN}`;
+  FOREIGN_REPORT_MESSAGE = `QA MGR-REP-01 foreign report ${RUN}`;
+}
 
 interface CaseTenant {
   key: string;
@@ -394,6 +407,7 @@ test.describe('@case:MGR-REP-01 @area:MGR @prio:P2 reports in the organization',
   let tenant: CaseTenant;
 
   test.beforeEach(async ({ browser, baseURL }) => {
+    resolveNames();
     tenant = await prepareTenant(browser, baseURL ?? 'http://localhost:3010');
     console.log(`MGR-REP-01 tenant key: ${tenant.key}`);
     console.log(`MGR-REP-01 org: ${tenant.org.id} (${tenant.org.name})`);

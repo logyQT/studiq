@@ -25,6 +25,8 @@ case:
 - `tenantKey("qa/<CASEID>.md", "<test title>", "qa-shared")` → deterministic key
 - `tenantId(key, entity)` → RFC-4122 UUIDv5 IDs for orgs, users, groups, decks, banks,
   quizzes, assignments
+- one tenant per Playwright **attempt** (`r<repeat>e<retry>` in the key), so a CI retry
+  starts from a pristine tenant instead of inheriting the failed attempt's writes
 - unique emails such as `qa+<shorthash>+teacher@test.local`
 - `seedTenantGraph()` from `__tests__/helpers/tenant-seed.ts` creates the org/user/group
   graph idempotently
@@ -72,32 +74,40 @@ one-off env, or the old slot stack. Do not let 16 workers mutate the same single
 
 ## Retry safety — every spec must survive its own retry
 
-CI runs the suite with `retries: 2` against **one seeded tenant per run**
-(`bun scripts/qa-tenant.ts --all --run <suffix>`), and a local `--repeat-each` replay reuses
-that same tenant. A retry is not a fresh database: it inherits whatever the failed attempt
-left behind. Every spec therefore has to be safe to run twice against the same tenant.
+CI runs the suite with `retries: 2` against one seed run, and a `--repeat-each` replay reuses
+that run too. A retry must not inherit the failed attempt's writes.
 
-- **Reset the case's own state at the start of the attempt**, not only in `afterAll` — a
-  crashed attempt never reaches its hooks. `qa/fixtures/qa-invitees.ts`
-  (`resetInviteeState`) cancels the case's pending invitations and drops its invitee
-  memberships (which also frees plan slots); `qa/fixtures/qa-db.ts`
-  (`resetFirstRunTenant`) returns a `bare` onboarding account to "no organization".
-  Read-only specs need nothing.
-- **Give one-shot artifacts a per-attempt identity** — `attemptSuffix(test.info())` folds
-  `retry` + `repeatEachIndex` into an invited address or a code. Re-inviting a fixed address
-  on a retry creates a duplicate pending row and a strict-mode locator failure.
+The harness handles that structurally: `scripts/qa-tenant.ts` seeds **one tenant per
+attempt** — `qa/.tenants/<CASE>.r<repeat>e<retry>.json` (plus the base
+`qa/.tenants/<CASE>.json` for attempt 0) — and `loadTenant()` reads the file matching
+`test.info()`. A fresh tenant costs ~15 ms per case, so a shard pays ~2.5 s for three
+attempts. `--attempts 1 --repeats 1` opts out (only the base tenant).
+
+What a spec still has to do:
+
+- **Never snapshot the tenant at module scope.** `const TENANT = loadTenant(CASE)` is a lazy
+  view, so `TENANT.users.student` resolves per attempt; but a value derived from it
+  (`const RUN = TENANT.runSuffix`, `const GROUP_ID = tenantId(TENANT.key, …)`) freezes
+  attempt 0's data. Resolve those inside a `beforeEach` (or through a getter) so a retry
+  reads its own tenant.
+- **Seed per-attempt data through a hook that runs on every attempt** (`beforeEach`), not
+  `beforeAll`: a retry does not re-run `beforeAll`, so a code minted there belongs to the
+  previous attempt's tenant.
 - **Assert eventually after a mutation.** A one-shot DOM/API read taken right after a save
   races the refetch (MGR-SEAT-02 read the pool table as `[]` once); use a web-first assertion
   (`toHaveCount`/`toHaveText` already retry) or `expect.poll`. Never a fixed sleep.
-- **Clean up with a `createdBefore` cutoff** when cleanup can overlap another attempt: a
-  `--repeat-each` run with several workers executes repeats in parallel, and a later attempt
-  must not delete a concurrent attempt's fresh rows.
-- **Prove it in one command** against one seeded tenant:
+- **Test with the real flags** against a freshly seeded run:
 
   ```bash
+  bun scripts/qa-tenant.ts --all --areas <AREA> --run retry-check
   CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> \
     --repeat-each=2 --retries=2 --workers=1
   ```
+
+  If a spec only has the base tenant (`--attempts 1`), it can reset its own rows at attempt
+  start with `qa/fixtures/qa-invitees.ts` (`resetInviteeState`) or `qa/fixtures/qa-db.ts`
+  (`resetFirstRunTenant`), passing a cutoff from `qaDbNow()` so parallel attempts do not
+  delete each other's rows.
 
 ## Asserting user-visible copy
 

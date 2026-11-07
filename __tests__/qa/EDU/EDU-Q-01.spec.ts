@@ -30,7 +30,7 @@ import { tenantId } from '#test/helpers/tenant-seed';
  * The seeder enrols every member in the default group and leaves `G2` without a
  * teacher, so the two group rosters the case needs — `G1` = teacher + student1,
  * `G2` = teacher + the student outside the group — are written once in
- * `test.beforeAll` through the product's own roster endpoint (the same write
+ * `test.beforeEach` through the product's own roster endpoint (the same write
  * `/manage/groups` performs): tenant-local and idempotent. `G2`'s id is the
  * deterministic `tenantId(key, 'group:2')` the declarative `groups` field assigns.
  *
@@ -109,14 +109,24 @@ function user(key: string): TenantUser {
   return account;
 }
 
-const TEACHER = user('teacher');
-const STUDENT_IN = user('studentIn');
-const STUDENT_OUT = user('studentOut');
+// The tenant is per attempt, so everything derived from it is resolved per
+// attempt (a retry gets a pristine tenant with different ids).
+let TEACHER: TenantUser;
+let STUDENT_IN: TenantUser;
+let STUDENT_OUT: TenantUser;
 
 /** The default group `G1` (`O1G1`) and the empty second group `G2`. */
-const GROUP_1_ID = TENANT.group?.id;
-const GROUP_2_ID = tenantId(TENANT.key, 'group:2');
-if (!GROUP_1_ID) throw new Error(`${CASE} tenant has no seeded default group`);
+let GROUP_1_ID: string | undefined;
+let GROUP_2_ID: string;
+
+function resolveTenant(): void {
+  TEACHER = user('teacher');
+  STUDENT_IN = user('studentIn');
+  STUDENT_OUT = user('studentOut');
+  GROUP_1_ID = TENANT.group?.id;
+  GROUP_2_ID = tenantId(TENANT.key, 'group:2');
+  if (!GROUP_1_ID) throw new Error(`${CASE} tenant has no seeded default group`);
+}
 
 interface BankListItem {
   id: string;
@@ -254,7 +264,8 @@ async function setGroupMembers(
  * pickers only when it has one), so both rosters are written here through the same
  * endpoint `/manage/groups` uses — tenant-local and idempotent.
  */
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
+  resolveTenant();
   const baseURL = process.env.QA_APP_URL ?? 'http://localhost:3010';
   const context = await browser.newContext({ baseURL });
   try {

@@ -183,7 +183,7 @@ test.describe('@case:MGR-03 @area:MGR @prio:P2 organization data isolation', () 
 
   let tenant: TwoOrgTenant;
 
-  test.beforeAll(() => {
+  test.beforeEach(() => {
     tenant = twoOrgTenant();
     console.log(
       `MGR-03 tenant key: ${tenant.key} (manager ${tenant.manager.email}, ` +

@@ -26,7 +26,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * group-roster writes the case needs — `teacherA` teaches `O1G2-<run>` (the picker
  * lists a group only when it has a teacher, and only a group teacher may share
  * content to it) and `teacherA` is a member of org B teaching `O2G1-<run>` — are
- * made once in `test.beforeAll` through the product's own endpoints (the same
+ * made per attempt in `test.beforeEach` through the product's own endpoints (the same
  * requests `/manage/groups` and `/manage/invites` make). They are tenant-local and
  * idempotent, so a retry against the same tenant starts from the same state. The
  * deck itself is created through the UI, as the case does.
@@ -120,10 +120,16 @@ if (!isTwoOrgTenant(loadedTenant)) {
 const TENANT = loadedTenant;
 
 /** Org A's default group (the deck's first share) and its second group. */
-const GROUP_NAME = TENANT.orgA.groups[0];
-const SECOND_GROUP_NAME = TENANT.orgA.groups[1];
+let GROUP_NAME: string;
+let SECOND_GROUP_NAME: string;
 /** A group of org B — the teacher is a member there too, but it must never leak. */
-const OTHER_ORG_GROUP_NAME = TENANT.orgB.groups[0];
+let OTHER_ORG_GROUP_NAME: string;
+
+function resolveTenant(): void {
+  GROUP_NAME = TENANT.orgA.groups[0];
+  SECOND_GROUP_NAME = TENANT.orgA.groups[1];
+  OTHER_ORG_GROUP_NAME = TENANT.orgB.groups[0];
+}
 
 interface CaseGroups {
   group1: string;
@@ -131,7 +137,7 @@ interface CaseGroups {
   otherOrgGroup: string;
 }
 
-/** Resolved once in `test.beforeAll` from the product's own group list. */
+/** Resolved per attempt in `test.beforeEach` from the product's own group list. */
 let groups: CaseGroups;
 
 interface DeckListItem {
@@ -317,7 +323,8 @@ async function ensureOrgMember(
  * and org B where the educator is a member and teaches a group. Nothing global is
  * written — only this tenant's group rosters and org membership.
  */
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
+  resolveTenant();
   const baseURL = process.env.QA_APP_URL ?? 'http://localhost:3010';
   const managerContext = await browser.newContext({ baseURL });
   const teacherContext = await browser.newContext({ baseURL });

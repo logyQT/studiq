@@ -51,7 +51,12 @@ const TENANT = loadTenant(CASE);
  * The groups API lists a group only once it has a teacher, so the empty `O1G2`
  * cannot be discovered by name before this spec enrols the teacher in it.
  */
-const GROUP_G2_ID = tenantId(TENANT.key, 'group:2');
+let GROUP_G2_ID: string;
+
+// The tenant is per attempt, so the derived group id is resolved per attempt.
+test.beforeEach(() => {
+  GROUP_G2_ID = tenantId(TENANT.key, 'group:2');
+});
 
 const GROUP_G1 = 'O1G1';
 const GROUP_DECK = 'O1G1T1';

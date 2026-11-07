@@ -56,10 +56,16 @@ const CASE = 'SEC-11';
 const TENANT: QaTenant = loadTenant(CASE);
 
 /** Run suffix the seeder folded into the tenant key (stable tenants have none). */
-const RUN = TENANT.runSuffix ?? 'stable';
+let RUN: string;
+let ORG_ID: string | undefined;
+let STUDENT_ID: string | undefined;
 
-const ORG_ID = TENANT.org?.id;
-const STUDENT_ID = TENANT.users.student?.id;
+// The tenant is per attempt, so values derived from it are resolved per attempt.
+test.beforeEach(() => {
+  RUN = TENANT.runSuffix ?? 'stable';
+  ORG_ID = TENANT.org?.id;
+  STUDENT_ID = TENANT.users.student?.id;
+});
 
 /** PNG magic bytes; enough for both a valid control upload and a forged header. */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

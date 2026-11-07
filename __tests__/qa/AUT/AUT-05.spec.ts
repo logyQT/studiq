@@ -31,8 +31,14 @@ import { loadTenant } from '@qa/fixtures/qa-tenant';
  */
 
 const TENANT = loadTenant('AUT-05');
-const STUDENT = TENANT.users.student;
-if (!STUDENT) throw new Error('AUT-05 tenant has no seeded student');
+// The tenant is per attempt: resolve the student for the current attempt.
+let STUDENT: { id: string; email: string; password: string };
+
+test.beforeEach(() => {
+  const student = TENANT.users.student;
+  if (!student) throw new Error('AUT-05 tenant has no seeded student');
+  STUDENT = student;
+});
 
 const HOST = new URL(process.env.QA_APP_URL ?? 'http://localhost:3010').hostname;
 

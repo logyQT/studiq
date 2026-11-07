@@ -543,7 +543,7 @@ function watchPage(page: Page) {
 
 let tenant: QaTenant;
 
-test.beforeAll(() => {
+test.beforeEach(() => {
   tenant = loadTenant(CASE);
   expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
 });

@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
+import { qaDbNow } from '@qa/fixtures/qa-db';
 import { resetInviteeState } from '@qa/fixtures/qa-invitees';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
@@ -78,7 +79,7 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
     page,
     context,
   }) => {
-    const attemptStarted = new Date();
+    const attemptStarted = await qaDbNow();
     const tenant: QaTenant = loadTenant(CASE);
     expect(tenant.profile, 'ONB-10 needs the org-limit tenant profile').toBe('org-limit');
     if (!tenant.org || !tenant.users.invitee1 || !tenant.users.invitee2) {

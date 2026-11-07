@@ -27,13 +27,16 @@ interface Invitation {
 interface Member {
   id: string;
   email: string;
-  created_at: string;
+  /** `org_members.joined_at` — when the account joined this organization. */
+  joinedAt: string | null;
 }
 
 export interface ResetInviteeOptions {
   /**
    * Only rows created strictly before this instant are removed. Pass the
-   * instant the attempt started.
+   * instant the attempt started, read from the **database** clock
+   * (`qaDbNow()` in `qa/fixtures/qa-db.ts`) — the same clock that writes
+   * `invitations.created_at` and `org_members.joined_at`.
    *
    * Without it, a `--repeat-each` run with several workers lets two attempts of
    * the same spec run in parallel: the later one would delete the earlier one's
@@ -63,9 +66,14 @@ export async function resetInviteeState(
   matches: (email: string) => boolean,
   options: ResetInviteeOptions = {},
 ): Promise<void> {
-  const createdBefore = options.createdBefore?.getTime() ?? Number.POSITIVE_INFINITY;
-  const isOld = (createdAt: string | null | undefined): boolean =>
-    !options.createdBefore || !createdAt || new Date(createdAt).getTime() < createdBefore;
+  const createdBefore = options.createdBefore?.getTime();
+  // An unknown timestamp is never treated as "old": with a cutoff set, deleting
+  // an unaged row could remove a concurrent attempt's work.
+  const isOld = (timestamp: string | null | undefined): boolean => {
+    if (!createdBefore) return true;
+    if (!timestamp) return false;
+    return new Date(timestamp).getTime() < createdBefore;
+  };
 
   const invitesRes = await request.get('/api/v1/organization/invites');
   expect(invitesRes.ok(), 'GET /api/v1/organization/invites').toBe(true);
@@ -78,7 +86,7 @@ export async function resetInviteeState(
   const membersRes = await request.get('/api/v1/organization/members');
   expect(membersRes.ok(), 'GET /api/v1/organization/members').toBe(true);
   const members = (await json<{ data?: Member[] }>(membersRes)).data ?? [];
-  for (const member of members.filter((entry) => matches(entry.email) && isOld(entry.created_at))) {
+  for (const member of members.filter((entry) => matches(entry.email) && isOld(entry.joinedAt))) {
     const removed = await request.delete(
       `/api/v1/organization/members?userId=${encodeURIComponent(member.id)}`,
     );

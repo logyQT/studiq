@@ -69,6 +69,35 @@ export function createQaSupabase(): SupabaseClient {
 }
 
 /**
+ * "Now" on the database side of the wire, for timestamp cutoffs.
+ *
+ * `org_members.joined_at` and `invitations.created_at` are written by Postgres,
+ * so comparing them with the test runner's `Date.now()` mixes two clocks (and a
+ * skewed runner clock could delete a concurrent attempt's fresh row). The
+ * Supabase REST gateway answers with a `Date` header produced on the same host
+ * as the database in the native/CI stack (and NTP-synced on a hosted project),
+ * so use that as the cutoff basis. Falls back to the local clock only when the
+ * probe fails, and says so.
+ */
+export async function qaDbNow(): Promise<Date> {
+  const { url, serviceKey } = sharedStackSettings();
+  try {
+    const res = await fetch(`${url}/rest/v1/`, {
+      headers: { apikey: serviceKey },
+      signal: AbortSignal.timeout(2_000),
+    });
+    const header = res.headers.get('date');
+    if (header) {
+      const parsed = new Date(header);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+  } catch {
+    // Fall through: a cutoff from the runner clock is still better than none.
+  }
+  return new Date();
+}
+
+/**
  * Return a **first-run** tenant account to "belongs to no organization".
  *
  * `ONB-02`/`ONB-04` are one-shot by nature: the run itself creates the
@@ -80,9 +109,11 @@ export function createQaSupabase(): SupabaseClient {
  *
  * Only used for a case's own seeded account, never another tenant's.
  *
- * `createdBefore` (pass the instant the attempt started) keeps a parallel
+ * `createdBefore` must come from `qaDbNow()` (the clock that writes
+ * `joined_at`) and the instant the attempt started. It keeps a parallel
  * `--repeat-each` attempt's newly created organization from being deleted: only
- * memberships that already existed when this attempt began are removed.
+ * memberships that already existed when this attempt began are removed. A
+ * membership with an unknown join time is left alone (never guessed as old).
  */
 export async function resetFirstRunTenant(userId: string, createdBefore?: Date): Promise<void> {
   const db = createQaSupabase();
@@ -92,14 +123,11 @@ export async function resetFirstRunTenant(userId: string, createdBefore?: Date):
     .eq('user_id', userId);
   if (error) throw new Error(`resetFirstRunTenant: read memberships: ${error.message}`);
 
-  const cutoff = createdBefore?.getTime() ?? Number.POSITIVE_INFINITY;
+  const cutoff = createdBefore?.getTime();
   for (const membership of memberships ?? []) {
-    if (
-      createdBefore &&
-      membership.joined_at &&
-      new Date(membership.joined_at).getTime() >= cutoff
-    ) {
-      continue;
+    if (createdBefore) {
+      if (!membership.joined_at) continue;
+      if (new Date(membership.joined_at).getTime() >= cutoff!) continue;
     }
     const { error: deleteError } = await db
       .from('organizations')

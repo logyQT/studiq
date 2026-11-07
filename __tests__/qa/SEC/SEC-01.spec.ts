@@ -51,7 +51,12 @@ const CASE = 'SEC-01';
 const TENANT: QaTenant = loadTenant(CASE);
 
 /** Run suffix the seeder folded into the tenant key (stable tenants have none). */
-const RUN = TENANT.runSuffix ?? 'stable';
+let RUN: string;
+
+// The tenant is per attempt, so values derived from it are resolved per attempt.
+test.beforeEach(() => {
+  RUN = TENANT.runSuffix ?? 'stable';
+});
 
 /** Polish copy from the app's message catalog (pl.json), the case's exact wording. */
 const COPY = {
@@ -233,7 +238,7 @@ function listIds(body: ApiEnvelope<{ items: Array<{ id: string }> }>): string[] 
 test.describe('@case:SEC-01 @area:SEC @prio:P1 group content isolation', () => {
   let content: SeededContent;
 
-  test.beforeAll(async ({ browser, baseURL }) => {
+  test.beforeEach(async ({ browser, baseURL }) => {
     content = await seedCaseContent(browser, baseURL ?? 'http://localhost:3010');
     console.log(`SEC-01 tenant key: ${TENANT.key}`);
     console.log(`SEC-01 org: ${TENANT.org?.id} (${TENANT.org?.name})`);

@@ -3,6 +3,7 @@ import { shortHash } from '#test/e2e/fixtures/ids';
 import { waitForDefaultAuthPath } from '@qa/fixtures/qa-mail';
 import { json } from '#test/helpers/json';
 import { attemptSuffix, resetInviteeState } from '@qa/fixtures/qa-invitees';
+import { qaDbNow } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 // Temporary variant: only meaningful against a stack-mode Supabase.
@@ -74,7 +75,8 @@ test.describe('ONB-08 — invitation link registration', () => {
     test.setTimeout(120_000);
 
     // Everything created before this instant is a previous attempt's leftover.
-    const attemptStarted = new Date();
+    // Read it from the database clock, the one that writes the row timestamps.
+    const attemptStarted = await qaDbNow();
     const tenant = loadTenant(CASE);
     expect(tenant.profile, 'ONB-08 needs the org tenant (content profile)').toBe('content');
     const org = tenant.org;

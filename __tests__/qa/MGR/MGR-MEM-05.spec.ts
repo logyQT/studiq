@@ -307,7 +307,7 @@ function deckHeading(page: Page, name: string) {
 test.describe('@case:MGR-MEM-05 @area:MGR @prio:P2 member group membership management', () => {
   let tenant: CaseTenant;
 
-  test.beforeAll(async ({ browser, baseURL }) => {
+  test.beforeEach(async ({ browser, baseURL }) => {
     tenant = await prepareCaseTenant(browser, baseURL ?? 'http://localhost:3010');
     console.log(`MGR-MEM-05 tenant key: ${TENANT.key} (org ${tenant.org.id})`);
     console.log(`MGR-MEM-05 group ${GROUP1}: ${tenant.group1.id}`);

@@ -50,9 +50,18 @@ function required<T>(value: T | null | undefined, what: string): T {
   return value;
 }
 
-const ORG = required(TENANT.org, 'organization');
-const MANAGER = required(TENANT.users.manager, 'manager (admin)');
-const INVITEE = required(TENANT.users.invitee, 'invitee (the org-less educator)');
+// The tenant is per attempt: a retry runs against a pristine tenant whose ids
+// differ, so everything derived from it is resolved at the start of the attempt.
+type QaAccount = { id: string; email: string; password: string };
+let ORG: { id: string; name: string };
+let MANAGER: QaAccount;
+let INVITEE: QaAccount;
+
+function resolveCaseAccounts(): void {
+  ORG = required(TENANT.org, 'organization');
+  MANAGER = required(TENANT.users.manager, 'manager (admin)');
+  INVITEE = required(TENANT.users.invitee, 'invitee (the org-less educator)');
+}
 
 const INVITES_PATH = '/api/v1/organization/invites';
 const MEMBERS_PATH = '/api/v1/organization/members';
@@ -143,7 +152,11 @@ async function currentOrgs(page: Page): Promise<OrgMembership[]> {
   return body.data;
 }
 
-test.beforeAll(async () => {
+test.beforeEach(resolveCaseAccounts);
+
+// A fresh code per attempt: the tenant is per attempt, and a retry does not
+// re-run `beforeAll` — the invite has to belong to this attempt's tenant.
+test.beforeEach(async () => {
   const api = await managerApi();
   try {
     invite = await mintInvite(api, INVITEE.email, await teacherRoleId(api));

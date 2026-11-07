@@ -50,7 +50,7 @@ export class OrganizationMemberService {
       let query = groupSupabase
         .from('org_members')
         .select(
-          'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
+          'user_id, org_role_id, joined_at, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
         )
         .in('user_id', userIds)
         .eq('organization_id', ctx.activeOrgId);
@@ -92,6 +92,9 @@ export class OrganizationMemberService {
             orgRoleId: m.org_role_id,
             organization_id: ctx.activeOrgId,
             created_at: profile.created_at,
+            // The org membership's join time, as opposed to the account's
+            // `created_at`. QA retry cleanup needs the membership clock.
+            joinedAt: m.joined_at,
             groups: groupsByUserId[m.user_id] ?? [],
           };
         }),
@@ -101,7 +104,7 @@ export class OrganizationMemberService {
     let query = supabase
       .from('org_members')
       .select(
-        'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
+        'user_id, org_role_id, joined_at, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
       )
       .eq('organization_id', ctx.activeOrgId);
 
@@ -145,6 +148,9 @@ export class OrganizationMemberService {
           orgRoleId: m.org_role_id,
           organization_id: ctx.activeOrgId,
           created_at: profile.created_at,
+          // The org membership's join time, as opposed to the account's
+          // `created_at`. QA retry cleanup needs the membership clock.
+          joinedAt: m.joined_at,
           groups: groupsByUserId[m.user_id] ?? [],
         };
       }),

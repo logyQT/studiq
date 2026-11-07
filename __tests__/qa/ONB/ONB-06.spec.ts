@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
+import { qaDbNow } from '@qa/fixtures/qa-db';
 import { resetInviteeState } from '@qa/fixtures/qa-invitees';
 import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
@@ -52,10 +53,24 @@ function required<T>(value: T | null | undefined, what: string): T {
   return value;
 }
 
-const ORG = required(TENANT.org, 'organization');
-const MANAGER = required(TENANT.users.manager, 'manager (admin)');
-const STUDENT = required(TENANT.users.invitee1, 'invitee1 (the org-less student)');
-const OUTSIDER = required(TENANT.users.invitee2, 'invitee2 (the org-less outsider)');
+// The tenant is per attempt: a retry runs against a pristine tenant whose ids
+// differ, so everything derived from it is resolved at the start of the attempt.
+type QaAccount = { id: string; email: string; password: string };
+let ORG: { id: string; name: string };
+let MANAGER: QaAccount;
+let STUDENT: QaAccount;
+let OUTSIDER: QaAccount;
+
+function resolveCaseAccounts(): void {
+  ORG = required(TENANT.org, 'organization');
+  MANAGER = required(TENANT.users.manager, 'manager (admin)');
+  STUDENT = required(TENANT.users.invitee1, 'invitee1 (the org-less student)');
+  OUTSIDER = required(TENANT.users.invitee2, 'invitee2 (the org-less outsider)');
+}
+
+function caseEmails(): Set<string> {
+  return new Set([STUDENT.email, OUTSIDER.email]);
+}
 
 /** Polish copy quoted by the case; the default suite locale. */
 const COPY = {
@@ -202,18 +217,17 @@ function isAcceptRequest(response: { url(): string; request(): { method(): strin
   return response.url().includes(ACCEPT_PATH) && response.request().method() === 'POST';
 }
 
-/** The two accounts this case owns: both are seeded *outside* the tenant org. */
-const CASE_EMAILS = new Set([STUDENT.email, OUTSIDER.email]);
+test.beforeEach(resolveCaseAccounts);
 
 test.beforeEach(async () => {
-  const attemptStarted = new Date();
+  const attemptStarted = await qaDbNow();
   const api = await managerApi();
   try {
     // `beforeEach`, not `beforeAll`: a retry reuses the tenant but not the
     // previous attempt's hook state, so the attempt itself has to start clean.
     // Cancel this case's leftover invitations and drop the joiner so the org is
     // back to its seeded roster (and its plan slots are free).
-    await resetInviteeState(api, (email) => CASE_EMAILS.has(email), {
+    await resetInviteeState(api, (email) => caseEmails().has(email), {
       createdBefore: attemptStarted,
     });
 
