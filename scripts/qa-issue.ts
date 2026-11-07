@@ -41,9 +41,11 @@ if (!caseId || !title || !bodyFile) {
 // A local path is not evidence: nobody outside this box can open it. Refuse early
 // instead of publishing a dead reference into an issue.
 const bodyText = readFileSync(bodyFile, 'utf8');
+// Public URLs are valid evidence; only local filesystem paths are rejected.
+const localText = bodyText.replace(/https?:\/\/[^\s<>"'`()[\]]+/g, ' ');
 const pathPattern =
-  /(?:\/workspaces\/|\/home\/[^\s]+\/|\/tmp\/[^\s]+|dashboard\/shots\/|\.worktrees\/)[^\s`)\]]*/g;
-const leaked = [...new Set(bodyText.match(pathPattern) ?? [])];
+  /(?:\/workspaces\/|\/home\/[^\s]+\/|\/tmp\/[^\s]+|dashboard\/shots\/|\bshots\/|\.worktrees\/)[^\s`)\]]*/g;
+const leaked = [...new Set(localText.match(pathPattern) ?? [])];
 if (leaked.length > 0) {
   console.error(
     'refusing to file: the body contains local filesystem path(s), which no reader can open:\n' +
