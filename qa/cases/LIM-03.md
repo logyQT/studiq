@@ -20,8 +20,7 @@ see the lowered limits — so a QA-suite spec must not do it, and the tenant
 seeder cannot express a per-tenant limit override.
 
 The tenant reproduces the same "already at the cap" starting point at the
-**real** Base limit (10 decks, the value LIM-01 documents and `/app/billing`
-shows) instead of the artificially lowered 2:
+**real** Base limit (10 decks, the value `/app/billing` shows) instead of the artificially lowered 2:
 
 ```bash
 bun scripts/qa-tenant.ts LIM-03 --fresh   # profile: __tests__/qa/profiles/LIM-03.json

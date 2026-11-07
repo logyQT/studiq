@@ -45,9 +45,8 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
   tenancie: Hub → wgranie logo i ustawienie koloru marki (MGR-SET-02) → obniżenie planu do
   `launch` webhookiem symulowanej płatności (`POST /api/v1/stripe/webhook` →
   `MockStripeService.handleWebhook` → `apply_org_plan`), czyli dokładnie ścieżką zmiany planu,
-  której używa MGR-SET-05. Panel admina w tym buildzie nie ma edytora planu organizacji
-  (tylko odczyt listy), a ADM-OVR / ADM-PLN operują na wspólnych wierszach, których suite nie
-  może zmieniać. Po asercjach spec wraca do `hub` w obrębie tego samego tenanta, żeby kolejny
+  której używa MGR-SET-05 — bez zmiany globalnego katalogu planów czy wierszy innego tenanta.
+  Po asercjach spec wraca do `hub` w obrębie tego samego tenanta, żeby kolejny
   przebieg (retry CI na tym samym tenancie) zaczynał od warunku wstępnego.
 - Izolacja: test czyta i zapisuje wyłącznie logo, kolor marki i plan **swojej** organizacji;
   nie dotyka flag funkcji, katalogu planów, ustawień admina, statystyk platformy ani wierszy

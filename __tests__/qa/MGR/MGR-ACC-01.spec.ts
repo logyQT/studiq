@@ -18,7 +18,7 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  * menu opens its own screen — and keeps the 404 as a negative assertion, which is
  * exactly the defect the case asks to confirm.
  *
- * The plan catalogue is global (admins edit it from the admin panel), so nothing
+ * The plan catalogue is global, so nothing
  * here hard-codes a plan name: the upgrade grid and the billing badge are compared
  * with what `/api/v1/subscription-plans` and `/api/v1/me/plan` return in the same
  * run. Everything else is tenant data (`tenantKey`/`tenantId`).

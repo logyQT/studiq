@@ -1,6 +1,8 @@
 # StudiQ Admin Panel
 
-Standalone Next.js 16 app for system administration. Runs on port 4000.
+Internal Next.js 16 app for system administration. Runs on port 4000. It has no
+app-level auth and is not deployed. Do not deploy it until the ADR-0009 blockers
+clear (see Auth below).
 
 ## Quick Start
 
@@ -52,24 +54,15 @@ All under `/api/v1/`. Controllers live in `src/server/controllers/`, services in
 
 ## Auth
 
-API routes use Ed25519 PEM signatures via `proxy.ts`. `ADMIN_PEM_KEYS` is a JSON
-keyring (`[{ id, key, scopes, expiresAt? }]`) — see `.env.example` for the format
-and the full scope vocabulary. In local dev (empty `ADMIN_PEM_KEYS`) all requests
-pass through; an empty ring in production denies everything, and a non-empty ring
-with zero valid entries denies everything everywhere.
+`apps/admin` is an **internal operations tool**, not a product surface, and it is
+**not deployed**. It has **no app-level authentication**: its API routes skip
+`withAuth`, and they are not protected by an app-level signature or token scheme.
 
-Requests are signed over `METHOD\npathname\ncanonical-query\ntimestamp\nsha256(body)`,
-so query strings and bodies cannot be swapped. Sign one with:
-
-```bash
-bun scripts/admin-sign.ts gen --id ops-local --scopes feature-flags:read
-bun scripts/admin-sign.ts sign GET http://localhost:4000/api/v1/feature-flags
-```
-
-The gate forwards the verified key id as `x-admin-key-id` and writes one audit
-record per authenticated request. The browser panel itself cannot sign requests in
-PEM mode — that is option B in
-[`docs/decisions/0007-admin-api-auth.md`](../../docs/decisions/0007-admin-api-auth.md).
+Do **not** deploy it until the ordered blockers in
+[`docs/decisions/0009-admin-is-internal-not-deployed.md`](../../docs/decisions/0009-admin-is-internal-not-deployed.md)
+clear. If it is ever deployed, infrastructure-level access control — Vercel
+Authentication (All Deployments) / Cloudflare Access / VPN — is mandatory but not
+sufficient; the app-level gate must land first. See the staging plan (S2/S9).
 
 ## Database
 

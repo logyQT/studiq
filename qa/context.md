@@ -8,19 +8,19 @@ Tester document – manual tests
 
 Scenarios, steps and checkboxes for every application feature
 
-| Field                  | Value                                                                                                                                                                         |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Document version       | 1.3 (2026-10-17)                                                                                                                                                              |
-| Application under test | StudiQ – web app (port 3000) and admin panel (port 4000)                                                                                                                      |
-| Code version           | `main` (commit 216daae) + PR #128 (plan form in admin) + PR #130 (user management with a 30-day bin) – until both merge, test them on the `feat/admin-user-management` branch |
-| Scenario count         | 214 (P1: 60, P2: 149, P3: 5)                                                                                                                                                  |
-| Tester (full name)     |                                                                                                                                                                               |
-| Start / end date       |                                                                                                                                                                               |
-| Final result           | PASS / PASS WITH COMMENTS / FAIL                                                                                                                                              |
+| Field                  | Value                                              |
+| ---------------------- | -------------------------------------------------- |
+| Document version       | 1.3 (2026-10-17)                                   |
+| Application under test | StudiQ – web app (port 3000)                       |
+| Code version           | `main` (record the commit under test before a run) |
+| Scenario count         | 188 (P1: 55, P2: 128, P3: 5)                       |
+| Tester (full name)     |                                                    |
+| Start / end date       |                                                    |
+| Final result           | PASS / PASS WITH COMMENTS / FAIL                   |
 
 # 1. Purpose and scope
 
-This document walks the tester through a manual check of every StudiQ feature – from public pages, through the student, teacher and organization-manager dashboards, to plans/payments and the admin panel. Every scenario states its precondition, numbered steps, expected result and the fields used to record the outcome.
+This document walks the tester through a manual check of every StudiQ feature – from public pages, through the student, teacher and organization-manager dashboards, to plans/payments. Every scenario states its precondition, numbered steps, expected result and the fields used to record the outcome.
 
 Test scale: the document is designed for a small scale – 2-3 records of each type (a few flashcards, a few questions, 1-2 groups, 1-2 quizzes) and a handful of seeded accounts are enough. Plan limits are checked after lowering the values in the database (LIM-02), not by uploading hundreds of records.
 
@@ -35,8 +35,6 @@ Teacher dashboard: decks and flashcards, question banks, quiz builder, quizzes (
 Manager dashboard: members, invitations, groups, roles and permissions, licences (seats), settings and branding.
 
 Plans, limits, features (feature flags), simulated payment.
-
-Admin panel: feature flags, plans, user overrides, organizations, users (30-day bin), API signature protection.
 
 Negative security and data-isolation tests plus non-functional requirements (language, theme, responsiveness, accessibility, performance).
 
@@ -125,7 +123,7 @@ Never use real card data or real passwords – payment is simulated and the test
 
 ### Suggested order
 
-1. PUB, AUT → 2) ONB → 3) STU → 4) EDU → 5) MGR → 6) BIL, LIM → 7) ADM → 8) SEC → 9) NFR. A full pass makes sense after `bunx supabase db reset`.
+1. PUB, AUT → 2) ONB → 3) STU → 4) EDU → 5) MGR → 6) BIL, LIM → 7) SEC → 8) NFR. A full pass makes sense after `bunx supabase db reset`.
 
 # 4. Module index and execution summary
 
@@ -136,15 +134,14 @@ Fill this in after testing (count of selections per module).
 | PUB  | Public pages and global navigation            | 8         |     |      |         |     |
 | AUT  | Authentication and session                    | 19        |     |      |         |     |
 | ONB  | Onboarding, organizations and invitations     | 10        |     |      |         |     |
-| STU  | Student dashboard (/app)                      | 52        |     |      |         |     |
+| STU  | Student dashboard (/app)                      | 51        |     |      |         |     |
 | EDU  | Teacher dashboard (/edu)                      | 41        |     |      |         |     |
 | MGR  | Organization manager dashboard (/manage)      | 28        |     |      |         |     |
-| BIL  | Plans, billing and payment (simulated)        | 7         |     |      |         |     |
-| LIM  | Features (feature flags) and plan limits      | 7         |     |      |         |     |
-| ADM  | Admin panel (apps/admin, port 4000)           | 21        |     |      |         |     |
+| BIL  | Plans, billing and payment (simulated)        | 6         |     |      |         |     |
+| LIM  | Features (feature flags) and plan limits      | 4         |     |      |         |     |
 | SEC  | Authorization and data isolation              | 13        |     |      |         |     |
 | NFR  | Non-functional and cross-cutting requirements | 8         |     |      |         |     |
-|      | TOTAL                                         | 214       |     |      |         |     |
+|      | TOTAL                                         | 188       |     |      |         |     |
 
 File issues in the team's tracker (for example GitHub Issues in `logyQT/studiq`). Suggested template:
 

@@ -27,13 +27,10 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  *
  * The plan change itself goes through the app's mock checkout webhook
  * (`POST /api/v1/stripe/webhook` → `MockStripeService.handleWebhook` →
- * `apply_org_plan`), which is the entitlement path a real plan change takes.
- * This build's admin panel has no per-organization plan editor, and the ADM-OVR
- * / ADM-PLN switches are user/global rows a suite test must not mutate; the
- * per-tenant webhook is the equivalent change scoped to this tenant. `launch`
- * is the free manager plan and does not include `branding`, so it reproduces
- * the downgrade; re-buying `hub` at the end proves the gate — not data loss — is
- * what hid the logo.
+ * `apply_org_plan`), which is the entitlement path a real plan change takes and
+ * is scoped to this tenant. `launch` is the free manager plan and does not
+ * include `branding`, so it reproduces the downgrade; re-buying `hub` at the
+ * end proves the gate — not data loss — is what hid the logo.
  */
 
 const CASE = 'MGR-SET-05';

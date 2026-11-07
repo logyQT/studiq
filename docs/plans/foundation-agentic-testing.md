@@ -5,10 +5,18 @@
 Status: ACTIVE
 Last updated: 2026-10-24
 
+> **Historical admin-auth note:** the PEM gate described in this plan was
+> removed. `apps/admin` is internal, has no app-level auth, and is not deployed;
+> see [ADR-0009](../decisions/0009-admin-is-internal-not-deployed.md). The rest
+> of the plan is unchanged history.
+
 ## Decisions (locked)
 
 - Monorepo 3 apps: `packages/authz` + `packages/ui` + `packages/server` + `apps/web` + `apps/admin`
-- Admin auth: app-level signed header (Ed25519 PEM keypair, verified in admin proxy)
+- Admin auth: none today — `apps/admin` is internal and **not deployed**; the PEM
+  gate was removed. If it is ever deployed, the app-level gate
+  ([ADR-0009](../decisions/0009-admin-is-internal-not-deployed.md), blocker 2)
+  must land first; edge protection (blocker 5) remains mandatory at deployment.
 - Tests: API-first `before()` seeding everywhere
 - Feature-flag keys: flat keys everywhere (drop `FEATURE_FLAG_TO_FEATURE_KEY`)
 - No backward-compat layers (pre-market, delete old paths cleanly)
@@ -330,6 +338,8 @@ the structural refactors are done.
 - `bun run lint` clean in all packages
 - All unit + integration tests green
 - No orphan tables/dead code left (per AGENTS.md ethos)
-- Admin app: all 5 pages functional, dev server on `:4000`, PEM-gated
+- Admin app: all 5 pages functional, dev server on `:4000`; internal only — no
+  app-level auth (the PEM gate was removed on 2026-11-06), and deployment is
+  blocked until the ADR-0009 blockers clear
 - `packages/server/` extracted, both apps import from it
 - Main app moved to `apps/web/`, zero cross-app imports

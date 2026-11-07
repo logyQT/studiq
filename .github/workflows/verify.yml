@@ -52,15 +52,18 @@ jobs:
   # A QA-suite PR only touches qa/** and __tests__/qa/**; the app, its
   # unit/integration tests and the e2e matrix cannot change there, so they are
   # skipped. `checks` (lint/typecheck, which does cover qa specs) and the
-  # `qa-suite` job still run. Everything else under __tests__/ (unit,
-  # integration, e2e, helpers, setup) is app code: a test-only change there must
-  # run the suite it edits, so `app` stays true. A Markdown-only docs PR (every
-  # changed file is `*.md`, none under qa/cases/) is treated the same way and
-  # then some: no app code and no spec can change, so `checks` is the only job
-  # that does any real work (the e2e legs still report, but as no-ops — see the
-  # note on top — and the QA suite starts no shard at all). A non-Markdown file
-  # under docs/ (e.g. docs/image.png) is still `app=false`, but the QA router
-  # cannot attribute it, so it starts all four shards.
+  # `qa-suite` job still run. An `apps/admin`-only change is not a product
+  # change either: the admin panel is an internal tool outside the product
+  # gates and outside QA (docs/decisions/0009-admin-is-internal-edge-protected.md),
+  # so it runs `checks` and nothing else. Everything else under __tests__/
+  # (unit, integration, e2e, helpers, setup) is app code: a test-only change
+  # there must run the suite it edits, so `app` stays true. A Markdown-only docs
+  # PR (every changed file is `*.md`, none under qa/cases/) is treated the same
+  # way and then some: no app code and no spec can change, so `checks` is the
+  # only job that does any real work (the e2e legs still report, but as no-ops —
+  # see the note on top — and the QA suite starts no shard at all). A
+  # non-Markdown file under docs/ (e.g. docs/image.png) is still `app=false`, but
+  # the QA router cannot attribute it, so it starts all four shards.
   #
   # Why the `scope` gate stays (#1022, 36 runs): `scope` takes 5-8 s (median
   # 6 s) and the first gated job starts ~3 s after it, so removing the gate is
@@ -96,14 +99,16 @@ jobs:
           echo "app=true" >> "$GITHUB_OUTPUT"
           if [ -n "${BASE_REF:-}" ]; then
             git fetch --no-tags origin "$BASE_REF"
-            changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+            # --no-renames: a moved file must appear as a delete + add, so the
+            # app/QA filters below never see only one side of a rename.
+            changed=$(git diff --no-renames --name-only "origin/$BASE_REF...HEAD")
             echo "changed files:"; echo "$changed"
             # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
             # the first match and the writer gets SIGPIPE (141), which flipped
             # `app` to false and skipped the unit/integration/e2e jobs.
             # Only the QA subtree is non-app: a test-only change under
             # __tests__/unit|integration|e2e must run the suite it edits.
-            if ! grep -qvE '^(qa/|__tests__/qa/|docs/)|\.md$' <<< "$changed"; then
+            if ! grep -qvE '^(qa/|__tests__/qa/|__tests__/admin/|docs/|apps/admin/)|\.md$' <<< "$changed"; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
@@ -158,8 +163,10 @@ jobs:
           if not base:
               selected = shards
           else:
+              # --no-renames: same reason as the shell diff above — a moved file
+              # must not collapse to a single path before area attribution.
               changed = subprocess.run(
-                  ["git", "diff", "--name-only", f"origin/{base}...HEAD"],
+                  ["git", "diff", "--no-renames", "--name-only", f"origin/{base}...HEAD"],
                   capture_output=True, text=True, check=True,
               ).stdout.split()
               # Shared QA files, anything outside qa/, or a QA PR that touches no
@@ -173,7 +180,15 @@ jobs:
                   "qa/fixtures/", "qa/playwright.qa.config.ts",
                   "scripts/qa-tenant.ts", "scripts/qa-issue.ts",
                   ".github/workflows/verify.yml", "package.json", "bun.lock",
-                  "apps/", "packages/", "supabase/",
+                  "apps/web/", "packages/", "supabase/",
+              )
+              # An `apps/admin`-only change (plus its tests and docs) is outside
+              # the product and outside QA, so no shard has anything to prove.
+              # Admin tests are validated with the manual `bun run test:admin`.
+              admin_only = bool(changed) and all(
+                  f.startswith(("apps/admin/", "__tests__/admin/"))
+                  or (f.endswith(".md") and not f.startswith("qa/cases/"))
+                  for f in changed
               )
               # A docs-only PR (markdown, no case catalogue entry) cannot reach a
               # spec, a fixture or the app, so no shard has anything to prove:
@@ -216,7 +231,7 @@ jobs:
                   )
               )
               touched = [s for s in shards if set(s["areas"]) & areas]
-              if docs_only:
+              if docs_only or admin_only:
                   selected = []
               else:
                   selected = shards if force_all or not touched else touched
@@ -728,7 +743,7 @@ jobs:
       - name: Save Playwright browsers
         # A cache write is an optimisation: never let it fail the job.
         continue-on-error: true
-        if: matrix.project != 'admin-api' && needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main' && steps.pw-cache-main.outputs.cache-hit != 'true'
+        if: needs.scope.outputs.app == 'true' && github.ref == 'refs/heads/main' && steps.pw-cache-main.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: ~/.cache/ms-playwright
@@ -800,77 +815,4 @@ jobs:
 
       - name: Stop Supabase
         if: always() && needs.scope.outputs.app == 'true'
-        run: bunx supabase stop || true
-
-  # admin-api only needs the admin app; the web server is skipped so this leg
-  # costs seconds rather than a second Next build.
-  e2e-admin:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      CI: '1'
-      NEXT_TELEMETRY_DISABLED: '1'
-      E2E_INCLUDE_ADMIN: '1'
-      E2E_SKIP_WEB_WS: '1'
-      # The admin spec signs its own requests and never reads a tenant, so
-      # seeding 240 orgs here is waste — and the seeder needs apps/web/.env,
-      # which this leg deliberately does not write.
-      E2E_SKIP_SEED: '1'
-      E2E_WORKERS: '2'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - run: npm install -g bun@${{ env.BUN_VERSION }}
-      - name: Restore bun install cache
-        id: bun-cache-admin
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.bun/install/cache
-          key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            bun-ubuntu-24.04-
-      - run: bun install --frozen-lockfile
-      - name: Start Supabase
-        env:
-          APP_URL: http://localhost:3000
-        run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
-      - name: Write admin env
-        run: |
-          status=$(bunx supabase stack status --output-format json)
-          API_URL=$(jq -r .env.API_URL <<<"$status")
-          ANON_KEY=$(jq -r .env.ANON_KEY <<<"$status")
-          SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
-          DB_URL=$(jq -r .env.DB_URL <<<"$status")
-          MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
-          {
-            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
-            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
-            echo "MAILPIT_URL=$MAILPIT_URL"
-          } > apps/admin/.env
-      - name: Install browsers
-        # `admin-api` is an HTTP-level project (the `request` fixture; the admin
-        # UI cannot sign PEM requests), so no browser is launched here — but the
-        # install stays as a smoke test of the binary the other legs use. No
-        # `--with-deps`: `ubuntu-24.04` ships every library in Playwright's
-        # chromium list (see the QA shard's install above).
-        run: bunx playwright install chromium
-      - name: Assert the chromium runtime is complete
-        run: bash scripts/check-playwright-runtime.sh chromium
-      - name: Run Playwright (admin-api)
-        run: bunx playwright test --project=admin-api --shuffle --reporter=line
-      - name: Upload report
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report-admin
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
-          if-no-files-found: ignore
-      - name: Stop Supabase
-        if: always()
         run: bunx supabase stop || true

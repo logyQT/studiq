@@ -10,7 +10,7 @@
  *
  * Accounts default to the Supabase Admin API (`auth.admin.createUser`); the two
  * CLI seeders instead pass a SQL writer (`createSqlAccountWriter`) because they
- * hold a direct Postgres connection. The default path must stay Admin-API based
+ * hold a direct Postgres connection. The default path must stay Admin API based
  * so this module keeps running inside Vitest (which does not expose `bun:sql`).
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -133,7 +133,7 @@ export type AccountWriter = (accounts: SeedAccount[]) => Promise<void>;
  * Without a `write` hook every account goes through `ensureAccount`. With one,
  * the batch is written in a single statement and the ids are read back once, so
  * re-seeding an email that already exists under another id keeps working the
- * same way the Admin-API path does.
+ * same way the Admin API path does.
  */
 export async function ensureAccounts(
   db: SeedDb,
@@ -177,7 +177,7 @@ export async function ensureAccounts(
  * is unsupported` (500), which is why `01_users.sql` set them to '' too.
  *
  * `handle_new_user` still runs on the insert, so profiles (and their plan key) are
- * created exactly as they are for an Admin-API signup.
+ * created exactly as they are for an Admin API signup.
  */
 export function createSqlAccountWriter(sql: SQL): AccountWriter {
   // Cache the *pending* query, not just its result: `runBounded` reaches this

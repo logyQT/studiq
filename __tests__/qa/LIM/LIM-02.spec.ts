@@ -14,7 +14,7 @@ import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
  * only "works" until someone resets the DB.
  *
  * The tenant therefore reproduces the same starting point at the real Base cap
- * that LIM-01 documents and `/app/billing` shows:
+ * that `/app/billing` shows:
  *
  *   bun scripts/qa-tenant.ts LIM-02 --fresh   # profile: __tests__/qa/profiles/LIM-02.json
  *
@@ -63,7 +63,7 @@ const UI = {
   create: 'Utwórz',
 } as const;
 
-/** The Base caps from LIM-01, as `/api/v1/me/personal-plan` reports them. */
+/** The Base caps, as `/api/v1/me/personal-plan` reports them. */
 const LIMIT = { decks: 10, flashcards: 100, banks: 5, questions: 50 } as const;
 
 /** Names of the deck/bank that hold the over-limit attempts. */
@@ -266,7 +266,7 @@ test.describe('@case:LIM-02 @area:LIM @prio:P1 plan limits at the Base cap', () 
       '/api/v1/me/personal-plan',
     );
     expect(plan.key, 'the tenant student is on the free Base plan').toBe('base');
-    expect(plan.limits, 'the Base caps from LIM-01').toMatchObject({
+    expect(plan.limits, 'the Base caps').toMatchObject({
       max_decks: LIMIT.decks,
       max_flashcards: LIMIT.flashcards,
       max_questions: LIMIT.questions,

@@ -11,8 +11,8 @@
 **Viable — the existing CI workflow runs on native and is green.** The pinned
 CLI (`supabase@3.0.0` via `bunx supabase`) runs the whole StudiQ stack as native
 host processes. The existing `verify.yml` was switched 1:1 to native: every job
-(`checks`, `unit`, `integration`, all four `qa-suite` shards, both `e2e` legs,
-`e2e-admin`) passed on GitHub-hosted `ubuntu-24.04` in
+(`checks`, `unit`, `integration`, all four `qa-suite` shards and both `e2e` legs)
+passed on GitHub-hosted `ubuntu-24.04` in
 [run 41907455831](https://github.com/logyQT/studiq/actions/runs/41907455831).
 
 The one known gap is **custom auth e-mail templates**:
@@ -194,7 +194,6 @@ Final run: <https://github.com/logyQT/studiq/actions/runs/41907455831> —
 | `qa-suite (aut-nfr-onb-pub-lim)` | 295 s    |
 | `e2e (chromium)`                 | 269 s    |
 | `e2e (firefox)`                  | 307 s    |
-| `e2e-admin`                      | 71 s     |
 
 Native stack start per job: **13–18 s** (observed). This replaces the previous
 1–2 minute container pull/start. Integration still passed **56 files / 568
@@ -309,7 +308,7 @@ Test/CI review findings:
 branded-template specs until #7200 is fixed.** The 1:1 workflow is green on
 GitHub-hosted `ubuntu-24.04`, with native stack starts at 13–18 s. The only
 functional gap is custom auth templates; everything else (integration, e2e
-Chromium/Firefox, QA shards, admin API) passed.
+Chromium/Firefox, QA shards) passed.
 
 ### What I would do next (requires operator approval)
 

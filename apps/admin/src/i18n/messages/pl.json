@@ -10,7 +10,7 @@
     "back": "Wstecz",
     "none": "Brak",
     "dismiss": "Zamknij",
-    "unauthorized": "Brak autoryzacji — API administracyjne odrzuciło żądanie. W trybie PEM przeglądarka nie może podpisywać żądań, więc danych nie można wczytać.",
+    "unauthorized": "Brak autoryzacji — API administracyjne odrzuciło żądanie.",
     "load_failed": "Nie udało się wczytać danych ({code})."
   },
   "DashboardLayout": {

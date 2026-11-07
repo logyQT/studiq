@@ -10,7 +10,7 @@
     "back": "Back",
     "none": "None",
     "dismiss": "Dismiss",
-    "unauthorized": "Unauthorized — the admin API rejected this request. In PEM mode the browser cannot sign requests, so data cannot be loaded.",
+    "unauthorized": "Unauthorized — the admin API rejected this request.",
     "load_failed": "Could not load data ({code})."
   },
   "DashboardLayout": {

@@ -522,7 +522,7 @@ The persistent staging environment is specified separately in
 - separate Supabase staging project and migrations
 - registration disabled
 - Stripe test mode and staging webhook
-- admin protection (Vercel SSO / Cloudflare Access / self-hosted VPN)
+- admin is **not deployed**; `apps/admin` has no app-level auth and deployment is blocked by the ordered items in [ADR-0009](./decisions/0009-admin-is-internal-not-deployed.md)
 - manual deploy gate + nightly `main` deploys
 
 Staging is not production and must never use production Supabase or live Stripe keys.

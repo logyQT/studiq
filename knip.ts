@@ -70,7 +70,6 @@ const config: KnipConfig = {
         'scripts/stripe-bootstrap.ts',
         // Policy: live operator/dev scripts run by hand or spawned by path (the
         // e2e global setup spawns `e2e-seed.ts`), so they are entry points.
-        'scripts/admin-sign.ts',
         'scripts/dev-registry.ts',
         'scripts/qa-issue.ts',
         'scripts/storage-orphan-sweep.ts',

@@ -40,10 +40,9 @@ declare global {
  * 5. The choice survives a logout and a new form sign-in.
  *
  * Scope notes from the walk:
- * - `apps/admin` has no language switcher at all (its i18n only reads the
- *   cookie), so step 2's „panel admina (jeśli dostępny przełącznik)” leg is N/A
- *   in the web app; the shared suite app is `:3010` and the admin panel is a
- *   separate `:4010` app.
+ * - `apps/admin` is out of scope for QA and has no language switcher, so step 2's
+ *   „panel administracyjny (jeśli dostępny przełącznik)” leg is N/A in the web
+ *   app; the shared suite app is `:3010`.
  * - The „no foreign fragments” bullet is asserted on translated chrome: sidebar
  *   groups/links, breadcrumb, dashboard heading, user-menu items, landing
  *   footer/hero and the login form. Data values (org name, org role display

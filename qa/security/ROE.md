@@ -10,9 +10,11 @@ authorized for:
 
 - the web app (`apps/web`, production build started with `next start -p 3020` — **not**
   `:3010`, which the shared QA app owns)
-- the admin app (`apps/admin`, built with `bun run build:admin` and started with
-  `bun run start:admin`, which runs `next start -p 4000`)
 - a **dedicated** Supabase instance started for the test (never the shared QA database)
+
+`apps/admin` is **out of scope** for QA and security probes: it is an internal
+tool with no app-level auth, protected only at the deployment edge. Do not start
+it, sign requests for it, or probe it.
 
 Testing is **not** authorized, ever, without a new explicit instruction:
 
@@ -35,19 +37,17 @@ as an action.
    `NEXT_PUBLIC_SUPABASE_URL` must be that `API_URL` and `SUPABASE_DB_URL` (when set)
    must be that `DB_URL`; `qa/env.json` overrides the environment, so a QA worktree
    silently points at the shared `:54421`.
-2. **Point both apps and the seeder at that stack before building.** `NEXT_PUBLIC_*`
+2. **Point the app and the seeder at that stack before building.** `NEXT_PUBLIC_*`
    values are baked in at build time, and the seeder reads `apps/web/.env` (falling back
    to root `.env`) before `qa/env.json` may override it. Set
-   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for `apps/web`,
-   `apps/admin` (plus its `SUPABASE_SERVICE_ROLE_KEY`) and the seeder, and verify each
-   one resolves to your dedicated stack. If either app still targets shared QA, seeded
-   users cannot authenticate against the app's database and probes hit the wrong
-   database.
-3. **Production build, dedicated stack.** Build both apps from the repo root with
-   `bun run build` (web) and `bun run build:admin` (admin), then start them with
-   `cd apps/web && bunx next start -p 3020` and `bun run start:admin` (`next start -p 4000`
-   in `apps/admin`). `next dev` behaves differently (middleware, source maps, error
-   surfaces) and findings do not transfer.
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for `apps/web`
+   and the seeder, and verify each one resolves to your dedicated stack. If the app
+   still targets shared QA, seeded users cannot authenticate against the app's
+   database and probes hit the wrong database.
+3. **Production build, dedicated stack.** Build the app from the repo root with
+   `bun run build`, then start it with
+   `cd apps/web && bunx next start -p 3020`. `next dev` behaves differently
+   (middleware, source maps, error surfaces) and findings do not transfer.
 4. **Seed your own tenants.** Seed with
    `bun scripts/qa-tenant.ts SEC-02 --profile two-org --fresh --dedicated`; `--dedicated`
    checks both writers (REST and `SUPABASE_DB_URL`) and refuses any non-local endpoint or
