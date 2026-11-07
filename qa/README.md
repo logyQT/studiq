@@ -30,21 +30,26 @@ index, agent prompt) is English, matching the repo/issue convention.
 
 ## Running a scenario
 
-Eight slots are provisioned ahead of time by `scripts/qa-env` (run it from the
-main checkout): **`qa-env-1` … `qa-env-8`**. Each slot is a detached `main`
-worktree with its own Supabase stack, web app and `qa/env.json`. Agents do **not** create, reset or tear down environments.
+Eight browser slots are provisioned ahead of time by `scripts/qa-env` (run it
+from the main checkout): **`qa-env-1` … `qa-env-8`**. All eight share **one web
+app** (`http://localhost:3010`) and **one Supabase** (`http://localhost:54421`);
+only the Chromium tile/CDP port is per slot. `qa/env.json` in each worktree is
+authoritative. Agents do **not** create, reset or tear down the shared stack.
 
-1. Bring the slots up once: `scripts/qa-env up all` (check with
-   `scripts/qa-env status`; stop with `scripts/qa-env down all`).
+1. Bring the shared app, dashboard and browser tiles up once:
+   `scripts/qa-env up all` (check with `scripts/qa-env status`; stop with
+   `scripts/qa-env down all`).
 2. Open an agent session with its working directory set to one slot's worktree
    (`.worktrees/qa-env-N`) so `qa/env.json` is found.
 3. Copy the prompt from `AGENT-PROMPT.md` and set the scenario ID on the last
    line (`## SCENARIO ▶ <ID>`).
 4. The agent reads `qa/context.md` → `qa/index.md` → `cases/<ID>.md` (plus any
-   prerequisite case), uses the slot's `appUrl` / `dbContainer`,
+   prerequisite case), uses the shared `appUrl` / `supabaseUrl` / `dbContainer`,
    runs the steps and files the issue. It does not touch the stack.
 
-Ports per slot N: web `3009+N`, Supabase `54321+100N`.
+**Never reset the shared database, run `supabase start/stop` or `db reset`, or
+start a per-slot stack.** That wipes every other worker's tenant; a broken shared
+env is an `env` problem, never a product bug.
 
 `apps/admin` (the internal system-admin surface) is out of scope for QA: do not
 start it, sign requests for it, or file findings against it. No case requires it.
@@ -137,7 +142,7 @@ prints the case count and any prerequisite IDs it could not resolve.
 
 ## Ops supervisor (health checks)
 
-`qa/tools/qa-supervisor ensure` checks the slot web apps, dashboard, Chromium
+`qa/tools/qa-supervisor ensure` checks the shared app, dashboard, Chromium
 instances and Discord bots, and restarts only what is down. It is idempotent,
 rate-limited (90 s per component) and protected by a lock.
 

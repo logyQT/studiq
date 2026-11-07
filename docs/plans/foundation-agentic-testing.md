@@ -5,10 +5,17 @@
 Status: ACTIVE
 Last updated: 2026-10-24
 
+> **Historical admin-auth note:** the PEM gate described in this plan was
+> removed. `apps/admin` is internal, has no app-level auth, and is not deployed;
+> see [ADR-0009](../decisions/0009-admin-is-internal-not-deployed.md). The rest
+> of the plan is unchanged history.
+
 ## Decisions (locked)
 
 - Monorepo 3 apps: `packages/authz` + `packages/ui` + `packages/server` + `apps/web` + `apps/admin`
-- Admin auth: app-level signed header (Ed25519 PEM keypair, verified in admin proxy)
+- Admin auth: none today — `apps/admin` is internal and **not deployed**; the PEM
+  gate was removed. If it is ever deployed, the edge gate is required first, then
+  the app-level gate in [ADR-0009](../decisions/0009-admin-is-internal-not-deployed.md)
 - Tests: API-first `before()` seeding everywhere
 - Feature-flag keys: flat keys everywhere (drop `FEATURE_FLAG_TO_FEATURE_KEY`)
 - No backward-compat layers (pre-market, delete old paths cleanly)
