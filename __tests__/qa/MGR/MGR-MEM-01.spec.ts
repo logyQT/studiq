@@ -277,7 +277,11 @@ test.describe('@case:MGR-MEM-01 @area:MGR @prio:P1 members search and role filte
     await expect(memberRows(page), 'a teacher cannot match the Student filter').toHaveCount(0);
 
     // Clearing the search restores the filtered list (the filter did not reset).
+    // Wait for the field itself first: the list refetches on the debounced value,
+    // and a remount mid-clear could otherwise leave the old query in place while
+    // the rows are already being asserted (the observed 0-row flake).
     await search.fill('');
+    await expect(search).toHaveValue('');
     await expect(memberRows(page)).toHaveCount(2);
     await expect(rowFor(page, student.email)).toHaveCount(1);
 
