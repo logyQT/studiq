@@ -42,7 +42,7 @@ if (!caseId || !title || !bodyFile) {
 // instead of publishing a dead reference into an issue.
 const bodyText = readFileSync(bodyFile, 'utf8');
 // Public URLs are valid evidence; only local filesystem paths are rejected.
-const localText = bodyText.replace(/https?:\/\/\S+/g, ' ');
+const localText = bodyText.replace(/https?:\/\/[^\s<>"'`()[\]]+/g, ' ');
 const pathPattern =
   /(?:\/workspaces\/|\/home\/[^\s]+\/|\/tmp\/[^\s]+|dashboard\/shots\/|\bshots\/|\.worktrees\/)[^\s`)\]]*/g;
 const leaked = [...new Set(localText.match(pathPattern) ?? [])];
