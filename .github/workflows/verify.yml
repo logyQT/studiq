@@ -99,7 +99,9 @@ jobs:
           echo "app=true" >> "$GITHUB_OUTPUT"
           if [ -n "${BASE_REF:-}" ]; then
             git fetch --no-tags origin "$BASE_REF"
-            changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+            # --no-renames: a moved file must appear as a delete + add, so the
+            # app/QA filters below never see only one side of a rename.
+            changed=$(git diff --no-renames --name-only "origin/$BASE_REF...HEAD")
             echo "changed files:"; echo "$changed"
             # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
             # the first match and the writer gets SIGPIPE (141), which flipped
@@ -161,8 +163,10 @@ jobs:
           if not base:
               selected = shards
           else:
+              # --no-renames: same reason as the shell diff above — a moved file
+              # must not collapse to a single path before area attribution.
               changed = subprocess.run(
-                  ["git", "diff", "--name-only", f"origin/{base}...HEAD"],
+                  ["git", "diff", "--no-renames", "--name-only", f"origin/{base}...HEAD"],
                   capture_output=True, text=True, check=True,
               ).stdout.split()
               # Shared QA files, anything outside qa/, or a QA PR that touches no

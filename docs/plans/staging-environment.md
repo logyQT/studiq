@@ -59,14 +59,14 @@ GitHub Actions                staging environment
 
 ### Projects
 
-Two Vercel projects from the same repo:
+The current rollout has **one** Vercel project: the web app. The admin project
+is future work — do not create it while the ADR-0009 blockers are unresolved.
 
-| Project | Root directory | Domain                   |
-| ------- | -------------- | ------------------------ |
-| web     | `apps/web`     | `staging.<domain>`       |
-| admin   | `apps/admin`   | `admin.staging.<domain>` |
+| Project | Root directory | Domain             |
+| ------- | -------------- | ------------------ |
+| web     | `apps/web`     | `staging.<domain>` |
 
-Build settings:
+Build settings (web):
 
 ```text
 Install command: bun install --frozen-lockfile
@@ -74,6 +74,10 @@ Build command:   bun run build
 Output:          .next
 Node:            22
 ```
+
+The admin project (`apps/admin`, `admin.staging.<domain>`) is documented under
+[Admin protection](#admin-protection) as a future deployment; it is not part of
+this rollout.
 
 ### Environment variables
 
@@ -92,7 +96,7 @@ ALLOW_REGISTRATION=false
 # MAIL_*, LLM_*, OTEL_* as needed for staging
 ```
 
-Admin project:
+Future admin project (do not create yet):
 
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://<staging-ref>.supabase.co
@@ -100,8 +104,9 @@ SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
 > **WARNING — `apps/admin` is not deployed and has no app-level authentication.**
-> Its API routes use the service-role client and skip `withAuth`. Do not deploy
-> it, not even temporarily or as a preview, until the ordered blockers in
+> Its API routes use the service-role client and skip `withAuth`. Do not create
+> the admin Vercel project or deploy it, not even temporarily or as a preview,
+> until the ordered blockers in
 > [`docs/decisions/0009-admin-is-internal-not-deployed.md`](../decisions/0009-admin-is-internal-not-deployed.md)
 > clear. When it is eventually deployed, the **S2** edge gate is mandatory but not
 > sufficient; the app-level gate must land first.
@@ -110,13 +115,12 @@ Use Vercel environment scopes, not committed files. Never put the service-role k
 
 ### Deploy mode
 
-For manual + nightly gating, **disable Git auto-deploys for the staging projects** and deploy through GitHub Actions with the Vercel CLI. Otherwise a push bypasses the approval gate.
+For manual + nightly gating, **disable Git auto-deploys for the staging project** and deploy through GitHub Actions with the Vercel CLI. Otherwise a push bypasses the approval gate.
 
-**Do not run the admin sequence below yet.** `apps/admin` is not deployed and
-its deployment is blocked by the ordered items in ADR-0009. The admin commands
-are future work, kept here so the topology and project split stay documented.
+The admin deployment is **not part of this rollout**. Do not add an admin
+project, build or deploy step while the ADR-0009 blockers are unresolved.
 
-Run one sequence per app, from that app's directory, so `vercel pull` writes
+Run the web sequence from `apps/web`, so `vercel pull` writes
 `.vercel/project.json` for the matching project ID and `build`/`deploy` reuse
 that same project context:
 
@@ -130,19 +134,9 @@ that same project context:
   vercel build --prod --token="$VERCEL_TOKEN"
   vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 )
-
-# Admin project
-(
-  cd apps/admin
-  VERCEL_ORG_ID="$VERCEL_ORG_ID" \
-  VERCEL_PROJECT_ID="$VERCEL_PROJECT_ID_ADMIN" \
-    vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-  vercel build --prod --token="$VERCEL_TOKEN"
-  vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
-)
 ```
 
-Keep each deployment URL/ID as a workflow output for rollback.
+Keep the deployment URL/ID as a workflow output for rollback.
 
 ### Admin protection
 
@@ -175,7 +169,7 @@ defence inside the app until the ADR-0009 blockers clear.
 - Region close to Vercel.
 - Configure:
   - Site URL: `https://staging.<domain>`
-  - Redirect URLs: staging web + admin URLs
+  - Redirect URLs: staging web URL (add the admin URL only when its deployment is unblocked)
   - **Disable signups**
   - Email confirmation policy for staging: SMTP sandbox or disabled confirmations; do not send real mail to fake addresses
 - Apply migrations through CI:
@@ -271,13 +265,15 @@ checks / lint / typecheck
   → unit
   → integration
   → migrations (approval-gated)
-  → build web + admin
+  → build web
   → deploy web
-  → deploy admin
   → smoke tests
   → notify Discord
   → tag staging-YYYYMMDD-HHMMSS-<short-sha>
 ```
+
+The admin build/deploy is deliberately absent: it stays blocked by ADR-0009
+until the role-authority, auth/grant/audit and edge-gate work lands.
 
 Use `concurrency` so only one staging deploy runs at a time.
 
@@ -332,14 +328,13 @@ After deploy:
 - seeded test user can log in.
 - one authenticated API call.
 - one Stripe test checkout or webhook replay.
-- admin health check only from the protected path.
 - report result to Discord with deployment URL and commit.
 
 ## 12. First three days
 
 ### Day 1
 
-1. Create Vercel web + admin projects and domains.
+1. Create the Vercel web project and domain. (Admin is future work, blocked by ADR-0009; do not create it.)
 2. Create Supabase staging project; apply migrations; seed users.
 3. Disable Supabase signups + app registration.
 4. Add Stripe test keys, webhook, bootstrap prices/portal.
@@ -406,7 +401,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 VERCEL_TOKEN=...
 VERCEL_ORG_ID=...
 VERCEL_PROJECT_ID_WEB=...
-VERCEL_PROJECT_ID_ADMIN=...
+VERCEL_PROJECT_ID_ADMIN=...           # future only; admin deploy blocked by ADR-0009
 VERCEL_AUTOMATION_BYPASS_SECRET=...   # only if the Stripe webhook URL uses the bypass
 STAGING_SUPABASE_REF=...
 SUPABASE_ACCESS_TOKEN=...
