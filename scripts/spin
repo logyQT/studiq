@@ -155,17 +155,20 @@ if $CLEAN; then
     git -C \"$PRIMARY_ROOT\" branch -D -- \"$BRANCH\""
     fi
 
-    if ! unlock_error=$(git -C "$PRIMARY_ROOT" worktree unlock "$REGISTERED_PATH" 2>&1); then
-      fail "Could not unlock worktree $REGISTERED_PATH: $unlock_error"
-    fi
-
     if [ -d "$REGISTERED_PATH" ]; then
-      if ! remove_error=$(git -C "$PRIMARY_ROOT" worktree remove "$REGISTERED_PATH" --force 2>&1); then
+      # Two force flags: the provenance lock must survive a failed removal, so
+      # remove the locked worktree directly instead of unlocking it first.
+      if ! remove_error=$(git -C "$PRIMARY_ROOT" worktree remove --force --force "$REGISTERED_PATH" 2>&1); then
         fail "Could not remove worktree $REGISTERED_PATH: $remove_error"
       fi
       info "Removed worktree: $REGISTERED_PATH"
     else
       warn "Worktree directory is missing: $REGISTERED_PATH"
+      # A locked registration is skipped by prune; drop the lock so the stale
+      # entry can be pruned before the branch is deleted.
+      if ! unlock_error=$(git -C "$PRIMARY_ROOT" worktree unlock "$REGISTERED_PATH" 2>&1); then
+        fail "Could not unlock stale worktree $REGISTERED_PATH: $unlock_error"
+      fi
     fi
   elif [ -d "$WORKTREE_PATH" ]; then
     warn "Found a directory that is not a registered worktree: $WORKTREE_PATH"

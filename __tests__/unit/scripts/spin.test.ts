@@ -64,6 +64,26 @@ function spinStderr(cwd: string, args: string[], env: NodeJS.ProcessEnv = TEST_E
   throw new Error(`Expected scripts/spin to fail: ${args.join(' ')}`);
 }
 
+function failingGitEnv(parent: string, failingArgs: string): NodeJS.ProcessEnv {
+  const bin = join(parent, 'bin');
+  mkdirSync(bin, { recursive: true });
+  const realGit = execFileSync('bash', ['-c', 'command -v git'], {
+    encoding: 'utf8',
+    env: TEST_ENV,
+  }).trim();
+  writeFileSync(
+    join(bin, 'git'),
+    `#!/usr/bin/env bash
+case "$*" in
+  *"${failingArgs}"*) echo "simulated ${failingArgs} failure" >&2; exit 1 ;;
+esac
+exec "${realGit}" "$@"
+`,
+    { mode: 0o755 },
+  );
+  return { ...TEST_ENV, PATH: `${bin}:${TEST_ENV.PATH ?? ''}` };
+}
+
 describe('scripts/spin', () => {
   const tempDirs: string[] = [];
   const readonlyDirs: string[] = [];
@@ -177,26 +197,28 @@ describe('scripts/spin', () => {
 
   it('does not leave an orphan branch when worktree add fails', () => {
     const { parent, repo } = makeRepo('studiq');
-    const bin = join(parent, 'bin');
-    mkdirSync(bin);
-    const realGit = execFileSync('bash', ['-c', 'command -v git'], {
-      encoding: 'utf8',
-      env: TEST_ENV,
-    }).trim();
-    writeFileSync(
-      join(bin, 'git'),
-      `#!/usr/bin/env bash
-case "$*" in
-  *"worktree add"*) echo "simulated worktree add failure" >&2; exit 1 ;;
-esac
-exec "${realGit}" "$@"
-`,
-      { mode: 0o755 },
-    );
-    const env = { ...TEST_ENV, PATH: `${bin}:${TEST_ENV.PATH ?? ''}` };
+    const env = failingGitEnv(parent, 'worktree add');
 
     expect(spinStderr(repo, ['feat/broken'], env)).toMatch(/simulated worktree add failure/);
     expect(branchExists(repo, 'feat/broken')).toBe(false);
+  });
+
+  it('keeps the provenance lock when worktree removal fails', () => {
+    const { parent, repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'feat', 'stuck');
+    runSpin(repo, ['feat/stuck']);
+
+    const env = failingGitEnv(parent, 'worktree remove');
+    expect(spinStderr(repo, ['feat/stuck', '--clean'], env)).toMatch(
+      /simulated worktree remove failure/,
+    );
+
+    const porcelain = git(repo, 'worktree', 'list', '--porcelain', '-z');
+    expect(porcelain).toContain(worktree);
+    expect(porcelain).toContain('locked created-by-scripts/spin');
+
+    // The real cleanup still works afterwards.
+    runSpin(repo, ['feat/stuck', '--clean']);
   });
 
   it('refuses to clean the primary checkout from a linked worktree', () => {
