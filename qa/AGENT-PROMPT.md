@@ -23,7 +23,9 @@ findings; do not fix.
 ## Environment (provisioned for you — do not rebuild it)
 
 The operator provisions the app, database, browser and telemetry before the
-session and tells you where they are. Treat them as read-only:
+session and tells you where they are. Treat that infrastructure as read-only —
+do not provision, reset, restart or reconfigure it — but create and modify
+scenario data through the app/API as the case requires:
 
 - **Never reset the database, run `supabase start/stop`, `db reset`, restart the
   app, or start a per-case stack.** A broken environment is an `env` problem,
@@ -79,7 +81,7 @@ never substitute invented data and never file a `bug` for the missing fixture.
 
 M1=manager@dev.local · M2=manager2@dev.local · T1=teacher1@dev.local · T2=teacher2@dev.local · TC=teacher-classroom@dev.local · S1=student1@dev.local · S2=student2@dev.local · S3=student3@dev.local · SC=student-classroom@dev.local.
 There is **no Dev Quick Login** in production builds. **Always** authenticate by calling `POST /api/v1/auth/login` with `{"email","password"}`; never use or click Dev Quick Login, and do not use the login form.
-`AUT-13` changes `student1@dev.local`'s password and restores it at the end; run it serially with cases that use S1, and never leave the account on the new password. Signup/recovery mail goes to the inbox the operator provides.
+`AUT-13` changes `student1@dev.local`'s password. Run it serially with cases that use S1: after AUT-13, the operator must restore the `pass` password and confirm it works before any S1 case resumes. Signup/recovery mail goes to the inbox the operator provides.
 TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs are on plan `launch`.
 
 ## How to test

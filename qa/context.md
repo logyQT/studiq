@@ -52,7 +52,7 @@ Automated tests (unit/integration/e2e) – run them separately with `bun test`.
 
 All seeded accounts use the password `pass`. QA runs a production build, so there is no "Dev Quick Login" panel; **always sign in with `POST /api/v1/auth/login`** (`{"email","password"}`), never through Dev Quick Login or the form. Signup and recovery mail goes to the inbox the operator provides.
 
-`AUT-13` changes `student1@dev.local`'s password and restores it at the end. Run it serially with cases that use S1, and never leave the account on the new password.
+`AUT-13` changes `student1@dev.local`'s password. Run it serially with cases that use S1: after AUT-13, the operator must restore the `pass` password and confirm it works before any S1 case resumes.
 
 | E-mail                      | Alias | Account type | Organizations / role                                   | Personal plan | Notes                                                               |
 | --------------------------- | ----- | ------------ | ------------------------------------------------------ | ------------- | ------------------------------------------------------------------- |

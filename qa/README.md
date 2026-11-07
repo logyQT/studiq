@@ -88,14 +88,17 @@ The docx → markdown converter is part of the operator's QA tooling and is not
 tracked in this repository. Regenerate the corpus with that converter when the
 source document changes; it clears `cases/*.md` before writing, so renamed or
 removed scenarios do not leave orphans, and it prints the case count and any
-prerequisite IDs it could not resolve. Do not hand-edit generated case files.
+prerequisite IDs it could not resolve. Do not hand-edit generated case files to
+update the corpus from the source document; suite workers may still reconcile
+and commit a case's seed/prerequisite details for suite generation, as described
+in `QA-SUITE-APPROACH.md`.
 
 ## Notes
 
 - Seeded dev accounts use the password `pass` (see `context.md`); these are local
   test fixtures, not real credentials.
 - The corpus is generated from a customer-facing test document; regenerate it
-  from `source/` rather than hand-editing `cases/`.
+  from `source/` rather than hand-editing `cases/` to update the corpus.
 - QA environment setup is maintained outside this repository and is
   intentionally not documented here.
 
@@ -103,6 +106,6 @@ prerequisite IDs it could not resolve. Do not hand-edit generated case files.
 
 `QA-SUITE-APPROACH.md` defines the QA-suite loop: one spec per case, a fresh
 browser session per run and one isolated tenant per case. Only tests that pass
-5/5 independent runs are admitted to `qa-suite`; legacy `@dev.local` accounts are
+3/3 independent runs are admitted to `qa-suite`; legacy `@dev.local` accounts are
 not used in the suite. Manager and worker prompts are in
 `QA-SUITE-MANAGER.md` and `QA-SUITE-WORKER.md`.
