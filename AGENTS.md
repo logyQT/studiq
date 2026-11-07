@@ -167,8 +167,8 @@ bun dev:down           # stop this checkout's web; `--all` also stops this branc
 - **`.env.schema` stays value-free.** It declares shapes, sensitivity and ownership only — never a
   real value, never a default that carries a secret. The vendored Varlock skill's schema checklist is
   advisory: where it says to move values into the schema, this repo's rule wins, and `@example` is
-  only ever a placeholder. `varlock printenv` is for non-sensitive keys; for a `@sensitive` key use
-  `varlock load --agent` (redacted) or ask the human to run `varlock reveal`.
+  only ever a placeholder. `bunx varlock printenv` is for non-sensitive keys; for a `@sensitive` key
+  use `bun run env:check` (redacted) or ask the human to run `bunx varlock reveal`.
 
 - **`scripts/dev` is the implementation** (Bash); the `dev:*` package scripts are thin aliases. Local defaults: web `APP_PORT=3000`; Supabase ports are assigned by the CLI and discovered from `supabase status --output-format json` (no port math). In **stack mode**, `scripts/dev` synthesizes `SUPABASE_PROJECT_ID=stack-<short id>` only as a display label for `dev:status`; it is not used for stack identity or port allocation, and no path-derived id is used there. In **shared/non-stack mode** (`SUPABASE_SHARED=1` or CI), `SUPABASE_PROJECT_ID` is still derived from the checkout path when unset (or accepted from root `.env.local` / the CI environment) and exported for `supabase/config.toml`'s `project_id`.
 - **Stack identity is the CLI's**: project root + current git branch + `SUPABASE_STACK` name (blank = the branch's default stack). `scratch`/test stacks can run side by side with `SUPABASE_STACK=test bun dev:up`.
