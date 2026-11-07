@@ -17,6 +17,7 @@
     "lint": "bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts && bun scripts/check-hardcoded-urls.ts && bun scripts/check-suppressions-empty.ts && bun scripts/check-env-inventory.ts",
     "lint:all": "bun run typecheck:all && bun run lint",
     "env:check": "varlock load --agent",
+    "env:check:quiet": "varlock load --agent >/dev/null 2>&1",
     "env:scan": "varlock scan",
     "knip": "knip --treat-config-hints-as-errors --no-progress",
     "knip:report": "knip --reporter compact",

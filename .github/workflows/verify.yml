@@ -106,9 +106,10 @@ jobs:
             # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
             # the first match and the writer gets SIGPIPE (141), which flipped
             # `app` to false and skipped the unit/integration/e2e jobs.
-            # Only the QA subtree is non-app: a test-only change under
-            # __tests__/unit|integration|e2e must run the suite it edits.
-            if ! grep -qvE '^(qa/|__tests__/qa/|__tests__/admin/|docs/|apps/admin/)|\.md$' <<< "$changed"; then
+            # Only the QA subtree, docs, admin and vendored agent skills are
+            # non-app: a test-only change under __tests__/unit|integration|e2e
+            # must run the suite it edits, and so must a code/lockfile change.
+            if ! grep -qvE '^(qa/|__tests__/qa/|__tests__/admin/|docs/|apps/admin/|\.agents/)|\.md$|^skills-lock\.json$' <<< "$changed"; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
@@ -191,7 +192,8 @@ jobs:
                   or (f.endswith(".md") and not f.startswith("qa/cases/"))
                   for f in changed
               )
-              # A docs-only PR (markdown, no case catalogue entry) cannot reach a
+              # A docs-only PR (markdown, no case catalogue entry) or a PR that
+              # only touches vendored agent skills and their lock cannot reach a
               # spec, a fixture or the app, so no shard has anything to prove:
               # start none rather than four runners for ~6 min each. A case
               # catalogue entry (qa/cases/<AREA>-*.md) is markdown too, but it
@@ -199,8 +201,11 @@ jobs:
               # its area below. Anything else that touches no spec still runs
               # every shard (see `not touched` below), because that is a QA PR
               # changing shared behaviour we cannot attribute to one area.
-              docs_only = bool(changed) and all(
-                  f.endswith(".md") and not f.startswith("qa/cases/") for f in changed
+              no_test_surface = bool(changed) and all(
+                  (f.endswith(".md") and not f.startswith("qa/cases/"))
+                  or f.startswith(".agents/")
+                  or f == "skills-lock.json"
+                  for f in changed
               )
 
               area_names = {a for s in shards for a in s["areas"]}
@@ -236,7 +241,7 @@ jobs:
                   )
               )
               touched = [s for s in shards if set(s["areas"]) & areas]
-              if docs_only or admin_only:
+              if no_test_surface or admin_only:
                   selected = []
               else:
                   selected = shards if force_all or not touched else touched

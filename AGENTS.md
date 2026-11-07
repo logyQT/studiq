@@ -164,6 +164,14 @@ bun dev:down           # stop this checkout's web; `--all` also stops this branc
 > Agents must use `bun dev:build` + `bun dev:serve` (or `bun dev:up --prod`),
 > not `next dev`.
 
+- **`.env.schema` stays value-free.** It declares shapes, sensitivity and ownership only — never a
+  real value, never a default that carries a secret. The vendored Varlock skill's schema checklist and
+  validation loop are advisory: where it says to move values into the schema — or to validate with
+  `varlock load --agent` — this repo's rule wins, and `@example` is only ever a placeholder. `bunx varlock printenv` is for non-sensitive keys; for a `@sensitive` key
+  run `bun run env:check:quiet` (exit code only — `env:check` is only partially redacted: it prints the
+  first two characters of every sensitive value, and a value shorter than three characters in full, so
+  never paste its output) or ask the human to run `bunx varlock reveal`.
+
 - **`scripts/dev` is the implementation** (Bash); the `dev:*` package scripts are thin aliases. Local defaults: web `APP_PORT=3000`; Supabase ports are assigned by the CLI and discovered from `supabase status --output-format json` (no port math). In **stack mode**, `scripts/dev` synthesizes `SUPABASE_PROJECT_ID=stack-<short id>` only as a display label for `dev:status`; it is not used for stack identity or port allocation, and no path-derived id is used there. In **shared/non-stack mode** (`SUPABASE_SHARED=1` or CI), `SUPABASE_PROJECT_ID` is still derived from the checkout path when unset (or accepted from root `.env.local` / the CI environment) and exported for `supabase/config.toml`'s `project_id`.
 - **Stack identity is the CLI's**: project root + current git branch + `SUPABASE_STACK` name (blank = the branch's default stack). `scratch`/test stacks can run side by side with `SUPABASE_STACK=test bun dev:up`.
 - **`bun run dev:status --json`** reports `stackId`, `branch`, endpoints and the app/web health. Bare `bunx supabase ...` targets the branch's **default** stack. For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and pass `--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`. Database commands do not accept `--stack`; read the URL first: `DB_URL=$(bunx supabase status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\(.*\)'$/\1/p")`, then use `--remote="$DB_URL" --yes`.
