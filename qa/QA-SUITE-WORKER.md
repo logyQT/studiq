@@ -34,7 +34,7 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
     VM also runs the app, Supabase and eight browser tiles, and a parallel run OOM-kills
     the box. One spec, one worker, five sequential runs.
   - The same applies to any exploratory run: one spec at a time.
-- Use the **shared app/DB only**. Do not start/stop `qa-env`, Supabase, or another app.
+- Use the **shared app/DB only**. Do not start/stop Supabase or another app.
 - **`apps/admin` is out of scope for QA.** Do not start it, sign requests for it, or
   file findings against it. It is an internal tool with no app-level auth, protected
   only at the edge; no QA case requires it.
@@ -58,7 +58,7 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 - **Never call `gh issue create` directly — defects go through the dedup helper:**
   ```bash
   bun scripts/qa-issue.ts <CASEID> --title "<short symptom>" --body-file /tmp/<CASEID>-issue.md \
-    --attach dashboard/shots/qa-env-<N>-<stamp>-<CASEID>-<what>.png
+    --attach shots/<CASEID>-<what>.png
   ```
   **Evidence is uploaded, never described.** Every screenshot you cite must be passed with
   `--attach` (repeatable, `gh --attach` under the hood). A filesystem path in the body is
