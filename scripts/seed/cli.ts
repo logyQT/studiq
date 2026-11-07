@@ -11,10 +11,18 @@
  * codes are part of the CI contract, so the helpers below reproduce the two
  * scripts' previous code byte for byte rather than inventing a new CLI style.
  */
-import { readFileSync } from 'node:fs';
+import { SQL } from 'bun';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createSqlAccountWriter, type AccountWriter } from '#test/helpers/tenant-seed';
 
 export { concurrencyFromEnv, createSeedDb, runBounded } from '#test/helpers/tenant-seed';
+
+/** Print a failure to stderr and exit with the CLI's usage-error code. */
+export function fail(message: string): never {
+  console.error(message);
+  process.exit(2);
+}
 
 /** `--name value` or `--name=value`; `undefined` when the flag is absent. */
 export function option(args: string[], name: string): string | undefined {
@@ -25,13 +33,29 @@ export function option(args: string[], name: string): string | undefined {
 }
 
 /** Boolean `--flag` (no value). */
-function flag(args: string[], name: string): boolean {
+export function flag(args: string[], name: string): boolean {
   return args.includes(`--${name}`);
 }
 
 /** `--reset` — drop the tenants this plan owns instead of seeding them. */
 export function resetRequested(args: string[]): boolean {
   return flag(args, 'reset');
+}
+
+/** `--run <suffix>` — fold one run id into every tenant key. */
+export function runOption(args: string[]): string | undefined {
+  return option(args, 'run');
+}
+
+/** Positive integer CLI option, with a default and a readable error. */
+export function countOption(args: string[], name: string, fallback: number): number {
+  const raw = option(args, name);
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    fail(`--${name} must be a positive integer (got "${raw}")`);
+  }
+  return value;
 }
 
 /**
@@ -53,4 +77,67 @@ export function envFromWebFile(root: string, name: string): string {
     /* no .env */
   }
   throw new Error(`missing env ${name}`);
+}
+
+/**
+ * Load env for the QA seeder from the app's env file, then `qa/env.json`.
+ *
+ * Candidate order is fixed (`apps/web/.env` first, `.env` second) and the first
+ * existing file wins. `qa/env.json` names the shared stack QA workers run
+ * against, so it overrides the checkout's own `NEXT_PUBLIC_SUPABASE_URL`.
+ */
+export function loadEnv(root: string): void {
+  for (const candidate of ['apps/web/.env', '.env']) {
+    const path = join(root, candidate);
+    if (!existsSync(path)) continue;
+    for (const line of readFileSync(path, 'utf8').split('\n')) {
+      const i = line.indexOf('=');
+      if (i <= 0 || line.trim().startsWith('#')) continue;
+      const name = line.slice(0, i).trim();
+      if (!process.env[name]) process.env[name] = line.slice(i + 1).trim();
+    }
+    break;
+  }
+  // QA workers share one app and one Supabase even though each worktree keeps
+  // its own `.env`; `qa/env.json` names the shared stack the spec runs against.
+  const configPath = join(root, 'qa', 'env.json');
+  if (existsSync(configPath)) {
+    try {
+      const config = JSON.parse(readFileSync(configPath, 'utf8')) as { supabaseUrl?: string };
+      if (config.supabaseUrl) process.env.NEXT_PUBLIC_SUPABASE_URL = config.supabaseUrl;
+    } catch {
+      // A malformed qa/env.json should not hide the real seeding error.
+    }
+  }
+}
+
+/**
+ * `SUPABASE_DB_URL` as a direct Postgres connection, when it is set.
+ *
+ * Optional: without it the seeders write auth users through GoTrue's admin API
+ * instead of the single-statement SQL writer.
+ */
+export function optionalSql(url = process.env.SUPABASE_DB_URL): SQL | undefined {
+  return url ? new SQL(url) : undefined;
+}
+
+/** Batch writer for the optional direct-Postgres path. */
+export function optionalAccountWriter(sql: SQL | undefined): AccountWriter | undefined {
+  return sql ? createSqlAccountWriter(sql) : undefined;
+}
+
+/** `--json`: the tenant object, 2-space indent, no wrapper and no extra keys. */
+export function printJson(value: unknown): void {
+  console.log(JSON.stringify(value, null, 2));
+}
+
+/** One write per tenant block, so concurrently seeded cases cannot interleave. */
+export function printBlock(lines: string[]): void {
+  console.log(lines.join('\n'));
+}
+
+/** Close the optional SQL connection, then exit with `code`. */
+export async function finish(sql: SQL | undefined, code: number): Promise<never> {
+  if (sql) await sql.close();
+  process.exit(code);
 }
