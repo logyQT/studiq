@@ -70,6 +70,35 @@ one-off env, or the old slot stack. Do not let 16 workers mutate the same single
 - Default password for seeded fixture users is `Seed4Test!` (from `tenant-seed.ts`);
   do not use `pass` for new fixtures.
 
+## Retry safety — every spec must survive its own retry
+
+CI runs the suite with `retries: 2` against **one seeded tenant per run**
+(`bun scripts/qa-tenant.ts --all --run <suffix>`), and a local `--repeat-each` replay reuses
+that same tenant. A retry is not a fresh database: it inherits whatever the failed attempt
+left behind. Every spec therefore has to be safe to run twice against the same tenant.
+
+- **Reset the case's own state at the start of the attempt**, not only in `afterAll` — a
+  crashed attempt never reaches its hooks. `qa/fixtures/qa-invitees.ts`
+  (`resetInviteeState`) cancels the case's pending invitations and drops its invitee
+  memberships (which also frees plan slots); `qa/fixtures/qa-db.ts`
+  (`resetFirstRunTenant`) returns a `bare` onboarding account to "no organization".
+  Read-only specs need nothing.
+- **Give one-shot artifacts a per-attempt identity** — `attemptSuffix(test.info())` folds
+  `retry` + `repeatEachIndex` into an invited address or a code. Re-inviting a fixed address
+  on a retry creates a duplicate pending row and a strict-mode locator failure.
+- **Assert eventually after a mutation.** A one-shot DOM/API read taken right after a save
+  races the refetch (MGR-SEAT-02 read the pool table as `[]` once); use a web-first assertion
+  (`toHaveCount`/`toHaveText` already retry) or `expect.poll`. Never a fixed sleep.
+- **Clean up with a `createdBefore` cutoff** when cleanup can overlap another attempt: a
+  `--repeat-each` run with several workers executes repeats in parallel, and a later attempt
+  must not delete a concurrent attempt's fresh rows.
+- **Prove it in one command** against one seeded tenant:
+
+  ```bash
+  CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> \
+    --repeat-each=2 --retries=2 --workers=1
+  ```
+
 ## Asserting user-visible copy
 
 Specs assert the **literal** string the case specifies (usually Polish), and they do **not**

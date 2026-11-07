@@ -67,3 +67,48 @@ export function createQaSupabase(): SupabaseClient {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
+/**
+ * Return a **first-run** tenant account to "belongs to no organization".
+ *
+ * `ONB-02`/`ONB-04` are one-shot by nature: the run itself creates the
+ * organization. A CI retry (or a `--repeat-each` replay) reuses the seeded
+ * account, so without this the attempt starts on an onboarded account and the
+ * first-run gate is already gone. Deleting the account's organizations cascades
+ * their memberships, groups and content, exactly like `scripts/qa-tenant.ts
+ * --reset` does for a `bare` profile.
+ *
+ * Only used for a case's own seeded account, never another tenant's.
+ *
+ * `createdBefore` (pass the instant the attempt started) keeps a parallel
+ * `--repeat-each` attempt's newly created organization from being deleted: only
+ * memberships that already existed when this attempt began are removed.
+ */
+export async function resetFirstRunTenant(userId: string, createdBefore?: Date): Promise<void> {
+  const db = createQaSupabase();
+  const { data: memberships, error } = await db
+    .from('org_members')
+    .select('organization_id, joined_at')
+    .eq('user_id', userId);
+  if (error) throw new Error(`resetFirstRunTenant: read memberships: ${error.message}`);
+
+  const cutoff = createdBefore?.getTime() ?? Number.POSITIVE_INFINITY;
+  for (const membership of memberships ?? []) {
+    if (
+      createdBefore &&
+      membership.joined_at &&
+      new Date(membership.joined_at).getTime() >= cutoff
+    ) {
+      continue;
+    }
+    const { error: deleteError } = await db
+      .from('organizations')
+      .delete()
+      .eq('id', membership.organization_id);
+    if (deleteError) {
+      throw new Error(
+        `resetFirstRunTenant: delete org ${membership.organization_id}: ${deleteError.message}`,
+      );
+    }
+  }
+}

@@ -171,9 +171,13 @@ test.describe('@case:MGR-MEM-01 @area:MGR @prio:P1 members search and role filte
       'the counter is the whole organization, not the filtered rows',
     ).toBeVisible();
 
-    const headers = await page
-      .locator('table thead th')
-      .evaluateAll((cells) => cells.map((cell) => (cell.textContent ?? '').trim()));
+    // The header row renders with the table; a one-shot read before that
+    // returns `[]` (and fails the set comparison below).
+    const headerCells = page.locator('table thead th');
+    await expect(headerCells.first()).toBeVisible();
+    const headers = await headerCells.evaluateAll((cells) =>
+      cells.map((cell) => (cell.textContent ?? '').trim()),
+    );
     expect(new Set(headers), 'the table has exactly the five documented columns').toEqual(
       new Set(HEADERS),
     );

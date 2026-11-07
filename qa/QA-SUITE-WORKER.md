@@ -41,6 +41,11 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 - Use browser tile `{{WORKER}}` only. Do not use the legacy `@dev.local` accounts or
   `pass`; use only this case's seeded tenant users.
 - The test must be self-contained and use deterministic IDs (`tenantKey`/`tenantId`).
+- **The spec must be retry-safe.** CI retries it twice against the same seeded tenant, so
+  reset the case's own rows at the start of the attempt (`resetInviteeState` /
+  `resetFirstRunTenant`), give one-shot artifacts a per-attempt name
+  (`attemptSuffix(test.info())`), and prove it with `--repeat-each=2 --retries=2` on one
+  seeded tenant. See "Retry safety" in `qa/QA-SUITE-APPROACH.md`.
 - No `test.skip`, `test.fixme`, `test.soft`, expected-failure wrappers, or manual steps.
 - Do not rely on shared mutable data: global admin settings, feature flags, plans,
   platform stats, singleton rows, or another worker's tenant.
