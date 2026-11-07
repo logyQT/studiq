@@ -1,7 +1,8 @@
 # StudiQ Admin Panel
 
 Internal Next.js 16 app for system administration. Runs on port 4000. It has no
-app-level auth and must be deployed behind the edge gate (see Auth below).
+app-level auth and is not deployed. Do not deploy it until the ADR-0009 blockers
+clear (see Auth below).
 
 ## Quick Start
 
@@ -53,18 +54,15 @@ All under `/api/v1/`. Controllers live in `src/server/controllers/`, services in
 
 ## Auth
 
-`apps/admin` is an **internal operations tool**, not a product surface. It has
-**no app-level authentication**: its API routes skip `withAuth`, and they are not
-protected by an app-level signature or token scheme.
+`apps/admin` is an **internal operations tool**, not a product surface, and it is
+**not deployed**. It has **no app-level authentication**: its API routes skip
+`withAuth`, and they are not protected by an app-level signature or token scheme.
 
-It must be deployed **only** behind infrastructure-level access control —
-Vercel Authentication (All Deployments) / Cloudflare Access / VPN — covering
-both UI pages and `/api/*` on every URL (custom domain, generated deployment
-URLs and aliases). **Never deploy it publicly.**
-
-See
-[`docs/decisions/0009-admin-is-internal-edge-protected.md`](../../docs/decisions/0009-admin-is-internal-edge-protected.md)
-and the staging plan (S2/S9).
+Do **not** deploy it until the ordered blockers in
+[`docs/decisions/0009-admin-is-internal-not-deployed.md`](../../docs/decisions/0009-admin-is-internal-not-deployed.md)
+clear. If it is ever deployed, infrastructure-level access control — Vercel
+Authentication (All Deployments) / Cloudflare Access / VPN — is mandatory but not
+sufficient; the app-level gate must land first. See the staging plan (S2/S9).
 
 ## Database
 

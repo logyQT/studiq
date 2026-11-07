@@ -106,7 +106,7 @@ jobs:
             # `app` to false and skipped the unit/integration/e2e jobs.
             # Only the QA subtree is non-app: a test-only change under
             # __tests__/unit|integration|e2e must run the suite it edits.
-            if ! grep -qvE '^(qa/|__tests__/qa/|docs/|apps/admin/)|\.md$' <<< "$changed"; then
+            if ! grep -qvE '^(qa/|__tests__/qa/|__tests__/admin/|docs/|apps/admin/)|\.md$' <<< "$changed"; then
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
@@ -178,10 +178,11 @@ jobs:
                   ".github/workflows/verify.yml", "package.json", "bun.lock",
                   "apps/web/", "packages/", "supabase/",
               )
-              # An `apps/admin`-only change (plus docs) is outside the product
-              # and outside QA, so no shard has anything to prove.
+              # An `apps/admin`-only change (plus its tests and docs) is outside
+              # the product and outside QA, so no shard has anything to prove.
+              # Admin tests are validated with the manual `bun run test:admin`.
               admin_only = bool(changed) and all(
-                  f.startswith("apps/admin/")
+                  f.startswith(("apps/admin/", "__tests__/admin/"))
                   or (f.endswith(".md") and not f.startswith("qa/cases/"))
                   for f in changed
               )

@@ -3,12 +3,13 @@
 ## Status
 
 **Superseded by
-[ADR-0009](0009-admin-is-internal-edge-protected.md).** The PEM keyring, the
+[ADR-0009](0009-admin-is-internal-not-deployed.md).** The PEM keyring, the
 `apps/admin/src/proxy.ts` gate and `scripts/admin-sign.ts` were removed:
-`apps/admin` is an internal tool protected at the edge, not by app-level auth.
-This record is kept as history. It superseded the flat `ADMIN_PEM_KEYS` list
-that shipped with the admin panel; the DB-backed fine-grained token system
-remains the destination if multi-user admin is ever needed.
+`apps/admin` is an internal tool with no app-level auth, and it is not deployed
+(deployment is blocked by ADR-0009). This record is kept as history. It
+superseded the flat `ADMIN_PEM_KEYS` list that shipped with the admin panel; the
+DB-backed fine-grained token system remains the destination if multi-user admin
+is ever needed.
 
 ## Context
 

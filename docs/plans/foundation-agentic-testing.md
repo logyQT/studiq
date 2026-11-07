@@ -330,7 +330,8 @@ the structural refactors are done.
 - `bun run lint` clean in all packages
 - All unit + integration tests green
 - No orphan tables/dead code left (per AGENTS.md ethos)
-- Admin app: all 5 pages functional, dev server on `:4000`, PEM-gated
-  _(historical: the PEM gate was removed on 2026-11-06; `apps/admin` is now an internal tool protected at the edge — see ADR-0009)_
+- Admin app: all 5 pages functional, dev server on `:4000`; internal only — no
+  app-level auth (the PEM gate was removed on 2026-11-06), and deployment is
+  blocked until the ADR-0009 blockers clear
 - `packages/server/` extracted, both apps import from it
 - Main app moved to `apps/web/`, zero cross-app imports

@@ -25,9 +25,9 @@ studiq/
 │   │       ├── app/(frontend)/                   # UI pages (landing, /app, /edu, /manage, ...)
 │   │       ├── components/ hooks/ lib/ i18n/ types/ styles/
 │   │       └── proxy.ts                          # Next.js 16 proxy (session + route rules)
-│   └── admin/                      # Internal admin panel, port 4000 — package `@studiq/admin` (no app-level auth; edge-protected)
+│   └── admin/                      # Internal admin panel, port 4000 — package `@studiq/admin` (no app-level auth; not deployed)
 │       └── src/
-│           ├── app/(backend)/api/v1/*            # Admin API routes (service role, edge-gated — no `withAuth`)
+│           ├── app/(backend)/api/v1/*            # Admin API routes (service role; no `withAuth`, not deployed)
 │           ├── app/(frontend)/                   # Admin pages
 │           ├── server/{controllers,models,services}   # Admin-only backend (imports via `@admin/*`)
 │           └── lib/ i18n/
@@ -350,7 +350,7 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 ### Admin app notes
 
-- `apps/admin` is an **internal tool, not a product surface**, and has **no app-level auth**. Admin API routes skip `withAuth` and use the service-role client; the only gate is infrastructure-level access control on the deployment (Vercel Authentication / Cloudflare Access / VPN). Never deploy it publicly. See `docs/decisions/0009-admin-is-internal-edge-protected.md`.
+- `apps/admin` is an **internal tool, not a product surface**, and has **no app-level auth**. It is **not deployed** (repo-only/local-only): admin API routes skip `withAuth` and use the service-role client. Do not deploy it until the ordered blockers in `docs/decisions/0009-admin-is-internal-not-deployed.md` clear; if it is ever deployed, the edge gate is mandatory. See that ADR.
 - Admin controllers/services live in `apps/admin/src/server/*`, imported as `@admin/server/controllers/*.controller`
 - Admin services use the service-role client: `@admin/lib/supabase/admin-client` (no user JWT, no RLS context)
 
@@ -424,7 +424,7 @@ Use the right client for the context — there is **no browser-side Supabase cli
 Next.js 16 uses `proxy.ts` — **do NOT rename it to `middleware.ts`**:
 
 - `apps/web/src/proxy.ts` — main app: for non-API paths it refreshes the Supabase session, then applies `routeRules`. Every `/api/*` request returns early — before the session refresh and before any rule is evaluated — so `withAuth()` in the route file is the authoritative (and only) API authentication gate.
-- `apps/admin` has **no `proxy.ts`** and no app-level auth. Its API routes are not `withAuth`-protected; access is enforced by infrastructure-level protection in front of the deployment (Vercel Authentication / Cloudflare Access / VPN), covering UI pages and `/api/*`. See `docs/decisions/0009-admin-is-internal-edge-protected.md`.
+- `apps/admin` has **no `proxy.ts`** and no app-level auth, and it is **not deployed**. Its API routes are not `withAuth`-protected. Do not expose it; deployment is blocked until the ADR-0009 blockers clear. See `docs/decisions/0009-admin-is-internal-not-deployed.md`.
 
 Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order. The `/api/*` entries are documentation only: the proxy returns for `/api/*` before `routeRules` is consulted, so they never run.
 

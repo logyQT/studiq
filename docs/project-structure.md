@@ -44,7 +44,7 @@ studiq/
 │   │   ├── tsconfig.json
 │   │   └── .env                      # Local environment (gitignored)
 │   │
-│   └── admin/                        # Internal admin panel — @studiq/admin (port 4000, no app-level auth; edge-protected)
+│   └── admin/                        # Internal admin panel — @studiq/admin (port 4000, no app-level auth; not deployed)
 │       ├── src/
 │       │   ├── app/
 │       │   │   ├── (frontend)/       # Admin pages (orgs, feature-flags, subscription-plans, user-overrides)

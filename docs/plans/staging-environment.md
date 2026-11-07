@@ -7,6 +7,7 @@
 
 - One stable URL for the web app: `https://staging.<domain>`.
 - A separate admin deployment: `https://admin.staging.<domain>`, not public.
+  **Future work — not deployed; blocked by [ADR-0009](../decisions/0009-admin-is-internal-not-deployed.md).**
 - One dedicated Supabase staging project, never production.
 - Stripe **test mode** only, with a staging webhook endpoint.
 - Registration disabled; staging is invite/seed only.
@@ -30,7 +31,8 @@
 staging.<domain>              Vercel project: apps/web
                               public, registration disabled
 admin.staging.<domain>        Vercel project: apps/admin
-                              protected by SSO / Access / self-hosted proxy
+                              NOT DEPLOYED YET (ADR-0009 blockers)
+                              future: protected by SSO / Access / self-hosted proxy
 staging Supabase project      separate cloud project
                               migrations + seed via CI
 Stripe test mode              test keys, test prices, staging webhook
@@ -40,18 +42,18 @@ GitHub Actions                staging environment
 
 ## 4. Decisions to lock before build
 
-| #   | Decision               | Proposed default                                                                                                                                                                                            |
-| --- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S1  | Staging web visibility | Public, registration disabled, `noindex`, test data only                                                                                                                                                    |
-| S2  | Admin protection       | **Authoritative.** `apps/admin` has no app-level auth; deploy only behind Vercel Authentication (All Deployments) or Cloudflare Access plus generated-URL protection; true VPN only if admin is self-hosted |
-| S3  | Supabase project       | New cloud project, separate from production                                                                                                                                                                 |
-| S4  | Stripe mode            | Test mode only; `PAYMENT_DRIVER=stripe` on staging after the real driver + signature-verified webhook land                                                                                                  |
-| S5  | Registration           | Supabase signups off + app-level `ALLOW_REGISTRATION=false`                                                                                                                                                 |
-| S6  | Deploy gate            | GitHub `staging` environment with required reviewer                                                                                                                                                         |
-| S7  | Nightly                | Deploy `main` at 02:00 UTC if it moved; tag `staging-YYYYMMDD-HHMMSS-<short-sha>` so manual and nightly deploys on the same UTC date stay distinct                                                          |
-| S8  | Data reset             | Explicit operator action only; no automatic nightly reset                                                                                                                                                   |
-| S9  | Agent access           | **Authoritative.** Web app + seeded test accounts; never admin (`apps/admin` is out of scope for QA)                                                                                                        |
-| S10 | Production promotion   | Manual, separate workflow; staging never deploys to prod                                                                                                                                                    |
+| #   | Decision               | Proposed default                                                                                                                                                                                              |
+| --- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | Staging web visibility | Public, registration disabled, `noindex`, test data only                                                                                                                                                      |
+| S2  | Admin protection       | **Not deployed yet.** When deployment is unblocked: Vercel Authentication (All Deployments) or Cloudflare Access plus generated-URL protection; true VPN only if admin is self-hosted. See ADR-0009 blockers. |
+| S3  | Supabase project       | New cloud project, separate from production                                                                                                                                                                   |
+| S4  | Stripe mode            | Test mode only; `PAYMENT_DRIVER=stripe` on staging after the real driver + signature-verified webhook land                                                                                                    |
+| S5  | Registration           | Supabase signups off + app-level `ALLOW_REGISTRATION=false`                                                                                                                                                   |
+| S6  | Deploy gate            | GitHub `staging` environment with required reviewer                                                                                                                                                           |
+| S7  | Nightly                | Deploy `main` at 02:00 UTC if it moved; tag `staging-YYYYMMDD-HHMMSS-<short-sha>` so manual and nightly deploys on the same UTC date stay distinct                                                            |
+| S8  | Data reset             | Explicit operator action only; no automatic nightly reset                                                                                                                                                     |
+| S9  | Agent access           | **Authoritative.** Web app + seeded test accounts; never admin (`apps/admin` is out of scope for QA)                                                                                                          |
+| S10 | Production promotion   | Manual, separate workflow; staging never deploys to prod                                                                                                                                                      |
 
 ## 5. Vercel
 
@@ -97,18 +99,22 @@ NEXT_PUBLIC_SUPABASE_URL=https://<staging-ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-> **WARNING — `apps/admin` has no app-level authentication.** Its API routes use
-> the service-role client and skip `withAuth`. The **only** gate is the
-> infrastructure-level access control in **S2** (Vercel Authentication /
-> Cloudflare Access / VPN), covering UI pages and `/api/*` on every URL. Never
-> deploy `apps/admin` publicly, not even temporarily or as a preview.
-> See [`docs/decisions/0009-admin-is-internal-edge-protected.md`](../decisions/0009-admin-is-internal-edge-protected.md).
+> **WARNING — `apps/admin` is not deployed and has no app-level authentication.**
+> Its API routes use the service-role client and skip `withAuth`. Do not deploy
+> it, not even temporarily or as a preview, until the ordered blockers in
+> [`docs/decisions/0009-admin-is-internal-not-deployed.md`](../decisions/0009-admin-is-internal-not-deployed.md)
+> clear. When it is eventually deployed, the **S2** edge gate is mandatory but not
+> sufficient; the app-level gate must land first.
 
 Use Vercel environment scopes, not committed files. Never put the service-role key or Stripe secret in `NEXT_PUBLIC_*`.
 
 ### Deploy mode
 
 For manual + nightly gating, **disable Git auto-deploys for the staging projects** and deploy through GitHub Actions with the Vercel CLI. Otherwise a push bypasses the approval gate.
+
+**Do not run the admin sequence below yet.** `apps/admin` is not deployed and
+its deployment is blocked by the ordered items in ADR-0009. The admin commands
+are future work, kept here so the topology and project split stay documented.
 
 Run one sequence per app, from that app's directory, so `vercel pull` writes
 `.vercel/project.json` for the matching project ID and `build`/`deploy` reuse
@@ -145,10 +151,13 @@ custom domain: the production domain, generated Vercel deployment URLs
 (`<project>-<hash>.vercel.app`), and any aliases. It must cover admin UI pages
 as well as `/api/*`.
 
-**S2 is the authoritative protection decision: `apps/admin` has no app-level
-auth.** There is no PEM gate, token or login inside the app — access control is
-entirely infrastructure-level. Deploying the app without this gate exposes the
-service-role-backed panel to anyone with the URL.
+**S2 is the edge-protection decision for the day admin is deployable**, but
+`apps/admin` is **not deployed** and its deployment is blocked by the ordered
+items in
+[`docs/decisions/0009-admin-is-internal-not-deployed.md`](../decisions/0009-admin-is-internal-not-deployed.md).
+There is no app-level auth, no PEM gate, and no token or login inside the app —
+access control at the edge is necessary but not sufficient, because the app-level
+gate and audit must land first.
 
 Options, in order:
 
@@ -158,7 +167,7 @@ Options, in order:
 
 Whichever option is chosen, verify that both a UI page and an `/api/*` route
 return the protection challenge when signed out. There is no second line of
-defence inside the app.
+defence inside the app until the ADR-0009 blockers clear.
 
 ## 6. Supabase staging
 
@@ -335,7 +344,7 @@ After deploy:
 3. Disable Supabase signups + app registration.
 4. Add Stripe test keys, webhook, bootstrap prices/portal.
 5. Manual deploy web; verify login, invite and test checkout.
-6. Protect admin with Vercel Authentication or Cloudflare Access.
+6. (Future — blocked by ADR-0009) Protect admin with Vercel Authentication or Cloudflare Access.
 
 ### Day 2
 
@@ -354,7 +363,7 @@ After deploy:
 ## 13. Risks and gotchas
 
 - **Vercel is not a VPN.** Use SSO/Access or self-host the admin.
-- **Admin has no app-level auth.** A deployment without the S2 edge gate is a public, service-role-backed panel. Never deploy it unprotected.
+- **Admin is not deployed.** It has no app-level auth and its deployment is blocked by ADR-0009. If that changes, the S2 edge gate is mandatory but not sufficient.
 - **Stripe webhook secret is endpoint-specific.**
 - **Staging emails** can leak real mail; use sandbox SMTP or disable confirmations.
 - **Shared staging data drifts.** Use test tenants and an explicit reset, not one shared account.
@@ -389,7 +398,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
 ALLOW_REGISTRATION=false
 
-# Admin — no app-level auth; protect at the edge (S2)
+# Admin — NOT DEPLOYED; no app-level auth; edge gate only when unblocked (S2/ADR-0009)
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
 
