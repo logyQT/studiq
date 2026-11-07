@@ -126,7 +126,7 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun dev:prepull`                        | Download stack images without starting the stack (VM templates)                                                                        |
 | `bun dev`                                | Start the web app dev server (`next dev`) — agents should use `dev:build` + `dev:serve`                                                |
 | `bun dev:admin`                          | Start the admin app dev server (`@studiq/admin`, port 4000)                                                                            |
-| `bun build`                              | Build the web app for production — same as `bun build:web`                                                                             |
+| `bun run build`                          | Build the web app for production — same as `bun build:web`                                                                             |
 | `bun build:admin`                        | Build the admin app for production                                                                                                     |
 | `bun start`                              | Start the web app production server — same as `bun start:web`                                                                          |
 | `bun start:admin`                        | Start the admin app production server                                                                                                  |
