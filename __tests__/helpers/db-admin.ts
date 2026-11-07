@@ -11,11 +11,11 @@ import { createClient } from '@supabase/supabase-js';
  * to age the single row it just created (keyed by its own token). This client is
  * only for that — never for reading another tenant's rows.
  *
- * Every QA worker keeps its own `apps/web/.env` (usually pointing at that
+ * Every QA worker keeps its own root `.env.local` (usually pointing at that
  * worker's own, now-idle stack), while `qa/env.json` names the shared stack the
  * browser tile and the app actually use, so `qa/env.json` wins for the URL. The
  * service-role key is the same local demo key everywhere; it is read from the
- * environment first and from `apps/web/.env` otherwise.
+ * environment first and from root `.env.local` otherwise.
  */
 
 interface QaEnvFile {
@@ -37,7 +37,7 @@ function parseDotEnv(path: string): Record<string, string> {
 
 function sharedStackSettings(): { url: string; serviceKey: string } {
   const root = process.cwd();
-  const dotenv = parseDotEnv(join(root, 'apps/web/.env'));
+  const dotenv = parseDotEnv(join(root, '.env.local'));
 
   let sharedUrl: string | undefined;
   const envFile = join(root, 'qa/env.json');

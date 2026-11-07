@@ -6,9 +6,9 @@ import { join } from 'node:path';
  *
  * A spec that needs an e-mail (activation, reset) must not care which stack it
  * runs against. Local `supabase stack` projects get random ports, so prefer the
- * advertised `MAILPIT_URL` (from the app env / `qa/env.json` / process env);
- * fall back to the classic "API port + 3" layout used by the shared QA stack
- * and by CI's non-stack `supabase start`.
+ * advertised `MAILPIT_URL` (from the process env / `qa/env.json` / root
+ * `.env.local`); fall back to the classic "API port + 3" layout used by the
+ * shared QA stack and by CI's non-stack `supabase start`.
  *
  * Only reads: a spec looks up the message addressed to **its own** unique address
  * and never lists, deletes or mutates another worker's mail.
@@ -22,6 +22,20 @@ interface QaEnvFile {
   mailpitUrl?: string;
 }
 
+/** One `KEY=value` from a dotenv-style file, or undefined. */
+function valuesFileEntry(path: string, name: string): string | undefined {
+  if (!existsSync(path)) return undefined;
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const separator = trimmed.indexOf('=');
+    if (separator <= 0 || trimmed.slice(0, separator).trim() !== name) continue;
+    return trimmed.slice(separator + 1).trim();
+  }
+  return undefined;
+}
+
+/** Process env first, then `qa/env.json`, then root `.env.local`. */
 function supabaseUrlFromProject(): string | undefined {
   const root = process.cwd();
 
@@ -36,19 +50,10 @@ function supabaseUrlFromProject(): string | undefined {
     }
   }
 
-  const dotenv = join(root, 'apps', 'web', '.env');
-  if (existsSync(dotenv)) {
-    for (const line of readFileSync(dotenv, 'utf8').split('\n')) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('NEXT_PUBLIC_SUPABASE_URL=')) {
-        return trimmed.slice('NEXT_PUBLIC_SUPABASE_URL='.length).trim();
-      }
-    }
-  }
-
-  return process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return valuesFileEntry(join(root, '.env.local'), 'NEXT_PUBLIC_SUPABASE_URL');
 }
 
+/** Process env first, then `qa/env.json`, then root `.env.local`. */
 function mailpitUrlFromProject(): string | undefined {
   const root = process.cwd();
 
@@ -59,21 +64,11 @@ function mailpitUrlFromProject(): string | undefined {
       const parsed = JSON.parse(readFileSync(envJson, 'utf8')) as QaEnvFile;
       if (parsed.mailpitUrl) return parsed.mailpitUrl;
     } catch {
-      // Ignore; try the app env next.
+      // Ignore; try root `.env.local` next.
     }
   }
 
-  const dotenv = join(root, 'apps', 'web', '.env');
-  if (existsSync(dotenv)) {
-    for (const line of readFileSync(dotenv, 'utf8').split('\n')) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('MAILPIT_URL=')) {
-        return trimmed.slice('MAILPIT_URL='.length).trim();
-      }
-    }
-  }
-
-  return process.env.MAILPIT_URL;
+  return valuesFileEntry(join(root, '.env.local'), 'MAILPIT_URL');
 }
 
 function mailUrlFor(supabaseUrl: string | undefined): string | undefined {

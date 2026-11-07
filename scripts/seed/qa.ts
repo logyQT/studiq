@@ -78,8 +78,8 @@
  * Writes `qa/.tenants/<CASEID>.json` plus the per-attempt files above for the
  * spec/fixture to read.
  *
- * When `SUPABASE_DB_URL` is set (CI, and every checkout after `bun dev:up`
- * renders `apps/web/.env`), auth users are inserted straight into `auth.users` in
+ * When `SUPABASE_DB_URL` is set (CI, or a checkout that lists it in root
+ * `.env.local`), auth users are inserted straight into `auth.users` in
  * one statement — the shape `supabase/seeds/01_users.sql` used — instead of one
  * GoTrue admin call per account. GoTrue hashes each created password with bcrypt
  * (~64 ms of CPU per user); the SQL path hashes the batch's one shared password
@@ -1000,8 +1000,8 @@ export async function runQaSeed(): Promise<void> {
   }
 
   // A direct Postgres URL unlocks SQL account seeding (see `createSqlAccountWriter`).
-  // `dev:up` renders it into `apps/web/.env` and CI exports it, but it stays
-  // optional: without it accounts go through GoTrue's admin API.
+  // Root `.env.local` or CI supplies it, but it stays optional: without it
+  // accounts go through GoTrue's admin API.
   const seedSql = optionalSql();
   const writeAccounts = optionalAccountWriter(seedSql);
 

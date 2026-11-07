@@ -59,47 +59,46 @@ export function countOption(args: string[], name: string, fallback: number): num
 }
 
 /**
- * Env lookup with the app's env file as a fallback.
+ * Env lookup with the root values file as a fallback.
  *
- * Reads `apps/web/.env` (the file `bun dev:up` renders) and nothing else; a
- * missing value is a hard error, because a silent port fallback could seed a
- * different checkout's database.
+ * Reads root `.env.local` (the single hand-edited values file, see `.env.schema`)
+ * and nothing else; a missing value is a hard error, because a silent port
+ * fallback could seed a different checkout's database.
  */
-export function envFromWebFile(root: string, name: string): string {
+export function envFromValuesFile(root: string, name: string): string {
   if (process.env[name]) return process.env[name];
   try {
-    const raw = readFileSync(join(root, 'apps/web/.env'), 'utf8');
+    const raw = readFileSync(join(root, '.env.local'), 'utf8');
     for (const line of raw.split('\n')) {
       const i = line.indexOf('=');
       if (i > 0 && line.slice(0, i).trim() === name) return line.slice(i + 1).trim();
     }
   } catch {
-    /* no .env */
+    /* no .env.local */
   }
   throw new Error(`missing env ${name}`);
 }
 
 /**
- * Load env for the QA seeder from the app's env file, then `qa/env.json`.
+ * Load env for the QA seeder from root `.env.local`, then `qa/env.json`.
  *
- * Candidate order is fixed (`apps/web/.env` first, `.env` second) and the first
- * existing file wins. `qa/env.json` names the shared stack QA workers run
- * against, so it overrides the checkout's own `NEXT_PUBLIC_SUPABASE_URL`.
+ * The process environment wins over both; `.env.local` only fills keys it does
+ * not already set. `qa/env.json` names the shared stack QA workers run against,
+ * so it overrides the checkout's own `NEXT_PUBLIC_SUPABASE_URL`.
  */
 export function loadEnv(root: string): void {
-  for (const candidate of ['apps/web/.env', '.env']) {
-    const path = join(root, candidate);
-    if (!existsSync(path)) continue;
+  const path = join(root, '.env.local');
+  if (existsSync(path)) {
     for (const line of readFileSync(path, 'utf8').split('\n')) {
       const i = line.indexOf('=');
       if (i <= 0 || line.trim().startsWith('#')) continue;
       const name = line.slice(0, i).trim();
       if (!process.env[name]) process.env[name] = line.slice(i + 1).trim();
     }
-    break;
   }
   // QA workers share one app and one Supabase even though each worktree keeps
-  // its own `.env`; `qa/env.json` names the shared stack the spec runs against.
+  // its own `.env.local`; `qa/env.json` names the shared stack the spec runs
+  // against.
   const configPath = join(root, 'qa', 'env.json');
   if (existsSync(configPath)) {
     try {
