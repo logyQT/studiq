@@ -226,5 +226,5 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 - **SM-2 is done** — only the 5B enhancements remain.
 - **LLM provider abstracted** — OpenAI-compatible and Ollama.
 - **Feature flags, plans and limits are DB-backed** — plan changes need no deploy.
-- **External providers sit behind interfaces chosen by config** — production payments always use Stripe (`APP_ENV=production`), while dev/test/QA use the mock contract double in [#662](https://github.com/logyQT/studiq/issues/662); mail follows the same pattern in [#604](https://github.com/logyQT/studiq/issues/604).
+- **External providers sit behind interfaces chosen by config** — production payments always use Stripe (`APP_ENV=production`), while dev/test/QA default to the mock contract double (Stripe is selectable) in [#662](https://github.com/logyQT/studiq/issues/662); mail follows the same pattern in [#604](https://github.com/logyQT/studiq/issues/604).
 - **No hyphens in routes** — all API and frontend routes use `/` segments only.
