@@ -27,6 +27,10 @@ warn()  { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
 fail()  { printf "${RED}✘${NC} %s\n" "$*" >&2; exit 1; }
 header(){ printf "\n${CYAN}▸${NC} %s\n" "$*"; }
 
+# Lock reason recorded on every worktree this script creates. Cleanup requires
+# it, so a path match alone cannot authorize removing someone else's worktree.
+PROVENANCE_REASON="created-by-scripts/spin"
+
 # ── Ensure we're in a git repo ─────────────────────────────────
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail "Not inside a git repository"
 
@@ -51,6 +55,24 @@ worktree_path_for_branch() {
     case "$record" in
       "worktree "*) path="${record#worktree }" ;;
       *) if [ "$record" = "branch refs/heads/$1" ]; then printf '%s\n' "$path"; return 0; fi ;;
+    esac
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
+  return 0
+}
+
+# Print the git lock reason of a worktree, if it is locked.
+worktree_lock_reason() {
+  local want="$1" record path=""
+  while IFS= read -r -d '' record; do
+    case "$record" in
+      "worktree "*) path="${record#worktree }" ;;
+      locked*)
+        if [ "$path" = "$want" ]; then
+          local reason="${record#locked}"
+          printf '%s\n' "${reason# }"
+          return 0
+        fi
+        ;;
     esac
   done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
   return 0
@@ -122,6 +144,19 @@ if $CLEAN; then
   Left untouched. To remove it manually:
     git -C \"$PRIMARY_ROOT\" worktree remove --force \"$REGISTERED_PATH\"
     git -C \"$PRIMARY_ROOT\" branch -D -- \"$BRANCH\""
+    fi
+
+    lock_reason="$(worktree_lock_reason "$REGISTERED_PATH")"
+    if [ "$lock_reason" != "$PROVENANCE_REASON" ]; then
+      fail "Refusing to clean a worktree without scripts/spin provenance: $REGISTERED_PATH
+  Expected lock reason \"$PROVENANCE_REASON\", found \"$lock_reason\".
+  Left untouched. To remove it manually:
+    git -C \"$PRIMARY_ROOT\" worktree remove -f -f \"$REGISTERED_PATH\"
+    git -C \"$PRIMARY_ROOT\" branch -D -- \"$BRANCH\""
+    fi
+
+    if ! unlock_error=$(git -C "$PRIMARY_ROOT" worktree unlock "$REGISTERED_PATH" 2>&1); then
+      fail "Could not unlock worktree $REGISTERED_PATH: $unlock_error"
     fi
 
     if [ -d "$REGISTERED_PATH" ]; then
@@ -196,6 +231,11 @@ mkdir -p "$(dirname "$WORKTREE_PATH")" \
 if ! add_error=$(git -C "$PRIMARY_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH" 2>&1); then
   git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" >/dev/null 2>&1 || true
   fail "Could not create worktree at $WORKTREE_PATH: $add_error (branch '$BRANCH' was deleted)"
+fi
+if ! lock_error=$(git -C "$PRIMARY_ROOT" worktree lock --reason "$PROVENANCE_REASON" "$WORKTREE_PATH" 2>&1); then
+  git -C "$PRIMARY_ROOT" worktree remove "$WORKTREE_PATH" --force >/dev/null 2>&1 || true
+  git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" >/dev/null 2>&1 || true
+  fail "Could not record worktree provenance at $WORKTREE_PATH: $lock_error (worktree and branch '$BRANCH' were rolled back)"
 fi
 info "Worktree ready at $WORKTREE_PATH"
 

@@ -148,16 +148,31 @@ describe('scripts/spin', () => {
     expect(branchExists(repo, 'feat/gone')).toBe(false);
   });
 
-  it('refuses to clean a worktree it did not create', () => {
-    const { parent, repo } = makeRepo('studiq');
-    const foreign = join(parent, 'other-tool-wt');
+  it('refuses to clean a worktree without scripts/spin provenance', () => {
+    const { repo, root } = makeRepo('studiq');
+    const foreign = join(root, 'feat', 'foreign');
 
+    mkdirSync(join(root, 'feat'), { recursive: true });
     git(repo, 'worktree', 'add', '-q', foreign, '-b', 'feat/foreign', 'main');
     writeFileSync(join(foreign, 'local.txt'), 'dirty');
 
-    expect(spinStderr(repo, ['feat/foreign', '--clean'])).toMatch(/did not create/);
+    expect(spinStderr(repo, ['feat/foreign', '--clean'])).toMatch(
+      /without scripts\/spin provenance/,
+    );
     expect(existsSync(join(foreign, 'local.txt'))).toBe(true);
     expect(branchExists(repo, 'feat/foreign')).toBe(true);
+  });
+
+  it('marks created worktrees with its provenance lock', () => {
+    const { repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'feat', 'locked');
+
+    runSpin(repo, ['feat/locked']);
+    const porcelain = git(repo, 'worktree', 'list', '--porcelain', '-z');
+    expect(porcelain).toContain(worktree);
+    expect(porcelain).toContain('locked created-by-scripts/spin');
+
+    runSpin(repo, ['feat/locked', '--clean']);
   });
 
   it('does not leave an orphan branch when worktree add fails', () => {
