@@ -527,14 +527,24 @@ jobs:
             next-ubuntu-24.04-
 
       - name: Build and start the shared app
+        # `--keepAliveTimeout` must stay in sync with `apps/web`'s `start` script:
+        # Node's 5 s default closes idle keep-alive sockets while Playwright's
+        # `APIRequestContext` is still pooling them, which surfaces as an
+        # intermittent `apiRequestContext.*: read ECONNRESET` on the next API
+        # call. Keep it below Node's 60 s `headersTimeout` (Next has no flag for
+        # that one).
         run: |
           bun run build
-          (cd apps/web && bunx next start -p 3010 > /tmp/qa-app.log 2>&1 &)
+          (cd apps/web && bunx next start -p 3010 --keepAliveTimeout 55000 > /tmp/qa-app.log 2>&1 &)
           for _ in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:3010/login && break
             sleep 2
           done
           curl -sf -o /dev/null http://localhost:3010/login
+          # Warm the API runtime and prove the API path (plus its Supabase
+          # round-trip) before Playwright starts: otherwise the first spec's
+          # login is the very first /api/* request the server ever handles.
+          curl -sf -o /dev/null http://localhost:3010/api/v1/health
 
       - name: Save Next build cache
         # One writer, like the bun and browser caches: every building job
@@ -751,14 +761,20 @@ jobs:
       # seeding inside `globalSetup`, so neither was visible as a step.
       - name: Build and start the app
         if: needs.scope.outputs.app == 'true'
+        # Same keep-alive reason as the `qa-suite` job: the e2e fixtures talk to
+        # the app through Playwright's `APIRequestContext`, which pools sockets
+        # for the whole test.
         run: |
           bun run build
-          (cd apps/web && bunx next start -p 3000 > /tmp/e2e-app.log 2>&1 &)
+          (cd apps/web && bunx next start -p 3000 --keepAliveTimeout 55000 > /tmp/e2e-app.log 2>&1 &)
           for _ in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:3000/login && break
             sleep 2
           done
           curl -sf -o /dev/null http://localhost:3000/login
+          # Warm the API runtime before Playwright starts (see the qa-suite
+          # step above).
+          curl -sf -o /dev/null http://localhost:3000/api/v1/health
 
       - name: Seed this leg's tenants
         if: needs.scope.outputs.app == 'true'

@@ -23,10 +23,12 @@ export default defineConfig({
   // fine; local runs finish in single-digit seconds.
   timeout: 90_000,
   expect: { timeout: 10_000 },
-  // Same CI-only retry budget as the e2e runner (`playwright.config.ts`), for the
-  // transport-level noise a 4 vCPU runner produces (`read ECONNRESET`, a dropped
-  // seed connection, a table rendering a beat late). Local stays 0, so the
-  // admission gate — 3/3 independent runs, fresh tenant each — sees every flake.
+  // Same CI-only retry budget as the e2e runner (`playwright.config.ts`), for a
+  // table rendering a beat late or a genuinely slow round-trip. `read
+  // ECONNRESET` used to dominate this bucket; the app now starts with
+  // `--keepAliveTimeout 55000` so Playwright's pooled sockets outlive a test's
+  // UI phases (see AGENTS.md). Local stays 0, so the admission gate — 3/3
+  // independent runs, fresh tenant each — sees every flake.
   retries: process.env.CI ? 2 : 0,
   forbidOnly: !!process.env.CI,
   reporter: [['list']],
