@@ -14,9 +14,10 @@
 #   bun dev:doctor          explain missing / owned / colliding state
 #   bun dev:ports           print a free APP_PORT (Supabase ports are dynamic)
 #   bun dev:prepull         download stack artifacts without starting the stack
+#   bash scripts/dev supa   run `bunx supabase <args…>` with APP_URL exported
 #
 # Contract:
-#   * root `.env` is the only hand-edited env file (copy `.env.example`)
+#   * root `.env.local` is the only hand-edited values file (see `.env.schema`)
 #   * local mode uses the experimental `supabase stack` backend
 #     (`[experimental] stack = true`): the CLI assigns ports and isolates data
 #     by project root + git branch + optional `SUPABASE_STACK` name. Scripts
@@ -25,13 +26,14 @@
 #   * `SUPABASE_RUNTIME=native` opts into the no-Docker runtime; blank keeps
 #     Docker (an existing stack reuses the runtime it was created with).
 #   * `SUPABASE_SHARED=1` reuses an existing stack (shared QA) with explicit
-#     URLs/keys from root `.env`; that path keeps its fixed ports.
+#     URLs/keys from root `.env.local`; that path keeps its fixed ports.
 #   * TEMPORARY WORKAROUND: stack projects cannot serve auth `content_path`
 #     templates, so `supabase/config.toml` keeps the paths empty and non-stack
 #     CI injects them via SUPABASE_AUTH_EMAIL_TEMPLATE_*_CONTENT_PATH. Remove
 #     when stack supports templates (or restore manual provisioning if the
 #     stack backend is deprecated). See the banner in config.toml.
-#   * `apps/web/.env` and `supabase/.env` are generated (mode 600, Git-ignored)
+#   * resolved values are exported to the environment of every Supabase/Next
+#     child process; no per-app env file is written to the checkout
 #   * ownership: the CLI owns stack identity; shared mode is read-only for
 #     destructive commands and `--all` is refused
 #   * nothing is hardcoded to one machine/user/path; Docker is detected, not
@@ -51,10 +53,8 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd -P)
 DEV_DIR="$REPO_ROOT/.dev"
 WEB_LOG="$DEV_DIR/web.log"
 WEB_PID_FILE="$DEV_DIR/web.pid"
-WEB_ENV_FILE="$REPO_ROOT/apps/web/.env"
-SUPABASE_ENV_FILE="$REPO_ROOT/supabase/.env"
 BUILD_FINGERPRINT_FILE="$REPO_ROOT/apps/web/.next/studiq-build.env"
-ROOT_ENV_FILE="$REPO_ROOT/.env"
+ROOT_ENV_FILE="$REPO_ROOT/.env.local"
 REGISTRY_HELPER="$SCRIPT_DIR/dev-registry.ts"
 
 RED='\033[0;31m'
@@ -73,7 +73,8 @@ header() { printf "\n${CYAN}▸${NC} %s\n" "$*"; }
 
 # ── Env handling ─────────────────────────────────────────────────────────────
 # Values are parsed, never `source`d: the file is user data and must not be able
-# to execute shell code. Root `.env` wins over previously loaded fallbacks.
+# to execute shell code. Root `.env.local` wins over the process environment only
+# where the process does not already set the key.
 declare -A ENV=()
 ENV_ORDER=()
 ENV_FILE_MISSING=0
@@ -96,13 +97,13 @@ trim() {
 }
 
 # Keys `scripts/dev` relies on internally (or that would break the shell if a
-# user `.env` exported them) are never loaded from a dotenv file.
+# user `.env.local` exported them) are never loaded from a dotenv file.
 env_key_allowed() {
   case "$1" in
     ENV | ENV_ORDER | PROC_ENV | CONTRACT_KEYS | REGISTRY_FIELDS | SUPA) return 1 ;;
     PATH | HOME | IFS | CDPATH | ENV_FILE_MISSING | BASH_ENV | BASHOPTS | SHELLOPTS) return 1 ;;
     REPO_ROOT | SCRIPT_DIR | DEV_DIR | WEB_LOG | WEB_PID_FILE) return 1 ;;
-    WEB_ENV_FILE | SUPABASE_ENV_FILE | ROOT_ENV_FILE | REGISTRY_DIR | REGISTRY_HELPER) return 1 ;;
+    ROOT_ENV_FILE | REGISTRY_DIR | REGISTRY_HELPER) return 1 ;;
   esac
   return 0
 }
@@ -157,7 +158,7 @@ load_env_file() {
   done
 }
 
-# Contract keys may be supplied by the process environment instead of `.env`
+# Contract keys may be supplied by the process environment instead of `.env.local`
 # (CI jobs, `APP_PORT=3001 bun dev:up`, tests). Capture the real environment
 # before this script assigns anything, then mirror it into ENV first so the
 # file loader's `keep` mode never overwrites an explicit override.
@@ -186,7 +187,7 @@ load_root_env() {
   seed_process_env
   # `keep`: variables already exported in the process environment win over the
   # file (standard dotenv precedence), which makes one-off overrides and CI
-  # explicit. Root `.env` still wins over previously loaded fallbacks.
+  # explicit.
   load_env_file "$ROOT_ENV_FILE" keep
 }
 
@@ -199,8 +200,6 @@ seed_process_env() {
     fi
   done
 }
-
-load_web_env_fallback() { load_env_file "$WEB_ENV_FILE" keep; }
 
 # ── Small portable helpers ───────────────────────────────────────────────────
 canon_path() {
@@ -368,9 +367,9 @@ resolve_contract() {
   SUPABASE_START_EXCLUDE=$(printf '%s' "$SUPABASE_START_EXCLUDE" | tr -d '[:space:]')
 
   # Export the posture before any mode branch: stack mode returns early, and
-  # every mode must render APP_ENV into `apps/web/.env`. The app treats
-  # production as the default; a local checkout is explicitly development
-  # unless the operator sets APP_ENV in root `.env`.
+  # every mode must export APP_ENV to the app. The app treats production as the
+  # default; a local checkout is explicitly development unless the operator sets
+  # APP_ENV in root `.env.local`.
   env_set APP_ENV "${ENV[APP_ENV]:-development}" force
 
   # ── Local mode: experimental `supabase stack` backend ─────────────────────
@@ -440,6 +439,11 @@ resolve_contract() {
     env_set SUPABASE_START_EXCLUDE "$SUPABASE_START_EXCLUDE" force
     env_set SUPABASE_RUNTIME "$SUPABASE_RUNTIME" force
     env_set SUPABASE_EXPERIMENTAL_STACK 1 force
+    # Marks this checkout's own stack for one-shot scripts (load-test seeding,
+    # the temporary stack-mode QA specs); the app itself ignores it. Emitted
+    # here because there is no generated app env file to carry it, and never in
+    # shared mode, where this checkout does not own the stack.
+    env_set STUDIQ_STACK_MODE 1 force
     return 0
   fi
 
@@ -537,7 +541,7 @@ resolve_contract() {
     SUPABASE_STUDIO_URL="http://localhost:$SUPABASE_STUDIO_PORT"
   fi
 
-  # Export the resolved contract (force: derived values win over stale .env).
+  # Export the resolved contract (force: derived values win over stale .env.local).
   env_set SUPABASE_PROJECT_ID "$SUPABASE_PROJECT_ID" force
   env_set APP_PORT "$APP_PORT" force
   env_set APP_URL "$APP_URL" force
@@ -563,9 +567,9 @@ resolve_contract() {
 
 note_missing_env_file() {
   if (( ENV_FILE_MISSING == 1 )); then
-    warn "No root .env at $ROOT_ENV_FILE."
+    warn "No root values file at $ROOT_ENV_FILE."
     warn "  Using APP_PORT=3000 and this branch's stack. For stable parallel work:"
-    warn "    cp .env.example .env   # then set APP_PORT (and SUPABASE_STACK for a named stack)"
+    warn "    create .env.local (see .env.schema) and set APP_PORT (and SUPABASE_STACK for a named stack)"
   fi
 }
 
@@ -1081,13 +1085,18 @@ require_env_key() {
   local key=$1
   env_has "$key" && [[ -n "${ENV[$key]}" ]] && return 0
   if (( SHARED == 1 )); then
-    fail "Missing $key. SUPABASE_SHARED=1 reads the stack's URL/keys from $ROOT_ENV_FILE (copy .env.example and fill them in)."
+    fail "Missing $key. SUPABASE_SHARED=1 reads the stack's URL/keys from $ROOT_ENV_FILE (see .env.schema)."
   fi
-  fail "Missing $key. Add it to $ROOT_ENV_FILE (copy .env.example) or start Supabase with 'bun dev:up'."
+  fail "Missing $key. Add it to $ROOT_ENV_FILE (see .env.schema) or start Supabase with 'bun dev:up'."
 }
 
 # ── Supabase ─────────────────────────────────────────────────────────────────
-supa() { (cd "$REPO_ROOT" && bunx supabase "$@"); }
+# `supabase/config.toml` resolves `APP_URL` through env(). The CLI does not read
+# a values file here, so export it around every invocation; an explicitly set
+# APP_URL (process env or root `.env.local`) still wins.
+export_supa_app_url() { export APP_URL="${APP_URL:-http://localhost:${APP_PORT:-3000}}"; }
+
+supa() { (cd "$REPO_ROOT" && export_supa_app_url && bunx supabase "$@"); }
 
 # Database commands that target an explicit --remote URL must not inherit the
 # stack's SUPABASE_*_PORT overrides: the CLI treats those as a request to use
@@ -1123,7 +1132,7 @@ supabase_start() {
 }
 
 # Stack endpoints/keys as KEY=VALUE lines, straight from the CLI's JSON status.
-# `load_stack_env` parses them with the same safe dotenv reader used for `.env`
+# `load_stack_env` parses them with the same safe dotenv reader used for `.env.local`
 # (no `eval` of CLI output).
 stack_status_rows() {
   local -a args=(status --output-format json)
@@ -1276,86 +1285,6 @@ stop_supabase_scoped() {
   fi
   fail "Failed to stop Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'}; status did not confirm a stopped lifecycle.
   Inspect it with 'bunx supabase stack logs${SUPABASE_STACK:+ --stack $SUPABASE_STACK}' or stop it explicitly."
-}
-
-# ── Env rendering ────────────────────────────────────────────────────────────
-format_env_value() {
-  local value=$1
-  # dotenv-expand runs over every value; `\$` is the one escape it honours in
-  # both bare and quoted values.
-  local escaped=${value//\$/\\\$}
-
-  if [[ "$value" != *[[:space:]\#\"\']* ]]; then
-    printf '%s' "$escaped"
-    return
-  fi
-  if [[ "$value" != *"'"* ]]; then
-    printf "'%s'" "$escaped"
-    return
-  fi
-  printf '"%s"' "$escaped"
-}
-
-render_web_env() {
-  require_env_key NEXT_PUBLIC_SUPABASE_URL
-  require_env_key NEXT_PUBLIC_SUPABASE_ANON_KEY
-  require_env_key SUPABASE_SERVICE_ROLE_KEY
-
-  mkdir -p "$DEV_DIR"
-  mkdir -p "$REPO_ROOT/apps/web"
-  local tmp key
-  tmp=$(mktemp "$DEV_DIR/web.env.XXXXXX")
-  {
-    printf '# Generated by `bun dev:*` — do not edit, do not commit.\n'
-    if (( SHARED == 1 )); then
-      printf '# Source of truth: root .env + this checkout'"'"'s shared contract.\n\n'
-    else
-      printf '# Source of truth: root .env + `supabase status` for this branch'"'"'s stack.\n\n'
-      # Lets one-shot scripts (load-test seeding) verify the stack identity
-      # before destructive work; the app itself ignores it.
-      printf 'STUDIQ_STACK_MODE=1\n'
-    fi
-    for key in "${ENV_ORDER[@]}"; do
-      # Runtime/state bookkeeping never belongs in the app env (in either mode).
-      case "$key" in
-        SUPABASE_RUNTIME | SUPABASE_HOME | SUPABASE_NATIVE_POSTGRES_USER) continue ;;
-      esac
-      # Fixed-port / stack-internal bookkeeping never belongs in the app env.
-      if (( SHARED == 0 )); then
-        case "$key" in
-          SUPABASE_PORT_BASE | SUPABASE_PROJECT_ID | SUPABASE_EXPERIMENTAL_STACK | SUPABASE_STACK | SUPABASE_STACK_* | SUPABASE_START_EXCLUDE | SUPABASE_*_PORT) continue ;;
-        esac
-      fi
-      printf '%s=%s\n' "$key" "$(format_env_value "${ENV[$key]}")"
-    done
-  } >"$tmp"
-  chmod 600 "$tmp"
-  mv "$tmp" "$WEB_ENV_FILE"
-  chmod 600 "$WEB_ENV_FILE"
-}
-
-# `supabase/config.toml` reads `APP_URL` through env(). The CLI loads
-# `supabase/.env` for plain `bunx supabase ...` invocations (process env still
-# wins), so bare CLI commands in this checkout can parse the config.
-render_supabase_env() {
-  mkdir -p "$REPO_ROOT/supabase"
-  local tmp
-  tmp=$(mktemp "$REPO_ROOT/supabase/.env.XXXXXX")
-  {
-    printf '# Generated by `bun dev:*` — do not edit, do not commit.\n'
-    if (( SHARED == 1 )); then
-      printf '# SUPABASE_SHARED=1: this checkout does not own the stack.\n'
-      printf '# Deliberately no local values, so a bare `supabase stop` cannot hit a local stack.\n'
-      printf '# Use `bun dev:*`; destructive commands are refused in shared mode.\n'
-    else
-      printf '# Plain `bunx supabase ...` in this checkout uses the stack backend.\n'
-      printf '# Ports and project identity are assigned by the CLI, not configured here.\n'
-      printf 'APP_URL=%s\n' "$APP_URL"
-    fi
-  } >"$tmp"
-  chmod 600 "$tmp"
-  mv "$tmp" "$SUPABASE_ENV_FILE"
-  chmod 600 "$SUPABASE_ENV_FILE"
 }
 
 # ── Web process management ───────────────────────────────────────────────────
@@ -1710,7 +1639,7 @@ assert_local_app_env() {
     development | test | qa) ;;
     production)
       fail "APP_ENV=production cannot serve this local checkout (it requires a live Stripe key and an https site URL).
-  Set APP_ENV=development (or test/qa) in root .env."
+  Set APP_ENV=development (or test/qa) in root .env.local."
       ;;
     *)
       fail "APP_ENV='$app_env' is not valid; use development, test or qa for a local checkout."
@@ -1748,8 +1677,6 @@ cmd_up() {
     require_env_key NEXT_PUBLIC_SUPABASE_ANON_KEY
     require_env_key SUPABASE_SERVICE_ROLE_KEY
     preflight_ports 0
-    render_supabase_env
-    render_web_env
     claim_project "$mode"
     STARTUP_CLAIM_ACTIVE=1
     STARTUP_INCOMPLETE=1
@@ -1757,12 +1684,10 @@ cmd_up() {
   else
     ensure_supabase_runtime
     preflight_app_port
-    render_supabase_env
     STARTUP_CLAIM_ACTIVE=1
     STARTUP_INCOMPLETE=1
     ensure_supabase_running
-    render_web_env
-    info "Rendered apps/web/.env and supabase/.env"
+    info "Local stack ready — its values are exported to the web process"
   fi
 
   if (( prod == 1 )); then
@@ -1789,20 +1714,17 @@ cmd_build() {
   note_missing_env_file
   guard_qa_stack
   ensure_bun
-  render_supabase_env
 
   if (( SHARED == 1 )); then
-    render_web_env
+    require_env_key SUPABASE_URL
+    require_env_key NEXT_PUBLIC_SUPABASE_ANON_KEY
   else
-    if load_stack_env && supabase_healthy; then
-      : # keys/URLs loaded from the running stack
-    elif [[ -f "$WEB_ENV_FILE" ]]; then
-      load_web_env_fallback
-    else
-      fail "No Supabase stack and no generated apps/web/.env.
-  Start the stack first ('bun dev:up'), or set the keys in $ROOT_ENV_FILE."
+    # The build inlines NEXT_PUBLIC_* values, so it needs this checkout's stack
+    # endpoints/keys in the environment (discovered by `load_stack_env`).
+    if ! load_stack_env || ! supabase_healthy; then
+      fail "No running Supabase stack for this checkout.
+  Run 'bun dev:up' first: the build inlines this stack's NEXT_PUBLIC_* values."
     fi
-    render_web_env
   fi
 
   build_app
@@ -1818,19 +1740,15 @@ cmd_serve() {
   ensure_registry_dir
 
   if (( SHARED == 1 )); then
-    render_web_env
+    require_env_key SUPABASE_URL
+    require_env_key NEXT_PUBLIC_SUPABASE_ANON_KEY
+    require_env_key SUPABASE_SERVICE_ROLE_KEY
   else
-    if load_stack_env && supabase_healthy; then
-      render_web_env
-    elif [[ -f "$WEB_ENV_FILE" ]]; then
-      # Stack stopped: load the generated keys so the build fingerprint (and
-      # any rebuild) uses them, not just the `next start` child. Re-render so
-      # `apps/web/.env` cannot keep a stale APP_ENV/PAYMENT_DRIVER posture.
-      load_web_env_fallback
-      render_web_env
-    else
-      fail "No generated apps/web/.env and no running stack for this checkout.
-  Run 'bun dev:up' (or 'bun dev:build') first."
+    # `next start` needs this checkout's stack values in the environment; the
+    # build fingerprint is checked against them too.
+    if ! load_stack_env || ! supabase_healthy; then
+      fail "No running Supabase stack for this checkout.
+  Run 'bun dev:up' (or 'bun dev:up --prod' to build and serve) first."
     fi
   fi
 
@@ -2000,7 +1918,6 @@ cmd_reset_db() {
   ensure_supabase_runtime
   ensure_registry_dir
 
-  render_supabase_env
   ensure_supabase_running
   header "Resetting Supabase stack${SUPABASE_STACK:+ '$SUPABASE_STACK'} (destructive, this checkout only)"
   if [[ -n "${SUPABASE_STACK:-}" ]]; then
@@ -2019,8 +1936,7 @@ cmd_reset_db() {
 
   STACK_ENV_LOADED=0
   load_stack_env || fail "Could not read 'supabase status --output-format json'."
-  render_web_env
-  info "Database reset complete; apps/web/.env re-rendered."
+  info "Database reset complete."
 }
 
 cmd_logs() {
@@ -2073,9 +1989,9 @@ cmd_doctor() {
     printf '  worktree   %s\n' "$REPO_ROOT"
     printf '  branch     %s\n' "$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || printf 'detached')"
     if (( ENV_FILE_MISSING == 1 )); then
-      printf '  .env       missing — cp .env.example .env (APP_PORT defaults to 3000)\n'
+      printf '  .env.local missing — create it from .env.schema (APP_PORT defaults to 3000)\n'
     else
-      printf '  .env       %s\n' "$ROOT_ENV_FILE"
+      printf '  .env.local %s\n' "$ROOT_ENV_FILE"
     fi
 
     printf '\n▸ Local stack (experimental `supabase stack`)\n'
@@ -2157,9 +2073,9 @@ cmd_doctor() {
   printf '  worktree   %s\n' "$REPO_ROOT"
   printf '  branch     %s\n' "$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || printf 'detached')"
   if (( ENV_FILE_MISSING == 1 )); then
-    printf '  .env       missing — cp .env.example .env (derived defaults are in use)\n'
+    printf '  .env.local missing — create it from .env.schema (derived defaults are in use)\n'
   else
-    printf '  .env       %s\n' "$ROOT_ENV_FILE"
+    printf '  .env.local %s\n' "$ROOT_ENV_FILE"
   fi
   printf '  registry   %s\n' "$REGISTRY_DIR"
 
@@ -2309,6 +2225,17 @@ cmd_prepull() {
   info "Stack artifacts are cached; run 'bun dev:up' to start this branch's stack."
 }
 
+# Passthrough so a direct CLI command in this checkout can parse
+# `supabase/config.toml` (which resolves APP_URL through env()). Values come
+# from the process environment or root `.env.local`; the CLI reads no
+# directory-level values file.
+cmd_supa() {
+  load_root_env
+  cd "$REPO_ROOT" || exit 1
+  export_supa_app_url
+  exec bunx supabase "$@"
+}
+
 usage() {
   cat <<'EOF'
 Usage: bun dev:<command>
@@ -2335,15 +2262,18 @@ Usage: bun dev:<command>
   ports         Print a free APP_PORT (stack ports are assigned dynamically)
                   --suggest (default) | --json
   prepull       Download stack artifacts without starting the stack
+  supa          Run `bunx supabase <args…>` with APP_URL exported
+                  (e.g. `bash scripts/dev supa status --output-format json`)
 
 Parallel checkouts: a separate git worktree/branch gets its own stack and ports
-automatically. Set APP_PORT in this checkout's .env to avoid web-server
+automatically. Set APP_PORT in this checkout's .env.local to avoid web-server
 collisions; SUPABASE_STACK names a second stack in the same checkout. Agents
 must use `bun dev:build` + `bun dev:serve` (or `bun dev:up --prod`), not
 `bun dev` / `next dev`.
 
-Run from anywhere inside the repository. Root .env is optional; copy
-.env.example to .env for stable per-checkout values.
+Run from anywhere inside the repository. Root .env.local (Git-ignored) is the
+only hand-edited values file and is optional for a single checkout; its keys
+are documented in .env.schema.
 EOF
 }
 
@@ -2362,6 +2292,7 @@ main() {
     doctor) cmd_doctor "$@" ;;
     ports) cmd_ports "$@" ;;
     prepull) cmd_prepull "$@" ;;
+    supa) cmd_supa "$@" ;;
     help | --help | -h | '') usage ;;
     *)
       warn "Unknown command: $command"

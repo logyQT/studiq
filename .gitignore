@@ -31,7 +31,6 @@ yarn-error.log*
 .pnpm-debug.log*
 
 .env*
-!.env.example
 !.env.schema
 
 # vercel
@@ -57,7 +56,6 @@ test-results
 # dev artifacts
 .dev/
 .worktrees
-apps/admin/.env.local
 
 # e2e seeder output
 __tests__/e2e/.seed/
