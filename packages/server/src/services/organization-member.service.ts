@@ -6,6 +6,43 @@ import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
+/** One `org_members` row as `listMembers` selects it (with its joins). */
+interface MemberRow {
+  user_id: string;
+  org_role_id: string;
+  org_roles: { name: string; display_name: string | null };
+  profiles: { email: string; full_name: string | null; created_at: string | null };
+}
+
+type GroupMembership = { id: string; name: string; role: string };
+
+/**
+ * One response shape for both `listMembers` branches (educator/group-scoped and
+ * organization-wide), so their fields cannot drift.
+ */
+function toMemberRows(
+  rows: MemberRow[],
+  organizationId: string,
+  groupsByUserId: Record<string, GroupMembership[]>,
+) {
+  return rows.map((row) => {
+    const profile = row.profiles;
+    const orgRole = row.org_roles;
+    const roleName = orgRole.name;
+    return {
+      id: row.user_id,
+      email: profile.email,
+      full_name: profile.full_name,
+      orgRoleName: roleName,
+      orgRoleDisplayName: orgRole.display_name ?? roleName,
+      orgRoleId: row.org_role_id,
+      organization_id: organizationId,
+      created_at: profile.created_at,
+      groups: groupsByUserId[row.user_id] ?? [],
+    };
+  });
+}
+
 export class OrganizationMemberService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
@@ -77,25 +114,7 @@ export class OrganizationMemberService {
         groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
       }
 
-      return success(
-        data.map((m) => {
-          const profile = m.profiles;
-          const orgRole = m.org_roles;
-          const roleName = orgRole.name;
-          const roleDisplayName = orgRole.display_name ?? roleName;
-          return {
-            id: m.user_id,
-            email: profile.email,
-            full_name: profile.full_name,
-            orgRoleName: roleName,
-            orgRoleDisplayName: roleDisplayName,
-            orgRoleId: m.org_role_id,
-            organization_id: ctx.activeOrgId,
-            created_at: profile.created_at,
-            groups: groupsByUserId[m.user_id] ?? [],
-          };
-        }),
-      );
+      return success(toMemberRows(data, ctx.activeOrgId, groupsByUserId));
     }
 
     let query = supabase
@@ -130,25 +149,7 @@ export class OrganizationMemberService {
       groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
     }
 
-    return success(
-      data.map((m) => {
-        const profile = m.profiles;
-        const orgRole = m.org_roles;
-        const roleName = orgRole.name;
-        const roleDisplayName = orgRole.display_name ?? roleName;
-        return {
-          id: m.user_id,
-          email: profile.email,
-          full_name: profile.full_name,
-          orgRoleName: roleName,
-          orgRoleDisplayName: roleDisplayName,
-          orgRoleId: m.org_role_id,
-          organization_id: ctx.activeOrgId,
-          created_at: profile.created_at,
-          groups: groupsByUserId[m.user_id] ?? [],
-        };
-      }),
-    );
+    return success(toMemberRows(data, ctx.activeOrgId, groupsByUserId));
   }
 
   async changeRole(ctx: RequestContext, targetUserId: string, newOrgRoleId: string) {

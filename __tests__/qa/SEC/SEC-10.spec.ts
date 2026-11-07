@@ -58,7 +58,7 @@ const CASE = 'SEC-10';
 const TENANT: QaTenant = loadTenant(CASE);
 
 /** Run suffix the seeder folded into the tenant key (stable tenants have none). */
-const RUN = TENANT.runSuffix ?? 'stable';
+let RUN: string;
 
 const PAYLOAD = {
   img: '<img src=x onerror=alert(1)>',
@@ -70,8 +70,15 @@ const CARD_FRONT = `${PAYLOAD.script}\n\n${PAYLOAD.jsLinkMarkdown}`;
 const GROUP_DESCRIPTION = PAYLOAD.script;
 const DECK_NAME = PAYLOAD.img;
 const BANK_NAME = PAYLOAD.script;
-const QUESTION_CONTENT = `SEC-10 pytanie otwarte ${RUN}`;
-const ASSIGNMENT_TITLE = `SEC-10 kartkówka ${RUN}`;
+let QUESTION_CONTENT: string;
+let ASSIGNMENT_TITLE: string;
+
+// The tenant is per attempt, so values derived from it are resolved per attempt.
+test.beforeEach(() => {
+  RUN = TENANT.runSuffix ?? 'stable';
+  QUESTION_CONTENT = `SEC-10 pytanie otwarte ${RUN}`;
+  ASSIGNMENT_TITLE = `SEC-10 kartkówka ${RUN}`;
+});
 const REPORT_MESSAGE = PAYLOAD.img;
 
 interface ApiEnvelope<T> {

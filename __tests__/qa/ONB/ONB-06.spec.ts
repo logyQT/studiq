@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
+import { qaDbNow } from '@qa/fixtures/qa-db';
+import { resetInviteeState } from '@qa/fixtures/qa-invitees';
 import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -28,10 +30,11 @@ import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
  *   manager, so the inviter authority, role scope and expiry are production-shaped;
  * - the second one is backdated through the service-role client to make the
  *   „wygasły kod” path a real expired row (no API exposes `expires_at`);
- * - `afterAll` returns the tenant to its seeded state (the joiner is removed
- *   through `DELETE /api/v1/organization/members`), so CI's retries and
- *   `--repeat-each` start from an org-less student again instead of a half-joined
- *   one.
+ * - each **attempt** starts from the seeded state: `beforeEach` cancels the
+ *   case's own pending invitations and removes its invitee memberships (through
+ *   the product endpoints) before minting fresh codes, so an attempt after an
+ *   interrupted one sees an org-less student and an unused code instead of a
+ *   half-joined tenant.
  *
  * Nothing global is written — no settings, flags, plans or platform rows — and no
  * other case's tenant is touched.
@@ -50,10 +53,24 @@ function required<T>(value: T | null | undefined, what: string): T {
   return value;
 }
 
-const ORG = required(TENANT.org, 'organization');
-const MANAGER = required(TENANT.users.manager, 'manager (admin)');
-const STUDENT = required(TENANT.users.invitee1, 'invitee1 (the org-less student)');
-const OUTSIDER = required(TENANT.users.invitee2, 'invitee2 (the org-less outsider)');
+// The tenant is per attempt: a retry runs against a pristine tenant whose ids
+// differ, so everything derived from it is resolved at the start of the attempt.
+type QaAccount = { id: string; email: string; password: string };
+let ORG: { id: string; name: string };
+let MANAGER: QaAccount;
+let STUDENT: QaAccount;
+let OUTSIDER: QaAccount;
+
+function resolveCaseAccounts(): void {
+  ORG = required(TENANT.org, 'organization');
+  MANAGER = required(TENANT.users.manager, 'manager (admin)');
+  STUDENT = required(TENANT.users.invitee1, 'invitee1 (the org-less student)');
+  OUTSIDER = required(TENANT.users.invitee2, 'invitee2 (the org-less outsider)');
+}
+
+function caseEmails(): Set<string> {
+  return new Set([STUDENT.email, OUTSIDER.email]);
+}
 
 /** Polish copy quoted by the case; the default suite locale. */
 const COPY = {
@@ -200,9 +217,20 @@ function isAcceptRequest(response: { url(): string; request(): { method(): strin
   return response.url().includes(ACCEPT_PATH) && response.request().method() === 'POST';
 }
 
-test.beforeAll(async () => {
+test.beforeEach(async () => {
+  resolveCaseAccounts();
+  const attemptStarted = await qaDbNow();
   const api = await managerApi();
   try {
+    // `beforeEach`, not `beforeAll`: reset on every attempt, so a retry cannot
+    // inherit a half-finished attempt even if the worker was not restarted.
+    // Cancel this case's leftover invitations and drop the joiner so the org is
+    // back to its seeded roster (and its plan slots are free).
+    await resetInviteeState(api, (email) => caseEmails().has(email), {
+      organizationId: ORG.id,
+      createdBefore: attemptStarted,
+    });
+
     const roleId = await memberRoleId(api);
     invite = await mintInvite(api, STUDENT.email, roleId);
     expiredInvite = await mintInvite(api, OUTSIDER.email, roleId);
@@ -221,15 +249,16 @@ test.beforeAll(async () => {
   if (error) throw new Error(`expire invite ${expiredInvite.id}: ${error.message}`);
 });
 
-test.afterAll(async () => {
-  // CI seeds once and retries against the same tenant, so the tenant has to end
-  // where it started: the joiner is removed through the product's own endpoint
-  // (which also drops its group membership and seat). A no-op run (test failed
-  // before joining) is fine — 404 means there is nothing to restore.
+test.afterEach(async () => {
+  // Leave the tenant where it was seeded: the joiner is removed through the
+  // product's own endpoint (which also drops its group membership and seat). A
+  // no-op run is fine — 404 means there is nothing to restore.
   const api = await managerApi();
   try {
-    const removed = await api.delete(`${MEMBERS_PATH}?userId=${STUDENT.id}`);
-    expect([200, 404], 'restore the org-less student').toContain(removed.status());
+    for (const account of [STUDENT, OUTSIDER]) {
+      const removed = await api.delete(`${MEMBERS_PATH}?userId=${account.id}`);
+      expect([200, 404], `restore ${account.email} to org-less`).toContain(removed.status());
+    }
   } finally {
     await api.dispose();
   }

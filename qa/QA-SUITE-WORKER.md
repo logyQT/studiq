@@ -30,9 +30,10 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 - **HARD RULE — never run the full suite, and always `--workers=1`.**
   - Run **only your own spec file** (`__tests__/qa/<AREA>/<CASEID>.spec.ts`), never the
     `__tests__/qa` directory, never `--project=*`, never `--shard`, never a matrix.
-  - `--workers=1` (and `--repeat-each=1`) is mandatory even on a big machine: the shared
-    VM also runs the app, Supabase and eight browser tiles, and a parallel run OOM-kills
-    the box. One spec, one worker, five sequential runs.
+  - `--workers=1` is mandatory even on a big machine: the shared VM also runs the app,
+    Supabase and eight browser tiles, and a parallel run OOM-kills the box. One spec, one
+    worker, five sequential runs. Keep `--repeat-each=1` for normal runs; the only
+    exception is the deliberate repeat-isolation check below.
   - The same applies to any exploratory run: one spec at a time.
 - Use the **shared app/DB only**. Do not start/stop Supabase or another app.
 - **`apps/admin` is out of scope for QA.** Do not start it, sign requests for it, or
@@ -41,6 +42,21 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 - Use browser tile `{{WORKER}}` only. Do not use the legacy `@dev.local` accounts or
   `pass`; use only this case's seeded tenant users.
 - The test must be self-contained and use deterministic IDs (`tenantKey`/`tenantId`).
+- **The spec must be retry-safe.** CI retries it twice; `scripts/qa-tenant.ts` seeds one
+  tenant per attempt (`qa/.tenants/<CASE>.r<repeat>e<retry>.json`) and `loadTenant()` reads
+  the one for the current attempt. Do not snapshot tenant-derived values at module scope, and
+  seed per-attempt data in `beforeEach` (not `beforeAll`).
+  - Keep attempt-specific setup and values in `beforeEach`; a `beforeAll` re-run by a retry
+    leaves values for `.r<repeat>e1` in the worker for the next test, which reads
+    `.r<repeat>e0`.
+  - `--repeat-each=2` proves **repeat isolation**: each repeat gets its own tenant and re-runs
+    the file hooks. It does not exercise a retry — Playwright only retries after a failure.
+  - To verify **retry isolation**, run a controlled fail-once probe on a freshly seeded run:
+    temporarily fail attempt 0 (guarded by an env flag and `test.info().retry === 0`), run with
+    `--retries=1`, and confirm Playwright reports one flaky test whose retry **passes** (it
+    reads `.r0e1`). For a mutating spec, fail after its representative write so the retry also
+    proves it did not inherit that row. Remove the probe before committing. See "Retry
+    safety" in `qa/QA-SUITE-APPROACH.md`.
 - No `test.skip`, `test.fixme`, `test.soft`, expected-failure wrappers, or manual steps.
 - Do not rely on shared mutable data: global admin settings, feature flags, plans,
   platform stats, singleton rows, or another worker's tenant.
@@ -111,10 +127,10 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
    ```bash
    bunx playwright test __tests__/qa/<AREA>/{{CASE_ID}}.spec.ts --workers=1 --repeat-each=1
    ```
-   Green 5/5 is required. Keep the run IDs/logs as evidence. A spec that only passes
-   with a fresh tenant but breaks when re-run against the same tenant is **not** green:
-   CI seeds once and retries against the same tenant (`--retries=2`), so also run
-   `CI=1 ... --repeat-each=2 --retries=2` on one seeded tenant before you call it done.
+   Green 5/5 is required. Keep the run IDs/logs as evidence. Then check isolation against
+   one seed run: `--repeat-each=2` with `--repeats 2` seeded (repeat isolation), and the
+   fail-once probe with `--retries=1` (retry isolation). A spec that only passes with a fresh
+   tenant but breaks on a repeat or retry is **not** green.
 7. If all 5 are green:
    - branch from `qa-suite` as `qa/{{CASE_ID}}`
    - commit only the spec, the reconciled case, and your own

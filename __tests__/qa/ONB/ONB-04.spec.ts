@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { json } from '#test/helpers/json';
+import { qaDbNow, resetFirstRunTenant } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -41,6 +42,12 @@ test('a manager without an organization creates it from /setup/org and lands on 
 
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  // A retry replays this spec against the same seeded tenant, where the previous
+  // attempt already created the organization. Put the manager back in its
+  // first-run state before logging in, otherwise `/login` skips `/setup/org`.
+  const attemptStarted = await qaDbNow();
+  await resetFirstRunTenant(manager.id, attemptStarted);
 
   // --- Prerequisite: a manager with zero organizations, signed in -----------
   // `/login` forwards the manager to `/manage`; the dashboard gate then replaces

@@ -540,7 +540,7 @@ async function switchUser(
 test.describe('@case:SEC-09 @area:SEC @prio:P1 foreign quiz, attempt and results are refused', () => {
   let fixture: CaseFixture;
 
-  test.beforeAll(async ({ browser, baseURL }) => {
+  test.beforeEach(async ({ browser, baseURL }) => {
     fixture = await prepareTenant(browser, baseURL ?? 'http://localhost:3010');
   });
 

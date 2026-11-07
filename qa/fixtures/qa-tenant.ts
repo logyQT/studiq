@@ -1,10 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test as base, expect, type Page } from '@playwright/test';
 
 /**
  * The tenant a case runs against. `bun scripts/qa-tenant.ts <CASEID>` writes
- * `qa/.tenants/<CASEID>.json`; the spec never creates accounts itself.
+ * `qa/.tenants/<CASEID>.json` (attempt 0) plus one file per Playwright
+ * attempt — `qa/.tenants/<CASEID>.r<repeat>e<retry>.json` — so a retry starts
+ * from a pristine tenant. The spec never creates accounts itself.
  *
  * A `bare` tenant is the first-run state: one staff account, no organization and
  * no group. It is seeded with `--profile bare --role <manager|teacher> --fresh`,
@@ -42,10 +44,68 @@ export type QaRole = keyof NonNullable<QaTenant['users']>;
 
 const HOST = new URL(process.env.QA_APP_URL ?? 'http://localhost:3010').hostname;
 
-export function loadTenant(caseId: string): QaTenant {
-  const path = join(process.cwd(), 'qa', '.tenants', `${caseId}.json`);
+const TENANTS_DIR = join(process.cwd(), 'qa', '.tenants');
+const tenantCache = new Map<string, QaTenant>();
+
+/**
+ * The tenant file for the **current attempt**:
+ * `qa/.tenants/<CASE>.r<repeat>e<retry>.json`.
+ *
+ * CI runs with `retries: 2` and `--repeat-each` replays a test, against the same
+ * seed run. A retry must not inherit the failed attempt's writes, so
+ * `scripts/qa-tenant.ts` seeds one tenant per `(repeat, retry)` and this is how
+ * the spec picks its own. `test.info()` throws outside a test (module scope), in
+ * which case the spec reads the base file (attempt 0).
+ */
+function attemptTenantPath(caseId: string): string | undefined {
+  try {
+    const info = test.info();
+    return join(TENANTS_DIR, `${caseId}.r${info.repeatEachIndex}e${info.retry}.json`);
+  } catch {
+    return undefined;
+  }
+}
+
+function tenantFor(caseId: string): QaTenant {
+  const attemptPath = attemptTenantPath(caseId);
+  // Inside a test the attempt file must exist: falling back to the base tenant
+  // would silently run this attempt against the previous one's data (the exact
+  // retry hazard the per-attempt files exist to remove). Outside a test (module
+  // scope) the base file is the only thing available.
+  if (attemptPath && !existsSync(attemptPath)) {
+    throw new Error(
+      `missing tenant for this attempt: ${attemptPath}. ` +
+        `Seed it with \`bun scripts/qa-tenant.ts ${caseId} --attempts <retries + 1> ` +
+        `--repeats <repeat-each>\`.`,
+    );
+  }
+  const path = attemptPath ?? join(TENANTS_DIR, `${caseId}.json`);
+  const cached = tenantCache.get(path);
+  if (cached) return cached;
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the file is written by scripts/qa-tenant.ts; a malformed tenant should fail loudly in the spec, not silently pass a generic shape
-  return JSON.parse(readFileSync(path, 'utf8')) as QaTenant;
+  const tenant = JSON.parse(readFileSync(path, 'utf8')) as QaTenant;
+  tenantCache.set(path, tenant);
+  return tenant;
+}
+
+/**
+ * The tenant a case runs against.
+ *
+ * Returns a lazy view, not a snapshot: specs that derive ids at module scope get
+ * them resolved when they are **used** (inside the attempt), so a retry reads
+ * its own attempt's tenant instead of the first one's.
+ */
+export function loadTenant(caseId: string): QaTenant {
+  return new Proxy({} as QaTenant, {
+    get: (_target, property) => Reflect.get(tenantFor(caseId), property),
+    has: (_target, property) => Reflect.has(tenantFor(caseId), property),
+    ownKeys: () => Reflect.ownKeys(tenantFor(caseId) as object),
+    getOwnPropertyDescriptor: (_target, property) => ({
+      configurable: true,
+      enumerable: true,
+      value: Reflect.get(tenantFor(caseId), property),
+    }),
+  });
 }
 
 export interface LoginOptions {

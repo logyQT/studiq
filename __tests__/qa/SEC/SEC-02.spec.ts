@@ -75,8 +75,8 @@ interface TwoOrgTenant extends QaTenant {
 
 const TENANT = asJson<TwoOrgTenant>(loadTenant(CASE));
 
-/** Run suffix the seeder folded into the tenant key. */
-const RUN = TENANT.runSuffix ?? 'stable';
+/** Run suffix the seeder folded into the tenant key (per attempt). */
+let RUN: string;
 
 /** Polish copy the case quotes; `NEXT_LOCALE=pl` pins it for the run. */
 const COPY = {
@@ -245,7 +245,8 @@ async function getJson(
 test.describe('@case:SEC-02 @area:SEC @prio:P1 organization isolation', () => {
   let content: SeededContent;
 
-  test.beforeAll(async ({ browser, baseURL }) => {
+  test.beforeEach(async ({ browser, baseURL }) => {
+    RUN = TENANT.runSuffix ?? 'stable';
     expect(
       TENANT.runSuffix,
       'seed with --fresh: every independent run owns a new tenant',

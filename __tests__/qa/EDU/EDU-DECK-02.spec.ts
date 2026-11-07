@@ -90,7 +90,11 @@ const tenant = loadedTenant;
 const DECK_NAME = 'Matematyka – klasa 1';
 
 /** The default group of org A — the group the deck is shared with. */
-const GROUP_NAME = tenant.group!.name;
+let GROUP_NAME: string;
+
+test.beforeEach(() => {
+  GROUP_NAME = tenant.group!.name;
+});
 
 /** Polish copy the case quotes, as rendered by the current product. */
 const COPY = {

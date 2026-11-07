@@ -20,7 +20,7 @@ import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/q
  *
  * The `two-org` seeder makes the **manager** the only member of both
  * organizations, so the second membership this case is about — `teacherA` as an
- * org `teacher` in org B — is a product-API write in `test.beforeAll`: the
+ * org `teacher` in org B — is a product-API write in `test.beforeEach`: the
  * invitation is minted by the org admin (`POST /api/v1/organization/invites`, the
  * same request `/manage/invites` makes) and accepted by the educator
  * (`POST /api/v1/organization/invites/accept`, the `/app/join` request). A
@@ -30,7 +30,7 @@ import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/q
  * tenant's manager creates it through `POST /api/v1/organization` (idempotently,
  * by its run-unique name), and the teacher is never invited to it.
  *
- * Content is created through the product API in `test.beforeAll` as well — two
+ * Content is created through the product API in `test.beforeEach` as well — two
  * question banks and two flashcard decks per org, shared with the org's default
  * group that `teacherA` teaches. Every write is idempotent (looked up by its
  * run-unique name first), so a CI retry or `--repeat-each` against the same
@@ -72,14 +72,23 @@ interface TwoOrgTenant extends QaTenant {
 }
 
 const TENANT = asJson<TwoOrgTenant>(loadTenant(CASE));
-const TEACHER = TENANT.users.teacherA;
 
 type Side = 'A' | 'B';
 
-const ORGS: Record<Side, TenantOrg> = { A: TENANT.orgA, B: TENANT.orgB };
+// The tenant is per attempt: a retry gets a pristine one, so everything derived
+// from it is resolved at the start of the attempt.
+let TEACHER: TenantUser;
+let ORGS: Record<Side, TenantOrg>;
+/** Naming suffix of this attempt's tenant, so its content rows are deterministic. */
+let RUN: string;
+let ORG_NAME_PATTERN: RegExp;
 
-/** Naming suffix of this run's tenant, so a retry reuses the same content rows. */
-const RUN = TENANT.runSuffix ?? TENANT.orgA.id.slice(0, 8);
+function resolveTenant(): void {
+  TEACHER = TENANT.users.teacherA;
+  ORGS = { A: TENANT.orgA, B: TENANT.orgB };
+  RUN = TENANT.runSuffix ?? TENANT.orgA.id.slice(0, 8);
+  ORG_NAME_PATTERN = new RegExp([TENANT.orgA.name, TENANT.orgB.name].map(escapeRegExp).join('|'));
+}
 
 interface OrgContent {
   org: TenantOrg;
@@ -308,7 +317,8 @@ async function ensureOrgContent(page: Page, side: Side): Promise<OrgContent> {
  * and two banks/decks per org. Nothing global is written — no settings, feature
  * flags, plans or platform rows — and no other case's tenant is touched.
  */
-test.beforeAll(async ({ browser }) => {
+test.beforeEach(async ({ browser }) => {
+  resolveTenant();
   const baseURL = appUrl();
   const managerContext = await browser.newContext({ baseURL });
   const teacherContext = await browser.newContext({ baseURL });
@@ -372,11 +382,6 @@ function escapeRegExp(value: string): string {
 }
 
 const sidebar = (page: Page) => page.locator('[data-slot="sidebar"]');
-
-/** The switcher trigger carries the active org's tenant label. */
-const ORG_NAME_PATTERN = new RegExp(
-  [TENANT.orgA.name, TENANT.orgB.name].map(escapeRegExp).join('|'),
-);
 
 /**
  * The sidebar has two dropdown triggers: the org switcher (top) and the account

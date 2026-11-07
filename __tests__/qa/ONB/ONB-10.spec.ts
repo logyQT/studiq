@@ -1,5 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
+import { qaDbNow } from '@qa/fixtures/qa-db';
+import { resetInviteeState } from '@qa/fixtures/qa-invitees';
 import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
 
 /**
@@ -77,6 +79,7 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
     page,
     context,
   }) => {
+    const attemptStarted = await qaDbNow();
     const tenant: QaTenant = loadTenant(CASE);
     expect(tenant.profile, 'ONB-10 needs the org-limit tenant profile').toBe('org-limit');
     if (!tenant.org || !tenant.users.invitee1 || !tenant.users.invitee2) {
@@ -90,6 +93,16 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
 
     // --- Step 1: the manager invites two new addresses (member role) --------
     await loginAs(page, tenant, 'manager', { waitFor: /\/manage/ });
+
+    // A retry replays this spec against the same seeded tenant. The previous
+    // attempt's first invitee already took the last seat, so the "capacity - 1"
+    // precondition below would no longer hold. Drop this case's invitee
+    // memberships and pending invitations first.
+    await resetInviteeState(
+      page.request,
+      (email) => [invitee1.email, invitee2.email].includes(email),
+      { organizationId: org.id, createdBefore: attemptStarted },
+    );
 
     const plan = await getJson<{ key: string; limits: Record<string, number> }>(
       page,

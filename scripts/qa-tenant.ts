@@ -27,8 +27,25 @@
  * CPU, so a pool is what makes it fast. Tenants are disjoint — each owns its
  * accounts, org, groups and memberships — so parallel cases cannot collide.
  *
- * All ids are deterministic from the case id. The spec builds its own
- * decks/banks/quizzes through the API, so nothing shared leaks between cases.
+ * **One tenant per attempt.** CI retries a failed test twice (`--attempts 3`,
+ * the default) and `--repeat-each` replays it (`--repeats`, default 1), so each
+ * `(repeat, retry)` gets its own pristine tenant:
+ *
+ *   qa/.tenants/<CASE>.json            # attempt 0 (the base file)
+ *   qa/.tenants/<CASE>.r0e0.json       # copy of the base file, read by attempt 0
+ *   qa/.tenants/<CASE>.r0e1.json       # repeat 0, retry 1
+ *   qa/.tenants/<CASE>.r0e2.json       # repeat 0, retry 2
+ *
+ * `loadTenant()` reads the attempt file that matches `test.info()`, so a retry
+ * never inherits the failed attempt's writes — no case-specific cleanup needed.
+ * The extra attempts cost ~2x the tenant work (170 cases: 2.5 s -> 7 s locally,
+ * ~2.5 s per CI shard). `--attempts 1 --repeats 1` seeds only the base tenant.
+ * Tenant keys carry the same `-r<repeat>e<retry>` tag, so every derived id and
+ * email stays unique per attempt.
+ *
+ * All ids are deterministic from the case id and the attempt tag. The spec
+ * builds its own decks/banks/quizzes through the API, so nothing shared leaks
+ * between cases.
  *
  * `--plan <key>` puts the tenant's own organization on that plan through the same
  * `apply_org_plan` RPC the billing webhook calls, so a case whose prerequisite is
@@ -58,7 +75,8 @@
  * shared suffix for the whole batch, so a suite run seeds once and every spec in
  * it still gets its own tenant.
  *
- * Writes `qa/.tenants/<CASEID>.json` for the spec/fixture to read.
+ * Writes `qa/.tenants/<CASEID>.json` plus the per-attempt files above for the
+ * spec/fixture to read.
  *
  * When `SUPABASE_DB_URL` is set (CI, and every checkout after `bun dev:up`
  * renders `apps/web/.env`), auth users are inserted straight into `auth.users` in
@@ -67,7 +85,14 @@
  * (~64 ms of CPU per user); the SQL path hashes the batch's one shared password
  * once. Without a direct Postgres URL the script falls back to the Admin API.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { SQL } from 'bun';
 import { tenantKey } from '#test/e2e/fixtures/ids';
@@ -105,7 +130,9 @@ function option(name: string): string | undefined {
 const caseArg = args.find(
   (arg, index) =>
     !arg.startsWith('--') &&
-    !['--profile', '--role', '--run', '--plan', '--areas'].includes(args[index - 1] ?? ''),
+    !['--profile', '--role', '--run', '--plan', '--areas', '--attempts', '--repeats'].includes(
+      args[index - 1] ?? '',
+    ),
 );
 const jsonOnly = args.includes('--json');
 const reset = args.includes('--reset');
@@ -122,6 +149,77 @@ const areas = (option('areas') ?? '')
   .map((area) => area.trim().toUpperCase())
   .filter(Boolean);
 const CASE_ID_PATTERN = /^[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+$/;
+
+/** Positive integer CLI option, with a default and a readable error. */
+function countOption(name: string, fallback: number): number {
+  const raw = option(name);
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    console.error(`--${name} must be a positive integer (got "${raw}")`);
+    process.exit(2);
+  }
+  return value;
+}
+
+/**
+ * Attempt count = Playwright `retries + 1` (CI uses 2 retries) and repeat count
+ * = `--repeat-each`. Every attempt gets its own tenant file, so a retry never
+ * inherits the failed attempt's writes.
+ */
+const attempts = countOption('attempts', 3);
+const repeats = countOption('repeats', 1);
+
+/** `qa/.tenants/<CASE><fileSuffix>.json`; attempt 0 has no suffix (the base file). */
+function tenantFile(caseId: string, fileSuffix: string): string {
+  return join(OUT, `${caseId}${fileSuffix}.json`);
+}
+
+/**
+ * The run suffix (and therefore the tenant key) for one attempt. Attempt 0
+ * keeps the plain run suffix so an already-seeded first attempt keeps its ids;
+ * every other attempt is tagged. The tag order is `r<repeat>e<retry>`, exactly
+ * `loadTenant()` derives from `test.info()`.
+ */
+/** `-r<repeat>e<retry>`, or `''` for attempt 0 (the base tenant). */
+function attemptTag(r: number, e: number): string {
+  return r === 0 && e === 0 ? '' : `-r${r}e${e}`;
+}
+
+function attemptSpec(r: number, e: number): { fileSuffix: string; runTag: string; quiet: boolean } {
+  const tag = attemptTag(r, e);
+  return { fileSuffix: tag ? `.r${r}e${e}` : '', runTag: tag, quiet: tag !== '' };
+}
+
+/** The seed run suffix for one attempt; attempt 0 keeps the plain base suffix. */
+function attemptRunSuffix(base: string, r: number, e: number): string {
+  const tag = attemptTag(r, e);
+  if (!base) return tag ? `r${r}e${e}` : '';
+  return `${base}${tag}`;
+}
+
+/**
+ * Delete a case's per-attempt tenant files from an earlier seed.
+ *
+ * The file set must match the current `--attempts`/`--repeats`: a reseed with fewer
+ * attempts (or `--repeats 1`) must not leave `.r1e0.json` behind, because
+ * `loadTenant()` would happily read that stale tenant.
+ */
+function clearAttemptFiles(caseId: string): void {
+  if (!existsSync(OUT)) return;
+  const prefix = `${caseId}.r`;
+  for (const file of readdirSync(OUT)) {
+    if (file.startsWith(prefix) && /\.r\d+e\d+\.json$/.test(file)) {
+      unlinkSync(join(OUT, file));
+    }
+  }
+}
+
+async function copyBaseToAttempt0(caseId: string): Promise<void> {
+  const base = tenantFile(caseId, '');
+  if (!existsSync(base)) return;
+  writeFileSync(tenantFile(caseId, '.r0e0'), readFileSync(base));
+}
 
 /** One account in a declarative tenant shape. */
 interface MemberSpec {
@@ -155,7 +253,7 @@ interface ProfileShape {
 type ProfileEntry = string | ({ profile?: string; role?: string; plan?: string } & ProfileShape);
 
 const USAGE =
-  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--dedicated] [--json] [--reset]';
+  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--attempts 3] [--repeats 1] [--dedicated] [--json] [--reset]';
 
 /**
  * The CI seed contract: `__tests__/qa/profiles/<CASE>.json` declares the tenant shape
@@ -322,6 +420,8 @@ async function seedTwoOrg(
   runSuffix: string,
   solo?: MemberSpec,
   write?: AccountWriter,
+  fileSuffix = '',
+  quiet = false,
 ) {
   const base = `${tenantKey(`qa/cases/${caseId}.md`, `${caseId}#${runSuffix}`, 'qa-shared')}::${runSuffix}`;
   const keyA = `${base}::org-a`;
@@ -477,8 +577,8 @@ async function seedTwoOrg(
     group: { id: tenantId(keyA, 'group:default'), name: `O1G1-${runSuffix}` },
   };
   mkdirSync(OUT, { recursive: true });
-  writeFileSync(join(OUT, `${caseId}.json`), JSON.stringify(tenant, null, 2));
-  if (!jsonOnly) {
+  writeFileSync(tenantFile(caseId, fileSuffix), JSON.stringify(tenant, null, 2));
+  if (!jsonOnly && !quiet) {
     // One write: `--all` seeds cases concurrently (see the note on the batch).
     console.log(
       [
@@ -486,7 +586,7 @@ async function seedTwoOrg(
         `  org A    ${orgA.id}  ${orgA.name}`,
         `  org B    ${orgB.id}  ${orgB.name}`,
         `  manager  ${manager.email} / ${manager.password}`,
-        `  file     qa/.tenants/${caseId}.json`,
+        `  file     qa/.tenants/${caseId}${fileSuffix}.json`,
       ].join('\n'),
     );
   }
@@ -498,6 +598,10 @@ interface CaseOptions {
   plan?: string;
   /** Shared batch suffix; one batch = one suite run. */
   runSuffix: string;
+  /** `''` for the base file, `.r<repeat>e<retry>` for every other attempt. */
+  fileSuffix?: string;
+  /** Attempts after the first stay out of the log/`--json` output. */
+  quiet?: boolean;
   /** Batch account writer; omitted = one GoTrue admin call per account. */
   write?: AccountWriter;
 }
@@ -557,14 +661,17 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
 
   const orgName = `qa-${caseId.toLowerCase()}-${runSuffix || key.slice(-6)}`;
 
+  const fileSuffix = opts.fileSuffix ?? '';
+
   function writeTenant(tenant: Record<string, unknown>): void {
     mkdirSync(OUT, { recursive: true });
-    writeFileSync(join(OUT, `${caseId}.json`), JSON.stringify(tenant, null, 2));
+    writeFileSync(tenantFile(caseId, fileSuffix), JSON.stringify(tenant, null, 2));
 
     if (jsonOnly) {
-      console.log(JSON.stringify(tenant, null, 2));
+      if (!opts.quiet) console.log(JSON.stringify(tenant, null, 2));
       return;
     }
+    if (opts.quiet) return;
 
     // One write per tenant: `--all` runs cases concurrently, so a block that is
     // logged line by line interleaves with the other tenants seeded beside it.
@@ -587,7 +694,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       const group = tenant.group as { id: string; name: string };
       lines.push(`  group    ${group.id}  ${group.name}`);
     }
-    lines.push(`  file     qa/.tenants/${caseId}.json`);
+    lines.push(`  file     qa/.tenants/${caseId}${fileSuffix}.json`);
     console.log(lines.join('\n'));
   }
 
@@ -610,12 +717,12 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
         if (account.id) await db.auth.admin.deleteUser(account.id).catch(() => undefined);
       }
     }
-    if (!jsonOnly) console.log(`qa tenant ${caseId}: reset (${profile})`);
+    if (!jsonOnly && !opts.quiet) console.log(`qa tenant ${caseId}: reset (${profile})`);
     return;
   }
 
   if (profile === 'two-org') {
-    await seedTwoOrg(db, caseId, runSuffix, shape.solo, opts.write);
+    await seedTwoOrg(db, caseId, runSuffix, shape.solo, opts.write, fileSuffix, opts.quiet);
     return;
   }
 
@@ -949,17 +1056,43 @@ if (all) {
   const failures: string[] = [];
   const started = performance.now();
 
-  await runBounded(cases, concurrencyFromEnv('QA_SEED_CONCURRENCY'), async (id) => {
+  // One tenant per (case, repeat, retry): a retry must not inherit the failed
+  // attempt's writes, so the spec's `loadTenant()` picks the attempt file that
+  // matches `test.info()` (see `qa/fixtures/qa-tenant.ts`).
+  for (const id of cases) clearAttemptFiles(id);
+
+  const tasks = cases.flatMap((id) => {
+    const list: { id: string; repeat: number; retry: number }[] = [];
+    for (let repeat = 0; repeat < repeats; repeat++) {
+      for (let retry = 0; retry < attempts; retry++) list.push({ id, repeat, retry });
+    }
+    return list;
+  });
+
+  await runBounded(tasks, concurrencyFromEnv('QA_SEED_CONCURRENCY'), async (task) => {
+    const { id, repeat, retry } = task;
     if (!CASE_ID_PATTERN.test(id)) {
       failures.push(`${id}: not a case id`);
       return;
     }
+    const spec = attemptSpec(repeat, retry);
     try {
-      await seedCase(db, id, { runSuffix, write: writeAccounts });
+      await seedCase(db, id, {
+        runSuffix: attemptRunSuffix(runSuffix, repeat, retry),
+        fileSuffix: spec.fileSuffix,
+        quiet: spec.quiet,
+        write: writeAccounts,
+      });
     } catch (error) {
-      failures.push(`${id}: ${(error as Error).message}`);
+      failures.push(`${id}${spec.fileSuffix}: ${(error as Error).message}`);
     }
   });
+
+  // Only mirror a successful seed: a failed case must not leave a stale attempt-0
+  // copy beside a half-written base file.
+  if (!reset && failures.length === 0) {
+    await Promise.all(cases.map((id) => copyBaseToAttempt0(id)));
+  }
 
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
   if (failures.length) {
@@ -985,14 +1118,24 @@ if (!caseArg || !CASE_ID_PATTERN.test(caseArg)) {
 // key is the stable `<case>::<case>::qa-shared` identity.
 const runSuffix = option('run') ?? (fresh ? `r${Date.now().toString(36)}${randomTag(4)}` : '');
 
+const caseDb = createSeedDb();
 try {
-  await seedCase(createSeedDb(), caseArg, {
-    profile: option('profile'),
-    role: option('role'),
-    plan: option('plan'),
-    runSuffix,
-    write: writeAccounts,
-  });
+  clearAttemptFiles(caseArg);
+  for (let repeat = 0; repeat < repeats; repeat++) {
+    for (let retry = 0; retry < attempts; retry++) {
+      const spec = attemptSpec(repeat, retry);
+      await seedCase(caseDb, caseArg, {
+        profile: option('profile'),
+        role: option('role'),
+        plan: option('plan'),
+        runSuffix: attemptRunSuffix(runSuffix, repeat, retry),
+        fileSuffix: spec.fileSuffix,
+        quiet: spec.quiet,
+        write: writeAccounts,
+      });
+    }
+  }
+  if (!reset) await copyBaseToAttempt0(caseArg);
 } catch (error) {
   console.error((error as Error).message);
   process.exit(2);

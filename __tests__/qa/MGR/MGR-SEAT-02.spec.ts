@@ -260,6 +260,22 @@ async function poolRow(page: Page, planName: string): Promise<string[]> {
   return (await row.getByRole('cell').allInnerTexts()).map((cell) => cell.trim());
 }
 
+/**
+ * The pool row equals `expected`, retried until it does.
+ *
+ * A one-shot `poolRow()` read right after a mutation races the table's refetch:
+ * the row is briefly absent (the observed flake read `[]`), then comes back with
+ * the new counters. Poll the value instead of reading it once.
+ */
+async function expectPoolRow(
+  page: Page,
+  planName: string,
+  expected: string[],
+  message: string,
+): Promise<void> {
+  await expect.poll(() => poolRow(page, planName), { message }).toEqual(expected);
+}
+
 async function readEnvelope<T>(response: APIResponse): Promise<ApiBody<T>> {
   expect(response.status(), `${response.url()} answered ${response.status()}`).toBeLessThan(400);
   return json<ApiBody<T>>(response);
@@ -274,6 +290,9 @@ async function pickMember(page: Page, dialog: Locator, name: string): Promise<vo
 /** Read the seat-plan options offered for the member picked in the same dialog. */
 async function planOptions(page: Page, dialog: Locator): Promise<string[]> {
   await dialog.getByRole('combobox').nth(1).click();
+  // The listbox is portalled and animated: read it only once it is on screen,
+  // otherwise `allInnerTexts()` can return the previous (empty) state.
+  await expect(page.getByRole('listbox')).toBeVisible();
   const labels = (await page.getByRole('option').allInnerTexts()).map(normalize);
   // Close the listbox without choosing anything.
   await page.keyboard.press('Escape');
@@ -373,12 +392,12 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(page.getByText(COPY.poolsTitle)).toBeVisible();
     for (const entry of POOLS) {
       const entryPlan = plan(entry.planKey);
-      expect(await poolRow(page, entryPlan.name), `pool row for ${entryPlan.name}`).toEqual([
+      await expectPoolRow(
+        page,
         entryPlan.name,
-        String(entry.quantity),
-        '0',
-        String(entry.quantity),
-      ]);
+        [entryPlan.name, String(entry.quantity), '0', String(entry.quantity)],
+        `pool row for ${entryPlan.name}`,
+      );
     }
 
     await page.getByRole('button', { name: COPY.assignSeat }).click();
@@ -387,6 +406,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
 
     // Member picker: every org member is offered with its role; all three are actives.
     await dialog.getByRole('combobox').nth(0).click();
+    await expect(page.getByRole('listbox')).toBeVisible();
     const memberOptions = (await page.getByRole('option').allInnerTexts()).map(normalize);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('listbox')).toHaveCount(0);
@@ -435,25 +455,24 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(dialog).toBeHidden();
 
     // 2b. The pool counters move: assigned +1, available −1; other pools untouched.
-    const aceAfter = await poolRow(page, ace.name);
-    expect(aceAfter).toEqual([
+    await expectPoolRow(
+      page,
       ace.name,
-      String(pools.get('ace')!.total),
-      '1',
-      String(pools.get('ace')!.total - 1),
-    ]);
-    expect(await poolRow(page, creator.name)).toEqual([
+      [ace.name, String(pools.get('ace')!.total), '1', String(pools.get('ace')!.total - 1)],
+      'the assigned pool moves to 1 assigned',
+    );
+    await expectPoolRow(
+      page,
       creator.name,
-      String(pools.get('creator')!.total),
-      '0',
-      String(pools.get('creator')!.total),
-    ]);
-    expect(await poolRow(page, campus.name)).toEqual([
+      [creator.name, String(pools.get('creator')!.total), '0', String(pools.get('creator')!.total)],
+      'the educator pool is untouched',
+    );
+    await expectPoolRow(
+      page,
       campus.name,
-      String(pools.get('campus')!.total),
-      '0',
-      String(pools.get('campus')!.total),
-    ]);
+      [campus.name, String(pools.get('campus')!.total), '0', String(pools.get('campus')!.total)],
+      'the manager pool is untouched',
+    );
 
     // 2c. A new row in „Przydziały” for that member with the seat plan.
     await expect(page.getByText(COPY.assignmentsTitle)).toBeVisible();
@@ -487,6 +506,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await page.getByRole('button', { name: COPY.assignSeat }).click();
     const reopen = page.getByRole('dialog');
     await reopen.getByRole('combobox').nth(0).click();
+    await expect(page.getByRole('listbox')).toBeVisible();
     const remainingMembers = (await page.getByRole('option').allInnerTexts()).map(normalize);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('listbox')).toHaveCount(0);

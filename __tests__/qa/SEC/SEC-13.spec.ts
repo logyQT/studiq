@@ -56,10 +56,16 @@ const CASE = 'SEC-13';
 const TENANT: QaTenant = loadTenant(CASE);
 
 /** Run suffix the seeder folded into the tenant key (stable tenants have none). */
-const RUN = TENANT.runSuffix ?? 'stable';
+let RUN: string;
+let DECK_NAME: string;
+let CARD_FRONT: string;
 
-const DECK_NAME = `SEC-13 deck ${RUN}`;
-const CARD_FRONT = `SEC-13 front ${RUN}`;
+// The tenant is per attempt, so values derived from it are resolved per attempt.
+test.beforeEach(() => {
+  RUN = TENANT.runSuffix ?? 'stable';
+  DECK_NAME = `SEC-13 deck ${RUN}`;
+  CARD_FRONT = `SEC-13 front ${RUN}`;
+});
 
 /**
  * `supabase start` demo anon key — a publishable key, identical on every local

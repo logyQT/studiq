@@ -2,6 +2,8 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { waitForDefaultAuthPath } from '@qa/fixtures/qa-mail';
 import { json } from '#test/helpers/json';
+import { attemptSuffix, resetInviteeState } from '@qa/fixtures/qa-invitees';
+import { qaDbNow } from '@qa/fixtures/qa-db';
 import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
 
 // Temporary variant: only meaningful against a stack-mode Supabase.
@@ -30,9 +32,13 @@ test.skip(process.env.STUDIQ_STACK_MODE !== '1', 'temporary stack-mode variant')
  *
  * Tenant: `bun scripts/qa-tenant.ts ONB-08 --profile content --fresh`
  * (`tenantKey`/`tenantId` from the shared seeder; a fresh run suffix per run).
- * The invitee address is derived from the tenant key, so independent runs never
- * collide in the shared auth schema and no other worker's tenant is touched. No
- * global admin setting, feature flag, plan or singleton row is read or written.
+ * The invitee address is derived from the tenant key **and the attempt**
+ * (`qa+<key hash>-r<retry>e<repeat>`), so independent runs never collide in the
+ * shared auth schema and a CI retry inviting the same tenant creates a new
+ * address instead of a duplicate invitation for the same one. Each attempt also
+ * clears the case's own leftover invitations/members before it starts, so the
+ * org's member capacity holds across retries. No global admin setting, feature
+ * flag, plan or singleton row is read or written.
  */
 
 const CASE = 'ONB-08';
@@ -68,17 +74,33 @@ test.describe('ONB-08 — invitation link registration', () => {
   }) => {
     test.setTimeout(120_000);
 
+    // Everything created before this instant is a previous attempt's leftover.
+    // Read it from the database clock, the one that writes the row timestamps.
+    const attemptStarted = await qaDbNow();
     const tenant = loadTenant(CASE);
     expect(tenant.profile, 'ONB-08 needs the org tenant (content profile)').toBe('content');
     const org = tenant.org;
     expect(org, 'ONB-08 tenant must have an organization').toBeTruthy();
 
-    // Unique per tenant (therefore per run suffix), deterministic from the key.
-    const inviteeEmail = `qa+${shortHash(tenant.key)}@test.local`;
+    // Unique per tenant **and attempt**: CI retries and `--repeat-each` replay
+    // this test against the same seeded tenant, and a fixed address would make
+    // the second invitation a duplicate pending row (a failed strict-mode
+    // locator) and leave a registered account behind for the next attempt.
+    const inviteePrefix = `qa+${shortHash(tenant.key)}`;
+    const inviteeEmail = `${inviteePrefix}-${attemptSuffix(test.info())}@test.local`;
     const inviteeName = 'Anna Testowa';
 
     // --- Prerequisite MGR-INV-01: manager invites a brand-new address ------
     await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+
+    // A retry must start from the seeded state, not from the previous attempt's
+    // leftovers: cancel its pending invitations and free the member slot, so the
+    // org never runs into the plan's capacity on attempt 2/3.
+    await resetInviteeState(page.request, (email) => email.startsWith(inviteePrefix), {
+      organizationId: org!.id,
+      createdBefore: attemptStarted,
+    });
+
     await page.goto('/manage/invites');
     await expect(page.getByRole('heading', { name: 'Zaproszenia', exact: true })).toBeVisible();
 
@@ -119,6 +141,7 @@ test.describe('ONB-08 — invitation link registration', () => {
     await expect(resultRow.getByText('Sukces', { exact: true })).toBeVisible();
     await expect(resultRow.getByRole('button', { name: 'Kopiuj link', exact: true })).toBeVisible();
     const pendingRow = page.locator('table tbody tr').filter({ hasText: inviteeEmail });
+    await expect(pendingRow, 'exactly one pending row for the invitee').toHaveCount(1);
     await expect(pendingRow.getByText('Oczekujące', { exact: true })).toBeVisible();
 
     // --- Step 1: the invite link in a session-less window ------------------

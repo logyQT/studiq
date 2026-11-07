@@ -171,9 +171,13 @@ test.describe('@case:MGR-MEM-01 @area:MGR @prio:P1 members search and role filte
       'the counter is the whole organization, not the filtered rows',
     ).toBeVisible();
 
-    const headers = await page
-      .locator('table thead th')
-      .evaluateAll((cells) => cells.map((cell) => (cell.textContent ?? '').trim()));
+    // The header row renders with the table; a one-shot read before that
+    // returns `[]` (and fails the set comparison below).
+    const headerCells = page.locator('table thead th');
+    await expect(headerCells.first()).toBeVisible();
+    const headers = await headerCells.evaluateAll((cells) =>
+      cells.map((cell) => (cell.textContent ?? '').trim()),
+    );
     expect(new Set(headers), 'the table has exactly the five documented columns').toEqual(
       new Set(HEADERS),
     );
@@ -273,7 +277,11 @@ test.describe('@case:MGR-MEM-01 @area:MGR @prio:P1 members search and role filte
     await expect(memberRows(page), 'a teacher cannot match the Student filter').toHaveCount(0);
 
     // Clearing the search restores the filtered list (the filter did not reset).
+    // Wait for the field itself first: the list refetches on the debounced value,
+    // and a remount mid-clear could otherwise leave the old query in place while
+    // the rows are already being asserted (the observed 0-row flake).
     await search.fill('');
+    await expect(search).toHaveValue('');
     await expect(memberRows(page)).toHaveCount(2);
     await expect(rowFor(page, student.email)).toHaveCount(1);
 

@@ -67,3 +67,77 @@ export function createQaSupabase(): SupabaseClient {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
+/**
+ * "Now" on the database side of the wire, for timestamp cutoffs.
+ *
+ * `org_members.joined_at` and `invitations.created_at` are written by Postgres,
+ * so comparing them with the test runner's `Date.now()` mixes two clocks (and a
+ * skewed runner clock could delete a concurrent attempt's fresh row). The
+ * Supabase REST gateway answers with a `Date` header produced on the same host
+ * as the database in the native/CI stack (and NTP-synced on a hosted project),
+ * so use that as the cutoff basis. A probe that cannot produce a usable header
+ * fails the attempt: falling back to the runner clock would silently reintroduce
+ * the cross-clock deletion this cutoff exists to prevent.
+ */
+export async function qaDbNow(): Promise<Date> {
+  const { url, serviceKey } = sharedStackSettings();
+  try {
+    const res = await fetch(`${url}/rest/v1/`, {
+      headers: { apikey: serviceKey },
+      signal: AbortSignal.timeout(2_000),
+    });
+    const header = res.headers.get('date');
+    if (header) {
+      const parsed = new Date(header);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    throw new Error(`qaDbNow: ${url}/rest/v1/ answered ${res.status} without a usable Date header`);
+  } catch (error) {
+    throw new Error(`qaDbNow: cannot read the database clock: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Return a **first-run** tenant account to "belongs to no organization".
+ *
+ * `ONB-02`/`ONB-04` are one-shot by nature: the run itself creates the
+ * organization. A CI retry (or a `--repeat-each` replay) reuses the seeded
+ * account, so without this the attempt starts on an onboarded account and the
+ * first-run gate is already gone. Deleting the account's organizations cascades
+ * their memberships, groups and content, exactly like `scripts/qa-tenant.ts
+ * --reset` does for a `bare` profile.
+ *
+ * Only used for a case's own seeded account, never another tenant's.
+ *
+ * `createdBefore` must come from `qaDbNow()` (the clock that writes
+ * `joined_at`) and the instant the attempt started. It keeps a parallel
+ * `--repeat-each` attempt's newly created organization from being deleted: only
+ * memberships that already existed when this attempt began are removed. A
+ * membership with an unknown join time is left alone (never guessed as old).
+ */
+export async function resetFirstRunTenant(userId: string, createdBefore?: Date): Promise<void> {
+  const db = createQaSupabase();
+  const { data: memberships, error } = await db
+    .from('org_members')
+    .select('organization_id, joined_at')
+    .eq('user_id', userId);
+  if (error) throw new Error(`resetFirstRunTenant: read memberships: ${error.message}`);
+
+  const cutoff = createdBefore?.getTime();
+  for (const membership of memberships ?? []) {
+    if (cutoff !== undefined) {
+      if (!membership.joined_at) continue;
+      if (new Date(membership.joined_at).getTime() >= cutoff) continue;
+    }
+    const { error: deleteError } = await db
+      .from('organizations')
+      .delete()
+      .eq('id', membership.organization_id);
+    if (deleteError) {
+      throw new Error(
+        `resetFirstRunTenant: delete org ${membership.organization_id}: ${deleteError.message}`,
+      );
+    }
+  }
+}

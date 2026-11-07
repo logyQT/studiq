@@ -365,7 +365,7 @@ async function expectSignedInAs(page: Page, tenant: QaTenant, role: QaRole): Pro
 test.describe('@case:SEC-08 @area:SEC @prio:P1 foreign flashcard and deck writes are refused', () => {
   let fixture: CaseFixture;
 
-  test.beforeAll(async ({ browser, baseURL }) => {
+  test.beforeEach(async ({ browser, baseURL }) => {
     fixture = await prepareTenant(browser, baseURL ?? 'http://localhost:3010');
   });
 
