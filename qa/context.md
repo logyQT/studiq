@@ -50,7 +50,9 @@ Automated tests (unit/integration/e2e) – run them separately with `bun test`.
 
 # 2. Test accounts and data
 
-All seeded accounts use the password `pass`. QA slots run a production build, so there is no "Dev Quick Login" panel; **always sign in with `POST /api/v1/auth/login`** (`{"email","password"}`), never through Dev Quick Login or the form. Mailpit inbox: `http://localhost:$((54321 + 100 * N + 3))` for slot N (env-1 `:54424`, env-2 `:54524`, …). For a local stack-mode project, use the `mail` URL reported by `bun dev:status`.
+All seeded accounts use the password `pass`. QA runs a production build, so there is no "Dev Quick Login" panel; **always sign in with `POST /api/v1/auth/login`** (`{"email","password"}`), never through Dev Quick Login or the form. Signup and recovery mail goes to the inbox the operator provides.
+
+`AUT-13` changes `student1@dev.local`'s password and restores it at the end. Run it serially with cases that use S1, and never leave the account on the new password.
 
 | E-mail                      | Alias | Account type | Organizations / role                                   | Personal plan | Notes                                                               |
 | --------------------------- | ----- | ------------ | ------------------------------------------------------ | ------------- | ------------------------------------------------------------------- |
@@ -123,7 +125,7 @@ Never use real card data or real passwords – payment is simulated and the test
 
 ### Suggested order
 
-1. PUB, AUT → 2) ONB → 3) STU → 4) EDU → 5) MGR → 6) BIL, LIM → 7) SEC → 8) NFR. A full pass makes sense after `bunx supabase db reset`.
+1. PUB, AUT → 2) ONB → 3) STU → 4) EDU → 5) MGR → 6) BIL, LIM → 7) SEC → 8) NFR. A full pass makes sense on freshly seeded data.
 
 # 4. Module index and execution summary
 
@@ -149,7 +151,7 @@ File issues in the team's tracker (for example GitHub Issues in `logyQT/studiq`)
 | ------------------ | -------------------------------------------------------------------------- |
 | Title              | Short: [module] what is broken (e.g. "[MGR] Manager account leads to 404") |
 | Scenario number    | e.g. MGR-ACC-01, step 2                                                    |
-| Reproduction steps | Numbered list from clean data (after `bunx supabase db reset`)             |
+| Reproduction steps | Numbered list from clean, freshly seeded data                              |
 | Expected result    | Copy from the document                                                     |
 | Actual result      | What happened, exact message text                                          |
 | Attachments        | Screenshot, Console output, failed Network request (URL, status, response) |
