@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * LIM-02 — the plan limits are enforced at the plan's real cap.

@@ -1,10 +1,10 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
-import { waitForDefaultAuthPath } from '@qa/fixtures/qa-mail';
+import { waitForDefaultAuthPath } from '#test/helpers/mailpit';
 import { json } from '#test/helpers/json';
-import { attemptSuffix, resetInviteeState } from '@qa/fixtures/qa-invitees';
-import { qaDbNow } from '@qa/fixtures/qa-db';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { attemptSuffix, resetInviteeState } from '#test/qa/fixtures/invitees';
+import { qaDbNow } from '#test/helpers/db-admin';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 // Temporary variant: only meaningful against a stack-mode Supabase.
 test.skip(process.env.STUDIQ_STACK_MODE !== '1', 'temporary stack-mode variant');

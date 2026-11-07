@@ -95,11 +95,12 @@ a suite test; it stays a repro/issue until the fix lands and the test is green.
 - The tenant shape for a case lives in **`__tests__/qa/profiles/<CASE>.json`** — one file per
   case, read by `scripts/qa-tenant.ts`. There is no shared manifest: a case PR adds one
   file, so two case PRs cannot conflict on it.
-- `scripts/qa-tenant.ts` and `qa/fixtures/*` are **manager-owned**. A case PR that adds a
+- `scripts/qa-tenant.ts` and the shared fixtures (`__tests__/qa/fixtures/` plus the
+  DB/mail/stack helpers in `__tests__/helpers/`) are **manager-owned**. A case PR that adds a
   second alias (`#qa/*`), a second login helper, a parallel tenant loader, or a new seeder
   profile is rejected even when its spec is green — fold the capability in yourself, once.
 - Every spec uses `loadTenant(caseId)` and `loginAs(page, tenant, role, { locale, waitFor })`
-  from `@qa/fixtures/qa-tenant`; no spec may read `qa/.tenants/<CASE>.json` directly.
+  from `#test/qa/fixtures/tenant`; no spec may read `qa/.tenants/<CASE>.json` directly.
 - e2e has no registry at all (it seeds in code via `__tests__/helpers/tenant-seed.ts` +
   `scripts/e2e-seed.ts`); keep the QA equivalent as close to that as possible.
 - Gating a tenant-reading spec requires seeding first (`bun scripts/qa-tenant.ts <CASE>

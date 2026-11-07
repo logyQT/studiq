@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * PUB-08 — 404 inside the panels (student / teacher / manager).

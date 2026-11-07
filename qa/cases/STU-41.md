@@ -19,7 +19,7 @@ suite przed każdym niezależnym przebiegiem:
 
 ```bash
 bun scripts/qa-tenant.ts STU-41 --fresh
-bunx playwright test -c qa/playwright.qa.config.ts \
+bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   __tests__/qa/STU/STU-41.spec.ts --workers=1
 ```
 
@@ -40,7 +40,7 @@ bunx playwright test -c qa/playwright.qa.config.ts \
   tylko zniknięcie plakietki. Każde wykonanie najpierw czyści własne nieprzeczytane
   potwierdzenia obu uczestników, a potem tworzy nowe zgłoszenia, więc CI (jeden seed,
   retry na tym samym tenancie) nadal widzi dokładne 2 → 1 → 0.
-- Spec: `__tests__/qa/STU/STU-41.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/STU/STU-41.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test tworzy wyłącznie własny bank, pytania, zgłoszenia i odpowiedzi; nie
   dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy

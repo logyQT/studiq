@@ -37,7 +37,7 @@ case, but never signs in as it:
 - `--fresh` gives every independent run a new run suffix, so each run owns a brand-new
   tenant while every id stays derived from `qa/.tenants/AUT-15.json`; the spec contains no
   hard-coded UUID.
-- Spec: `__tests__/qa/AUT/AUT-15.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/AUT/AUT-15.spec.ts`, project `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`. Profile manifest: `__tests__/qa/profiles/AUT-15.json` (`content`).
 - Isolation: the spec is read-only (`GET` only — the eight routes, `/api/v1/auth/me` and
   the public pages). It writes no global admin setting, feature flag, plan, platform stat

@@ -65,5 +65,5 @@ entity)`. The spec reads the ids through `loadTenant('EDU-ST-01')`.
   organization — `useOrgs` auto-selects the only membership and a teacher without an
   organization is redirected to `/setup` — so the hidden-card state is not reachable through
   the UI.
-- Spec: `__tests__/qa/EDU/EDU-ST-01.spec.ts`, project `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/EDU/EDU-ST-01.spec.ts`, project `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (the document quotes Polish copy).

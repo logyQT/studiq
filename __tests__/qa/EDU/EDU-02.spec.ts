@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
+import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-02 — Menu boczne nauczyciela (/edu).

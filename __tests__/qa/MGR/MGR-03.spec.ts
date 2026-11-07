@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { asJson } from '#test/helpers/json';
-import { loadTenant, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, type QaTenant } from '#test/qa/fixtures/tenant';
 import type { SeedAccount } from '#test/helpers/tenant-seed';
 
 /**

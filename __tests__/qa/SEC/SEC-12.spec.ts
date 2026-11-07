@@ -1,5 +1,5 @@
 import { json } from '#test/helpers/json';
-import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { expect, loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-12 — Endpointy deweloperskie.

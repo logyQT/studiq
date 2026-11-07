@@ -59,7 +59,7 @@ bun scripts/qa-tenant.ts MGR-ROL-02 --fresh
   obrębie przebiegu (bez losowych UUID).
 - Świeży tenant ma wyłącznie role systemowe `admin`, `teacher`, `member` — spec wymaga
   braku ról niestandardowych, więc „Asystent” zawsze powstaje w tym przebiegu.
-- Spec: `__tests__/qa/MGR/MGR-ROL-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-ROL-02.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie role swojej organizacji; nie dotyka flag
   funkcji, katalogu planów (`plan_features` czyta tylko pośrednio przez RPC), ustawień

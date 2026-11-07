@@ -49,7 +49,7 @@ bun scripts/qa-tenant.ts MGR-SET-03 --fresh
   `too-big.png` (6 MB, `image/png`). Wybór plików przez `setInputFiles` omija filtr
   `accept` selektora — tak samo jak przeciągnięcie pliku lub wybór „wszystkie pliki” —
   więc żądanie naprawdę dociera do serwera i jest tam walidowane.
-- Spec: `__tests__/qa/MGR/MGR-SET-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-SET-03.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie logo swojej organizacji; nie dotyka flag
   funkcji, katalogu planów, ustawień admina, statystyk platformy ani wierszy

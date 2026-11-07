@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-05 — Rejestracja na istniejący e-mail.

@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-MEM-05 — managing a member's group membership from the members table.

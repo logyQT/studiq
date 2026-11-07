@@ -53,7 +53,7 @@ bun scripts/qa-tenant.ts LIM-02 --fresh   # profil: __tests__/qa/profiles/LIM-02
   (`POST /api/v1/flashcards/batch/create`), 5 banków (`POST /api/v1/questions/banks`) i 50
   pytań (`POST /api/v1/questions`) — bez organizacji w kontekście obowiązuje plan osobisty
   (#233), więc liczniki dotyczą wyłącznie tego studenta.
-- Spec: `__tests__/qa/LIM/LIM-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/LIM/LIM-02.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (jego talie, fiszki,
   banki i pytania). Katalog planów (`subscription_plans`, `plan_limits`) jest tylko

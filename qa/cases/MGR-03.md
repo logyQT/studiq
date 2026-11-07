@@ -18,7 +18,7 @@ UE Wrocław). Przypadek dostaje własny tenant z managerem, który jest adminem 
 organizacji, i osobnym zestawem danych w każdej z nich:
 
 ```bash
-bunx playwright test -c qa/playwright.qa.config.ts \
+bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   __tests__/qa/MGR/MGR-03.spec.ts --workers=1
 ```
 
@@ -45,7 +45,7 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
 - Druga grupa w każdej organizacji ma managera jako nauczyciela. Lista grup
   (`/api/v1/organization/groups`) pokazuje grupę tylko wtedy, gdy ma członka z rolą
   `teacher`.
-- Spec: `__tests__/qa/MGR/MGR-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-03.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test przełącza wyłącznie organizacje własnego tenanta i czyta listy własnych
   organizacji. Nie dotyka innego tenanta, ustawień admina, flag funkcji, planów,

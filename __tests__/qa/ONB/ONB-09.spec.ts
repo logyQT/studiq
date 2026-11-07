@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { createQaSupabase } from '#test/helpers/db-admin';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * ONB-09 — `/join` without a token, with a bad token, and with a revoked or
@@ -26,7 +26,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * The third step needs an invitation whose 7 days have already passed. The API
  * has no "expire now" action, so the spec backdates the single row it just
  * created (keyed by that row’s token) through the service client in
- * `qa/fixtures/qa-db.ts`; revocation uses the same DELETE the manage/invites page
+ * `__tests__/helpers/db-admin.ts`; revocation uses the same DELETE the manage/invites page
  * calls.
  */
 

@@ -7,7 +7,7 @@ import {
   test,
   type QaRole,
   type QaTenant,
-} from '@qa/fixtures/qa-tenant';
+} from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-11 — Przesyłanie plików: typy i rozmiary.

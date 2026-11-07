@@ -103,11 +103,12 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
    Seed with `bun scripts/qa-tenant.ts {{CASE_ID}} --fresh` (the profile is read from your
    file; `--profile`/`--role` override it). Use a fresh run suffix for each independent run.
 
-   **Do not fork the seeder or the fixture.** `scripts/qa-tenant.ts` and
-   `qa/fixtures/*` are manager-owned:
+   **Do not fork the seeder or the fixture.** `scripts/qa-tenant.ts` and the
+   shared fixtures (`__tests__/qa/fixtures/`, `__tests__/helpers/db-admin.ts`,
+   `__tests__/helpers/mailpit.ts`, `__tests__/helpers/stack-mode.ts`) are manager-owned:
    - never add a second path alias (`#qa/*`), a second login helper (`signIn`), or a
      parallel tenant loader — the API is `loadTenant(caseId)` and
-     `loginAs(page, tenant, role, { locale, waitFor })` from `@qa/fixtures/qa-tenant`;
+     `loginAs(page, tenant, role, { locale, waitFor })` from `#test/qa/fixtures/tenant`;
    - never read `qa/.tenants/<CASE>.json` directly — go through `loadTenant`;
    - if your case needs a tenant shape the seeder cannot express, **say so in the PR/issue
      and stop**; the manager adds the profile. A case PR that rewrites the seeder is

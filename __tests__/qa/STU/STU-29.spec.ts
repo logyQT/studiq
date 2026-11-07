@@ -7,7 +7,7 @@ import {
   test,
   type QaRole,
   type QaTenant,
-} from '@qa/fixtures/qa-tenant';
+} from '#test/qa/fixtures/tenant';
 
 /**
  * STU-29 — a student opens an educator's deck read-only and cannot modify its

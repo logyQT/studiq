@@ -1,6 +1,6 @@
 import type { Browser, Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { createQaSupabase } from '#test/helpers/db-admin';
 import {
   expect,
   loadTenant,
@@ -8,7 +8,7 @@ import {
   test,
   type QaRole,
   type QaTenant,
-} from '@qa/fixtures/qa-tenant';
+} from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-01 — Student nie widzi treści innej grupy.

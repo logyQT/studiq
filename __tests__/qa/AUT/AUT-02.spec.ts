@@ -1,9 +1,9 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { asJson, json } from '#test/helpers/json';
-import { waitForMailLink } from '@qa/fixtures/qa-mail';
-import { loadTenant } from '@qa/fixtures/qa-tenant';
-import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
+import { waitForMailLink } from '#test/helpers/mailpit';
+import { loadTenant } from '#test/qa/fixtures/tenant';
+import { skipBrandedAuthTemplateTest } from '#test/helpers/stack-mode';
 
 /**
  * AUT-02 — Rejestracja nauczyciela i managera.

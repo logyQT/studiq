@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { asJson } from '#test/helpers/json';
-import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-SEAT-03 — zwolnienie miejsca (`/manage/seats`).

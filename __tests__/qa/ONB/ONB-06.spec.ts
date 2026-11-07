@@ -3,9 +3,9 @@ import { join } from 'node:path';
 import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
-import { qaDbNow } from '@qa/fixtures/qa-db';
-import { resetInviteeState } from '@qa/fixtures/qa-invitees';
-import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
+import { qaDbNow } from '#test/helpers/db-admin';
+import { resetInviteeState } from '#test/qa/fixtures/invitees';
+import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
 
 /**
  * ONB-06 — student joins a class with an invite code (/app/join).

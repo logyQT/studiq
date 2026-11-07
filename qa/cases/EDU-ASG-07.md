@@ -77,4 +77,4 @@ fresh suffix into the key, so a re-run never sees a previous run's assignment.
 ## Test
 
 `__tests__/qa/EDU/EDU-ASG-07.spec.ts` — one spec, one worker:
-`bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-ASG-07.spec.ts --workers=1 --repeat-each=1`
+`bunx playwright test -c __tests__/qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-ASG-07.spec.ts --workers=1 --repeat-each=1`

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loadTenant, loginAs, type QaRole } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-53 — the user menu „Powiadomienia” entry opens the notification bell.

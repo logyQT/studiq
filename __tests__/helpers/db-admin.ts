@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * Service-role client for the Supabase the QA suite runs against.
@@ -43,6 +43,7 @@ function sharedStackSettings(): { url: string; serviceKey: string } {
   const envFile = join(root, 'qa/env.json');
   if (existsSync(envFile)) {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- qa/env.json is local test config; only `supabaseUrl` is read
       sharedUrl = (JSON.parse(readFileSync(envFile, 'utf8')) as QaEnvFile).supabaseUrl;
     } catch {
       // A malformed qa/env.json must not hide the real connection error.
@@ -61,7 +62,7 @@ function sharedStackSettings(): { url: string; serviceKey: string } {
   return { url, serviceKey };
 }
 
-export function createQaSupabase(): SupabaseClient {
+export function createQaSupabase() {
   const { url, serviceKey } = sharedStackSettings();
   return createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -94,7 +95,8 @@ export async function qaDbNow(): Promise<Date> {
     }
     throw new Error(`qaDbNow: ${url}/rest/v1/ answered ${res.status} without a usable Date header`);
   } catch (error) {
-    throw new Error(`qaDbNow: cannot read the database clock: ${(error as Error).message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`qaDbNow: cannot read the database clock: ${message}`, { cause: error });
   }
 }
 
@@ -121,7 +123,8 @@ export async function resetFirstRunTenant(userId: string, createdBefore?: Date):
   const { data: memberships, error } = await db
     .from('org_members')
     .select('organization_id, joined_at')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .returns<Array<{ organization_id: string; joined_at: string | null }>>();
   if (error) throw new Error(`resetFirstRunTenant: read memberships: ${error.message}`);
 
   const cutoff = createdBefore?.getTime();

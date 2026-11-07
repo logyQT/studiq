@@ -38,7 +38,7 @@ bun scripts/qa-tenant.ts PUB-08 --fresh
   organizację, a identyfikatory pozostają deterministyczne w jego obrębie.
 - Przypadek nie potrzebuje żadnej treści (fiszki, banki, quizy) ani płatnego
   planu: sprawdza wyłącznie ekrany 404 i układ paneli.
-- Spec: `__tests__/qa/PUB/PUB-08.spec.ts`, projekt `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/PUB/PUB-08.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`, `NEXT_LOCALE=pl` (dokument cytuje polskie
   napisy).
 - Izolacja: test czyta wyłącznie własny graf organizacji tenanta (członkostwo i

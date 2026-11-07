@@ -63,4 +63,4 @@ bun scripts/qa-tenant.ts EDU-GRP-03 --fresh   # profile from __tests__/qa/profil
 - Nothing global is read or written: no admin setting, feature flag, plan, platform stat or
   singleton row; only this tenant's org, users and groups.
 - Spec: `__tests__/qa/EDU/EDU-GRP-03.spec.ts`; run with
-  `bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-GRP-03.spec.ts --workers=1`.
+  `bunx playwright test -c __tests__/qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-GRP-03.spec.ts --workers=1`.

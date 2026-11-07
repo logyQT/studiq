@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-07 — every account type signs in and lands on its own dashboard.

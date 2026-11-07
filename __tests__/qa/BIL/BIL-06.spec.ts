@@ -1,6 +1,6 @@
 import type { APIRequestContext, Browser } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { expect, loadTenant, test, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { expect, loadTenant, test, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * BIL-06 — Płatność bez zalogowania.

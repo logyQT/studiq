@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-REP-01 — reports in the organization (`/manage/reports`).

@@ -18,7 +18,7 @@ dostaje własny tenant z rolą niestandardową, jej użytkownikiem i treściami,
 sprawdzane są zakresy:
 
 ```bash
-bunx playwright test -c qa/playwright.qa.config.ts \
+bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   __tests__/qa/MGR/MGR-ROL-03.spec.ts --workers=1
 ```
 
@@ -40,7 +40,7 @@ więc nie wymaga wcześniejszego uruchomienia `scripts/qa-tenant.ts`.
   - `own` — utworzone przez użytkownika roli,
   - `group` — utworzone przez admina i udostępnione grupie `G1`,
   - `org` — utworzone przez admina w organizacji, bez udostępnienia grupie.
-- Spec: `__tests__/qa/MGR/MGR-ROL-03.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-ROL-03.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test edytuje wyłącznie role i treści własnego tenanta i czyta listy treści
   własnej organizacji. Nie dotyka innego tenanta, ustawień admina, flag funkcji, planów

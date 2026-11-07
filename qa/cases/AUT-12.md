@@ -37,12 +37,12 @@ kształt daje profil `bare`/`student`:
   Admin API. `--fresh` dokłada do klucza sufiks uruchomienia, więc każde niezależne
   uruchomienie ma nowy, deterministyczny adres, który nie koliduje z poprzednim ani
   z innym przypadkiem.
-- Spec: `__tests__/qa/AUT/AUT-12.spec.ts` (projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/AUT/AUT-12.spec.ts` (projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`), czyta tenanta z `qa/.tenants/AUT-12.json` i nie tworzy
   kont sam. `__tests__/qa/profiles/AUT-12.json` deklaruje `{ "profile": "bare", "role": "student" }`,
   więc seed w CI wystarcza bez dodatkowych flag.
 - Skrzynka: Mailpit wspólnego stacka (`http://localhost:54424`); fixture
-  `qa/fixtures/qa-mail.ts` obsługuje też klasyczny Inbucket. Spec czyta wyłącznie
+  `__tests__/helpers/mailpit.ts` obsługuje też klasyczny Inbucket. Spec czyta wyłącznie
   wiadomości zaadresowane na własny adres tenanta.
 - Izolacja: brak sesji, żadnych globalnych ustawień, flag funkcji, planów, statystyk
   platformy ani wierszy singletonowych.

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-19 — Import talii/fiszek z CSV (student, `/app/flashcards`).

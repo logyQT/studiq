@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * LIM-04 — the Launch organization's two hard boundaries: 3 groups and 5 members,

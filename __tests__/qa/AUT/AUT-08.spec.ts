@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
-import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-08 — Logowanie: niepoprawne dane.

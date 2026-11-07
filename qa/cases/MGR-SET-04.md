@@ -49,7 +49,7 @@ bun scripts/qa-tenant.ts MGR-SET-04 --fresh
 - Wybór koloru w teście idzie przez prawdziwy `input[type=color]` (`fill`), a zapis przez
   przycisk „Zapisz” w tym samym wierszu; test czeka na `PUT
 /api/v1/organization/<id>` i sprawdza `brand_color` w `GET /api/v1/organization/<id>`.
-- Spec: `__tests__/qa/MGR/MGR-SET-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-SET-04.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie `brand_color` swojej organizacji; nie dotyka
   flag funkcji, katalogu planów, ustawień admina, statystyk platformy ani wierszy

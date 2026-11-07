@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * BIL-03 — Zakup planu studenta, ścieżka poprawna.

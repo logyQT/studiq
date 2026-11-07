@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { createQaSupabase } from '#test/helpers/db-admin';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-SET-04 — brand colour on /manage/settings: pick a colour, save it, see the

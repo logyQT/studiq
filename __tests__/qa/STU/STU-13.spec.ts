@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-13 — the "Na żywo" page is a coming-soon screen, not a broken feature.

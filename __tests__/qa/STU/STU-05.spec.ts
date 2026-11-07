@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { createQaSupabase } from '#test/helpers/db-admin';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-05 — full flashcard study session (SM-2).
@@ -48,7 +48,7 @@ import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
  * scheduling endpoint has no "make due now" action. The spec ages the
  * `flashcard_review_state` rows it just created — its own tenant's cards, identified
  * by the ids returned from the API — exactly like the invitation-expiry case ages the
- * single row it created (see `qa/fixtures/qa-db.ts`). No other row is touched.
+ * single row it created (see `__tests__/helpers/db-admin.ts`). No other row is touched.
  */
 
 const CASE = 'STU-05';

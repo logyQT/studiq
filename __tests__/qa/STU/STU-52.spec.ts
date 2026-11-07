@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { createQaSupabase } from '#test/helpers/db-admin';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-52 — „Historia płatności” (`/app/account/payments`).

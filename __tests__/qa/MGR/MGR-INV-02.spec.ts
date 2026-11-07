@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-INV-02 — bulk invitations (several rows at once).
