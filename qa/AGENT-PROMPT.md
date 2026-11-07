@@ -26,8 +26,8 @@ The operator provisions the app, database, browser and telemetry before the
 session and tells you where they are. Treat that infrastructure as read-only —
 do not provision, reset, restart or reconfigure it — but create and modify
 scenario data through the app/API as the case requires. Direct database writes
-are allowed only for scenario setup the app/API cannot express, never for
-environment-wide changes:
+are allowed only for scenario setup the app/API cannot express, scoped to the
+case; environment-wide values need the coordination below:
 
 - **Never reset the database, run `supabase start/stop`, `db reset`, restart the
   app, or start a per-case stack.** A broken environment is an `env` problem,
