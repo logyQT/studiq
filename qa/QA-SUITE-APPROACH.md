@@ -36,7 +36,9 @@ This is the same primitive the e2e suite already uses (`__tests__/e2e/fixtures/i
 ## Hard rule — one worker, one spec, never the suite
 
 Nobody in this loop runs the whole suite: not the workers, not the manager. Every run is
-**one spec file with `--workers=1 --repeat-each=1`**. The shared VM also hosts the app,
+**one spec file with `--workers=1 --repeat-each=1`** — the single exception is the deliberate
+repeat-isolation check in [Retry safety](#retry-safety--every-spec-must-survive-its-own-retry),
+which uses `--repeat-each=2` on one spec and still one worker. The shared VM also hosts the app,
 Supabase, the dashboard and eight browser tiles; a parallel or suite-wide run OOM-kills the
 machine and takes the loop down with it. The eight "workers" are sessions that each run one
 spec sequentially — they are not eight parallel Playwright processes.

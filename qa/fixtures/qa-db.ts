@@ -76,8 +76,9 @@ export function createQaSupabase(): SupabaseClient {
  * skewed runner clock could delete a concurrent attempt's fresh row). The
  * Supabase REST gateway answers with a `Date` header produced on the same host
  * as the database in the native/CI stack (and NTP-synced on a hosted project),
- * so use that as the cutoff basis. Falls back to the local clock only when the
- * probe fails, and says so.
+ * so use that as the cutoff basis. A probe that cannot produce a usable header
+ * fails the attempt: falling back to the runner clock would silently reintroduce
+ * the cross-clock deletion this cutoff exists to prevent.
  */
 export async function qaDbNow(): Promise<Date> {
   const { url, serviceKey } = sharedStackSettings();
@@ -91,13 +92,10 @@ export async function qaDbNow(): Promise<Date> {
       const parsed = new Date(header);
       if (!Number.isNaN(parsed.getTime())) return parsed;
     }
-    console.warn('qaDbNow: the REST probe carried no usable Date header; using the runner clock');
+    throw new Error(`qaDbNow: ${url}/rest/v1/ answered ${res.status} without a usable Date header`);
   } catch (error) {
-    console.warn(
-      `qaDbNow: the REST probe failed (${(error as Error).message}); using the runner clock`,
-    );
+    throw new Error(`qaDbNow: cannot read the database clock: ${(error as Error).message}`);
   }
-  return new Date();
 }
 
 /**
