@@ -89,11 +89,15 @@ What a spec still has to do:
 - **Never snapshot the tenant at module scope.** `const TENANT = loadTenant(CASE)` is a lazy
   view, so `TENANT.users.student` resolves per attempt; but a value derived from it
   (`const RUN = TENANT.runSuffix`, `const GROUP_ID = tenantId(TENANT.key, …)`) freezes
-  attempt 0's data. Resolve those inside a `beforeEach` (or through a getter) so a retry
-  reads its own tenant.
-- **Seed per-attempt data through a hook that runs on every attempt** (`beforeEach`), not
-  `beforeAll`: a retry does not re-run `beforeAll`, so a code minted there belongs to the
-  previous attempt's tenant.
+  attempt 0's data. Module load runs outside a test, where `test.info()` is unavailable and
+  `loadTenant` falls back to the base file. Resolve those inside a hook (or through a
+  getter) so a retry reads its own tenant.
+- **Seed per-attempt data in `beforeEach`.** Playwright restarts the worker after a failure
+  and re-runs `beforeAll` there (verified: `test.info().retry` is available inside it), so
+  `beforeAll` is not inherently unsafe — but it is worker-wide and easy to point at the wrong
+  attempt: anything it derives at module scope is already frozen to attempt 0. `beforeEach`
+  keeps the attempt boundary explicit. Use `beforeAll` only when every input it reads is
+  resolved through `test.info()` at hook time.
 - **Assert eventually after a mutation.** A one-shot DOM/API read taken right after a save
   races the refetch (MGR-SEAT-02 read the pool table as `[]` once). For a locator, use a
   retrying web-first matcher (`toHaveCount`, `toHaveText`, …). Reserve `expect.poll` for
@@ -101,7 +105,7 @@ What a spec still has to do:
   Never a fixed sleep.
 - **Test with the real flags** against a freshly seeded run. `--repeat-each=2` proves
   **repeat isolation** (each repeat gets its own tenant and re-runs the file hooks); it does
-  not exercise the retry path, because a retry skips `beforeAll`:
+  not exercise the retry path, because Playwright only retries after a failure:
 
   ```bash
   bun scripts/qa-tenant.ts --all --areas <AREA> --run retry-check --repeats 2

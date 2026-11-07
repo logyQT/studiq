@@ -154,8 +154,9 @@ async function currentOrgs(page: Page): Promise<OrgMembership[]> {
 
 test.beforeEach(resolveCaseAccounts);
 
-// A fresh code per attempt: the tenant is per attempt, and a retry does not
-// re-run `beforeAll` — the invite has to belong to this attempt's tenant.
+// A fresh code per attempt: the invite has to belong to this attempt's tenant,
+// and minting it in the per-attempt hook keeps that true regardless of how the
+// previous attempt ended.
 test.beforeEach(async () => {
   const api = await managerApi();
   try {

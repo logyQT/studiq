@@ -46,7 +46,8 @@ Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
   the one for the current attempt. Do not snapshot tenant-derived values at module scope, and
   seed per-attempt data in `beforeEach` (not `beforeAll`).
   - `--repeat-each=2` proves **repeat isolation**: each repeat gets its own tenant and re-runs
-    the file hooks. It does not prove the retry path, because a retry skips `beforeAll`.
+    the file hooks. It does not exercise a retry — Playwright only retries after a failure
+    (and restarts the worker, re-running `beforeAll`).
   - To verify **retry isolation**, run a controlled fail-once probe: temporarily fail attempt
     0 (`throw` in a `beforeEach` guarded by an env flag plus `test.info().retry === 0`), run
     with `--retries=1`, and confirm Playwright reports one flaky test whose retry **passes**

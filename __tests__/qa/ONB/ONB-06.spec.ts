@@ -32,9 +32,9 @@ import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
  *   „wygasły kod” path a real expired row (no API exposes `expires_at`);
  * - each **attempt** starts from the seeded state: `beforeEach` cancels the
  *   case's own pending invitations and removes its invitee memberships (through
- *   the product endpoints) before minting fresh codes, so a CI retry — which
- *   reuses the tenant but not the hook state of the failed attempt — sees an
- *   org-less student and an unused code instead of a half-joined tenant.
+ *   the product endpoints) before minting fresh codes, so an attempt after an
+ *   interrupted one sees an org-less student and an unused code instead of a
+ *   half-joined tenant.
  *
  * Nothing global is written — no settings, flags, plans or platform rows — and no
  * other case's tenant is touched.
@@ -222,8 +222,8 @@ test.beforeEach(async () => {
   const attemptStarted = await qaDbNow();
   const api = await managerApi();
   try {
-    // `beforeEach`, not `beforeAll`: a retry reuses the tenant but not the
-    // previous attempt's hook state, so the attempt itself has to start clean.
+    // `beforeEach`, not `beforeAll`: reset on every attempt, so a retry cannot
+    // inherit a half-finished attempt even if the worker was not restarted.
     // Cancel this case's leftover invitations and drop the joiner so the org is
     // back to its seeded roster (and its plan slots are free).
     await resetInviteeState(api, (email) => caseEmails().has(email), {
