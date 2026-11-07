@@ -32,7 +32,7 @@ bun scripts/qa-tenant.ts MGR-MEM-02 --fresh
 - Konto managera: `seed-manager-<hash>@dev.local` / `Seed4Test!`,
   `app_metadata.account_type = manager`.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
-  bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
+  bierze URL z `qa/env.json`, a klucz service role z `.env.local`.
 - Spec: `__tests__/qa/MGR/MGR-MEM-02.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie w przypadku są polskie).
 - Izolacja: test czyta i zmienia wyłącznie wiersz `org_members` swojego studenta w swojej

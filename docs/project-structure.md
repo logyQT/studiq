@@ -41,8 +41,7 @@ studiq/
 │   │   ├── public/                   # Static assets (logos, icons, placeholders)
 │   │   ├── next.config.mjs
 │   │   ├── tailwind.config.ts
-│   │   ├── tsconfig.json
-│   │   └── .env                      # Local environment (gitignored)
+│   │   └── tsconfig.json
 │   │
 │   └── admin/                        # Internal admin panel — @studiq/admin (port 4000, no app-level auth; not deployed)
 │       ├── src/
@@ -52,7 +51,6 @@ studiq/
 │       │   ├── server/               # Own controllers/ + services/ + models/
 │       │   ├── lib/                  # Supabase service client, fetch wrapper, query keys
 │       │   └── i18n/                 # Translations
-│       ├── .env.example              # Committed env template
 │       └── README.md                 # Admin panel pages and API routes
 │
 ├── packages/
@@ -87,7 +85,7 @@ studiq/
 │   └── setup.ts                      # Test bootstrap
 │
 ├── docs/                             # Project documentation (onboarding, architecture, api, ai...)
-│   ├── decisions/                    # Architecture Decision Records (0001-0009)
+│   ├── decisions/                    # Architecture Decision Records (0001-0010)
 │   └── plans/                        # Implementation plans (+ archive/)
 │
 ├── scripts/                          # Repo tooling (spin, pr, switch-branch, lint guards)
@@ -99,7 +97,8 @@ studiq/
 ├── knip.ts                           # Dead-code/unused-dependency config (documented policy suppressions)
 ├── tsconfig.json                     # Root TS config with workspace path aliases
 ├── docker-compose.yml
-├── .env.local                        # Optional root env, loaded by Vitest (gitignored)
+├── .env.schema                       # Value-free env inventory (varlock input)
+├── .env.local                        # Optional root values file (gitignored), read by scripts/dev + varlock
 └── README.md
 ```
 

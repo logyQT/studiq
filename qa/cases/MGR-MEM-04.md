@@ -46,7 +46,7 @@ bun scripts/qa-tenant.ts MGR-MEM-04 --fresh
   managera — kontroli zakazu usunięcia samego siebie.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`);
   `scripts/qa-tenant.ts` bierze URL z `qa/env.json`, a klucz service role z
-  `apps/web/.env`.
+  `.env.local`.
 - Spec: `__tests__/qa/MGR/MGR-MEM-04.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test czyta i usuwa wyłącznie wiersze `org_members` swojej organizacji. Nie

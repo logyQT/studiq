@@ -31,7 +31,7 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
   `app_metadata.account_type = manager`, rola `admin` w organizacji.
 - Organizacja: `qa-mgr-02-<suffix>` (plan `launch`), grupa domyślna `G1`.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
-  bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
+  bierze URL z `qa/env.json`, a klucz service role z `.env.local`.
 - Spec: `__tests__/qa/MGR/MGR-02.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (pozycje menu w przypadku są polskie).
 - Izolacja: test czyta wyłącznie menu i strony `/manage/*` swojej organizacji; nie dotyka

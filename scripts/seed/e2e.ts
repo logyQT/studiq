@@ -40,7 +40,7 @@ import {
 import {
   concurrencyFromEnv,
   createSeedDb,
-  envFromWebFile,
+  envFromValuesFile,
   option,
   resetRequested,
   runBounded,
@@ -394,11 +394,11 @@ async function reset(sql: SQL): Promise<void> {
 /** Seed every e2e tenant the selected Playwright projects run. */
 export async function runE2eSeed(): Promise<void> {
   // No port fallbacks on purpose: a checkout can run on any port block, and a
-  // silent fallback would seed another checkout's database. `bun dev:up` renders
-  // apps/web/.env (and loads SUPABASE_DB_URL above), so a local run just works.
-  const DB_URL = envFromWebFile(ROOT, 'SUPABASE_DB_URL');
-  const SUPABASE_URL = envFromWebFile(ROOT, 'NEXT_PUBLIC_SUPABASE_URL');
-  const SERVICE_KEY = envFromWebFile(ROOT, 'SUPABASE_SERVICE_ROLE_KEY');
+  // silent fallback would seed another checkout's database. Root `.env.local`
+  // (or the process environment) must carry the stack's values.
+  const DB_URL = envFromValuesFile(ROOT, 'SUPABASE_DB_URL');
+  const SUPABASE_URL = envFromValuesFile(ROOT, 'NEXT_PUBLIC_SUPABASE_URL');
+  const SERVICE_KEY = envFromValuesFile(ROOT, 'SUPABASE_SERVICE_ROLE_KEY');
 
   const sql = new SQL(DB_URL);
   const db = createSeedDb({ url: SUPABASE_URL, serviceKey: SERVICE_KEY });

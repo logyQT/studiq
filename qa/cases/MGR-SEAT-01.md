@@ -35,7 +35,7 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
   usunięte migracją `20260915000003_drop_plan_seat_allocations.sql`, więc pula odczytana
   po zakupie jest dokładnie tą, którą kupił test.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
-  bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
+  bierze URL z `qa/env.json`, a klucz service role z `.env.local`.
 - Spec: `__tests__/qa/MGR/MGR-SEAT-01.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie w przypadku są polskie).
 - Izolacja: test czyta i zapisuje wyłącznie pule miejsc (`org_seat_pools`) swojej

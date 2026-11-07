@@ -38,8 +38,8 @@ as an action.
    must be that `DB_URL`; `qa/env.json` overrides the environment, so a QA worktree
    silently points at the shared `:54421`.
 2. **Point the app and the seeder at that stack before building.** `NEXT_PUBLIC_*`
-   values are baked in at build time, and the seeder reads `apps/web/.env` (falling back
-   to root `.env`) before `qa/env.json` may override it. Set
+   values are baked in at build time, and the seeder reads root `.env.local`
+   (with `qa/env.json` overriding the URL) as its input. Set
    `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for `apps/web`
    and the seeder, and verify each one resolves to your dedicated stack. If the app
    still targets shared QA, seeded users cannot authenticate against the app's

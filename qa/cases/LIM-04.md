@@ -45,7 +45,7 @@ bun scripts/qa-tenant.ts LIM-04 --fresh
 - Zaproszeni (poza org): `invitee1`, `invitee2` — konta `student` bez wiersza
   `org_members`, `Seed4Test!`; służą do sprawdzenia granicy 5/5 przez `/app/join`.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
-  bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
+  bierze URL z `qa/env.json`, a klucz service role z `.env.local`.
 - Spec: `__tests__/qa/LIM/LIM-04.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu są polskie, jak w dokumencie).
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (org, jego grupy,

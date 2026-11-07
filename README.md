@@ -26,14 +26,16 @@ Quiz, flashcard and course-management platform for students, teachers and univer
 
 ```bash
 bun install            # once per checkout
-cp .env.example .env   # root env — Git-ignored
 bun dev:up             # Supabase (if needed) + web app on :3000
 ```
 
-`bun dev:up` is idempotent: it re-renders `apps/web/.env`, starts Supabase only
-if it isn't running, and starts the web server. It never installs, builds or
-resets anything — those are explicit. Agents should run `bun dev:down` first,
-then `bun dev:up --prod` (`next start`) instead of the dev server.
+`bun dev:up` is idempotent: it reads root `.env.local` (optional; see
+[`.env.schema`](.env.schema)), resolves this checkout's stack contract and
+**exports** the values to the web process — no per-app env file is generated.
+It starts Supabase only if it isn't running, and starts the web server. It never
+installs, builds or resets anything — those are explicit. Agents should run
+`bun dev:down` first, then `bun dev:up --prod` (`next start`) instead of the dev
+server.
 
 ```bash
 bun dev:status     # health, ports, URLs (--json for agents)
@@ -52,7 +54,7 @@ host ports and can collide across worktrees.
 The admin panel and observability stack are opt-in:
 
 ```bash
-bun dev:admin          # apps/admin on :4000 (own apps/admin/.env)
+bun dev:admin          # apps/admin on :4000 (reads root .env.local via varlock)
 docker compose up -d   # Grafana on :3001
 ```
 
@@ -96,18 +98,21 @@ list is in [`AGENTS.md`](AGENTS.md).
 
 ## Environment Variables
 
-The committed template is [`.env.example`](.env.example) at the repo root —
-`cp .env.example .env` once. `bun dev:up` reads that root `.env`, asks
-`supabase status --output-format json` for the local stack's URLs/keys (anon +
-service role) and generates **`apps/web/.env`** (mode `600`, Git-ignored). Never
-edit or commit the generated file: change root `.env` and re-run `bun dev:up`.
-The admin app keeps its own `apps/admin/.env` (committed template:
-[`apps/admin/.env.example`](apps/admin/.env.example)) and is outside the
-`dev:up` contract. It is an internal tool with no app-level auth, and it is
-**not deployed**; see
-[ADR-0009](docs/decisions/0009-admin-is-internal-not-deployed.md) for the ordered
-deployment blockers. Vitest still loads a root `.env` / `.env.local` when
-running tests.
+There is **one values file: root `.env.local`**. It is Git-ignored, optional for
+a single checkout (derived defaults apply), and never committed.
+[`.env.schema`](.env.schema) is the value-free inventory of every key the repo
+reads; it is documentation, not an access control list, and `varlock` uses it to
+validate/inject env for the `bun run …` scripts (`bun run env:check`,
+`bun run env:scan`).
+
+`bun dev:up` reads `.env.local`, asks `supabase status --output-format json` for
+this checkout's stack URLs/keys, and **exports** the resolved values to the
+Supabase and web child processes. No `apps/web/.env`, `apps/admin/.env` or
+`supabase/.env` is generated or read. Change `.env.local` (or use
+`bash scripts/dev supa …` for a direct CLI command) — never a generated file.
+The admin app is an internal tool with no app-level auth, and it is **not
+deployed**; see [ADR-0009](docs/decisions/0009-admin-is-internal-not-deployed.md)
+for the ordered deployment blockers.
 
 ```env
 # ── Supabase (shared/remote mode only — local stack discovers these) ──
@@ -143,7 +148,7 @@ LLM_REASONING_EFFORT=                            # low | medium | high (unset = 
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318  # OTLP collector (SDK default shown)
 # OTEL_SDK_DISABLED=true
 
-# ── Admin app only (apps/admin/.env) ──────────────────────────────────
+# ── Admin app only (same root .env.local) ─────────────────────────────
 # No app-level auth and not deployed: do not deploy until ADR-0009 blockers clear.
 
 # ── Local Supabase Studio only (optional) ─────────────────────────────

@@ -351,8 +351,9 @@ jobs:
         env:
           APP_URL: http://localhost:3000
         run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
-      - name: Write root .env
-        # vitest's loadEnv() reads the repo root; integration imports the route
+      - name: Export env
+        # vitest's loadEnv() merges the process environment with any `.env`
+        # files, so exporting here is enough. Integration imports the route
         # handlers directly, so no app server is needed.
         run: |
           status=$(bunx supabase stack status --output-format json)
@@ -370,7 +371,7 @@ jobs:
             echo "APP_ENV=test"
             echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
-          } > .env
+          } >> "$GITHUB_ENV"
       - name: Integration tests
         # Serial: several suites write the same seeded orgs, and `fileParallelism`
         # made seats/members flake. 525 tests in ~55 s is fine.
@@ -424,11 +425,11 @@ jobs:
           APP_URL: http://localhost:3010
         run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
 
-      - name: Write env files
-        # The app reads apps/web/.env, but the QA seeder and the specs that seed
-        # their own tenant are plain Bun processes: without these vars in the job
-        # environment they fall back to the shared-VM localhost:54421 and fail
-        # with `fetch failed`. Export them to $GITHUB_ENV as well.
+      - name: Export env
+        # The app build reads the process environment (varlock injects it), and
+        # the QA seeder and the specs that seed their own tenant are plain Bun
+        # processes: without these vars in the job environment they fall back to
+        # the shared-VM localhost:54421 and fail with `fetch failed`.
         run: |
           status=$(bunx supabase stack status --output-format json)
           API_URL=$(jq -r .env.API_URL <<<"$status")
@@ -450,16 +451,6 @@ jobs:
             echo "APP_ENV=qa"
             echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
-          } > apps/web/.env
-          {
-            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
-            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
-            echo "MAILPIT_URL=$MAILPIT_URL"
-            echo "SUPABASE_DB_URL=$DB_URL"
-            echo "OTEL_SDK_DISABLED=true"
-            echo "APP_ENV=qa"
-            echo "PAYMENT_DRIVER=mock"
             echo "QA_APP_URL=http://localhost:3010"
           } >> "$GITHUB_ENV"
 
@@ -682,9 +673,11 @@ jobs:
         # suites need it.
         run: bunx supabase stack start --runtime native --eager -x studio,functions,analytics,realtime,pooler
 
-      - name: Write env files
+      - name: Export env
         if: needs.scope.outputs.app == 'true'
         # Local Supabase keys are deterministic, so nothing here is a secret.
+        # The build and the seeder read the process environment (varlock
+        # injects it); no per-app env file is written.
         run: |
           status=$(bunx supabase stack status --output-format json)
           API_URL=$(jq -r .env.API_URL <<<"$status")
@@ -702,7 +695,7 @@ jobs:
             echo "APP_ENV=qa"
             echo "PAYMENT_DRIVER=mock"
             echo "OTEL_SDK_DISABLED=true"
-          } > apps/web/.env
+          } >> "$GITHUB_ENV"
 
       # Same reason as the bun cache: Playwright never deletes previous browser
       # revisions, so a main run restores only its exact key and saves a set

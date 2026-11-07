@@ -44,7 +44,7 @@ bun scripts/qa-tenant.ts ONB-02 --profile bare --fresh
 - Konto: `seed-educator-<hash>@dev.local` / `Seed4Test!`, `app_metadata.account_type = educator`,
   **zero** wierszy `org_members`.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
-  bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
+  bierze URL z `qa/env.json`, a klucz service role z `.env.local`.
 - Spec: `__tests__/qa/ONB/ONB-02.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: po utworzeniu klasy nauczyciel należy tylko do swojej nowej organizacji; test nie
