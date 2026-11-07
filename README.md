@@ -32,8 +32,8 @@ bun dev:up             # Supabase (if needed) + web app on :3000
 
 `bun dev:up` is idempotent: it re-renders `apps/web/.env`, starts Supabase only
 if it isn't running, and starts the web server. It never installs, builds or
-resets anything — those are explicit. Agents should use `bun dev:up --prod`
-(`next start`) rather than the dev server.
+resets anything — those are explicit. Agents should run `bun dev:down` first,
+then `bun dev:up --prod` (`next start`) instead of the dev server.
 
 ```bash
 bun dev:status     # health, ports, URLs (--json for agents)
@@ -44,8 +44,10 @@ bun dev:logs       # follow the web log; show recent Supabase logs
 ```
 
 Each git worktree and branch gets its own Supabase stack with CLI-assigned
-ports, so only `APP_PORT` (default `3000`) can collide — `bun dev:ports` suggests
-a free one, and `bun dev:doctor` explains anything it doesn't like.
+ports. For `dev:up` itself, only `APP_PORT` (default `3000`) can collide —
+`bun dev:ports` suggests a free one, and `bun dev:doctor` explains anything it
+doesn't like. The optional admin panel (`:4000`) and Grafana (`:3001`) use fixed
+host ports and can collide across worktrees.
 
 The admin panel and observability stack are opt-in:
 
