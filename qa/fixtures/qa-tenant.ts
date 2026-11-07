@@ -68,8 +68,17 @@ function attemptTenantPath(caseId: string): string | undefined {
 
 function tenantFor(caseId: string): QaTenant {
   const attemptPath = attemptTenantPath(caseId);
-  const path =
-    attemptPath && existsSync(attemptPath) ? attemptPath : join(TENANTS_DIR, `${caseId}.json`);
+  // Inside a test the attempt file must exist: falling back to the base tenant
+  // would silently run this attempt against the previous one's data (the exact
+  // retry hazard the per-attempt files exist to remove). Outside a test (module
+  // scope) the base file is the only thing available.
+  if (attemptPath && !existsSync(attemptPath)) {
+    throw new Error(
+      `missing tenant for this attempt: ${attemptPath}. ` +
+        `Seed it with \`bun scripts/qa-tenant.ts ${caseId} --attempts <retries + 1>\`.`,
+    );
+  }
+  const path = attemptPath ?? join(TENANTS_DIR, `${caseId}.json`);
   const cached = tenantCache.get(path);
   if (cached) return cached;
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the file is written by scripts/qa-tenant.ts; a malformed tenant should fail loudly in the spec, not silently pass a generic shape

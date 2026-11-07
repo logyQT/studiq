@@ -174,15 +174,21 @@ function tenantFile(caseId: string, fileSuffix: string): string {
  * every other attempt is tagged. The tag order is `r<repeat>e<retry>`, exactly
  * `loadTenant()` derives from `test.info()`.
  */
+/** `-r<repeat>e<retry>`, or `''` for attempt 0 (the base tenant). */
+function attemptTag(r: number, e: number): string {
+  return r === 0 && e === 0 ? '' : `-r${r}e${e}`;
+}
+
 function attemptSpec(r: number, e: number): { fileSuffix: string; runTag: string; quiet: boolean } {
-  if (r === 0 && e === 0) return { fileSuffix: '', runTag: '', quiet: false };
-  return { fileSuffix: `.r${r}e${e}`, runTag: `-r${r}e${e}`, quiet: true };
+  const tag = attemptTag(r, e);
+  return { fileSuffix: tag ? `.r${r}e${e}` : '', runTag: tag, quiet: tag !== '' };
 }
 
 /** The seed run suffix for one attempt; attempt 0 keeps the plain base suffix. */
 function attemptRunSuffix(base: string, r: number, e: number): string {
-  if (!base) return r === 0 && e === 0 ? '' : `r${r}e${e}`;
-  return `${base}${attemptSpec(r, e).runTag}`;
+  const tag = attemptTag(r, e);
+  if (!base) return tag ? `r${r}e${e}` : '';
+  return `${base}${tag}`;
 }
 
 async function copyBaseToAttempt0(caseId: string): Promise<void> {
@@ -1056,7 +1062,9 @@ if (all) {
     }
   });
 
-  if (!reset) {
+  // Only mirror a successful seed: a failed case must not leave a stale attempt-0
+  // copy beside a half-written base file.
+  if (!reset && failures.length === 0) {
     await Promise.all(cases.map((id) => copyBaseToAttempt0(id)));
   }
 

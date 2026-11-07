@@ -81,7 +81,9 @@ The harness handles that structurally: `scripts/qa-tenant.ts` seeds **one tenant
 attempt** — `qa/.tenants/<CASE>.r<repeat>e<retry>.json` (plus the base
 `qa/.tenants/<CASE>.json` for attempt 0) — and `loadTenant()` reads the file matching
 `test.info()`. A fresh tenant costs ~15 ms per case, so a shard pays ~2.5 s for three
-attempts. `--attempts 1 --repeats 1` opts out (only the base tenant).
+attempts. `--attempts 1 --repeats 1` opts out: seeding still writes the base
+`<CASE>.json` and its `<CASE>.r0e0.json` copy, and any later attempt/repeat fails loudly
+instead of silently reusing attempt 0's data.
 
 What a spec still has to do:
 
@@ -94,8 +96,10 @@ What a spec still has to do:
   `beforeAll`: a retry does not re-run `beforeAll`, so a code minted there belongs to the
   previous attempt's tenant.
 - **Assert eventually after a mutation.** A one-shot DOM/API read taken right after a save
-  races the refetch (MGR-SEAT-02 read the pool table as `[]` once); use a web-first assertion
-  (`toHaveCount`/`toHaveText` already retry) or `expect.poll`. Never a fixed sleep.
+  races the refetch (MGR-SEAT-02 read the pool table as `[]` once). For a locator, use a
+  retrying web-first matcher (`toHaveCount`, `toHaveText`, …). Reserve `expect.poll` for
+  values that are not a single locator assertion (e.g. the text array of a table row).
+  Never a fixed sleep.
 - **Test with the real flags** against a freshly seeded run:
 
   ```bash

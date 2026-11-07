@@ -101,7 +101,7 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
     await resetInviteeState(
       page.request,
       (email) => [invitee1.email, invitee2.email].includes(email),
-      { createdBefore: attemptStarted },
+      { organizationId: org.id, createdBefore: attemptStarted },
     );
 
     const plan = await getJson<{ key: string; limits: Record<string, number> }>(

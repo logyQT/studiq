@@ -97,6 +97,7 @@ test.describe('ONB-08 — invitation link registration', () => {
     // leftovers: cancel its pending invitations and free the member slot, so the
     // org never runs into the plan's capacity on attempt 2/3.
     await resetInviteeState(page.request, (email) => email.startsWith(inviteePrefix), {
+      organizationId: org!.id,
       createdBefore: attemptStarted,
     });
 

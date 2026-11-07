@@ -91,8 +91,11 @@ export async function qaDbNow(): Promise<Date> {
       const parsed = new Date(header);
       if (!Number.isNaN(parsed.getTime())) return parsed;
     }
-  } catch {
-    // Fall through: a cutoff from the runner clock is still better than none.
+    console.warn('qaDbNow: the REST probe carried no usable Date header; using the runner clock');
+  } catch (error) {
+    console.warn(
+      `qaDbNow: the REST probe failed (${(error as Error).message}); using the runner clock`,
+    );
   }
   return new Date();
 }
@@ -125,9 +128,9 @@ export async function resetFirstRunTenant(userId: string, createdBefore?: Date):
 
   const cutoff = createdBefore?.getTime();
   for (const membership of memberships ?? []) {
-    if (createdBefore) {
+    if (cutoff !== undefined) {
       if (!membership.joined_at) continue;
-      if (new Date(membership.joined_at).getTime() >= cutoff!) continue;
+      if (new Date(membership.joined_at).getTime() >= cutoff) continue;
     }
     const { error: deleteError } = await db
       .from('organizations')
