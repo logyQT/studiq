@@ -25,13 +25,21 @@ findings; do not fix.
 The operator provisions the app, database, browser and telemetry before the
 session and tells you where they are. Treat that infrastructure as read-only —
 do not provision, reset, restart or reconfigure it — but create and modify
-scenario data through the app/API as the case requires:
+scenario data through the app/API as the case requires. Direct database writes
+are allowed only for scenario setup the app/API cannot express, never for
+environment-wide changes:
 
 - **Never reset the database, run `supabase start/stop`, `db reset`, restart the
   app, or start a per-case stack.** A broken environment is an `env` problem,
   never a `bug`.
 - Create your own data through the app/API; never edit or delete another
   worker's org, users, groups or content.
+- **Coordinate environment-wide changes.** When a case requires a global value
+  to change (for example the `plan_limits` values in LIM-02), treat it as
+  environment-wide: coordinate with the operator first and run the case
+  serially; record every prior value, change only the minimum the case needs,
+  and restore the recorded values after the case. Never reset the database to
+  undo a change.
 - For manual QA, do not create branches. For a QA-suite case, branch from
   `qa-suite` as `qa/<CASEID>` and open a PR into `qa-suite`; never commit to
   `qa-suite` directly.
