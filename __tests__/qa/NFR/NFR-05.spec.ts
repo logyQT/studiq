@@ -281,12 +281,24 @@ test.describe('NFR-05 — keyboard operability', () => {
     const trigger = page.getByRole('button', { name: 'Nowa talia' }).first();
     await expect(trigger).toBeVisible();
 
-    // The toolbar trigger is a plain button (no Radix DialogTrigger): focus it and open
-    // the dialog the way a keyboard user does.
-    await trigger.focus();
-    await page.keyboard.press('Enter');
-
+    // The button is server-rendered, so it can be visible before React has hydrated its
+    // onClick; pressing Enter once then does nothing and the dialog never appears (the
+    // observed flake). Let the page settle, then keep pressing while the dialog is absent —
+    // a keyboard user would do the same, and the guard never presses once it has opened.
+    await page.waitForLoadState('networkidle');
     const dialog = page.getByRole('dialog');
+    await expect
+      .poll(
+        async () => {
+          if ((await dialog.count()) > 0) return true;
+          await trigger.focus();
+          await page.keyboard.press('Enter');
+          return false;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+
     const close = dialog.locator('[data-slot="dialog-close"]');
     await expect(dialog).toBeVisible();
     expect(

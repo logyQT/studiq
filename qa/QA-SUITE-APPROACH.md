@@ -80,9 +80,16 @@ The harness handles that structurally: `scripts/qa-tenant.ts` seeds **one tenant
 attempt** — `qa/.tenants/<CASE>.r<repeat>e<retry>.json` (plus the base
 `qa/.tenants/<CASE>.json` for attempt 0) — and `loadTenant()` reads the file matching
 `test.info()`. A fresh tenant costs ~15 ms per case, so a shard pays ~2.5 s for three
-attempts. `--attempts 1 --repeats 1` opts out: seeding still writes the base
-`<CASE>.json` and its `<CASE>.r0e0.json` copy, and any later attempt/repeat fails loudly
-instead of silently reusing attempt 0's data.
+attempts. Always seed every attempt you are going to run: `--attempts` is `retries + 1` and
+`--repeats` is the `--repeat-each` value. Reseeding a run suffix deletes that case's stale
+attempt files first, and inside a test a missing attempt file throws instead of falling back
+to attempt 0.
+
+```bash
+# three attempts (CI retries) and two repeats (--repeat-each=2), one unique run
+bun scripts/qa-tenant.ts --all --areas <AREA> --run "retry-check-$(date +%s)" \
+  --attempts 3 --repeats 2
+```
 
 What a spec still has to do:
 
@@ -91,50 +98,56 @@ What a spec still has to do:
   (`const RUN = TENANT.runSuffix`, `const GROUP_ID = tenantId(TENANT.key, …)`) freezes
   attempt 0's data. Module load runs outside a test, where `test.info()` is unavailable and
   `loadTenant` falls back to the base file. Resolve those inside a hook (or through a
-  getter) so a retry reads its own tenant.
-- **Seed per-attempt data in `beforeEach`.** Playwright restarts the worker after a failure
-  and re-runs `beforeAll` there (verified: `test.info().retry` is available inside it), so
-  `beforeAll` is not inherently unsafe — but it is worker-wide and easy to point at the wrong
-  attempt: anything it derives at module scope is already frozen to attempt 0. `beforeEach`
-  keeps the attempt boundary explicit. Use `beforeAll` only when every input it reads is
-  resolved through `test.info()` at hook time.
+  getter) so each attempt reads its own tenant.
+- **Keep attempt-specific setup and values in `beforeEach`, never `beforeAll`.** A retry
+  restarts the worker and re-runs `beforeAll` with the retried attempt, and that state stays
+  in the worker for the next test, which runs at retry 0. Values captured there can then
+  point at `.r<repeat>e1` while `loadTenant()` in the next test reads `.r<repeat>e0`. Use
+  `beforeAll` only for setup that does not depend on the attempt (nothing derived from
+  `loadTenant()`, `tenantId(tenant.key, …)` or `test.info()`).
 - **Assert eventually after a mutation.** A one-shot DOM/API read taken right after a save
   races the refetch (MGR-SEAT-02 read the pool table as `[]` once). For a locator, use a
   retrying web-first matcher (`toHaveCount`, `toHaveText`, …). Reserve `expect.poll` for
   values that are not a single locator assertion (e.g. the text array of a table row).
   Never a fixed sleep.
-- **Test with the real flags** against a freshly seeded run. `--repeat-each=2` proves
-  **repeat isolation** (each repeat gets its own tenant and re-runs the file hooks); it does
-  not exercise the retry path, because Playwright only retries after a failure:
+- **A manual rerun against the same seed reuses attempt 0's tenant.** Specs that mutate
+  tenant state reset their own rows at attempt start with `resetInviteeState`
+  (`qa/fixtures/qa-invitees.ts`) or `resetFirstRunTenant` (`qa/fixtures/qa-db.ts`), passing
+  a cutoff from `qaDbNow()` so a parallel attempt's rows are not deleted. This does not
+  substitute for seeding attempt files — `loadTenant()` still requires them.
+
+### Repeat isolation vs retry isolation
+
+They are different checks and prove different things:
+
+- **Repeat isolation** — `--repeat-each=2` gives each repeat its own tenant and re-runs the
+  file hooks. It does not exercise a retry, because Playwright only retries after a failure:
 
   ```bash
-  bun scripts/qa-tenant.ts --all --areas <AREA> --run retry-check --repeats 2
   CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> \
     --repeat-each=2 --retries=2 --workers=1
   ```
 
-- **Prove retry isolation with a controlled fail-once probe.** Temporarily fail attempt 0 in
-  the spec's own `beforeEach`, run with one retry, and check that the retry passes against
-  `.r0e1` (then delete the probe):
+- **Retry isolation** — a controlled fail-once probe is required. Fail attempt 0, run with
+  one retry, and check that the retry **passes** against its own attempt tenant. Re-seed a
+  unique run before each probe, and for a mutating spec place the failure **after** a
+  representative write so the passing retry proves it did not inherit that row:
 
   ```ts
   // TEMPORARY — never commit
   test.beforeEach(() => {
-    if (process.env.QA_RETRY_PROBE === '1' && test.info().retry === 0) {
-      throw new Error('QA retry probe: fail attempt 0 once');
-    }
+    if (process.env.QA_RETRY_PROBE !== '1' || test.info().retry !== 0) return;
+    // For a mutating spec, run the representative write first, then:
+    throw new Error('QA retry probe: fail attempt 0 once');
   });
   ```
 
   ```bash
   QA_RETRY_PROBE=1 CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> --retries=1
-  # expect: 1 flaky (retry #1 passed)
+  # expect: 1 flaky (retry #1 passed, reading .r0e1)
   ```
 
-  If a spec only has the base tenant (`--attempts 1`), it can reset its own rows at attempt
-  start with `qa/fixtures/qa-invitees.ts` (`resetInviteeState`) or `qa/fixtures/qa-db.ts`
-  (`resetFirstRunTenant`), passing a cutoff from `qaDbNow()` so parallel attempts do not
-  delete each other's rows.
+  Delete the probe before committing.
 
 ## Asserting user-visible copy
 

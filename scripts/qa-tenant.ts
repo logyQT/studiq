@@ -85,7 +85,14 @@
  * (~64 ms of CPU per user); the SQL path hashes the batch's one shared password
  * once. Without a direct Postgres URL the script falls back to the Admin API.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { SQL } from 'bun';
 import { tenantKey } from '#test/e2e/fixtures/ids';
@@ -189,6 +196,23 @@ function attemptRunSuffix(base: string, r: number, e: number): string {
   const tag = attemptTag(r, e);
   if (!base) return tag ? `r${r}e${e}` : '';
   return `${base}${tag}`;
+}
+
+/**
+ * Delete a case's per-attempt tenant files from an earlier seed.
+ *
+ * The file set must match the current `--attempts`/`--repeats`: a reseed with fewer
+ * attempts (or `--repeats 1`) must not leave `.r1e0.json` behind, because
+ * `loadTenant()` would happily read that stale tenant.
+ */
+function clearAttemptFiles(caseId: string): void {
+  if (!existsSync(OUT)) return;
+  const prefix = `${caseId}.r`;
+  for (const file of readdirSync(OUT)) {
+    if (file.startsWith(prefix) && /\.r\d+e\d+\.json$/.test(file)) {
+      unlinkSync(join(OUT, file));
+    }
+  }
 }
 
 async function copyBaseToAttempt0(caseId: string): Promise<void> {
@@ -1035,6 +1059,8 @@ if (all) {
   // One tenant per (case, repeat, retry): a retry must not inherit the failed
   // attempt's writes, so the spec's `loadTenant()` picks the attempt file that
   // matches `test.info()` (see `qa/fixtures/qa-tenant.ts`).
+  for (const id of cases) clearAttemptFiles(id);
+
   const tasks = cases.flatMap((id) => {
     const list: { id: string; repeat: number; retry: number }[] = [];
     for (let repeat = 0; repeat < repeats; repeat++) {
@@ -1094,6 +1120,7 @@ const runSuffix = option('run') ?? (fresh ? `r${Date.now().toString(36)}${random
 
 const caseDb = createSeedDb();
 try {
+  clearAttemptFiles(caseArg);
   for (let repeat = 0; repeat < repeats; repeat++) {
     for (let retry = 0; retry < attempts; retry++) {
       const spec = attemptSpec(repeat, retry);
