@@ -295,6 +295,9 @@ jobs:
         run: bun run lint
       - name: Env schema
         run: bun run env:check
+      # `env:scan` finds *resolved* sensitive values, so on a bare PR it has
+      # nothing to scan; the tracked-file secret-literal gate that can actually
+      # fail a normal PR runs inside `bun run lint`, the step above.
       - name: Env scan
         run: bun run env:scan
       - name: Knip
