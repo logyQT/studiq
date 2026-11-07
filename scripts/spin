@@ -6,12 +6,10 @@
 #   scripts/spin feat/my-feature --clean  # remove worktree + branch
 #   scripts/spin --list                   # list all worktrees
 #
-# The worktree is created as a sibling of the repository, named after the
-# repository directory and the branch (slashes become dashes):
-#   ../studiq-feat-my-feature/
-#
-# `.worktrees/` inside the repo is reserved for the QA environments
-# (`qa-env-N`) and is never used by this script.
+# The worktree is created beside the repository, preserving the branch
+# hierarchy so feature/fix/chore groups stay visible:
+#   ../studiq-worktrees/feat/my-feature/
+#   ../studiq-worktrees/fix/login-bug/
 #
 # After creating, move your OpenCode session into the worktree:
 #   /session-move <worktree-path>
@@ -33,9 +31,6 @@ header(){ printf "\n${CYAN}▸${NC} %s\n" "$*"; }
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail "Not inside a git repository"
 
 # ── Helpers ────────────────────────────────────────────────────
-# feat/my-feature → feat-my-feature
-branch_slug() { printf '%s' "${1//\//-}"; }
-
 # Print the path of the primary checkout (the first worktree entry).
 primary_checkout_path() {
   local record
@@ -43,7 +38,7 @@ primary_checkout_path() {
     case "$record" in
       "worktree "*) printf '%s\n' "${record#worktree }"; return 0 ;;
     esac
-  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z 2>/dev/null)
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
   return 0
 }
 
@@ -57,7 +52,7 @@ worktree_path_for_branch() {
       "worktree "*) path="${record#worktree }" ;;
       *) if [ "$record" = "branch refs/heads/$1" ]; then printf '%s\n' "$path"; return 0; fi ;;
     esac
-  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z 2>/dev/null)
+  done < <(git -C "$REPO_ROOT" worktree list --porcelain -z)
   return 0
 }
 
@@ -86,10 +81,10 @@ case "${1:-}" in
     echo "  --clean         Remove the worktree and delete the branch"
     echo "  --list, -l      List all worktrees"
     echo ""
-    echo "Worktrees are created beside the repo, named after the repo and branch:"
-    echo "  ../${REPO_NAME}-feat-my-feature"
+    echo "Worktrees are created beside the repo, preserving the branch hierarchy:"
+    echo "  ../${REPO_NAME}-worktrees/feat/my-feature"
     echo ""
-    echo "'.worktrees/' inside the repo is reserved for the QA environments (qa-env-N)."
+    echo "--clean only removes worktrees that scripts/spin created."
     exit 0
     ;;
   "") fail "Missing branch name. Usage: scripts/spin <branch-name>" ;;
@@ -99,15 +94,16 @@ BRANCH="$1"
 CLEAN=false
 [[ "${2:-}" == "--clean" ]] && CLEAN=true
 
-# ── Derive worktree path ───────────────────────────────────────
-# Worktrees live beside the repo: ../<repo>-<branch-with-dashes>
-# feat/my-feature → ../studiq-feat-my-feature
-BRANCH_SLUG=$(branch_slug "$BRANCH")
-WORKTREE_ROOT="$REPO_PARENT"
-WORKTREE_PATH="${WORKTREE_ROOT}/${REPO_NAME}-${BRANCH_SLUG}"
+# ── Validate the branch name ───────────────────────────────────
+if ! ref_error=$(git check-ref-format --branch "$BRANCH" 2>&1); then
+  fail "Invalid branch name '$BRANCH': $ref_error"
+fi
 
-# Older versions of this script nested worktrees under .worktrees/<branch>.
-LEGACY_WORKTREE_PATH="${PRIMARY_ROOT}/.worktrees/${BRANCH}"
+# ── Derive worktree path ───────────────────────────────────────
+# Worktrees live beside the repo, grouped by branch prefix:
+# feat/my-feature → ../<repo>-worktrees/feat/my-feature
+WORKTREE_ROOT="${REPO_PARENT}/${REPO_NAME}-worktrees"
+WORKTREE_PATH="${WORKTREE_ROOT}/${BRANCH}"
 
 # ── Clean mode ─────────────────────────────────────────────────
 if $CLEAN; then
@@ -120,25 +116,22 @@ if $CLEAN; then
       fail "Refusing to remove the primary checkout: $PRIMARY_ROOT"
     fi
 
-    if [ "$REGISTERED_PATH" = "$LEGACY_WORKTREE_PATH" ]; then
-      warn "Found a legacy nested worktree: $LEGACY_WORKTREE_PATH"
-      warn "scripts/spin now creates worktrees beside the repo: $WORKTREE_PATH"
-    elif [ "$REGISTERED_PATH" != "$WORKTREE_PATH" ]; then
-      warn "Worktree for '$BRANCH' is not at the expected path: $REGISTERED_PATH"
+    if [ "$REGISTERED_PATH" != "$WORKTREE_PATH" ]; then
+      fail "Refusing to clean a worktree scripts/spin did not create: $REGISTERED_PATH
+  Expected $WORKTREE_PATH.
+  Left untouched. To remove it manually:
+    git -C \"$PRIMARY_ROOT\" worktree remove --force \"$REGISTERED_PATH\"
+    git -C \"$PRIMARY_ROOT\" branch -D -- \"$BRANCH\""
     fi
 
-    if [ ! -d "$REGISTERED_PATH" ]; then
-      warn "Worktree directory is missing: $REGISTERED_PATH (pruning stale metadata)"
-      git -C "$PRIMARY_ROOT" worktree prune 2>/dev/null && info "Pruned stale worktree entries"
-    elif git -C "$PRIMARY_ROOT" worktree remove "$REGISTERED_PATH" --force 2>/dev/null; then
+    if [ -d "$REGISTERED_PATH" ]; then
+      if ! remove_error=$(git -C "$PRIMARY_ROOT" worktree remove "$REGISTERED_PATH" --force 2>&1); then
+        fail "Could not remove worktree $REGISTERED_PATH: $remove_error"
+      fi
       info "Removed worktree: $REGISTERED_PATH"
     else
-      fail "Could not remove worktree: $REGISTERED_PATH"
+      warn "Worktree directory is missing: $REGISTERED_PATH"
     fi
-  elif [ -d "$LEGACY_WORKTREE_PATH" ]; then
-    warn "Found a legacy directory that is not a registered worktree: $LEGACY_WORKTREE_PATH"
-    warn "Left it untouched. Remove it manually, then re-run this command:"
-    echo "    rm -rf \"$LEGACY_WORKTREE_PATH\""
   elif [ -d "$WORKTREE_PATH" ]; then
     warn "Found a directory that is not a registered worktree: $WORKTREE_PATH"
     warn "Left it untouched. Remove it manually, then re-run this command:"
@@ -147,32 +140,43 @@ if $CLEAN; then
     warn "No worktree found for '$BRANCH' (expected $WORKTREE_PATH)"
   fi
 
+  # Drop stale registrations before deleting the branch: a registration whose
+  # directory is gone still marks the branch as checked out.
+  if ! prune_error=$(git -C "$PRIMARY_ROOT" worktree prune 2>&1); then
+    warn "Could not prune stale worktree entries: $prune_error"
+  elif [ -n "$prune_error" ]; then
+    info "Pruned stale worktree entries: $prune_error"
+  else
+    info "Pruned stale worktree entries"
+  fi
+
   # Delete the branch if it exists
-  if git -C "$PRIMARY_ROOT" branch --list "$BRANCH" | grep -q .; then
-    git -C "$PRIMARY_ROOT" branch -D "$BRANCH" 2>/dev/null \
-      && info "Deleted branch: $BRANCH" \
-      || warn "Could not delete branch (may have unmerged changes)"
+  if git -C "$PRIMARY_ROOT" branch --list -- "$BRANCH" | grep -q .; then
+    if ! delete_error=$(git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" 2>&1); then
+      warn "Could not delete branch '$BRANCH': $delete_error"
+    else
+      info "Deleted branch: $BRANCH"
+    fi
   else
     warn "Branch '$BRANCH' does not exist"
   fi
 
-  # Cleanup stale worktree metadata
-  git -C "$PRIMARY_ROOT" worktree prune 2>/dev/null && info "Pruned stale worktree entries"
   exit 0
 fi
 
+# ── Preflight: the sibling root must be writable (create mode only) ──
+if [ ! -d "$REPO_PARENT" ] || [ ! -w "$REPO_PARENT" ] || [ ! -x "$REPO_PARENT" ]; then
+  fail "Cannot create a worktree: parent directory is not writable: $REPO_PARENT"
+fi
+if ! probe_error=$(mktemp -d "${REPO_PARENT}/.spin-write-test.XXXXXX" 2>&1); then
+  fail "Cannot create a worktree: parent directory is not writable: $REPO_PARENT ($probe_error)"
+fi
+rmdir "$probe_error" 2>/dev/null || true
+
 # ── Check branch doesn't already exist ─────────────────────────
-if git -C "$REPO_ROOT" branch --list "$BRANCH" | grep -q .; then
+if git -C "$PRIMARY_ROOT" branch --list -- "$BRANCH" | grep -q .; then
   fail "Branch '$BRANCH' already exists. Use it directly or pick a different name."
 fi
-
-# ── Check the derived path doesn't collide with another branch ─
-while IFS= read -r existing; do
-  [ -n "$existing" ] || continue
-  if [ "$(branch_slug "$existing")" = "$BRANCH_SLUG" ]; then
-    fail "Branch '$existing' maps to the same worktree directory as '$BRANCH': $WORKTREE_PATH. Rename one of them (e.g. avoid mixing 'feat/x' and 'feat-x')."
-  fi
-done < <(git -C "$REPO_ROOT" for-each-ref --format='%(refname:short)' refs/heads/)
 
 # ── Check worktree path doesn't already exist ──────────────────
 if [ -e "$WORKTREE_PATH" ]; then
@@ -181,13 +185,18 @@ fi
 
 # ── Create branch + worktree ───────────────────────────────────
 header "Creating branch '$BRANCH' from main"
-git -C "$REPO_ROOT" branch "$BRANCH" main 2>/dev/null \
-  || fail "Could not create branch '$BRANCH'"
+if ! branch_error=$(git -C "$PRIMARY_ROOT" branch -- "$BRANCH" main 2>&1); then
+  fail "Could not create branch '$BRANCH': $branch_error"
+fi
 info "Created branch '$BRANCH'"
 
 header "Creating worktree"
-git -C "$REPO_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH" 2>/dev/null \
-  || fail "Could not create worktree at $WORKTREE_PATH"
+mkdir -p "$(dirname "$WORKTREE_PATH")" \
+  || fail "Could not create worktree directory: $(dirname "$WORKTREE_PATH")"
+if ! add_error=$(git -C "$PRIMARY_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH" 2>&1); then
+  git -C "$PRIMARY_ROOT" branch -D -- "$BRANCH" >/dev/null 2>&1 || true
+  fail "Could not create worktree at $WORKTREE_PATH: $add_error (branch '$BRANCH' was deleted)"
+fi
 info "Worktree ready at $WORKTREE_PATH"
 
 # ── Summary ────────────────────────────────────────────────────
