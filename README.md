@@ -32,14 +32,15 @@ bun dev:up             # Supabase (if needed) + web app on :3000
 
 `bun dev:up` is idempotent: it re-renders `apps/web/.env`, starts Supabase only
 if it isn't running, and starts the web server. It never installs, builds or
-resets anything — those are explicit:
+resets anything — those are explicit. Agents should use `bun dev:up --prod`
+(`next start`) rather than the dev server.
 
 ```bash
 bun dev:status     # health, ports, URLs (--json for agents)
 bun dev:down       # stop the web server (--all also stops Supabase, data kept)
 bun dev:reset-db   # destructive: reset and re-seed this branch's database
 bun dev:build      # production build (stop the server first)
-bun dev:logs       # follow web + Supabase logs
+bun dev:logs       # follow the web log; show recent Supabase logs
 ```
 
 Each git worktree and branch gets its own Supabase stack with CLI-assigned
@@ -75,18 +76,18 @@ Full setup (Docker, env vars, seeding, Playwright) is in the
 
 ## Scripts
 
-| Command                                  | Description                                                  |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| `bun dev:up` / `bun dev:up --prod`       | Local stack (Supabase + web); `--prod` builds and serves     |
-| `bun dev:serve`                          | `next start` for this checkout on `APP_PORT`                 |
-| `bun dev:admin`                          | Admin dev server on :4000                                    |
-| `bun lint`                               | Lint + repo guards (no typecheck)                            |
-| `bun lint:all`                           | Typecheck + lint (admin typechecked via `typecheck:admin`)   |
-| `bun format` / `bun format:check`        | Format the repo / check formatting                           |
-| `bun test`                               | Product unit + integration tests (admin: `bun test:admin`)   |
-| `bun test:unit` / `bun test:integration` | Run one Vitest suite only (integration needs local Supabase) |
-| `bun test:e2e`                           | Playwright E2E                                               |
-| `scripts/spin <branch>` / `scripts/pr`   | Create an isolated worktree / open a PR                      |
+| Command                                          | Description                                                           |
+| ------------------------------------------------ | --------------------------------------------------------------------- |
+| `bun dev:up` / `bun dev:up --prod`               | Local stack (Supabase + web); `--prod` builds (if missing) and serves |
+| `bun dev:serve`                                  | `next start` for this checkout on `APP_PORT`                          |
+| `bun dev:admin`                                  | Admin dev server on :4000                                             |
+| `bun lint`                                       | Lint + repo guards (no typecheck)                                     |
+| `bun lint:all`                                   | Typecheck + lint (admin typechecked via `typecheck:admin`)            |
+| `bun format` / `bun format:check`                | Format the repo / check formatting                                    |
+| `bun run test`                                   | Product unit + integration tests (admin: `bun run test:admin`)        |
+| `bun run test:unit` / `bun run test:integration` | Run one Vitest suite only (integration needs local Supabase)          |
+| `bun run test:e2e`                               | Playwright E2E                                                        |
+| `scripts/spin <branch>` / `scripts/pr`           | Create an isolated worktree / open a PR                               |
 
 Every script is defined in [`package.json`](package.json); the full annotated
 list is in [`AGENTS.md`](AGENTS.md).
