@@ -55,6 +55,7 @@ test-results
 
 # dev artifacts
 .dev/
+# QA env worktrees live here (created by the QA tooling, not scripts/spin)
 .worktrees
 apps/admin/.env.local
 
