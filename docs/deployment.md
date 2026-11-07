@@ -182,9 +182,9 @@ Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
 - **Development:** each developer runs `stripe login`, creates their own sandbox
   (`stripe sandbox create "name"`), then mints a restricted key **inside that
   sandbox's Dashboard** (Developers → API keys → Create restricted key) and puts
-  that `rk_test_…` in their local root `.env`. Do not use the `secret_key`
+  that `rk_test_…` in their local root `.env.local`. Do not use the `secret_key`
   printed by `stripe sandbox create` (it starts with `rkcs_test_`, which the
-  app does not accept). Copy the restricted key straight into `.env`; never into
+  app does not accept). Copy the restricted key straight into `.env.local`; never into
   chat, tickets or an agent transcript.
 - Before the write run, set `STRIPE_PRODUCT_TAX_CODE` to an eligible `txcd_` code
   and `STRIPE_PRODUCT_TAX_CODE_CONFIRMED=1`; confirm the code is labelled
@@ -193,9 +193,9 @@ Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
   the runtime boot do not read them.
 - Each sandbox has its own Products/Prices/portal configuration: run
   `APP_ENV=development PAYMENT_DRIVER=stripe bun scripts/stripe-bootstrap.ts`
-  once per sandbox and use `stripe listen` for its webhook secret. `.env.example`
-  keeps `mock` as the local default; set `PAYMENT_DRIVER=stripe` when testing the
-  real path.
+  once per sandbox and use `stripe listen` for its webhook secret. Outside
+  production an unset `PAYMENT_DRIVER` resolves to `mock`; set
+  `PAYMENT_DRIVER=stripe` in `.env.local` when testing the real path.
 - **Shared test-mode account:** only the repo's opt-in sandbox suite uses one
   provisioned catalog/portal. Its lifecycle cases replay signed events through
   the local webhook service, so they need no Dashboard webhook endpoint; the
@@ -225,7 +225,7 @@ runtime key. Review the key's access policy in the Dashboard.
 
 **Rules**
 
-- Never print, log, paste or commit a key, `whsec_` or `.env` file. `bpc_` and
+- Never print, log, paste or commit a key, `whsec_` or `.env.local` file. `bpc_` and
   `price_` ids are not secrets, but they belong in env/DB, not git.
 - Do not use a live key in dev/CI/QA; the only exception is a deliberate,
   supervised smoke test with `STRIPE_ALLOW_LIVE=1` outside production.

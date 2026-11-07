@@ -44,7 +44,7 @@ bun scripts/qa-tenant.ts ONB-10 --profile org-limit --fresh
 - Zaproszeni (poza org): `invitee1`, `invitee2` — konta `student` bez wiersza
   `org_members`, `Seed4Test!`.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`); `scripts/qa-tenant.ts`
-  bierze URL z `qa/env.json`, a klucz service role z `apps/web/.env`.
+  bierze URL z `qa/env.json`, a klucz service role z `.env.local`.
 - Spec: `__tests__/qa/ONB/ONB-10.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=en`.
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (org, jego członkowie,

@@ -242,14 +242,17 @@ bun install
 ### 2. Configure the checkout
 
 ```bash
-cp .env.example .env
+touch .env.local        # optional for a single checkout — values are derived
 ```
 
-Root `.env` is the only hand-edited env file. Every value is optional: local
-mode uses the experimental `supabase stack` backend, which assigns ports and
-keeps a separate database per **project root + git branch + optional
-`SUPABASE_STACK` name**. Only `APP_PORT` can collide between checkouts — set a
-different one per worktree (`bun dev:ports` prints a free port).
+Root `.env.local` is the only hand-edited values file (Git-ignored; never
+commit it). Its keys and their shapes are documented — value-free — in
+[`.env.schema`](../.env.schema); `varlock` validates/injects them for the
+`bun run …` scripts. Every value is optional: local mode uses the experimental
+`supabase stack` backend, which assigns ports and keeps a separate database per
+**project root + git branch + optional `SUPABASE_STACK` name**. Only `APP_PORT`
+can collide between checkouts — set a different one per worktree
+(`bun dev:ports` prints a free port).
 
 ### 3. Start the stack
 
@@ -259,10 +262,10 @@ bun dev:up
 
 > First run may take several minutes while Docker pulls images.
 
-`dev:up` starts (or resumes) **this branch's** Supabase stack, renders the
-generated `apps/web/.env` and `supabase/.env` (mode `600`, Git-ignored), and
-starts the web server on `APP_PORT`. It never installs, builds or resets
-anything.
+`dev:up` starts (or resumes) **this branch's** Supabase stack, discovers its
+URLs/keys with `supabase status --output-format json`, **exports** them to the
+web process, and starts the web server on `APP_PORT`. It never writes a per-app
+env file, installs, builds or resets anything.
 
 Agents (and anyone running several checkouts) should use the production server
 instead of `next dev`:
@@ -271,19 +274,19 @@ instead of `next dev`:
 bun dev:build && bun dev:serve   # or: bun dev:up --prod
 ```
 
-### 4. Generated env files
+### 4. Where values live
 
-`apps/web/.env` and `supabase/.env` are **generated** — do not edit or commit
-them; `dev:up` / `dev:build` rewrite them from root `.env` +
-`supabase status --output-format json`. A key you put in root `.env` is never
+There is no generated env file to edit. `.env.local` (plus the process
+environment, which wins) is the input; `scripts/dev` resolves the contract and
+exports it to its children. If you put a key in `.env.local`, it is never
 overwritten.
 
 If you need the stack's raw URLs/keys (e.g. shared mode, or a tool that does not
 go through `scripts/dev`):
 
 ```bash
-bunx supabase status            # human-readable endpoints + service state
-bunx supabase status --env      # exportable KEY=VALUE
+bash scripts/dev supa status            # human-readable endpoints + service state
+bash scripts/dev supa status --env      # exportable KEY=VALUE (APP_URL exported)
 ```
 
 For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and
@@ -298,10 +301,9 @@ Optional local e-mail delivery uses the Mailpit container (URL from
 `bun dev:status`). Without an SMTP adapter the copyable invite link is the only
 delivery path.
 
-OpenTelemetry: `.env.example` ships `OTEL_SDK_DISABLED=true`, so the standard
-`cp .env.example .env` setup leaves telemetry **off**. Remove or comment out
-that line to ship traces/metrics/logs to the local collector
-(`docker compose up -d`).
+OpenTelemetry: telemetry is **on** by default. Add `OTEL_SDK_DISABLED=true` to
+`.env.local` to keep traces/metrics/logs off (tests and CI set it); remove the
+line to ship to the local collector (`docker compose up -d`).
 
 ### 5. (Optional) Set up LLM / AI Provider
 
@@ -424,9 +426,9 @@ Edit files in `supabase/seeds/` to manage test data. These files are committed t
 ```bash
 # 1. Make changes in Studio (see `bun dev:status` for the current URL)
 # 2. Generate migration from the selected stack (default or SUPABASE_STACK)
-STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env 2>/dev/null | tail -n1 | tr -d "'\"")}
+STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"")}
 if [ -n "$STACK" ]; then
-  DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  DB_URL=$(bash scripts/dev supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
   bunx supabase db diff -f migration_name --remote="$DB_URL"
 else
   bunx supabase db diff -f migration_name
@@ -444,9 +446,9 @@ git pull
 bun dev:up                      # this branch's Supabase stack (+ web); does NOT migrate a running stack
 
 # Apply new migrations to the selected stack (default or SUPABASE_STACK)
-STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env 2>/dev/null | tail -n1 | tr -d "'\"")}
+STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"")}
 if [ -n "$STACK" ]; then
-  DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  DB_URL=$(bash scripts/dev supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
   bunx supabase db push --remote="$DB_URL" --yes
 else
   bunx supabase db push
@@ -457,7 +459,7 @@ bun dev:reset-db                # (optional) reloads fresh seed data, this branc
 
 Every worktree/branch gets its own stack and database automatically. If another
 developer/agent already runs the app on the same `APP_PORT`, change it in this
-checkout's `.env` (`bun dev:ports` prints a free port). Never run
+checkout's `.env.local` (`bun dev:ports` prints a free port). Never run
 `supabase stop --all`; `bun dev:down --all` only stops this branch's stack.
 
 ### Code review (CodeRabbit)
@@ -566,7 +568,7 @@ bun test:coverage     # Run with coverage report
 
 ## Notes
 
-- `.env`, `apps/web/.env` and `supabase/.env` are gitignored — **never commit them**
+- `.env.local` is gitignored — **never commit it**
 - Each team member must complete these steps independently
 - Ensure Docker is running **before** `bun dev:up` and `docker compose up`
-- `apps/web/.env` and `supabase/.env` are generated by `scripts/dev` — never hand-edit them
+- No per-app env file is generated: `scripts/dev` exports this checkout's resolved values to the processes it starts, and `varlock` injects `.env.local` into the `bun run …` scripts

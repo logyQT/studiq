@@ -30,7 +30,7 @@ bun scripts/qa-tenant.ts MGR-INV-02 --fresh
   `seed-manager-<hash>@dev.local` / `Seed4Test!` z rolą `admin`.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`);
   `scripts/qa-tenant.ts` bierze URL z `qa/env.json`, a klucz service role z
-  `apps/web/.env`.
+  `.env.local`.
 - Spec: `__tests__/qa/MGR/MGR-INV-02.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są
   polskie).

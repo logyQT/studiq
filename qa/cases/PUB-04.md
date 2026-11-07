@@ -31,7 +31,7 @@ bun scripts/qa-tenant.ts PUB-04 --run <sufiks>   # świeży tenant dla jednego p
   niezależnym przebiegiem.
 - Worker QA-suite seeduje **wspólną** bazę (`http://localhost:54421`): przed uruchomieniem
   skryptu eksportuje `NEXT_PUBLIC_SUPABASE_URL` i `SUPABASE_SERVICE_ROLE_KEY` ze shared
-  worktree, bo lokalny `apps/web/.env` worktree'a wskazuje na jego własny Supabase.
+  worktree, bo lokalny `.env.local` worktree'a wskazuje na jego własny Supabase.
 - Przeglądarka startuje z pustym stanem sesji (`storageState: { cookies: [], origins: [] }`)
   i ustawionym `NEXT_LOCALE=pl`; żaden użytkownik tenanta nie jest zalogowany.
 - Spec nie zapisuje żadnych współdzielonych rekordów: katalog planów czyta tylko przez
