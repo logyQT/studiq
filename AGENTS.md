@@ -210,7 +210,7 @@ These scripts help devs (and agents) work with feature branches and isolated wor
 | --------------------------------- | ------------------------------------------------------------------- |
 | `scripts/switch-branch [branch]`  | Stash WIP → switch branch → pull → pop stash. Only stashes if dirty |
 | `scripts/switch-branch -c <name>` | Create a new branch from main, then switch to it                    |
-| `scripts/spin <branch>`           | Create a feature branch + git worktree under `.worktrees/`          |
+| `scripts/spin <branch>`           | Create a feature branch + git worktree beside the checkout          |
 | `scripts/spin --list`             | List all active worktrees                                           |
 | `scripts/spin <branch> --clean`   | Remove worktree and delete branch                                   |
 | `scripts/pr [title]`              | Create a PR from current branch via `gh` CLI                        |
@@ -219,14 +219,14 @@ These scripts help devs (and agents) work with feature branches and isolated wor
 
 #### Multi-worktree workflow
 
-Use worktrees to run parallel tasks (e.g. multiple agents, or dev server + tests) without conflicts:
+Use worktrees to run parallel tasks (e.g. multiple agents, or an app server + tests) without conflicts:
 
 ```bash
 # Spin up an isolated workspace
 scripts/spin feat/quiz-ui
 
 # Move your session into it
-cd .worktrees/feat/quiz-ui
+cd ../studiq-worktrees/feat/quiz-ui
 
 # Do work, commit, push
 git add -A && git commit -m "feat: add quiz UI"
@@ -239,7 +239,7 @@ scripts/pr
 scripts/spin feat/quiz-ui --clean
 ```
 
-Each worktree gets its own branch, working directory, and can run `bun run dev` independently. The main checkout stays untouched.
+Each worktree gets its own branch and working directory. Agents must not run `bun run dev` (`next dev` OOMs); to check the app in a browser, use `bun dev:build` + `bun dev:serve` (or `bun dev:up --prod`) — builds are cheap and cached. The main checkout stays untouched. Worktrees are created beside the repo, preserving the branch hierarchy: `feat/quiz-ui` → `../studiq-worktrees/feat/quiz-ui`.
 
 ### Running a single test
 
