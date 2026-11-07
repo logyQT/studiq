@@ -38,7 +38,7 @@ same tenant's teacher and manager. It therefore runs against the case's own tena
   `seed-educator-<shortHash>@dev.local` and `seed-manager-<shortHash>@dev.local` /
   `Seed4Test!` from the fixture; no legacy `@dev.local` manual account and no shared
   `pass` password appears in the spec.
-- Spec: `__tests__/qa/AUT/AUT-16.spec.ts`, project `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/AUT/AUT-16.spec.ts`, project `__tests__/qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: the spec only reads (`POST /api/v1/auth/login`, `GET /api/v1/auth/me`,
   `GET /api/v1/teacher/assignments`, `GET /api/v1/organization/members`,

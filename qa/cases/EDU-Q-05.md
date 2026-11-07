@@ -91,4 +91,4 @@ bun scripts/qa-tenant.ts EDU-Q-05 --fresh   # profile from __tests__/qa/profiles
   expected behaviour open, the spec asserts only the unambiguous edit/delete points above and
   the cascade stays a walk note.
 - Spec: `__tests__/qa/EDU/EDU-Q-05.spec.ts`; run with
-  `bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-Q-05.spec.ts --workers=1`.
+  `bunx playwright test -c __tests__/qa/playwright.qa.config.ts __tests__/qa/EDU/EDU-Q-05.spec.ts --workers=1`.

@@ -22,7 +22,7 @@ Tenant jest seedowany **przed** uruchomieniem suity (profil `two-org`, ten sam c
 
 ```bash
 bun scripts/qa-tenant.ts SEC-02 --fresh
-bunx playwright test -c qa/playwright.qa.config.ts \
+bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   __tests__/qa/SEC/SEC-02.spec.ts --workers=1
 ```
 
@@ -43,9 +43,9 @@ przypadek bez zgadywania kształtu tenanta. Spec nie wywołuje `seedTenantGraph(
 - Talie i fiszki powstają w teście przez produkcyjne API (`POST /api/v1/flashcards/decks`,
   `POST /api/v1/flashcards`); seeder nie tworzy treści. Identyfikator grupy domyślnej jest
   rozwiązywany przez `GET /api/v1/organization/groups` (nazwa `O1G1-<run>` / `O2G1-<run>`).
-- Logowanie: `loginAs()` z `@qa/fixtures/qa-tenant` (hasła z seedera), `NEXT_LOCALE=pl`
+- Logowanie: `loginAs()` z `#test/qa/fixtures/tenant` (hasła z seedera), `NEXT_LOCALE=pl`
   (kopie interfejsu w przypadku są polskie).
-- Spec: `__tests__/qa/SEC/SEC-02.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/SEC/SEC-02.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`.
 - Izolacja: test tworzy wyłącznie własne talie i czyta tylko dane swojego tenanta. Nie
   dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy ani

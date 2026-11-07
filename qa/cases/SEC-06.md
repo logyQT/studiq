@@ -36,7 +36,7 @@ bun scripts/qa-tenant.ts SEC-06 --fresh
 - Identyfikatory: `tenantKey('qa/cases/SEC-06.md', 'SEC-06#<suffix>', 'qa-shared')` +
   `tenantId(key, entity)`; adresy e-mail i nazwa roli kontrolnej zawierają sufiks przebiegu,
   więc dwa przebiegi nigdy nie kolidują.
-- Spec: `__tests__/qa/SEC/SEC-06.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/SEC/SEC-06.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 
 ## Steps

@@ -24,6 +24,17 @@ qa/
   source/          the original .docx (regeneration source)
 ```
 
+This directory is docs-only. The executable QA harness lives with the rest of the
+test tree:
+
+```
+__tests__/qa/playwright.qa.config.ts   QA runner config
+__tests__/qa/fixtures/tenant.ts        tenant loader + loginAs
+__tests__/helpers/db-admin.ts          service-role client + db clock
+__tests__/helpers/mailpit.ts           QA mailbox reader
+__tests__/helpers/stack-mode.ts        temporary stack-mode skip helper
+```
+
 Scenario text is kept **verbatim in Polish**; the wrapper (headings, field keys,
 index, agent prompt) is English, matching the repo/issue convention.
 

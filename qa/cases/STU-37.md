@@ -19,7 +19,7 @@ suite przed każdym niezależnym przebiegiem:
 
 ```bash
 bun scripts/qa-tenant.ts STU-37 --fresh
-bunx playwright test -c qa/playwright.qa.config.ts \
+bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   __tests__/qa/STU/STU-37.spec.ts --workers=1
 ```
 
@@ -41,7 +41,7 @@ bunx playwright test -c qa/playwright.qa.config.ts \
   `maxAttempts: 1` trzyma kartkówki w sekcji „Ukończone”; CI zasiewa tenant **raz**
   i używa go ponownie w każdym retry, więc ponowny przebieg dokłada tylko nowe
   kartkówki, których asercje nie dotyczą.
-- Spec: `__tests__/qa/STU/STU-37.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/STU/STU-37.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test tworzy wyłącznie własny bank, pytania, kartkówki i próby; nie dotyka
   innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy ani

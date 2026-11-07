@@ -19,7 +19,7 @@ suite przed każdym niezależnym przebiegiem:
 
 ```bash
 bun scripts/qa-tenant.ts STU-30 --fresh
-bunx playwright test -c qa/playwright.qa.config.ts \
+bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   __tests__/qa/STU/STU-30.spec.ts --workers=1
 ```
 

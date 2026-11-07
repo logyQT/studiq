@@ -42,7 +42,7 @@ organization whose educator has **already onboarded**, which is what the
   the JWT `account_type` (`educator`), not on the org role, so the route matrix is
   the same one `teacher1` would see.
 - Spec: `__tests__/qa/AUT/AUT-17.spec.ts`, run with
-  `bunx playwright test -c qa/playwright.qa.config.ts __tests__/qa/AUT/AUT-17.spec.ts --workers=1`,
+  `bunx playwright test -c __tests__/qa/playwright.qa.config.ts __tests__/qa/AUT/AUT-17.spec.ts --workers=1`,
   baseURL `http://localhost:3010`.
 - Isolation: the spec only reads its own tenant (teacher + manager of the same
   tenant, its org list) and writes nothing. No global admin setting, feature flag,

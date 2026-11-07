@@ -29,7 +29,7 @@ context (empty cookie jar).
   `qa-pub-05-<suffix>` org. The spec consumes none of those rows; the tenant
   exists so the case has a deterministic, isolated identity like every other
   suite test.
-- Spec: `__tests__/qa/PUB/PUB-05.spec.ts`, runner `qa/playwright.qa.config.ts`,
+- Spec: `__tests__/qa/PUB/PUB-05.spec.ts`, runner `__tests__/qa/playwright.qa.config.ts`,
   baseURL `http://localhost:3010`.
 - Isolation: `storageState: { cookies: [], origins: [] }` plus an explicit
   `NEXT_LOCALE=pl`; nothing shared (plans, flags, settings, platform stats) is

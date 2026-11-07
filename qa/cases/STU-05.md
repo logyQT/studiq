@@ -19,7 +19,7 @@ przed każdym niezależnym przebiegiem:
 
 ```bash
 bun scripts/qa-tenant.ts STU-05 --fresh
-bunx playwright test -c qa/playwright.qa.config.ts \
+bunx playwright test -c __tests__/qa/playwright.qa.config.ts \
   __tests__/qa/STU/STU-05.spec.ts --workers=1
 ```
 
@@ -41,8 +41,8 @@ bunx playwright test -c qa/playwright.qa.config.ts \
 - Faza „Limitowany" potrzebuje fiszek do powtórki, a harmonogram nie ma akcji „udostępnij
   teraz": spec postarza **własne** wiersze `flashcard_review_state` z pierwszej sesji (po
   id zwróconych przez API) — ten sam wyjątek „czas" co przy wygasających zaproszeniach
-  (`qa/fixtures/qa-db.ts`). Żaden inny wiersz nie jest ruszany.
-- Spec: `__tests__/qa/STU/STU-05.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+  (`__tests__/helpers/db-admin.ts`). Żaden inny wiersz nie jest ruszany.
+- Spec: `__tests__/qa/STU/STU-05.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl` (kopie interfejsu w przypadku są polskie).
 - Izolacja: test tworzy i sprząta wyłącznie własną organizację, talię i fiszki; nie
   dotyka innego tenanta, ustawień admina, flag funkcji, planów, statystyk platformy ani

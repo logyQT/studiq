@@ -24,7 +24,7 @@ instead of the legacy `student1@dev.local` account:
   and account ids stay deterministic through `tenantKey`/`tenantId`
 - the seeded tenant starts with no content, so the spec builds its own deck and five cards
   through the product API, records their practice, and ages **only those** review-state
-  rows into the past (service role, `qa/fixtures/qa-db.ts`) so the due-today plural can be
+  rows into the past (service role, `__tests__/helpers/db-admin.ts`) so the due-today plural can be
   exercised for 1, 2 and 5. No global row (settings, flags, plans, platform stats), other
   org or another worker's tenant is read or written
 

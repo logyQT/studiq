@@ -49,7 +49,7 @@ bun scripts/qa-tenant.ts MGR-ROL-04 --fresh
   `POST /api/v1/organization/roles` tworzy „Asystent QA” (z członkiem) i „Pusta QA”
   (bez członków), a `PUT /api/v1/organization/members` przypisuje T1 do „Asystent QA”.
   Trzecia rola, „Anulowana QA”, powstaje tylko na potrzeby ścieżki anulowania.
-- Spec: `__tests__/qa/MGR/MGR-ROL-04.spec.ts`, projekt `qa/playwright.qa.config.ts`, baseURL
+- Spec: `__tests__/qa/MGR/MGR-ROL-04.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie role oraz członkostwa swojej organizacji; nie
   dotyka flag funkcji, katalogu planów (`plan_features` czyta tylko pośrednio przez RPC),

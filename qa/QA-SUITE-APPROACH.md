@@ -114,8 +114,9 @@ What a spec still has to do:
   Never a fixed sleep.
 - **A manual rerun against the same seed reuses attempt 0's tenant.** Specs that mutate
   tenant state reset their own rows at attempt start with `resetInviteeState`
-  (`qa/fixtures/qa-invitees.ts`) or `resetFirstRunTenant` (`qa/fixtures/qa-db.ts`), passing
-  a cutoff from `qaDbNow()` so a parallel attempt's rows are not deleted. This does not
+  (`__tests__/qa/fixtures/invitees.ts`) or `resetFirstRunTenant`
+  (`__tests__/helpers/db-admin.ts`), passing a cutoff from `qaDbNow()` so a parallel
+  attempt's rows are not deleted. This does not
   substitute for seeding attempt files — `loadTenant()` still requires them.
 
 ### Repeat isolation vs retry isolation
@@ -126,7 +127,7 @@ They are different checks and prove different things:
   file hooks. It does not exercise a retry, because Playwright only retries after a failure:
 
   ```bash
-  CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> \
+  CI=1 bunx playwright test -c __tests__/qa/playwright.qa.config.ts <spec> \
     --repeat-each=2 --retries=2 --workers=1
   ```
 
@@ -145,7 +146,7 @@ They are different checks and prove different things:
   ```
 
   ```bash
-  QA_RETRY_PROBE=1 CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> --retries=1
+  QA_RETRY_PROBE=1 CI=1 bunx playwright test -c __tests__/qa/playwright.qa.config.ts <spec> --retries=1
   # expect: 1 flaky (retry #1 passed, reading .r0e1)
   ```
 
@@ -238,8 +239,8 @@ Proposed:
 ```text
 __tests__/qa/
   PUB/  AUT/  ONB/  STU/  EDU/  MGR/
-qa/fixtures/qa-tenant.ts     # reuses e2e tenantKey/seedTenantGraph
-qa/playwright.qa.config.ts   # testDir __tests__/qa, chromium only
+__tests__/qa/fixtures/tenant.ts     # reuses e2e tenantKey/seedTenantGraph
+__tests__/qa/playwright.qa.config.ts   # testDir __tests__/qa, chromium only
 ```
 
 Split the GitHub job by area (or Playwright project), e.g.:
