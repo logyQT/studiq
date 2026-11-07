@@ -79,6 +79,24 @@ export function envFromValuesFile(root: string, name: string): string {
   throw new Error(`missing env ${name}`);
 }
 
+/** `host:port` of a URL, or null when it cannot be parsed. */
+function urlEndpoint(raw: string | undefined): { host: string; port: string } | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return { host: url.hostname.toLowerCase(), port: url.port };
+  } catch {
+    return null;
+  }
+}
+
+/** True only when both URLs parse and identify the same host and port. */
+function sameEndpoint(a: string | undefined, b: string | undefined): boolean {
+  const left = urlEndpoint(a);
+  const right = urlEndpoint(b);
+  return left !== null && right !== null && left.host === right.host && left.port === right.port;
+}
+
 /**
  * Load env for the QA seeder from root `.env.local`, then `qa/env.json`.
  *
@@ -103,7 +121,21 @@ export function loadEnv(root: string): void {
   if (existsSync(configPath)) {
     try {
       const config = JSON.parse(readFileSync(configPath, 'utf8')) as { supabaseUrl?: string };
-      if (config.supabaseUrl) process.env.NEXT_PUBLIC_SUPABASE_URL = config.supabaseUrl;
+      if (config.supabaseUrl) {
+        process.env.NEXT_PUBLIC_SUPABASE_URL = config.supabaseUrl;
+        // The SQL writer bypasses the REST gateway: a `SUPABASE_DB_URL` from
+        // this checkout's `.env.local` would then write auth users into a
+        // different database than the one the REST/Admin-API calls target.
+        // Keep it only when both URLs identify the same endpoint; otherwise
+        // fall back to the Admin API. Never print the URL or its credentials.
+        const dbUrl = process.env.SUPABASE_DB_URL;
+        if (dbUrl && !sameEndpoint(config.supabaseUrl, dbUrl)) {
+          delete process.env.SUPABASE_DB_URL;
+          console.error(
+            'qa-seed: direct-Postgres account writer disabled — SUPABASE_DB_URL targets a different endpoint than qa/env.json; using the Admin API',
+          );
+        }
+      }
     } catch {
       // A malformed qa/env.json should not hide the real seeding error.
     }
