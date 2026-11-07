@@ -165,9 +165,9 @@ bun dev:down           # stop this checkout's web; `--all` also stops this branc
 > not `next dev`.
 
 - **`.env.schema` stays value-free.** It declares shapes, sensitivity and ownership only — never a
-  real value, never a default that carries a secret. The vendored Varlock skill's schema checklist is
-  advisory: where it says to move values into the schema, this repo's rule wins, and `@example` is
-  only ever a placeholder. `bunx varlock printenv` is for non-sensitive keys; for a `@sensitive` key
+  real value, never a default that carries a secret. The vendored Varlock skill's schema checklist and
+  validation loop are advisory: where it says to move values into the schema — or to validate with
+  `varlock load --agent` — this repo's rule wins, and `@example` is only ever a placeholder. `bunx varlock printenv` is for non-sensitive keys; for a `@sensitive` key
   run `bun run env:check:quiet` (exit code only — `env:check` is only partially redacted: it prints the
   first two characters of every sensitive value, and a value shorter than three characters in full, so
   never paste its output) or ask the human to run `bunx varlock reveal`.
