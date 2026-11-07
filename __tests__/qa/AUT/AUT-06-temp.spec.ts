@@ -1,8 +1,8 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
-import { waitForDefaultAuthPath } from '@qa/fixtures/qa-mail';
-import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { waitForDefaultAuthPath } from '#test/helpers/mailpit';
+import { loadTenant } from '#test/qa/fixtures/tenant';
 
 // Temporary variant: only meaningful against a stack-mode Supabase.
 test.skip(process.env.STUDIQ_STACK_MODE !== '1', 'temporary stack-mode variant');

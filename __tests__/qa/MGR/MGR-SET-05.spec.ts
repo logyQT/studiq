@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-SET-05 — branding is withdrawn when the organization loses the plan.

@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-QZ-05 — Utworzenie kartkówki z quizu (`/edu/quizzes/:id`).

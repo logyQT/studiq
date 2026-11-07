@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { request as apiRequest, type APIRequestContext, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
-import { expect, loadTenant, loginAs, test } from '@qa/fixtures/qa-tenant';
+import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
 
 /**
  * ONB-03 — joining an existing organization with an invite code (teacher role).

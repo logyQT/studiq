@@ -7,7 +7,7 @@ import {
   test,
   type QaRole,
   type QaTenant,
-} from '@qa/fixtures/qa-tenant';
+} from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-08 — a student cannot edit or delete another student's flashcard or deck

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-10 — Logowanie: `?next=` nie może przekierować na obcą domenę.

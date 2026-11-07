@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page, type Response } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { shortHash } from '#test/e2e/fixtures/ids';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-51 — changing the password on the student account page (`/app/account`).

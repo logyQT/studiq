@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { createQaSupabase } from '#test/helpers/db-admin';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * LIM-03 — a higher limit after buying a plan.

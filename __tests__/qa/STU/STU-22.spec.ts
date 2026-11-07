@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-22 — Multimedia na fiszce (obraz/audio), `/app/flashcards/<id>`.

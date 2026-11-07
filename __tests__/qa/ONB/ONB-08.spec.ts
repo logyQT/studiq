@@ -1,11 +1,11 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
-import { waitForMailLink } from '@qa/fixtures/qa-mail';
+import { waitForMailLink } from '#test/helpers/mailpit';
 import { json } from '#test/helpers/json';
-import { attemptSuffix, resetInviteeState } from '@qa/fixtures/qa-invitees';
-import { qaDbNow } from '@qa/fixtures/qa-db';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
-import { skipBrandedAuthTemplateTest } from '@qa/fixtures/stack-mode';
+import { attemptSuffix, resetInviteeState } from '#test/qa/fixtures/invitees';
+import { qaDbNow } from '#test/helpers/db-admin';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { skipBrandedAuthTemplateTest } from '#test/helpers/stack-mode';
 
 /**
  * ONB-08 — registration from an invitation link (/join?token=…), happy path.

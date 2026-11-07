@@ -1,6 +1,6 @@
 import { expect, request as apiRequest, test } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-INV-01 — sending an invitation with a role (/manage/invites).

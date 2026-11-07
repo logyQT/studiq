@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-02 — Menu boczne managera (`/manage`).

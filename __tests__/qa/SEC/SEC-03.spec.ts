@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-03 — a student without an organization cannot read another organization's

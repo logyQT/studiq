@@ -66,6 +66,7 @@ __tests__/e2e/.seed/
 
 # QA case tenants (generated)
 qa/.tenants/
+qa/env.json
 
 # QA run artefacts (never commit)
 .qa-app.log

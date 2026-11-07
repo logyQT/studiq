@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { qaDbNow, resetFirstRunTenant } from '@qa/fixtures/qa-db';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { qaDbNow, resetFirstRunTenant } from '#test/helpers/db-admin';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * ONB-04 — Manager bez organizacji → /setup/org.

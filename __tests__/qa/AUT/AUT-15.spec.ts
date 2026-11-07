@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-15 — anonymous visitor on the protected routes.

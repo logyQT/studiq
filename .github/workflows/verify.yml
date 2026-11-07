@@ -169,15 +169,16 @@ jobs:
                   ["git", "diff", "--no-renames", "--name-only", f"origin/{base}...HEAD"],
                   capture_output=True, text=True, check=True,
               ).stdout.split()
-              # Shared QA files, anything outside qa/, or a QA PR that touches no
-              # spec at all can change every area -> run all shards. Only a PR
-              # that pins a *known* area narrows (see `area_of` below).
+              # Shared QA files, anything outside the QA test tree, or a QA PR
+              # that touches no spec at all can change every area -> run all
+              # shards. Only a PR that pins a *known* area narrows (see
+              # `area_of` below).
               # `__tests__/` is deliberately absent: it holds both the specs
               # (usable for narrowing) and the helpers the suite imports
               # (`__tests__/helpers/tenant-seed`, `__tests__/e2e/fixtures/ids`),
               # so the narrowing decision is per file instead of per prefix.
               shared = (
-                  "qa/fixtures/", "qa/playwright.qa.config.ts",
+                  "__tests__/qa/fixtures/", "__tests__/qa/playwright.qa.config.ts",
                   "scripts/qa-tenant.ts", "scripts/qa-issue.ts",
                   ".github/workflows/verify.yml", "package.json", "bun.lock",
                   "apps/web/", "packages/", "supabase/",
@@ -206,6 +207,10 @@ jobs:
 
               def area_of(f):
                   """The single area a changed file pins, or None if it pins none."""
+                  # Shared fixtures are not an area: a change there can reach any
+                  # spec, so it must force every shard (see `shared` above).
+                  if f.startswith("__tests__/qa/fixtures/"):
+                      return None
                   if f.startswith("__tests__/qa/profiles/") and f.endswith(".json"):
                       return f.rsplit("/", 1)[-1].split("-")[0]
                   if f.startswith("qa/cases/") and f.endswith(".md"):
@@ -367,7 +372,7 @@ jobs:
         if: always()
         run: bunx supabase stop || true
 
-  # The QA suite has its own runner (qa/playwright.qa.config.ts, shared app on
+  # The QA suite has its own runner (__tests__/qa/playwright.qa.config.ts, shared app on
   # :3010, one worker). The root config only sees __tests__/e2e, so without this
   # job `__tests__/qa/**` would never run in CI.
   qa-suite:
@@ -585,7 +590,7 @@ jobs:
         run: bun scripts/qa-tenant.ts --all --areas "${{ join(matrix.shard.areas, ',') }}" --run "ci${{ github.run_id }}"
 
       - name: Run the QA suite
-        run: bunx playwright test -c qa/playwright.qa.config.ts --reporter=line ${{ matrix.shard.paths }}
+        run: bunx playwright test -c __tests__/qa/playwright.qa.config.ts --reporter=line ${{ matrix.shard.paths }}
 
       - name: Upload report
         if: failure()

@@ -1,8 +1,8 @@
 import { expect, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { qaDbNow } from '@qa/fixtures/qa-db';
-import { resetInviteeState } from '@qa/fixtures/qa-invitees';
-import { loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { qaDbNow } from '#test/helpers/db-admin';
+import { resetInviteeState } from '#test/qa/fixtures/invitees';
+import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * ONB-10 — the organization member limit is enforced when an invitation is

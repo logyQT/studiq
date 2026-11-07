@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
  * BIL-04 — a manager buys the organization plan from `/pricing/org`.

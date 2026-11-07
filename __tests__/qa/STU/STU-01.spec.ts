@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { createQaSupabase } from '#test/helpers/db-admin';
 
 /**
  * STU-01 — Pulpit studenta (`/app`): powitanie, karty statystyk, odmiana
@@ -19,7 +19,7 @@ import { createQaSupabase } from '@qa/fixtures/qa-db';
  *
  * The seeded tenant is empty, so the spec builds its own deck and five cards
  * through the product API and records their practice. The only service-role
- * write is the documented "time" exception (`qa/fixtures/qa-db.ts`): the
+ * write is the documented "time" exception (`__tests__/helpers/db-admin.ts`): the
  * review-state rows it just created are aged into the past so `dueToday`
  * reaches 1, 2 and 5 — that is the only way to exercise all three Polish
  * plural forms without waiting for the scheduler. Every row is keyed by a card

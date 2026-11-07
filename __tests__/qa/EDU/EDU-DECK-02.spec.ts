@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { expect, loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-DECK-02 — Utworzenie talii dla grupy (/edu/flashcards → /app/flashcards).

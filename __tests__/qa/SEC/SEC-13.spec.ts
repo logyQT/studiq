@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
-import { expect, loadTenant, loginAs, test, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { createQaSupabase } from '#test/helpers/db-admin';
+import { expect, loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-13 — Reguły dostępu do bazy (RLS): the anon key reads no user data.

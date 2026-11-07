@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { createQaSupabase } from '#test/helpers/db-admin';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-04 — the "Ucz się" page shows the right study state and the mode switch.

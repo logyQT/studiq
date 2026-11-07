@@ -1,6 +1,6 @@
 import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaRole, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-SEAT-02 — assigning a seat to a member.

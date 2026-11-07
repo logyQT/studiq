@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaRole } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
 
 /**
  * BIL-02 — the „Wybierz plan” pages: `/app/upgrade` (student) and `/edu/upgrade`

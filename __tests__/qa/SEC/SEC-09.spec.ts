@@ -7,7 +7,7 @@ import {
   test,
   type QaRole,
   type QaTenant,
-} from '@qa/fixtures/qa-tenant';
+} from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-09 — a student and a teacher from another organization cannot read the

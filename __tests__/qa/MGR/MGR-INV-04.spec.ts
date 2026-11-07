@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { createQaSupabase } from '#test/helpers/db-admin';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '@qa/fixtures/qa-tenant';
+import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-INV-04 — accepting an invitation as an **existing** user.

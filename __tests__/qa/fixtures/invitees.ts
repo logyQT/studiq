@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { createQaSupabase } from '@qa/fixtures/qa-db';
+import { createQaSupabase } from '#test/helpers/db-admin';
 
 /**
  * Per-attempt identity for a case-owned invitee.
@@ -38,7 +38,7 @@ export interface ResetInviteeOptions {
   /**
    * Only rows created strictly before this instant are removed. Pass the
    * instant the attempt started, read from the **database** clock
-   * (`qaDbNow()` in `qa/fixtures/qa-db.ts`) — the same clock that writes
+   * (`qaDbNow()` in `__tests__/helpers/db-admin.ts`) — the same clock that writes
    * `invitations.created_at` and `org_members.joined_at`.
    *
    * Without it, a `--repeat-each` run with several workers lets two attempts of
@@ -93,7 +93,8 @@ export async function resetInviteeState(
   const { data: membershipRows, error } = await db
     .from('org_members')
     .select('user_id, joined_at')
-    .eq('organization_id', options.organizationId);
+    .eq('organization_id', options.organizationId)
+    .returns<Array<{ user_id: string; joined_at: string | null }>>();
   if (error) throw new Error(`resetInviteeState: read memberships: ${error.message}`);
 
   const userIds = (membershipRows ?? []).map((row) => row.user_id);
@@ -102,7 +103,8 @@ export async function resetInviteeState(
     const { data: profiles, error: profileError } = await db
       .from('profiles')
       .select('id, email')
-      .in('id', userIds);
+      .in('id', userIds)
+      .returns<Array<{ id: string; email: string }>>();
     if (profileError) throw new Error(`resetInviteeState: read profiles: ${profileError.message}`);
     for (const profile of profiles ?? []) emailById.set(profile.id, profile.email);
   }

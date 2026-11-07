@@ -96,13 +96,17 @@ function tenantFor(caseId: string): QaTenant {
  * its own attempt's tenant instead of the first one's.
  */
 export function loadTenant(caseId: string): QaTenant {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the proxy target is a lazy stand-in; every access is forwarded to the loaded tenant
   return new Proxy({} as QaTenant, {
+    // Reflect.get is typed `any`; the proxy forwards the real tenant value.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     get: (_target, property) => Reflect.get(tenantFor(caseId), property),
     has: (_target, property) => Reflect.has(tenantFor(caseId), property),
-    ownKeys: () => Reflect.ownKeys(tenantFor(caseId) as object),
+    ownKeys: () => Reflect.ownKeys(tenantFor(caseId)),
     getOwnPropertyDescriptor: (_target, property) => ({
       configurable: true,
       enumerable: true,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Reflect.get is typed `any`; the value is the loaded tenant's own property
       value: Reflect.get(tenantFor(caseId), property),
     }),
   });
