@@ -177,13 +177,13 @@ LearningPathAgent, ReportAgent, multi-agent pipelines and adaptive difficulty ar
 
 ## Phase 6: Subscription Gating 🏗️
 
-| Item                                     | Status | Notes                                                                                                                                                           |
-| ---------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Feature flags                            | ✅     | DB-backed `features`, `feature_flags`, per-plan and per-role (`org_role_features`), user overrides, admin UI                                                    |
-| Plans, limits and gating                 | ✅     | `subscription_plans`, `plan_features`, `plan_limits`, `/pricing`, upgrade prompts, plan limits resolved live                                                    |
-| Seat-based licensing                     | ✅     | `org_seat_pools`, assignments, `/manage/seats` ([plan](plans/seat-based-licensing.md))                                                                          |
-| Checkout, billing pages, payment history | ✅     | Mock simulation is the dev/test/QA default; hosted Stripe Checkout/Portal is the production path behind `PAYMENT_DRIVER=stripe`                                 |
-| Real Stripe                              | 🏗️     | [#662](https://github.com/logyQT/studiq/issues/662) production uses Stripe (`APP_ENV=production`, no mock); dev/test/QA explicitly use the mock contract double |
+| Item                                     | Status | Notes                                                                                                                                                                                                                                                                |
+| ---------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Feature flags                            | ✅     | DB-backed `features`, `feature_flags`, per-plan and per-role (`org_role_features`), user overrides, admin UI                                                                                                                                                         |
+| Plans, limits and gating                 | ✅     | `subscription_plans`, `plan_features`, `plan_limits`, `/pricing`, upgrade prompts, plan limits resolved live                                                                                                                                                         |
+| Seat-based licensing                     | ✅     | `org_seat_pools`, assignments, `/manage/seats` ([plan](plans/seat-based-licensing.md))                                                                                                                                                                               |
+| Checkout, billing pages, payment history | ✅     | Mock simulation is the dev/test/QA default; hosted Stripe Checkout/Portal is the production path behind `PAYMENT_DRIVER=stripe`                                                                                                                                      |
+| Real Stripe                              | 🏗️     | Implementation complete ([#662](https://github.com/logyQT/studiq/issues/662)); go-live tracked in [#1019](https://github.com/logyQT/studiq/issues/1019). Production uses Stripe (`APP_ENV=production`, no mock); dev/test/QA explicitly use the mock contract double |
 
 ---
 
