@@ -10,9 +10,10 @@ break a product flow: every case in [`qa/cases/`](../qa/cases) gets a test that 
 ## Scope
 
 The suite lives in this repo and runs on `main` — `__tests__/e2e/cases/<ID>.spec.ts`, plain
-Playwright, nothing QA-specific. The shared QA environment (`bun dev:up` in a throwaway
-worktree) is for exploratory, agent-driven QA and for the semantic cases below; it does not
-host the suite, and there is no separate QA test runner.
+Playwright, nothing QA-specific. The shared QA environment (`bun dev:up --prod` in a
+throwaway worktree) is for exploratory, agent-driven QA and for the semantic cases below; it
+does not host the suite. The semantic QA suite runs through `bun run test:qa`, which uses the
+same Playwright runner with `qa/playwright.qa.config.ts`.
 
 ## Isolation: one test, one tenant
 

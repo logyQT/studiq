@@ -42,7 +42,7 @@ if (!caseId || !title || !bodyFile) {
 // instead of publishing a dead reference into an issue.
 const bodyText = readFileSync(bodyFile, 'utf8');
 const pathPattern =
-  /(?:\/workspaces\/|\/home\/[^\s]+\/|\/tmp\/[^\s]+|dashboard\/shots\/|\.worktrees\/)[^\s`)\]]*/g;
+  /(?:\/workspaces\/|\/home\/[^\s]+\/|\/tmp\/[^\s]+|dashboard\/shots\/|shots\/|\.worktrees\/)[^\s`)\]]*/g;
 const leaked = [...new Set(bodyText.match(pathPattern) ?? [])];
 if (leaked.length > 0) {
   console.error(
