@@ -299,8 +299,6 @@ Test/CI review findings:
   specs are skipped via `STUDIQ_STACK_MODE=1`; all other QA specs run.
 - Full QA, integration and both e2e browsers passed natively. Playwright browser
   caching is refreshed by the main-only `cache-warm` workflow.
-- `qa/AGENT-PROMPT.md`/`README.md` still describe a `supabase_db_qa-env-*`
-  Docker container for manual QA; that has no native equivalent.
 
 ## Recommendation
 

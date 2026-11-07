@@ -2,7 +2,7 @@
  * File a QA-suite defect without creating duplicates.
  *
  *   bun scripts/qa-issue.ts PUB-07 --title "404 page leaks the locale" --body-file /tmp/body.md \
- *     --attach dashboard/shots/qa-env-3-20261029-101500.png
+ *     --attach shots/<case-id>-<ts>.png
  *   bun scripts/qa-issue.ts PUB-07 --title "…" --body-file … --search "locale cookie" --attach …
  *
  * Behaviour:
@@ -49,7 +49,7 @@ if (leaked.length > 0) {
     'refusing to file: the body contains local filesystem path(s), which no reader can open:\n' +
       leaked.map((l) => `  ${l}`).join('\n') +
       '\n\nUpload the image(s) with --attach and reference them only through the upload, e.g.\n' +
-      '  --attach dashboard/shots/qa-env-3-20261029-101500.png\n' +
+      '  --attach shots/<case-id>-<ts>.png\n' +
       'and drop the path from the markdown body.',
   );
   process.exit(3);
