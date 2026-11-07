@@ -102,7 +102,7 @@ What a spec still has to do:
 - **Test with the real flags** against a freshly seeded run:
 
   ```bash
-  bun scripts/qa-tenant.ts --all --areas <AREA> --run retry-check
+  bun scripts/qa-tenant.ts --all --areas <AREA> --run retry-check --repeats 2
   CI=1 bunx playwright test -c qa/playwright.qa.config.ts <spec> \
     --repeat-each=2 --retries=2 --workers=1
   ```

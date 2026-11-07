@@ -182,6 +182,10 @@ test.afterEach(async () => {
 });
 
 test.describe('@case:ONB-03 @area:ONB @prio:P2 join an organization by invite code', () => {
+  // The case's accounts are module-level state refreshed per attempt; serial
+  // mode keeps that explicit even if the project ever enables full parallelism.
+  test.describe.configure({ mode: 'serial' });
+
   test('a valid code previews the organization and joins it as teacher', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));

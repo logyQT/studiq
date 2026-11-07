@@ -75,7 +75,8 @@ function tenantFor(caseId: string): QaTenant {
   if (attemptPath && !existsSync(attemptPath)) {
     throw new Error(
       `missing tenant for this attempt: ${attemptPath}. ` +
-        `Seed it with \`bun scripts/qa-tenant.ts ${caseId} --attempts <retries + 1>\`.`,
+        `Seed it with \`bun scripts/qa-tenant.ts ${caseId} --attempts <retries + 1> ` +
+        `--repeats <repeat-each>\`.`,
     );
   }
   const path = attemptPath ?? join(TENANTS_DIR, `${caseId}.json`);
