@@ -44,6 +44,7 @@ const HOST = new URL(process.env.QA_APP_URL ?? 'http://localhost:3010').hostname
 
 export function loadTenant(caseId: string): QaTenant {
   const path = join(process.cwd(), 'qa', '.tenants', `${caseId}.json`);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the file is written by scripts/qa-tenant.ts; a malformed tenant should fail loudly in the spec, not silently pass a generic shape
   return JSON.parse(readFileSync(path, 'utf8')) as QaTenant;
 }
 
@@ -72,6 +73,10 @@ export async function loginAs(
   }
   const res = await page.request.post('/api/v1/auth/login', {
     data: { email: user.email, password: user.password },
+    // `maxRetries` only retries `ECONNRESET` (never an HTTP status), so a real
+    // auth failure still surfaces. The server-side keep-alive fix removes the
+    // dominant cause; this keeps a cold-start reset from failing the whole test.
+    maxRetries: 2,
   });
   if (!res.ok()) {
     const body = await res.text();

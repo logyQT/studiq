@@ -68,6 +68,9 @@ async function login(
   const user = tenant.users[role];
   const res = await page.request.post('/api/v1/auth/login', {
     data: { email: user.email, password: user.password },
+    // Only `ECONNRESET` is retried (never an HTTP status), so an invalid
+    // credential still fails immediately. See the keep-alive note in AGENTS.md.
+    maxRetries: 2,
   });
   if (!res.ok()) {
     throw new Error(

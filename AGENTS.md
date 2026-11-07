@@ -530,6 +530,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 ## Key Gotchas
 
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
+- **`next start` keep-alive**: `apps/web`'s `start` script passes `--keepAliveTimeout 55000` (and every runner that calls `next start` directly must too). Node's 5 s default closes an idle keep-alive socket while Playwright's `APIRequestContext` — a raw `http.Agent({ keepAlive: true })` with no `ECONNRESET` retry — is still pooling it, so the next `page.request.*` after a UI phase dies with `read ECONNRESET`. Keep the value below Node's 60 s `headersTimeout`; Next exposes no flag to raise that one.
 - **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need a typecheck.
 - **`proxy.ts`**: Next.js 16 uses `proxy.ts` (not `middleware.ts`) — `apps/web/src/proxy.ts` (route rules) and `apps/admin/src/proxy.ts` (PEM signature gate). Do not rename.
 - **`@studiq/server/lib/zod`**: Always import `{ z, registry }` from here, not from `'zod'` — shares one Zod instance and the schema registry

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "bun ../../scripts/payment-preflight.ts && next start",
+    "start": "bun ../../scripts/payment-preflight.ts && next start --keepAliveTimeout 55000",
     "typecheck": "bun check",
     "lint": "bun lint --no-script src/",
     "test": "vitest run",
