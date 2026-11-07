@@ -45,7 +45,8 @@ vocabulary or grant model introduced today would be a second model to migrate.
 3. **No interim app-level auth.** Do not restore PEM, and do not add a new
    shared secret, Basic auth, hand-rolled token, header trust or scope
    vocabulary. The next auth design is the one that lands on top of the role
-   authority model (#946), not a stopgap.
+   authority model ([#1046](https://github.com/logyQT/studiq/issues/1046)), not
+   a stopgap.
 4. **If it is ever deployed, edge protection is mandatory but not sufficient.**
    Vercel Authentication (All Deployments) / Cloudflare Access plus generated-URL
    protection / VPN must cover UI pages and `/api/*` on every URL, and the
@@ -89,11 +90,14 @@ landed on `main`.
    [`docs/decisions/0008-role-based-authority.md`](https://github.com/logyQT/studiq/blob/exp/role-authority/docs/decisions/0008-role-based-authority.md)
    and
    [`docs/plans/role-authority-rollout.md`](https://github.com/logyQT/studiq/blob/exp/role-authority/docs/plans/role-authority-rollout.md).
-2. **#946 ADRs accepted and implemented** — admin auth for humans (OIDC through
-   Supabase + `platform_admin` claim + MFA, with the edge proxy as defence in
-   depth), org-scoped grants + append-only audit, and the adversarial-review P0
-   answers. This defines who the actor is and what a grant means; it cannot be
-   finalised before blocker 1.
+2. **Admin auth / grants / audit design, re-derived after blocker 1.** The #946
+   proposals are **historical input only** (closed; branch
+   `docs/admin-auth-adrs`): they assume the removed PEM/keyring and the
+   pre-role-authority model. Re-derive human auth (OIDC through Supabase +
+   `platform_admin` + MFA, with the edge proxy as defence in depth), org-scoped
+   grants + append-only audit, and the adversarial-review P0 answers on the new
+   roles/scopes/entitlements. This defines who the actor is and what a grant
+   means; it cannot be finalised before blocker 1.
 3. **Content boundary decision (FP-03).** Decide whether content RLS stays a
    tenant floor, gets scoped RLS, or moves to a service-role-only server path
    with explicit authorization filters. The admin panel uses the service role,
@@ -116,8 +120,8 @@ landed on `main`.
 `apps/admin` may be deployed only when **all** are true:
 
 - blocker 1 is merged to `main`;
-- #946's auth/grant/audit ADRs are accepted and implemented, with deny-by-default
-  route guards, MFA and per-route grants;
+- the re-derived auth/grant/audit design is accepted and implemented, with
+  deny-by-default route guards, MFA and per-route grants;
 - the FP-03 boundary is decided and enforced;
 - the audit log is append-only and covers reads, mutations and denials;
 - the edge gate is provisioned and verified for UI and API on every URL;
