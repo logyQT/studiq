@@ -115,6 +115,11 @@ function isThisCheckout(workdir: string): boolean {
   return canon(workdir.startsWith('/') ? workdir : resolve(REPO_ROOT, workdir)) === REPO_ROOT;
 }
 
+/** `--all` and pflag's `--all=true|false` all mean "every stack". */
+function hasAllFlag(args: string[]): boolean {
+  return args.some((arg) => arg === '--all' || arg.startsWith('--all='));
+}
+
 /**
  * Passthrough to `bunx supabase` from the checkout root.
  *
@@ -133,7 +138,7 @@ function isThisCheckout(workdir: string): boolean {
 export function runSupa(args: string[]): number {
   const stopCapable = args.includes('stop') || args.includes('restart');
 
-  if (stopCapable && args.includes('--all')) return reject(ALL_MESSAGE, 2);
+  if (stopCapable && hasAllFlag(args)) return reject(ALL_MESSAGE, 2);
   if (args.includes('destroy')) return reject(DESTROY_MESSAGE, 2);
   if (args.includes('db') && args.includes('reset')) return reject(DB_RESET_MESSAGE, 2);
 

@@ -3,8 +3,10 @@ import {
   createHarness,
   objectField,
   parseJsonObject,
-  startHttpServer,
   stackStatusFixture,
+  startHttpServer,
+  stoppedStackFixture,
+  stringList,
   type Harness,
 } from '#test/unit/env/support';
 
@@ -23,6 +25,8 @@ function newHarness(): Harness {
 describe('env:status --json', () => {
   it('reports a stopped checkout without crashing and without secrets', async () => {
     const harness = newHarness();
+    // A stopped stack still answers `stack status` cleanly (exit 0, no API URL).
+    harness.setStatusFixture(stoppedStackFixture());
     // SUPABASE_RUNTIME is not an input to a read-only command.
     const result = await harness.run(['status', '--json'], { SUPABASE_RUNTIME: 'docker' });
 
@@ -63,6 +67,18 @@ describe('env:status --json', () => {
     expect(status.registry).toBe(harness.env.STUDIQ_DEV_REGISTRY);
     expect('warmMs' in status).toBe(false);
     expect(result.stdout).not.toMatch(/ANON_KEY|SERVICE_ROLE_KEY|PUBLISHABLE_KEY|SECRET_KEY/);
+  });
+
+  it('warns when the stack status lookup itself fails', async () => {
+    const harness = newHarness();
+    // No fixture: the fake CLI exits non-zero (a failed lookup, not a stopped stack).
+    const result = await harness.run(['status', '--json']);
+
+    expect(result.status).toBe(0);
+    const status = parseJsonObject(result.stdout);
+    expect(status.ready).toBe(false);
+    expect(status.stack).toBeNull();
+    expect(stringList(status.warnings).join('\n')).toContain("cannot read 'supabase stack status'");
   });
 
   it('shapes a running stack and never emits key material or the DB password', async () => {

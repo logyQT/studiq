@@ -130,12 +130,21 @@ export function runSupabase(args: string[], options: SpawnOptions = {}): SpawnRe
   });
   const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
   const timedOut = code === 'ETIMEDOUT';
+  const status = result.status;
+  let error: string | null = null;
+  if (result.error) {
+    error = result.error.message;
+  } else if (status !== 0) {
+    // A stopped stack exits 0 (identity + empty endpoints), so a non-zero exit
+    // is a real CLI failure and must not be reported as an absent stack.
+    error = `\`supabase ${args.join(' ')}\` exited with code ${status ?? 'unknown'}`;
+  }
   return {
-    ok: result.error === undefined && result.status === 0,
-    status: result.status,
+    ok: error === null,
+    status,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
-    error: result.error ? result.error.message : null,
+    error,
     timedOut,
   };
 }
@@ -248,11 +257,11 @@ function readStackWithError(stackName: string | null): StackReadResult {
 export interface StackStatusProbe {
   /** The running stack, or null when it is stopped/unusable/absent. */
   stack: StackStatus | null;
-  /** Spawn/timeout failure of the CLI itself; null means the CLI answered. */
+  /** Spawn/timeout failure or non-zero exit of the CLI; null means it answered. */
   error: string | null;
 }
 
-/** Read-only probe used by `doctor` to distinguish "no stack" from "CLI broke". */
+/** Read-only probe used by `doctor`/`status` to distinguish "no stack" from "CLI broke". */
 export function probeStackStatus(stackName: string | null): StackStatusProbe {
   const { read, error } = readStackWithError(stackName);
   return { stack: read?.status ?? null, error };

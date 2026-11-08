@@ -3,9 +3,10 @@ import {
   createHarness,
   firstFreePort,
   parseJsonObject,
+  stackStatusFixture,
   startHttpServer,
   startTcpListener,
-  stackStatusFixture,
+  stoppedStackFixture,
   stringList,
   type Harness,
 } from '#test/unit/env/support';
@@ -26,6 +27,8 @@ describe('env:doctor', () => {
   it('exits 0 when nothing is wrong (no stack for this branch)', async () => {
     const appPort = await firstFreePort(3900);
     const harness = newHarness();
+    // A stopped stack answers `stack status` cleanly (exit 0, no API URL).
+    harness.setStatusFixture(stoppedStackFixture());
     const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
 
     expect(result.status).toBe(0);
@@ -35,6 +38,18 @@ describe('env:doctor', () => {
     expect(Array.isArray(report.warnings)).toBe(true);
     // A stopped/absent stack is a clean CLI answer, not a CLI failure.
     expect(stringList(report.warnings).join('\n')).not.toContain('supabase stack status');
+  });
+
+  it('warns when the stack status lookup fails but stays exit 0', async () => {
+    const appPort = await firstFreePort(3900);
+    const harness = newHarness();
+    // No fixture: the fake CLI exits non-zero (a failed lookup, not a stopped stack).
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report.ok).toBe(true);
+    expect(stringList(report.warnings).join('\n')).toContain("cannot read 'supabase stack status'");
   });
 
   it('warns when the Supabase CLI cannot be spawned', async () => {

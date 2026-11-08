@@ -45,7 +45,7 @@ function readAppUrl(harness: Harness): string {
 }
 
 describe('env:supa', () => {
-  it('forwards every argument verbatim, including the -- separator', async () => {
+  it('strips the -- separator and forwards every argument', async () => {
     const harness = newHarness();
     const result = await harness.run(['supa', '--', '--version'], {
       FAKE_SUPA_STDOUT: 'fake-supa 9.9.9',
@@ -114,6 +114,20 @@ describe('env:supa', () => {
       expect(result.stdout, args.join(' ')).toBe('');
       expect(harness.bunxCalls(), args.join(' ')).toBe('');
     }
+  });
+
+  it('rejects --all=true for stop/restart (exit 2, no spawn)', async () => {
+    const harness = newHarness();
+
+    const stop = await harness.run(['supa', 'stop', '--stack', 'default', '--all=true']);
+    expect(stop.status).toBe(2);
+    expect(stop.stdout).toBe('');
+    expect(harness.bunxCalls()).toBe('');
+
+    const restart = await harness.run(['supa', 'restart', '--stack', 'default', '--all=false']);
+    expect(restart.status).toBe(2);
+    expect(restart.stdout).toBe('');
+    expect(harness.bunxCalls()).toBe('');
   });
 
   it('forwards a scoped stack stop for a stack this checkout owns', async () => {

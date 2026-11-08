@@ -90,11 +90,12 @@ export interface StatusInputs {
   cold?: boolean | null;
   seeded?: boolean | null;
   buildFingerprint?: string | null;
-  warnings?: string[];
   ready?: boolean;
   runtime?: string | null;
   stackId?: string | null;
   branch?: string | null;
+  /** CLI/probe warnings, plumbed by every snapshot builder. */
+  warnings: string[];
 }
 
 /** `200-399` for the web app and a healthy Supabase, exactly like `dev:status`. */

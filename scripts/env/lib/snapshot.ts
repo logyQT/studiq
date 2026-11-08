@@ -5,7 +5,7 @@ import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
 import { readRegistry, findEntry } from './registry';
 import { REPO_ROOT, canon, currentBranchRef, deriveProjectId, sanitizeProjectId } from './repo';
 import { profileRequiresServe } from '../profiles';
-import { readStackStatus, readListedStackRuntime, type StackStatus } from './stack';
+import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
 import { dockerStackWarning } from './platform';
 import { identityKey, readBuildState, readStackRecord, type StackRecord } from './state';
 import { seedMarkerCurrent } from './seed';
@@ -153,6 +153,7 @@ function sharedProjectId(): string | null {
 export async function collectSnapshot(options: SnapshotOptions = {}): Promise<StatusSnapshot> {
   const contract = options.contract ?? contractWithLease(readContract());
   const registry = readRegistry();
+  let probeError: string | null = null;
   const stack =
     options.stack !== undefined
       ? options.stack
@@ -160,7 +161,11 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
         ? null
         : contract.shared
           ? null
-          : readStackStatus(contract.stackName);
+          : (() => {
+              const probe = probeStackStatus(contract.stackName);
+              probeError = probe.error;
+              return probe.stack;
+            })();
   const record = contract.shared
     ? null
     : options.record !== undefined
@@ -193,6 +198,9 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
 
   const buildState = readBuildState();
   const warnings = [...(options.warnings ?? [])];
+  if (probeError) {
+    warnings.push(`cannot read 'supabase stack status': ${probeError}`);
+  }
   const listedRuntime =
     !contract.shared && !statusStack && !options.skipStackLookup
       ? readListedStackRuntime(contract.stackName)
