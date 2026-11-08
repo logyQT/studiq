@@ -63,4 +63,47 @@ describe('env:supa', () => {
     const result = await harness.run(['supa', 'bogus'], { FAKE_SUPA_EXIT: '7' });
     expect(result.status).toBe(7);
   });
+
+  it('rejects stop --all with exit 2 and never spawns the CLI', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'stop', '--all']);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('stop --all');
+    expect(result.stderr).toContain('stack stop --stack');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('rejects stop --all in any argument order', async () => {
+    const variants = [
+      ['stop', '--all'],
+      ['--all', 'stop'],
+      ['stop', '--project-id', 'abc', '--all'],
+      ['stop', '--', '--all'],
+    ];
+    for (const args of variants) {
+      const harness = newHarness();
+      const result = await harness.run(['supa', ...args]);
+      expect(result.status, args.join(' ')).toBe(2);
+      expect(result.stdout, args.join(' ')).toBe('');
+      expect(harness.bunxCalls(), args.join(' ')).toBe('');
+    }
+  });
+
+  it('forwards a scoped stack stop unchanged', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'stop', '--stack', 'default']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('stop --stack default');
+  });
+
+  it('forwards a stack list unchanged', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'stack', 'list']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('stack list');
+  });
 });

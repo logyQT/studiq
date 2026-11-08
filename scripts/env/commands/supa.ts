@@ -11,6 +11,17 @@ import { writeStderrLine } from '../lib/output';
  * an explicit APP_URL wins, exactly like `scripts/dev supa`.
  */
 export function runSupa(args: string[]): number {
+  // Hard rule: never `supabase stop --all` (it stops every stack on the
+  // machine, including other checkouts'). Scan tokens, not positions, so any
+  // argument order is caught; everything else is forwarded untouched.
+  if (args.includes('stop') && args.includes('--all')) {
+    writeStderrLine(
+      "env:supa: refusing 'stop --all' — it stops every Supabase stack on the machine. " +
+        "Stop only this checkout's stack with 'stack stop --stack <name>'.",
+    );
+    return 2;
+  }
+
   const appUrl = process.env.APP_URL || `http://localhost:${process.env.APP_PORT || '3000'}`;
   const result = spawnSync('bunx', ['supabase', ...args], {
     cwd: REPO_ROOT,
