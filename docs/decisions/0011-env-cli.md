@@ -46,10 +46,10 @@ checkouts. The corrected spec is
    `down`, `build`, `serve`, `recreate`, `doctor`, `ports`, `supa`, `dev`,
    `reset-db`, `logs`, `prepull`, `setup`, `verify`. The `supa` passthrough
    validates destructive or stop-capable subcommands before forwarding:
-   `stop --all`, `db reset` and `stack destroy` are rejected, and every
-   stop/restart form (`stop`, `stack stop`, `restart`, `stack restart`) must
-   target a stack whose `project_root` is this checkout (usage errors exit 2,
-   ownership conflicts exit 6). Starts are normalized instead: `stack start …`
+   `stop --all`, `db reset`/`migration down` and `stack destroy` are rejected,
+   and every stop/restart form (`stop`, `stack stop`, `restart`, `stack
+restart`) must target a stack whose `project_root` is this checkout (usage
+   errors exit 2, ownership conflicts exit 6). Starts are normalized instead: `stack start …`
    always carries the selected runtime (`--runtime native` by default, injected
    when absent; an explicit value is preserved). `--json` is translated to the
    CLI's `--output-format json` where the CLI accepts it (only
@@ -62,7 +62,10 @@ checkouts. The corrected spec is
 3. **varlock is the loader, the injector and the validator.** Value-consuming
    commands keep `varlock run --inject vars --`; `status`/`ports`/`doctor` run
    unwrapped so a locked vault cannot block them. The CLI never parses a dotenv
-   file. varlock also stays the validator (`env:check`, `env:scan`, the
+   file and never relies on Bun's dotenv auto-load: unwrapped commands read the
+   **process environment** only, so callers export `SUPABASE_STACK` /
+   `SUPABASE_SHARED` (and `NODE_ENV=test`, where Bun skips `.env.local`, does not
+   change that). varlock also stays the validator (`env:check`, `env:scan`, the
    inventory guard) — it is not "validator-only". **The wrappers stay for the
    whole of #1077:** removing them is a deliberate post-stability migration only
    once #1077 **and** #1078 are stable, through a framework integration

@@ -159,8 +159,9 @@ status`). All other passthrough arguments are unchanged.
     Preserve an explicit runtime. Every other start argument forwards unchanged.
   - `stop --all` is always rejected (exit 2, message naming the hard rule);
     there is no override.
-  - `db reset` is rejected (exit 2): a database reset goes through the guarded
-    `env:reset-db --yes` path (phase 3), which also invalidates the seed marker.
+  - `db reset` and `migration down` are rejected (exit 2): destructive DB work
+    goes through the guarded `env:reset-db --yes` path (phase 3), which also
+    invalidates the seed marker.
   - Destructive Storage commands (`storage rm`, `storage rm -r`, bucket/object
     deletion) are rejected (exit 2). They can delete buckets or objects in
     another checkout's stack; the message points at the owning checkout.
@@ -812,6 +813,11 @@ Rules:
   discovered stack/registry state and the schema file's key names. `env:verify`
   is read-only but invokes `varlock load` (it must not parse `.env.local`
   itself); it consumes the exit status and never echoes the output.
+  **They never rely on Bun's dotenv auto-load** (varlock is the only loader):
+  unwrapped commands read the **process environment** only, so callers must
+  export settings such as `SUPABASE_STACK` / `SUPABASE_SHARED` (or use the
+  value-consuming wrapped commands). `NODE_ENV=test`, where Bun skips
+  `.env.local`, does not change this.
 - The CLI **never parses a dotenv file**. It reads the process environment
   (already resolved by varlock), adds the discovered stack URLs/keys to the
   child environment, and never prints/logs/stores them.
