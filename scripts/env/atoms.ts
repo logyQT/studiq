@@ -11,7 +11,6 @@ export type EnvCommand = 'status' | 'doctor' | 'ports' | 'supa' | 'help';
 export interface ParsedCommand {
   command: EnvCommand;
   json: boolean;
-  suggest: boolean;
   /** `supa` only: arguments forwarded verbatim to `bunx supabase`. */
   passthrough: string[];
 }
@@ -26,7 +25,7 @@ type FlagCommand = (typeof FLAG_COMMANDS)[number];
 const ALLOWED_FLAGS: Record<FlagCommand, ReadonlyArray<string>> = {
   status: ['--json'],
   doctor: ['--json'],
-  ports: ['--json', '--suggest'],
+  ports: ['--json'],
 };
 
 function isFlagCommand(value: string): value is FlagCommand {
@@ -38,7 +37,7 @@ export const USAGE = [
   '',
   '  env:status  [--json]   Web/Supabase health, stack identity, ports (read-only)',
   '  env:doctor  [--json]   Explain runtime/stack/registry problems (exit 1 on problems)',
-  '  env:ports   [--json]   Print a free APP_PORT (--suggest is the default)',
+  '  env:ports   [--json]   Print a free APP_PORT',
   '  env:supa    <args…>    Run `bunx supabase` with APP_URL exported (passthrough)',
   '',
   'status, doctor and ports are read-only: they read the process environment, the',
@@ -51,31 +50,29 @@ export function parseCommand(argv: string[]): ParsedCommand {
 
   if (command === undefined) throw new UsageError('missing command');
   if (command === 'help' || command === '--help' || command === '-h') {
-    return { command: 'help', json: false, suggest: false, passthrough: [] };
+    return { command: 'help', json: false, passthrough: [] };
   }
 
   if (command === 'supa') {
     // `bun run env:supa -- <args>` leaves one separator; `bun scripts/env/cli.ts
     // supa -- <args>` leaves none after bun strips it. Accept both.
     const passthrough = rest[0] === '--' ? rest.slice(1) : rest;
-    return { command, json: false, suggest: false, passthrough };
+    return { command, json: false, passthrough };
   }
 
   if (!isFlagCommand(command)) throw new UsageError(`unknown command '${command}'`);
 
   let json = false;
-  let suggest = false;
   for (const arg of rest) {
     if (arg === '--help' || arg === '-h') {
-      return { command: 'help', json: false, suggest: false, passthrough: [] };
+      return { command: 'help', json: false, passthrough: [] };
     }
     const allowed = ALLOWED_FLAGS[command];
     if (!allowed.includes(arg)) {
       throw new UsageError(`unknown option '${arg}' for '${command}'`);
     }
     if (arg === '--json') json = true;
-    else suggest = true;
   }
 
-  return { command, json, suggest, passthrough: [] };
+  return { command, json, passthrough: [] };
 }

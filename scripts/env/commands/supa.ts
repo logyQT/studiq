@@ -27,20 +27,31 @@ interface StopScope {
 
 type ScopeResolution = { stack: ListedStack } | { problem: string };
 
-/** Flags that consume the following token as their value. */
+/**
+ * Global flags that consume the next token as their value. Every one must be
+ * skipped together with its value before the command position is read, or a
+ * value like the `json` in `--output-format json stop` would be mistaken for
+ * the command.
+ */
 const VALUE_FLAGS = new Set([
+  '--output-format',
+  '-o',
+  '--output',
+  '--workdir',
   '--stack',
   '--stack-id',
-  '--workdir',
-  '--project-id',
-  '--output',
-  '-o',
-  '--runtime',
-  '-x',
+  '--profile',
+  '--log-level',
+  '--network-id',
+  '--dns-resolver',
+  '--agent',
   '--exclude',
+  '-x',
+  '--preparation',
+  '--runtime',
+  '--project-id',
   '--timeout',
   '--wait',
-  '--profile',
   '--port-block',
   '--app-port',
 ]);
