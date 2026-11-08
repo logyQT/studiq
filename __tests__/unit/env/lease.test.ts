@@ -17,10 +17,6 @@ interface LeaseModule {
     stackRunning: boolean;
   }): boolean;
   heartbeatAgeMs(lease: Lease, now?: number): number;
-  leaseMatchesIdentity(
-    lease: Lease,
-    identity: { projectRoot: string; branch: string; stackName: string },
-  ): boolean;
   leaseProjectId(identityKey: string): string;
   newLease(input: {
     projectId: string;
@@ -37,26 +33,17 @@ interface LeaseModule {
 
 const lease = await loadEnvModule<LeaseModule>('lib/lease.ts');
 
-const identity = {
-  projectRoot: '/checkout',
-  branch: 'refs/heads/feat/x',
-  stackName: '',
-};
-
 function record(overrides: Partial<Lease> = {}): Lease {
   return {
     projectId: 'env-abc',
     appPort: 3000,
     heartbeatAt: new Date(0).toISOString(),
     ttlSec: 15 * 60,
-    projectRoot: identity.projectRoot,
-    branch: identity.branch,
-    stackName: identity.stackName,
     ...overrides,
   };
 }
 
-describe('app-port lease math (spec §5.2, §6.1)', () => {
+describe('app-port lease math (spec §6.1)', () => {
   it('reclaims only when the pid is dead, the heartbeat is old and no stack runs', () => {
     const base = {
       pidAlive: false,
@@ -76,14 +63,6 @@ describe('app-port lease math (spec §5.2, §6.1)', () => {
     expect(lease.heartbeatAgeMs(record({ heartbeatAt: '2026-11-08T11:59:00Z' }), now)).toBe(60_000);
     expect(lease.heartbeatAgeMs(record({ heartbeatAt: 'not-a-date' }), now)).toBe(
       Number.POSITIVE_INFINITY,
-    );
-  });
-
-  it('matches a lease by the CLI identity (root + branch + stack name)', () => {
-    expect(lease.leaseMatchesIdentity(record(), identity)).toBe(true);
-    expect(lease.leaseMatchesIdentity(record({ stackName: 'named' }), identity)).toBe(false);
-    expect(lease.leaseMatchesIdentity(record({ branch: 'refs/heads/other' }), identity)).toBe(
-      false,
     );
   });
 

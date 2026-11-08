@@ -3,8 +3,7 @@
  *
  * `2` covers bad usage (including impossible atom combinations), `3` a missing
  * native runtime, `4` a failed start/build, `5` a timeout and `6` a conflict
- * (another checkout owns the stack, shared-mode refusal, capability change
- * without `--reconcile`).
+ * (another checkout owns the stack, shared-mode refusal, missing capability).
  */
 export const EXIT_OK = 0;
 export const EXIT_USAGE = 2;

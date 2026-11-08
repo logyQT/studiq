@@ -3,20 +3,8 @@ import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync }
 import { join } from 'node:path';
 import { ensureRegistryDir } from './locks';
 
-/**
- * App-port lease (spec §6.1).
- *
- * Phase 2 leases **one app port**, never a 20-port block. The lease is written
- * in `scripts/dev-registry.ts`'s entry format (plus a few extra fields that
- * helper ignores), so `scripts/dev`, `env:ports` and the doctor see the same
- * claim and skip the port.
- *
- * The lease follows the **stack** lifetime: plain `down` keeps it while the
- * stack runs (config.toml binds the auth redirect URLs to APP_URL), and
- * `down --all` or a stopped stack releases it.
- */
+/** App-port lease in `scripts/dev-registry.ts`'s entry format. */
 export interface AppLease {
-  // Registry-compatible fields.
   projectId: string;
   worktree: string;
   appPort: number;
@@ -34,7 +22,6 @@ export interface AppLease {
   sharedOwner: string | null;
   mode: 'dev' | 'prod';
   claimId: string;
-  // Lease metadata (ignored by the dev registry reader).
   envLease: true;
   projectRoot: string;
   branch: string;
@@ -49,53 +36,48 @@ export function leaseProjectId(identityKey: string): string {
   return `env-${identityKey}`;
 }
 
-function leasePath(dir: string, projectId: string): string {
+export function leasePath(dir: string, projectId: string): string {
   return join(dir, `${projectId}.json`);
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+function num(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
-function toNumber(value: unknown): number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
-}
-
-function toText(value: unknown): string {
+function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
 export function readLease(dir: string, projectId: string): AppLease | null {
-  const file = leasePath(dir, projectId);
   try {
+    const file = leasePath(dir, projectId);
     if (lstatSync(file).isSymbolicLink()) return null;
-    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    if (!isObject(parsed) || parsed.envLease !== true) return null;
-    if (parsed.projectId !== projectId) return null;
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    if (parsed.envLease !== true || parsed.projectId !== projectId) return null;
     return {
       projectId,
-      worktree: toText(parsed.worktree),
-      appPort: toNumber(parsed.appPort),
-      apiPort: toNumber(parsed.apiPort),
-      dbPort: toNumber(parsed.dbPort),
-      studioPort: toNumber(parsed.studioPort),
-      mailPort: toNumber(parsed.mailPort),
-      shadowPort: toNumber(parsed.shadowPort),
-      poolerPort: toNumber(parsed.poolerPort),
-      analyticsPort: toNumber(parsed.analyticsPort),
-      edgeInspectorPort: toNumber(parsed.edgeInspectorPort),
-      ownerPid: toNumber(parsed.ownerPid),
-      startedAt: toText(parsed.startedAt),
+      worktree: str(parsed.worktree),
+      appPort: num(parsed.appPort),
+      apiPort: num(parsed.apiPort),
+      dbPort: num(parsed.dbPort),
+      studioPort: num(parsed.studioPort),
+      mailPort: num(parsed.mailPort),
+      shadowPort: num(parsed.shadowPort),
+      poolerPort: num(parsed.poolerPort),
+      analyticsPort: num(parsed.analyticsPort),
+      edgeInspectorPort: num(parsed.edgeInspectorPort),
+      ownerPid: num(parsed.ownerPid),
+      startedAt: str(parsed.startedAt),
       shared: parsed.shared === true,
-      sharedOwner: toText(parsed.sharedOwner) || null,
+      sharedOwner: str(parsed.sharedOwner) || null,
       mode: parsed.mode === 'prod' ? 'prod' : 'dev',
-      claimId: toText(parsed.claimId),
+      claimId: str(parsed.claimId),
       envLease: true,
-      projectRoot: toText(parsed.projectRoot),
-      branch: toText(parsed.branch),
-      stackName: toText(parsed.stackName),
-      heartbeatAt: toText(parsed.heartbeatAt),
-      ttlSec: toNumber(parsed.ttlSec) || LEASE_TTL_SEC,
+      projectRoot: str(parsed.projectRoot),
+      branch: str(parsed.branch),
+      stackName: str(parsed.stackName),
+      heartbeatAt: str(parsed.heartbeatAt),
+      ttlSec: num(parsed.ttlSec, LEASE_TTL_SEC),
     };
   } catch {
     return null;
@@ -115,37 +97,8 @@ export function writeLease(lease: AppLease): void {
   chmodSync(file, 0o600);
 }
 
-/** Remove our lease only while it still carries the expected claim. */
-export function removeLease(dir: string, projectId: string, claimId?: string): boolean {
-  const lease = readLease(dir, projectId);
-  if (!lease) return false;
-  if (claimId && lease.claimId && lease.claimId !== claimId) return false;
+export function removeLease(dir: string, projectId: string): void {
   rmSync(leasePath(dir, projectId), { force: true });
-  return true;
-}
-
-export function leaseMatchesIdentity(
-  lease: AppLease,
-  identity: { projectRoot: string; branch: string; stackName: string },
-): boolean {
-  return (
-    lease.projectRoot === identity.projectRoot &&
-    lease.branch === identity.branch &&
-    lease.stackName === identity.stackName
-  );
-}
-
-export interface ReclaimInput {
-  pidAlive: boolean;
-  heartbeatAgeMs: number;
-  ttlSec: number;
-  /** A running stack always keeps its lease, no matter how old the heartbeat. */
-  stackRunning: boolean;
-}
-
-/** Reclaim only when the pid is dead, the heartbeat is old, and no stack runs. */
-export function isLeaseReclaimable(input: ReclaimInput): boolean {
-  return !input.pidAlive && input.heartbeatAgeMs > input.ttlSec * 1000 && !input.stackRunning;
 }
 
 export function heartbeatAgeMs(lease: AppLease, now = Date.now()): number {
@@ -153,7 +106,15 @@ export function heartbeatAgeMs(lease: AppLease, now = Date.now()): number {
   return Number.isFinite(heartbeat) ? Math.max(0, now - heartbeat) : Number.POSITIVE_INFINITY;
 }
 
-/** New lease record; callers fill the observed stack ports afterwards. */
+export function isLeaseReclaimable(input: {
+  pidAlive: boolean;
+  heartbeatAgeMs: number;
+  ttlSec: number;
+  stackRunning: boolean;
+}): boolean {
+  return !input.pidAlive && input.heartbeatAgeMs > input.ttlSec * 1000 && !input.stackRunning;
+}
+
 export function newLease(input: {
   projectId: string;
   projectRoot: string;
@@ -163,13 +124,11 @@ export function newLease(input: {
   shared: boolean;
   sharedOwner: string | null;
   mode: 'dev' | 'prod';
-  claimId?: string;
 }): AppLease {
   const now = new Date().toISOString();
   return {
-    projectId: input.projectId,
+    ...input,
     worktree: input.projectRoot,
-    appPort: input.appPort,
     apiPort: 0,
     dbPort: 0,
     studioPort: 0,
@@ -180,14 +139,8 @@ export function newLease(input: {
     edgeInspectorPort: 0,
     ownerPid: 0,
     startedAt: now,
-    shared: input.shared,
-    sharedOwner: input.sharedOwner,
-    mode: input.mode,
-    claimId: input.claimId ?? `${process.pid}-${randomBytes(6).toString('hex')}`,
+    claimId: `${process.pid}-${randomBytes(6).toString('hex')}`,
     envLease: true,
-    projectRoot: input.projectRoot,
-    branch: input.branch,
-    stackName: input.stackName,
     heartbeatAt: now,
     ttlSec: LEASE_TTL_SEC,
   };

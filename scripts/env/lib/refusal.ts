@@ -4,12 +4,8 @@ import { EXIT_CONFLICT, EnvFailure } from './exit';
 import { printJson } from './output';
 import { collectSnapshot } from './snapshot';
 
-/**
- * Refuse a second environment without touching the live server or `.next`.
- * `--json` still gets one valid contract object on stdout (with the refusal in
- * `warnings`); human output is the single error line on stderr.
- */
-export async function refuseSecondServer(
+/** Refuse without touching the server/.next; `--json` still gets one object. */
+export async function refuseConflict(
   parsed: ParsedCommand,
   contract: Contract,
   message: string,

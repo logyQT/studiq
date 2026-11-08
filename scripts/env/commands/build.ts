@@ -2,157 +2,109 @@ import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from '../lib/exit';
 import { readContract } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
+import { probeHttp } from '../lib/health';
+import { readStack } from '../lib/stack';
+import { applyStackEnv } from '../lib/stack-lifecycle';
+import { readWebPid } from '../lib/web';
+import { printJson, writeStderrLine } from '../lib/output';
+import { collectSnapshot } from '../lib/snapshot';
+import { liveServerConflict } from '../lib/web-owner';
+import { refuseConflict } from '../lib/refusal';
+import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
+import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
 import {
   appendEnvLog,
   buildArtifactPresent,
   readBuildState,
-  readStackRecord,
+  readStackState,
   writeBuildState,
-  writeStackRecord,
 } from '../lib/state';
-import { buildWithStableFingerprint, logBuildOutput } from '../lib/build-run';
-import { probeHttp } from '../lib/health';
-import { readStack, type StackEnv, type StackStatus } from '../lib/stack';
-import { applyStackEnv } from '../lib/stack-lifecycle';
-import { readWebPid } from '../lib/web';
+import { logBuildOutput, runProductionBuild } from '../lib/build';
+import { normalizeLocalhost, trimTrailingSlash } from '../lib/urls';
 import { REPO_ROOT } from '../lib/repo';
-import { printJson, writeStderrLine } from '../lib/output';
-import { collectSnapshot, stateKeyFor } from '../lib/snapshot';
-import { liveServerConflict } from '../lib/web-owner';
-import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
-import { refuseSecondServer } from '../lib/refusal';
-import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
-
-function human(parsed: ParsedCommand, lines: string[]): void {
-  if (parsed.json || parsed.quiet) return;
-  for (const line of lines) writeStderrLine(line);
-}
+import { withCheckoutLock } from '../lib/locks';
 
 export async function runBuild(parsed: ParsedCommand): Promise<number> {
   const options = parsed.build;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'build options are missing');
-  const contract = contractWithLease(readContract());
-  process.env.APP_PORT = String(contract.appPort);
-  process.env.APP_URL = contract.appUrl;
-  process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
-  appendEnvLog(`build: shared=${contract.shared} force=${options.force}`);
 
-  const targetProfile = readStackRecord(stateKeyFor(contract.stackName))?.profile ?? null;
-  const conflict = liveServerConflict(
-    { stackName: contract.stackName ?? 'default', profile: targetProfile },
-    'rebuild',
-  );
-  if (conflict) return refuseSecondServer(parsed, contract, conflict);
+  // The checkout lock also covers the lease read this build adopts.
+  return withCheckoutLock(async () => {
+    const appEnv = resolveLocalAppEnv();
+    const base = contractWithLease(readContract());
+    const contract = { ...base, stackName: options.stack ?? base.stackName };
+    process.env.APP_PORT = String(contract.appPort);
+    process.env.APP_URL = contract.appUrl;
+    process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
+    appendEnvLog(`build: shared=${contract.shared} force=${options.force}`);
 
-  if (readWebPid()) {
-    throw new EnvFailure(
-      EXIT_CONFLICT,
-      "the web server is running; stop it with 'env:down' before an explicit build",
+    const state = readStackState();
+    const conflict = liveServerConflict(
+      { stackName: contract.stackName ?? 'default', profile: state?.profile ?? null },
+      'rebuild',
     );
-  }
+    if (conflict) return refuseConflict(parsed, contract, conflict);
 
-  let stack: StackStatus | null = null;
-  let stackEnv: StackEnv;
-  if (contract.shared) {
-    const missing = ['SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'].filter(
-      (name) => !process.env[name],
-    );
-    if (missing.length > 0) {
-      throw new EnvFailure(
-        EXIT_START_FAILED,
-        `SUPABASE_SHARED=1 needs ${missing.join(', ')} in .env.local (or the process environment)`,
-      );
+    const stack = contract.shared ? null : readStack(contract.stackName);
+    if (!contract.shared && !stack) {
+      throw new EnvFailure(EXIT_START_FAILED, 'no running Supabase stack; run env:ensure first');
     }
-    stackEnv = sharedStackEnv();
-    if (!stackEnv.apiUrl || (await probeHttp(`${stackEnv.apiUrl}/auth/v1/health`)) !== 200) {
-      throw new EnvFailure(EXIT_START_FAILED, 'the shared Supabase stack is not healthy');
+    const stackEnv = contract.shared ? sharedStackEnv() : stack!.env;
+    if (contract.shared && !stackEnv.apiUrl) {
+      throw new EnvFailure(EXIT_START_FAILED, 'SUPABASE_SHARED=1 needs SUPABASE_URL and keys');
     }
-  } else {
-    const read = readStack(contract.stackName);
-    if (!read) {
-      throw new EnvFailure(
-        EXIT_START_FAILED,
-        "no running Supabase stack for this checkout; run 'env:ensure --profile api' first (the build inlines this stack's NEXT_PUBLIC_* values)",
-      );
+    if (
+      contract.shared &&
+      (await probeHttp(
+        `${normalizeLocalhost(trimTrailingSlash(stackEnv.apiUrl))}/auth/v1/health`,
+      )) !== 200
+    ) {
+      throw new EnvFailure(EXIT_START_FAILED, 'shared Supabase stack is not healthy');
     }
-    stack = read.status;
-    stackEnv = read.env;
-  }
+    applyStackEnv(stackEnv, { appUrl: contract.appUrl, appEnv, stackId: stack?.status.id });
 
-  const appEnv = resolveLocalAppEnv();
-  applyStackEnv(stackEnv, {
-    appUrl: contract.appUrl,
-    appEnv,
-    stackId: stack?.id,
-  });
-
-  const envHash = buildEnvHash({
-    supabaseUrl: stackEnv.apiUrl,
-    siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
-    anonKey: stackEnv.anonKey ?? '',
-  });
-  const fingerprint = computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash });
-  const state = readBuildState();
-  const current = state?.envHash === envHash && state?.fingerprint === fingerprint;
-
-  let built = false;
-  if (options.force || !current || !buildArtifactPresent()) {
-    appendEnvLog('build: building @studiq/web');
-    const result = await buildWithStableFingerprint({
-      root: REPO_ROOT,
-      mode: BUILD_MODE,
-      envHash,
-      env: process.env,
+    const envHash = buildEnvHash({
+      supabaseUrl: stackEnv.apiUrl,
+      siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
+      anonKey: stackEnv.anonKey ?? '',
     });
-    if (result.timedOut) {
-      throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
-    }
-    if (result.buildTimedOut) {
-      logBuildOutput(result.output);
-      throw new EnvFailure(EXIT_TIMEOUT, 'build timed out; see .dev/env.log');
-    }
-    if (!result.ok || !result.stable) {
-      logBuildOutput(result.output);
-      throw new EnvFailure(
-        EXIT_START_FAILED,
-        result.ok
-          ? 'build output is incomplete or source changed while the build ran; re-run env:build to rebuild'
-          : `build failed (exit ${result.exitCode ?? 'unknown'}); see .dev/env.log`,
-      );
-    }
-    writeBuildState({
-      fingerprint: result.fingerprintAfter,
-      envHash,
-      mode: BUILD_MODE,
-      builtAt: new Date().toISOString(),
-    });
-    built = true;
-    appendEnvLog('build: complete');
-  } else {
-    appendEnvLog('build: already current');
-  }
+    const previous = readBuildState();
+    const current =
+      previous?.envHash === envHash &&
+      previous.fingerprint ===
+        computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
+      buildArtifactPresent();
 
-  const record = readStackRecord(stateKeyFor(contract.stackName));
-  if (record) {
-    writeStackRecord(stateKeyFor(contract.stackName), {
-      ...record,
-      envHash,
-      updatedAt: new Date().toISOString(),
-      heartbeatAt: new Date().toISOString(),
-    });
-  }
+    if (options.force || !current) {
+      if (readWebPid()) {
+        throw new EnvFailure(EXIT_CONFLICT, "the web server is running; run 'env:down' first");
+      }
+      const result = await runProductionBuild(envHash);
+      if (!result.ok) {
+        logBuildOutput(result.output);
+        throw new EnvFailure(
+          result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
+          result.timedOut ? 'timed out waiting for the build lock' : 'build failed',
+        );
+      }
+      writeBuildState({
+        fingerprint: result.fingerprintAfter,
+        envHash,
+        builtAt: new Date().toISOString(),
+      });
+    }
 
-  const snapshot = await collectSnapshot({
-    contract,
-    stack,
-    record,
-    skipStackLookup: true,
+    const snapshot = await collectSnapshot({
+      contract,
+      stack: stack?.status ?? null,
+      state,
+      skipStackLookup: true,
+      profile: state?.profile ?? null,
+      cold: state?.cold ?? null,
+    });
+    if (parsed.json) printJson(snapshot);
+    else
+      writeStderrLine(options.force || !current ? 'Build complete.' : 'Build is already current.');
+    return 0;
   });
-  if (parsed.json) printJson(snapshot);
-  else
-    human(parsed, [
-      built ? 'Build complete.' : 'Build is already current.',
-      `fingerprint ${fingerprint.slice(0, 12)}`,
-    ]);
-  return 0;
 }

@@ -282,7 +282,7 @@ describe('env:supa', () => {
 
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('env:reset-db --yes');
+    expect(result.stderr).toContain('env:down --all');
     expect(harness.bunxCalls()).toBe('');
   });
 
@@ -466,7 +466,7 @@ describe('env:supa', () => {
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('destroy');
-    expect(result.stderr).toContain('env:recreate --yes');
+    expect(result.stderr).toContain('env:down --all --yes');
     expect(harness.bunxCalls()).toBe('');
   });
 

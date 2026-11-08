@@ -1,34 +1,17 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
-  linkSync,
   lstatSync,
   mkdirSync,
   readFileSync,
-  renameSync,
   rmSync,
-  statSync,
   writeFileSync,
-  type Stats,
 } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT_CONFLICT, EXIT_TIMEOUT, EnvFailure } from './exit';
-import { appendEnvLog } from './state';
 import { resolveRegistryDir } from './registry';
-import { REPO_ROOT } from './repo';
-
-/**
- * Cross-checkout locks.
- *
- * The registry directory must be a private, real directory owned by the current
- * user (mode 700); anything else is refused rather than followed. The **start
- * lock** is per stack identity and separate from the build lock and the app
- * port lease; it can be taken over immediately when the holder pid is dead.
- * The **build lock** is the same `flock`/`mkdir` lock `scripts/dev` uses, so
- * only one `next build` runs across all worktrees.
- */
+import { DEV_DIR, ensureDevDir } from './state';
 
 export function pidAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 1) return false;
@@ -36,235 +19,87 @@ export function pidAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    // Only ESRCH proves the pid is gone. EPERM (or any other error) means the
-    // process may still exist under another user; never reclaim a live claim.
     return (error as NodeJS.ErrnoException).code !== 'ESRCH';
   }
+}
+
+export function ensureRegistryDir(): string {
+  const dir = resolveRegistryDir();
+  if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new EnvFailure(EXIT_CONFLICT, `registry path ${dir} is a symlink; refusing to use it`);
+  }
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (!lstatSync(dir).isDirectory()) {
+    throw new EnvFailure(EXIT_CONFLICT, `registry path ${dir} is not a directory`);
+  }
+  const uid = process.getuid?.();
+  if (uid !== undefined && lstatSync(dir).uid !== uid) {
+    throw new EnvFailure(EXIT_CONFLICT, `registry directory ${dir} is not owned by this user`);
+  }
+  chmodSync(dir, 0o700);
+  return dir;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Validate/create the registry directory and return it. */
-export function ensureRegistryDir(): string {
-  const dir = resolveRegistryDir();
-  if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
-    throw new EnvFailure(EXIT_CONFLICT, `registry path ${dir} is a symlink; refusing to use it`);
-  }
-  if (existsSync(dir) && !lstatSync(dir).isDirectory()) {
-    throw new EnvFailure(EXIT_CONFLICT, `registry path ${dir} exists and is not a directory`);
-  }
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const uid = process.getuid?.();
-  if (uid !== undefined && lstatSync(dir).uid !== uid) {
-    throw new EnvFailure(
-      EXIT_CONFLICT,
-      `registry directory ${dir} is not owned by the current user; refusing to write to it`,
-    );
-  }
-  chmodSync(dir, 0o700);
-  return dir;
-}
-
-/**
- * Create a lock file with its full content atomically.
- *
- * `writeFileSync(..., { flag: 'wx' })` publishes an empty file before the
- * content is written; a waiter can read that window as "unparseable", reap the
- * live lock and start a second holder. Writing a temp file and hard-linking it
- * makes EEXIST and content publication one atomic step. The temp file is never
- * a valid lock path, so readers never see it.
- */
-function createLockFileAtomic(file: string, content: string): void {
-  const temp = `${file}.${randomBytes(8).toString('hex')}.tmp`;
-  writeFileSync(temp, content, { mode: 0o600, flag: 'wx' });
-  try {
-    linkSync(temp, file);
-    chmodSync(file, 0o600);
-  } finally {
-    rmSync(temp, { force: true });
-  }
-}
-
-interface LockContent {
-  pid: number;
-  token: string;
-  projectRoot: string;
-  branch: string;
-  stackName: string;
-  acquiredAt: string;
-  heartbeatAt: string;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-type JsonRead =
-  | { kind: 'ok'; value: unknown }
-  | { kind: 'absent' }
-  | { kind: 'unreadable' }
-  | { kind: 'malformed' };
-
-/**
- * Read a JSON lock without treating an I/O failure as "absent":
- * EACCES/EIO/symlink are `unreadable` and must keep waiters waiting; only a
- * successful read with malformed content may be reclaimed.
- */
-function readJsonFile(file: string): JsonRead {
-  let raw: string;
-  try {
-    if (lstatSync(file).isSymbolicLink()) return { kind: 'unreadable' };
-    raw = readFileSync(file, 'utf8');
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ENOENT'
-      ? { kind: 'absent' }
-      : { kind: 'unreadable' };
-  }
-  try {
-    return { kind: 'ok', value: JSON.parse(raw) as unknown };
-  } catch {
-    return { kind: 'malformed' };
-  }
-}
-
-type LockRead =
-  | { kind: Exclude<JsonRead['kind'], 'ok'>; lock: null }
-  | {
-      kind: 'ok';
-      lock: LockContent;
-    };
-
-function readLock(file: string): LockRead {
-  const read = readJsonFile(file);
-  if (read.kind !== 'ok') return { kind: read.kind, lock: null };
-  const parsed = read.value;
-  if (!isObject(parsed) || typeof parsed.pid !== 'number' || typeof parsed.token !== 'string') {
-    return { kind: 'malformed', lock: null };
-  }
-  return {
-    kind: 'ok',
-    lock: {
-      pid: parsed.pid,
-      token: parsed.token,
-      projectRoot: typeof parsed.projectRoot === 'string' ? parsed.projectRoot : '',
-      branch: typeof parsed.branch === 'string' ? parsed.branch : '',
-      stackName: typeof parsed.stackName === 'string' ? parsed.stackName : '',
-      acquiredAt: typeof parsed.acquiredAt === 'string' ? parsed.acquiredAt : '',
-      heartbeatAt: typeof parsed.heartbeatAt === 'string' ? parsed.heartbeatAt : '',
-    },
-  };
-}
-
-function writeLock(file: string, content: LockContent): void {
-  const temp = `${file}.${content.token}.tmp`;
-  try {
-    writeFileSync(temp, `${JSON.stringify(content)}\n`, { mode: 0o600, flag: 'wx' });
-    // `rename` is atomic; an existing lock is never truncated in place.
-    renameSync(temp, file);
-  } finally {
-    rmSync(temp, { force: true });
-  }
-  chmodSync(file, 0o600);
-}
-
-interface MutexHandle {
+interface Mutex {
   release(): Promise<void>;
 }
 
 function hasFlock(): boolean {
-  const result = spawnSync('flock', ['--version'], { encoding: 'utf8', timeout: 5_000 });
-  return result.status === 0;
+  return spawnSync('flock', ['--version'], { timeout: 5_000 }).status === 0;
 }
 
-/**
- * Kernel mutex for the start lock's check-and-takeover critical section.
- *
- * A `flock` child holds the lock and waits on stdin; we signal it to release.
- * That keeps the lock held across the JavaScript critical section, which a
- * plain file+rename cannot do (two waiters could both replace a dead holder).
- */
-async function acquireKernelMutex(path: string, waitSeconds: number): Promise<MutexHandle | null> {
+async function flockMutex(path: string, waitSeconds: number): Promise<Mutex | null> {
   if (!hasFlock()) return null;
-  return new Promise<MutexHandle>((resolvePromise, reject) => {
+  return new Promise((resolve, reject) => {
     const child = spawn(
       'flock',
-      ['-w', String(waitSeconds), path, 'sh', '-c', 'printf ready; IFS= read -r _'],
+      ['-w', String(waitSeconds), path, 'sh', '-c', 'printf ready; read _'],
       {
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'ignore'],
       },
     );
-    let stdout = '';
-    let settled = false;
+    let ready = false;
     const timer = setTimeout(
       () => {
-        if (settled) return;
-        settled = true;
+        if (ready) return;
         child.kill('SIGKILL');
-        reject(
-          new EnvFailure(
-            EXIT_TIMEOUT,
-            `timed out after ${waitSeconds}s waiting for the start-lock mutex (${path})`,
-          ),
-        );
+        reject(new EnvFailure(EXIT_TIMEOUT, `timed out waiting for ${path}`));
       },
       (waitSeconds + 5) * 1000,
     );
     timer.unref?.();
-
     child.stdout?.on('data', (chunk: Buffer | string) => {
-      stdout += String(chunk);
-      if (!stdout.includes('ready') || settled) return;
-      settled = true;
+      if (ready || !String(chunk).includes('ready')) return;
+      ready = true;
       clearTimeout(timer);
-      resolvePromise({
+      resolve({
         async release() {
-          try {
-            child.stdin?.write('\n');
-          } catch {
-            /* child already gone */
-          }
+          child.stdin?.write('\n');
           await new Promise<void>((done) => {
-            if (child.exitCode !== null || child.signalCode !== null) return done();
+            if (child.exitCode !== null) return done();
             child.once('close', () => done());
           });
         },
       });
     });
-    child.on('error', (error) => {
-      if (settled) return;
-      settled = true;
+    child.on('error', () => {
+      if (ready) return;
       clearTimeout(timer);
-      reject(
-        new EnvFailure(
-          EXIT_CONFLICT,
-          `cannot run the start-lock mutex: ${error instanceof Error ? error.message : String(error)}`,
-        ),
-      );
+      reject(new EnvFailure(EXIT_CONFLICT, `cannot run flock for ${path}`));
     });
     child.on('close', () => {
-      if (settled) return;
-      settled = true;
+      if (ready) return;
       clearTimeout(timer);
-      reject(
-        new EnvFailure(
-          EXIT_TIMEOUT,
-          `timed out after ${waitSeconds}s waiting for the start-lock mutex (${path})`,
-        ),
-      );
+      reject(new EnvFailure(EXIT_TIMEOUT, `timed out waiting for ${path}`));
     });
   });
 }
 
-type StatIdentity = Stats;
-
-function sameEntry(left: StatIdentity, right: StatIdentity): boolean {
-  return left.dev === right.dev && left.ino === right.ino && left.mtimeMs === right.mtimeMs;
-}
-
-/** Portable fallback when `flock` is unavailable: atomic `mkdir` + owner pid. */
-async function acquireDirMutex(path: string, waitSeconds: number): Promise<MutexHandle> {
+async function dirMutex(path: string, waitSeconds: number): Promise<Mutex> {
   const deadline = Date.now() + waitSeconds * 1000;
   for (;;) {
     try {
@@ -277,390 +112,94 @@ async function acquireDirMutex(path: string, waitSeconds: number): Promise<Mutex
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      let observed: StatIdentity | null = null;
+      let observed;
       try {
         observed = lstatSync(path);
       } catch {
         continue;
       }
       let owner = 0;
-      let ownerMissing = false;
       try {
         owner = Number(readFileSync(join(path, 'pid'), 'utf8').trim());
-        ownerMissing = !owner;
-      } catch (error) {
-        ownerMissing = (error as NodeJS.ErrnoException).code === 'ENOENT';
+      } catch {
+        /* missing pid: grace period below */
       }
-      const missingLongEnough = ownerMissing && Date.now() - observed.mtimeMs > 5_000;
-      if ((owner && !pidAlive(owner)) || missingLongEnough) {
-        // Re-check identity so a reclaimer cannot delete a fresh lock created
-        // by another waiter after our first stat.
+      const stale =
+        (owner && !pidAlive(owner)) || (!owner && Date.now() - observed.mtimeMs > 5_000);
+      if (stale) {
         try {
           const current = lstatSync(path);
-          if (sameEntry(observed, current)) rmSync(path, { recursive: true, force: true });
+          if (current.dev === observed.dev && current.ino === observed.ino) {
+            rmSync(path, { recursive: true, force: true });
+          }
         } catch {
-          /* vanished */
+          /* gone */
         }
         continue;
       }
       if (Date.now() >= deadline) {
-        throw new EnvFailure(
-          EXIT_TIMEOUT,
-          `timed out after ${waitSeconds}s waiting for the start-lock mutex (${path})`,
-        );
+        throw new EnvFailure(EXIT_TIMEOUT, `timed out waiting for ${path}`);
       }
       await sleep(50);
     }
   }
 }
 
-async function acquireStartMutex(path: string, waitSeconds: number): Promise<MutexHandle> {
-  return (await acquireKernelMutex(path, waitSeconds)) ?? acquireDirMutex(path, waitSeconds);
-}
-
-/**
- * Short registry-wide mutex around "read leases + probe port + write lease".
- * The lease lock is deliberately separate from the start lock: it is held only
- * for the port decision, not for the whole start.
- */
-export async function withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T> {
-  const dir = join(ensureRegistryDir(), 'locks');
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  chmodSync(dir, 0o700);
-  const file = join(dir, 'lease.lock');
-  const mutexPath = join(dir, 'lease.mutex');
-  const token = `${process.pid}-${randomBytes(8).toString('hex')}`;
-  const deadline = Date.now() + 60_000;
-  for (;;) {
-    // Serialize create/reclaim so two waiters cannot both delete a dead owner
-    // and publish different leases.
-    const mutex = await acquireStartMutex(mutexPath, 30);
-    let acquired = false;
-    let wait = false;
-    try {
-      try {
-        createLockFileAtomic(
-          file,
-          `${JSON.stringify({ pid: process.pid, token, acquiredAt: new Date().toISOString() })}\n`,
-        );
-        acquired = true;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-          throw new EnvFailure(
-            EXIT_CONFLICT,
-            `cannot create the lease lock ${file}: ${(error as Error).message}`,
-          );
-        }
-        const read = readJsonFile(file);
-        if (read.kind === 'absent') {
-          wait = true;
-        } else if (read.kind === 'unreadable') {
-          // Never reclaim a lock we could not read; wait for it to clear.
-          wait = true;
-        } else if (read.kind === 'malformed') {
-          try {
-            const age = Date.now() - statSync(file).mtimeMs;
-            if (age > 5_000) rmSync(file, { force: true });
-          } catch {
-            /* vanished */
-          }
-          wait = true;
-        } else {
-          const parsed = read.value;
-          const owner = isObject(parsed) && typeof parsed.pid === 'number' ? parsed.pid : 0;
-          const observedToken =
-            isObject(parsed) && typeof parsed.token === 'string' ? parsed.token : '';
-          if (!owner || !pidAlive(owner)) {
-            const current = readJsonFile(file);
-            if (
-              current.kind === 'ok' &&
-              isObject(current.value) &&
-              current.value.token === observedToken
-            ) {
-              rmSync(file, { force: true });
-            }
-          }
-          wait = true;
-        }
-      }
-    } finally {
-      await mutex.release();
-    }
-    if (acquired) break;
-    if (wait) {
-      if (Date.now() >= deadline) {
-        throw new EnvFailure(
-          EXIT_TIMEOUT,
-          `timed out after 60s waiting for the registry lease lock (${file})`,
-        );
-      }
-      await sleep(50);
-      continue;
-    }
-  }
-
+async function withLockAt<T>(
+  file: string,
+  waitSeconds: number,
+  timeoutCode: number,
+  message: string,
+  fn: () => Promise<T> | T,
+): Promise<T> {
+  let mutex: Mutex;
   try {
-    return await fn();
-  } finally {
-    const current = readJsonFile(file);
-    if (current.kind === 'ok' && isObject(current.value) && current.value.token === token) {
-      rmSync(file, { force: true });
+    mutex = (await flockMutex(file, waitSeconds)) ?? (await dirMutex(`${file}.d`, waitSeconds));
+  } catch (error) {
+    if (error instanceof EnvFailure && error.exitCode === EXIT_TIMEOUT) {
+      throw new EnvFailure(timeoutCode, message);
     }
+    throw error;
   }
-}
-
-/**
- * Checkout-wide claim for the single web server. Different stack identities
- * have different per-identity start locks, so this short lock is what stops two
- * concurrent `ensure` runs from both passing the "no server yet" check and
- * starting a server. It covers detection + start only (never the build).
- */
-export async function withCheckoutWebLock<T>(fn: () => Promise<T>): Promise<T> {
-  const dir = join(ensureRegistryDir(), 'locks');
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  chmodSync(dir, 0o700);
-  // One claim per checkout: the registry itself is per user, so an unkeyed
-  // file would serialize unrelated worktrees (and make parallel use fail).
-  const checkout = createHash('sha256').update(REPO_ROOT).digest('hex').slice(0, 16);
-  const file = join(dir, `web-server-${checkout}.lock`);
-  const mutexPath = join(dir, `web-server-${checkout}.mutex`);
-  const token = `${process.pid}-${randomBytes(8).toString('hex')}`;
-  // The callback may wait up to 120s for `next start` health; waiting longer
-  // than the hold lets the next same-checkout process re-check afterwards.
-  const deadline = Date.now() + 150_000;
-
-  for (;;) {
-    const mutex = await acquireStartMutex(mutexPath, 30);
-    let acquired = false;
-    let wait = false;
-    try {
-      try {
-        createLockFileAtomic(
-          file,
-          `${JSON.stringify({ pid: process.pid, token, acquiredAt: new Date().toISOString() })}\n`,
-        );
-        acquired = true;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-          throw new EnvFailure(
-            EXIT_CONFLICT,
-            `cannot create the web-server claim lock ${file}: ${(error as Error).message}`,
-          );
-        }
-        const read = readJsonFile(file);
-        if (read.kind === 'absent' || read.kind === 'unreadable') {
-          wait = true;
-        } else if (read.kind === 'malformed') {
-          try {
-            const age = Date.now() - statSync(file).mtimeMs;
-            if (age > 5_000) rmSync(file, { force: true });
-          } catch {
-            /* vanished */
-          }
-          wait = true;
-        } else {
-          const owner =
-            isObject(read.value) && typeof read.value.pid === 'number' ? read.value.pid : 0;
-          const observedToken =
-            isObject(read.value) && typeof read.value.token === 'string' ? read.value.token : '';
-          if (!owner || !pidAlive(owner)) {
-            const current = readJsonFile(file);
-            if (
-              current.kind === 'ok' &&
-              isObject(current.value) &&
-              current.value.token === observedToken
-            ) {
-              rmSync(file, { force: true });
-            }
-          }
-          wait = true;
-        }
-      }
-    } finally {
-      await mutex.release();
-    }
-    if (acquired) break;
-    if (wait) {
-      if (Date.now() >= deadline) {
-        throw new EnvFailure(
-          EXIT_CONFLICT,
-          'timed out after 150s waiting for another process in this checkout to claim the web server; run env:status to inspect it',
-        );
-      }
-      await sleep(50);
-      continue;
-    }
-  }
-
-  try {
-    return await fn();
-  } finally {
-    const current = readJsonFile(file);
-    if (current.kind === 'ok' && isObject(current.value) && current.value.token === token) {
-      rmSync(file, { force: true });
-    }
-  }
-}
-
-export interface StartLock {
-  file: string;
-  release(): void;
-}
-
-export interface StartLockOptions {
-  key: string;
-  projectRoot: string;
-  branch: string;
-  stackName: string;
-  waitSeconds: number;
-  /** Called on every heartbeat so the app-port lease ages with the start. */
-  onHeartbeat?: () => void;
-}
-
-/**
- * Acquire the per-identity start lock. A dead holder is replaced immediately;
- * a live holder is waited for up to `waitSeconds` (exit 5 on timeout). The lock
- * holder writes `pid` plus a heartbeat every 2 s.
- */
-export async function acquireStartLock(options: StartLockOptions): Promise<StartLock> {
-  const dir = join(ensureRegistryDir(), 'locks');
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  chmodSync(dir, 0o700);
-  const file = join(dir, `start-${options.key}.lock`);
-  if (lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) {
-    throw new EnvFailure(EXIT_CONFLICT, `start lock ${file} is a symlink; refusing to use it`);
-  }
-
-  const token = `${process.pid}-${randomBytes(8).toString('hex')}`;
-  const deadline = Date.now() + options.waitSeconds * 1000;
-  const mutexPath = `${file}.mutex`;
-  let announced = false;
-
-  for (;;) {
-    const now = new Date().toISOString();
-    const content: LockContent = {
-      pid: process.pid,
-      token,
-      projectRoot: options.projectRoot,
-      branch: options.branch,
-      stackName: options.stackName,
-      acquiredAt: now,
-      heartbeatAt: now,
-    };
-
-    // Serialize read-check-replace so two waiters cannot both take over a
-    // dead holder. The kernel/dir mutex is held only for this critical section.
-    const mutex = await acquireStartMutex(mutexPath, Math.min(options.waitSeconds, 30));
-    let acquired = false;
-    try {
-      const current = readLock(file);
-      const holder = current.lock;
-      const reclaim =
-        current.kind === 'absent' ||
-        current.kind === 'malformed' ||
-        (current.kind === 'ok' && holder !== null && !pidAlive(holder.pid));
-      if (reclaim) {
-        if (current.kind !== 'absent') rmSync(file, { force: true });
-        try {
-          createLockFileAtomic(file, `${JSON.stringify(content)}\n`);
-          acquired = true;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-            throw new EnvFailure(
-              EXIT_CONFLICT,
-              `cannot create start lock ${file}: ${(error as Error).message}`,
-            );
-          }
-        }
-      }
-    } finally {
-      await mutex.release();
-    }
-
-    if (acquired) break;
-    if (Date.now() >= deadline) {
-      const holder = readLock(file).lock;
-      throw new EnvFailure(
-        EXIT_TIMEOUT,
-        `timed out after ${options.waitSeconds}s waiting for the start lock${holder ? ` (pid ${holder.pid})` : ''}`,
-      );
-    }
-    if (!announced) {
-      announced = true;
-      const holder = readLock(file).lock;
-      if (holder) {
-        appendEnvLog(
-          `ensure: waiting for start lock held by pid ${holder.pid} (stack ${options.stackName})`,
-        );
-      }
-    }
-    await sleep(100);
-  }
-
-  appendEnvLog(`ensure: start lock acquired (stack ${options.stackName}, pid ${process.pid})`);
-  const heartbeat = setInterval(() => {
-    const now = new Date().toISOString();
-    try {
-      const current = readLock(file);
-      if (current.kind !== 'ok' || current.lock.token !== token) return;
-      writeLock(file, {
-        pid: process.pid,
-        token,
-        projectRoot: options.projectRoot,
-        branch: options.branch,
-        stackName: options.stackName,
-        acquiredAt: current.lock.acquiredAt || now,
-        heartbeatAt: now,
-      });
-      options.onHeartbeat?.();
-    } catch {
-      /* a failed heartbeat must never crash the command */
-    }
-  }, 2_000);
-  // A heartbeat must not keep the process alive after the command finishes.
-  heartbeat.unref?.();
-
-  let released = false;
-  return {
-    file,
-    release() {
-      if (released) return;
-      released = true;
-      clearInterval(heartbeat);
-      const current = readLock(file);
-      if (current.kind === 'ok' && current.lock.token === token) rmSync(file, { force: true });
-      appendEnvLog(`ensure: start lock released (stack ${options.stackName})`);
-    },
-  };
-}
-
-export interface BuildRunResult {
-  ok: boolean;
-  /** Timed out waiting for the cross-worktree build lock. */
-  timedOut: boolean;
-  /** `next build` itself exceeded its execution timeout. */
-  buildTimedOut: boolean;
-  exitCode: number | null;
-  output: string;
-  /** Unique backup of the pre-build `.next`, if one existed. */
-  backupPath: string;
-}
-
-/**
- * Run a whole stable-build operation (fingerprint, backup, build, validation,
- * restore/cleanup) under the cross-worktree build lock. The lock is the same
- * `flock`/mkdir lock `scripts/dev` uses; the callback runs after the lock is
- * held, so no second build can start between validation and cleanup.
- */
-export async function withBuildLock<T>(waitSeconds: number, fn: () => Promise<T> | T): Promise<T> {
-  const dir = ensureRegistryDir();
-  const lock = join(dir, 'build.lock');
-  const mutex =
-    (await acquireKernelMutex(lock, waitSeconds)) ??
-    (await acquireDirMutex(`${lock}.d`, waitSeconds));
   try {
     return await fn();
   } finally {
     await mutex.release();
   }
+}
+
+export function withCheckoutLock<T>(fn: () => Promise<T> | T): Promise<T> {
+  // `.dev/locks/checkout.lock` is per checkout and covers ensure/down/serve and
+  // every app-port lease read/write; while it is held the lease is authoritative.
+  ensureDevDir();
+  const locksDir = join(DEV_DIR, 'locks');
+  mkdirSync(locksDir, { recursive: true, mode: 0o700 });
+  chmodSync(locksDir, 0o700);
+  return withLockAt(
+    join(locksDir, 'checkout.lock'),
+    180,
+    EXIT_CONFLICT,
+    'another env process is using this checkout; retry after it finishes',
+    fn,
+  );
+}
+
+function withLock<T>(
+  name: string,
+  waitSeconds: number,
+  timeoutCode: number,
+  message: string,
+  fn: () => Promise<T> | T,
+): Promise<T> {
+  return withLockAt(join(ensureRegistryDir(), name), waitSeconds, timeoutCode, message, fn);
+}
+
+export function withBuildLock<T>(fn: () => Promise<T> | T): Promise<T> {
+  return withLock(
+    'build.lock',
+    1800,
+    EXIT_TIMEOUT,
+    'timed out waiting for the cross-worktree build lock',
+    fn,
+  );
 }

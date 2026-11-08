@@ -111,7 +111,7 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (observedRuntime === 'docker') {
     warnings.push(
-      'stack runtime=docker (compatibility mode); env:recreate --runtime native --yes will convert it',
+      'stack runtime=docker (compatibility mode); run `env:down --all` then `env:ensure` to recreate it',
     );
   }
   if (!trusted && registryExists) {
@@ -121,7 +121,7 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (contract.shared && !sharedSupabaseUrl) {
     warnings.push(
-      'SUPABASE_SHARED=1 but SUPABASE_URL is not exported to this unwrapped command (run `bun run env:verify` for env checks)',
+      'SUPABASE_SHARED=1 but SUPABASE_URL is not exported to this unwrapped command (run `bun run env:check` for env checks)',
     );
   }
   if (appPortProbe.state === 'unavailable') {

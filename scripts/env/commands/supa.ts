@@ -9,12 +9,12 @@ const ALL_MESSAGE =
   "on the machine. Stop only this checkout's stack with 'stack stop --stack <name>'.";
 
 const DESTROY_MESSAGE =
-  "env:supa: refusing 'destroy' — stack deletion is owned by 'env:recreate --yes' / " +
+  "env:supa: refusing 'destroy' — stack deletion is owned by " +
   "'env:down --all --yes' (with ownership checks).";
 
 const DB_RESET_MESSAGE =
-  "env:supa: refusing 'db reset' — database reset is owned by 'env:reset-db --yes' " +
-  "(this checkout's stack only).";
+  "env:supa: refusing 'db reset' — stop this checkout's stack with 'env:down --all' " +
+  'and reset it explicitly.';
 
 const NO_SCOPE_MESSAGE =
   "env:supa: 'stop'/'restart' requires --stack <name> or --stack-id <id>; " +

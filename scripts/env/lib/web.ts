@@ -9,30 +9,8 @@ import { pidAlive } from './locks';
 const WEB_PID_FILE = join(DEV_DIR, 'web.pid');
 const WEB_LOG = join(DEV_DIR, 'web.log');
 
-/** The `PORT` a recorded web process was started with, or null. */
-export function readWebPort(pid: number): number | null {
-  const match = (value: string): number | null => {
-    const found = /(?:^|[\0\s])PORT=(\d{1,5})(?:[\0\s]|$)/.exec(value);
-    if (!found?.[1]) return null;
-    const port = Number(found[1]);
-    return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
-  };
-  try {
-    const environ = readFileSync(`/proc/${pid}/environ`, 'utf8');
-    const port = match(environ);
-    if (port) return port;
-  } catch {
-    /* fall through to ps */
-  }
-  const result = spawnSync('ps', ['eww', '-p', String(pid)], {
-    encoding: 'utf8',
-    timeout: 5_000,
-  });
-  return match(result.stdout ?? '');
-}
-
 /** The process environment as NUL/space-separated text, or ''. */
-export function readProcessEnvironment(pid: number): string {
+function readProcessEnvironment(pid: number): string {
   try {
     return readFileSync(`/proc/${pid}/environ`, 'utf8');
   } catch {
@@ -156,9 +134,6 @@ export interface StartWebOptions {
   appPort: number;
   appUrl: string;
   env: NodeJS.ProcessEnv;
-  /** Recorded in the child env so a later `ensure`/`build` can attribute it. */
-  stackName: string;
-  profile: string;
 }
 
 /**
@@ -180,8 +155,6 @@ export function startWebServer(options: StartWebOptions): number {
       APP_URL: options.appUrl,
       NEXT_PUBLIC_SITE_URL: options.env.NEXT_PUBLIC_SITE_URL || options.appUrl,
       STUDIQ_DEV_WORKTREE: REPO_ROOT,
-      STUDIQ_ENV_STACK: options.stackName,
-      STUDIQ_ENV_PROFILE: options.profile,
     },
     detached: true,
     stdio: ['ignore', log, log],

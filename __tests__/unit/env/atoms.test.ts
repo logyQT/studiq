@@ -12,17 +12,15 @@ interface EnsureOptions {
   stack: string | null;
   appPort: number | null;
   waitSeconds: number | null;
-  reconcile: boolean;
 }
 
 interface ParsedCommand {
   command: string;
   json: boolean;
   ensure: EnsureOptions | null;
-  down: { all: boolean } | null;
-  build: { force: boolean } | null;
+  down: { all: boolean; stack: string | null } | null;
+  build: { force: boolean; stack: string | null } | null;
   yes: boolean;
-  quiet: boolean;
 }
 
 interface AtomsModule {
@@ -63,11 +61,10 @@ describe('env atom grammar', () => {
       stack: null,
       appPort: null,
       waitSeconds: null,
-      reconcile: false,
     });
   });
 
-  it('makes profile web build and serve, and --prod imply both', () => {
+  it('makes profile web build and serve', () => {
     expect(atoms.parseCommand(['ensure', '--profile', 'web']).ensure).toMatchObject({
       build: true,
       serve: true,
@@ -98,7 +95,6 @@ describe('env atom grammar', () => {
       'api',
       '--mail',
       '--studio',
-      '--reconcile',
       '--runtime',
       'docker',
       '--stack',
@@ -108,33 +104,31 @@ describe('env atom grammar', () => {
       '--wait',
       '45',
       '--yes',
-      '--quiet',
     ]);
     expect(parsed.ensure).toMatchObject({
       capabilityAtoms: ['mail', 'studio'],
-      reconcile: true,
       runtime: 'docker',
       stack: 'phase2-test',
       appPort: 3123,
       waitSeconds: 45,
     });
     expect(parsed.yes).toBe(true);
-    expect(parsed.quiet).toBe(true);
   });
 
-  it('rejects conflicting, unsupported and phase-3/4 atoms', () => {
-    throwsUsage(['ensure', '--profile', 'api', '--seed', '--reseed'], /conflicts/);
+  it('rejects conflicting, unsupported and unknown atoms', () => {
+    throwsUsage(['ensure', '--profile', 'api', '--seed', '--no-seed'], /conflicts/);
+    throwsUsage(['ensure', '--profile', 'api', '--reconcile'], /unknown option/);
     throwsUsage(['ensure', '--profile', 'api', '--verbose'], /unknown option/);
-    throwsUsage(['ensure', '--profile', 'api', '--runtime', 'podman'], /podman/);
-    throwsUsage(['ensure', '--profile', 'api', '--runtime', 'auto'], /auto/);
-    throwsUsage(['ensure', '--profile', 'api', '--port-block', '3'], /phase 4/);
-    throwsUsage(['ensure', '--profile', 'api', '--admin'], /phase 3/);
-    throwsUsage(['ensure', '--profile', 'db'], /phase 3/);
+    throwsUsage(['ensure', '--profile', 'api', '--runtime', 'podman'], /unknown runtime/);
+    throwsUsage(['ensure', '--profile', 'api', '--runtime', 'auto'], /unknown runtime/);
+    throwsUsage(['ensure', '--profile', 'api', '--port-block', '3'], /unknown option/);
+    throwsUsage(['ensure', '--profile', 'api', '--admin'], /unknown option/);
+    throwsUsage(['ensure', '--profile', 'db'], /unknown profile/);
     throwsUsage(['ensure', '--profile', 'nope'], /unknown profile/);
     throwsUsage(['ensure', '--json'], /--profile/);
     throwsUsage(['ensure', '--profile', 'api', '--build'], /does not build or serve/);
     throwsUsage(['ensure', '--profile', 'api', '--prod'], /does not build or serve/);
-    throwsUsage(['ensure', '--profile', 'api', '--app-port', '0'], /out of range/);
+    throwsUsage(['ensure', '--profile', 'api', '--app-port', '0'], /1-65535/);
     throwsUsage(['ensure', '--profile', 'api', '--wait', '0'], /1-3600|range/);
     throwsUsage(['ensure', '--profile', 'api', '--stack', 'bad name'], /valid stack name/);
   });
@@ -156,9 +150,14 @@ describe('env atom grammar', () => {
     });
     expect(atoms.parseCommand(['build', '--force', '--json'])).toMatchObject({
       command: 'build',
-      build: { force: true },
+      build: { force: true, stack: null },
       json: true,
     });
+    expect(atoms.parseCommand(['build', '--stack', 'named']).build).toMatchObject({
+      force: false,
+      stack: 'named',
+    });
+    throwsUsage(['build', '--stack', 'bad name'], /valid stack name/);
     throwsUsage(['down', '--profile', 'api'], /unknown option/);
     throwsUsage(['build', '--all'], /unknown option/);
   });

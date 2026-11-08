@@ -1,23 +1,7 @@
-import { runSupabase, type StackEnv, type StackPorts } from './stack';
+import { runSupabase, type StackEnv } from './stack';
 import { redactSecrets } from './output';
 import type { Capability } from '../profiles';
 import type { RuntimeChoice } from '../atoms';
-
-/**
- * The only stack mutations the tool is allowed to perform: start (create or
- * resume), stop this checkout's stack, and reconcile in place. Nothing here
- * ever destroys data or touches another checkout's stack.
- */
-
-export interface StartStackOptions {
-  stackName: string | null;
-  runtime: RuntimeChoice;
-  excludes: readonly Capability[];
-  /** A stack already exists, so observed ports are pinned (read-then-pin). */
-  pinPorts: boolean;
-  ports?: StackPorts;
-  timeoutMs: number;
-}
 
 export interface StackActionResult {
   ok: boolean;
@@ -25,28 +9,6 @@ export interface StackActionResult {
   stderr: string;
 }
 
-function portArgs(ports: StackPorts | undefined): Record<string, string> {
-  if (!ports) return {};
-  const values: Record<string, string> = {};
-  if (ports.api > 0) values.SUPABASE_API_PORT = String(ports.api);
-  if (ports.db > 0) values.SUPABASE_DB_PORT = String(ports.db);
-  if (ports.studio > 0) values.SUPABASE_STUDIO_PORT = String(ports.studio);
-  if (ports.mail > 0) values.SUPABASE_LOCAL_SMTP_PORT = String(ports.mail);
-  if (ports.mailSmtp > 0) values.SUPABASE_LOCAL_SMTP_SMTP_PORT = String(ports.mailSmtp);
-  if (ports.mailPop3 > 0) values.SUPABASE_LOCAL_SMTP_POP3_PORT = String(ports.mailPop3);
-  if (ports.analytics > 0) values.SUPABASE_ANALYTICS_PORT = String(ports.analytics);
-  if (ports.edgeInspector > 0) {
-    values.SUPABASE_EDGE_INSPECTOR_PORT = String(ports.edgeInspector);
-  }
-  if (ports.pooler > 0) values.SUPABASE_POOLER_PORT = String(ports.pooler);
-  return values;
-}
-
-/**
- * Port variables inherited from a parent shell must not leak into a **cold**
- * start: the CLI would honour a stale fixed-port contract from another
- * checkout. A resume/reconcile pins the ports it just observed instead.
- */
 const PORT_VARIABLES = [
   'SUPABASE_API_PORT',
   'SUPABASE_DB_PORT',
@@ -57,29 +19,25 @@ const PORT_VARIABLES = [
   'SUPABASE_LOCAL_SMTP_POP3_PORT',
   'SUPABASE_ANALYTICS_PORT',
   'SUPABASE_EDGE_INSPECTOR_PORT',
-  'SUPABASE_EDGE_RUNTIME_INSPECTOR_PORT',
-  'SUPABASE_REALTIME_PORT',
-  'SUPABASE_FUNCTIONS_PORT',
   'SUPABASE_POOLER_PORT',
   'SUPABASE_SHADOW_PORT',
   'SUPABASE_DB_SHADOW_PORT',
   'SUPABASE_DB_POOLER_PORT',
 ] as const;
 
-function childEnv(options: StartStackOptions): NodeJS.ProcessEnv {
+export function startStack(options: {
+  stackName: string | null;
+  runtime: RuntimeChoice;
+  excludes: readonly Capability[];
+  timeoutMs: number;
+}): StackActionResult {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const name of PORT_VARIABLES) delete env[name];
-  if (options.pinPorts) Object.assign(env, portArgs(options.ports));
-  return env;
-}
-
-export function startStack(options: StartStackOptions): StackActionResult {
   const args = ['stack', 'start', '--eager', '-x', options.excludes.join(',')];
   args.push('--runtime', options.runtime);
   if (options.stackName) args.push('--stack', options.stackName);
   args.push('--output-format', 'json');
-
-  const result = runSupabase(args, { env: childEnv(options), timeoutMs: options.timeoutMs });
+  const result = runSupabase(args, { env, timeoutMs: options.timeoutMs });
   return {
     ok: result.status === 0,
     timedOut: result.timedOut,
@@ -98,11 +56,7 @@ export function stopStack(stackName: string | null, timeoutMs = 120_000): StackA
   };
 }
 
-/**
- * Relay the discovered stack values to this process so `next build` and
- * `next start` children inline/serve the right stack. Values live in memory
- * and the child environment only.
- */
+/** Relay discovered values to build/serve children; never log them. */
 export function applyStackEnv(
   env: StackEnv,
   extras: { appUrl: string; appEnv: string; stackId?: string },

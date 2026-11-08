@@ -1,15 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
-import { startTcpListener } from '#test/unit/env/support';
+import { startHttpServer, startTcpListener } from '#test/unit/env/support';
 
 interface CapabilitiesModule {
-  capabilityDecision(
-    observed: Iterable<string>,
-    requested: Iterable<string>,
-    reconcile: boolean,
-  ): { action: 'ready' | 'restart' | 'conflict'; missing: string[] };
   observedCapabilities(services: string[]): string[];
-  capabilityConflictMessage(missing: string[]): string;
   probeCapabilities(
     capabilities: Iterable<string>,
     context: Record<string, unknown>,
@@ -18,121 +12,73 @@ interface CapabilitiesModule {
 
 const capabilities = await loadEnvModule<CapabilitiesModule>('lib/capabilities.ts');
 
-const api = ['database', 'auth', 'storage', 'rest'];
-const full = [...api, 'mail'];
+const PORTS = {
+  api: 0,
+  db: 0,
+  studio: 0,
+  mail: 0,
+  mailSmtp: 0,
+  mailPop3: 0,
+  realtime: 0,
+  analytics: 0,
+  edgeInspector: 0,
+  pooler: 0,
+  pgmeta: 0,
+};
 
-describe('capability reconciliation (spec §5.2, §13 test 13)', () => {
-  it('is ready for a narrower request against a running superset', () => {
-    expect(capabilities.capabilityDecision(full, api, false)).toEqual({
-      action: 'ready',
-      missing: [],
-    });
-  });
+function context(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    apiUrl: 'http://127.0.0.1:1',
+    dbPort: 0,
+    mailUrl: null,
+    studioUrl: null,
+    ports: PORTS,
+    ...overrides,
+  };
+}
 
-  it('conflicts when adding a capability without --reconcile', () => {
-    expect(capabilities.capabilityDecision(api, full, false)).toEqual({
-      action: 'conflict',
-      missing: ['mail'],
-    });
-  });
-
-  it('restarts in place when --reconcile is set', () => {
-    expect(capabilities.capabilityDecision(api, full, true)).toEqual({
-      action: 'restart',
-      missing: ['mail'],
-    });
-  });
-
-  it('never treats removing capabilities as an action', () => {
-    expect(capabilities.capabilityDecision(full, api, true)).toEqual({
-      action: 'ready',
-      missing: [],
-    });
-  });
-
+describe('capability probes (spec §5.2)', () => {
   it('keeps only known running services in the observed set', () => {
     expect(
       capabilities.observedCapabilities(['database', 'rest', 'mail', 'unknown', 'database']),
     ).toEqual(['database', 'rest', 'mail']);
   });
 
-  it('names the missing capability and the flag in the conflict message', () => {
-    const message = capabilities.capabilityConflictMessage(['mail']);
-    expect(message).toContain('mail');
-    expect(message).toContain('--reconcile');
-    expect(message).toContain('--yes');
+  it('fails readiness when a requested service is unreachable', async () => {
+    const result = await capabilities.probeCapabilities(['auth'], context());
+    expect(result).toEqual({ ok: false, failed: ['auth'] });
   });
 
-  it('probes Realtime on its own port, never the edge inspector', async () => {
+  it('probes Mailpit over its own URL', async () => {
+    const mail = await startHttpServer(200);
+    try {
+      const result = await capabilities.probeCapabilities(['mail'], context({ mailUrl: mail.url }));
+      expect(result).toEqual({ ok: true, failed: [] });
+    } finally {
+      await mail.close();
+    }
+  });
+
+  it('treats a missing Mailpit URL as a failed probe', async () => {
+    const result = await capabilities.probeCapabilities(['mail'], context({ mailUrl: null }));
+    expect(result).toEqual({ ok: false, failed: ['mail'] });
+  });
+
+  it('accepts a reachable database port', async () => {
     const listener = await startTcpListener(0);
     try {
-      const inspectorOnly = await capabilities.probeCapabilities(['realtime'], {
-        apiUrl: 'http://127.0.0.1:1',
-        dbPort: 0,
-        mailUrl: null,
-        studioUrl: null,
-        services: ['realtime'],
-        ports: {
-          api: 0,
-          db: 0,
-          studio: 0,
-          mail: 0,
-          mailSmtp: 0,
-          mailPop3: 0,
-          realtime: 0,
-          analytics: 0,
-          edgeInspector: listener.port,
-          pooler: 0,
-          pgmeta: 0,
-        },
-      });
-      expect(inspectorOnly).toEqual({ ok: false, failed: ['realtime'] });
-
-      const ownPort = await capabilities.probeCapabilities(['realtime'], {
-        apiUrl: 'http://127.0.0.1:1',
-        dbPort: 0,
-        mailUrl: null,
-        studioUrl: null,
-        services: [],
-        ports: {
-          api: 0,
-          db: 0,
-          studio: 0,
-          mail: 0,
-          mailSmtp: 0,
-          mailPop3: 0,
-          realtime: listener.port,
-          analytics: 0,
-          edgeInspector: 0,
-          pooler: 0,
-          pgmeta: 0,
-        },
-      });
-      expect(ownPort).toEqual({ ok: true, failed: [] });
+      const result = await capabilities.probeCapabilities(
+        ['database'],
+        context({ dbPort: listener.port }),
+      );
+      expect(result).toEqual({ ok: true, failed: [] });
     } finally {
       await listener.close();
     }
   });
 
-  it('fails readiness when a requested service is unreachable', async () => {
-    const result = await capabilities.probeCapabilities(['auth'], {
-      apiUrl: 'http://127.0.0.1:1',
-      dbPort: 0,
-      mailUrl: null,
-      studioUrl: null,
-      ports: {
-        api: 0,
-        db: 0,
-        studio: 0,
-        mail: 0,
-        mailSmtp: 0,
-        mailPop3: 0,
-        analytics: 0,
-        edgeInspector: 0,
-        pooler: 0,
-        pgmeta: 0,
-      },
-    });
-    expect(result).toEqual({ ok: false, failed: ['auth'] });
+  it('deduplicates requested capabilities', async () => {
+    const result = await capabilities.probeCapabilities(['auth', 'auth'], context());
+    expect(result.failed).toEqual(['auth']);
   });
 });

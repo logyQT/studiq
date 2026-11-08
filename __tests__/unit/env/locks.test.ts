@@ -1,27 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
 
-interface StartLockOptions {
-  key: string;
-  projectRoot: string;
-  branch: string;
-  stackName: string;
-  waitSeconds: number;
-}
-
-interface StartLock {
-  file: string;
-  release(): void;
-}
-
 interface LocksModule {
   pidAlive(pid: number): boolean;
-  acquireStartLock(options: StartLockOptions): Promise<StartLock>;
-  withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T>;
-  withCheckoutWebLock<T>(fn: () => Promise<T>): Promise<T>;
+  ensureRegistryDir(): string;
+  withCheckoutLock<T>(fn: () => Promise<T> | T): Promise<T>;
+  withBuildLock<T>(fn: () => Promise<T> | T): Promise<T>;
 }
 
 // `state.ts` captures DEV_DIR at import time; point it at a temp dir before
@@ -49,18 +36,24 @@ function registry(): string {
   return dir;
 }
 
-function options(key: string, waitSeconds = 2): StartLockOptions {
-  return {
-    key,
-    projectRoot: '/checkout',
-    branch: 'refs/heads/feat/x',
-    stackName: '',
-    waitSeconds,
-  };
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function serializes(acquire: (fn: () => Promise<void>) => Promise<void>): Promise<number> {
+  let active = 0;
+  let maximum = 0;
+  await Promise.all(
+    Array.from({ length: 4 }, () =>
+      acquire(async () => {
+        active += 1;
+        maximum = Math.max(maximum, active);
+        await sleep(60);
+        active -= 1;
+      }),
+    ),
+  );
+  return maximum;
 }
 
 describe('lock primitives', () => {
@@ -77,114 +70,29 @@ describe('lock primitives', () => {
     expect(locks.pidAlive(0)).toBe(false);
   });
 
-  it('takes over a dead start-lock holder under the mutex', async () => {
+  it('creates the registry with private permissions', () => {
     const dir = registry();
-    const lockDir = join(dir, 'locks');
-    mkdirSync(lockDir, { recursive: true, mode: 0o700 });
-    const key = 'dead-holder';
-    writeFileSync(
-      join(lockDir, `start-${key}.lock`),
-      `${JSON.stringify({
-        pid: 999_999_999,
-        token: 'dead',
-        projectRoot: '/checkout',
-        branch: 'refs/heads/feat/x',
-        stackName: '',
-        acquiredAt: new Date().toISOString(),
-        heartbeatAt: new Date().toISOString(),
-      })}\n`,
-      { mode: 0o600 },
-    );
-
-    const lock = await locks.acquireStartLock(options(key));
-    const content: unknown = JSON.parse(readFileSync(lock.file, 'utf8'));
-    expect(content).toMatchObject({ pid: process.pid });
-    lock.release();
-    expect(existsSync(lock.file)).toBe(false);
+    expect(locks.ensureRegistryDir()).toBe(dir);
   });
 
-  it('recovers from an empty/partial lock without wedging', async () => {
-    const dir = registry();
-    const lockDir = join(dir, 'locks');
-    mkdirSync(lockDir, { recursive: true, mode: 0o700 });
-    writeFileSync(join(lockDir, 'start-partial.lock'), '{"pid":', { mode: 0o600 });
-
-    const lock = await locks.acquireStartLock(options('partial'));
-    expect(JSON.parse(readFileSync(lock.file, 'utf8'))).toMatchObject({ pid: process.pid });
-    lock.release();
-    expect(existsSync(lock.file)).toBe(false);
-  });
-
-  it('publishes complete lock content and never reaps a live holder', async () => {
+  it('serializes ensure/down/serve and lease decisions per checkout', async () => {
     registry();
-    const first = await locks.acquireStartLock(options('complete'));
-    const published = readFileSync(first.file, 'utf8');
-    const parsed: unknown = JSON.parse(published);
-    expect(parsed).toBeTruthy();
-
-    let secondAcquired = false;
-    const secondPromise = (async () => {
-      const lock = await locks.acquireStartLock(options('complete', 2));
-      secondAcquired = true;
-      lock.release();
-    })();
-
-    await sleep(250);
-    expect(secondAcquired).toBe(false);
-    expect(readFileSync(first.file, 'utf8')).toBe(published);
-    first.release();
-    await secondPromise;
-    expect(secondAcquired).toBe(true);
+    expect(await serializes((fn) => locks.withCheckoutLock(fn))).toBe(1);
   });
 
-  it('lets only one waiter acquire the start lock after a release', async () => {
+  it('serializes the cross-worktree build lock', async () => {
     registry();
-    const first = await locks.acquireStartLock(options('one-waiter'));
-    let secondAcquired = false;
-    const secondPromise = (async () => {
-      const lock = await locks.acquireStartLock(options('one-waiter', 3));
-      secondAcquired = true;
-      lock.release();
-    })();
-
-    await sleep(250);
-    expect(secondAcquired).toBe(false);
-    first.release();
-    await secondPromise;
-    expect(secondAcquired).toBe(true);
+    expect(await serializes((fn) => locks.withBuildLock(fn))).toBe(1);
   });
 
-  it('serializes the checkout-wide web-server claim', async () => {
+  it('releases the lock when the callback throws', async () => {
     registry();
-    let active = 0;
-    let maximum = 0;
-    await Promise.all(
-      Array.from({ length: 4 }, () =>
-        locks.withCheckoutWebLock(async () => {
-          active += 1;
-          maximum = Math.max(maximum, active);
-          await sleep(60);
-          active -= 1;
-        }),
-      ),
-    );
-    expect(maximum).toBe(1);
-  });
-
-  it('serializes registry lease decisions', async () => {
-    registry();
-    let active = 0;
-    let maximum = 0;
-    await Promise.all(
-      Array.from({ length: 4 }, () =>
-        locks.withRegistryLeaseLock(async () => {
-          active += 1;
-          maximum = Math.max(maximum, active);
-          await sleep(60);
-          active -= 1;
-        }),
-      ),
-    );
-    expect(maximum).toBe(1);
+    await expect(
+      locks.withCheckoutLock(() => {
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    const value = await locks.withCheckoutLock(() => 'free');
+    expect(value).toBe('free');
   });
 });
