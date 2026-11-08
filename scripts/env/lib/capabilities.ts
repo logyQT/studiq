@@ -20,6 +20,8 @@ export interface ProbeContext {
   services?: string[];
   /** Shared mode cannot inspect the database; the shared owner already proved it. */
   assumeDatabase?: boolean;
+  /** Shared mode has no service list; probe Realtime's own gateway route. */
+  assumeRealtime?: boolean;
 }
 
 export function probeContextFromStatus(status: StackStatus, services: string[] = []): ProbeContext {
@@ -87,8 +89,13 @@ async function probeCapability(capability: Capability, context: ProbeContext): P
       // the stack/service record actually lists Realtime. The edge inspector
       // port must never stand in for Realtime.
       if (context.ports.realtime > 0) return portInUse(context.ports.realtime);
-      if (!(context.services ?? []).includes('realtime')) return false;
-      return isOk(await probeHttp(`${context.apiUrl}/realtime/v1/`));
+      if (!context.assumeRealtime && !(context.services ?? []).includes('realtime')) {
+        return false;
+      }
+      // A live Realtime answers the WebSocket route (401 without an upgrade/
+      // auth); a disabled capability is a gateway 404.
+      const code = await probeHttp(`${context.apiUrl}/realtime/v1/websocket`);
+      return code > 0 && code < 500 && code !== 404;
     case 'functions':
       return context.ports.edgeInspector > 0
         ? portInUse(context.ports.edgeInspector)
@@ -184,6 +191,7 @@ export function sharedProbeContext(): ProbeContext {
     mailUrl: mailUrl ? mailUrl.replace(/\/$/, '') : null,
     studioUrl: studioUrl ? studioUrl.replace(/\/$/, '') : null,
     assumeDatabase: true,
+    assumeRealtime: true,
     ports: {
       api: Number(urlPort(apiUrl) ?? process.env.SUPABASE_API_PORT ?? '0') || 0,
       db: dbPort,
@@ -192,9 +200,9 @@ export function sharedProbeContext(): ProbeContext {
       mailSmtp: 0,
       mailPop3: 0,
       realtime: 0,
-      analytics: 0,
-      edgeInspector: 0,
-      pooler: 0,
+      analytics: Number(process.env.SUPABASE_ANALYTICS_PORT ?? '0') || 0,
+      edgeInspector: Number(process.env.SUPABASE_EDGE_INSPECTOR_PORT ?? '0') || 0,
+      pooler: Number(process.env.SUPABASE_POOLER_PORT ?? '0') || 0,
       pgmeta: 0,
     },
   };

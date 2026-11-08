@@ -132,6 +132,23 @@ describe('JSON contract and exit codes (spec §2.1, §9)', () => {
     expect('warmMs' in snapshot).toBe(false);
   });
 
+  it('derives readiness from the profile when no explicit ready is supplied', () => {
+    const api = json.shapeStatus({
+      ...baseInputs,
+      web: { pid: null, http: 0 },
+      supabaseHttp: 200,
+      profile: 'api',
+    });
+    expect(api.ready).toBe(true);
+    const web = json.shapeStatus({
+      ...baseInputs,
+      web: { pid: null, http: 0 },
+      supabaseHttp: 200,
+      profile: 'web',
+    });
+    expect(web.ready).toBe(false);
+  });
+
   it('defaults lifecycle facts to null (unknown) for a read-only call', () => {
     const snapshot = json.shapeStatus(baseInputs);
     expect(snapshot.profile).toBeNull();

@@ -34,16 +34,23 @@ function git(root: string, args: string[]): string {
   ]) {
     delete env[name];
   }
-  const result = spawnSync('git', ['-C', root, ...args], {
-    encoding: 'utf8',
-    env: {
-      ...env,
-      GIT_AUTHOR_NAME: 'Env Test',
-      GIT_AUTHOR_EMAIL: 'env@example.test',
-      GIT_COMMITTER_NAME: 'Env Test',
-      GIT_COMMITTER_EMAIL: 'env@example.test',
+  const result = spawnSync(
+    'git',
+    ['-C', root, '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args],
+    {
+      encoding: 'utf8',
+      env: {
+        ...env,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_SYSTEM: '/dev/null',
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_AUTHOR_NAME: 'Env Test',
+        GIT_AUTHOR_EMAIL: 'env@example.test',
+        GIT_COMMITTER_NAME: 'Env Test',
+        GIT_COMMITTER_EMAIL: 'env@example.test',
+      },
     },
-  });
+  );
   if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`);
   return result.stdout;
 }
@@ -109,6 +116,12 @@ describe('build fingerprint (spec §8)', () => {
     writeFileSync(join(root, 'src', 'new.ts'), 'export const added = true;\n');
     const after = fingerprint.workingTreeHash(root);
     expect(after).not.toBe(before);
+  });
+
+  it('fails closed when git cannot read the working tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'studiq-env-not-a-repo-'));
+    roots.push(root);
+    expect(() => fingerprint.workingTreeHash(root)).toThrow(/git .* failed|not a git repository/);
   });
 
   it('is stable when nothing changes', () => {

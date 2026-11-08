@@ -4,18 +4,31 @@ import { join } from 'node:path';
 import { probeHttp } from './health';
 import { DEV_DIR, ensureDevDir } from './state';
 import { REPO_ROOT } from './repo';
+import { pidAlive } from './locks';
 
 const WEB_PID_FILE = join(DEV_DIR, 'web.pid');
 const WEB_LOG = join(DEV_DIR, 'web.log');
 
-function pidAlive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 1) return false;
+/** The `PORT` a recorded web process was started with, or null. */
+export function readWebPort(pid: number): number | null {
+  const match = (value: string): number | null => {
+    const found = /(?:^|[\0\s])PORT=(\d{1,5})(?:[\0\s]|$)/.exec(value);
+    if (!found?.[1]) return null;
+    const port = Number(found[1]);
+    return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+  };
   try {
-    process.kill(pid, 0);
-    return true;
+    const environ = readFileSync(`/proc/${pid}/environ`, 'utf8');
+    const port = match(environ);
+    if (port) return port;
   } catch {
-    return false;
+    /* fall through to ps */
   }
+  const result = spawnSync('ps', ['eww', '-p', String(pid)], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  return match(result.stdout ?? '');
 }
 
 function hasWorktreeMarker(pid: number): boolean {

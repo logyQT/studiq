@@ -600,6 +600,12 @@ async function main(): Promise<number> {
     const downAllAgain = run(['env:down', '--all', '--yes', '--json'], childEnv);
     check(downAllAgain.code === 0, 'down --all is idempotent');
   } finally {
+    // A failure between starting `ensure --profile web` and the plain down
+    // must not leave `next start` running against the soon-destroyed stack.
+    const web = stopWebServer();
+    if (web.pid && !web.stopped) {
+      console.error(`  ! could not stop the selftest web server (pid ${web.pid})`);
+    }
     destroyScratch();
     rmSync(tempDir, { recursive: true, force: true });
   }

@@ -1,7 +1,7 @@
 import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContractLenient } from '../lib/contract';
-import { appendEnvLog, identityKey, readStackRecord } from '../lib/state';
+import { appendEnvLog, identityKey, readStackRecord, removeStackRecord } from '../lib/state';
 import { ensureRegistryDir } from '../lib/locks';
 import { leaseProjectId, readLease, removeLease } from '../lib/lease';
 import { REPO_ROOT, isThisCheckout, currentBranchRef } from '../lib/repo';
@@ -184,6 +184,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
   }
 
   removeLease(dir, projectId);
+  removeStackRecord(stateKeyFor(cliStackName));
   lines.push('Released the app-port lease.');
   human(parsed, lines);
 

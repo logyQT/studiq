@@ -9,7 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { REPO_ROOT } from './repo';
 import type { Capability } from '../profiles';
 
@@ -20,7 +20,9 @@ import type { Capability } from '../profiles';
  * the build-time public values, never the values themselves. Every file is
  * created mode 600 inside a mode-700 directory (spec §9, §10.8).
  */
-export const DEV_DIR = join(REPO_ROOT, '.dev');
+export const DEV_DIR = process.env.STUDIQ_ENV_STATE_DIR
+  ? resolve(REPO_ROOT, process.env.STUDIQ_ENV_STATE_DIR)
+  : join(REPO_ROOT, '.dev');
 
 const STATE_DIR = join(DEV_DIR, 'stacks');
 const SEED_DIR = join(DEV_DIR, 'seed');

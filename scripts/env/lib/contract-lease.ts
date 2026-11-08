@@ -1,6 +1,6 @@
 import { contractWithPort, type Contract } from './contract';
 import { leaseProjectId, readLease } from './lease';
-import { resolveRegistryDir } from './registry';
+import { readRegistry } from './registry';
 import { REPO_ROOT, currentBranchRef } from './repo';
 import { identityKey } from './state';
 
@@ -12,8 +12,11 @@ import { identityKey } from './state';
  */
 export function contractWithLease(contract: Contract): Contract {
   if (process.env.APP_PORT || process.env.APP_URL) return contract;
+  const registry = readRegistry();
+  // A symlinked/foreign registry must never drive the app port.
+  if (!registry.trusted) return contract;
   const key = identityKey(REPO_ROOT, currentBranchRef(), contract.stackName ?? '');
-  const lease = readLease(resolveRegistryDir(), leaseProjectId(key));
+  const lease = readLease(registry.dir, leaseProjectId(key));
   if (!lease?.appPort) return contract;
   return contractWithPort(contract, lease.appPort);
 }

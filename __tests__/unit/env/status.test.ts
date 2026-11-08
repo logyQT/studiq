@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -175,7 +175,7 @@ describe('env:status --json', () => {
     expect(supabase).toEqual({ url: `http://localhost:${server.port}`, http: 200 });
     expect(web.http).toBe(200);
     expect(typeof build.present).toBe('boolean');
-    expect(build.fingerprint === null || typeof build.fingerprint === 'string').toBe(true);
+    expect(build.fingerprint).toBeNull();
     expect('warmMs' in status).toBe(false);
 
     // No sentinel, key name or password may survive anywhere in stdout.
@@ -199,6 +199,25 @@ describe('env:status --json', () => {
     const calls = harness.bunxCalls();
     expect(calls).toContain('stack status --output-format json');
     expect(calls).not.toMatch(/stack (start|stop|destroy|install|logs)/);
+  });
+
+  it('reads an exact fingerprint from isolated build state', async () => {
+    const harness = newHarness();
+    const fingerprint = '0123456789abcdef0123456789abcdef';
+    writeFileSync(
+      join(harness.stateDir, 'build.json'),
+      JSON.stringify({
+        fingerprint,
+        envHash: 'fixture-env-hash',
+        mode: 'production',
+        builtAt: '2026-11-08T00:00:00.000Z',
+      }),
+    );
+
+    const result = await harness.run(['status', '--json']);
+    expect(result.status).toBe(0);
+    const build = objectField(parseJsonObject(result.stdout), 'build');
+    expect(build.fingerprint).toBe(fingerprint);
   });
 
   it('reads ownership and mode from the registry in shared mode', async () => {

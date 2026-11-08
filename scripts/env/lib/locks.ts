@@ -11,6 +11,7 @@ import {
   rmSync,
   statSync,
   writeFileSync,
+  type Stats,
 } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT_CONFLICT, EXIT_TIMEOUT, EXIT_USAGE, EnvFailure } from './exit';
@@ -100,13 +101,51 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function readLock(file: string): LockContent | null {
+type JsonRead =
+  | { kind: 'ok'; value: unknown }
+  | { kind: 'absent' }
+  | { kind: 'unreadable' }
+  | { kind: 'malformed' };
+
+/**
+ * Read a JSON lock without treating an I/O failure as "absent":
+ * EACCES/EIO/symlink are `unreadable` and must keep waiters waiting; only a
+ * successful read with malformed content may be reclaimed.
+ */
+function readJsonFile(file: string): JsonRead {
+  let raw: string;
   try {
-    if (lstatSync(file).isSymbolicLink()) return null;
-    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    if (!isObject(parsed)) return null;
-    if (typeof parsed.pid !== 'number' || typeof parsed.token !== 'string') return null;
-    return {
+    if (lstatSync(file).isSymbolicLink()) return { kind: 'unreadable' };
+    raw = readFileSync(file, 'utf8');
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT'
+      ? { kind: 'absent' }
+      : { kind: 'unreadable' };
+  }
+  try {
+    return { kind: 'ok', value: JSON.parse(raw) as unknown };
+  } catch {
+    return { kind: 'malformed' };
+  }
+}
+
+type LockRead =
+  | { kind: Exclude<JsonRead['kind'], 'ok'>; lock: null }
+  | {
+      kind: 'ok';
+      lock: LockContent;
+    };
+
+function readLock(file: string): LockRead {
+  const read = readJsonFile(file);
+  if (read.kind !== 'ok') return { kind: read.kind, lock: null };
+  const parsed = read.value;
+  if (!isObject(parsed) || typeof parsed.pid !== 'number' || typeof parsed.token !== 'string') {
+    return { kind: 'malformed', lock: null };
+  }
+  return {
+    kind: 'ok',
+    lock: {
       pid: parsed.pid,
       token: parsed.token,
       projectRoot: typeof parsed.projectRoot === 'string' ? parsed.projectRoot : '',
@@ -114,10 +153,8 @@ function readLock(file: string): LockContent | null {
       stackName: typeof parsed.stackName === 'string' ? parsed.stackName : '',
       acquiredAt: typeof parsed.acquiredAt === 'string' ? parsed.acquiredAt : '',
       heartbeatAt: typeof parsed.heartbeatAt === 'string' ? parsed.heartbeatAt : '',
-    };
-  } catch {
-    return null;
-  }
+    },
+  };
 }
 
 function writeLock(file: string, content: LockContent): void {
@@ -220,6 +257,12 @@ async function acquireKernelMutex(path: string, waitSeconds: number): Promise<Mu
   });
 }
 
+type StatIdentity = Stats;
+
+function sameEntry(left: StatIdentity, right: StatIdentity): boolean {
+  return left.dev === right.dev && left.ino === right.ino && left.mtimeMs === right.mtimeMs;
+}
+
 /** Portable fallback when `flock` is unavailable: atomic `mkdir` + owner pid. */
 async function acquireDirMutex(path: string, waitSeconds: number): Promise<MutexHandle> {
   const deadline = Date.now() + waitSeconds * 1000;
@@ -234,6 +277,12 @@ async function acquireDirMutex(path: string, waitSeconds: number): Promise<Mutex
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      let observed: StatIdentity | null = null;
+      try {
+        observed = lstatSync(path);
+      } catch {
+        continue;
+      }
       let owner = 0;
       try {
         owner = Number(readFileSync(join(path, 'pid'), 'utf8').trim());
@@ -241,7 +290,14 @@ async function acquireDirMutex(path: string, waitSeconds: number): Promise<Mutex
         /* owner unknown */
       }
       if (owner && !pidAlive(owner)) {
-        rmSync(path, { recursive: true, force: true });
+        // Re-check identity so a reclaimer cannot delete a fresh lock created
+        // by another waiter after our first stat.
+        try {
+          const current = lstatSync(path);
+          if (sameEntry(observed, current)) rmSync(path, { recursive: true, force: true });
+        } catch {
+          /* vanished */
+        }
         continue;
       }
       if (Date.now() >= deadline) {
@@ -269,49 +325,66 @@ export async function withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T>
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   chmodSync(dir, 0o700);
   const file = join(dir, 'lease.lock');
+  const mutexPath = join(dir, 'lease.mutex');
   const token = `${process.pid}-${randomBytes(8).toString('hex')}`;
   const deadline = Date.now() + 60_000;
   for (;;) {
+    // Serialize create/reclaim so two waiters cannot both delete a dead owner
+    // and publish different leases.
+    const mutex = await acquireStartMutex(mutexPath, 30);
+    let acquired = false;
+    let wait = false;
     try {
-      createLockFileAtomic(
-        file,
-        `${JSON.stringify({ pid: process.pid, token, acquiredAt: new Date().toISOString() })}\n`,
-      );
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-        throw new EnvFailure(
-          EXIT_CONFLICT,
-          `cannot create the lease lock ${file}: ${(error as Error).message}`,
-        );
-      }
-      let owner = 0;
-      let observedToken = '';
       try {
-        const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
-        if (isObject(parsed)) {
-          owner = typeof parsed.pid === 'number' ? parsed.pid : 0;
-          observedToken = typeof parsed.token === 'string' ? parsed.token : '';
+        createLockFileAtomic(
+          file,
+          `${JSON.stringify({ pid: process.pid, token, acquiredAt: new Date().toISOString() })}\n`,
+        );
+        acquired = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+          throw new EnvFailure(
+            EXIT_CONFLICT,
+            `cannot create the lease lock ${file}: ${(error as Error).message}`,
+          );
         }
-      } catch {
-        /* corrupt/stale */
-      }
-      if (!owner || !pidAlive(owner)) {
-        // Stale lock: remove only while it still carries the token we observed.
-        try {
-          const current: unknown = JSON.parse(readFileSync(file, 'utf8'));
-          if (isObject(current) && current.token === observedToken) rmSync(file, { force: true });
-        } catch {
-          // Corrupt lock: reclaim only after it is safely old, never a fresh one.
+        const read = readJsonFile(file);
+        if (read.kind === 'absent') {
+          wait = true;
+        } else if (read.kind === 'unreadable') {
+          // Never reclaim a lock we could not read; wait for it to clear.
+          wait = true;
+        } else if (read.kind === 'malformed') {
           try {
             const age = Date.now() - statSync(file).mtimeMs;
             if (age > 5_000) rmSync(file, { force: true });
           } catch {
             /* vanished */
           }
+          wait = true;
+        } else {
+          const parsed = read.value;
+          const owner = isObject(parsed) && typeof parsed.pid === 'number' ? parsed.pid : 0;
+          const observedToken =
+            isObject(parsed) && typeof parsed.token === 'string' ? parsed.token : '';
+          if (!owner || !pidAlive(owner)) {
+            const current = readJsonFile(file);
+            if (
+              current.kind === 'ok' &&
+              isObject(current.value) &&
+              current.value.token === observedToken
+            ) {
+              rmSync(file, { force: true });
+            }
+          }
+          wait = true;
         }
-        continue;
       }
+    } finally {
+      await mutex.release();
+    }
+    if (acquired) break;
+    if (wait) {
       if (Date.now() >= deadline) {
         throw new EnvFailure(
           EXIT_TIMEOUT,
@@ -319,17 +392,16 @@ export async function withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T>
         );
       }
       await sleep(50);
+      continue;
     }
   }
 
   try {
     return await fn();
   } finally {
-    try {
-      const current: unknown = JSON.parse(readFileSync(file, 'utf8'));
-      if (isObject(current) && current.token === token) rmSync(file, { force: true });
-    } catch {
-      /* gone/replaced */
+    const current = readJsonFile(file);
+    if (current.kind === 'ok' && isObject(current.value) && current.value.token === token) {
+      rmSync(file, { force: true });
     }
   }
 }
@@ -385,9 +457,14 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
     const mutex = await acquireStartMutex(mutexPath, Math.min(options.waitSeconds, 30));
     let acquired = false;
     try {
-      const holder = readLock(file);
-      if (!holder || !pidAlive(holder.pid)) {
-        rmSync(file, { force: true });
+      const current = readLock(file);
+      const holder = current.lock;
+      const reclaim =
+        current.kind === 'absent' ||
+        current.kind === 'malformed' ||
+        (current.kind === 'ok' && holder !== null && !pidAlive(holder.pid));
+      if (reclaim) {
+        if (current.kind !== 'absent') rmSync(file, { force: true });
         try {
           createLockFileAtomic(file, `${JSON.stringify(content)}\n`);
           acquired = true;
@@ -406,7 +483,7 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
 
     if (acquired) break;
     if (Date.now() >= deadline) {
-      const holder = readLock(file);
+      const holder = readLock(file).lock;
       throw new EnvFailure(
         EXIT_TIMEOUT,
         `timed out after ${options.waitSeconds}s waiting for the start lock${holder ? ` (pid ${holder.pid})` : ''}`,
@@ -414,7 +491,7 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
     }
     if (!announced) {
       announced = true;
-      const holder = readLock(file);
+      const holder = readLock(file).lock;
       if (holder) {
         appendEnvLog(
           `ensure: waiting for start lock held by pid ${holder.pid} (stack ${options.stackName})`,
@@ -429,14 +506,14 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
     const now = new Date().toISOString();
     try {
       const current = readLock(file);
-      if (current?.token !== token) return;
+      if (current.kind !== 'ok' || current.lock.token !== token) return;
       writeLock(file, {
         pid: process.pid,
         token,
         projectRoot: options.projectRoot,
         branch: options.branch,
         stackName: options.stackName,
-        acquiredAt: current.acquiredAt || now,
+        acquiredAt: current.lock.acquiredAt || now,
         heartbeatAt: now,
       });
       options.onHeartbeat?.();
@@ -455,7 +532,7 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
       released = true;
       clearInterval(heartbeat);
       const current = readLock(file);
-      if (current?.token === token) rmSync(file, { force: true });
+      if (current.kind === 'ok' && current.lock.token === token) rmSync(file, { force: true });
       appendEnvLog(`ensure: start lock released (stack ${options.stackName})`);
     },
   };
@@ -568,6 +645,12 @@ export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      let observed: StatIdentity | null = null;
+      try {
+        observed = lstatSync(lockDir);
+      } catch {
+        continue;
+      }
       let owner = 0;
       try {
         owner = Number(readFileSync(join(lockDir, 'pid'), 'utf8').trim());
@@ -575,7 +658,12 @@ export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
         /* owner unknown */
       }
       if (owner && !pidAlive(owner)) {
-        rmSync(lockDir, { recursive: true, force: true });
+        try {
+          const current = lstatSync(lockDir);
+          if (sameEntry(observed, current)) rmSync(lockDir, { recursive: true, force: true });
+        } catch {
+          /* vanished */
+        }
         continue;
       }
       if (Date.now() >= deadline) {

@@ -4,7 +4,6 @@ import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
 import { readRegistry, findEntry, registryPathExists } from './registry';
 import { REPO_ROOT, canon, currentBranchRef, deriveProjectId, sanitizeProjectId } from './repo';
-import { profileRequiresServe } from '../profiles';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
 import { dockerStackWarning } from './platform';
 import { identityKey, readBuildState, readStackRecord, type StackRecord } from './state';
@@ -219,10 +218,6 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
 
   const seeded = options.seeded ?? (record?.stackId ? seedMarkerCurrent(record.stackId) : null);
   const profile = options.profile ?? record?.profile ?? null;
-  const fallbackReady =
-    profile && !profileRequiresServe(profile)
-      ? supabaseHttp === 200
-      : webHttp >= 200 && webHttp < 400 && supabaseHttp === 200;
 
   return shapeStatus({
     contract,
@@ -246,7 +241,7 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     seeded,
     buildFingerprint: buildState?.fingerprint ?? null,
     warnings: [...new Set(warnings)],
-    ready: options.ready ?? fallbackReady,
+    ready: options.ready,
     runtime,
     stackId: statusStack?.id ?? record?.stackId ?? null,
     branch: statusStack?.branch ?? record?.branch ?? null,

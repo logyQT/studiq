@@ -1,6 +1,7 @@
 import type { Contract } from './contract';
 import { REPO_ROOT } from './repo';
 import type { StackStatus } from './stack';
+import { profileRequiresServe } from '../profiles';
 
 /**
  * The stable `--json` contract (spec §9).
@@ -105,8 +106,12 @@ function isReady(webHttp: number, supabaseHttp: number): boolean {
 
 export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
   const { contract, stack } = inputs;
+  const profileReady =
+    inputs.profile && !profileRequiresServe(inputs.profile)
+      ? inputs.supabaseHttp === 200
+      : isReady(inputs.web.http, inputs.supabaseHttp);
   return {
-    ready: inputs.ready ?? isReady(inputs.web.http, inputs.supabaseHttp),
+    ready: inputs.ready ?? profileReady,
     projectId: inputs.projectId,
     worktree: REPO_ROOT,
     mode: inputs.mode,

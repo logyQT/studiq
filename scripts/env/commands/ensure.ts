@@ -49,7 +49,14 @@ import {
   selectRuntime,
 } from '../lib/platform';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
-import { readWebPid, startWebServer, stopWebServer, waitForWeb, webLogPath } from '../lib/web';
+import {
+  readWebPid,
+  readWebPort,
+  startWebServer,
+  stopWebServer,
+  waitForWeb,
+  webLogPath,
+} from '../lib/web';
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot, stateKeyFor, statusFromRecord } from '../lib/snapshot';
 import { assertSeedingAllowed, seedMarkerCurrent } from '../lib/seed';
@@ -158,7 +165,9 @@ async function freePort(port: number): Promise<boolean> {
 }
 
 async function ownWebOn(port: number): Promise<boolean> {
-  return readWebPid() !== null && isWebHealthy(await probeHttp(`http://localhost:${port}`));
+  const pid = readWebPid();
+  if (!pid || readWebPort(pid) !== port) return false;
+  return isWebHealthy(await probeHttp(`http://localhost:${port}`));
 }
 
 interface LeaseResolution {
@@ -312,8 +321,8 @@ function resolveRuntime(options: {
       EXIT_CONFLICT,
       [
         `this stack uses runtime=${options.persisted}, not ${selected.runtime}.`,
-        'An existing stack keeps its persisted runtime; convert it explicitly (data is deleted):',
-        `  bun run env:recreate --runtime ${selected.runtime} --yes`,
+        'Runtime conversion is unavailable in phase 2; re-run with the persisted runtime:',
+        `  bun run env:ensure --runtime ${options.persisted} ...`,
       ].join('\n'),
     );
   }
@@ -450,7 +459,6 @@ async function runSharedEnsure(
       buildArtifactPresent();
     if (options.forceBuild || !current) {
       applyStackEnv(sharedEnv, { appUrl: contract.appUrl, appEnv });
-      const previousBuild = buildArtifactPresent();
       if (webPid) {
         const stopped = stopWebServer();
         if (!stopped.stopped) {
@@ -468,7 +476,7 @@ async function runSharedEnsure(
         env: process.env,
       });
       if (build.timedOut) {
-        if (previousBuild) {
+        if (webPid) {
           const restored = startWebServer({
             appPort: contract.appPort,
             appUrl: contract.appUrl,
@@ -480,12 +488,14 @@ async function runSharedEnsure(
             writeStderrLine(
               `env: build timed out; the previous build is serving on ${contract.appUrl}`,
             );
+          } else {
+            stopWebServer();
           }
         }
         throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
       }
       if (!build.ok || !build.stable) {
-        if (previousBuild) {
+        if (webPid) {
           const restored = startWebServer({
             appPort: contract.appPort,
             appUrl: contract.appUrl,
@@ -497,6 +507,8 @@ async function runSharedEnsure(
             writeStderrLine(
               `env: build failed; the previous build is serving on ${contract.appUrl}`,
             );
+          } else {
+            stopWebServer();
           }
         }
         throw new EnvFailure(
@@ -723,7 +735,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       if (persistedRuntime && selection.explicit && persistedRuntime !== selection.runtime) {
         throw new EnvFailure(
           EXIT_CONFLICT,
-          `this stack uses runtime=${persistedRuntime}, not ${selection.runtime}; convert it with 'env:recreate'`,
+          `this stack uses runtime=${persistedRuntime}, not ${selection.runtime}; runtime conversion is unavailable in phase 2 — re-run with --runtime ${persistedRuntime}`,
         );
       }
       if (runtime === 'docker') warnings.push(dockerStackWarning());
@@ -866,7 +878,6 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
           anonKey: read.env.anonKey ?? '',
         });
-        const previousBuild = buildArtifactPresent();
         if (webPidBefore) {
           appendEnvLog(`ensure: stopping web (pid ${webPidBefore}) for a safe rebuild`);
           const stopped = stopWebServer();
@@ -885,7 +896,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           env: process.env,
         });
         if (build.timedOut) {
-          if (previousBuild) {
+          if (webPidBefore) {
             const restored = startWebServer({
               appPort: contract.appPort,
               appUrl: contract.appUrl,
@@ -897,6 +908,8 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
               writeStderrLine(
                 `env: build timed out; the previous build is serving on ${contract.appUrl}`,
               );
+            } else {
+              stopWebServer();
             }
           }
           throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
@@ -907,7 +920,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
               ? 'ensure: source changed while the build ran; not persisting the fingerprint'
               : `ensure: build failed (exit ${build.exitCode ?? 'unknown'})`,
           );
-          if (previousBuild) {
+          if (webPidBefore) {
             const restored = startWebServer({
               appPort: contract.appPort,
               appUrl: contract.appUrl,
@@ -919,6 +932,8 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
               writeStderrLine(
                 `env: build failed; the previous build is serving on ${contract.appUrl}`,
               );
+            } else {
+              stopWebServer();
             }
           }
           throw new EnvFailure(

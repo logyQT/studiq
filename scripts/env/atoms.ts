@@ -329,7 +329,7 @@ function parseEnsure(rest: string[]): ParsedCommand {
 
   if (webAtom && !prod) {
     throw new UsageError(
-      "'--web' requires '--prod': the tool never runs 'next dev' (that is human-only 'env:dev')",
+      "'--web' requires '--prod': the tool never runs 'next dev' (use human-only 'bun run dev' until env:dev lands in phase 3)",
     );
   }
   if (parsed.quiet && parsed.verbose) {

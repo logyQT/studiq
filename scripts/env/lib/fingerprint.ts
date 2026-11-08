@@ -38,7 +38,7 @@ const GIT_LOCAL_ENV = [
   'GIT_ALTERNATE_OBJECT_DIRECTORIES',
 ];
 
-function git(root: string, args: string[]): string | null {
+function git(root: string, args: string[]): string {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const name of GIT_LOCAL_ENV) delete env[name];
   const result = spawnSync('git', ['-C', root, ...args], {
@@ -47,7 +47,12 @@ function git(root: string, args: string[]): string | null {
     timeout: 20_000,
     maxBuffer: 16 * 1024 * 1024,
   });
-  if (result.status !== 0) return null;
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `git ${args.join(' ')} failed (exit ${result.status ?? 'unknown'}): ${(result.stderr ?? '').trim()}`,
+    );
+  }
   return result.stdout ?? '';
 }
 
@@ -75,8 +80,8 @@ interface ChangedFile {
 
 /** Content hash of the working tree (tracked changes + untracked source). */
 export function workingTreeHash(root: string): string {
-  const headTree = git(root, ['rev-parse', 'HEAD^{tree}'])?.trim() ?? 'no-head';
-  const status = git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']) ?? '';
+  const headTree = git(root, ['rev-parse', 'HEAD^{tree}']).trim();
+  const status = git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
   const tokens = status.split('\0');
   const entries: ChangedFile[] = [];
 
