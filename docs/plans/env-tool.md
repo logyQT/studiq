@@ -433,6 +433,13 @@ does this).
 - Plain `down` is allowed: it stops only this checkout's local web server and
   never touches the shared stack. `down --all`, `recreate`, `reset-db` and
   `--reseed` fail with exit 6; `status` / `ports` / `verify` still work.
+- **Seeded profiles need verified existing fixtures.** `qa`/`e2e` require tenant
+  fixtures, but shared mode must not create them. A shared-mode request for a
+  seeded profile requires **verified existing** fixtures for `(stackId, runId)`
+  (`env:verify` / the seed marker confirms them) and reports `seeded: true` only
+  then. If they are absent or mismatched, fail with exit 6 unless `--no-seed` is
+  explicit — in which case report `seeded: false` and note the suite may fail.
+  Never report a seeded profile ready without its required fixtures.
 - The shared QA stack (`:3010` / `:54421`) is protected: `ensure` refuses
   `APP_URL`/`SUPABASE_URL` on those ports unless `DEV_ALLOW_SHARED=1` or
   `SUPABASE_SHARED=1`.
@@ -603,7 +610,9 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   one.
 - Tenant seed commands remain `scripts/qa-tenant.ts` / `scripts/e2e-seed.ts`;
   the tool only invokes them, it does not reimplement them.
-- Never tenant-seed a stack this checkout does not own (`SUPABASE_SHARED=1`).
+- Never tenant-seed a stack this checkout does not own (`SUPABASE_SHARED=1`);
+  a shared-mode seeded profile needs verified existing fixtures or explicit
+  `--no-seed` (§5.3).
 
 ---
 
@@ -952,13 +961,12 @@ Add tests for the phase-0 corrections:
     reports the new capability set. A narrower request against a superset is
     ready with no restart.
 14. **`supa` secret handling:** run `env:supa` with credential-bearing text and
-    JSON on **both** CLI streams → capture/tee the inherited child stdout and
-    stderr (the CLI's status JSON can contain stack keys and a DB password) and
-    assert no stack key names or values and no DB password appear in the
-    captured child output, the tool's own stdout/stderr, `.dev/` logs or the
-    `--json` contract. The tool must never copy CLI output into its contract or
-    logs; sensitive values are never printed (the `AGENTS.md` rule). Phase-1
-    test.
+    JSON on both CLI streams → capture what the wrapper **forwarded/filtered**
+    to stdout/stderr (not the raw child streams, which legitimately contain the
+    CLI's credential fields) and assert no stack key names or values and no DB
+    password appear there, in `.dev/` logs or in the `--json` contract. The tool
+    must filter/redact before forwarding, or not forward credential-bearing JSON
+    at all. Phase-1 test.
 
 ---
 
