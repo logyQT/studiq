@@ -136,9 +136,19 @@ Rules:
   to the CLI, not interpreted by the tool. Long-running commands (`dev`,
   `serve`, `logs`) treat `--json` as a **startup** contract: one JSON object
   when ready, then output on stderr.
-- `supa` forwards its arguments unchanged **except `stop --all`**, which it
-  rejects before forwarding (exit 2 with a message naming the hard rule). No
-  other argument is special-cased, and there is no override for `stop --all`.
+- `supa` forwards arguments unchanged **except for destructive stack
+  subcommands**, which it validates before forwarding — it never spawns the CLI
+  on a rejected call:
+  - `stop --all` is always rejected (exit 2, message naming the hard rule);
+    there is no override.
+  - `stack destroy` / `destroy` is rejected outright (exit 2). Stack deletion is
+    owned by `env:recreate --yes` / `env:down --all --yes`, which perform the
+    ownership check.
+  - `stack stop` must name a stack (`--stack <name>` or `--stack-id <id>`) whose
+    `project_root` is this checkout, matched from
+    `stack list --output-format json`; otherwise exit **6**.
+  - Usage-shaped rejections exit 2; ownership conflicts exit 6.
+- This passthrough policy lands in phase 1 (the spec is the contract).
 - `env --help` and `env <command> --help` document the surface; `dev:help` is
   not replaced by a command.
 
@@ -494,21 +504,24 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   - **Idempotent tenant/demo data** may be gated on
     `(stackId, hash(seed scripts))`; skip when the marker matches. `--no-seed`
     wins over a profile default; `--reseed` forces.
-  - **QA/e2e fixtures are per run and never marker-gated.** `scripts/seed/qa.ts`
+  - **QA/e2e fixtures are per run, never marker-gated.** `scripts/seed/qa.ts`
     needs a brand-new account for each independent run (`--fresh`/`--run`
-    suffix), so a marker must not imply first-run freshness. The `qa`/`e2e`
-    profiles always seed with a fresh run suffix.
+    suffix), so a marker must not imply first-run freshness. When seeding is
+    enabled (`--reseed` or the profile default), the `qa`/`e2e` profiles seed
+    with a fresh run suffix; `--no-seed` disables seeding entirely.
 - **The seeder is bound to this checkout's stack.** `ensure` passes the
   discovered endpoint explicitly and `qa/env.json` only fills keys that are
   still unset (the process environment wins). Before writing, the seeder
   verifies the endpoint belongs to this checkout's stack (`project_root` match)
   and aborts otherwise — `qa/env.json` must not be able to redirect a seed into
   a foreign or shared stack.
-- **Fixture files are scoped to the stack.** `qa/.tenants` is currently shared
-  across stacks; write `qa/.tenants/<stackId>/…`, or include the stack id in the
-  marker and have readers reject mismatches. The phase-3 cutover updates the
-  readers (`scripts/seed/qa.ts` and the `__tests__` helpers) and documents the
-  layout.
+- **Fixture files are scoped to the stack _and_ the run.** `qa/.tenants` is
+  currently a fixed path shared across stacks and runs, so a second
+  `ensure --profile qa` on the same stack can overwrite files a live run is
+  still reading. Write `qa/.tenants/<stackId>/<runId>/…` (or carry stack + run
+  in the marker and reject mismatches). Readers must take the run id from the
+  environment/seed output, never from a fixed path. The phase-3 cutover updates
+  `scripts/seed/qa.ts`, the QA/e2e helpers and the docs.
 - Markers live in `.dev/` (gitignored, mode 600) or the registry; never in the
   database. A reset removes the marker, and **any destroy/recreate removes it
   too** (`env:recreate`): stack ids can be reused and a marker for a destroyed
@@ -891,13 +904,13 @@ keeping `dev:admin` as the one `dev:*` exception (violates the no-`dev:*` rule).
 
 ## 15. Phase plan
 
-| Phase                           | Scope                                                                                                                                                                                                                                                                                                   | Gate                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **0 — evidence**                | Port create/resume spike, key identity, baseline timings, `dev:*` inventory, this spec + ADR-0011. No product code.                                                                                                                                                                                     | Evidence in the issue; ADR reviewed                                                  |
-| **1 — read-only**               | `status` / `doctor` / `ports` / `supa`; stable `--json`; no lifecycle change. `scripts/dev` untouched.                                                                                                                                                                                                  | Read-only parity, unit tests                                                         |
-| **2 — ensure**                  | `ensure --profile api\|web`, `down`, `build`; varlock-injected; **app-port lease only**; warm path; `--reconcile` capability restart. Keep `scripts/dev`.                                                                                                                                               | issue §11 tests 3, 6, 7, 9; §13 test 13; shared-mode `ensure`/`status`/`ports`       |
-| **3 — cutover**                 | Remaining profiles/commands (`mail`, `full`, `qa`, `e2e`, `admin`, `env:dev --admin`, `reset-db`, `logs`, `prepull`, `setup` scaffold, `verify`); seeder stack-scoping (`qa/.tenants/<stackId>`) and marker invalidation; delete `scripts/dev` + `dev:*`; docs sweep (`dev:admin` → `env:dev --admin`). | issue §11 tests 8 (destructive/`--all` refusals) and 10; full acceptance; `rg` clean |
-| **4 — allocator (conditional)** | 20-port blocks, lease registry, reclaim, retry loop, separate app-port lease.                                                                                                                                                                                                                           | issue §11 tests 1, 2, 4, 5                                                           |
+| Phase                           | Scope                                                                                                                                                                                                                                                                                                               | Gate                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **0 — evidence**                | Port create/resume spike, key identity, baseline timings, `dev:*` inventory, this spec + ADR-0011. No product code.                                                                                                                                                                                                 | Evidence in the issue; ADR reviewed                                                  |
+| **1 — read-only**               | `status` / `doctor` / `ports` / `supa`; stable `--json`; no lifecycle change. `scripts/dev` untouched.                                                                                                                                                                                                              | Read-only parity, unit tests                                                         |
+| **2 — ensure**                  | `ensure --profile api\|web`, `down`, `build`; varlock-injected; **app-port lease only**; warm path; `--reconcile` capability restart. Keep `scripts/dev`.                                                                                                                                                           | issue §11 tests 3, 6, 7, 9; §13 test 13; shared-mode `ensure`/`status`/`ports`       |
+| **3 — cutover**                 | Remaining profiles/commands (`mail`, `full`, `qa`, `e2e`, `admin`, `env:dev --admin`, `reset-db`, `logs`, `prepull`, `setup` scaffold, `verify`); seeder stack+run scoping (`qa/.tenants/<stackId>/<runId>`) and marker invalidation; delete `scripts/dev` + `dev:*`; docs sweep (`dev:admin` → `env:dev --admin`). | issue §11 tests 8 (destructive/`--all` refusals) and 10; full acceptance; `rg` clean |
+| **4 — allocator (conditional)** | 20-port blocks, lease registry, reclaim, retry loop, separate app-port lease.                                                                                                                                                                                                                                       | issue §11 tests 1, 2, 4, 5                                                           |
 
 Do not run phases in parallel: every phase touches `scripts/env/**`. Merge
 order is 0 → 1 → 2 → 3 → (4). Each phase is its own PR; phase 4 is a **go** but

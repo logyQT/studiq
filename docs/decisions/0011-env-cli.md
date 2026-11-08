@@ -44,7 +44,11 @@ checkouts. The corrected spec is
 1. **Adopt `env` as the single local-environment command.** `env:ensure` is the
    only command an agent normally calls. The full surface is `ensure`, `status`,
    `down`, `build`, `serve`, `recreate`, `doctor`, `ports`, `supa`, `dev`,
-   `reset-db`, `logs`, `prepull`, `setup`, `verify`.
+   `reset-db`, `logs`, `prepull`, `setup`, `verify`. The `supa` passthrough
+   validates destructive stack subcommands before forwarding: `stop --all` and
+   `stack destroy` are rejected, and `stack stop` must target a stack whose
+   `project_root` is this checkout (usage errors exit 2, ownership conflicts
+   exit 6).
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover (phase 3);
    no aliases and no back-compat layer. Root `build`/`start` and the low-level
    `build:web`/`start:web`/`build:admin`/`start:admin` scripts stay.
