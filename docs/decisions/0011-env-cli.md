@@ -25,7 +25,8 @@ allocator is not justified for now, so the tool leases only the app port and dis
    post-stability migration after #1077 and #1078).
 4. **Native is the default and the only auto-selected runtime.** Every start passes the selected runtime explicitly; Docker only
    via `--runtime docker` / `SUPABASE_RUNTIME=docker`, with no silent fallback. A runtime conversion is a manual operation
-   (`bunx supabase stack destroy` then `env:ensure --runtime …`); a first-class command is deferred.
+   (`bunx supabase stack destroy --stack <name>` or `--stack-id <id>`, after an ownership/`project_root` check, then
+   `env:ensure --runtime …`); a first-class command is deferred.
 5. **Identity is `projectRoot + branch + stackName`; one environment per checkout.** A second server, or rebuilding the `.next`
    another server serves for a different stack/profile, exits 6; `--attach` is future work.
 6. **The app port is the only lease; stack ports are discovered.** A single per-checkout lock (`locks/checkout.lock`)
@@ -53,9 +54,10 @@ comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664)):
   without them re-rolls ports; `SUPABASE_MAIL_PORT` is dead; `pgmeta` is unpinnable;
 - stack keys are fixed demo JWTs shared by every stack; only URLs differ (never printed);
 - native runs with Docker running, no fallback;
-- baselines: warm 885/936 ms p50/p95, cold api 7.3/7.3 s, cold db+auth+storage 7.3/8.0 s, cached web (warm stack)
-  2.2/2.4 s, code-changed (warm stack) 10.2/11.8 s, with cold-stack variants 13.4/13.6 s and 20.3/21.7 s — all inside
-  the budgets;
+- old-command baseline (`dev:up --prod` / `dev:status`): warm 885/936 ms p50/p95, cold api 7.3/7.3 s, cold
+  db+auth+storage 7.3/8.0 s, cached web (warm stack) 2.2/2.4 s, code-changed (warm stack) 10.2/11.8 s, with
+  cold-stack variants 13.4/13.6 s and 20.3/21.7 s — all inside the budgets; the `env:ensure` verdict is pending
+  phase-2 measurement;
 - db-only fails (42P01/42703); the build fingerprint has no tree hash, so a source edit is served stale.
 
 ## Consequences

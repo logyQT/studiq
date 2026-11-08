@@ -29,7 +29,7 @@ no silent fallback; composable profiles; agents read `--json`, not files; keep t
 3. **Native default; Docker explicit.** Every start passes `--runtime native` unless Docker is selected; no
    automatic fallback.
 4. **Identity per checkout:** `projectRoot + branch + stackName`; `--attach` is future work.
-5. **App port leased, stack ports discovered.** There is no port block allocator. `.env.vault` is opt-in (LLM +
+5. **App and admin ports leased, stack ports discovered.** There is no port block allocator. `.env.vault` is opt-in (LLM +
    Stripe only, §10); `.env.local` is the only required values file.
 6. **`db` = database + auth + storage** (no skip path); **`dev:admin` → `env:dev --admin`**, human-only.
 7. **No secrets in output**, no `dev:*` aliases or back-compat layers. `scripts/dev` dies in the cutover; phases
@@ -45,7 +45,7 @@ env:status   [--json]                            # never mutates; works with no 
 env:down     [--all] [--yes]                     # stop web; --all also stops the stack
 env:build    [--force] [--json]                  # explicit build only
 env:serve    [--json]                            # serve an existing build
-env:dev      [--admin] [atoms]                   # human-only HMR
+env:dev      [--admin] [atoms]                   # human-only HMR (admin port leased)
 env:supa     <args…>                             # bunx supabase with the contract exported
 env:reset-db [--yes]                             # destructive; this checkout only
 env:logs     [--no-follow]                       # stack logs + .dev/web.log
@@ -91,16 +91,18 @@ Start contract: `database` is always on; `db` excludes `rest,studio,mail,realtim
 Atoms: `--db --rest --auth --storage --studio --mail --realtime --functions --analytics --seed --no-seed
 --web --build --force-build --prod --admin --runtime <native|docker> --stack <name> --app-port <n> --wait <s>
 --json --yes --quiet --verbose`. `--prod` implies build + serve; `--web` without `--prod` exits 2. `--no-seed`
-wins over a profile default; `--seed` forces it. `--admin` targets `apps/admin` on :4000.
+wins over a profile default; `--seed` forces it. `--admin` targets `apps/admin` on a leased admin port (preferred
+:4000).
 
 ## 4. Runtime and platform
 
 Every start carries the **selected** runtime (`native` by default, `docker` only when selected); never rely on CLI
 auto-detection. **No automatic fallback**: native unavailable or failing → exit **3** with the exact opt-in
 (`bun run env:ensure --runtime docker …` or `SUPABASE_RUNTIME=docker bun run env:ensure …`). An existing stack
-keeps its runtime; a Docker stack warns on observation. A runtime conversion is a manual operation (`bunx supabase
-stack destroy` then `env:ensure --runtime …`); a first-class command is deferred. Never mix runtimes in one stack.
-`status --json` reports `runtime`. CI stays native and calls `supabase stack` directly.
+keeps its runtime; a Docker stack warns on observation. A runtime conversion is a manual operation: verify the
+stack belongs to this checkout (`project_root` match), then `bunx supabase stack destroy --stack <name>` (or
+`--stack-id <id>`) followed by `env:ensure --runtime …`. A first-class command is deferred. Never mix runtimes in
+one stack. `status --json` reports `runtime`. CI stays native and calls `supabase stack` directly.
 
 Native supports Linux x86_64/arm64 (glibc ≥ 2.35, `tar`, non-root) and macOS arm64; macOS x86_64, native Windows
 and anything else exit 3 with the Docker opt-in (Windows is WSL2-only). The CLI is authoritative; the tool's check
@@ -112,11 +114,12 @@ Stack identity is the CLI's `projectRoot + "\0" + branch + "\0" + stackName` (bl
 matches `stack list`/`stack status` on `project_root` + `name` + `branch_context`, and `status --json` exposes it.
 
 The tool leases **one app port** (default 3000 if free) under the **per-checkout lock**; read-only `env:ports` never
-writes. The lease follows the **stack** lifetime: plain `down` keeps it (`config.toml` binds auth redirects to
-`APP_URL`), `down --all` releases it under the same lock only after stopping the stack; in shared mode it is a
+writes. It also leases an **admin port** (preferred 4000) through the same mechanism for `env:dev --admin` and
+`--profile admin`. The lease follows the **stack** lifetime: plain `down` keeps it (`config.toml` binds auth redirects
+to `APP_URL`), `down --all` releases it under the same lock only after stopping the stack; in shared mode it is a
 local web lease only. Stack ports are **discovered** from `stack status --output-format json` — no port math. In
 stack mode inherited `SUPABASE_*_PORT` values are cleared from the child environment; `.env.local` is never edited.
-`env:ports --json` reports `{ appPort, stackPorts: "dynamic" }`.
+`env:ports --json` reports `{ appPort, adminPort, stackPorts: "dynamic" }`.
 
 ## 6. Locks and lifecycle
 
@@ -126,11 +129,10 @@ lock stays separate and is never held while taking the checkout lock. While `che
 authoritative: `down --all` releases it under that lock only after stopping the stack, and `ensure` revalidates
 the lease and re-claims it if missing.
 
-`ensure` order (phases 1–3): (0) acquire `checkout.lock` and revalidate/re-claim the app-port lease; (1) health
-probes, one per requested capability; (2) cold start if needed; (3) wait ready; (4) if a build is needed, release
-`checkout.lock`, build under the build lock alone, then re-take `checkout.lock`; (5) serve/handover; (6) heartbeat
-
-- JSON while still holding the lock.
+`ensure` order (phases 1–3): (0) acquire `checkout.lock` and revalidate/re-claim the app-port lease (plus the
+admin-port lease for `--admin`); (1) health probes, one per requested capability; (2) cold start if needed; (3) wait
+ready; (4) if a build is needed, release `checkout.lock`, build under the build lock alone, then re-take
+`checkout.lock`; (5) serve/handover; (6) heartbeat and JSON while still holding the lock.
 
 **Warm path:** one probe per requested capability + one schema read, **p95 < 1000 ms**; no `stack status` when the
 heartbeat is fresh. A down requested service means `ready: false`; a capability **superset** satisfies a narrower
@@ -245,12 +247,13 @@ Phases are serial (every phase touches `scripts/env/**`).
 ### 12.1 Latency budgets (phase-0 baseline)
 
 Host: WSL2, Debian 12, x86_64, 16 vCPU, 19 GiB RAM, glibc 2.36, Bun 1.4.4, Supabase CLI 3.0.0, native artifact
-cache warm. Raw runs: the
+cache warm. This is the **old-command baseline (`dev:up --prod` / `dev:status`)**, not `env:ensure`; the
+`env:ensure` verdict is pending phase-2 measurement. Raw runs: the
 [phase-0 evidence comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664).
 
 | Path                            | Target  | p50                       | p95      | Verdict              |
 | ------------------------------- | ------- | ------------------------- | -------- | -------------------- |
-| warm `ensure`                   | ≤ 1 s   | 885 ms                    | 936 ms   | pass (tight)         |
+| warm `ensure`                   | ≤ 1 s   | 885 ms                    | 936 ms   | pending phase-2      |
 | cold `db`                       | ≤ 45 s  | 7347 ms (db+auth+storage) | 7994 ms  | pass                 |
 | cold `api`                      | ≤ 75 s  | 7250 ms                   | 7277 ms  | pass                 |
 | cold `web`, cached, warm stack  | ≤ 120 s | 2207 ms                   | 2388 ms  | pass                 |
@@ -279,20 +282,21 @@ Pure parts live in `__tests__/unit/env/`; lifecycle tests run via `bun run env:s
 
 ## 13. Command map
 
-| Old                                      | New                                      | Notes                              |
-| ---------------------------------------- | ---------------------------------------- | ---------------------------------- |
-| `bun run dev` / `dev:web`                | `bun run env:dev`                        | human-only HMR; agents build+serve |
-| `bun run dev:up` / `dev:up --prod`       | `bun run env:ensure --profile web`       | behavior change: no `next dev`     |
-| `dev:serve` / `dev:build` / `dev:status` | `env:serve` / `env:build` / `env:status` | `--json` preserved                 |
-| `dev:down [--all]` / `dev:reset-db`      | `env:down [--all]` / `env:reset-db`      | `--yes` when non-interactive       |
-| `dev:logs` / `dev:doctor` / `dev:ports`  | `env:logs` / `env:doctor` / `env:ports`  | exit 1 on a real conflict          |
-| `bash scripts/dev supa …`                | `bun run env:supa …`                     | APP_URL + contract exported        |
-| `bun run dev:admin`                      | `bun run env:dev --admin`                | admin HMR on :4000; human-only     |
-| `scripts/dev` / `dev:*`                  | —                                        | deleted with the cutover           |
+| Old                                      | New                                      | Notes                                  |
+| ---------------------------------------- | ---------------------------------------- | -------------------------------------- |
+| `bun run dev` / `dev:web`                | `bun run env:dev`                        | human-only HMR; agents build+serve     |
+| `bun run dev:up` / `dev:up --prod`       | `bun run env:ensure --profile web`       | behavior change: no `next dev`         |
+| `dev:serve` / `dev:build` / `dev:status` | `env:serve` / `env:build` / `env:status` | `--json` preserved                     |
+| `dev:down [--all]` / `dev:reset-db`      | `env:down [--all]` / `env:reset-db`      | `--yes` when non-interactive           |
+| `dev:logs` / `dev:doctor` / `dev:ports`  | `env:logs` / `env:doctor` / `env:ports`  | exit 1 on a real conflict              |
+| `bash scripts/dev supa …`                | `bun run env:supa …`                     | APP_URL + contract exported            |
+| `bun run dev:admin`                      | `bun run env:dev --admin`                | admin HMR on leased port (pref. :4000) |
+| `scripts/dev` / `dev:*`                  | —                                        | deleted with the cutover               |
 
 New commands with no old equivalent: `env:ensure` (composed from `dev:up`), `env:setup`, `env:verify`.
 
-`env:dev --admin` is human-only admin HMR on :4000 (loopback only); agents use `env:ensure --profile admin`.
+`env:dev --admin` is human-only admin HMR on a leased admin port (preferred :4000, loopback only); agents use
+`env:ensure --profile admin`.
 The cutover updates every live reference (`AGENTS.md`, `README.md`, `docs/ONBOARDING.md`, ADR-0010, the native
 audit, code comments, `scripts/load-test/README.md`).
 
