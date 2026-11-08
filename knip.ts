@@ -31,6 +31,12 @@ const config: KnipConfig = {
   // interfaces and types are covered here.
   ignoreExportsUsedInFile: { interface: true, type: true },
 
+  // Policy: `podman` is an optional container engine probed only for
+  // `SUPABASE_RUNTIME=auto` (`scripts/env/lib/runtime.ts`); this repo never
+  // installs or requires it and it is not on the happy path. Knip knows the
+  // `docker` binary out of the box but not `podman`.
+  ignoreBinaries: ['podman'],
+
   ignoreIssues: {
     // Policy: shared integration-test seeding surface. Suites import the
     // helpers they need; de-exporting the rest would turn them into unused

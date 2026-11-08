@@ -42,7 +42,16 @@ const CODE_ROOTS = ['apps/web/src', 'apps/admin/src', 'packages', 'scripts', '__
  * configuration, so they are never part of the inventory. Keep this list to
  * names the operating system or shell owns.
  */
-const AMBIENT_ALLOWLIST = new Set(['PATH', 'HOME', 'LANG', 'LC_ALL']);
+const AMBIENT_ALLOWLIST = new Set([
+  'PATH',
+  'HOME',
+  'LANG',
+  'LC_ALL',
+  // Runtime-directory roots used to locate the cross-checkout dev registry
+  // (`scripts/env/lib/registry.ts` mirrors `scripts/dev`'s fallback).
+  'TMPDIR',
+  'XDG_RUNTIME_DIR',
+]);
 
 /** Values-file names that must not exist under `apps/*` or `supabase/`. */
 const VALUES_FILE_NAMES = new Set(['.env', '.env.local']);

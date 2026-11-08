@@ -1,0 +1,163 @@
+import { spawnSync } from 'node:child_process';
+import { REPO_ROOT, currentBranchRef } from './repo';
+import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from './urls';
+
+/**
+ * Read-only wrapper around the tools' only source for a running stack:
+ * `supabase stack status --output-format json` (`stack list` for a stopped
+ * stack's persisted runtime). Nothing here starts, stops or writes a stack, and
+ * the CLI's key material is never copied into a variable we keep — only the
+ * URL/port fields the contract needs are read.
+ */
+export interface StackPorts {
+  api: number;
+  db: number;
+  studio: number;
+  mail: number;
+  mailSmtp: number;
+  mailPop3: number;
+  analytics: number;
+  edgeInspector: number;
+  pooler: number;
+  pgmeta: number;
+}
+
+export interface StackStatus {
+  id: string;
+  name: string;
+  projectRoot: string;
+  branch: string | null;
+  runtime: string;
+  lifecycle: string | null;
+  configDrift: string | null;
+  apiUrl: string;
+  /** Credential-free database URL. */
+  dbUrl: string | null;
+  studioUrl: string | null;
+  mailUrl: string | null;
+  ports: StackPorts;
+}
+
+type JsonObject = Record<string, unknown>;
+
+function asObject(value: unknown): JsonObject | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as JsonObject)
+    : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function asPort(value: unknown): number {
+  const port =
+    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : 0;
+}
+
+function endpointPort(endpoints: JsonObject, key: string): number {
+  return asPort(asObject(endpoints[key])?.port);
+}
+
+function parseJsonObject(raw: string): JsonObject | null {
+  try {
+    return asObject(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function runSupabase(args: string[]): { ok: boolean; stdout: string } {
+  // `supabase/config.toml` resolves APP_URL through env(); the CLI reads no
+  // values file. An explicit APP_URL still wins, exactly like `scripts/dev`.
+  const appUrl = process.env.APP_URL || `http://localhost:${process.env.APP_PORT || '3000'}`;
+  const result = spawnSync('bunx', ['supabase', ...args], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, APP_URL: appUrl },
+    encoding: 'utf8',
+    timeout: 20_000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  return { ok: result.status === 0, stdout: result.stdout ?? '' };
+}
+
+function stackArgs(command: 'status' | 'list', stackName: string | null): string[] {
+  const args = ['stack', command, '--output-format', 'json'];
+  if (stackName) args.push('--stack', stackName);
+  return args;
+}
+
+/**
+ * The running stack for this checkout, or null when there is none. A status
+ * response without an API URL describes a stopped/unusable stack (`scripts/dev`
+ * treats it the same way), so it also yields null.
+ */
+export function readStackStatus(stackName: string | null): StackStatus | null {
+  const { ok, stdout } = runSupabase(stackArgs('status', stackName));
+  if (!ok) return null;
+  const parsed = parseJsonObject(stdout);
+  if (!parsed) return null;
+
+  const env = asObject(parsed.env) ?? {};
+  const rawApiUrl = asString(env.API_URL);
+  if (!rawApiUrl) return null;
+
+  const identity = asObject(parsed.identity) ?? {};
+  const endpoints = asObject(parsed.endpoints) ?? {};
+  const drift = asObject(parsed.config_drift);
+  const apiUrl = normalizeLocalhost(trimTrailingSlash(rawApiUrl));
+  const studioUrl = asString(env.STUDIO_URL);
+  const mailUrl = asString(env.MAILPIT_URL);
+  const dbUrl = asString(env.DB_URL);
+
+  return {
+    id: asString(identity.id) ?? '',
+    name: asString(identity.name) ?? 'default',
+    projectRoot: asString(identity.project_root) ?? '',
+    branch: asString(identity.branch_context),
+    runtime: asString(parsed.runtime) ?? '',
+    lifecycle: asString(parsed.lifecycle),
+    configDrift: asString(drift?.status),
+    apiUrl,
+    dbUrl: dbUrl ? stripDbCredentials(dbUrl) : null,
+    studioUrl: studioUrl ? normalizeLocalhost(trimTrailingSlash(studioUrl)) : null,
+    mailUrl: mailUrl ? normalizeLocalhost(trimTrailingSlash(mailUrl)) : null,
+    ports: {
+      api: endpointPort(endpoints, 'rest.http') || endpointPort(endpoints, 'auth.http'),
+      db: endpointPort(endpoints, 'database.sql'),
+      studio: endpointPort(endpoints, 'studio.http'),
+      mail: endpointPort(endpoints, 'mail.http'),
+      mailSmtp: endpointPort(endpoints, 'mail.smtp'),
+      mailPop3: endpointPort(endpoints, 'mail.pop3'),
+      analytics: endpointPort(endpoints, 'analytics.http'),
+      edgeInspector: endpointPort(endpoints, 'functions.inspector'),
+      pooler: endpointPort(endpoints, 'pooler.sql'),
+      pgmeta: endpointPort(endpoints, 'pgmeta.http'),
+    },
+  };
+}
+
+/**
+ * The persisted runtime of this checkout's stack, including a stopped one.
+ * Identity is `project_root + name + branch_context`, the same match the CLI
+ * itself uses.
+ */
+export function readListedStackRuntime(stackName: string | null): string | null {
+  const { ok, stdout } = runSupabase(stackArgs('list', null));
+  if (!ok) return null;
+  const parsed = parseJsonObject(stdout);
+  const stacks = parsed?.stacks;
+  if (!Array.isArray(stacks)) return null;
+  const wantedName = stackName || 'default';
+  const wantedBranch = currentBranchRef();
+  for (const item of stacks) {
+    const stack = asObject(item);
+    if (!stack) continue;
+    if (asString(stack.project_root) !== REPO_ROOT) continue;
+    if ((asString(stack.name) ?? 'default') !== wantedName) continue;
+    if ((asString(stack.branch_context) ?? '') !== wantedBranch) continue;
+    return asString(stack.runtime);
+  }
+  return null;
+}
