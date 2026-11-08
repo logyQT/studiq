@@ -52,8 +52,10 @@ checkouts. The corrected spec is
    ownership conflicts exit 6). Starts are normalized instead: `stack start …`
    always carries the selected runtime (`--runtime native` by default, injected
    when absent; an explicit value is preserved). `--json` is translated to the
-   CLI's `--output-format json` where the CLI accepts it (an explicit
-   `--output-format`/`-o` wins); a bare `--json` is never forwarded.
+   CLI's `--output-format json` where the CLI accepts it (an explicit JSON
+   `--output-format`/`-o` is equivalent; `--json` with `--output-format text`
+   exits 2); a bare `--json` is never forwarded. Destructive `storage rm`
+   commands are rejected (exit 2).
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover (phase 3);
    no aliases and no back-compat layer. Root `build`/`start` and the low-level
    `build:web`/`start:web`/`build:admin`/`start:admin` scripts stay.
@@ -97,7 +99,8 @@ checkouts. The corrected spec is
 8. **`env:setup` mutates, `env:verify` observes.** Setup is human-only,
    idempotent and never writes a value. Verify is read-only and agent-safe:
    its default checks `.env.local` + the schema only (fast, unauthenticated) and
-   reports missing key _names_; `--full` adds `.env.vault` refs and provider
+   reports missing key _names_ from varlock's sanitized structured metadata
+   (names only, never values); `--full` adds `.env.vault` refs and provider
    status.
 9. **The vault seam belongs to varlock.** `.env.vault` lives in the primary
    checkout, is Git-ignored, and `STUDIQ_ENV_VAULT` defaults to
