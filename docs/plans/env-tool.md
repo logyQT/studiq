@@ -144,8 +144,8 @@ Rules:
   - `db reset` is rejected (exit 2): a database reset goes through the guarded
     `env:reset-db --yes` path (phase 3), which also invalidates the seed marker.
   - `stack destroy` / `destroy` is rejected outright (exit 2). Stack deletion is
-    owned by `env:recreate --yes` / `env:down --all --yes`, which perform the
-    ownership check.
+    owned only by `env:recreate --yes`, which performs the ownership check;
+    `down --all` merely stops the stack and keeps its data.
   - Every stop-capable form — `stop`, `stack stop`, `restart`, `stack restart` —
     must name a stack (`--stack <name>` or `--stack-id <id>`) whose
     `project_root` is this checkout, matched from
@@ -340,6 +340,9 @@ does this).
   after the TTL (default 15 min). The **start lock** can take over immediately
   when the holder pid is dead: there is no healthy stack to protect, and the
   waiter re-checks `stack status` before starting.
+- **Every `stack start` passes `--eager`** so a warm probe cannot trigger a cold
+  service start and blow the 1 s budget; readiness is reported only once the
+  eager services are up.
 - `ensure` order:
 
   1. registry claim (if phase 4)
@@ -519,11 +522,16 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   - **Idempotent tenant/demo data** may be gated on
     `(stackId, hash(seed scripts))`; skip when the marker matches. `--no-seed`
     wins over a profile default; `--reseed` forces.
-  - **QA/e2e fixtures are per run, never marker-gated.** `scripts/seed/qa.ts`
-    needs a brand-new account for each independent run (`--fresh`/`--run`
-    suffix), so a marker must not imply first-run freshness. When seeding is
-    enabled (`--reseed` or the profile default), the `qa`/`e2e` profiles seed
-    with a fresh run suffix; `--no-seed` disables seeding entirely.
+  - **QA/e2e fixtures are keyed by `(stackId, runId)`, never marker-gated.**
+    They are per run because `scripts/seed/qa.ts` needs a brand-new account for
+    each independent run (the run creates the org). A repeated `ensure` with the
+    **same** run id reuses the existing fixtures and does not reseed — the warm
+    path stays idempotent. A new run id is created only for a new independent
+    run (`--reseed`, or a new suite run); `--no-seed` disables seeding.
+- **Run-id selection.** The run id is `QA_RUN_SUFFIX` when set; otherwise
+  `ensure` generates one once and passes it as `--run <suffix>`. It exports the
+  run id to the seed invocation and to the served app/test children so readers
+  and writers agree (CI supplies its own, `ci$GITHUB_RUN_ID`).
 - **The seeder is bound to this checkout's stack.** `ensure` passes the
   discovered endpoint explicitly and `qa/env.json` only fills keys that are
   still unset (the process environment wins). Before writing, the seeder
@@ -582,11 +590,13 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   `flock`/mkdir lock from `scripts/dev`). The lock is held around the build,
   not the whole `ensure`.
 - **Safe rebuild handover.** `scripts/dev` refuses to build while the web server
-  runs, so a warm `ensure` after a source edit cannot simply rebuild. The tool
-  stops **its own** web server, takes the build lock, builds, starts the new
-  build and health-checks it. If the build fails, it restarts the previous
-  build so the environment is not left down. It never reports the old PID as
-  ready.
+  runs, and Next 16 deletes the existing `.next` before building, so "restart
+  the previous build" requires preserving its output first. The tool stops
+  **its own** web server, copies the current build output aside (or builds into
+  an alternate dist dir), takes the build lock, builds, starts the new build and
+  health-checks it. If the build fails, it restores the preserved output,
+  restarts the previous build and only then reports the failure — the
+  environment is never left down. It never reports the old PID as ready.
 - `env:serve` serves an existing build; if the fingerprint is stale, fail with
   a clear message and `env:build` (or `ensure --profile web`).
 - `next start` must keep `--keepAliveTimeout 55000` (the app's `start` script
@@ -746,10 +756,16 @@ adding a vault later changes `.env.schema` / `.env.local` only — never
   `STUDIQ_ENV_VAULT`, defaulting to the first entry of
   `git worktree list --porcelain` (the same helper `scripts/spin` uses). Nothing
   is copied into a worktree.
-- **Loading:** value-consuming wrappers pass
-  `varlock run --path "$STUDIQ_ENV_VAULT" ...` (repeatable `--path`).
-  Phase 2 must verify that `--path` **merges** with the checkout's schema
-  (does not replace it) and that `.env.local` still wins by precedence.
+- **Loading (verified against varlock 1.24.0):** `--path` sets the entry point
+  and **replaces** the default checkout path; multiple `-p`/`--path` entries
+  compose and the **last** one wins on a duplicate key. The wrapper therefore
+  passes `--path "$STUDIQ_ENV_VAULT" --path .` — vault first, checkout last — so
+  the checkout's `.env.schema` and `.env.local` are included and `.env.local`
+  wins over the vault (the process environment still wins overall). A missing
+  `--path` is a hard error (`The --path value does not exist`, exit 1), so when
+  `.env.vault` is absent the wrapper passes **no** `--path` and runs with the
+  checkout's schema/local only; `env:ensure`/`env:build` still start without a
+  vault.
 - **Optional plugins:** `@init*`/plugins must be importable/disableable per
   developer, so someone with no vault still works from `.env.local`.
 - **`env:setup`** (human-only, mutating, idempotent): resolves the primary
@@ -902,6 +918,9 @@ the "no `dev:*` scripts" rule. The confirmed replacement is **`bun run env:dev
   path for the admin app, so the profile table in §3 and the atom agree.
 - `apps/admin` stays **out of `env:ensure` defaults** — nothing selects it
   unless asked.
+- **Loopback only.** `apps/admin` is an internal, unauthenticated tool, so admin
+  HMR and admin build/serve bind `127.0.0.1`/`localhost` only — never `0.0.0.0`
+  (pass `--hostname 127.0.0.1` to `next dev`/`next start`).
 - The phase-3 cutover updates the references in `AGENTS.md`, `README.md`,
   `apps/admin/README.md` and ADR-0009 to `bun run env:dev --admin`.
 
