@@ -142,22 +142,27 @@ Rules:
   then output on stderr.
 - `supa --json` is **translated**, not forwarded: it becomes the CLI's
   `--output-format json` for commands that accept it (notably `stack status`
-  and `stack list`). An explicit `--output-format`/`-o` wins and is left
-  untouched. Never forward a bare `--json` the CLI would reject (CLI 3.0.0 does
-  not accept it for `stack status`). All other passthrough arguments are
-  unchanged.
+  and `stack list`). An explicit JSON `--output-format json`/`-o json` is
+  equivalent; a conflicting explicit `--output-format text` with `--json` exits
+  2 with a clear message — the tool never silently overrides an explicit flag.
+  Never forward a bare `--json` the CLI would reject (CLI 3.0.0 does not accept
+  it for `stack status`). All other passthrough arguments are unchanged.
 - `supa` forwards arguments unchanged **except for stack starts and for
   destructive or stop-capable subcommands**, which it normalizes or validates
   before forwarding — it never spawns the CLI on a rejected call:
   - **Starts carry the selected runtime.** `stack start …` (and any equivalent
-    start form) must include `--runtime <selected>`: inject the selected runtime
-    — `native` unless `--runtime docker` / `SUPABASE_RUNTIME=docker` was chosen —
-    when it is absent, and preserve an explicit one. Every other start argument
-    forwards unchanged.
+    start form) must include `--runtime <selected>`. When a runtime was
+    requested (`--runtime docker` / `SUPABASE_RUNTIME=docker`), inject it; when
+    none was requested, use the stack's **persisted** runtime from
+    `stack list` for an existing stack, and `native` only for a new stack.
+    Preserve an explicit runtime. Every other start argument forwards unchanged.
   - `stop --all` is always rejected (exit 2, message naming the hard rule);
     there is no override.
   - `db reset` is rejected (exit 2): a database reset goes through the guarded
     `env:reset-db --yes` path (phase 3), which also invalidates the seed marker.
+  - Destructive Storage commands (`storage rm`, `storage rm -r`, bucket/object
+    deletion) are rejected (exit 2). They can delete buckets or objects in
+    another checkout's stack; the message points at the owning checkout.
   - `stack destroy` / `destroy` is rejected outright (exit 2). Stack deletion is
     owned only by `env:recreate --yes`, which performs the ownership check;
     `down --all` merely stops the stack and keeps its data.
@@ -864,9 +869,12 @@ adding a vault later changes `.env.schema` / `.env.local` only — never
   schema only (fast, unauthenticated) and reports missing key **names** (never
   values) with one `next_action`; `--full` additionally resolves the
   `.env.vault` refs and reports provider status (`available` / `locked` /
-  `missing`). It consumes `varlock load`'s exit status rather than echoing its
-  output (which is only prefix-redacted). `env:doctor` stays about
-  stack/runtime state (ports, ownership, runtime), not secrets.
+  `missing`). It consumes varlock's sanitized structured metadata (key
+  **names** only, never values) to report missing optional keys — the schema
+  marks them optional, so a successful `varlock load` still does not name them —
+  and never echoes varlock's output (which is only prefix-redacted).
+  `env:doctor` stays about stack/runtime state (ports, ownership, runtime), not
+  secrets.
 - **Acceptance:** `scripts/env/**` contains no provider code and no ref
   parsing; swapping `.env.local` for a plugin-backed resolution leaves it
   untouched; a worktree resolves refs from the primary checkout's `.env.vault`
