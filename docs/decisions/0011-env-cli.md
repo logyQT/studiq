@@ -55,7 +55,9 @@ restart`) must target a stack whose `project_root` is this checkout (usage
    CLI's `--output-format json` where the CLI accepts it (only
    `--output-format json`, not the legacy `-o json`; `--json` with
    `--output-format text` exits 2); a bare `--json` is never forwarded.
-   Destructive `storage rm` commands are rejected (exit 2).
+   Destructive `storage rm` commands are rejected (exit 2). Under
+   `SUPABASE_SHARED=1` every stop-capable or destructive form exits 6 before
+   spawning; read-only `stack list` / `stack status` / `--version` still work.
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover (phase 3);
    no aliases and no back-compat layer. Root `build`/`start` and the low-level
    `build:web`/`start:web`/`build:admin`/`start:admin` scripts stay.

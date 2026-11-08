@@ -175,6 +175,11 @@ status`). All other passthrough arguments are unchanged.
     `stack list --output-format json`; otherwise exit **6**. `restart` (stop then
     start) gets the same ownership check.
   - Usage-shaped rejections exit 2; ownership conflicts exit 6.
+  - **Shared mode rejects all mutation.** Under `SUPABASE_SHARED=1`, every
+    stop-capable or destructive form — `stop`, `stack stop`, `restart`,
+    `stack restart`, `destroy`, `stack destroy`, `db reset`, `migration down`,
+    `storage rm` — is rejected with **exit 6** before spawning. Read-only
+    commands (`stack list`, `stack status`, `--version`) still work.
 - This passthrough policy lands in phase 1 (the spec is the contract).
 - `env --help` and `env <command> --help` document the surface; `dev:help` is
   not replaced by a command.
@@ -442,7 +447,11 @@ does this).
   `ensure` never starts/stops/destroys/reseeds/reconciles; it reads explicit
   `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`
   from `.env.local` (or the process environment). A capability gap is reported,
-  not fixed.
+  not fixed. `env:supa` rejects every stop-capable or destructive form (`stop`,
+  `stack stop`, `restart`, `stack restart`, `destroy`, `stack destroy`,
+  `db reset`, `migration down`, `storage rm`) with exit 6 before spawning;
+  read-only passthrough (`stack list`, `stack status`, `--version`) still
+  works.
 - Plain `down` is allowed: it stops only this checkout's local web server and
   never touches the shared stack. `down --all`, `recreate`, `reset-db` and
   `--reseed` fail with exit 6; `status` / `ports` / `verify` still work.
