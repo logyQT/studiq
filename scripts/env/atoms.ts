@@ -65,7 +65,6 @@ export interface ParsedCommand {
   build: BuildOptions | null;
   yes: boolean;
   quiet: boolean;
-  verbose: boolean;
 }
 
 /** A user error: reported on stderr and mapped to exit code 2. */
@@ -107,7 +106,7 @@ export const USAGE = [
   'Atoms: --db --rest --auth --storage --studio --mail --functions --analytics',
   '       --realtime --pooler --seed --no-seed --reseed --reconcile --web --build',
   '       --force-build --prod --runtime <native|docker> --stack <name>',
-  '       --app-port <n> --wait <s> --json --yes --quiet --verbose',
+  '       --app-port <n> --wait <s> --json --yes --quiet',
   '',
   '`--web` requires `--prod` (the tool never runs `next dev`). `--studio` requires',
   '`--rest`. Destructive commands need `--yes` when non-interactive. status, doctor',
@@ -194,7 +193,6 @@ function emptyParsed(command: EnvCommand): ParsedCommand {
     build: null,
     yes: false,
     quiet: false,
-    verbose: false,
   };
 }
 
@@ -306,9 +304,6 @@ function parseEnsure(rest: string[]): ParsedCommand {
       case '--quiet':
         parsed.quiet = true;
         break;
-      case '--verbose':
-        parsed.verbose = true;
-        break;
       default: {
         const atom = name.slice(2);
         if (isCapabilityAtom(atom)) {
@@ -332,9 +327,6 @@ function parseEnsure(rest: string[]): ParsedCommand {
     throw new UsageError(
       "'--web' requires '--prod': the tool never runs 'next dev' (use human-only 'bun run dev' until env:dev lands in phase 3)",
     );
-  }
-  if (parsed.quiet && parsed.verbose) {
-    throw new UsageError("'--quiet' and '--verbose' cannot be combined");
   }
 
   try {
@@ -401,15 +393,9 @@ function parseDown(rest: string[]): ParsedCommand {
       case '--quiet':
         parsed.quiet = true;
         break;
-      case '--verbose':
-        parsed.verbose = true;
-        break;
       default:
         throw new UsageError(`unknown option '${token}' for 'down'`);
     }
-  }
-  if (parsed.quiet && parsed.verbose) {
-    throw new UsageError("'--quiet' and '--verbose' cannot be combined");
   }
   parsed.down = { all, stack };
   return parsed;
@@ -433,15 +419,9 @@ function parseBuild(rest: string[]): ParsedCommand {
       case '--quiet':
         parsed.quiet = true;
         break;
-      case '--verbose':
-        parsed.verbose = true;
-        break;
       default:
         throw new UsageError(`unknown option '${token}' for 'build'`);
     }
-  }
-  if (parsed.quiet && parsed.verbose) {
-    throw new UsageError("'--quiet' and '--verbose' cannot be combined");
   }
   parsed.build = { force };
   return parsed;

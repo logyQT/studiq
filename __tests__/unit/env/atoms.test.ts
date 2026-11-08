@@ -23,7 +23,6 @@ interface ParsedCommand {
   build: { force: boolean } | null;
   yes: boolean;
   quiet: boolean;
-  verbose: boolean;
 }
 
 interface AtomsModule {
@@ -125,7 +124,7 @@ describe('env atom grammar', () => {
 
   it('rejects conflicting, unsupported and phase-3/4 atoms', () => {
     throwsUsage(['ensure', '--profile', 'api', '--seed', '--reseed'], /conflicts/);
-    throwsUsage(['ensure', '--profile', 'api', '--quiet', '--verbose'], /cannot be combined/);
+    throwsUsage(['ensure', '--profile', 'api', '--verbose'], /unknown option/);
     throwsUsage(['ensure', '--profile', 'api', '--runtime', 'podman'], /podman/);
     throwsUsage(['ensure', '--profile', 'api', '--runtime', 'auto'], /auto/);
     throwsUsage(['ensure', '--profile', 'api', '--port-block', '3'], /phase 4/);

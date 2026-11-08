@@ -10,7 +10,7 @@ import {
   writeBuildState,
   writeStackRecord,
 } from '../lib/state';
-import { buildWithStableFingerprint } from '../lib/build-run';
+import { buildWithStableFingerprint, logBuildOutput } from '../lib/build-run';
 import { probeHttp } from '../lib/health';
 import { readStack, type StackEnv, type StackStatus } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
@@ -22,15 +22,6 @@ import { liveServerConflict } from '../lib/web-owner';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
 import { refuseSecondServer } from '../lib/refusal';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
-
-const SECRET_LINE_RE = /(?:KEY|SECRET|PASSWORD|TOKEN)\s*=\s*\S|eyJ[A-Za-z0-9_-]{10,}/;
-
-function logBuildOutput(output: string): void {
-  const lines = output
-    .split('\n')
-    .filter((line) => line.trim().length > 0 && !SECRET_LINE_RE.test(line));
-  for (const line of lines.slice(-40)) appendEnvLog(`build: ${line.slice(0, 500)}`);
-}
 
 function human(parsed: ParsedCommand, lines: string[]): void {
   if (parsed.json || parsed.quiet) return;
@@ -115,6 +106,10 @@ export async function runBuild(parsed: ParsedCommand): Promise<number> {
     });
     if (result.timedOut) {
       throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
+    }
+    if (result.buildTimedOut) {
+      logBuildOutput(result.output);
+      throw new EnvFailure(EXIT_TIMEOUT, 'build timed out; see .dev/env.log');
     }
     if (!result.ok || !result.stable) {
       logBuildOutput(result.output);

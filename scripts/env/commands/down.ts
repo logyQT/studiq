@@ -97,12 +97,15 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
   }
 
   if (contract.shared) {
-    // This checkout owns only its web server; the shared stack keeps running
-    // (and keeps its app-port lease on the owning checkout's behalf).
+    // This checkout owns only its web server. The shared stack's auth URLs are
+    // bound to the *owner's* APP_URL, so this checkout's lease protects nothing;
+    // release it with the record.
     return withCheckoutWebLock(async () => {
       const lines = [webStopLine()];
       const lease = readLease(dir, projectId);
-      if (lease) lines.push(`Kept the app-port lease on ${lease.appPort} (shared stack).`);
+      removeLease(dir, projectId);
+      removeStackRecord(stateKeyFor(cliStackName));
+      if (lease) lines.push(`Released the app-port lease on ${lease.appPort} (shared stack).`);
       human(parsed, lines);
       if (parsed.json) {
         const snapshot = await collectSnapshot({

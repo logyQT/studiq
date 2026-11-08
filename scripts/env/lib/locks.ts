@@ -636,7 +636,10 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
 
 export interface BuildRunResult {
   ok: boolean;
+  /** Timed out waiting for the cross-worktree build lock. */
   timedOut: boolean;
+  /** `next build` itself exceeded its execution timeout. */
+  buildTimedOut: boolean;
   exitCode: number | null;
   output: string;
   /** Unique backup of the pre-build `.next`, if one existed. */

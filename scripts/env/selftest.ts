@@ -29,7 +29,7 @@ import { SQL } from 'bun';
 import { REPO_ROOT, currentBranchRef, isThisCheckout } from './lib/repo';
 import { readWebPid, stopWebServer } from './lib/web';
 import { resolveRegistryDir } from './lib/registry';
-import { identityKey } from './lib/state';
+import { DEV_DIR, identityKey } from './lib/state';
 
 interface RunResult {
   code: number | null;
@@ -115,7 +115,7 @@ function occupyPort(port: number): Promise<{ close(): Promise<void> }> {
 
 function webStartCount(): number {
   try {
-    return readFileSync(join(REPO_ROOT, '.dev', 'web.log'), 'utf8')
+    return readFileSync(join(DEV_DIR, 'web.log'), 'utf8')
       .split('\n')
       .filter((line) => line.includes('env:ensure (prod')).length;
   } catch {
@@ -327,12 +327,7 @@ function destroyScratch(): void {
   }
   try {
     rmSync(
-      join(
-        REPO_ROOT,
-        '.dev',
-        'stacks',
-        `${identityKey(REPO_ROOT, currentBranchRef(), scratchName)}.json`,
-      ),
+      join(DEV_DIR, 'stacks', `${identityKey(REPO_ROOT, currentBranchRef(), scratchName)}.json`),
       { force: true },
     );
     // A failed run may not have reached `down --all`; drop only this checkout's
@@ -529,7 +524,7 @@ async function main(): Promise<number> {
     // refuse a different named stack (and an env:build for a different target)
     // without stopping the server or rebuilding `.next`.
     const livePid = number(object(reconcileJson.web).pid);
-    const buildStatePath = join(REPO_ROOT, '.dev', 'build.json');
+    const buildStatePath = join(DEV_DIR, 'build.json');
     const buildStateBefore = existsSync(buildStatePath)
       ? readFileSync(buildStatePath, 'utf8')
       : null;

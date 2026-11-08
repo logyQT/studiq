@@ -20,7 +20,7 @@ import {
   withCheckoutWebLock,
   withRegistryLeaseLock,
 } from '../lib/locks';
-import { buildWithStableFingerprint } from '../lib/build-run';
+import { buildWithStableFingerprint, logBuildOutput } from '../lib/build-run';
 import {
   heartbeatAgeMs,
   isLeaseReclaimable,
@@ -206,17 +206,22 @@ async function resolveLeaseLocked(options: {
     if (foreign && port !== existing?.appPort) {
       const raw = readLease(dir, foreign.projectId);
       const listed = raw ? readStackList() : null;
+      // An unreadable stack list cannot prove the foreign stack is stopped;
+      // keep its lease rather than reclaim a live owner's port.
+      const listUnreadable = raw !== null && listed === null;
       const ownerRunning =
         raw !== null &&
-        (listed ?? []).some(
-          (stack) =>
-            canon(stack.projectRoot) === canon(raw.projectRoot) &&
-            (stack.name || 'default') === (raw.stackName || 'default') &&
-            (stack.branch ?? '') === raw.branch &&
-            stack.owner === 'reachable',
-        );
+        (listed === null ||
+          listed.some(
+            (stack) =>
+              canon(stack.projectRoot) === canon(raw.projectRoot) &&
+              (stack.name || 'default') === (raw.stackName || 'default') &&
+              (stack.branch ?? '') === raw.branch &&
+              stack.owner === 'reachable',
+          ));
       const reclaimable =
         raw !== null &&
+        !listUnreadable &&
         isLeaseReclaimable({
           pidAlive: pidAlive(raw.ownerPid),
           heartbeatAgeMs: heartbeatAgeMs(raw),
@@ -512,6 +517,22 @@ async function runSharedEnsure(
           `timed out waiting for the cross-worktree build lock${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
         );
       }
+      if (build.buildTimedOut) {
+        logBuildOutput(build.output);
+        const restore = webPid
+          ? await restartPreviousBuild(contract, contract.stackName ?? 'default', options.profile)
+          : null;
+        if (restore?.ok) {
+          warnings.push('build timed out; restarted the previous build');
+          writeStderrLine(
+            `env: build timed out; the previous build is serving on ${contract.appUrl}`,
+          );
+        }
+        throw new EnvFailure(
+          EXIT_TIMEOUT,
+          `build timed out${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
+        );
+      }
       if (!build.ok || !build.stable) {
         const restore = webPid
           ? await restartPreviousBuild(contract, contract.stackName ?? 'default', options.profile)
@@ -801,16 +822,16 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         timeoutMs: (timeoutSeconds + 120) * 1000,
       });
       if (started.timedOut) {
-        if (!wasRunning) stopStack(cliStackName);
-        if (lease) removeLease(dir, projectId, lease.claimId);
+        stopStack(cliStackName);
+        removeLease(dir, projectId, lease.claimId);
         throw new EnvFailure(
           EXIT_TIMEOUT,
           `'supabase stack start' did not finish within ${timeoutSeconds + 120}s`,
         );
       }
       if (!started.ok) {
-        if (!wasRunning) stopStack(cliStackName);
-        if (lease) removeLease(dir, projectId, lease.claimId);
+        stopStack(cliStackName);
+        removeLease(dir, projectId, lease.claimId);
         throw new EnvFailure(
           EXIT_START_FAILED,
           `failed to start this checkout's stack (${started.stderr.trim() || 'supabase stack start failed'})`,
@@ -939,6 +960,22 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           throw new EnvFailure(
             EXIT_TIMEOUT,
             `timed out waiting for the cross-worktree build lock${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
+          );
+        }
+        if (build.buildTimedOut) {
+          logBuildOutput(build.output);
+          const restore = webPidBefore
+            ? await restartPreviousBuild(contract, cliStackName ?? 'default', options.profile)
+            : null;
+          if (restore?.ok) {
+            warnings.push('build timed out; restarted the previous build');
+            writeStderrLine(
+              `env: build timed out; the previous build is serving on ${contract.appUrl}`,
+            );
+          }
+          throw new EnvFailure(
+            EXIT_TIMEOUT,
+            `build timed out${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
           );
         }
         if (!build.ok || !build.stable) {

@@ -6,6 +6,7 @@ import { EXIT_TIMEOUT, EXIT_USAGE, EnvFailure } from './exit';
 import { REPO_ROOT } from './repo';
 import { computeBuildFingerprint } from './fingerprint';
 import { withBuildLock, type BuildRunResult } from './locks';
+import { appendEnvLog } from './state';
 
 export interface StableBuildInput {
   root: string;
@@ -27,6 +28,15 @@ export interface StableBuildResult extends BuildRunResult {
 
 const NEXT_DIR = join(REPO_ROOT, 'apps', 'web', '.next');
 const BUILD_ID = join(NEXT_DIR, 'BUILD_ID');
+const SECRET_LINE_RE = /(?:KEY|SECRET|PASSWORD|TOKEN)\s*=\s*\S|eyJ[A-Za-z0-9_-]{10,}/;
+
+/** Append filtered build output to `.dev/env.log` without key material. */
+export function logBuildOutput(output: string): void {
+  const lines = output
+    .split('\n')
+    .filter((line) => line.trim().length > 0 && !SECRET_LINE_RE.test(line));
+  for (const line of lines.slice(-40)) appendEnvLog(`build: ${line.slice(0, 500)}`);
+}
 
 function restoreBuildBackup(backupPath: string): void {
   if (!existsSync(backupPath)) return;
@@ -91,7 +101,8 @@ export async function buildWithStableFingerprint(
           maxBuffer: 32 * 1024 * 1024,
         });
         const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-        const timedOut = (result.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
+        const buildTimedOut =
+          (result.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
         const fingerprintAfter = computeBuildFingerprint(fingerprintInput);
         const artifact = existsSync(BUILD_ID);
         const stable =
@@ -111,7 +122,8 @@ export async function buildWithStableFingerprint(
 
         return {
           ok: !result.error && result.status === 0,
-          timedOut,
+          timedOut: false,
+          buildTimedOut,
           exitCode: result.status,
           output,
           backupPath,
@@ -130,6 +142,7 @@ export async function buildWithStableFingerprint(
       return {
         ok: false,
         timedOut: true,
+        buildTimedOut: false,
         exitCode: null,
         output: '',
         backupPath,
