@@ -142,11 +142,12 @@ Rules:
   then output on stderr.
 - `supa --json` is **translated**, not forwarded: it becomes the CLI's
   `--output-format json` for commands that accept it (notably `stack status`
-  and `stack list`). An explicit JSON `--output-format json`/`-o json` is
-  equivalent; a conflicting explicit `--output-format text` with `--json` exits
-  2 with a clear message — the tool never silently overrides an explicit flag.
-  Never forward a bare `--json` the CLI would reject (CLI 3.0.0 does not accept
-  it for `stack status`). All other passthrough arguments are unchanged.
+  and `stack list`). Only `--output-format json` is accepted there — the legacy
+  `-o json` is rejected by the CLI, so the tool never emits it. A conflicting
+  explicit `--output-format text` with `--json` exits 2 with a clear message —
+  the tool never silently overrides an explicit flag. Never forward a bare
+  `--json` the CLI would reject (CLI 3.0.0 does not accept it for `stack
+status`). All other passthrough arguments are unchanged.
 - `supa` forwards arguments unchanged **except for stack starts and for
   destructive or stop-capable subcommands**, which it normalizes or validates
   before forwarding — it never spawns the CLI on a rejected call:
@@ -417,7 +418,11 @@ does this).
   that could not be restored and why, and gives a concrete recovery action
   (`env:recreate --yes`, or free the port and retry `env:ensure`), still exit
   4/6. No automatic block or port move happens during reconcile or rollback;
-  only a cold start or `env:recreate` may take a different block.
+  only a cold start or `env:recreate` may take a different block. The app-port
+  lease (and the phase-4 block) is **retained through the reconcile and its
+  rollback** — a temporary stop is not a release — so another checkout cannot
+  claim the port before the stack resumes; only an intentional shutdown
+  (`down --all`, or a stopped stack) releases it.
 - `down` stops only the web server and is idempotent. It **keeps** the app-port
   lease (and, in phase 4, the block) while the Supabase stack still runs:
   `supabase/config.toml` binds the auth `site_url` / `additional_redirect_urls`
@@ -458,7 +463,8 @@ does this).
 - The tool leases **one app port** (default 3000 if free) in the existing
   registry. It is a single-port lease, never carved from a stack block. The
   lease follows the **stack** lifetime, not the web server's: plain `down` keeps
-  it (see §5.2) and `down --all` (or a stopped stack) releases it.
+  it (see §5.2), a reconcile's temporary stop keeps it, and `down --all` (or a
+  stopped stack) releases it.
 - Stack ports are **discovered** from `supabase stack status --output-format json`
   after start. The tool never does port math or assumes a base port.
 - In stack mode the tool **clears inherited `SUPABASE_*_PORT` values from the
@@ -502,7 +508,8 @@ the same port.
   not catch the collision. Reclaim follows the existing pid + TTL +
   not-running rules.
 - The block is held while the stack runs and released when the stack stops
-  (`down --all`), matching the app-port lease; a plain `down` keeps both.
+  (`down --all`), matching the app-port lease; a plain `down` keeps both, and a
+  reconcile's temporary stop is not a release.
 - `EADDRINUSE` during a **cold start / block allocation** releases the block,
   marks it suspect for 10 min, takes the next block, retries up to 3 times, then
   exits 4 with the collected logs. A **reconciliation never changes blocks or
