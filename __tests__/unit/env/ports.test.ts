@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createHarness,
+  findConflictPort,
   firstFreePort,
   nonLoopbackIPv4,
   parseJsonObject,
@@ -37,21 +38,6 @@ async function nextFreePort(from: number, skip: ReadonlySet<number>): Promise<nu
     return port;
   }
   throw new Error(`no free port found from ${from}`);
-}
-
-/** A port free both on `address` and on loopback. */
-async function findConflictPort(address: string): Promise<number> {
-  for (let port = 3000; port <= 3999; port += 1) {
-    if (port === 3010) continue;
-    const onAddress = await startTcpListener(port, address).catch(() => null);
-    if (!onAddress) continue;
-    await onAddress.close();
-    const onLoopback = await startTcpListener(port, '127.0.0.1').catch(() => null);
-    if (!onLoopback) continue;
-    await onLoopback.close();
-    return port;
-  }
-  throw new Error('no port free on both the non-loopback address and loopback');
 }
 
 describe('env:ports --json', () => {

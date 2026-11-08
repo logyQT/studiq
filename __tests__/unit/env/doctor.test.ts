@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createHarness,
+  findConflictPort,
   firstFreePort,
+  nonLoopbackIPv4,
   parseJsonObject,
   stackStatusFixture,
   startHttpServer,
@@ -14,6 +16,9 @@ import {
 } from '#test/unit/env/support';
 
 const harnesses: Harness[] = [];
+
+// CI-safe: the other-interface case is skipped when the host has none.
+const NON_LOOPBACK = nonLoopbackIPv4();
 
 afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.cleanup();
@@ -109,6 +114,21 @@ describe('env:doctor', () => {
     const report = parseJsonObject(result.stdout);
     expect(report.ok).toBe(false);
     expect(stringList(report.problems).join('\n')).toContain(`app port ${listener.port} is in use`);
+  });
+
+  it.skipIf(!NON_LOOPBACK)('flags an app port bound on a non-loopback interface', async () => {
+    if (!NON_LOOPBACK) throw new Error('no non-loopback IPv4 address');
+    const port = await findConflictPort(NON_LOOPBACK);
+    const harness = newHarness();
+    const listener = await startTcpListener(port, NON_LOOPBACK);
+    harness.track(() => listener.close());
+
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(port) });
+
+    expect(result.status).toBe(1);
+    const report = parseJsonObject(result.stdout);
+    expect(report.ok).toBe(false);
+    expect(stringList(report.problems)).toHaveLength(1);
   });
 
   it('reports the stack runtime it observes and warns about a Docker stack', async () => {

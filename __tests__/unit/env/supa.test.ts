@@ -151,6 +151,19 @@ describe('env:supa', () => {
     expect(harness.bunxCalls().trim()).toBe('--output-format json stack start --stack x');
   });
 
+  it('skips separated boolean global values before the command', async () => {
+    const harness = newHarness();
+
+    const stop = await harness.run(['supa', '--debug', 'false', 'stop', '--all']);
+    expect(stop.status).toBe(2);
+    expect(stop.stdout).toBe('');
+    expect(harness.bunxCalls()).toBe('');
+
+    const list = await harness.run(['supa', '--debug', 'false', 'stack', 'list']);
+    expect(list.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('--debug false stack list');
+  });
+
   it('forwards start --stack stop (the stack name is a value, not a command)', async () => {
     const harness = newHarness();
 
