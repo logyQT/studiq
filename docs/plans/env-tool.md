@@ -112,7 +112,7 @@ constraints on every phase.
 ## 2. Command surface
 
 ```
-env:ensure   --profile <name> [atoms] [--json]      # idempotent; the blessed path
+env:ensure   --profile <name> [--run <suffix>] [atoms] [--json]   # idempotent; the blessed path
 env:status   [--json]                               # never mutates; works with no stack
 env:down     [--all] [--yes]                        # stop the web server; --all also stops the Supabase stack
 env:build    [--force] [--json]                     # explicit build only
@@ -259,7 +259,7 @@ Atoms (all idempotent, all composable):
 ```
 --db --rest --auth --storage --studio --mail --functions --analytics --realtime
 --seed --no-seed --reseed --reconcile --web --build --force-build --prod --admin
---runtime <native|docker> --stack <name> --port-block <n> --app-port <n>
+--runtime <native|docker> --stack <name> --run <suffix> --port-block <n> --app-port <n>
 --wait <s> --json --yes --quiet --verbose
 ```
 
@@ -267,6 +267,8 @@ Atoms (all idempotent, all composable):
   (`rest`, `auth`, `realtime`, `storage`, `functions`, `studio`, `mail`,
   `analytics`, `pooler`). The profile table is the single source of truth for
   the exclude list.
+- `--run <suffix>` selects the QA/e2e run id explicitly; precedence is explicit
+  flag > persisted `.dev/` run id > `QA_RUN_SUFFIX` > generated (§7).
 - `--prod` implies build + serve. `--web` without `--prod` is rejected (exit 2):
   `next dev` belongs to the human-only `env:dev`; agents build and serve.
 - `--no-seed` wins over a profile default; `--reseed` forces tenant seeding.
@@ -646,7 +648,11 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   (`env:down` first, or use a separate worktree). Same-environment lifecycle is
   normal: the handover stops its own server, builds and restarts. Detection uses
   the existing `.dev/web.pid` (+ live-process check), the registry entry and the
-  per-identity start lock — no new coordination mechanism.
+  per-identity start lock — no new coordination mechanism. Detection **and** the
+  server start run under a short-lived **checkout-wide server-claim lock**
+  (separate from the per-identity stack start lock), held only around
+  claim/start — never the whole command — so concurrent starts in one checkout
+  cannot both pass the check. The same lock covers the `env:dev` web start.
 - **Safe rebuild handover.** `scripts/dev` refuses to build while the web server
   runs, and Next 16 deletes the existing `.next` before building, so "restart
   the previous build" requires preserving its output first. Under the build
@@ -654,8 +660,11 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   aside (or builds into an alternate dist dir), builds, starts the new build and
   health-checks it. If the build fails, or the new server fails to start or
   fails health, it stops the new server, restores the preserved output,
-  restarts the previous build and reports exit 4 — the environment is never left
-  down, and it never reports the old PID as ready.
+  restarts the previous build and reports exit 4 — it never reports the old PID
+  as ready. If the app port was claimed in the meantime and even the restored
+  server cannot start, it reports a stopped/degraded state, names the port
+  conflict, and gives a recovery action (`env:down`, free the port, retry
+  `env:ensure`), exit 4.
 - `env:serve` serves an existing build; if the fingerprint is stale, fail with
   a clear message and `env:build` (or `ensure --profile web`).
 - `next start` must keep `--keepAliveTimeout 55000` (the app's `start` script
@@ -943,10 +952,13 @@ Add tests for the phase-0 corrections:
     reports the new capability set. A narrower request against a superset is
     ready with no restart.
 14. **`supa` secret handling:** run `env:supa` with credential-bearing text and
-    JSON on **both** CLI streams → the tool's own stdout/stderr and `.dev/`
-    logs contain no stack key names or values and no DB password. The CLI's own
-    output is out of scope, but the tool must never copy it into the `--json`
-    contract or its logs. Phase-1 test.
+    JSON on **both** CLI streams → capture/tee the inherited child stdout and
+    stderr (the CLI's status JSON can contain stack keys and a DB password) and
+    assert no stack key names or values and no DB password appear in the
+    captured child output, the tool's own stdout/stderr, `.dev/` logs or the
+    `--json` contract. The tool must never copy CLI output into its contract or
+    logs; sensitive values are never printed (the `AGENTS.md` rule). Phase-1
+    test.
 
 ---
 
