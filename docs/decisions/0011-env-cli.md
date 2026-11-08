@@ -75,12 +75,14 @@ checkouts. The corrected spec is
    conversion is `env:recreate --runtime native --yes`.
 5. **Identity is per checkout.** Stack identity is the CLI's
    `projectRoot + branch + stackName`; `--attach` is future work. The tool
-   manages **one environment (one stack + one web server) per checkout**;
-   concurrent named stacks serving one checkout's shared `apps/web/.next` are
-   out of scope. Under `SUPABASE_SHARED=1` this checkout reuses another
-   checkout's stack without any stack mutation; `down --all`, `recreate`,
-   `reset-db` and `--reseed` refuse with exit 6, while plain `down` still stops
-   only the local web server.
+   manages **one environment (one stack + one web server) per checkout** and
+   **refuses** (exit 6) a second server, or a rebuild of the shared
+   `apps/web/.next` another server is serving, for a different stack/profile —
+   use a separate worktree. Detection uses the existing `.dev/web.pid`, the
+   registry entry and the per-identity start lock. Under `SUPABASE_SHARED=1`
+   this checkout reuses another checkout's stack without any stack mutation;
+   `down --all`, `recreate`, `reset-db` and `--reseed` refuse with exit 6, while
+   plain `down` still stops only the local web server.
 6. **The app port is the only lease until phase 4.** Stack ports are discovered
    from `stack status`. The app-port lease follows the **stack** lifetime: plain
    `down` keeps it, because `supabase/config.toml` binds the auth redirect URLs
