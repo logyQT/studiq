@@ -6,31 +6,57 @@ const PORT_SCAN_END = 3999;
 /** :3010 is the shared QA app; `scripts/dev` refuses to serve it. */
 const RESERVED_APP_PORTS = new Set([3010]);
 
+export type PortBindState = 'free' | 'in-use' | 'unavailable';
+
+export interface PortBindProbe {
+  state: PortBindState;
+  /** Errcode (or message) for `in-use`/`unavailable`; null when `free`. */
+  error: string | null;
+}
+
+function errnoCode(error: Error): string | null {
+  if (!('code' in error)) return null;
+  return typeof error.code === 'string' ? error.code : null;
+}
+
 /**
- * Whether the app's listening address (`0.0.0.0`) can be bound right now.
+ * Bind the app's listening address (`0.0.0.0`) and report *why* it failed.
  *
  * A connect probe to `127.0.0.1` only sees a loopback listener; a socket bound
  * on any other interface (or a full backlog) keeps `next start` from binding
  * the wildcard even though loopback still accepts a bind. Binding the wildcard
- * asks the kernel the question that matters, and is the single probe both
- * `env:ports` and `env:doctor` use. Any bind error (EADDRINUSE, EACCES, …)
- * means the port is unusable.
+ * asks the kernel the question that matters.
+ *
+ * `EADDRINUSE` means another process owns the port; every other bind error
+ * (`EACCES` on a privileged port, `EADDRNOTAVAIL`, …) means this machine cannot
+ * use the port at all — a different situation that callers must not report as
+ * a conflict.
  */
-export function canBindPort(port: number): Promise<boolean> {
-  if (port <= 0) return Promise.resolve(false);
+export function probePortBind(port: number): Promise<PortBindProbe> {
+  if (port <= 0) return Promise.resolve({ state: 'unavailable', error: 'port out of range' });
   return new Promise((resolve) => {
     const server = createServer();
     let settled = false;
-    const finish = (available: boolean): void => {
+    const finish = (result: PortBindProbe): void => {
       if (settled) return;
       settled = true;
-      resolve(available);
+      resolve(result);
     };
-    server.once('error', () => finish(false));
+    server.once('error', (error: Error) => {
+      const code = errnoCode(error);
+      finish({
+        state: code === 'EADDRINUSE' ? 'in-use' : 'unavailable',
+        error: code ?? error.message,
+      });
+    });
     server.listen(port, '0.0.0.0', () => {
-      server.close(() => finish(true));
+      server.close(() => finish({ state: 'free', error: null }));
     });
   });
+}
+
+async function canBindPort(port: number): Promise<boolean> {
+  return (await probePortBind(port)).state === 'free';
 }
 
 /**

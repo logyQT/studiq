@@ -1,4 +1,5 @@
 import { mkdirSync, symlinkSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -28,6 +29,17 @@ function newHarness(): Harness {
   const harness = createHarness();
   harnesses.push(harness);
   return harness;
+}
+
+/** The errno code of a wildcard bind attempt, or null when it succeeds. */
+function bindErrorCode(port: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once('error', (error) => {
+      resolve('code' in error && typeof error.code === 'string' ? error.code : 'unknown');
+    });
+    server.listen(port, '0.0.0.0', () => server.close(() => resolve(null)));
+  });
 }
 
 describe('env:doctor', () => {
@@ -156,6 +168,26 @@ describe('env:doctor', () => {
     const report = parseJsonObject(result.stdout);
     expect(report.ok).toBe(false);
     expect(stringList(report.problems)).toHaveLength(1);
+  });
+
+  it('treats a non-EADDRINUSE bind error as a warning, not a conflict', async (context) => {
+    // Port 80 only reproduces EACCES when this process lacks the privilege to
+    // bind it; skip when the environment allows (free) or another listener holds it.
+    const code = await bindErrorCode(80);
+    if (code !== 'EACCES') {
+      context.skip();
+      return;
+    }
+
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: '80' });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report.ok).toBe(true);
+    expect(stringList(report.problems)).toHaveLength(0);
+    expect(stringList(report.warnings)).toHaveLength(1);
   });
 
   it('reports the stack runtime it observes and warns about a Docker stack', async () => {
