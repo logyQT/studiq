@@ -52,10 +52,10 @@ checkouts. The corrected spec is
    ownership conflicts exit 6). Starts are normalized instead: `stack start …`
    always carries the selected runtime (`--runtime native` by default, injected
    when absent; an explicit value is preserved). `--json` is translated to the
-   CLI's `--output-format json` where the CLI accepts it (an explicit JSON
-   `--output-format`/`-o` is equivalent; `--json` with `--output-format text`
-   exits 2); a bare `--json` is never forwarded. Destructive `storage rm`
-   commands are rejected (exit 2).
+   CLI's `--output-format json` where the CLI accepts it (only
+   `--output-format json`, not the legacy `-o json`; `--json` with
+   `--output-format text` exits 2); a bare `--json` is never forwarded.
+   Destructive `storage rm` commands are rejected (exit 2).
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover (phase 3);
    no aliases and no back-compat layer. Root `build`/`start` and the low-level
    `build:web`/`start:web`/`build:admin`/`start:admin` scripts stay.
@@ -91,9 +91,10 @@ checkouts. The corrected spec is
 6. **The app port is the only lease until phase 4.** Stack ports are discovered
    from `stack status`. The app-port lease follows the **stack** lifetime: plain
    `down` keeps it, because `supabase/config.toml` binds the auth redirect URLs
-   to `APP_URL`; `down --all` (or a stopped stack) releases it. The 20-port block
-   allocator lands after the cutover and stays conditional on the recorded
-   create **and** resume port evidence.
+   to `APP_URL`, and a reconcile's temporary stop keeps it too;
+   `down --all` (or a stopped stack) releases it. The 20-port block allocator
+   lands after the cutover and stays conditional on the recorded create **and**
+   resume port evidence.
 7. **`env:dev` is human-only HMR.** It starts web/admin HMR with `next dev`;
    agents never run `next dev` and use build + serve instead.
 8. **`env:setup` mutates, `env:verify` observes.** Setup is human-only,
