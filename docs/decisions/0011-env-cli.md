@@ -106,7 +106,16 @@ restart`) must target a stack whose `project_root` is this checkout (usage
    reports missing key _names_ from varlock's sanitized structured metadata
    (names only, never values); `--full` adds `.env.vault` refs and provider
    status.
-9. **The vault seam belongs to varlock.** `.env.vault` lives in the primary
+9. **The vault seam belongs to varlock, and `.env.vault` is opt-in.**
+   Operator-confirmed 2026-11-08: `.env.local` is the only required hand-edited
+   **values** file, and a fresh checkout runs without a vault (derived defaults
+   plus stack-discovered keys). `.env.vault` exists only for third-party
+   provider refs that cannot come from the local stack — locally only **LLM
+   inference** (`LLM_API_KEY`, optionally `LLM_BASE_URL`/`LLM_PROVIDER`) and
+   **Stripe** (`STRIPE_SECRET_KEY`, plus `STRIPE_WEBHOOK_SECRET` for webhook
+   tests; names only). A human creates it — `env:setup --vault` scaffolds the
+   refs (comment/empty refs, resolver syntax, mode 600) — and it is never
+   auto-generated; the environment still runs without it. It lives in the primary
    checkout, is Git-ignored, and `STUDIQ_ENV_VAULT` defaults to
    `<primary>/.env.vault`, where `<primary>` is the first entry of
    `git worktree list --porcelain` — a directory, so the file name is appended.

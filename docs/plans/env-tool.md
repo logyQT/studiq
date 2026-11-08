@@ -90,10 +90,11 @@ constraints on every phase.
     CLI assigns ports per runner (CI does not supply fixed stack ports).
 11. **`env:setup` mutates; `env:verify` observes.** `env:setup` is human-only
     and idempotent; `env:verify` is read-only and agent-safe.
-12. **One values file.** Root `.env.local` is the only hand-edited values file
-    (ADR-0010). `.env.schema` stays value-free. The vault pointer (phase 2) is
-    `.env.vault` in the primary checkout, Git-ignored, resolved through
-    `STUDIQ_ENV_VAULT`.
+12. **One values file; the vault is opt-in.** Root `.env.local` is the only
+    hand-edited **values** file (ADR-0010). `.env.schema` stays value-free.
+    `.env.vault` is an optional, human-created pointer for third-party provider
+    refs (locally LLM/Stripe only), never required; it is Git-ignored, lives in
+    the primary checkout and is resolved through `STUDIQ_ENV_VAULT` (§11.1).
 13. **`db` = database + auth + storage.** Confirmed by the operator. Migrations
     need `storage.buckets` and the repo seeds need `auth.users.email_confirmed_at`,
     so a database-only stack cannot be provisioned; no `--no-migrate`/`--no-seed`
@@ -841,7 +842,22 @@ Rules:
 > the validator; `varlock run` is removed only in the post-stability migration
 > (after #1077 **and** #1078), never inside this issue.
 
-### 11.1 Vault seam (phase 2; the `setup`/`verify` commands land in phase 3)
+### 11.1 Vault seam (opt-in; phase 2; the `setup`/`verify` commands land in phase 3)
+
+**`.env.vault` is opt-in, not required** (operator-confirmed 2026-11-08).
+`.env.local` remains the only required hand-edited **values** file (ADR-0010): a
+fresh checkout works without a vault from derived defaults and the
+stack-discovered keys. `.env.vault` exists only for third-party provider refs
+that cannot come from the local stack — locally only **LLM inference**
+(`LLM_API_KEY`, optionally `LLM_BASE_URL` / `LLM_PROVIDER` when the provider
+needs a ref) and **Stripe** (`STRIPE_SECRET_KEY`, plus `STRIPE_WEBHOOK_SECRET`
+only when testing webhooks). Everything else stays in `.env.local` or is
+derived. This resolves the one-values-file tension: `.env.local` holds values;
+`.env.vault` is a separate, optional pointer artifact.
+
+It is created **by a human**, never auto-generated: `env:setup --vault`
+scaffolds the ref file (comment/empty refs, resolver syntax, mode 600) and tells
+the operator to fill it; without it the environment still runs.
 
 The tool must stay vault-agnostic: `env` receives an already-resolved process
 environment and passes it to children. Provider access belongs to varlock;
@@ -849,17 +865,17 @@ adding a vault later changes `.env.schema` / `.env.local` only — never
 `scripts/env/**`.
 
 - **Refs are varlock resolver calls, not a custom format:**
-  `OPENAI_API_KEY=op(op://studiq/llm/api-key)` (1Password),
+  `LLM_API_KEY=op(op://studiq/llm/api-key)` (1Password),
   `STRIPE_SECRET_KEY=bwp("Stripe", field=secret-key)` (Bitwarden),
-  `RESEND_API_KEY=infisical("RESEND_API_KEY")` (Infisical). The function names
-  the provider, so there is no default provider and no relative refs.
+  `LLM_BASE_URL=infisical("LLM_BASE_URL")` (Infisical). The function names the
+  provider, so there is no default provider and no relative refs.
 - **Pointer file:** one per machine, in the **primary checkout** at
-  `.env.vault` (repo root, Git-ignored). Worktrees resolve it through
-  `STUDIQ_ENV_VAULT`, which defaults to `<primary>/.env.vault` — `<primary>` is
-  the first entry of `git worktree list --porcelain`, a **directory**, so the
-  file name must be appended (same helper `scripts/spin` uses). Passing the bare
-  directory would make varlock load that directory's env files instead of the
-  vault. Nothing is copied into a worktree.
+  `.env.vault` (repo root, Git-ignored, human-created). Worktrees resolve it
+  through `STUDIQ_ENV_VAULT`, which defaults to `<primary>/.env.vault` —
+  `<primary>` is the first entry of `git worktree list --porcelain`, a
+  **directory**, so the file name must be appended (same helper `scripts/spin`
+  uses). Passing the bare directory would make varlock load that directory's env
+  files instead of the vault. Nothing is copied into a worktree.
 - **Loading (verified against varlock 1.24.0):** `--path` sets the entry point
   and **replaces** the default checkout path; multiple `-p`/`--path` entries
   compose and the **last** one wins on a duplicate key. The wrapper therefore
@@ -874,10 +890,10 @@ adding a vault later changes `.env.schema` / `.env.local` only — never
   developer, so someone with no vault still works from `.env.local`.
 - **`env:setup`** (human-only, mutating, idempotent): resolves the primary
   checkout, creates `.env.local` if missing (mode 600, comment/empty scaffold,
-  never a value), and later the `.env.vault` ref scaffold (one empty line per
-  `@sensitive` key, a comment showing the resolver syntax). Never overwrites
-  without `--force`; never guesses vault item names; never reads or prints a
-  value.
+  never a value), and with `--vault` scaffolds the optional `.env.vault` ref
+  file (one empty ref per needed provider key, a comment showing the resolver
+  syntax, mode 600) and tells the operator to fill it. Never overwrites without
+  `--force`; never guesses vault item names; never reads or prints a value.
 - **`env:verify`** (read-only, agent-safe): default checks `.env.local` + the
   schema only (fast, unauthenticated) and reports missing key **names** (never
   values) with one `next_action`; `--full` additionally resolves the
@@ -1052,6 +1068,10 @@ keeping `dev:admin` as the one `dev:*` exception (violates the no-`dev:*` rule).
   variables; that is wrong. Correct it in the cutover to
   `SUPABASE_EXPERIMENTAL_STACK=1` + `SUPABASE_RUNTIME=native` + CLI-assigned
   ports per runner (matching `verify.yml`).
+- `AGENTS.md` and `docs/ONBOARDING.md` must carry the **opt-in vault** wording:
+  `.env.local` is the only required values file, the environment runs without a
+  vault, and a human creates `.env.vault` with `env:setup --vault` only when a
+  provider ref is needed.
 - Code comments: `scripts/check-env-inventory.ts`,
   `packages/server/src/lib/site-url.ts`, `scripts/load-test/config.ts`,
   `scripts/seed/qa.ts`, `knip.ts`.
