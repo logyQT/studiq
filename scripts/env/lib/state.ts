@@ -189,6 +189,11 @@ export function writeStackRecord(key: string, record: StackRecord): void {
   atomicWrite(stackRecordPath(key), `${JSON.stringify(record, null, 2)}\n`);
 }
 
+/** Remove a stale record when its lease is reclaimed or its stack is destroyed. */
+export function removeStackRecord(key: string): void {
+  rmSync(stackRecordPath(key), { force: true });
+}
+
 /** A record is fresh for the warm-path heartbeat window (also the lease TTL). */
 const RECORD_TTL_MS = 15 * 60 * 1000;
 

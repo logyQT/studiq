@@ -14,7 +14,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT_CONFLICT, EXIT_TIMEOUT, EXIT_USAGE, EnvFailure } from './exit';
-import { appendEnvLog } from './state';
+import { appendEnvLog, ensureDevDir } from './state';
 import { resolveRegistryDir } from './registry';
 import { REPO_ROOT } from './repo';
 
@@ -466,6 +466,8 @@ export interface BuildRunResult {
   timedOut: boolean;
   exitCode: number | null;
   output: string;
+  /** Unique backup of the pre-build `.next`, if one existed. */
+  backupPath: string;
 }
 
 export interface BuildRunOptions {
@@ -497,12 +499,41 @@ function buildEnvWithHeap(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
  * fallback is the atomic `mkdir` + pid lock (also `scripts/dev`'s fallback).
  * The lock covers the build only, never the whole `ensure`.
  */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
   const dir = ensureRegistryDir();
   const lock = join(dir, 'build.lock');
   const waitSeconds = options.waitSeconds ?? 1800;
-  const command = [process.execPath, 'run', '--filter', '@studiq/web', 'build'];
   const buildEnv = buildEnvWithHeap(options.env);
+  ensureDevDir();
+
+  // `next build` empties `.next` before compiling, so a failed build would
+  // otherwise leave the checkout with a broken/partial build. Move the old
+  // output aside first; the shell restores it on failure. On success the
+  // caller keeps/discards the backup after the fingerprint is verified.
+  const backupPath = join(
+    REPO_ROOT,
+    '.dev',
+    `next-build-backup-${process.pid}-${randomBytes(6).toString('hex')}`,
+  );
+  const buildCommand = `${shellQuote(process.execPath)} run --filter @studiq/web build`;
+  const backup = shellQuote(backupPath);
+  const script = [
+    `rm -rf ${backup}`,
+    `if [ -d apps/web/.next ]; then mv apps/web/.next ${backup}; fi`,
+    buildCommand,
+    'status=$?',
+    'if [ "$status" -ne 0 ]; then',
+    '  rm -rf apps/web/.next',
+    `  if [ -d ${backup} ]; then mv ${backup} apps/web/.next; fi`,
+    '  exit "$status"',
+    'fi',
+    'exit 0',
+  ].join('\n');
+  const command = ['sh', '-c', script];
 
   // The build lock is a kernel flock on an empty file (its content is never
   // read) or an atomic mkdir with a diagnostic pid; neither has the
@@ -517,13 +548,14 @@ export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
     });
     const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
     if (result.status === 75) {
-      return { ok: false, timedOut: true, exitCode: 75, output };
+      return { ok: false, timedOut: true, exitCode: 75, output, backupPath };
     }
     return {
       ok: result.status === 0,
       timedOut: false,
       exitCode: result.status,
       output,
+      backupPath,
     };
   }
 
@@ -547,7 +579,7 @@ export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
         continue;
       }
       if (Date.now() >= deadline) {
-        return { ok: false, timedOut: true, exitCode: null, output: '' };
+        return { ok: false, timedOut: true, exitCode: null, output: '', backupPath };
       }
       spawnSync('sleep', ['1']);
     }
@@ -566,6 +598,7 @@ export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
       timedOut: false,
       exitCode: result.status,
       output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
+      backupPath,
     };
   } finally {
     rmSync(lockDir, { recursive: true, force: true });

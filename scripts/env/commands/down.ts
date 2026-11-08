@@ -154,11 +154,25 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
   if (shouldStop) {
     const result = stopStack(cliStackName);
     if (!result.ok) {
+      // A failed stop is not proof the stack is gone. Confirm with status *and*
+      // the stack list (canonical project root + name) before releasing the
+      // lease; if either cannot confirm a stop, keep the lease and fail.
       const after = readStackStatus(cliStackName);
-      if (after?.lifecycle === 'running') {
+      const afterList = readStackList();
+      const stillListedRunning = (afterList ?? []).some(
+        (entry) =>
+          isThisCheckout(entry.projectRoot) &&
+          (entry.name || 'default') === wantedName &&
+          (entry.branch ?? '') === branch &&
+          entry.owner === 'reachable',
+      );
+      const confirmedStopped =
+        after?.lifecycle === 'stopped' ||
+        (afterList !== null && !stillListedRunning && after?.lifecycle !== 'running');
+      if (after?.lifecycle === 'running' || stillListedRunning || !confirmedStopped) {
         throw new EnvFailure(
           EXIT_START_FAILED,
-          `could not stop this checkout's stack (${result.stderr.trim() || 'stack stop failed'})`,
+          `could not stop this checkout's stack (${result.stderr.trim() || 'stack stop failed'}); keeping the app-port lease`,
         );
       }
     }

@@ -8,6 +8,7 @@ import {
   isStackRecordFresh,
   readBuildState,
   readStackRecord,
+  removeStackRecord,
   writeBuildState,
   writeStackRecord,
   type StackRecord,
@@ -231,6 +232,13 @@ async function resolveLeaseLocked(options: {
           );
         }
         continue;
+      }
+      // Reclaim both the stale lease and its stale capability record. Leaving
+      // the lease file would let the foreign checkout resurrect the same port
+      // from `existing.appPort` and skip the free/conflict checks.
+      removeLease(dir, foreign.projectId);
+      if (raw) {
+        removeStackRecord(identityKey(canon(raw.projectRoot), raw.branch, raw.stackName || ''));
       }
     }
     if (port !== existing?.appPort && !(await freePort(port)) && !(await ownWebOn(port))) {
@@ -460,6 +468,20 @@ async function runSharedEnsure(
         env: process.env,
       });
       if (build.timedOut) {
+        if (previousBuild) {
+          const restored = startWebServer({
+            appPort: contract.appPort,
+            appUrl: contract.appUrl,
+            env: process.env,
+          });
+          const waited = await waitForWeb(contract.appUrl, restored, 120);
+          if (waited.ok) {
+            warnings.push('build timed out; restarted the previous build');
+            writeStderrLine(
+              `env: build timed out; the previous build is serving on ${contract.appUrl}`,
+            );
+          }
+        }
         throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
       }
       if (!build.ok || !build.stable) {
@@ -495,24 +517,39 @@ async function runSharedEnsure(
     }
   }
 
-  if (options.serve && (!webPid || !isWebHealthy(webHttp))) {
-    applyStackEnv(sharedEnv, { appUrl: contract.appUrl, appEnv });
-    webPid = startWebServer({
-      appPort: contract.appPort,
-      appUrl: contract.appUrl,
-      env: process.env,
-    });
-    const waited = await waitForWeb(contract.appUrl, webPid, 120);
-    webHttp = waited.http;
-    if (!waited.ok) {
-      stopWebServer();
+  if (options.serve) {
+    if (!isWebHealthy(webHttp)) {
+      if (webPid) {
+        const stopped = stopWebServer();
+        if (!stopped.stopped) {
+          throw new EnvFailure(
+            EXIT_CONFLICT,
+            `could not stop the unhealthy web server (pid ${webPid}) before restarting`,
+          );
+        }
+        webPid = null;
+      }
+      applyStackEnv(sharedEnv, { appUrl: contract.appUrl, appEnv });
+      webPid = startWebServer({
+        appPort: contract.appPort,
+        appUrl: contract.appUrl,
+        env: process.env,
+      });
+      const waited = await waitForWeb(contract.appUrl, webPid, 120);
+      webHttp = waited.http;
+      if (!waited.ok) {
+        stopWebServer();
+        throw new EnvFailure(
+          EXIT_START_FAILED,
+          `web did not become healthy on ${contract.appUrl} (${waited.reason}); see ${webLogPath()}`,
+        );
+      }
+    } else if (!webPid) {
       throw new EnvFailure(
-        EXIT_START_FAILED,
-        `web did not become healthy on ${contract.appUrl} (${waited.reason}); see ${webLogPath()}`,
+        EXIT_CONFLICT,
+        `${contract.appUrl} answers but has no owned PID; refusing to overwrite a live server`,
       );
     }
-  } else if (options.serve) {
-    webHttp = await probeHttp(contract.appUrl);
   }
 
   const ready = probe.ok && (!options.serve || isWebHealthy(webHttp));
@@ -806,9 +843,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
     const seeded = record.stackId ? seedMarkerCurrent(record.stackId) : false;
 
     // ── 8. build fingerprint ──────────────────────────────────────────────
-    let webNeedsStart = options.serve;
     const webPidBefore = options.serve ? readWebPid() : null;
-    const webHttpBefore = options.serve ? await probeHttp(contract.appUrl) : 0;
     if (options.build) {
       const envHash = record.envHash;
       let currentFingerprint: string | null = null;
@@ -850,6 +885,20 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           env: process.env,
         });
         if (build.timedOut) {
+          if (previousBuild) {
+            const restored = startWebServer({
+              appPort: contract.appPort,
+              appUrl: contract.appUrl,
+              env: process.env,
+            });
+            const waited = await waitForWeb(contract.appUrl, restored, 120);
+            if (waited.ok) {
+              warnings.push('build timed out; restarted the previous build');
+              writeStderrLine(
+                `env: build timed out; the previous build is serving on ${contract.appUrl}`,
+              );
+            }
+          }
           throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
         }
         if (!build.ok || !build.stable) {
@@ -886,34 +935,48 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           builtAt: new Date().toISOString(),
         });
         record = { ...record, envHash: effectiveEnvHash };
-        webNeedsStart = true;
-      } else if (isWebHealthy(webHttpBefore) && webPidBefore) {
-        webNeedsStart = false;
       }
     }
 
     // ── 9. serve ─────────────────────────────────────────────────────────
     let webPid = readWebPid();
     let webHttp = await probeHttp(contract.appUrl);
-    if (options.serve && (webNeedsStart || !isWebHealthy(webHttp) || !webPid)) {
-      if (!isWebHealthy(webHttp) || !webPid) ensureEnv();
-      appendEnvLog(`ensure: starting web on ${contract.appUrl}`);
-      webPid = startWebServer({
-        appPort: contract.appPort,
-        appUrl: contract.appUrl,
-        env: process.env,
-      });
-      const waited = await waitForWeb(contract.appUrl, webPid, 120);
-      webHttp = waited.http;
-      if (!waited.ok) {
-        stopWebServer();
+    if (options.serve) {
+      // Re-check health immediately before starting: a slow first probe may
+      // have recovered, and starting again would overwrite a live PID file.
+      if (!isWebHealthy(webHttp)) {
+        if (webPid) {
+          const stopped = stopWebServer();
+          if (!stopped.stopped) {
+            throw new EnvFailure(
+              EXIT_CONFLICT,
+              `could not stop the unhealthy web server (pid ${webPid}) before restarting`,
+            );
+          }
+          webPid = null;
+        }
+        ensureEnv();
+        appendEnvLog(`ensure: starting web on ${contract.appUrl}`);
+        webPid = startWebServer({
+          appPort: contract.appPort,
+          appUrl: contract.appUrl,
+          env: process.env,
+        });
+        const waited = await waitForWeb(contract.appUrl, webPid, 120);
+        webHttp = waited.http;
+        if (!waited.ok) {
+          stopWebServer();
+          throw new EnvFailure(
+            EXIT_START_FAILED,
+            `web did not become healthy on ${contract.appUrl} (${waited.reason}); see ${webLogPath()}`,
+          );
+        }
+      } else if (!webPid) {
         throw new EnvFailure(
-          EXIT_START_FAILED,
-          `web did not become healthy on ${contract.appUrl} (${waited.reason}); see ${webLogPath()}`,
+          EXIT_CONFLICT,
+          `${contract.appUrl} answers but has no owned PID; refusing to overwrite a live server`,
         );
       }
-    } else if (options.serve) {
-      webHttp = await probeHttp(contract.appUrl);
     }
 
     // ── 10. heartbeat + JSON ─────────────────────────────────────────────

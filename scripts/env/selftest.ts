@@ -26,7 +26,8 @@ import {
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { SQL } from 'bun';
-import { REPO_ROOT, currentBranchRef } from './lib/repo';
+import { REPO_ROOT, currentBranchRef, isThisCheckout } from './lib/repo';
+import { readWebPid, stopWebServer } from './lib/web';
 import { resolveRegistryDir } from './lib/registry';
 import { identityKey } from './lib/state';
 
@@ -278,7 +279,10 @@ function destroyScratch(): void {
     try {
       const parsed = JSON.parse(listed.stdout) as { stacks?: Array<Record<string, unknown>> };
       const mine = parsed.stacks?.find(
-        (stack) => stack.name === scratchName && stack.project_root === REPO_ROOT,
+        (stack) =>
+          stack.name === scratchName &&
+          typeof stack.project_root === 'string' &&
+          isThisCheckout(stack.project_root),
       );
       if (mine) {
         const destroy = spawnSync(
@@ -315,6 +319,26 @@ function destroyScratch(): void {
 }
 
 async function main(): Promise<number> {
+  // The selftest rebuilds this checkout's shared `apps/web/.next` and owns its
+  // `.dev/web.pid`. Refuse to touch a running server unless explicitly allowed.
+  const allowWebStop = process.argv.includes('--yes');
+  const runningWeb = readWebPid();
+  if (runningWeb && !allowWebStop) {
+    console.error(
+      `env:selftest: this checkout's web server is running (pid ${runningWeb}).\n` +
+        'It would be stopped and apps/web/.next rebuilt. Re-run with --yes to allow that, or use env:down first.',
+    );
+    return 1;
+  }
+  if (runningWeb) {
+    const stopped = stopWebServer();
+    if (!stopped.stopped) {
+      console.error(`env:selftest: could not stop the web server (pid ${runningWeb})`);
+      return 1;
+    }
+    console.log(`env:selftest: stopped this checkout's web server (pid ${runningWeb}) (--yes)`);
+  }
+
   scratchName = `env-selftest-${process.pid}-${Date.now().toString(36)}`;
   tempDir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'studiq-env-selftest-'));
   const shimDir = join(tempDir, 'bin');
@@ -344,6 +368,8 @@ async function main(): Promise<number> {
   };
 
   console.log(`env:selftest — scratch stack '${scratchName}' on app port ${appPort}`);
+  console.log("  uses this checkout's apps/web/.next (rebuilt) and .dev/web.pid;");
+  console.log('  an existing web server is refused unless --yes is passed.');
   console.log('');
 
   try {
