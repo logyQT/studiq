@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { tmpdir, networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -61,10 +61,22 @@ function readLog(path: string): string {
 }
 
 async function terminate(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
   await new Promise<void>((done) => {
-    child.once('close', () => done());
-    child.kill('SIGKILL');
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      done();
+    };
+    // Register before re-checking: a child can exit between the check and the
+    // listener registration, and then `close` would never be observed.
+    child.once('close', finish);
+    child.once('error', finish);
+    if (child.exitCode !== null || child.signalCode !== null) {
+      finish();
+      return;
+    }
+    if (!child.kill('SIGKILL')) finish();
   });
 }
 
@@ -317,11 +329,11 @@ export async function startTcpListener(port = 0, host?: string): Promise<TcpList
   };
 }
 
-/** First free loopback port at or above `from`, skipping `skip`. */
+/** First free port at or above `from`, skipping `skip`; defaults to the wildcard. */
 export async function firstFreePort(
   from: number,
   skip: ReadonlySet<number> = new Set(),
-  host = '127.0.0.1',
+  host = '0.0.0.0',
 ): Promise<number> {
   for (let port = from; port < from + 200; port += 1) {
     if (skip.has(port)) continue;
@@ -331,6 +343,36 @@ export async function firstFreePort(
     return port;
   }
   throw new Error(`no free port found from ${from}`);
+}
+
+/** The first non-loopback IPv4 address, or null when the host has none. */
+export function nonLoopbackIPv4(): string | null {
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === 'IPv4' && !entry.internal) return entry.address;
+    }
+  }
+  return null;
+}
+
+/** A stopped stack: `stack status` exits 0 but carries no API URL/endpoints. */
+export function stoppedStackFixture(): Record<string, unknown> {
+  return {
+    identity: {
+      id: 'stopped-fixture-id',
+      name: 'default',
+      project_root: REPO_ROOT,
+      branch_context: 'refs/heads/feat/env-fixture',
+    },
+    runtime: 'docker',
+    lifecycle: null,
+    config_drift: { status: 'unchanged' },
+    env: {
+      ANON_KEY: 'sentinel-stopped-anon',
+      PUBLISHABLE_KEY: 'sentinel-stopped-publishable',
+    },
+    endpoints: {},
+  };
 }
 
 export interface StackFixtureOptions {

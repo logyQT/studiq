@@ -7,7 +7,7 @@ import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from '../lib/j
 import { printJson, writeLine } from '../lib/output';
 import { findEntry, readRegistry } from '../lib/registry';
 import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from '../lib/repo';
-import { readStackStatus, type StackStatus } from '../lib/stack';
+import { probeStackStatus, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
 import { readWebPid } from '../lib/web';
 
@@ -102,7 +102,10 @@ function sharedProjectId(): string | null {
 async function buildSnapshot(): Promise<StatusSnapshot> {
   const contract = readContract();
   const registry = readRegistry();
-  const stack = contract.shared ? null : readStackStatus(contract.stackName);
+  const statusProbe = contract.shared
+    ? { stack: null as StackStatus | null, error: null as string | null }
+    : probeStackStatus(contract.stackName);
+  const stack = statusProbe.stack;
   const side = contract.shared ? sharedSide() : stackSide(stack);
 
   const webPid = readWebPid();
@@ -136,6 +139,9 @@ async function buildSnapshot(): Promise<StatusSnapshot> {
     web: { pid: webPid, http: webHttp },
     supabaseHttp,
     buildPresent: existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID')),
+    warnings: statusProbe.error
+      ? [`cannot read 'supabase stack status': ${statusProbe.error}`]
+      : [],
   });
 }
 

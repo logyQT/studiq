@@ -26,10 +26,13 @@ export function portInUse(port: number, timeoutMs = 300): Promise<boolean> {
 }
 
 /**
- * Whether `127.0.0.1:<port>` can be bound right now. A connect probe only sees
- * a listener accepting on loopback; a wildcard or another-interface socket can
- * still make our own `listen()` fail, so port selection asks the kernel.
- * Any bind error (EADDRINUSE, EACCES, …) means the port is unusable.
+ * Whether the app's listening address (`0.0.0.0`) can be bound right now.
+ *
+ * A connect probe to `127.0.0.1` only sees a loopback listener; a socket bound
+ * on any other interface keeps `next start` from binding the wildcard even
+ * though loopback still accepts a bind. Binding the wildcard asks the kernel
+ * the question that matters. Any bind error (EADDRINUSE, EACCES, …) means the
+ * port is unusable.
  */
 function canBindPort(port: number): Promise<boolean> {
   if (port <= 0) return Promise.resolve(false);
@@ -42,7 +45,7 @@ function canBindPort(port: number): Promise<boolean> {
       resolve(available);
     };
     server.once('error', () => finish(false));
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, '0.0.0.0', () => {
       server.close(() => finish(true));
     });
   });

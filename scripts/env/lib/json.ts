@@ -85,6 +85,7 @@ export interface StatusInputs {
   web: { pid: number | null; http: number };
   supabaseHttp: number;
   buildPresent: boolean;
+  warnings: string[];
 }
 
 /** `200-399` for the web app and a healthy Supabase, exactly like `dev:status`. */
@@ -144,7 +145,7 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
       : null,
     seeded: null,
     build: { present: inputs.buildPresent, fingerprint: null },
-    warnings: [],
+    warnings: inputs.warnings,
     log: '.dev/env.log',
   };
 }

@@ -88,7 +88,16 @@ function runSupabase(args: string[]): SupabaseRun {
     maxBuffer: 8 * 1024 * 1024,
   });
   if (result.error) return { ok: false, stdout: '', error: result.error.message };
-  return { ok: result.status === 0, stdout: result.stdout ?? '', error: null };
+  if (result.status !== 0) {
+    // A stopped stack exits 0 (identity + empty endpoints), so a non-zero exit
+    // is a real CLI failure and must not be reported as an absent stack.
+    return {
+      ok: false,
+      stdout: result.stdout ?? '',
+      error: `\`supabase ${args.join(' ')}\` exited with code ${result.status ?? 'unknown'}`,
+    };
+  }
+  return { ok: true, stdout: result.stdout ?? '', error: null };
 }
 
 function stackArgs(command: 'status' | 'list', stackName: string | null): string[] {
@@ -100,7 +109,7 @@ function stackArgs(command: 'status' | 'list', stackName: string | null): string
 export interface StackStatusProbe {
   /** The running stack, or null when it is stopped/unusable/absent. */
   stack: StackStatus | null;
-  /** Spawn/timeout failure of the CLI itself; null means the CLI answered. */
+  /** Spawn/timeout failure or non-zero exit of the CLI; null means it answered. */
   error: string | null;
 }
 
@@ -156,11 +165,6 @@ export function probeStackStatus(stackName: string | null): StackStatusProbe {
     },
     error: null,
   };
-}
-
-/** The running stack for this checkout, or null when there is none. */
-export function readStackStatus(stackName: string | null): StackStatus | null {
-  return probeStackStatus(stackName).stack;
 }
 
 export interface ListedStack {
