@@ -123,7 +123,14 @@ export function probeStackStatus(stackName: string | null): StackStatusProbe {
   const { ok, stdout, error } = runSupabase(stackArgs('status', stackName));
   if (!ok) return { stack: null, error };
   const parsed = parseJsonObject(stdout);
-  if (!parsed) return { stack: null, error: null };
+  if (!parsed) {
+    // Exit 0 without a JSON object means a broken/truncated CLI (or a banner
+    // on stdout), not a stopped stack — those still print identity JSON.
+    return {
+      stack: null,
+      error: '`supabase stack status --output-format json` did not return a JSON object',
+    };
+  }
 
   const env = asObject(parsed.env) ?? {};
   const rawApiUrl = asString(env.API_URL);

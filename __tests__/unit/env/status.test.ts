@@ -124,6 +124,19 @@ describe('env:status --json', () => {
     expect(result.stdout).not.toContain('frag-secret');
   });
 
+  it('warns when the stack status lookup returns non-JSON output', async () => {
+    const harness = newHarness();
+    harness.setRawStatus('Warning: deprecated config\n{"identity":');
+
+    const result = await harness.run(['status', '--json']);
+
+    expect(result.status).toBe(0);
+    const status = parseJsonObject(result.stdout);
+    expect(status.ready).toBe(false);
+    expect(status.stack).toBeNull();
+    expect(stringList(status.warnings)).toHaveLength(1);
+  });
+
   it('shapes a running stack and never emits key material or the DB password', async () => {
     const server = await startHttpServer(200);
     const harness = newHarness();
