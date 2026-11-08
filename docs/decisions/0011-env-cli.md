@@ -79,7 +79,9 @@ checkouts. The corrected spec is
    **refuses** (exit 6) a second server, or a rebuild of the shared
    `apps/web/.next` another server is serving, for a different stack/profile —
    use a separate worktree. Detection uses the existing `.dev/web.pid`, the
-   registry entry and the per-identity start lock. Under `SUPABASE_SHARED=1`
+   registry entry and the per-identity start lock, and detection plus server
+   start run under a short-lived checkout-wide server-claim lock. Under
+   `SUPABASE_SHARED=1`
    this checkout reuses another checkout's stack without any stack mutation;
    `down --all`, `recreate`, `reset-db` and `--reseed` refuse with exit 6, while
    plain `down` still stops only the local web server.
