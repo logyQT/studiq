@@ -2,7 +2,7 @@ import { readContract, type Contract } from './contract';
 import { contractWithLease } from './contract-lease';
 import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
-import { readRegistry, findEntry } from './registry';
+import { readRegistry, findEntry, registryPathExists } from './registry';
 import { REPO_ROOT, canon, currentBranchRef, deriveProjectId, sanitizeProjectId } from './repo';
 import { profileRequiresServe } from '../profiles';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
@@ -200,6 +200,12 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
   const warnings = [...(options.warnings ?? [])];
   if (probeError) {
     warnings.push(`cannot read 'supabase stack status': ${probeError}`);
+  }
+  if (!registry.trusted && registryPathExists(registry.dir)) {
+    warnings.push(
+      `registry directory ${registry.dir} exists but is not a trusted private directory; ` +
+        'ownership cannot be verified',
+    );
   }
   const listedRuntime =
     !contract.shared && !statusStack && !options.skipStackLookup

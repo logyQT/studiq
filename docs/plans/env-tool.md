@@ -528,10 +528,15 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
     **same** run id reuses the existing fixtures and does not reseed — the warm
     path stays idempotent. A new run id is created only for a new independent
     run (`--reseed`, or a new suite run); `--no-seed` disables seeding.
-- **Run-id selection.** The run id is `QA_RUN_SUFFIX` when set; otherwise
-  `ensure` generates one once and passes it as `--run <suffix>`. It exports the
-  run id to the seed invocation and to the served app/test children so readers
-  and writers agree (CI supplies its own, `ci$GITHUB_RUN_ID`).
+- **Run-id selection and handoff.** The run id is `QA_RUN_SUFFIX` when set;
+  otherwise `ensure` generates one once and passes it as `--run <suffix>`.
+  `--reseed` always generates a **new** suffix (ignoring/overriding
+  `QA_RUN_SUFFIX`) and returns it, so a reseed cannot reuse accounts the prior
+  run mutated. A plain repeated `ensure` reuses the current run id. The run id is
+  exported to the seed invocation, returned as `runId` in `ensure --json`, and
+  set for the `env:qa`/`env:e2e` child (phase 3) — a separate
+  `bun run test:qa` process cannot inherit `ensure`'s environment, so the JSON
+  is the documented handoff. CI supplies its own (`ci$GITHUB_RUN_ID`).
 - **The seeder is bound to this checkout's stack.** `ensure` passes the
   discovered endpoint explicitly and `qa/env.json` only fills keys that are
   still unset (the process environment wins). Before writing, the seeder
@@ -587,16 +592,19 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   stale build after a source edit (measured: 2.1 s, `BUILD_ID` unchanged). This
   is a required fix, not a nice-to-have.
 - Build lock: one `next build` across all worktrees (port the existing
-  `flock`/mkdir lock from `scripts/dev`). The lock is held around the build,
-  not the whole `ensure`.
+  `flock`/mkdir lock from `scripts/dev`). The lock is held across the snapshot,
+  build and rollback/handover — not the whole `ensure` — so two `ensure` runs in
+  one checkout (different named stacks share `.next`) cannot snapshot or restore
+  each other's output.
 - **Safe rebuild handover.** `scripts/dev` refuses to build while the web server
   runs, and Next 16 deletes the existing `.next` before building, so "restart
-  the previous build" requires preserving its output first. The tool stops
-  **its own** web server, copies the current build output aside (or builds into
-  an alternate dist dir), takes the build lock, builds, starts the new build and
-  health-checks it. If the build fails, it restores the preserved output,
-  restarts the previous build and only then reports the failure — the
-  environment is never left down. It never reports the old PID as ready.
+  the previous build" requires preserving its output first. Under the build
+  lock, the tool stops **its own** web server, copies the current build output
+  aside (or builds into an alternate dist dir), builds, starts the new build and
+  health-checks it. If the build fails, or the new server fails to start or
+  fails health, it stops the new server, restores the preserved output,
+  restarts the previous build and reports exit 4 — the environment is never left
+  down, and it never reports the old PID as ready.
 - `env:serve` serves an existing build; if the fingerprint is stale, fail with
   a clear message and `env:build` (or `ensure --profile web`).
 - `next start` must keep `--keepAliveTimeout 55000` (the app's `start` script
@@ -615,6 +623,7 @@ superset of the current `dev:status --json` (no renames that break consumers):
   "profile": "api",
   "runtime": "native",
   "cold": false,
+  "runId": null,
   "stack": {
     "id": "65c7…",
     "name": "default",
@@ -681,6 +690,10 @@ Rules:
 - `log` points at `.dev/env.log` (mode 600).
 - **Timing is not part of the machine contract.** There is no `warmMs` field;
   measure warm/cold latency from `.dev/` logs or benchmarks. `cold` stays.
+- `runId` is the QA/e2e fixture run id (string) or `null` when no suite run
+  applies. `ensure --json` is the documented handoff for an agent that runs
+  `bun run test:qa` separately: the suite cannot inherit `ensure`'s environment,
+  so the runner sets `QA_RUN_SUFFIX` (and the fixture path) from `runId`.
 - The legacy camelCase fields (`projectId`, `worktree`, `mode`, `shared`,
   `sharedOwner`, `owner`, `registry`, `stackId`, `branch`, `web`, `supabase`,
   `dbUrl`, `mailUrl`) stay for compatibility; the current `dev:status --json`
@@ -753,9 +766,11 @@ adding a vault later changes `.env.schema` / `.env.local` only — never
   the provider, so there is no default provider and no relative refs.
 - **Pointer file:** one per machine, in the **primary checkout** at
   `.env.vault` (repo root, Git-ignored). Worktrees resolve it through
-  `STUDIQ_ENV_VAULT`, defaulting to the first entry of
-  `git worktree list --porcelain` (the same helper `scripts/spin` uses). Nothing
-  is copied into a worktree.
+  `STUDIQ_ENV_VAULT`, which defaults to `<primary>/.env.vault` — `<primary>` is
+  the first entry of `git worktree list --porcelain`, a **directory**, so the
+  file name must be appended (same helper `scripts/spin` uses). Passing the bare
+  directory would make varlock load that directory's env files instead of the
+  vault. Nothing is copied into a worktree.
 - **Loading (verified against varlock 1.24.0):** `--path` sets the entry point
   and **replaces** the default checkout path; multiple `-p`/`--path` entries
   compose and the **last** one wins on a duplicate key. The wrapper therefore
@@ -948,13 +963,13 @@ keeping `dev:admin` as the one `dev:*` exception (violates the no-`dev:*` rule).
 
 ## 15. Phase plan
 
-| Phase                           | Scope                                                                                                                                                                                                                                                                                                               | Gate                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **0 — evidence**                | Port create/resume spike, key identity, baseline timings, `dev:*` inventory, this spec + ADR-0011. No product code.                                                                                                                                                                                                 | Evidence in the issue; ADR reviewed                                                  |
-| **1 — read-only**               | `status` / `doctor` / `ports` / `supa`; stable `--json`; no lifecycle change. `scripts/dev` untouched.                                                                                                                                                                                                              | Read-only parity, unit tests                                                         |
-| **2 — ensure**                  | `ensure --profile api\|web`, `down`, `build`; varlock-injected; **app-port lease only**; warm path; `--reconcile` capability restart. Keep `scripts/dev`.                                                                                                                                                           | issue §11 tests 3, 6, 7, 9; §13 test 13; shared-mode `ensure`/`status`/`ports`       |
-| **3 — cutover**                 | Remaining profiles/commands (`mail`, `full`, `qa`, `e2e`, `admin`, `env:dev --admin`, `reset-db`, `logs`, `prepull`, `setup` scaffold, `verify`); seeder stack+run scoping (`qa/.tenants/<stackId>/<runId>`) and marker invalidation; delete `scripts/dev` + `dev:*`; docs sweep (`dev:admin` → `env:dev --admin`). | issue §11 tests 8 (destructive/`--all` refusals) and 10; full acceptance; `rg` clean |
-| **4 — allocator (conditional)** | 20-port blocks, lease registry, reclaim, retry loop, separate app-port lease.                                                                                                                                                                                                                                       | issue §11 tests 1, 2, 4, 5                                                           |
+| Phase                           | Scope                                                                                                                                                                                                                                                                                                                                                                   | Gate                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **0 — evidence**                | Port create/resume spike, key identity, baseline timings, `dev:*` inventory, this spec + ADR-0011. No product code.                                                                                                                                                                                                                                                     | Evidence in the issue; ADR reviewed                                                  |
+| **1 — read-only**               | `status` / `doctor` / `ports` / `supa`; stable `--json`; no lifecycle change. `scripts/dev` untouched.                                                                                                                                                                                                                                                                  | Read-only parity, unit tests                                                         |
+| **2 — ensure**                  | `ensure --profile api\|web`, `down`, `build`; varlock-injected; **app-port lease only**; warm path; `--reconcile` capability restart. Keep `scripts/dev`.                                                                                                                                                                                                               | issue §11 tests 3, 6, 7, 9; §13 test 13; shared-mode `ensure`/`status`/`ports`       |
+| **3 — cutover**                 | Remaining profiles/commands (`mail`, `full`, `qa`, `e2e`, `admin`, `env:dev --admin`, `reset-db`, `logs`, `prepull`, `setup` scaffold, `verify`); `env:qa`/`env:e2e` run-id export + `runId` handoff; seeder stack+run scoping (`qa/.tenants/<stackId>/<runId>`) and marker invalidation; delete `scripts/dev` + `dev:*`; docs sweep (`dev:admin` → `env:dev --admin`). | issue §11 tests 8 (destructive/`--all` refusals) and 10; full acceptance; `rg` clean |
+| **4 — allocator (conditional)** | 20-port blocks, lease registry, reclaim, retry loop, separate app-port lease.                                                                                                                                                                                                                                                                                           | issue §11 tests 1, 2, 4, 5                                                           |
 
 Do not run phases in parallel: every phase touches `scripts/env/**`. Merge
 order is 0 → 1 → 2 → 3 → (4). Each phase is its own PR; phase 4 is a **go** but

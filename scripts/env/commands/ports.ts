@@ -1,22 +1,12 @@
-import { lstatSync } from 'node:fs';
 import type { ParsedCommand } from '../atoms';
 import { suggestFreeAppPort } from '../lib/net';
 import { printJson, writeLine, writeStderrLine } from '../lib/output';
-import { readRegistry } from '../lib/registry';
+import { readRegistry, registryPathExists } from '../lib/registry';
 
 export interface PortsSnapshot {
   appPort: number;
   block: null;
   stackPorts: 'dynamic';
-}
-
-function registryPathExists(path: string): boolean {
-  try {
-    lstatSync(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

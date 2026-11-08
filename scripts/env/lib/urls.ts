@@ -37,6 +37,9 @@ export function stripDbCredentials(url: string): string | null {
     if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') return null;
     parsed.username = '';
     parsed.password = '';
+    // Query/fragment can carry credentials too (`?password=…`, `?sslpassword=…`).
+    parsed.search = '';
+    parsed.hash = '';
     return normalizeLocalhost(parsed.toString());
   } catch {
     return null;

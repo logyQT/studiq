@@ -4,7 +4,7 @@ import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { portInUse } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
-import { readRegistry, registryDirTrusted } from '../lib/registry';
+import { readRegistry, registryPathExists } from '../lib/registry';
 import { REPO_ROOT, canon, currentBranchName } from '../lib/repo';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
@@ -45,7 +45,10 @@ function stackLines(stack: StackStatus | null): string[] {
 async function buildReport(): Promise<DoctorReport> {
   const contract = contractWithLease(readContract());
   const registry = readRegistry();
-  const trusted = registryDirTrusted(registry.dir);
+  // A missing registry is normal on a fresh machine; only an existing but
+  // untrusted directory is worth a warning.
+  const registryExists = registryPathExists(registry.dir);
+  const trusted = registry.trusted;
   const statusProbe = contract.shared
     ? { stack: null as StackStatus | null, error: null as string | null }
     : probeStackStatus(contract.stackName);
@@ -107,7 +110,7 @@ async function buildReport(): Promise<DoctorReport> {
       'stack runtime=docker (compatibility mode); env:recreate --runtime native --yes will convert it',
     );
   }
-  if (!trusted) {
+  if (!trusted && registryExists) {
     warnings.push(
       `registry directory ${registry.dir} is not a trusted private directory; entries are ignored`,
     );
@@ -129,7 +132,7 @@ async function buildReport(): Promise<DoctorReport> {
     '▸ Checkout',
     `  worktree   ${REPO_ROOT}`,
     `  branch     ${currentBranchName()}`,
-    `  registry   ${registry.dir}${trusted ? '' : ' (untrusted — entries ignored)'}`,
+    `  registry   ${registry.dir}${trusted || !registryExists ? '' : ' (untrusted — entries ignored)'}`,
   ];
 
   lines.push('', '▸ Local stack');
