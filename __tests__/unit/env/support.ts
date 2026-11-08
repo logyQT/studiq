@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import {
   accessSync,
   chmodSync,
@@ -138,6 +138,7 @@ export function createHarness(): Harness {
   const listFile = join(dir, 'stack-list.json');
   const appUrlFile = join(dir, 'supa-app-url.txt');
   const closers: Array<() => Promise<void> | void> = [];
+  const children = new Set<ChildProcess>();
 
   const env: NodeJS.ProcessEnv = {
     PATH: `${binDir}:${process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin'}`,
@@ -161,7 +162,10 @@ export function createHarness(): Harness {
         const child = spawn(BUN, [CLI_PATH, ...args], {
           cwd: dir,
           env: { ...env, ...extraEnv },
+          timeout: 20_000,
+          killSignal: 'SIGKILL',
         });
+        children.add(child);
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', (chunk: Buffer | string) => {
@@ -170,8 +174,14 @@ export function createHarness(): Harness {
         child.stderr.on('data', (chunk: Buffer | string) => {
           stderr += String(chunk);
         });
-        child.on('error', () => resolvePromise({ status: 1, stdout, stderr }));
-        child.on('close', (code) => resolvePromise({ status: code, stdout, stderr }));
+        child.on('error', () => {
+          children.delete(child);
+          resolvePromise({ status: 1, stdout, stderr });
+        });
+        child.on('close', (code) => {
+          children.delete(child);
+          resolvePromise({ status: code, stdout, stderr });
+        });
       });
     },
     setStatusFixture(value) {
@@ -206,6 +216,8 @@ export function createHarness(): Harness {
       closers.push(closer);
     },
     async cleanup() {
+      for (const child of [...children]) child.kill('SIGKILL');
+      children.clear();
       for (const close of closers.toReversed()) await close();
       rmSync(dir, { recursive: true, force: true });
     },

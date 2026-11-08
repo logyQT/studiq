@@ -46,7 +46,10 @@ async function buildReport(): Promise<DoctorReport> {
   const registry = readRegistry();
   const trusted = registryDirTrusted(registry.dir);
   const stack = contract.shared ? null : readStackStatus(contract.stackName);
-  const listedRuntime = contract.shared ? null : readListedStackRuntime(contract.stackName);
+  // A running stack already reports its runtime; only a stopped/missing one
+  // needs the `stack list` lookup (one status call on the running path).
+  const listedRuntime =
+    !contract.shared && !stack?.runtime ? readListedStackRuntime(contract.stackName) : null;
   // Read-only commands never choose or predict a runtime (phase 2 `ensure` owns
   // selection and exit 3). They report what the stack itself reports.
   const observedRuntime = stack?.runtime || listedRuntime || null;

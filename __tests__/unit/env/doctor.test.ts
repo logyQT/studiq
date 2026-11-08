@@ -78,6 +78,8 @@ describe('env:doctor', () => {
     expect(human.status).toBe(0);
     expect(human.stdout).toContain('observed   docker');
     expect(human.stdout).toContain('source     running stack');
+    // A running stack already carries its runtime: no `stack list` lookup.
+    expect(harness.bunxCalls()).not.toContain('stack list');
   });
 
   it('never probes docker/podman and ignores SUPABASE_RUNTIME', async () => {

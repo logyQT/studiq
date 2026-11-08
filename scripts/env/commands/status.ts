@@ -115,8 +115,8 @@ async function buildSnapshot(): Promise<StatusSnapshot> {
       ? `stack-${stack.id.slice(0, 12)}`
       : null;
   const entry = contract.shared && projectId ? findEntry(registry.entries, projectId) : null;
-  const owner =
-    contract.shared && entry && canon(entry.worktree) !== REPO_ROOT ? entry.worktree : null;
+  const entryWorktree = contract.shared ? (entry?.worktree ?? '') : '';
+  const owner = entryWorktree && canon(entryWorktree) !== REPO_ROOT ? entryWorktree : null;
   const mode = contract.shared ? (entry?.mode ?? null) : stack ? stack.name || 'default' : null;
 
   return shapeStatus({

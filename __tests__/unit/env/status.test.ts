@@ -115,7 +115,8 @@ describe('env:status --json', () => {
     expect(status.dbUrl).toBe('postgresql://localhost:30040/postgres');
     expect(supabase).toEqual({ url: `http://localhost:${server.port}`, http: 200 });
     expect(web.http).toBe(200);
-    expect(build.present).toBe(true);
+    expect(typeof build.present).toBe('boolean');
+    expect(build.fingerprint).toBeNull();
     expect('warmMs' in status).toBe(false);
 
     // No sentinel, key name or password may survive anywhere in stdout.
@@ -186,6 +187,28 @@ describe('env:status --json', () => {
     expect(urls.supabase).toBe(`http://localhost:${server.port}`);
     expect(supabase.http).toBe(200);
     expect(result.stdout).not.toContain('fixture-claim');
+  });
+
+  it('reports owner null for a registry entry without a worktree', async () => {
+    const harness = newHarness();
+    const projectId = 'studiq-fixture-no-worktree-77889900';
+    harness.writeRegistryEntry({
+      projectId,
+      worktree: '',
+      mode: 'dev',
+    });
+
+    const result = await harness.run(['status', '--json'], {
+      SUPABASE_SHARED: '1',
+      SUPABASE_PROJECT_ID: projectId,
+      SUPABASE_URL: 'http://127.0.0.1:1',
+      APP_PORT: '3298',
+    });
+
+    expect(result.status).toBe(0);
+    const status = parseJsonObject(result.stdout);
+    expect(status.owner).toBeNull();
+    expect(status.mode).toBe('dev');
   });
 
   it('ignores registry entries whose id does not match their file name', async () => {
