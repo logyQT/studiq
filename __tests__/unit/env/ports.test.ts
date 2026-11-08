@@ -52,12 +52,35 @@ describe('env:ports --json', () => {
     expect(result.stdout).not.toContain('/tmp/another-checkout');
   });
 
+  it('skips a port bound on another interface', async () => {
+    const port = await firstFreePort(3000, new Set([3010]));
+    const harness = newHarness();
+    // Binding the wildcard address claims the port for every interface, so a
+    // loopback `listen()` (and therefore `next start`) cannot use it.
+    const listener = await startTcpListener(port, '0.0.0.0');
+    harness.track(() => listener.close());
+
+    const expected = await nextFreePort(3000, new Set([port]));
+    const result = await harness.run(['ports', '--json']);
+
+    expect(result.status).toBe(0);
+    const ports = parseJsonObject(result.stdout);
+    expect(ports.appPort).toBe(expected);
+    expect(ports.appPort).not.toBe(port);
+  });
+
   it('prints a shell-friendly suggestion without --json', async () => {
     const harness = newHarness();
     const result = await harness.run(['ports']);
     expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/^APP_PORT=\d+$/m);
-    expect(result.stdout).toContain('Supabase stack ports are assigned');
+
+    const match = /^APP_PORT=(\d+)$/m.exec(result.stdout);
+    expect(match).not.toBeNull();
+    const appPort = Number(match?.[1]);
+    expect(Number.isInteger(appPort)).toBe(true);
+    expect(appPort).toBeGreaterThanOrEqual(3000);
+    expect(appPort).toBeLessThanOrEqual(3999);
+    expect(appPort).not.toBe(3010);
   });
 
   it('rejects unknown flags with exit code 2', async () => {

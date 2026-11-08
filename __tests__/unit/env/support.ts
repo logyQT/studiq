@@ -46,6 +46,20 @@ export function stringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string');
 }
 
+/** An absent log means "no calls"; any other read error must surface. */
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
+function readLog(path: string): string {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ENOENT') return '';
+    throw error;
+  }
+}
+
 export interface Harness {
   dir: string;
   registryDir: string;
@@ -176,9 +190,13 @@ export function createHarness(): Harness {
         child.stderr.on('data', (chunk: Buffer | string) => {
           stderr += String(chunk);
         });
-        child.on('error', () => {
+        child.on('error', (error) => {
           children.delete(child);
-          resolvePromise({ status: 1, stdout, stderr });
+          resolvePromise({
+            status: null,
+            stdout,
+            stderr: `${stderr}spawn error: ${error.message}\n`,
+          });
         });
         child.on('close', (code) => {
           children.delete(child);
@@ -201,18 +219,10 @@ export function createHarness(): Harness {
       writeFileSync(join(registryDir, name), JSON.stringify(entry));
     },
     bunxCalls() {
-      try {
-        return readFileSync(bunxLog, 'utf8');
-      } catch {
-        return '';
-      }
+      return readLog(bunxLog);
     },
     engineCalls() {
-      try {
-        return readFileSync(engineLog, 'utf8');
-      } catch {
-        return '';
-      }
+      return readLog(engineLog);
     },
     track(closer) {
       closers.push(closer);
@@ -234,8 +244,8 @@ export interface HttpServer {
 
 type Listenable = ReturnType<typeof createHttpServer> | ReturnType<typeof createTcpServer>;
 
-/** Listen on all interfaces (so `localhost` works over IPv4 and IPv6). */
-function listen(server: Listenable, port: number): Promise<number> {
+/** Listen on all interfaces (or a specific host) so IPv4/IPv6 both work. */
+function listen(server: Listenable, port: number, host?: string): Promise<number> {
   return new Promise((done, reject) => {
     const onError = (error: Error): void => {
       server.off('listening', onListening);
@@ -248,7 +258,8 @@ function listen(server: Listenable, port: number): Promise<number> {
     };
     server.once('error', onError);
     server.once('listening', onListening);
-    server.listen(port);
+    if (host) server.listen(port, host);
+    else server.listen(port);
   });
 }
 
@@ -275,9 +286,9 @@ export interface TcpListener {
 }
 
 /** A TCP listener that accepts and closes, to occupy an app port. */
-export async function startTcpListener(port = 0): Promise<TcpListener> {
+export async function startTcpListener(port = 0, host?: string): Promise<TcpListener> {
   const server = createTcpServer((socket) => socket.destroy());
-  const bound = await listen(server, port);
+  const bound = await listen(server, port, host);
   return {
     port: bound,
     close: () =>

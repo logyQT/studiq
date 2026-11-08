@@ -4,15 +4,20 @@ import { REPO_ROOT, canon } from '../lib/repo';
 import { readStackList, type ListedStack } from '../lib/stack';
 
 const ALL_MESSAGE =
-  "env:supa: refusing 'stop --all' — it stops every Supabase stack on the machine. " +
-  "Stop only this checkout's stack with 'stack stop --stack <name>'.";
+  "env:supa: refusing 'stop --all' / 'restart --all' — it stops every Supabase stack " +
+  "on the machine. Stop only this checkout's stack with 'stack stop --stack <name>'.";
 
 const DESTROY_MESSAGE =
   "env:supa: refusing 'destroy' — stack deletion is owned by 'env:recreate --yes' / " +
   "'env:down --all --yes' (with ownership checks).";
 
+const DB_RESET_MESSAGE =
+  "env:supa: refusing 'db reset' — database reset is owned by 'env:reset-db --yes' " +
+  "(this checkout's stack only).";
+
 const NO_SCOPE_MESSAGE =
-  "env:supa: 'stop' requires --stack <name> or --stack-id <id>; refusing to stop an unscoped stack.";
+  "env:supa: 'stop'/'restart' requires --stack <name> or --stack-id <id>; " +
+  'refusing an unscoped stack operation.';
 
 interface StopScope {
   kind: 'name' | 'id';
@@ -45,12 +50,12 @@ function stopScopes(args: string[]): StopScope[] {
 
 function ownedByProblem(scope: StopScope, stack: ListedStack): string {
   const owner = stack.projectRoot || 'another checkout';
-  return `env:supa: refusing to stop stack '${scope.value}': it is owned by ${owner}, not this checkout (${REPO_ROOT}).`;
+  return `env:supa: refusing to stop/restart stack '${scope.value}': it is owned by ${owner}, not this checkout (${REPO_ROOT}).`;
 }
 
 function notFoundProblem(scope: StopScope): string {
   const label = scope.kind === 'id' ? 'stack-id' : 'stack';
-  return `env:supa: refusing to stop ${label} '${scope.value}': not found in 'supabase stack list'.`;
+  return `env:supa: refusing to stop/restart ${label} '${scope.value}': not found in 'supabase stack list'.`;
 }
 
 /**
@@ -97,22 +102,26 @@ function reject(message: string, code: 2 | 6): number {
  * an explicit APP_URL wins, exactly like `scripts/dev supa`.
  *
  * Guards (the argv is scanned as tokens, so argument order never bypasses
- * them): `stop --all` and any `destroy` are refused outright; a `stop` must
- * name a stack this checkout owns. Usage errors exit 2, ownership conflicts 6,
- * and nothing is ever written to stdout.
+ * them): `stop --all` / `restart --all` and any `destroy` are refused outright,
+ * `db reset` is refused, and a `stop`/`restart` must name a stack this checkout
+ * owns. Usage errors exit 2, ownership conflicts 6, and nothing is ever written
+ * to stdout.
  */
 export function runSupa(args: string[]): number {
-  if (args.includes('stop') && args.includes('--all')) return reject(ALL_MESSAGE, 2);
-  if (args.includes('destroy')) return reject(DESTROY_MESSAGE, 2);
+  const stopCapable = args.includes('stop') || args.includes('restart');
 
-  if (args.includes('stop')) {
+  if (stopCapable && args.includes('--all')) return reject(ALL_MESSAGE, 2);
+  if (args.includes('destroy')) return reject(DESTROY_MESSAGE, 2);
+  if (args.includes('db') && args.includes('reset')) return reject(DB_RESET_MESSAGE, 2);
+
+  if (stopCapable) {
     const scopes = stopScopes(args);
     if (scopes.length === 0) return reject(NO_SCOPE_MESSAGE, 2);
 
     const stacks = readStackList();
     if (!stacks) {
       return reject(
-        `env:supa: refusing to stop '${scopes[0]?.value ?? ''}': cannot read 'supabase stack list' to verify ownership.`,
+        `env:supa: refusing to stop/restart '${scopes[0]?.value ?? ''}': cannot read 'supabase stack list' to verify ownership.`,
         6,
       );
     }
@@ -125,7 +134,7 @@ export function runSupa(args: string[]): number {
     }
     if (targets.size > 1) {
       return reject(
-        "env:supa: refusing to stop: '--stack' and '--stack-id' name different stacks.",
+        "env:supa: refusing to stop/restart: '--stack' and '--stack-id' name different stacks.",
         6,
       );
     }

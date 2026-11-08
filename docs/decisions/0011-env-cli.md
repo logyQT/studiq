@@ -45,10 +45,11 @@ checkouts. The corrected spec is
    only command an agent normally calls. The full surface is `ensure`, `status`,
    `down`, `build`, `serve`, `recreate`, `doctor`, `ports`, `supa`, `dev`,
    `reset-db`, `logs`, `prepull`, `setup`, `verify`. The `supa` passthrough
-   validates destructive stack subcommands before forwarding: `stop --all` and
-   `stack destroy` are rejected, and `stack stop` must target a stack whose
-   `project_root` is this checkout (usage errors exit 2, ownership conflicts
-   exit 6).
+   validates destructive or stop-capable subcommands before forwarding:
+   `stop --all`, `db reset` and `stack destroy` are rejected, and every
+   stop/restart form (`stop`, `stack stop`, `restart`, `stack restart`) must
+   target a stack whose `project_root` is this checkout (usage errors exit 2,
+   ownership conflicts exit 6).
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover (phase 3);
    no aliases and no back-compat layer. Root `build`/`start` and the low-level
    `build:web`/`start:web`/`build:admin`/`start:admin` scripts stay.
@@ -109,6 +110,11 @@ checkouts. The corrected spec is
     runtime and the currently observed API/DB/Studio/mail endpoints
     (read-then-pin, not the phase-4 block), never destroys data, and re-probes
     every requested capability (phase-0: ≈1.7 s stop + 5.0 s resume).
+14. **Local posture is explicit.** Before build/serve (and in `env:dev`) the tool
+    sets `APP_ENV=development` when it is unset or empty and preserves an
+    explicit value; an unset `APP_ENV` otherwise defaults the app to
+    `production`, whose payment preflight needs Stripe. `APP_ENV` is part of the
+    build fingerprint.
 
 > **Superseded wording.** The issue's pre-review appendix and its "varlock is
 > validator-only" acceptance line are superseded by item 3. varlock remains the
