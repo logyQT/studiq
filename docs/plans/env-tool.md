@@ -136,17 +136,21 @@ Rules:
   to the CLI, not interpreted by the tool. Long-running commands (`dev`,
   `serve`, `logs`) treat `--json` as a **startup** contract: one JSON object
   when ready, then output on stderr.
-- `supa` forwards arguments unchanged **except for destructive stack
+- `supa` forwards arguments unchanged **except for destructive or stop-capable
   subcommands**, which it validates before forwarding — it never spawns the CLI
   on a rejected call:
   - `stop --all` is always rejected (exit 2, message naming the hard rule);
     there is no override.
+  - `db reset` is rejected (exit 2): a database reset goes through the guarded
+    `env:reset-db --yes` path (phase 3), which also invalidates the seed marker.
   - `stack destroy` / `destroy` is rejected outright (exit 2). Stack deletion is
     owned by `env:recreate --yes` / `env:down --all --yes`, which perform the
     ownership check.
-  - `stack stop` must name a stack (`--stack <name>` or `--stack-id <id>`) whose
+  - Every stop-capable form — `stop`, `stack stop`, `restart`, `stack restart` —
+    must name a stack (`--stack <name>` or `--stack-id <id>`) whose
     `project_root` is this checkout, matched from
-    `stack list --output-format json`; otherwise exit **6**.
+    `stack list --output-format json`; otherwise exit **6**. `restart` (stop then
+    start) gets the same ownership check.
   - Usage-shaped rejections exit 2; ownership conflicts exit 6.
 - This passthrough policy lands in phase 1 (the spec is the contract).
 - `env --help` and `env <command> --help` document the surface; `dev:help` is
@@ -227,17 +231,19 @@ the human view):
 seeds need them (settled above); `api` adds `rest`. `studio`
 is excluded from every default profile; `--studio` removes it from the list.
 `--mail` enables `local_smtp`; `full`/`web`/`qa`/`e2e` include it because the
-app's auth flows use Mailpit. `--realtime`/`--functions`/`--analytics`/`--pooler`
-remove the corresponding entry. The parser must reject impossible combinations
-at usage time (exit 2) rather than let the CLI fail later — notably
-`studio` without `rest` (the CLI errors with "Studio cannot be started without
-the REST API capability").
+app's auth flows use Mailpit. `--realtime`/`--functions`/`--analytics` remove the
+corresponding entry. `--pooler` is **rejected (exit 2)**: `supabase/config.toml`
+sets `[db.pooler] enabled = false`, and removing `pooler` from `-x` does not
+enable it — enabling the pooler needs a config change tracked elsewhere. The
+parser must reject impossible combinations at usage time (exit 2) rather than
+let the CLI fail later — notably `studio` without `rest` (the CLI errors with
+"Studio cannot be started without the REST API capability").
 
 Atoms (all idempotent, all composable):
 
 ```
 --db --rest --auth --storage --studio --mail --functions --analytics --realtime
---pooler --seed --no-seed --reseed --reconcile --web --build --force-build --prod --admin
+--seed --no-seed --reseed --reconcile --web --build --force-build --prod --admin
 --runtime <native|docker> --stack <name> --port-block <n> --app-port <n>
 --wait <s> --json --yes --quiet --verbose
 ```
@@ -338,7 +344,7 @@ does this).
 
   1. registry claim (if phase 4)
   2. start lock
-  3. health probe
+  3. health probes (one per requested capability)
   4. capability check
   5. start (cold, or restart on a capability mismatch)
   6. wait ready
@@ -347,14 +353,16 @@ does this).
   9. serve if requested
   10. heartbeat + JSON
 
-- **Warm path:** one health probe + one schema read; **p95 < 1000 ms**. Do not
-  spawn `stack status` on the warm path when the heartbeat is fresh; verify
-  health with one HTTP call (`GET /auth/v1/health` or the API root), and take the
-  running capability set from the record written at start (only a missing or
-  stale record costs one `stack status`). The phase-0 baseline for the current
-  warm `dev:up --prod` is p50 885 ms / p95 936 ms (it still spawns
-  `stack status`), so the budget is achievable but tight on WSL2 — the heartbeat
-  cache is required for margin.
+- **Warm path:** one probe per requested capability + one schema read;
+  **p95 < 1000 ms covers the whole set**. Do not spawn `stack status` on the
+  warm path when the heartbeat is fresh; each probe is a local HTTP call (auth
+  `GET /auth/v1/health`, the API root, storage health, Mailpit HTTP when `mail`
+  is requested, Studio when `--studio` is — the minimal `api` profile is just
+  auth/API root). Take the running capability set from the record written at
+  start (only a missing or stale record costs one `stack status`). The phase-0
+  baseline for the current warm `dev:up --prod` is p50 885 ms / p95 936 ms (it
+  still spawns `stack status`), so the budget is achievable but tight on WSL2 —
+  the heartbeat cache is required for margin.
 - **Probe every requested capability.** Readiness requires each service the
   profile asks for: REST/API root, auth health, storage health, Mailpit HTTP
   when `mail` is requested, and Studio when `--studio` is requested. A requested
@@ -541,10 +549,17 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
 - `--prod` implies build + serve. `--web` without `--prod` is rejected (exit 2);
   `env:dev` is the only HMR path (web, or `apps/admin` with `--admin`) and it is
   human-only.
+- **Set the local posture: `APP_ENV=development`.** Before build/serve, the tool
+  sets `APP_ENV=development` when it is unset or empty and preserves an explicit
+  value (the app's non-production posture rule; `scripts/dev` does the same). The
+  app defaults to `production`, whose payment preflight needs a live Stripe key
+  and an `https` site URL, so an unset `APP_ENV` otherwise fails a local
+  build/serve. `env:dev` does the same.
 - **Build fingerprint** must include:
   - the `NEXT_PUBLIC_*` values that get inlined at build time
     (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SITE_URL`,
     `NEXT_PUBLIC_SUPABASE_ANON_KEY`);
+  - `APP_ENV`, because it changes build/runtime behaviour (payment posture);
   - a **working-tree content hash**, not just `HEAD^{tree}` +
     `git status --porcelain`: a second edit to the same modified file leaves
     both unchanged. Hash the contents of tracked changes **and** build-relevant
@@ -953,6 +968,9 @@ No provider code, no ref parsing, no dotenv parsing in `scripts/env/**`.
 - **Per-agent stacks when a healthy stack exists.**
 - **A 30 s cold full-app promise.** The lever is a build cache, not this tool.
 - **Changing the pinned Supabase CLI** or the `[experimental] stack` backend.
+- **Enabling the Supabase pooler.** `supabase/config.toml` sets
+  `[db.pooler] enabled = false`, and removing `pooler` from `-x` does not enable
+  it; `--pooler` is rejected (exit 2). A config change is tracked elsewhere.
 
 ---
 
