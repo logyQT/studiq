@@ -1,6 +1,92 @@
 import { spawnSync } from 'node:child_process';
-import { REPO_ROOT } from '../lib/repo';
 import { writeStderrLine } from '../lib/output';
+import { REPO_ROOT, canon } from '../lib/repo';
+import { readStackList, type ListedStack } from '../lib/stack';
+
+const ALL_MESSAGE =
+  "env:supa: refusing 'stop --all' — it stops every Supabase stack on the machine. " +
+  "Stop only this checkout's stack with 'stack stop --stack <name>'.";
+
+const DESTROY_MESSAGE =
+  "env:supa: refusing 'destroy' — stack deletion is owned by 'env:recreate --yes' / " +
+  "'env:down --all --yes' (with ownership checks).";
+
+const NO_SCOPE_MESSAGE =
+  "env:supa: 'stop' requires --stack <name> or --stack-id <id>; refusing to stop an unscoped stack.";
+
+interface StopScope {
+  kind: 'name' | 'id';
+  value: string;
+}
+
+type ScopeResolution = { stack: ListedStack } | { problem: string };
+
+/** `--stack <name>`, `--stack=<name>`, `--stack-id <id>`, `--stack-id=<id>`. */
+function stopScopes(args: string[]): StopScope[] {
+  const scopes: StopScope[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (token === '--stack' || token === '--stack-id') {
+      const value = args[index + 1];
+      if (value && !value.startsWith('-')) {
+        scopes.push({ kind: token === '--stack' ? 'name' : 'id', value });
+      }
+      index += 1;
+      continue;
+    }
+    if (token?.startsWith('--stack=')) {
+      scopes.push({ kind: 'name', value: token.slice('--stack='.length) });
+    } else if (token?.startsWith('--stack-id=')) {
+      scopes.push({ kind: 'id', value: token.slice('--stack-id='.length) });
+    }
+  }
+  return scopes.filter((scope) => scope.value.length > 0);
+}
+
+function ownedByProblem(scope: StopScope, stack: ListedStack): string {
+  const owner = stack.projectRoot || 'another checkout';
+  return `env:supa: refusing to stop stack '${scope.value}': it is owned by ${owner}, not this checkout (${REPO_ROOT}).`;
+}
+
+function notFoundProblem(scope: StopScope): string {
+  const label = scope.kind === 'id' ? 'stack-id' : 'stack';
+  return `env:supa: refusing to stop ${label} '${scope.value}': not found in 'supabase stack list'.`;
+}
+
+/**
+ * Resolve the requested scope against `stack list`, accepting a name or a
+ * unique id prefix (matching what `supabase stack` accepts). Ownership is
+ * checked here, before anything is spawned to stop.
+ */
+function resolveScope(stacks: ListedStack[], scope: StopScope): ScopeResolution {
+  if (scope.kind === 'id') {
+    const matches = stacks.filter(
+      (stack) => stack.id === scope.value || stack.id.startsWith(scope.value),
+    );
+    if (matches.length === 0) return { problem: notFoundProblem(scope) };
+    if (matches.length > 1) {
+      return {
+        problem: `env:supa: refusing to stop stack-id '${scope.value}': the prefix matches more than one stack.`,
+      };
+    }
+    const stack = matches[0] as ListedStack;
+    if (canon(stack.projectRoot) !== REPO_ROOT) return { problem: ownedByProblem(scope, stack) };
+    return { stack };
+  }
+
+  const matches = stacks.filter((stack) => stack.name === scope.value);
+  if (matches.length === 0) return { problem: notFoundProblem(scope) };
+  const ours = matches.filter((stack) => canon(stack.projectRoot) === REPO_ROOT);
+  if (ours.length === 0) {
+    return { problem: ownedByProblem(scope, matches[0] as ListedStack) };
+  }
+  return { stack: ours[0] as ListedStack };
+}
+
+function reject(message: string, code: 2 | 6): number {
+  writeStderrLine(message);
+  return code;
+}
 
 /**
  * Passthrough to `bunx supabase` from the checkout root.
@@ -9,17 +95,40 @@ import { writeStderrLine } from '../lib/output';
  * no values file, so the resolved APP_URL is exported around the child. Values
  * come from the process environment (varlock injects them for this command);
  * an explicit APP_URL wins, exactly like `scripts/dev supa`.
+ *
+ * Guards (the argv is scanned as tokens, so argument order never bypasses
+ * them): `stop --all` and any `destroy` are refused outright; a `stop` must
+ * name a stack this checkout owns. Usage errors exit 2, ownership conflicts 6,
+ * and nothing is ever written to stdout.
  */
 export function runSupa(args: string[]): number {
-  // Hard rule: never `supabase stop --all` (it stops every stack on the
-  // machine, including other checkouts'). Scan tokens, not positions, so any
-  // argument order is caught; everything else is forwarded untouched.
-  if (args.includes('stop') && args.includes('--all')) {
-    writeStderrLine(
-      "env:supa: refusing 'stop --all' — it stops every Supabase stack on the machine. " +
-        "Stop only this checkout's stack with 'stack stop --stack <name>'.",
-    );
-    return 2;
+  if (args.includes('stop') && args.includes('--all')) return reject(ALL_MESSAGE, 2);
+  if (args.includes('destroy')) return reject(DESTROY_MESSAGE, 2);
+
+  if (args.includes('stop')) {
+    const scopes = stopScopes(args);
+    if (scopes.length === 0) return reject(NO_SCOPE_MESSAGE, 2);
+
+    const stacks = readStackList();
+    if (!stacks) {
+      return reject(
+        `env:supa: refusing to stop '${scopes[0]?.value ?? ''}': cannot read 'supabase stack list' to verify ownership.`,
+        6,
+      );
+    }
+
+    const targets = new Set<string>();
+    for (const scope of scopes) {
+      const resolution = resolveScope(stacks, scope);
+      if ('problem' in resolution) return reject(resolution.problem, 6);
+      targets.add(resolution.stack.id);
+    }
+    if (targets.size > 1) {
+      return reject(
+        "env:supa: refusing to stop: '--stack' and '--stack-id' name different stacks.",
+        6,
+      );
+    }
   }
 
   const appUrl = process.env.APP_URL || `http://localhost:${process.env.APP_PORT || '3000'}`;

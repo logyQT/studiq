@@ -16,7 +16,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CLI_PATH = fileURLToPath(new URL('../../../scripts/env/cli.ts', import.meta.url));
-const REPO_ROOT = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
+export const REPO_ROOT = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 
 export interface RunResult {
   status: number | null;

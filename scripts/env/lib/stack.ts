@@ -138,26 +138,56 @@ export function readStackStatus(stackName: string | null): StackStatus | null {
   };
 }
 
+export interface ListedStack {
+  id: string;
+  name: string;
+  projectRoot: string;
+  branch: string | null;
+  runtime: string | null;
+}
+
+/**
+ * Every stack `supabase stack list` knows about, or null when the CLI cannot be
+ * read. Read-only: used to verify ownership before a stack-scoped stop.
+ */
+export function readStackList(): ListedStack[] | null {
+  const { ok, stdout } = runSupabase(stackArgs('list', null));
+  if (!ok) return null;
+  const parsed = parseJsonObject(stdout);
+  const stacks = parsed?.stacks;
+  if (!Array.isArray(stacks)) return null;
+  const listed: ListedStack[] = [];
+  for (const item of stacks) {
+    const stack = asObject(item);
+    if (!stack) continue;
+    const id = asString(stack.id);
+    if (!id) continue;
+    listed.push({
+      id,
+      name: asString(stack.name) ?? 'default',
+      projectRoot: asString(stack.project_root) ?? '',
+      branch: asString(stack.branch_context),
+      runtime: asString(stack.runtime),
+    });
+  }
+  return listed;
+}
+
 /**
  * The persisted runtime of this checkout's stack, including a stopped one.
  * Identity is `project_root + name + branch_context`, the same match the CLI
  * itself uses.
  */
 export function readListedStackRuntime(stackName: string | null): string | null {
-  const { ok, stdout } = runSupabase(stackArgs('list', null));
-  if (!ok) return null;
-  const parsed = parseJsonObject(stdout);
-  const stacks = parsed?.stacks;
-  if (!Array.isArray(stacks)) return null;
+  const stacks = readStackList();
+  if (!stacks) return null;
   const wantedName = stackName || 'default';
   const wantedBranch = currentBranchRef();
-  for (const item of stacks) {
-    const stack = asObject(item);
-    if (!stack) continue;
-    if (asString(stack.project_root) !== REPO_ROOT) continue;
-    if ((asString(stack.name) ?? 'default') !== wantedName) continue;
-    if ((asString(stack.branch_context) ?? '') !== wantedBranch) continue;
-    return asString(stack.runtime);
-  }
-  return null;
+  const hit = stacks.find(
+    (stack) =>
+      stack.projectRoot === REPO_ROOT &&
+      stack.name === wantedName &&
+      (stack.branch ?? '') === wantedBranch,
+  );
+  return hit?.runtime ?? null;
 }

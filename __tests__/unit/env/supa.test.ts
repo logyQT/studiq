@@ -1,9 +1,34 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createHarness, type Harness } from '#test/unit/env/support';
+import { createHarness, REPO_ROOT, type Harness } from '#test/unit/env/support';
 
 const harnesses: Harness[] = [];
+
+const OWN_ID = 'a'.repeat(64);
+const FOREIGN_ID = 'b'.repeat(64);
+
+/** Two stacks, one this checkout owns and one it does not. */
+function listFixture(): unknown {
+  return {
+    stacks: [
+      {
+        id: OWN_ID,
+        name: 'default',
+        project_root: REPO_ROOT,
+        branch_context: 'refs/heads/feat/env',
+        runtime: 'native',
+      },
+      {
+        id: FOREIGN_ID,
+        name: 'foreign',
+        project_root: '/tmp/foreign-checkout',
+        branch_context: 'refs/heads/other',
+        runtime: 'docker',
+      },
+    ],
+  };
+}
 
 afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.cleanup();
@@ -91,12 +116,82 @@ describe('env:supa', () => {
     }
   });
 
-  it('forwards a scoped stack stop unchanged', async () => {
+  it('forwards a scoped stack stop for a stack this checkout owns', async () => {
     const harness = newHarness();
+    harness.setListFixture(listFixture());
+
     const result = await harness.run(['supa', 'stop', '--stack', 'default']);
 
     expect(result.status).toBe(0);
-    expect(harness.bunxCalls().trim()).toBe('stop --stack default');
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack list --output-format json');
+    expect(calls).toContain('stop --stack default');
+  });
+
+  it('forwards a stop scoped by unique id prefix', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'stop', '--stack-id', 'aaaa']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls()).toContain('stop --stack-id aaaa');
+  });
+
+  it('refuses to stop a stack owned by another checkout (exit 6)', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'stop', '--stack', 'foreign']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('owned by /tmp/foreign-checkout');
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack list --output-format json');
+    expect(calls).not.toContain('stop');
+  });
+
+  it('refuses to stop a stack it cannot find (exit 6)', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'stop', '--stack', 'missing']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain("not found in 'supabase stack list'");
+    expect(harness.bunxCalls()).not.toContain('stop');
+  });
+
+  it('refuses stop without a stack scope (exit 2, no spawn)', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'stop']);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--stack <name>');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('rejects stack destroy outright (exit 2, no spawn)', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'stack', 'destroy', '--stack', 'default']);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('destroy');
+    expect(result.stderr).toContain('env:recreate --yes');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('rejects a bare destroy outright (exit 2, no spawn)', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'destroy', '--yes']);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(harness.bunxCalls()).toBe('');
   });
 
   it('forwards a stack list unchanged', async () => {
