@@ -15,11 +15,12 @@ values-file decision) and the `dev:*` scripts documented in `AGENTS.md`.
 
 Local provisioning is spread across `scripts/dev` (a 2,305-line Bash program)
 and twelve `dev:*` package scripts plus the root `dev` script. An agent must
-read several files to learn the incantation. `scripts/dev up` is idempotent and
-reuses a running stack, so the cold stack, migrations, seeds and `next build`
-are paid only when the checkout/stack is cold; the gaps are that nothing tells a
-second agent a healthy stack already exists in the same checkout, and that the
-current build fingerprint goes stale after a source edit.
+read several files to learn the incantation. `dev:status --json` already reports
+stack identity and health, and `scripts/dev up` is idempotent and reuses a
+running stack, so the cold stack, migrations, seeds and `next build` are paid
+only when the checkout/stack is cold. What is missing is a single idempotent
+`ensure` with a warm path and a stable agent-facing contract that composes
+start/build/serve — plus a build fingerprint that goes stale after a source edit.
 
 The 2026-11-07/08 review settled the target shape: one idempotent `ensure`
 command with profiles, a warm path under a second, a stable `--json` contract,
@@ -32,8 +33,11 @@ also made two things conditional:
 
 Phase 0 recorded the spike and the baseline on the pinned CLI (`supabase@3.0.0`,
 Bun 1.4.4, WSL2 Debian 12, x86_64: 16 vCPU, 19 GiB RAM, glibc 2.36, Docker
-29.9.1 running). The full evidence is `.dev/phase0-evidence.md`; the corrected
-spec is [`docs/plans/env-tool.md`](../plans/env-tool.md).
+29.9.1 running). The full evidence is [the phase-0 comment on
+#1077](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664);
+local `.dev/` logs are supplementary only and are not readable from other
+checkouts. The corrected spec is
+[`docs/plans/env-tool.md`](../plans/env-tool.md).
 
 ## Decision
 
@@ -56,9 +60,10 @@ spec is [`docs/plans/env-tool.md`](../plans/env-tool.md).
 4. **Native is the default and the only auto-selected runtime.** Every start
    passes the **selected** runtime explicitly (`native` by default, `docker`
    only when selected); Docker is `--runtime docker` / `SUPABASE_RUNTIME=docker`
-   only, and there is no silent fallback. An existing Docker stack is warned
-   about and continues to work; `env:recreate --runtime native --yes` converts
-   it.
+   only, and there is no silent fallback. An existing stack is warned about when
+   it uses Docker and continues to work; a capability restart passes the
+   stack's **persisted** runtime, never the default. The only Docker→native
+   conversion is `env:recreate --runtime native --yes`.
 5. **Identity is per checkout.** Stack identity is the CLI's
    `projectRoot + branch + stackName`; `--attach` is future work. Under
    `SUPABASE_SHARED=1` this checkout reuses another checkout's stack without any
@@ -70,8 +75,8 @@ spec is [`docs/plans/env-tool.md`](../plans/env-tool.md).
    to `APP_URL`; `down --all` (or a stopped stack) releases it. The 20-port block
    allocator lands after the cutover and stays conditional on the recorded
    create **and** resume port evidence.
-7. **`env:dev` is human-only HMR.** Agents use build + serve; the tool never
-   runs `next dev`.
+7. **`env:dev` is human-only HMR.** It starts web/admin HMR with `next dev`;
+   agents never run `next dev` and use build + serve instead.
 8. **`env:setup` mutates, `env:verify` observes.** Setup is human-only,
    idempotent and never writes a value. Verify is read-only and agent-safe:
    its default checks `.env.local` + the schema only (fast, unauthenticated) and
@@ -92,11 +97,14 @@ spec is [`docs/plans/env-tool.md`](../plans/env-tool.md).
 12. **`dev:admin` becomes `env:dev --admin`.** Human-only admin HMR on :4000,
     symmetric with `env:dev` for web; `apps/admin` stays out of `env:ensure`
     defaults.
-13. **`ensure` reconciles capabilities on the warm path.** When the requested
-    profile's exclude set differs from the running stack's enabled capabilities,
-    it stops and restarts **this checkout's** stack with the requested set —
-    never destroy, data is preserved — then re-probes (phase-0: ≈1.7 s stop +
-    5.0 s resume).
+13. **`ensure` reconciles capabilities only on request.** A running capability
+    superset satisfies a narrower profile; only **adding** capabilities can need
+    a restart. That restart requires `--reconcile` (plus `--yes` when
+    non-interactive); without it, exit 6 with a message naming the missing
+    capability. It runs under the start lock, keeps the stack's persisted
+    runtime and the currently observed API/DB/Studio/mail endpoints
+    (read-then-pin, not the phase-4 block), never destroys data, and re-probes
+    every requested capability (phase-0: ≈1.7 s stop + 5.0 s resume).
 
 > **Superseded wording.** The issue's pre-review appendix and its "varlock is
 > validator-only" acceptance line are superseded by item 3. varlock remains the
@@ -129,7 +137,9 @@ resumed with no port env, and destroyed. Only that stack was touched:
 | Are keys fixed demo JWTs or per-stack?                      | **Fixed constants across stacks.** `ANON_KEY`/`SERVICE_ROLE_KEY` are the demo JWTs (`iss=supabase-demo`); `PUBLISHABLE_KEY`/`SECRET_KEY` and the S3 access keys are also identical across stacks. Only URLs differ. Names only; values never recorded. |
 | Runtime                                                     | `--runtime native` explicitly; native available (Linux x86_64, glibc 2.36, `tar`, non-root); Docker 29.9.1 was running; no fallback.                                                                                                                   |
 
-Exact commands and outputs: `.dev/phase0-evidence.md` §Task 1.
+Exact commands and outputs: the [phase-0 evidence
+comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664)
+(Task 1); local `.dev/` logs are supplementary only.
 
 **Phase-4 verdict: GO**, with one caveat: `pgmeta.http` has no config section
 and cannot be pinned. The phase-4 PR must either accept one unpredictable
@@ -139,8 +149,9 @@ create.
 
 ### Baseline vs §12 budgets
 
-Host as above; native artifact cache warm; "cold" = new stack. Raw runs in
-`.dev/phase0-evidence.md` §Task 2.
+Host as above; native artifact cache warm; "cold" = new stack. Raw runs are in the [phase-0 evidence
+comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664)
+(Task 2); local `.dev/` logs are supplementary only.
 
 | Path                     | Budget  | p50                                                                      | p95                 | Verdict                                |
 | ------------------------ | ------- | ------------------------------------------------------------------------ | ------------------- | -------------------------------------- |
@@ -243,8 +254,11 @@ Revert the phase PR. Phases 1–2 keep `scripts/dev` alive, so reverting is a
 normal revert with no data migration. Phase 3 is the cutover: reverting it
 restores `scripts/dev` and the `dev:*` scripts; stacks and `.dev/` state are
 runtime-only and are not migrated. Phase 4's leases are runtime state outside
-the repo (the registry); deleting the registry directory reclaims everything,
-and the CLI's own stack state (`~/.supabase/stacks/<id>`) is untouched.
+the repo (the registry). Remove only **this checkout's** entries/leases when
+rolling back; never delete the shared registry directory, because other
+checkouts' live leases and locks live there. Stale entries are reclaimed by the
+TTL + dead-pid rules, and live entries/locks are preserved. The CLI's own stack
+state (`~/.supabase/stacks/<id>`) is untouched.
 
 ## Decisions and remaining items
 
