@@ -56,6 +56,7 @@ export interface Harness {
   writeRegistryEntry(entry: Record<string, unknown>): void;
   writeRawEntry(name: string, entry: unknown): void;
   bunxCalls(): string;
+  engineCalls(): string;
   track(closer: () => Promise<void> | void): void;
   cleanup(): Promise<void>;
 }
@@ -115,7 +116,24 @@ export function createHarness(): Harness {
   writeFileSync(bunxPath, FAKE_BUNX, { mode: 0o755 });
   chmodSync(bunxPath, 0o755);
 
+  // Container-engine stubs: read-only commands must never probe these.
+  for (const engine of ['docker', 'podman']) {
+    const enginePath = join(binDir, engine);
+    writeFileSync(
+      enginePath,
+      [
+        '#!/usr/bin/env bash',
+        `printf '%s\\n' "${engine} $*" >> "$FAKE_ENGINE_LOG"`,
+        'exit 0',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    chmodSync(enginePath, 0o755);
+  }
+
   const bunxLog = join(dir, 'bunx.log');
+  const engineLog = join(dir, 'engine.log');
   const statusFile = join(dir, 'stack-status.json');
   const listFile = join(dir, 'stack-list.json');
   const appUrlFile = join(dir, 'supa-app-url.txt');
@@ -128,6 +146,7 @@ export function createHarness(): Harness {
     LC_ALL: process.env.LC_ALL,
     STUDIQ_DEV_REGISTRY: registryDir,
     FAKE_BUNX_LOG: bunxLog,
+    FAKE_ENGINE_LOG: engineLog,
     FAKE_STACK_STATUS_FILE: statusFile,
     FAKE_STACK_LIST_FILE: listFile,
     FAKE_SUPA_APP_URL_FILE: appUrlFile,
@@ -172,6 +191,13 @@ export function createHarness(): Harness {
     bunxCalls() {
       try {
         return readFileSync(bunxLog, 'utf8');
+      } catch {
+        return '';
+      }
+    },
+    engineCalls() {
+      try {
+        return readFileSync(engineLog, 'utf8');
       } catch {
         return '';
       }

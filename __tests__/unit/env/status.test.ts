@@ -23,7 +23,8 @@ function newHarness(): Harness {
 describe('env:status --json', () => {
   it('reports a stopped checkout without crashing and without secrets', async () => {
     const harness = newHarness();
-    const result = await harness.run(['status', '--json']);
+    // SUPABASE_RUNTIME is not an input to a read-only command.
+    const result = await harness.run(['status', '--json'], { SUPABASE_RUNTIME: 'docker' });
 
     expect(result.status).toBe(0);
     const status = parseJsonObject(result.stdout);
@@ -79,6 +80,8 @@ describe('env:status --json', () => {
     const result = await harness.run(['status', '--json'], {
       APP_PORT: String(server.port),
       APP_URL: server.url,
+      // Must be ignored: the stack's own runtime is authoritative.
+      SUPABASE_RUNTIME: 'docker',
     });
 
     expect(result.status).toBe(0);

@@ -5,7 +5,6 @@ import { portInUse } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryDirTrusted } from '../lib/registry';
 import { REPO_ROOT, canon, currentBranchName } from '../lib/repo';
-import { nativeRuntimeSupported, resolveRuntime, runtimeAvailable } from '../lib/runtime';
 import { readListedStackRuntime, readStackStatus, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
 import { readWebPid } from '../lib/web';
@@ -48,9 +47,16 @@ async function buildReport(): Promise<DoctorReport> {
   const trusted = registryDirTrusted(registry.dir);
   const stack = contract.shared ? null : readStackStatus(contract.stackName);
   const listedRuntime = contract.shared ? null : readListedStackRuntime(contract.stackName);
-  const runtime = resolveRuntime(stack, listedRuntime);
-  const runtimeOk = runtimeAvailable(runtime.effective);
-  const nativeOk = nativeRuntimeSupported();
+  // Read-only commands never choose or predict a runtime (phase 2 `ensure` owns
+  // selection and exit 3). They report what the stack itself reports.
+  const observedRuntime = stack?.runtime || listedRuntime || null;
+  const runtimeSource = stack
+    ? 'running stack'
+    : listedRuntime
+      ? 'persisted stack'
+      : contract.shared
+        ? 'shared stack (owned by another checkout; not inspected)'
+        : 'none (no stack for this branch)';
 
   const webPid = readWebPid();
   const webHttp = await probeHttp(contract.appUrl);
@@ -71,10 +77,7 @@ async function buildReport(): Promise<DoctorReport> {
   const warnings: string[] = [];
 
   // Shared mode never starts a stack in this checkout, so a missing engine is
-  // informational there, not a conflict.
-  if (!runtimeOk && !contract.shared) {
-    problems.push(`runtime '${runtime.effective}' is unavailable on this machine`);
-  }
+  // not a conflict; runtime availability is phase 2's job, not doctor's.
   if (stack && !contract.shared) {
     if (stack.projectRoot && canon(stack.projectRoot) !== REPO_ROOT) {
       problems.push(`stack identity belongs to another checkout (${stack.projectRoot})`);
@@ -86,9 +89,9 @@ async function buildReport(): Promise<DoctorReport> {
       warnings.push('stack config drift: restart the stack to apply config.toml changes');
     }
   }
-  if (runtime.effective === 'docker') {
+  if (observedRuntime === 'docker') {
     warnings.push(
-      'this stack uses runtime=docker (explicit); recreate with --runtime native to convert',
+      'stack runtime=docker (compatibility mode); env:recreate --runtime native --yes will convert it',
     );
   }
   if (!trusted) {
@@ -135,22 +138,10 @@ async function buildReport(): Promise<DoctorReport> {
   lines.push(
     '',
     '▸ Runtime',
-    `  configured ${runtime.configured || 'blank (docker)'}`,
-    `  persisted  ${runtime.persisted ?? 'none'}`,
-    `  effective  ${runtime.effective}`,
-    `  ${runtime.effective.padEnd(9)}  ${
-      contract.shared
-        ? 'not used (shared mode never starts a stack here)'
-        : runtimeOk
-          ? 'ok'
-          : 'unavailable (the stack cannot start)'
-    }`,
+    `  observed   ${observedRuntime ?? 'unknown (not observable here)'}`,
+    `  source     ${runtimeSource}`,
+    '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
   );
-  if (runtime.effective !== 'native') {
-    lines.push(
-      `  native     ${nativeOk ? 'supported on this platform' : 'unsupported on this platform'}`,
-    );
-  }
 
   lines.push('', '▸ Ports');
   if (appPortBusy && webPid && isWebHealthy(webHttp)) {
