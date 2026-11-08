@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
+import { startTcpListener } from '#test/unit/env/support';
 
 interface CapabilitiesModule {
   capabilityDecision(
@@ -60,6 +61,57 @@ describe('capability reconciliation (spec §5.2, §13 test 13)', () => {
     expect(message).toContain('mail');
     expect(message).toContain('--reconcile');
     expect(message).toContain('--yes');
+  });
+
+  it('probes Realtime on its own port, never the edge inspector', async () => {
+    const listener = await startTcpListener(0);
+    try {
+      const inspectorOnly = await capabilities.probeCapabilities(['realtime'], {
+        apiUrl: 'http://127.0.0.1:1',
+        dbPort: 0,
+        mailUrl: null,
+        studioUrl: null,
+        services: ['realtime'],
+        ports: {
+          api: 0,
+          db: 0,
+          studio: 0,
+          mail: 0,
+          mailSmtp: 0,
+          mailPop3: 0,
+          realtime: 0,
+          analytics: 0,
+          edgeInspector: listener.port,
+          pooler: 0,
+          pgmeta: 0,
+        },
+      });
+      expect(inspectorOnly).toEqual({ ok: false, failed: ['realtime'] });
+
+      const ownPort = await capabilities.probeCapabilities(['realtime'], {
+        apiUrl: 'http://127.0.0.1:1',
+        dbPort: 0,
+        mailUrl: null,
+        studioUrl: null,
+        services: [],
+        ports: {
+          api: 0,
+          db: 0,
+          studio: 0,
+          mail: 0,
+          mailSmtp: 0,
+          mailPop3: 0,
+          realtime: listener.port,
+          analytics: 0,
+          edgeInspector: 0,
+          pooler: 0,
+          pgmeta: 0,
+        },
+      });
+      expect(ownPort).toEqual({ ok: true, failed: [] });
+    } finally {
+      await listener.close();
+    }
   });
 
   it('fails readiness when a requested service is unreachable', async () => {

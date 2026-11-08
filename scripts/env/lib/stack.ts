@@ -16,6 +16,8 @@ export interface StackPorts {
   mail: number;
   mailSmtp: number;
   mailPop3: number;
+  /** Realtime's own RPC port (`realtime.rpc`), never the edge inspector. */
+  realtime: number;
   analytics: number;
   edgeInspector: number;
   pooler: number;
@@ -176,6 +178,7 @@ function parseStatus(parsed: JsonObject): StackStatus | null {
       mail: endpointPort(endpoints, 'mail.http'),
       mailSmtp: endpointPort(endpoints, 'mail.smtp'),
       mailPop3: endpointPort(endpoints, 'mail.pop3'),
+      realtime: endpointPort(endpoints, 'realtime.rpc'),
       analytics: endpointPort(endpoints, 'analytics.http'),
       edgeInspector: endpointPort(endpoints, 'functions.inspector'),
       pooler: endpointPort(endpoints, 'pooler.sql'),

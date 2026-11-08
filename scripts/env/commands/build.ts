@@ -10,7 +10,7 @@ import {
   writeBuildState,
   writeStackRecord,
 } from '../lib/state';
-import { runBuildUnderLock } from '../lib/locks';
+import { buildWithStableFingerprint } from '../lib/build-run';
 import { probeHttp } from '../lib/health';
 import { readStack, type StackEnv, type StackStatus } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
@@ -120,19 +120,26 @@ export async function runBuild(parsed: ParsedCommand): Promise<number> {
   let built = false;
   if (options.force || !current || !buildArtifactPresent()) {
     appendEnvLog('build: building @studiq/web');
-    const result = runBuildUnderLock({ env: process.env });
+    const result = buildWithStableFingerprint({
+      root: REPO_ROOT,
+      mode: BUILD_MODE,
+      envHash,
+      env: process.env,
+    });
     if (result.timedOut) {
       throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
     }
-    if (!result.ok) {
+    if (!result.ok || !result.stable) {
       logBuildOutput(result.output);
       throw new EnvFailure(
         EXIT_START_FAILED,
-        `build failed (exit ${result.exitCode ?? 'unknown'}); see .dev/env.log`,
+        result.ok
+          ? 'source changed while the build ran; re-run env:build to rebuild'
+          : `build failed (exit ${result.exitCode ?? 'unknown'}); see .dev/env.log`,
       );
     }
     writeBuildState({
-      fingerprint,
+      fingerprint: result.fingerprintAfter,
       envHash,
       mode: BUILD_MODE,
       builtAt: new Date().toISOString(),

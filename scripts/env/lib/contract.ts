@@ -73,18 +73,61 @@ export function readContract(): Contract {
  * `APP_URL`. The fallback is the same documented default, never a value file.
  */
 export function readContractLenient(): Contract {
+  // Each field falls back independently: a bad APP_PORT/APP_URL must not throw
+  // away a valid SUPABASE_STACK, or `down --all` could target the wrong stack.
+  let shared = false;
   try {
-    return readContract();
+    shared = readShared();
   } catch {
-    const shared = (process.env.SUPABASE_SHARED ?? '') === '1';
-    return {
-      shared,
-      sharedOwner: process.env.SUPABASE_SHARED_OWNER || null,
-      stackName: null,
-      appPort: 3000,
-      appUrl: 'http://localhost:3000',
-    };
+    shared = false;
   }
+
+  let stackName: string | null = null;
+  try {
+    stackName = readStackName();
+  } catch {
+    stackName = null;
+  }
+
+  const rawAppUrl = process.env.APP_URL ?? '';
+  let appPort = 3000;
+  let explicitValid = false;
+  const explicitPort = process.env.APP_PORT ?? '';
+  if (explicitPort) {
+    try {
+      appPort = parsePort(explicitPort, 'APP_PORT');
+      explicitValid = true;
+    } catch {
+      appPort = 3000;
+    }
+  }
+  if (!explicitValid) {
+    const fromUrl = urlPort(rawAppUrl);
+    if (fromUrl) {
+      try {
+        appPort = parsePort(fromUrl, 'APP_URL');
+      } catch {
+        appPort = 3000;
+      }
+    }
+  }
+
+  let appUrl = `http://localhost:${appPort}`;
+  if (rawAppUrl) {
+    try {
+      appUrl = trimTrailingSlash(new URL(rawAppUrl).toString());
+    } catch {
+      /* invalid APP_URL: keep the derived default */
+    }
+  }
+
+  return {
+    shared,
+    sharedOwner: process.env.SUPABASE_SHARED_OWNER || null,
+    stackName,
+    appPort,
+    appUrl,
+  };
 }
 
 /** Apply an app-port lease to a contract whose URL was not explicitly set. */

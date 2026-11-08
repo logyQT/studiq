@@ -12,7 +12,7 @@
  * contract/no secrets), §13 test 13 (capability reconcile), and shared-mode
  * `ensure`/`status`/`ports`.
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -138,6 +138,40 @@ function run(args: string[], extraEnv: Record<string, string | undefined> = {}):
     stderr: result.stderr ?? '',
     ms: Math.round(performance.now() - start),
   };
+}
+
+function runAsync(
+  args: string[],
+  extraEnv: Record<string, string | undefined> = {},
+): Promise<RunResult> {
+  const shimDir = join(tempDir, 'bin');
+  const start = performance.now();
+  return new Promise<RunResult>((resolvePromise) => {
+    const child = spawn('bun', ['run', ...args], {
+      cwd: REPO_ROOT,
+      env: {
+        ...baseEnv(),
+        PATH: `${shimDir}:${process.env.PATH ?? ''}`,
+        ENV_TRACE_FILE: traceFile,
+        ...extraEnv,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      stdout += String(chunk);
+    });
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      stderr += String(chunk);
+    });
+    child.on('error', () => {
+      resolvePromise({ code: 1, stdout, stderr, ms: Math.round(performance.now() - start) });
+    });
+    child.on('close', (code) => {
+      resolvePromise({ code, stdout, stderr, ms: Math.round(performance.now() - start) });
+    });
+  });
 }
 
 function traceLines(): string[] {
@@ -313,23 +347,36 @@ async function main(): Promise<number> {
   console.log('');
 
   try {
-    console.log('▸ cold `ensure --profile api`');
+    console.log('▸ cold `ensure --profile api` (two concurrent callers)');
     clearTrace();
-    const cold = run(['env:ensure', '--profile', 'api', '--json'], childEnv);
-    check(cold.code === 0, `cold api ensure exits 0 (got ${cold.code})`);
-    const coldJson = json(cold);
-    check(coldJson.cold === true, 'cold api ensure reports cold:true');
+    const [coldA, coldB] = await Promise.all([
+      runAsync(['env:ensure', '--profile', 'api', '--json'], childEnv),
+      runAsync(['env:ensure', '--profile', 'api', '--json'], childEnv),
+    ]);
+    const coldJson = json(coldA);
+    const coldJsonB = json(coldB);
+    check(
+      coldA.code === 0 &&
+        coldB.code === 0 &&
+        (coldJson.cold === true || coldJsonB.cold === true) &&
+        object(coldJson.stack).id === object(coldJsonB.stack).id,
+      `both concurrent cold ensures exit 0 with one cold caller and one stack (got ${coldA.code}/${coldB.code})`,
+    );
+    check(
+      object(coldJson.ports).app === object(coldJsonB.ports).app,
+      'concurrent callers share one app-port lease',
+    );
     check(coldJson.runtime === 'native', 'runtime is native by default (§11 test 7)');
     check(object(coldJson.ports).block === null, 'ports.block is null (phase 2)');
     check(string(coldJson.profile) === 'api', 'profile is api');
     check(object(coldJson.stack).projectRoot === REPO_ROOT, 'stack belongs to this checkout');
-    check(countCalls('stack start') === 1, 'exactly one stack start on a cold ensure');
-    console.log(`    cold wall time: ${cold.ms} ms`);
+    check(countCalls('stack start') === 1, 'exactly one stack start for concurrent cold callers');
+    console.log(`    cold wall time: ${Math.max(coldA.ms, coldB.ms)} ms`);
     const stack = object(coldJson.stack);
     const stackId = string(stack.id);
     const coldPorts = object(coldJson.ports);
     check(stackId.length > 0, 'cold ensure reports a stack id');
-    scanSecrets('cold ensure JSON', cold.stdout);
+    scanSecrets('cold ensure JSON', `${coldA.stdout}\n${coldB.stdout}`);
 
     const statusFixture = readStackStatusFixture(scratchName);
     const dbUrl = string(
@@ -464,10 +511,7 @@ async function main(): Promise<number> {
       missing.length === 0,
       `JSON contract has every field (missing: ${missing.join(', ') || 'none'})`,
     );
-    check(
-      /'warmMs'/.test(JSON.stringify(reconcileJson)) === false,
-      'JSON contract has no warmMs field',
-    );
+    check(!('warmMs' in reconcileJson), 'JSON contract has no warmMs field');
     scanSecrets('contract JSON', JSON.stringify(reconcileJson));
 
     console.log('');

@@ -32,6 +32,7 @@ export interface RecordedPorts {
   mail: number;
   mailSmtp: number;
   mailPop3: number;
+  realtime: number;
   analytics: number;
   edgeInspector: number;
   pooler: number;
@@ -132,6 +133,7 @@ function toPorts(value: unknown): RecordedPorts {
     mail: toPort(ports.mail),
     mailSmtp: toPort(ports.mailSmtp),
     mailPop3: toPort(ports.mailPop3),
+    realtime: toPort(ports.realtime),
     analytics: toPort(ports.analytics),
     edgeInspector: toPort(ports.edgeInspector),
     pooler: toPort(ports.pooler),

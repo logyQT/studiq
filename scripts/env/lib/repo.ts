@@ -18,6 +18,16 @@ export function canon(path: string): string {
   }
 }
 
+/**
+ * Whether a CLI/registry path names this checkout. The Supabase CLI may report
+ * a non-canonical project root (symlinked worktree, trailing form), so every
+ * ownership/lease comparison goes through `canon`.
+ */
+export function isThisCheckout(path: string | null | undefined): boolean {
+  if (!path) return false;
+  return canon(path) === REPO_ROOT;
+}
+
 function runGit(args: string[], input?: string): string | null {
   const result = spawnSync('git', ['-C', REPO_ROOT, ...args], {
     encoding: 'utf8',

@@ -16,17 +16,20 @@ export interface ProbeContext {
   mailUrl: string | null;
   studioUrl: string | null;
   ports: RecordedPorts;
+  /** Running service names from the stack record/status. */
+  services?: string[];
   /** Shared mode cannot inspect the database; the shared owner already proved it. */
   assumeDatabase?: boolean;
 }
 
-export function probeContextFromStatus(status: StackStatus): ProbeContext {
+export function probeContextFromStatus(status: StackStatus, services: string[] = []): ProbeContext {
   return {
     apiUrl: status.apiUrl,
     dbPort: status.ports.db,
     mailUrl: status.mailUrl ?? (status.ports.mail ? `http://127.0.0.1:${status.ports.mail}` : null),
     studioUrl:
       status.studioUrl ?? (status.ports.studio ? `http://127.0.0.1:${status.ports.studio}` : null),
+    services,
     ports: {
       api: status.ports.api,
       db: status.ports.db,
@@ -34,6 +37,7 @@ export function probeContextFromStatus(status: StackStatus): ProbeContext {
       mail: status.ports.mail,
       mailSmtp: status.ports.mailSmtp,
       mailPop3: status.ports.mailPop3,
+      realtime: status.ports.realtime,
       analytics: status.ports.analytics,
       edgeInspector: status.ports.edgeInspector,
       pooler: status.ports.pooler,
@@ -51,6 +55,7 @@ export function probeContextFromRecord(record: StackRecord): ProbeContext {
     studioUrl:
       record.urls.studio ??
       (record.ports.studio ? `http://127.0.0.1:${record.ports.studio}` : null),
+    services: record.capabilities,
     ports: record.ports,
   };
 }
@@ -77,9 +82,13 @@ async function probeCapability(capability: Capability, context: ProbeContext): P
     case 'mail':
       return context.mailUrl ? isOk(await probeHttp(context.mailUrl)) : false;
     case 'realtime':
-      return context.ports.edgeInspector > 0
-        ? portInUse(context.ports.edgeInspector)
-        : isOk(await probeHttp(`${context.apiUrl}/realtime/v1/`));
+      // Realtime has its own RPC port (`realtime.rpc`). Only when the CLI does
+      // not expose one do we fall back to its API-gateway route, and only when
+      // the stack/service record actually lists Realtime. The edge inspector
+      // port must never stand in for Realtime.
+      if (context.ports.realtime > 0) return portInUse(context.ports.realtime);
+      if (!(context.services ?? []).includes('realtime')) return false;
+      return isOk(await probeHttp(`${context.apiUrl}/realtime/v1/`));
     case 'functions':
       return context.ports.edgeInspector > 0
         ? portInUse(context.ports.edgeInspector)
@@ -182,6 +191,7 @@ export function sharedProbeContext(): ProbeContext {
       mail: Number(urlPort(mailUrl ?? '') ?? process.env.SUPABASE_MAIL_PORT ?? '0') || 0,
       mailSmtp: 0,
       mailPop3: 0,
+      realtime: 0,
       analytics: 0,
       edgeInspector: 0,
       pooler: 0,

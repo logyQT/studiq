@@ -4,7 +4,7 @@ import { readContractLenient } from '../lib/contract';
 import { appendEnvLog, identityKey, readStackRecord } from '../lib/state';
 import { ensureRegistryDir } from '../lib/locks';
 import { leaseProjectId, readLease, removeLease } from '../lib/lease';
-import { REPO_ROOT, canon, currentBranchRef } from '../lib/repo';
+import { REPO_ROOT, isThisCheckout, currentBranchRef } from '../lib/repo';
 import { readStackList, readStackStatus } from '../lib/stack';
 import { stopStack } from '../lib/stack-lifecycle';
 import { stopWebServer } from '../lib/web';
@@ -57,12 +57,14 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
     }
   }
 
-  const stoppedPid = stopWebServer();
+  const webStop = stopWebServer();
   const lines: string[] = [];
   lines.push(
-    stoppedPid
-      ? `Stopped this checkout's web server (pid ${stoppedPid})`
-      : 'Web server is not running in this checkout.',
+    webStop.stopped
+      ? `Stopped this checkout's web server (pid ${webStop.pid})`
+      : webStop.pid
+        ? `Web pid ${webStop.pid} does not belong to this checkout (or could not be signalled); leaving it.`
+        : 'Web server is not running in this checkout.',
   );
 
   if (!options.all) {
@@ -88,7 +90,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
     const wantedName = cliStackName || 'default';
     const listedOurs = (listed ?? []).find(
       (entry) =>
-        entry.projectRoot === REPO_ROOT &&
+        isThisCheckout(entry.projectRoot) &&
         (entry.name || 'default') === wantedName &&
         (entry.branch ?? '') === branch,
     );
@@ -119,14 +121,14 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
   const wantedName = cliStackName || 'default';
   const listedOurs = (listed ?? []).find(
     (entry) =>
-      entry.projectRoot === REPO_ROOT &&
+      isThisCheckout(entry.projectRoot) &&
       (entry.name || 'default') === wantedName &&
       (entry.branch ?? '') === branch,
   );
   const foreign = listed?.find(
     (entry) =>
       entry.name === wantedName &&
-      entry.projectRoot !== REPO_ROOT &&
+      !isThisCheckout(entry.projectRoot) &&
       (entry.branch ?? '') === branch,
   );
   if (foreign && !listedOurs) {
@@ -135,7 +137,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
       `stack '${wantedName}' is owned by ${foreign.projectRoot}; refusing to stop it`,
     );
   }
-  if (stack && stack.projectRoot && canon(stack.projectRoot) !== REPO_ROOT) {
+  if (stack && stack.projectRoot && !isThisCheckout(stack.projectRoot)) {
     throw new EnvFailure(
       EXIT_CONFLICT,
       `stack ${stack.id.slice(0, 12)} belongs to ${stack.projectRoot}, not this checkout; refusing to stop it`,

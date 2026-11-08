@@ -12,7 +12,8 @@ import {
   writeStackRecord,
   type StackRecord,
 } from '../lib/state';
-import { acquireStartLock, ensureRegistryDir, pidAlive, runBuildUnderLock } from '../lib/locks';
+import { acquireStartLock, ensureRegistryDir, pidAlive, withRegistryLeaseLock } from '../lib/locks';
+import { buildWithStableFingerprint } from '../lib/build-run';
 import {
   heartbeatAgeMs,
   isLeaseReclaimable,
@@ -25,7 +26,7 @@ import {
   type AppLease,
 } from '../lib/lease';
 import { readRegistry } from '../lib/registry';
-import { REPO_ROOT, currentBranchRef } from '../lib/repo';
+import { REPO_ROOT, canon, currentBranchRef, isThisCheckout } from '../lib/repo';
 import { portInUse } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { readListedStackRuntime, readStack, readStackList, type StackRead } from '../lib/stack';
@@ -95,7 +96,7 @@ function stackLabel(name: string | null): string {
 function recordMatches(record: StackRecord | null, name: string | null, branch: string): boolean {
   return (
     record !== null &&
-    record.projectRoot === REPO_ROOT &&
+    isThisCheckout(record.projectRoot) &&
     (record.name || 'default') === stackLabel(name) &&
     (record.branch ?? '') === branch
   );
@@ -167,7 +168,7 @@ interface LeaseResolution {
   pendingExplicitChange: boolean;
 }
 
-async function resolveLease(options: {
+async function resolveLeaseLocked(options: {
   contract: Contract;
   cliStackName: string | null;
   branch: string;
@@ -179,7 +180,6 @@ async function resolveLease(options: {
   const projectId = leaseProjectId(options.key);
   const stackName = options.cliStackName ?? '';
   const existing = readLease(dir, projectId);
-  const registry = readRegistry();
 
   const preferred = options.contract.appPort || 3000;
   const candidates: number[] = [];
@@ -196,6 +196,9 @@ async function resolveLease(options: {
   let chosen = 0;
   for (const port of candidates) {
     if (port < 1 || port > 65535 || RESERVED_APP_PORTS.has(port)) continue;
+    // Re-read under the lease lock on every candidate: a non-`env` writer
+    // (`scripts/dev`) may have claimed a port since the previous attempt.
+    const registry = readRegistry();
     const foreign = registry.entries.find(
       (entry) => entry.projectId !== projectId && entry.appPort === port,
     );
@@ -206,7 +209,7 @@ async function resolveLease(options: {
         raw !== null &&
         (listed ?? []).some(
           (stack) =>
-            stack.projectRoot === raw.projectRoot &&
+            canon(stack.projectRoot) === canon(raw.projectRoot) &&
             (stack.name || 'default') === (raw.stackName || 'default') &&
             (stack.branch ?? '') === raw.branch &&
             stack.owner === 'reachable',
@@ -274,6 +277,19 @@ async function resolveLease(options: {
   );
   if (!pendingExplicitChange) writeLease(lease);
   return { contract, lease, dir, projectId, pendingExplicitChange };
+}
+
+async function resolveLease(options: {
+  contract: Contract;
+  cliStackName: string | null;
+  branch: string;
+  key: string;
+  explicitPort: number | null;
+  serve: boolean;
+}): Promise<LeaseResolution> {
+  // Serialize read-registry + probe + write-lease across checkouts. The start
+  // lock is separate and is taken after the port decision.
+  return withRegistryLeaseLock(() => resolveLeaseLocked(options));
 }
 
 function resolveRuntime(options: {
@@ -427,13 +443,26 @@ async function runSharedEnsure(
     if (options.forceBuild || !current) {
       applyStackEnv(sharedEnv, { appUrl: contract.appUrl, appEnv });
       const previousBuild = buildArtifactPresent();
-      if (webPid) stopWebServer();
+      if (webPid) {
+        const stopped = stopWebServer();
+        if (!stopped.stopped) {
+          throw new EnvFailure(
+            EXIT_CONFLICT,
+            `could not stop the web server (pid ${webPid}) for a safe rebuild`,
+          );
+        }
+      }
       appendEnvLog('ensure(shared): building @studiq/web');
-      const build = runBuildUnderLock({ env: process.env });
+      const build = buildWithStableFingerprint({
+        root: REPO_ROOT,
+        mode: BUILD_MODE,
+        envHash,
+        env: process.env,
+      });
       if (build.timedOut) {
         throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
       }
-      if (!build.ok) {
+      if (!build.ok || !build.stable) {
         if (previousBuild) {
           const restored = startWebServer({
             appPort: contract.appPort,
@@ -450,11 +479,13 @@ async function runSharedEnsure(
         }
         throw new EnvFailure(
           EXIT_START_FAILED,
-          `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`,
+          build.ok
+            ? 'source changed while the build ran; re-run env:ensure to rebuild'
+            : `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`,
         );
       }
       writeBuildState({
-        fingerprint: computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }),
+        fingerprint: build.fingerprintAfter,
         envHash,
         mode: BUILD_MODE,
         builtAt: new Date().toISOString(),
@@ -599,7 +630,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
 
     if (stackRead) {
       running = true;
-      probeContext = probeContextFromStatus(stackRead.status);
+      probeContext = probeContextFromStatus(stackRead.status, stackRead.services);
       probeOk = (await probeCapabilities(requested, probeContext)).ok;
     }
 
@@ -714,7 +745,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       }
       stackRead = refreshed;
       running = true;
-      probeContext = probeContextFromStatus(refreshed.status);
+      probeContext = probeContextFromStatus(refreshed.status, refreshed.services);
       probeOk = await waitForCapabilities(requested, probeContext, timeoutSeconds);
       if (!probeOk) {
         throw new EnvFailure(
@@ -803,15 +834,30 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         const previousBuild = buildArtifactPresent();
         if (webPidBefore) {
           appendEnvLog(`ensure: stopping web (pid ${webPidBefore}) for a safe rebuild`);
-          stopWebServer();
+          const stopped = stopWebServer();
+          if (!stopped.stopped) {
+            throw new EnvFailure(
+              EXIT_CONFLICT,
+              `could not stop the web server (pid ${webPidBefore}) for a safe rebuild`,
+            );
+          }
         }
         appendEnvLog('ensure: building @studiq/web (fingerprint mismatch or --force-build)');
-        const build = runBuildUnderLock({ env: process.env });
+        const build = buildWithStableFingerprint({
+          root: REPO_ROOT,
+          mode: BUILD_MODE,
+          envHash: effectiveEnvHash,
+          env: process.env,
+        });
         if (build.timedOut) {
           throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
         }
-        if (!build.ok) {
-          appendEnvLog(`ensure: build failed (exit ${build.exitCode ?? 'unknown'})`);
+        if (!build.ok || !build.stable) {
+          appendEnvLog(
+            build.ok
+              ? 'ensure: source changed while the build ran; not persisting the fingerprint'
+              : `ensure: build failed (exit ${build.exitCode ?? 'unknown'})`,
+          );
           if (previousBuild) {
             const restored = startWebServer({
               appPort: contract.appPort,
@@ -828,16 +874,13 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           }
           throw new EnvFailure(
             EXIT_START_FAILED,
-            `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`,
+            build.ok
+              ? 'source changed while the build ran; re-run env:ensure to rebuild'
+              : `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`,
           );
         }
-        const fingerprint = computeBuildFingerprint({
-          root: REPO_ROOT,
-          mode: BUILD_MODE,
-          envHash: effectiveEnvHash,
-        });
         writeBuildState({
-          fingerprint,
+          fingerprint: build.fingerprintAfter,
           envHash: effectiveEnvHash,
           mode: BUILD_MODE,
           builtAt: new Date().toISOString(),

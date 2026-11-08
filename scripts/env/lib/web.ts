@@ -63,24 +63,30 @@ export function readWebPid(): number | null {
   return null;
 }
 
-function terminateWebPid(pid: number): void {
+function terminateWebPid(pid: number): boolean {
   if (!pidAlive(pid)) {
     try {
       if (readFileSync(WEB_PID_FILE, 'utf8').trim() === String(pid)) rmSync(WEB_PID_FILE);
     } catch {
       /* gone */
     }
-    return;
+    return false;
   }
-  if (!hasWorktreeMarker(pid)) return;
+  if (!hasWorktreeMarker(pid)) return false;
 
-  if (spawnSync('kill', ['-TERM', '--', `-${pid}`]).status !== 0) {
+  let signalled = false;
+  if (spawnSync('kill', ['-TERM', '--', `-${pid}`]).status === 0) {
+    signalled = true;
+  } else {
     try {
       process.kill(pid, 'SIGTERM');
+      signalled = true;
     } catch {
       /* already gone */
     }
   }
+  if (!signalled) return false;
+
   const deadline = Date.now() + 15_000;
   while (pidAlive(pid) && Date.now() < deadline) {
     spawnSync('sleep', ['0.2']);
@@ -94,22 +100,31 @@ function terminateWebPid(pid: number): void {
       }
     }
   }
-  try {
-    if (readFileSync(WEB_PID_FILE, 'utf8').trim() === String(pid)) rmSync(WEB_PID_FILE);
-  } catch {
-    /* gone */
+  const stopped = !pidAlive(pid);
+  if (stopped) {
+    try {
+      if (readFileSync(WEB_PID_FILE, 'utf8').trim() === String(pid)) rmSync(WEB_PID_FILE);
+    } catch {
+      /* gone */
+    }
   }
+  return stopped;
+}
+
+export interface StopWebResult {
+  pid: number | null;
+  /** True only when this checkout's server was signalled and is now gone. */
+  stopped: boolean;
 }
 
 /** Stop only this checkout's web server; idempotent. */
-export function stopWebServer(): number | null {
+export function stopWebServer(): StopWebResult {
   const pid = readWebPid();
   if (!pid) {
     rmSync(WEB_PID_FILE, { force: true });
-    return null;
+    return { pid: null, stopped: false };
   }
-  terminateWebPid(pid);
-  return pid;
+  return { pid, stopped: terminateWebPid(pid) };
 }
 
 export interface StartWebOptions {

@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
   chmodSync,
@@ -8,6 +8,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -32,8 +33,10 @@ export function pidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // Only ESRCH proves the pid is gone. EPERM (or any other error) means the
+    // process may still exist under another user; never reclaim a live claim.
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
   }
 }
 
@@ -108,6 +111,209 @@ function writeLock(file: string, content: LockContent): void {
   chmodSync(file, 0o600);
 }
 
+interface MutexHandle {
+  release(): Promise<void>;
+}
+
+function hasFlock(): boolean {
+  const result = spawnSync('flock', ['--version'], { encoding: 'utf8', timeout: 5_000 });
+  return result.status === 0;
+}
+
+/**
+ * Kernel mutex for the start lock's check-and-takeover critical section.
+ *
+ * A `flock` child holds the lock and waits on stdin; we signal it to release.
+ * That keeps the lock held across the JavaScript critical section, which a
+ * plain file+rename cannot do (two waiters could both replace a dead holder).
+ */
+async function acquireKernelMutex(path: string, waitSeconds: number): Promise<MutexHandle | null> {
+  if (!hasFlock()) return null;
+  return new Promise<MutexHandle>((resolvePromise, reject) => {
+    const child = spawn(
+      'flock',
+      ['-w', String(waitSeconds), path, 'sh', '-c', 'printf ready; IFS= read -r _'],
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
+    let stdout = '';
+    let settled = false;
+    const timer = setTimeout(
+      () => {
+        if (settled) return;
+        settled = true;
+        child.kill('SIGKILL');
+        reject(
+          new EnvFailure(
+            EXIT_TIMEOUT,
+            `timed out after ${waitSeconds}s waiting for the start-lock mutex (${path})`,
+          ),
+        );
+      },
+      (waitSeconds + 5) * 1000,
+    );
+    timer.unref?.();
+
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      stdout += String(chunk);
+      if (!stdout.includes('ready') || settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolvePromise({
+        async release() {
+          try {
+            child.stdin?.write('\n');
+          } catch {
+            /* child already gone */
+          }
+          await new Promise<void>((done) => {
+            if (child.exitCode !== null || child.signalCode !== null) return done();
+            child.once('close', () => done());
+          });
+        },
+      });
+    });
+    child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(
+        new EnvFailure(
+          EXIT_CONFLICT,
+          `cannot run the start-lock mutex: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+    });
+    child.on('close', () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(
+        new EnvFailure(
+          EXIT_TIMEOUT,
+          `timed out after ${waitSeconds}s waiting for the start-lock mutex (${path})`,
+        ),
+      );
+    });
+  });
+}
+
+/** Portable fallback when `flock` is unavailable: atomic `mkdir` + owner pid. */
+async function acquireDirMutex(path: string, waitSeconds: number): Promise<MutexHandle> {
+  const deadline = Date.now() + waitSeconds * 1000;
+  for (;;) {
+    try {
+      mkdirSync(path, { mode: 0o700 });
+      writeFileSync(join(path, 'pid'), `${process.pid}\n`, { mode: 0o600 });
+      return {
+        async release() {
+          rmSync(path, { recursive: true, force: true });
+        },
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      let owner = 0;
+      try {
+        owner = Number(readFileSync(join(path, 'pid'), 'utf8').trim());
+      } catch {
+        /* owner unknown */
+      }
+      if (owner && !pidAlive(owner)) {
+        rmSync(path, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new EnvFailure(
+          EXIT_TIMEOUT,
+          `timed out after ${waitSeconds}s waiting for the start-lock mutex (${path})`,
+        );
+      }
+      await sleep(50);
+    }
+  }
+}
+
+async function acquireStartMutex(path: string, waitSeconds: number): Promise<MutexHandle> {
+  return (await acquireKernelMutex(path, waitSeconds)) ?? acquireDirMutex(path, waitSeconds);
+}
+
+/**
+ * Short registry-wide mutex around "read leases + probe port + write lease".
+ * The lease lock is deliberately separate from the start lock: it is held only
+ * for the port decision, not for the whole start.
+ */
+export async function withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T> {
+  const dir = join(ensureRegistryDir(), 'locks');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const file = join(dir, 'lease.lock');
+  const token = `${process.pid}-${randomBytes(8).toString('hex')}`;
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    try {
+      writeFileSync(
+        file,
+        `${JSON.stringify({ pid: process.pid, token, acquiredAt: new Date().toISOString() })}\n`,
+        { mode: 0o600, flag: 'wx' },
+      );
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw new EnvFailure(
+          EXIT_CONFLICT,
+          `cannot create the lease lock ${file}: ${(error as Error).message}`,
+        );
+      }
+      let owner = 0;
+      let observedToken = '';
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+        if (isObject(parsed)) {
+          owner = typeof parsed.pid === 'number' ? parsed.pid : 0;
+          observedToken = typeof parsed.token === 'string' ? parsed.token : '';
+        }
+      } catch {
+        /* corrupt/stale */
+      }
+      if (!owner || !pidAlive(owner)) {
+        // Stale lock: remove only while it still carries the token we observed.
+        try {
+          const current: unknown = JSON.parse(readFileSync(file, 'utf8'));
+          if (isObject(current) && current.token === observedToken) rmSync(file, { force: true });
+        } catch {
+          // Corrupt lock: reclaim only after it is safely old, never a fresh one.
+          try {
+            const age = Date.now() - statSync(file).mtimeMs;
+            if (age > 5_000) rmSync(file, { force: true });
+          } catch {
+            /* vanished */
+          }
+        }
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new EnvFailure(
+          EXIT_TIMEOUT,
+          `timed out after 60s waiting for the registry lease lock (${file})`,
+        );
+      }
+      await sleep(50);
+    }
+  }
+
+  try {
+    return await fn();
+  } finally {
+    try {
+      const current: unknown = JSON.parse(readFileSync(file, 'utf8'));
+      if (isObject(current) && current.token === token) rmSync(file, { force: true });
+    } catch {
+      /* gone/replaced */
+    }
+  }
+}
+
 export interface StartLock {
   file: string;
   release(): void;
@@ -139,6 +345,7 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
 
   const token = `${process.pid}-${randomBytes(8).toString('hex')}`;
   const deadline = Date.now() + options.waitSeconds * 1000;
+  const mutexPath = `${file}.mutex`;
   let announced = false;
 
   for (;;) {
@@ -153,35 +360,46 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
       heartbeatAt: now,
     };
 
+    // Serialize read-check-replace so two waiters cannot both take over a
+    // dead holder. The kernel/dir mutex is held only for this critical section.
+    const mutex = await acquireStartMutex(mutexPath, Math.min(options.waitSeconds, 30));
+    let acquired = false;
     try {
-      writeFileSync(file, `${JSON.stringify(content)}\n`, { mode: 0o600, flag: 'wx' });
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-        throw new EnvFailure(
-          EXIT_CONFLICT,
-          `cannot create start lock ${file}: ${(error as Error).message}`,
-        );
+      const holder = readLock(file);
+      if (!holder || !pidAlive(holder.pid)) {
+        rmSync(file, { force: true });
+        try {
+          writeFileSync(file, `${JSON.stringify(content)}\n`, { mode: 0o600, flag: 'wx' });
+          acquired = true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+            throw new EnvFailure(
+              EXIT_CONFLICT,
+              `cannot create start lock ${file}: ${(error as Error).message}`,
+            );
+          }
+        }
       }
+    } finally {
+      await mutex.release();
     }
 
-    const holder = readLock(file);
-    if (!holder || !pidAlive(holder.pid)) {
-      // No healthy stack to protect: take over immediately.
-      rmSync(file, { force: true });
-      continue;
-    }
+    if (acquired) break;
     if (Date.now() >= deadline) {
+      const holder = readLock(file);
       throw new EnvFailure(
         EXIT_TIMEOUT,
-        `timed out after ${options.waitSeconds}s waiting for the start lock (pid ${holder.pid})`,
+        `timed out after ${options.waitSeconds}s waiting for the start lock${holder ? ` (pid ${holder.pid})` : ''}`,
       );
     }
     if (!announced) {
       announced = true;
-      appendEnvLog(
-        `ensure: waiting for start lock held by pid ${holder.pid} (stack ${options.stackName})`,
-      );
+      const holder = readLock(file);
+      if (holder) {
+        appendEnvLog(
+          `ensure: waiting for start lock held by pid ${holder.pid} (stack ${options.stackName})`,
+        );
+      }
     }
     await sleep(100);
   }
@@ -221,11 +439,6 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
       appendEnvLog(`ensure: start lock released (stack ${options.stackName})`);
     },
   };
-}
-
-function hasFlock(): boolean {
-  const result = spawnSync('flock', ['--version'], { encoding: 'utf8', timeout: 5_000 });
-  return result.status === 0;
 }
 
 export interface BuildRunResult {

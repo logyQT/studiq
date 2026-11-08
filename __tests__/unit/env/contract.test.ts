@@ -37,6 +37,13 @@ interface ContractModule {
     },
     port: number,
   ): { appPort: number; appUrl: string };
+  readContractLenient(): {
+    shared: boolean;
+    sharedOwner: string | null;
+    stackName: string | null;
+    appPort: number;
+    appUrl: string;
+  };
 }
 
 const json = await loadEnvModule<JsonModule>('lib/json.ts');
@@ -167,6 +174,58 @@ describe('JSON contract and exit codes (spec §2.1, §9)', () => {
       exit.EXIT_CONFLICT,
     ]).toEqual([0, 2, 3, 4, 5, 6]);
     expect(new exit.EnvFailure(exit.EXIT_CONFLICT, 'conflict').exitCode).toBe(6);
+  });
+
+  it('keeps a valid stack name when another field is invalid (down --all safety)', () => {
+    const saved = {
+      SUPABASE_STACK: process.env.SUPABASE_STACK,
+      APP_PORT: process.env.APP_PORT,
+      APP_URL: process.env.APP_URL,
+      SUPABASE_SHARED: process.env.SUPABASE_SHARED,
+    };
+    try {
+      process.env.SUPABASE_STACK = 'named-stack';
+      process.env.APP_PORT = 'not-a-port';
+      process.env.APP_URL = 'http://localhost:3123';
+      delete process.env.SUPABASE_SHARED;
+
+      const lenient = contract.readContractLenient();
+      expect(lenient.stackName).toBe('named-stack');
+      expect(lenient.appPort).toBe(3123);
+      expect(lenient.appUrl).toBe('http://localhost:3123');
+      expect(lenient.shared).toBe(false);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it('falls back only the invalid fields in a fully invalid contract', () => {
+    const saved = {
+      SUPABASE_STACK: process.env.SUPABASE_STACK,
+      APP_PORT: process.env.APP_PORT,
+      APP_URL: process.env.APP_URL,
+      SUPABASE_SHARED: process.env.SUPABASE_SHARED,
+    };
+    try {
+      process.env.SUPABASE_STACK = 'bad stack name';
+      process.env.APP_PORT = '0';
+      process.env.APP_URL = 'not a url';
+      process.env.SUPABASE_SHARED = 'maybe';
+
+      const lenient = contract.readContractLenient();
+      expect(lenient.stackName).toBeNull();
+      expect(lenient.appPort).toBe(3000);
+      expect(lenient.appUrl).toBe('http://localhost:3000');
+      expect(lenient.shared).toBe(false);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it('changes only the app port in a derived contract URL', () => {
