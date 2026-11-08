@@ -406,6 +406,94 @@ export async function withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T>
   }
 }
 
+/**
+ * Checkout-wide claim for the single web server. Different stack identities
+ * have different per-identity start locks, so this short lock is what stops two
+ * concurrent `ensure` runs from both passing the "no server yet" check and
+ * starting a server. It covers detection + start only (never the build).
+ */
+export async function withCheckoutWebLock<T>(fn: () => Promise<T>): Promise<T> {
+  const dir = join(ensureRegistryDir(), 'locks');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const file = join(dir, 'web-server.lock');
+  const mutexPath = join(dir, 'web-server.mutex');
+  const token = `${process.pid}-${randomBytes(8).toString('hex')}`;
+  const deadline = Date.now() + 30_000;
+
+  for (;;) {
+    const mutex = await acquireStartMutex(mutexPath, 30);
+    let acquired = false;
+    let wait = false;
+    try {
+      try {
+        createLockFileAtomic(
+          file,
+          `${JSON.stringify({ pid: process.pid, token, acquiredAt: new Date().toISOString() })}\n`,
+        );
+        acquired = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+          throw new EnvFailure(
+            EXIT_CONFLICT,
+            `cannot create the web-server claim lock ${file}: ${(error as Error).message}`,
+          );
+        }
+        const read = readJsonFile(file);
+        if (read.kind === 'absent' || read.kind === 'unreadable') {
+          wait = true;
+        } else if (read.kind === 'malformed') {
+          try {
+            const age = Date.now() - statSync(file).mtimeMs;
+            if (age > 5_000) rmSync(file, { force: true });
+          } catch {
+            /* vanished */
+          }
+          wait = true;
+        } else {
+          const owner =
+            isObject(read.value) && typeof read.value.pid === 'number' ? read.value.pid : 0;
+          const observedToken =
+            isObject(read.value) && typeof read.value.token === 'string' ? read.value.token : '';
+          if (!owner || !pidAlive(owner)) {
+            const current = readJsonFile(file);
+            if (
+              current.kind === 'ok' &&
+              isObject(current.value) &&
+              current.value.token === observedToken
+            ) {
+              rmSync(file, { force: true });
+            }
+          }
+          wait = true;
+        }
+      }
+    } finally {
+      await mutex.release();
+    }
+    if (acquired) break;
+    if (wait) {
+      if (Date.now() >= deadline) {
+        throw new EnvFailure(
+          EXIT_CONFLICT,
+          'timed out after 30s waiting for another process in this checkout to claim the web server; run env:status to inspect it',
+        );
+      }
+      await sleep(50);
+      continue;
+    }
+  }
+
+  try {
+    return await fn();
+  } finally {
+    const current = readJsonFile(file);
+    if (current.kind === 'ok' && isObject(current.value) && current.value.token === token) {
+      rmSync(file, { force: true });
+    }
+  }
+}
+
 export interface StartLock {
   file: string;
   release(): void;

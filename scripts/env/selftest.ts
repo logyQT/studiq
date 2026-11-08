@@ -96,6 +96,33 @@ function freePort(): Promise<number> {
   });
 }
 
+function occupyPort(port: number): Promise<{ close(): Promise<void> }> {
+  return new Promise((resolve, reject) => {
+    const server = createServer(() => {
+      /* accept and keep the port claimed */
+    });
+    server.once('error', reject);
+    server.listen(port, '0.0.0.0', () => {
+      resolve({
+        close: () =>
+          new Promise<void>((done) => {
+            server.close(() => done());
+          }),
+      });
+    });
+  });
+}
+
+function webStartCount(): number {
+  try {
+    return readFileSync(join(REPO_ROOT, '.dev', 'web.log'), 'utf8')
+      .split('\n')
+      .filter((line) => line.includes('env:ensure (prod')).length;
+  } catch {
+    return 0;
+  }
+}
+
 function baseEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const name of [
@@ -564,6 +591,62 @@ async function main(): Promise<number> {
     assertOk(number(object(handoverJson.web).http) === 200, 'same-stack handover is healthy');
     assertOk(readWebPid() === newPid, 'the new web PID is recorded');
     console.log(`    same-stack handover: pid ${livePid} -> ${newPid}`);
+
+    // Concurrent web ensures in one checkout: the checkout-wide server claim
+    // must yield exactly one `next start`, even though the identities' start
+    // locks are otherwise independent.
+    const downBeforeConcurrent = run(['env:down'], childEnv);
+    assertOk(downBeforeConcurrent.code === 0, 'plain down before concurrent ensures exits 0');
+    const startsBefore = webStartCount();
+    clearTrace();
+    const [webA, webB] = await Promise.all([
+      runAsync(['env:ensure', '--profile', 'web', '--json'], childEnv),
+      runAsync(['env:ensure', '--profile', 'web', '--json'], childEnv),
+    ]);
+    assertOk(
+      [webA.code, webB.code].every((code) => code === 0 || code === 6),
+      `concurrent web ensures exit 0 or 6 (got ${webA.code}/${webB.code})`,
+    );
+    assertOk(
+      webA.code === 0 || webB.code === 0,
+      'at least one concurrent web ensure starts/reuses the server',
+    );
+    const currentWebPid = readWebPid();
+    assertOk(currentWebPid !== null, 'one web server is live after concurrent ensures');
+    for (const [index, result] of [webA, webB].entries()) {
+      if (result.code !== 0) continue;
+      const pid = number(object(json(result).web).pid);
+      assertOk(pid === currentWebPid, `concurrent ensure ${index + 1} reports the live PID`);
+    }
+    assertOk(
+      webStartCount() - startsBefore === 1,
+      'exactly one next start happened across concurrent ensures',
+    );
+    console.log('    concurrent web ensures: exactly one server start');
+
+    // A port claimed during the build/handover must be reported as degraded,
+    // not silently treated as a healthy recovery.
+    const appPort = number(object(handoverJson.ports).app);
+    const portDown = run(['env:down'], childEnv);
+    assertOk(portDown.code === 0, 'plain down before the port-conflict test exits 0');
+    const squatter = await occupyPort(appPort);
+    try {
+      const blocked = run(['env:ensure', '--profile', 'web', '--force-build', '--json'], childEnv);
+      assertOk(blocked.code === 4, `blocked app port exits 4 (got ${blocked.code})`);
+      assertOk(
+        /claimed by another process/.test(blocked.stderr) &&
+          /stopped\/degraded/.test(blocked.stderr),
+        'the blocked port failure names the conflict and degraded state',
+      );
+    } finally {
+      await squatter.close();
+    }
+    const recovered = run(['env:ensure', '--profile', 'web', '--json'], childEnv);
+    assertOk(
+      recovered.code === 0,
+      `recovery after freeing the port exits 0 (got ${recovered.code})`,
+    );
+    assertOk(number(object(json(recovered).web).http) === 200, 'recovery serves healthy');
 
     clearTrace();
     const narrow = run(['env:ensure', '--profile', 'api', '--json'], childEnv);

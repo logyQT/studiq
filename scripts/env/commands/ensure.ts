@@ -13,7 +13,13 @@ import {
   writeStackRecord,
   type StackRecord,
 } from '../lib/state';
-import { acquireStartLock, ensureRegistryDir, pidAlive, withRegistryLeaseLock } from '../lib/locks';
+import {
+  acquireStartLock,
+  ensureRegistryDir,
+  pidAlive,
+  withCheckoutWebLock,
+  withRegistryLeaseLock,
+} from '../lib/locks';
 import { buildWithStableFingerprint } from '../lib/build-run';
 import {
   heartbeatAgeMs,
@@ -311,6 +317,44 @@ async function resolveLease(options: {
   return withRegistryLeaseLock(() => resolveLeaseLocked(options));
 }
 
+async function describeWebStartFailure(
+  contract: Contract,
+  reason: string,
+  profile: string,
+): Promise<string> {
+  const bindable = await canBindPort(contract.appPort);
+  if (bindable) {
+    return `web did not become healthy on ${contract.appUrl} (${reason}); see ${webLogPath()}`;
+  }
+  return `app port ${contract.appPort} is claimed by another process; the environment is stopped/degraded. Free the port (or set APP_PORT), then run 'env:ensure --profile ${profile}' to recover.`;
+}
+
+interface RestartPreviousBuild {
+  ok: boolean;
+  recovery: string | null;
+}
+
+async function restartPreviousBuild(
+  contract: Contract,
+  stackName: string,
+  profile: string,
+): Promise<RestartPreviousBuild> {
+  const restored = startWebServer({
+    appPort: contract.appPort,
+    appUrl: contract.appUrl,
+    env: process.env,
+    stackName,
+    profile,
+  });
+  const waited = await waitForWeb(contract.appUrl, restored, 120);
+  if (waited.ok) return { ok: true, recovery: null };
+  stopWebServer();
+  return {
+    ok: false,
+    recovery: await describeWebStartFailure(contract, waited.reason, profile),
+  };
+}
+
 function resolveRuntime(options: {
   flag: RuntimeChoice | null;
   persisted: string | null;
@@ -478,50 +522,35 @@ async function runSharedEnsure(
         env: process.env,
       });
       if (build.timedOut) {
-        if (webPid) {
-          const restored = startWebServer({
-            appPort: contract.appPort,
-            appUrl: contract.appUrl,
-            env: process.env,
-            stackName: contract.stackName ?? 'default',
-            profile: options.profile,
-          });
-          const waited = await waitForWeb(contract.appUrl, restored, 120);
-          if (waited.ok) {
-            warnings.push('build timed out; restarted the previous build');
-            writeStderrLine(
-              `env: build timed out; the previous build is serving on ${contract.appUrl}`,
-            );
-          } else {
-            stopWebServer();
-          }
+        const restore = webPid
+          ? await restartPreviousBuild(contract, contract.stackName ?? 'default', options.profile)
+          : null;
+        if (restore?.ok) {
+          warnings.push('build timed out; restarted the previous build');
+          writeStderrLine(
+            `env: build timed out; the previous build is serving on ${contract.appUrl}`,
+          );
         }
-        throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
+        throw new EnvFailure(
+          EXIT_TIMEOUT,
+          `timed out waiting for the cross-worktree build lock${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
+        );
       }
       if (!build.ok || !build.stable) {
-        if (webPid) {
-          const restored = startWebServer({
-            appPort: contract.appPort,
-            appUrl: contract.appUrl,
-            env: process.env,
-            stackName: contract.stackName ?? 'default',
-            profile: options.profile,
-          });
-          const waited = await waitForWeb(contract.appUrl, restored, 120);
-          if (waited.ok) {
-            warnings.push('build failed; restarted the previous build');
-            writeStderrLine(
-              `env: build failed; the previous build is serving on ${contract.appUrl}`,
-            );
-          } else {
-            stopWebServer();
-          }
+        const restore = webPid
+          ? await restartPreviousBuild(contract, contract.stackName ?? 'default', options.profile)
+          : null;
+        if (restore?.ok) {
+          warnings.push('build failed; restarted the previous build');
+          writeStderrLine(`env: build failed; the previous build is serving on ${contract.appUrl}`);
         }
         throw new EnvFailure(
           EXIT_START_FAILED,
-          build.ok
-            ? 'source changed while the build ran; re-run env:ensure to rebuild'
-            : `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`,
+          `${
+            build.ok
+              ? 'source changed while the build ran; re-run env:ensure to rebuild'
+              : `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`
+          }${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
         );
       }
       writeBuildState({
@@ -536,40 +565,51 @@ async function runSharedEnsure(
   }
 
   if (options.serve) {
-    if (!isWebHealthy(webHttp)) {
-      if (webPid) {
-        const stopped = stopWebServer();
-        if (!stopped.stopped) {
+    await withCheckoutWebLock(async () => {
+      let currentPid = readWebPid();
+      let currentHttp = await probeHttp(contract.appUrl);
+      const conflict = liveServerConflict(
+        { stackName: contract.stackName ?? 'default', profile: options.profile },
+        'start',
+      );
+      if (conflict) await refuseSecondServer(parsed, contract, conflict);
+      if (!isWebHealthy(currentHttp)) {
+        if (currentPid) {
+          const stopped = stopWebServer();
+          if (!stopped.stopped) {
+            throw new EnvFailure(
+              EXIT_CONFLICT,
+              `could not stop the unhealthy web server (pid ${currentPid}) before restarting`,
+            );
+          }
+          currentPid = null;
+        }
+        applyStackEnv(sharedEnv, { appUrl: contract.appUrl, appEnv });
+        currentPid = startWebServer({
+          appPort: contract.appPort,
+          appUrl: contract.appUrl,
+          env: process.env,
+          stackName: contract.stackName ?? 'default',
+          profile: options.profile,
+        });
+        const waited = await waitForWeb(contract.appUrl, currentPid, 120);
+        currentHttp = waited.http;
+        if (!waited.ok) {
+          stopWebServer();
           throw new EnvFailure(
-            EXIT_CONFLICT,
-            `could not stop the unhealthy web server (pid ${webPid}) before restarting`,
+            EXIT_START_FAILED,
+            await describeWebStartFailure(contract, waited.reason, options.profile),
           );
         }
-        webPid = null;
-      }
-      applyStackEnv(sharedEnv, { appUrl: contract.appUrl, appEnv });
-      webPid = startWebServer({
-        appPort: contract.appPort,
-        appUrl: contract.appUrl,
-        env: process.env,
-        stackName: contract.stackName ?? 'default',
-        profile: options.profile,
-      });
-      const waited = await waitForWeb(contract.appUrl, webPid, 120);
-      webHttp = waited.http;
-      if (!waited.ok) {
-        stopWebServer();
+      } else if (!currentPid) {
         throw new EnvFailure(
-          EXIT_START_FAILED,
-          `web did not become healthy on ${contract.appUrl} (${waited.reason}); see ${webLogPath()}`,
+          EXIT_CONFLICT,
+          `${contract.appUrl} answers but has no owned PID; refusing to overwrite a live server`,
         );
       }
-    } else if (!webPid) {
-      throw new EnvFailure(
-        EXIT_CONFLICT,
-        `${contract.appUrl} answers but has no owned PID; refusing to overwrite a live server`,
-      );
-    }
+      webPid = currentPid;
+      webHttp = currentHttp;
+    });
   }
 
   const ready = probe.ok && (!options.serve || isWebHealthy(webHttp));
@@ -912,25 +952,19 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           env: process.env,
         });
         if (build.timedOut) {
-          if (webPidBefore) {
-            const restored = startWebServer({
-              appPort: contract.appPort,
-              appUrl: contract.appUrl,
-              env: process.env,
-              stackName: cliStackName ?? 'default',
-              profile: options.profile,
-            });
-            const waited = await waitForWeb(contract.appUrl, restored, 120);
-            if (waited.ok) {
-              warnings.push('build timed out; restarted the previous build');
-              writeStderrLine(
-                `env: build timed out; the previous build is serving on ${contract.appUrl}`,
-              );
-            } else {
-              stopWebServer();
-            }
+          const restore = webPidBefore
+            ? await restartPreviousBuild(contract, cliStackName ?? 'default', options.profile)
+            : null;
+          if (restore?.ok) {
+            warnings.push('build timed out; restarted the previous build');
+            writeStderrLine(
+              `env: build timed out; the previous build is serving on ${contract.appUrl}`,
+            );
           }
-          throw new EnvFailure(EXIT_TIMEOUT, 'timed out waiting for the cross-worktree build lock');
+          throw new EnvFailure(
+            EXIT_TIMEOUT,
+            `timed out waiting for the cross-worktree build lock${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
+          );
         }
         if (!build.ok || !build.stable) {
           appendEnvLog(
@@ -938,29 +972,22 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
               ? 'ensure: source changed while the build ran; not persisting the fingerprint'
               : `ensure: build failed (exit ${build.exitCode ?? 'unknown'})`,
           );
-          if (webPidBefore) {
-            const restored = startWebServer({
-              appPort: contract.appPort,
-              appUrl: contract.appUrl,
-              env: process.env,
-              stackName: cliStackName ?? 'default',
-              profile: options.profile,
-            });
-            const waited = await waitForWeb(contract.appUrl, restored, 120);
-            if (waited.ok) {
-              warnings.push('build failed; restarted the previous build');
-              writeStderrLine(
-                `env: build failed; the previous build is serving on ${contract.appUrl}`,
-              );
-            } else {
-              stopWebServer();
-            }
+          const restore = webPidBefore
+            ? await restartPreviousBuild(contract, cliStackName ?? 'default', options.profile)
+            : null;
+          if (restore?.ok) {
+            warnings.push('build failed; restarted the previous build');
+            writeStderrLine(
+              `env: build failed; the previous build is serving on ${contract.appUrl}`,
+            );
           }
           throw new EnvFailure(
             EXIT_START_FAILED,
-            build.ok
-              ? 'source changed while the build ran; re-run env:ensure to rebuild'
-              : `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`,
+            `${
+              build.ok
+                ? 'source changed while the build ran; re-run env:ensure to rebuild'
+                : `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`
+            }${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
           );
         }
         writeBuildState({
@@ -977,43 +1004,55 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
     let webPid = readWebPid();
     let webHttp = await probeHttp(contract.appUrl);
     if (options.serve) {
-      // Re-check health immediately before starting: a slow first probe may
-      // have recovered, and starting again would overwrite a live PID file.
-      if (!isWebHealthy(webHttp)) {
-        if (webPid) {
-          const stopped = stopWebServer();
-          if (!stopped.stopped) {
+      // Detection + claim + start are one checkout-wide critical section:
+      // different stacks have different start locks, so this is what prevents
+      // two concurrent ensures from both starting a server.
+      await withCheckoutWebLock(async () => {
+        let currentPid = readWebPid();
+        let currentHttp = await probeHttp(contract.appUrl);
+        const conflict = liveServerConflict(
+          { stackName: cliStackName ?? 'default', profile: options.profile },
+          'start',
+        );
+        if (conflict) await refuseSecondServer(parsed, contract, conflict);
+        if (!isWebHealthy(currentHttp)) {
+          if (currentPid) {
+            const stopped = stopWebServer();
+            if (!stopped.stopped) {
+              throw new EnvFailure(
+                EXIT_CONFLICT,
+                `could not stop the unhealthy web server (pid ${currentPid}) before restarting`,
+              );
+            }
+            currentPid = null;
+          }
+          ensureEnv();
+          appendEnvLog(`ensure: starting web on ${contract.appUrl}`);
+          currentPid = startWebServer({
+            appPort: contract.appPort,
+            appUrl: contract.appUrl,
+            env: process.env,
+            stackName: cliStackName ?? 'default',
+            profile: options.profile,
+          });
+          const waited = await waitForWeb(contract.appUrl, currentPid, 120);
+          currentHttp = waited.http;
+          if (!waited.ok) {
+            stopWebServer();
             throw new EnvFailure(
-              EXIT_CONFLICT,
-              `could not stop the unhealthy web server (pid ${webPid}) before restarting`,
+              EXIT_START_FAILED,
+              await describeWebStartFailure(contract, waited.reason, options.profile),
             );
           }
-          webPid = null;
-        }
-        ensureEnv();
-        appendEnvLog(`ensure: starting web on ${contract.appUrl}`);
-        webPid = startWebServer({
-          appPort: contract.appPort,
-          appUrl: contract.appUrl,
-          env: process.env,
-          stackName: cliStackName ?? 'default',
-          profile: options.profile,
-        });
-        const waited = await waitForWeb(contract.appUrl, webPid, 120);
-        webHttp = waited.http;
-        if (!waited.ok) {
-          stopWebServer();
+        } else if (!currentPid) {
           throw new EnvFailure(
-            EXIT_START_FAILED,
-            `web did not become healthy on ${contract.appUrl} (${waited.reason}); see ${webLogPath()}`,
+            EXIT_CONFLICT,
+            `${contract.appUrl} answers but has no owned PID; refusing to overwrite a live server`,
           );
         }
-      } else if (!webPid) {
-        throw new EnvFailure(
-          EXIT_CONFLICT,
-          `${contract.appUrl} answers but has no owned PID; refusing to overwrite a live server`,
-        );
-      }
+        webPid = currentPid;
+        webHttp = currentHttp;
+      });
     }
 
     // ── 10. heartbeat + JSON ─────────────────────────────────────────────

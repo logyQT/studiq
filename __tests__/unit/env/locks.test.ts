@@ -21,6 +21,7 @@ interface LocksModule {
   pidAlive(pid: number): boolean;
   acquireStartLock(options: StartLockOptions): Promise<StartLock>;
   withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T>;
+  withCheckoutWebLock<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 // `state.ts` captures DEV_DIR at import time; point it at a temp dir before
@@ -151,6 +152,23 @@ describe('lock primitives', () => {
     first.release();
     await secondPromise;
     expect(secondAcquired).toBe(true);
+  });
+
+  it('serializes the checkout-wide web-server claim', async () => {
+    registry();
+    let active = 0;
+    let maximum = 0;
+    await Promise.all(
+      Array.from({ length: 4 }, () =>
+        locks.withCheckoutWebLock(async () => {
+          active += 1;
+          maximum = Math.max(maximum, active);
+          await sleep(60);
+          active -= 1;
+        }),
+      ),
+    );
+    expect(maximum).toBe(1);
   });
 
   it('serializes registry lease decisions', async () => {
