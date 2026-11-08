@@ -28,7 +28,7 @@ import {
 } from '../lib/lease';
 import { readRegistry } from '../lib/registry';
 import { REPO_ROOT, canon, currentBranchRef, isThisCheckout } from '../lib/repo';
-import { portInUse } from '../lib/net';
+import { canBindPort } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { readListedStackRuntime, readStack, readStackList, type StackRead } from '../lib/stack';
 import { applyStackEnv, startStack, stopStack } from '../lib/stack-lifecycle';
@@ -161,7 +161,7 @@ function recordFromExisting(
 }
 
 async function freePort(port: number): Promise<boolean> {
-  return port > 0 && !(await portInUse(port));
+  return port > 0 && (await canBindPort(port));
 }
 
 async function ownWebOn(port: number): Promise<boolean> {

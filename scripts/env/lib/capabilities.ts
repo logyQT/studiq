@@ -1,6 +1,6 @@
 import { isCapabilitySuperset, missingCapabilities, type Capability } from '../profiles';
 import { probeHttp } from './health';
-import { portInUse } from './net';
+import { portAcceptsConnections } from './net';
 import type { RecordedPorts, StackRecord } from './state';
 import type { StackStatus } from './stack';
 import { urlPort } from './urls';
@@ -72,7 +72,7 @@ async function probeCapability(capability: Capability, context: ProbeContext): P
     case 'database':
       return context.assumeDatabase === true
         ? true
-        : context.dbPort > 0 && (await portInUse(context.dbPort));
+        : context.dbPort > 0 && (await portAcceptsConnections(context.dbPort));
     case 'rest':
       return isOk(await probeHttp(`${context.apiUrl}/rest/v1/`));
     case 'auth':
@@ -88,7 +88,7 @@ async function probeCapability(capability: Capability, context: ProbeContext): P
       // not expose one do we fall back to its API-gateway route, and only when
       // the stack/service record actually lists Realtime. The edge inspector
       // port must never stand in for Realtime.
-      if (context.ports.realtime > 0) return portInUse(context.ports.realtime);
+      if (context.ports.realtime > 0) return portAcceptsConnections(context.ports.realtime);
       if (!context.assumeRealtime && !(context.services ?? []).includes('realtime')) {
         return false;
       }
@@ -98,12 +98,12 @@ async function probeCapability(capability: Capability, context: ProbeContext): P
       return code > 0 && code < 500 && code !== 404;
     case 'functions':
       return context.ports.edgeInspector > 0
-        ? portInUse(context.ports.edgeInspector)
+        ? portAcceptsConnections(context.ports.edgeInspector)
         : isOk(await probeHttp(`${context.apiUrl}/functions/v1/`));
     case 'analytics':
-      return context.ports.analytics > 0 && (await portInUse(context.ports.analytics));
+      return context.ports.analytics > 0 && (await portAcceptsConnections(context.ports.analytics));
     case 'pooler':
-      return context.ports.pooler > 0 && (await portInUse(context.ports.pooler));
+      return context.ports.pooler > 0 && (await portAcceptsConnections(context.ports.pooler));
   }
 }
 

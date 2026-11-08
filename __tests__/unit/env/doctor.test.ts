@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   createHarness,
   findConflictPort,
-  firstFreePort,
+  firstBindablePort,
   nonLoopbackIPv4,
   parseJsonObject,
   stackStatusFixture,
@@ -32,7 +32,7 @@ function newHarness(): Harness {
 
 describe('env:doctor', () => {
   it('exits 0 when nothing is wrong (no stack for this branch)', async () => {
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
     // A stopped stack answers `stack status` cleanly (exit 0, no API URL).
     harness.setStatusFixture(stoppedStackFixture());
@@ -48,7 +48,7 @@ describe('env:doctor', () => {
   });
 
   it('does not warn about a missing registry directory', async () => {
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
     harness.setStatusFixture(stoppedStackFixture());
     const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
@@ -60,7 +60,7 @@ describe('env:doctor', () => {
   });
 
   it('warns when an existing registry directory is untrusted', async () => {
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
     harness.setStatusFixture(stoppedStackFixture());
     mkdirSync(join(harness.dir, 'real-registry'), { recursive: true });
@@ -75,7 +75,7 @@ describe('env:doctor', () => {
   });
 
   it('warns when the stack status lookup fails but stays exit 0', async () => {
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
     // No fixture: the fake CLI exits non-zero (a failed lookup, not a stopped stack).
     const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
@@ -87,7 +87,7 @@ describe('env:doctor', () => {
   });
 
   it('warns when the Supabase CLI cannot be spawned', async () => {
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
     // No `bunx` on PATH: status/list spawn with ENOENT.
     const result = await harness.run(['doctor', '--json'], {
@@ -133,7 +133,7 @@ describe('env:doctor', () => {
 
   it('reports the stack runtime it observes and warns about a Docker stack', async () => {
     const server = await startHttpServer(200);
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
     harness.track(() => server.close());
     harness.setStatusFixture(
@@ -164,7 +164,7 @@ describe('env:doctor', () => {
   });
 
   it('never probes docker/podman and ignores SUPABASE_RUNTIME', async () => {
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
 
     for (const runtime of ['', 'auto', 'docker', 'native', 'podman']) {
@@ -187,7 +187,7 @@ describe('env:doctor', () => {
   });
 
   it('warns but does not fail when shared-mode values are not exported', async () => {
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
     const result = await harness.run(['doctor', '--json'], {
       APP_PORT: String(appPort),
@@ -201,7 +201,7 @@ describe('env:doctor', () => {
   });
 
   it('renders human sections on stdout', async () => {
-    const appPort = await firstFreePort(3900);
+    const appPort = await firstBindablePort(3900);
     const harness = newHarness();
     const result = await harness.run(['doctor'], { APP_PORT: String(appPort) });
 

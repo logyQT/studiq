@@ -336,6 +336,11 @@ export async function startTcpListener(port = 0, host?: string): Promise<TcpList
   };
 }
 
+/** First port this checkout can bind on the wildcard address (doctor parity). */
+export async function firstBindablePort(from = 3900): Promise<number> {
+  return firstFreePort(from, new Set(), '0.0.0.0');
+}
+
 /** First free port at or above `from`, skipping `skip`; defaults to the wildcard. */
 export async function firstFreePort(
   from: number,
