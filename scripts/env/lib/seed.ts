@@ -66,25 +66,6 @@ export function seedMarkerCurrent(stackId: string, root = REPO_ROOT): boolean {
   );
 }
 
-/**
- * The seeder that owns a profile. `null` means "no seeder exists in this
- * phase"; phase 3 adds the qa/e2e run-scoped invocation.
- */
-function seederForProfile(profile: ProfileName): null {
-  switch (profile) {
-    case 'api':
-    case 'web':
-      return null;
-    case 'db':
-    case 'mail':
-    case 'full':
-    case 'admin':
-    case 'qa':
-    case 'e2e':
-      return null;
-  }
-}
-
 export function assertSeedingAllowed(options: {
   mode: SeedMode;
   profile: ProfileName;
@@ -98,14 +79,12 @@ export function assertSeedingAllowed(options: {
       'SUPABASE_SHARED=1: refusing to seed a stack this checkout does not own',
     );
   }
-  if (seederForProfile(options.profile) === null) {
-    throw new EnvFailure(
-      EXIT_USAGE,
-      [
-        `profile '${options.profile}' has no tenant seeder in phase 2.`,
-        'Cold stack creation already applies migrations + supabase/seeds.',
-        'Tenant seeding (qa/e2e, run-scoped) lands in phase 3; --no-seed is accepted.',
-      ].join('\n'),
-    );
-  }
+  throw new EnvFailure(
+    EXIT_USAGE,
+    [
+      `profile '${options.profile}' has no tenant seeder in phase 2.`,
+      'Cold stack creation already applies migrations + supabase/seeds.',
+      'Tenant seeding (qa/e2e, run-scoped) lands in phase 3; --no-seed is accepted.',
+    ].join('\n'),
+  );
 }

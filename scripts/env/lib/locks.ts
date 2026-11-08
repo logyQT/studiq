@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
@@ -284,12 +284,15 @@ async function acquireDirMutex(path: string, waitSeconds: number): Promise<Mutex
         continue;
       }
       let owner = 0;
+      let ownerMissing = false;
       try {
         owner = Number(readFileSync(join(path, 'pid'), 'utf8').trim());
-      } catch {
-        /* owner unknown */
+        ownerMissing = !owner;
+      } catch (error) {
+        ownerMissing = (error as NodeJS.ErrnoException).code === 'ENOENT';
       }
-      if (owner && !pidAlive(owner)) {
+      const missingLongEnough = ownerMissing && Date.now() - observed.mtimeMs > 5_000;
+      if ((owner && !pidAlive(owner)) || missingLongEnough) {
         // Re-check identity so a reclaimer cannot delete a fresh lock created
         // by another waiter after our first stat.
         try {
@@ -416,10 +419,15 @@ export async function withCheckoutWebLock<T>(fn: () => Promise<T>): Promise<T> {
   const dir = join(ensureRegistryDir(), 'locks');
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   chmodSync(dir, 0o700);
-  const file = join(dir, 'web-server.lock');
-  const mutexPath = join(dir, 'web-server.mutex');
+  // One claim per checkout: the registry itself is per user, so an unkeyed
+  // file would serialize unrelated worktrees (and make parallel use fail).
+  const checkout = createHash('sha256').update(REPO_ROOT).digest('hex').slice(0, 16);
+  const file = join(dir, `web-server-${checkout}.lock`);
+  const mutexPath = join(dir, `web-server-${checkout}.mutex`);
   const token = `${process.pid}-${randomBytes(8).toString('hex')}`;
-  const deadline = Date.now() + 30_000;
+  // The callback may wait up to 120s for `next start` health; waiting longer
+  // than the hold lets the next same-checkout process re-check afterwards.
+  const deadline = Date.now() + 150_000;
 
   for (;;) {
     const mutex = await acquireStartMutex(mutexPath, 30);
@@ -476,7 +484,7 @@ export async function withCheckoutWebLock<T>(fn: () => Promise<T>): Promise<T> {
       if (Date.now() >= deadline) {
         throw new EnvFailure(
           EXIT_CONFLICT,
-          'timed out after 30s waiting for another process in this checkout to claim the web server; run env:status to inspect it',
+          'timed out after 150s waiting for another process in this checkout to claim the web server; run env:status to inspect it',
         );
       }
       await sleep(50);
@@ -745,12 +753,15 @@ export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
         continue;
       }
       let owner = 0;
+      let ownerMissing = false;
       try {
         owner = Number(readFileSync(join(lockDir, 'pid'), 'utf8').trim());
-      } catch {
-        /* owner unknown */
+        ownerMissing = !owner;
+      } catch (error) {
+        ownerMissing = (error as NodeJS.ErrnoException).code === 'ENOENT';
       }
-      if (owner && !pidAlive(owner)) {
+      const missingLongEnough = ownerMissing && Date.now() - observed.mtimeMs > 5_000;
+      if ((owner && !pidAlive(owner)) || missingLongEnough) {
         try {
           const current = lstatSync(lockDir);
           if (sameEntry(observed, current)) rmSync(lockDir, { recursive: true, force: true });

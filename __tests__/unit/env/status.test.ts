@@ -201,6 +201,16 @@ describe('env:status --json', () => {
     expect(calls).not.toMatch(/stack (start|stop|destroy|install|logs)/);
   });
 
+  it('reports a broken APP_PORT instead of crashing', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['status', '--json'], { APP_PORT: 'abc' });
+
+    expect(result.status).toBe(0);
+    const status = parseJsonObject(result.stdout);
+    expect(objectField(status, 'ports').app).toBe(3000);
+  });
+
   it('reads an exact fingerprint from isolated build state', async () => {
     const harness = newHarness();
     const fingerprint = '0123456789abcdef0123456789abcdef';

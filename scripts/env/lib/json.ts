@@ -163,7 +163,7 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
       present: inputs.buildPresent,
       fingerprint: inputs.buildFingerprint ?? null,
     },
-    warnings: inputs.warnings ?? [],
+    warnings: inputs.warnings,
     log: '.dev/env.log',
   };
 }

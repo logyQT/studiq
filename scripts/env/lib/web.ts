@@ -44,8 +44,14 @@ export function readProcessEnvironment(pid: number): string {
   }
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function hasWorktreeMarker(pid: number): boolean {
-  return readProcessEnvironment(pid).includes(`STUDIQ_DEV_WORKTREE=${REPO_ROOT}`);
+  // A delimiter is required: `/repo` must not match `/repo-feature`.
+  const marker = new RegExp(`STUDIQ_DEV_WORKTREE=${escapeRegExp(REPO_ROOT)}(?:[\\0\\s]|$)`);
+  return marker.test(readProcessEnvironment(pid));
 }
 
 /**
@@ -76,7 +82,9 @@ export function readWebPid(): number | null {
   if (hasWorktreeMarker(pid) && (command.includes('next') || command.includes('@studiq/web'))) {
     return pid;
   }
-  if (command.includes(REPO_ROOT)) return pid;
+  // Same delimiter rule for the command fallback.
+  const commandPath = new RegExp(`(?:^|\\s)${escapeRegExp(REPO_ROOT)}(?:[\\s/]|$)`);
+  if (commandPath.test(command)) return pid;
   return null;
 }
 

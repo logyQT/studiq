@@ -1,4 +1,4 @@
-import { readContract, type Contract } from './contract';
+import { readContractLenient, type Contract } from './contract';
 import { contractWithLease } from './contract-lease';
 import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
@@ -150,21 +150,19 @@ function sharedProjectId(): string | null {
 }
 
 export async function collectSnapshot(options: SnapshotOptions = {}): Promise<StatusSnapshot> {
-  const contract = options.contract ?? contractWithLease(readContract());
+  const contract = options.contract ?? contractWithLease(readContractLenient());
   const registry = readRegistry();
   let probeError: string | null = null;
-  const stack =
-    options.stack !== undefined
-      ? options.stack
-      : options.skipStackLookup
-        ? null
-        : contract.shared
-          ? null
-          : (() => {
-              const probe = probeStackStatus(contract.stackName);
-              probeError = probe.error;
-              return probe.stack;
-            })();
+  let stack: StackStatus | null;
+  if (options.stack !== undefined) {
+    stack = options.stack;
+  } else if (options.skipStackLookup || contract.shared) {
+    stack = null;
+  } else {
+    const probe = probeStackStatus(contract.stackName);
+    stack = probe.stack;
+    probeError = probe.error;
+  }
   const record = contract.shared
     ? null
     : options.record !== undefined
@@ -173,10 +171,14 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
   const side = contract.shared ? sharedSide() : stackSide(stack);
 
   const webPid = options.web ? options.web.pid : readWebPid();
-  const webHttp = options.web ? options.web.http : await probeHttp(contract.appUrl);
-  const supabaseHttp =
-    options.supabaseHttp ??
-    (side.supabaseUrl ? await probeHttp(`${side.supabaseUrl}/auth/v1/health`) : 0);
+  const webProbe = options.web ? Promise.resolve(options.web.http) : probeHttp(contract.appUrl);
+  const supabaseProbe =
+    options.supabaseHttp !== undefined
+      ? Promise.resolve(options.supabaseHttp)
+      : side.supabaseUrl
+        ? probeHttp(`${side.supabaseUrl}/auth/v1/health`)
+        : Promise.resolve(0);
+  const [webHttp, supabaseHttp] = await Promise.all([webProbe, supabaseProbe]);
 
   const statusStack = contract.shared ? null : stack;
   const projectId = contract.shared

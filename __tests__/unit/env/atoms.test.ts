@@ -143,9 +143,17 @@ describe('env atom grammar', () => {
   it('parses down and build flags and their usage errors', () => {
     expect(atoms.parseCommand(['down', '--all', '--yes', '--json'])).toMatchObject({
       command: 'down',
-      down: { all: true },
+      down: { all: true, stack: null },
       yes: true,
       json: true,
+    });
+    expect(atoms.parseCommand(['down', '--stack', 'named', '--all', '--json']).down).toMatchObject({
+      all: true,
+      stack: 'named',
+    });
+    expect(atoms.parseCommand(['down', '--stack=named', '--json']).down).toMatchObject({
+      all: false,
+      stack: 'named',
     });
     expect(atoms.parseCommand(['build', '--force', '--json'])).toMatchObject({
       command: 'build',

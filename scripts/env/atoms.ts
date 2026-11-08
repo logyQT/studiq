@@ -48,6 +48,7 @@ export interface EnsureOptions {
 
 export interface DownOptions {
   all: boolean;
+  stack: string | null;
 }
 
 export interface BuildOptions {
@@ -94,7 +95,7 @@ export const USAGE = [
   '',
   '  env:ensure  --profile <name> [atoms] [--json]   Idempotent start/build/serve',
   '  env:status  [--json]                           Web/Supabase health, stack identity (read-only)',
-  '  env:down    [--all] [--yes] [--json]           Stop this web server; --all also the stack',
+  '  env:down    [--all] [--stack <name>] [--yes] [--json]  Stop this web server; --all also the stack',
   '  env:build   [--force] [--json]                 Build @studiq/web (production)',
   '  env:doctor  [--json]                           Explain runtime/stack/registry problems',
   '  env:ports   [--json]                           Print a free APP_PORT',
@@ -370,8 +371,24 @@ function parseEnsure(rest: string[]): ParsedCommand {
 function parseDown(rest: string[]): ParsedCommand {
   const parsed = emptyParsed('down');
   let all = false;
-  for (const token of rest) {
+  let stack: string | null = null;
+  for (let index = 0; index < rest.length; index += 1) {
+    const token = rest[index] as string;
     if (token === '--help' || token === '-h') return helpResult();
+    const { name, inline } = flagToken(token);
+    if (name === '--stack') {
+      if (inline !== undefined && inline !== '') {
+        stack = parseStackName(inline);
+        continue;
+      }
+      const value = rest[index + 1];
+      if (value === undefined || value.startsWith('--')) {
+        throw new UsageError("'--stack' needs a value");
+      }
+      stack = parseStackName(value);
+      index += 1;
+      continue;
+    }
     if (token.startsWith('--') && token.includes('=')) {
       throw new UsageError(`'${token.split('=')[0]}' does not take a value`);
     }
@@ -398,7 +415,7 @@ function parseDown(rest: string[]): ParsedCommand {
   if (parsed.quiet && parsed.verbose) {
     throw new UsageError("'--quiet' and '--verbose' cannot be combined");
   }
-  parsed.down = { all };
+  parsed.down = { all, stack };
   return parsed;
 }
 

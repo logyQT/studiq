@@ -19,9 +19,9 @@ import { REPO_ROOT } from '../lib/repo';
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot, stateKeyFor } from '../lib/snapshot';
 import { liveServerConflict } from '../lib/web-owner';
+import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
 import { refuseSecondServer } from '../lib/refusal';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
-import { normalizeLocalhost, trimTrailingSlash } from '../lib/urls';
 
 const SECRET_LINE_RE = /(?:KEY|SECRET|PASSWORD|TOKEN)\s*=\s*\S|eyJ[A-Za-z0-9_-]{10,}/;
 
@@ -30,21 +30,6 @@ function logBuildOutput(output: string): void {
     .split('\n')
     .filter((line) => line.trim().length > 0 && !SECRET_LINE_RE.test(line));
   for (const line of lines.slice(-40)) appendEnvLog(`build: ${line.slice(0, 500)}`);
-}
-
-function sharedStackEnv(): StackEnv {
-  const apiUrl = normalizeLocalhost(trimTrailingSlash(process.env.SUPABASE_URL ?? ''));
-  return {
-    apiUrl,
-    restUrl: apiUrl ? `${apiUrl}/rest/v1` : null,
-    dbUrl: process.env.SUPABASE_DB_URL ?? null,
-    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? null,
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? null,
-    publishableKey: null,
-    secretKey: null,
-    mailUrl: process.env.SUPABASE_MAIL_URL ?? null,
-    studioUrl: process.env.SUPABASE_STUDIO_URL ?? null,
-  };
 }
 
 function human(parsed: ParsedCommand, lines: string[]): void {
@@ -103,14 +88,7 @@ export async function runBuild(parsed: ParsedCommand): Promise<number> {
     stackEnv = read.env;
   }
 
-  const rawAppEnv = (process.env.APP_ENV ?? '').trim().toLowerCase();
-  const appEnv = rawAppEnv || 'development';
-  if (appEnv !== 'development' && appEnv !== 'test' && appEnv !== 'qa') {
-    throw new EnvFailure(
-      EXIT_START_FAILED,
-      `APP_ENV='${appEnv}' cannot build this local checkout (set development, test or qa)`,
-    );
-  }
+  const appEnv = resolveLocalAppEnv();
   applyStackEnv(stackEnv, {
     appUrl: contract.appUrl,
     appEnv,

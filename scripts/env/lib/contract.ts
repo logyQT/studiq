@@ -68,9 +68,9 @@ export function readContract(): Contract {
 }
 
 /**
- * `down`/`status` must remain usable even with an invalid contract: teardown of
- * this checkout's own web server must not be blocked by a bad `APP_PORT` or
- * `APP_URL`. The fallback is the same documented default, never a value file.
+ * `down` and the read-only `status` snapshot must remain usable even with an
+ * invalid contract: teardown/reporting must not be blocked by a bad `APP_PORT`
+ * or `APP_URL`. The fallback is the same documented default, never a value file.
  */
 export function readContractLenient(): Contract {
   // Each field falls back independently: a bad APP_PORT/APP_URL must not throw

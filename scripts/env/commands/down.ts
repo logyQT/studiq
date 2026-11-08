@@ -2,7 +2,7 @@ import type { ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from '../lib/exit';
 import { readContractLenient } from '../lib/contract';
 import { appendEnvLog, identityKey, readStackRecord, removeStackRecord } from '../lib/state';
-import { acquireStartLock, ensureRegistryDir } from '../lib/locks';
+import { acquireStartLock, ensureRegistryDir, withCheckoutWebLock } from '../lib/locks';
 import { leaseProjectId, readLease, removeLease } from '../lib/lease';
 import { REPO_ROOT, isThisCheckout, currentBranchRef } from '../lib/repo';
 import { readStackList, readStackStatus } from '../lib/stack';
@@ -69,7 +69,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'down options are missing');
   const contract = readContractLenient();
   const branch = currentBranchRef();
-  const cliStackName = contract.stackName;
+  const cliStackName = options.stack ?? contract.stackName;
   const key = identityKey(REPO_ROOT, branch, cliStackName ?? '');
   const dir = ensureRegistryDir();
   const projectId = leaseProjectId(key);
@@ -98,26 +98,60 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
   if (contract.shared) {
     // This checkout owns only its web server; the shared stack keeps running
     // (and keeps its app-port lease on the owning checkout's behalf).
-    const lines = [webStopLine()];
-    const lease = readLease(dir, projectId);
-    if (lease) lines.push(`Kept the app-port lease on ${lease.appPort} (shared stack).`);
-    human(parsed, lines);
-    if (parsed.json) {
-      const snapshot = await collectSnapshot({
-        contract,
-        stack: null,
-        record: null,
-        skipStackLookup: true,
-      });
-      printJson(snapshot);
-    }
-    return 0;
+    return withCheckoutWebLock(async () => {
+      const lines = [webStopLine()];
+      const lease = readLease(dir, projectId);
+      if (lease) lines.push(`Kept the app-port lease on ${lease.appPort} (shared stack).`);
+      human(parsed, lines);
+      if (parsed.json) {
+        const snapshot = await collectSnapshot({
+          contract,
+          stack: null,
+          record: null,
+          skipStackLookup: true,
+        });
+        printJson(snapshot);
+      }
+      return 0;
+    });
   }
 
   const lock = await acquireDownLock({ key, branch, cliStackName });
   try {
-    const lines: string[] = [webStopLine()];
-    if (!options.all) {
+    return await withCheckoutWebLock(async () => {
+      const lines: string[] = [webStopLine()];
+      if (!options.all) {
+        const stack = readStackStatus(cliStackName);
+        const listed = readStackList();
+        const wantedName = cliStackName || 'default';
+        const listedOurs = (listed ?? []).find(
+          (entry) =>
+            isThisCheckout(entry.projectRoot) &&
+            (entry.name || 'default') === wantedName &&
+            (entry.branch ?? '') === branch,
+        );
+        const stackRunning = Boolean(stack) || listedOurs?.owner === 'reachable';
+        const lease = readLease(dir, projectId);
+        if (!stackRunning && listed !== null && lease) {
+          // A stopped stack does not need its app-port lease; release it exactly once.
+          removeLease(dir, projectId);
+          lines.push('Released the app-port lease (stack is stopped).');
+        } else if (lease) {
+          lines.push(`Kept the app-port lease on ${lease.appPort} while the stack runs.`);
+        }
+        human(parsed, lines);
+        if (parsed.json) {
+          const snapshot = await collectSnapshot({
+            contract,
+            stack,
+            record: readStackRecord(stateKeyFor(cliStackName)),
+          });
+          printJson(snapshot);
+        }
+        return 0;
+      }
+
+      // `down --all`: stop only a stack whose project_root is this checkout.
       const stack = readStackStatus(cliStackName);
       const listed = readStackList();
       const wantedName = cliStackName || 'default';
@@ -127,110 +161,80 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
           (entry.name || 'default') === wantedName &&
           (entry.branch ?? '') === branch,
       );
-      const stackRunning = Boolean(stack) || listedOurs?.owner === 'reachable';
-      const lease = readLease(dir, projectId);
-      if (!stackRunning && listed !== null && lease) {
-        // A stopped stack does not need its app-port lease; release it exactly once.
-        removeLease(dir, projectId);
-        lines.push('Released the app-port lease (stack is stopped).');
-      } else if (lease) {
-        lines.push(`Kept the app-port lease on ${lease.appPort} while the stack runs.`);
+      const foreign = listed?.find(
+        (entry) =>
+          entry.name === wantedName &&
+          !isThisCheckout(entry.projectRoot) &&
+          (entry.branch ?? '') === branch,
+      );
+      if (foreign && !listedOurs) {
+        throw new EnvFailure(
+          EXIT_CONFLICT,
+          `stack '${wantedName}' is owned by ${foreign.projectRoot}; refusing to stop it`,
+        );
       }
+      if (stack && stack.projectRoot && !isThisCheckout(stack.projectRoot)) {
+        throw new EnvFailure(
+          EXIT_CONFLICT,
+          `stack ${stack.id.slice(0, 12)} belongs to ${stack.projectRoot}, not this checkout; refusing to stop it`,
+        );
+      }
+
+      if (!stack && listed === null) {
+        throw new EnvFailure(
+          EXIT_START_FAILED,
+          "cannot read 'supabase stack list' to verify ownership; refusing to guess whether this stack is stopped",
+        );
+      }
+      const shouldStop = Boolean(stack) || Boolean(listedOurs);
+      if (shouldStop) {
+        const result = stopStack(cliStackName);
+        if (!result.ok) {
+          // A failed stop is not proof the stack is gone. Confirm with status *and*
+          // the stack list (canonical project root + name) before releasing the
+          // lease; if either cannot confirm a stop, keep the lease and fail.
+          const after = readStackStatus(cliStackName);
+          const afterList = readStackList();
+          const stillListedRunning = (afterList ?? []).some(
+            (entry) =>
+              isThisCheckout(entry.projectRoot) &&
+              (entry.name || 'default') === wantedName &&
+              (entry.branch ?? '') === branch &&
+              entry.owner === 'reachable',
+          );
+          const confirmedStopped =
+            after?.lifecycle === 'stopped' ||
+            (afterList !== null && !stillListedRunning && after?.lifecycle !== 'running');
+          if (after?.lifecycle === 'running' || stillListedRunning || !confirmedStopped) {
+            throw new EnvFailure(
+              EXIT_START_FAILED,
+              `could not stop this checkout's stack (${result.stderr.trim() || 'stack stop failed'}); keeping the app-port lease`,
+            );
+          }
+        }
+        lines.push(
+          `Stopped Supabase stack '${stack?.name ?? listedOurs?.name ?? wantedName}' (data kept).`,
+        );
+      } else {
+        lines.push('Supabase stack is already stopped.');
+      }
+
+      removeLease(dir, projectId);
+      removeStackRecord(stateKeyFor(cliStackName));
+      lines.push('Released the app-port lease.');
       human(parsed, lines);
+
       if (parsed.json) {
         const snapshot = await collectSnapshot({
           contract,
-          stack,
+          stack: readStackStatus(cliStackName),
           record: readStackRecord(stateKeyFor(cliStackName)),
         });
         printJson(snapshot);
       }
+      appendEnvLog('down: complete');
       return 0;
-    }
-
-    // `down --all`: stop only a stack whose project_root is this checkout.
-    const stack = readStackStatus(cliStackName);
-    const listed = readStackList();
-    const wantedName = cliStackName || 'default';
-    const listedOurs = (listed ?? []).find(
-      (entry) =>
-        isThisCheckout(entry.projectRoot) &&
-        (entry.name || 'default') === wantedName &&
-        (entry.branch ?? '') === branch,
-    );
-    const foreign = listed?.find(
-      (entry) =>
-        entry.name === wantedName &&
-        !isThisCheckout(entry.projectRoot) &&
-        (entry.branch ?? '') === branch,
-    );
-    if (foreign && !listedOurs) {
-      throw new EnvFailure(
-        EXIT_CONFLICT,
-        `stack '${wantedName}' is owned by ${foreign.projectRoot}; refusing to stop it`,
-      );
-    }
-    if (stack && stack.projectRoot && !isThisCheckout(stack.projectRoot)) {
-      throw new EnvFailure(
-        EXIT_CONFLICT,
-        `stack ${stack.id.slice(0, 12)} belongs to ${stack.projectRoot}, not this checkout; refusing to stop it`,
-      );
-    }
-
-    if (!stack && listed === null) {
-      throw new EnvFailure(
-        EXIT_START_FAILED,
-        "cannot read 'supabase stack list' to verify ownership; refusing to guess whether this stack is stopped",
-      );
-    }
-    const shouldStop = Boolean(stack) || Boolean(listedOurs);
-    if (shouldStop) {
-      const result = stopStack(cliStackName);
-      if (!result.ok) {
-        // A failed stop is not proof the stack is gone. Confirm with status *and*
-        // the stack list (canonical project root + name) before releasing the
-        // lease; if either cannot confirm a stop, keep the lease and fail.
-        const after = readStackStatus(cliStackName);
-        const afterList = readStackList();
-        const stillListedRunning = (afterList ?? []).some(
-          (entry) =>
-            isThisCheckout(entry.projectRoot) &&
-            (entry.name || 'default') === wantedName &&
-            (entry.branch ?? '') === branch &&
-            entry.owner === 'reachable',
-        );
-        const confirmedStopped =
-          after?.lifecycle === 'stopped' ||
-          (afterList !== null && !stillListedRunning && after?.lifecycle !== 'running');
-        if (after?.lifecycle === 'running' || stillListedRunning || !confirmedStopped) {
-          throw new EnvFailure(
-            EXIT_START_FAILED,
-            `could not stop this checkout's stack (${result.stderr.trim() || 'stack stop failed'}); keeping the app-port lease`,
-          );
-        }
-      }
-      lines.push(
-        `Stopped Supabase stack '${stack?.name ?? listedOurs?.name ?? wantedName}' (data kept).`,
-      );
-    } else {
-      lines.push('Supabase stack is already stopped.');
-    }
-
-    removeLease(dir, projectId);
-    removeStackRecord(stateKeyFor(cliStackName));
-    lines.push('Released the app-port lease.');
-    human(parsed, lines);
-
-    if (parsed.json) {
-      const snapshot = await collectSnapshot({
-        contract,
-        stack: readStackStatus(cliStackName),
-        record: readStackRecord(stateKeyFor(cliStackName)),
-      });
-      printJson(snapshot);
-    }
-    appendEnvLog('down: complete');
-    return 0;
+    });
   } finally {
     lock.release();
   }
