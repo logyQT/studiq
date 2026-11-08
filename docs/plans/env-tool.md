@@ -176,6 +176,7 @@ checkout does not own.
 ## 9. Safety invariants (non-negotiable)
 
 1. **Ownership:** only the checkout that created a stack may stop/destroy it; `project_root` is checked first.
+   Ownership is per checkout, not per process: a second terminal in that checkout may stop it, another checkout never can.
 2. **Build lock:** one `next build` across all worktrees.
 3. **Shared mode:** disables shared-stack mutation; plain `down`, local build/serve and the local lease still work.
 4. **No `stop --all`, `pkill` or unscoped `docker rm`; destructive actions require `--yes` when non-interactive.**
@@ -188,7 +189,9 @@ checkout does not own.
 
 - Value-consuming commands keep `varlock run --inject vars -- bun scripts/env/cli.ts <command>`. `status`/`ports`/
   `doctor` run **unwrapped**; `verify` invokes `varlock load` and consumes only exit status/metadata. The CLI never
-  parses a dotenv file and never relies on Bun auto-load; unwrapped commands read the process environment only.
+  parses a dotenv file and never relies on Bun auto-load; unwrapped commands read the process environment only, so
+  a setting that lives only in `.env.local` (`APP_PORT`, `SUPABASE_STACK`, `SUPABASE_SHARED`) is not guaranteed to
+  reach them — export it when `status`/`ports`/`doctor` must agree with `ensure`.
 - **`.env.vault` is opt-in, not required.** `.env.local` is the only required hand-edited values file. The vault
   holds only third-party refs that cannot come from the local stack — locally **LLM** (`LLM_API_KEY`, optionally
   `LLM_BASE_URL`/`LLM_PROVIDER`) and **Stripe** (`STRIPE_SECRET_KEY`, plus `STRIPE_WEBHOOK_SECRET` for webhook
