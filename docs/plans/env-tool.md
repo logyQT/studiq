@@ -45,18 +45,21 @@ env:status   [--json]                            # never mutates; works with no 
 env:down     [--all] [--yes]                     # stop web; --all also stops the stack
 env:build    [--force] [--json]                  # explicit build only
 env:serve    [--json]                            # serve an existing build
+env:recreate --runtime <native|docker> --yes     # destroy + create
 env:dev      [--admin] [atoms]                   # human-only HMR
 env:supa     <args…>                             # bunx supabase with the contract exported
 env:reset-db [--yes]                             # destructive; this checkout only
 env:logs     [--no-follow]                       # stack logs + .dev/web.log
+env:prepull                                      # download artifacts without starting
 env:setup    [--force]                           # human-only, mutating, idempotent
 env:verify   [--full] [--json]                   # read-only, agent-safe
 env:ports    [--json]                            # app port
 env:doctor   [--json]                            # explain state; exit 1 on a real conflict
 ```
 
-`ensure` is the only command an agent normally calls; `status`/`doctor`/`ports` are read-only. `down --all` and
-`reset-db` require `--yes` when non-interactive; all commands print JSON-only stdout with `--json`.
+`ensure` is the only command an agent normally calls; `status`/`doctor`/`ports` are read-only. `down --all`,
+`reset-db`, `recreate` and `--reseed` require `--yes` when non-interactive; all commands print JSON-only stdout with
+`--json`.
 
 `supa` forwards arguments unchanged, except: starts carry the **selected runtime**; `stop --all`, `destroy`, `db
 reset`, `migration down` and `storage rm` exit 2; `stop`/`restart` only for this checkout's stack (exit 6);
@@ -88,18 +91,20 @@ Start contract: `database` is always on; `db` excludes `rest,studio,mail,realtim
 `api` adds `rest`; others exclude `studio,realtime,functions,analytics,pooler`. `--studio`/`--mail`/`--realtime`/
 `--functions`/`--analytics` remove their entry; `--pooler` exits 2. Reject impossible combinations (exit 2).
 
-Atoms: `--db --rest --auth --storage --studio --mail --realtime --functions --analytics --seed --no-seed --web
---build --force-build --prod --admin --runtime <native|docker> --stack <name> --app-port <n> --wait <s> --json
---yes --quiet --verbose`. `--prod` implies build + serve; `--web` without `--prod` exits 2. `--no-seed` wins over
-a profile default; `--seed` forces it. `--admin` targets `apps/admin` on :4000.
+Atoms: `--db --rest --auth --storage --studio --mail --realtime --functions --analytics --seed --no-seed --reseed
+--web --build --force-build --prod --admin --runtime <native|docker> --stack <name> --app-port <n> --wait <s>
+--json --yes --quiet --verbose`. `--prod` implies build + serve; `--web` without `--prod` exits 2. `--no-seed`
+wins over a profile default; `--seed` runs the seeder and `--reseed` forces it. `--admin` targets `apps/admin` on
+:4000.
 
 ## 4. Runtime and platform
 
 Every start carries the **selected** runtime (`native` by default, `docker` only when selected); never rely on CLI
 auto-detection. **No automatic fallback**: native unavailable or failing → exit **3** with the exact opt-in
 (`bun run env:ensure --runtime docker …` or `SUPABASE_RUNTIME=docker bun run env:ensure …`). An existing stack
-keeps its runtime; a Docker stack warns on observation. Conversion is manual and deferred (§14). Never mix runtimes
-in one stack. `status --json` reports `runtime`. CI stays native and calls `supabase stack` directly.
+keeps its runtime; a Docker stack warns on observation and converts only with `env:recreate --runtime native
+--yes`. Never mix runtimes in one stack. `status --json` reports `runtime`. CI stays native and calls `supabase
+stack` directly.
 
 Native supports Linux x86_64/arm64 (glibc ≥ 2.35, `tar`, non-root) and macOS arm64; macOS x86_64, native Windows
 and anything else exit 3 with the Docker opt-in (Windows is WSL2-only). The CLI is authoritative; the tool's check
@@ -137,8 +142,8 @@ an unscoped `docker rm`; the only stop is `supabase stack stop` for a stack this
 
 **Shared mode (`SUPABASE_SHARED=1`):** reuse another checkout's stack and **never mutate the shared stack** — no
 start/stop/destroy/reseed. Still build/serve the local web app and hold a **local app-port lease**, released by
-plain `down`; `down --all`, `reset-db` and seeding exit 6. Keys come from the environment; a capability gap is
-reported, not fixed. `env:supa` is read-only (§2).
+plain `down`; `down --all`, `recreate`, `reset-db` and `--reseed` exit 6, while `status`/`ports`/`verify` work.
+Keys come from the environment; a capability gap is reported, not fixed. `env:supa` is read-only (§2).
 
 ## 7. Building and serving
 
@@ -188,9 +193,10 @@ otherwise. Never tenant-seed a stack this checkout does not own.
   `infisical(...)`). It lives in the **primary checkout**, Git-ignored; worktrees resolve it via `STUDIQ_ENV_VAULT`
   (default `<primary>/.env.vault`). The wrapper passes `--path "$STUDIQ_ENV_VAULT" --path .` (vault first, checkout
   last, so `.env.local` wins); with no vault it passes no `--path`.
-- `env:setup` never writes a value or overwrites without `--force`. `env:verify` default reports missing key **names**
-  (exit status/metadata only); `--full` adds vault refs and provider status, one line each. New keys (`STUDIQ_ENV_VAULT`,
-  the `SUPABASE_LOCAL_SMTP_*_PORT` trio) go into `.env.schema`; `scripts/env/**` has no provider code or ref parsing.
+- `env:setup` is **human-only**, never writes a value and never overwrites without `--force`. `env:verify` is
+  read-only and agent-safe: its default reports missing key **names** (exit status/metadata only); `--full` adds
+  vault refs and provider status, one line each. New keys (`STUDIQ_ENV_VAULT`, the `SUPABASE_LOCAL_SMTP_*_PORT`
+  trio) go into `.env.schema`; `scripts/env/**` has no provider code or ref parsing.
 
 ## 11. `--json` contract
 
@@ -202,8 +208,16 @@ Every command accepts `--json` and prints **only** JSON to stdout; the shape is 
   "profile": "api",
   "runtime": "native",
   "cold": false,
+  "runId": null,
   "stack": { "id": "…", "name": "default", "branch": "refs/heads/x", "projectRoot": "/…" },
-  "ports": { "app": 3011, "api": 20041, "db": 20042 },
+  "ports": { "block": null, "app": 3011, "api": 20041, "db": 20042, "studio": 0, "mail": 0 },
+  "urls": {
+    "app": "http://localhost:3011",
+    "supabase": "http://127.0.0.1:20041",
+    "db": "postgresql://127.0.0.1:20042/postgres",
+    "mail": null,
+    "studio": null
+  },
   "seeded": false,
   "build": { "present": true, "fingerprint": "…" },
   "warnings": [],
@@ -211,8 +225,8 @@ Every command accepts `--json` and prints **only** JSON to stdout; the shape is 
 }
 ```
 
-`urls` mirrors the ports (`app`, `supabase`, `db`; `mail`/`studio` are `null` unless running). Legacy camelCase
-fields (`stackId`, `branch`, `web`, `supabase`, `dbUrl`, `mailUrl`) stay for compatibility.
+`runId` is the QA/e2e run suffix when a suite run applies, else `null`. Legacy camelCase fields (`stackId`, `branch`,
+`web`, `supabase`, `dbUrl`, `mailUrl`) stay for compatibility.
 
 - **No secrets.** No anon/service-role/publishable/secret keys, S3 names or values, or DB password. The `db` URL is
   emitted without userinfo; children still receive the CLI's full `DB_URL`.
@@ -221,12 +235,12 @@ fields (`stackId`, `branch`, `web`, `supabase`, `dbUrl`, `mailUrl`) stay for com
 
 ## 12. Phases, budgets and acceptance
 
-| Phase             | Scope                                                                                                                                   | Gate                                |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| **0 — evidence**  | Port create/resume spike, identity, baseline timings, `dev:*` inventory, spec + ADR. No product code.                                   | Evidence in the issue; ADR reviewed |
-| **1 — read-only** | `status`/`doctor`/`ports`/`supa`; stable `--json`. `scripts/dev` untouched.                                                             | Read-only parity, unit tests        |
-| **2 — ensure**    | `ensure --profile api\|web`, `down`, `build`, `serve`; varlock-injected; app-port lease; warm path. Keep `scripts/dev`.                 | Acceptance 1–10                     |
-| **3 — cutover**   | `mail`/`full`/`qa`/`e2e`/`admin`, `env:dev --admin`, `reset-db`, `logs`, `setup`, `verify`; delete `scripts/dev` + `dev:*`; docs sweep. | All acceptance tests; `rg` clean    |
+| Phase             | Scope                                                                                                                                                          | Gate                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **0 — evidence**  | Port create/resume spike, identity, baseline timings, `dev:*` inventory, spec + ADR. No product code.                                                          | Evidence in the issue; ADR reviewed |
+| **1 — read-only** | `status`/`doctor`/`ports`/`supa`; stable `--json`. `scripts/dev` untouched.                                                                                    | Read-only parity, unit tests        |
+| **2 — ensure**    | `ensure --profile api\|web`, `down`, `build`, `serve`; varlock-injected; app-port lease; warm path. Keep `scripts/dev`.                                        | Acceptance 1–10                     |
+| **3 — cutover**   | `mail`/`full`/`qa`/`e2e`/`admin`, `env:dev --admin`, `recreate`, `reset-db`, `logs`, `prepull`, `setup`, `verify`; delete `scripts/dev` + `dev:*`; docs sweep. | All acceptance tests; `rg` clean    |
 
 Phases are serial (every phase touches `scripts/env/**`).
 
@@ -272,25 +286,27 @@ Pure parts live in `__tests__/unit/env/`; lifecycle tests run via `bun run env:s
 | `dev:serve` / `dev:build` / `dev:status` | `env:serve` / `env:build` / `env:status` | `--json` preserved                 |
 | `dev:down [--all]` / `dev:reset-db`      | `env:down [--all]` / `env:reset-db`      | `--yes` when non-interactive       |
 | `dev:logs` / `dev:doctor` / `dev:ports`  | `env:logs` / `env:doctor` / `env:ports`  | exit 1 on a real conflict          |
+| `dev:prepull`                            | `env:prepull`                            | `stack install`                    |
 | `bash scripts/dev supa …`                | `bun run env:supa …`                     | APP_URL + contract exported        |
 | `bun run dev:admin`                      | `bun run env:dev --admin`                | admin HMR on :4000; human-only     |
 | `scripts/dev` / `dev:*`                  | —                                        | deleted with the cutover           |
 
-New commands with no old equivalent: `env:ensure` (composed from `dev:up`), `env:setup`, `env:verify`.
+New commands with no old equivalent: `env:ensure` (composed from `dev:up`), `env:recreate`, `env:setup`,
+`env:verify`.
 
 `env:dev --admin` is human-only admin HMR on :4000 (loopback only); agents use `env:ensure --profile admin`.
-The cutover updates `AGENTS.md`, `README.md`, `apps/admin/README.md` and ADR-0009.
+The cutover updates every live reference (`AGENTS.md`, `README.md`, `docs/ONBOARDING.md`, ADR-0010, the native
+audit, code comments, `scripts/load-test/README.md`).
 
 ## 14. Deferred and out of scope
 
-**Deferred:** `prepull` — `ensure` downloads on demand. `recreate` — runtime conversion is manual: use `bunx
-supabase stack destroy` then `env:ensure --runtime <native|docker>` if ever needed; a first-class command is
-deferred.
+**Deferred** (one line each, no v1 surface): the port allocator (the CLI assigns stack ports), capability reconcile
+(`env:down --all` then `env:ensure`), seed markers/run ids, build rollback (fail and stop), multi-lock hierarchies and
+provider-status ceremony.
 
-Also out of scope: allocator, capability reconcile, seed markers/run ids, build rollback, multi-lock hierarchies
-and provider ceremony (cut from v1); caching (#1078); CI changes; provider/vault implementation; removing the
-`varlock run` wrappers (post-stability); `--attach`; `next dev` for agents; two environments per checkout;
-per-agent stacks; Kubernetes/remote/production; changing the pinned CLI or backend; enabling the pooler.
+Also out of scope: caching (#1078); CI changes; the vault provider implementation; removing the `varlock run`
+wrappers (post-stability); `--attach`; `next dev` for agents; two environments per checkout; per-agent stacks;
+Kubernetes/remote/production; changing the pinned CLI or backend; enabling the pooler.
 
 ## References
 

@@ -17,14 +17,15 @@ allocator is not justified for now, so the tool leases only the app port and dis
 ## Decision
 
 1. **Adopt `env` as the single local-environment command.** Surface: `ensure`, `status`, `down`, `build`, `serve`,
-   `dev`, `supa`, `reset-db`, `logs`, `setup`, `verify`, `ports`, `doctor`; `ensure` is the blessed agent path and
-   `status`/`ports`/`doctor` are read-only. `prepull` and `recreate` are deferred (spec §14).
+   `recreate`, `dev`, `supa`, `reset-db`, `logs`, `prepull`, `setup`, `verify`, `ports`, `doctor`; `ensure` is the
+   blessed agent path and `status`/`ports`/`doctor` are read-only.
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover; no aliases.
 3. **varlock is the only loader, injector and validator.** Value-consuming commands keep `varlock run --inject vars --`;
    `status`/`ports`/`doctor` run unwrapped. The CLI never parses a dotenv file; the wrappers stay for #1077 (removal is a
    post-stability migration after #1077 and #1078).
 4. **Native is the default and the only auto-selected runtime.** Every start passes the selected runtime explicitly; Docker only
-   via `--runtime docker` / `SUPABASE_RUNTIME=docker`, with no silent fallback. Runtime conversion is manual and deferred.
+   via `--runtime docker` / `SUPABASE_RUNTIME=docker`, with no silent fallback. Conversion only via
+   `env:recreate --runtime native --yes`.
 5. **Identity is `projectRoot + branch + stackName`; one environment per checkout.** A second server, or rebuilding the `.next`
    another server serves for a different stack/profile, exits 6; `--attach` is future work.
 6. **The app port is the only lease; stack ports are discovered.** The lease is claimed once under the registry lock in
@@ -35,7 +36,8 @@ allocator is not justified for now, so the tool leases only the app port and dis
    human-created in the primary checkout, Git-ignored, for LLM/Stripe refs only, resolved via `STUDIQ_ENV_VAULT`. `env:setup`
    mutates; `env:verify` observes.
 9. **Shared mode is read-only for the shared stack.** `SUPABASE_SHARED=1` forbids start/stop/destroy/reseed; local build/serve and
-   a local app-port lease are allowed; `down --all`, `reset-db` and seeding exit 6; `supa` forwards only read-only forms.
+   a local app-port lease are allowed; `down --all`, `recreate`, `reset-db` and `--reseed` exit 6; `supa` forwards only
+   read-only forms.
 10. **Profile changes are not reconciled.** `env:down --all` then `env:ensure`; a capability superset satisfies a narrower
     profile; `dev:admin` becomes `env:dev --admin`.
 11. **Caching is out of scope** (#1078); CI is untouched and calls `supabase stack` directly.
