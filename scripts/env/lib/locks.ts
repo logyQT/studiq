@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -63,6 +64,26 @@ export function ensureRegistryDir(): string {
   }
   chmodSync(dir, 0o700);
   return dir;
+}
+
+/**
+ * Create a lock file with its full content atomically.
+ *
+ * `writeFileSync(..., { flag: 'wx' })` publishes an empty file before the
+ * content is written; a waiter can read that window as "unparseable", reap the
+ * live lock and start a second holder. Writing a temp file and hard-linking it
+ * makes EEXIST and content publication one atomic step. The temp file is never
+ * a valid lock path, so readers never see it.
+ */
+function createLockFileAtomic(file: string, content: string): void {
+  const temp = `${file}.${randomBytes(8).toString('hex')}.tmp`;
+  writeFileSync(temp, content, { mode: 0o600, flag: 'wx' });
+  try {
+    linkSync(temp, file);
+    chmodSync(file, 0o600);
+  } finally {
+    rmSync(temp, { force: true });
+  }
 }
 
 interface LockContent {
@@ -252,10 +273,9 @@ export async function withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T>
   const deadline = Date.now() + 60_000;
   for (;;) {
     try {
-      writeFileSync(
+      createLockFileAtomic(
         file,
         `${JSON.stringify({ pid: process.pid, token, acquiredAt: new Date().toISOString() })}\n`,
-        { mode: 0o600, flag: 'wx' },
       );
       break;
     } catch (error) {
@@ -369,7 +389,7 @@ export async function acquireStartLock(options: StartLockOptions): Promise<Start
       if (!holder || !pidAlive(holder.pid)) {
         rmSync(file, { force: true });
         try {
-          writeFileSync(file, `${JSON.stringify(content)}\n`, { mode: 0o600, flag: 'wx' });
+          createLockFileAtomic(file, `${JSON.stringify(content)}\n`);
           acquired = true;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
@@ -484,6 +504,9 @@ export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
   const command = [process.execPath, 'run', '--filter', '@studiq/web', 'build'];
   const buildEnv = buildEnvWithHeap(options.env);
 
+  // The build lock is a kernel flock on an empty file (its content is never
+  // read) or an atomic mkdir with a diagnostic pid; neither has the
+  // partial-content window the JSON lock files had.
   if (hasFlock()) {
     const result = spawnSync('flock', ['-E', '75', '-w', String(waitSeconds), lock, ...command], {
       cwd: REPO_ROOT,

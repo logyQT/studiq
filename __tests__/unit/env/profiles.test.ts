@@ -17,7 +17,7 @@ interface ProfilesModule {
   excludesFor(capabilities: Iterable<string>): string[];
   isCapabilitySuperset(observed: Iterable<string>, requested: Iterable<string>): boolean;
   missingCapabilities(observed: Iterable<string>, requested: Iterable<string>): string[];
-  profileRequiresServe(profile: string | null): boolean;
+  profileRequiresServe(profile: string | null | undefined): boolean;
 }
 
 const profiles = await loadEnvModule<ProfilesModule>('profiles.ts');
@@ -96,10 +96,22 @@ describe('env profiles (spec §3)', () => {
     expect(profiles.missingCapabilities(api, full)).toEqual(['mail']);
   });
 
-  it('marks only served profiles as requiring the web server', () => {
+  it('derives serve from the profile table, not a hard-coded list', () => {
+    for (const name of profiles.PROFILE_NAMES) {
+      expect(profiles.profileRequiresServe(name)).toBe(profiles.PROFILES[name]?.serve);
+    }
+    const api = profiles.PROFILES.api;
+    const previous = api?.serve ?? false;
+    try {
+      if (api) api.serve = true;
+      expect(profiles.profileRequiresServe('api')).toBe(true);
+      if (api) api.serve = false;
+      expect(profiles.profileRequiresServe('api')).toBe(false);
+    } finally {
+      if (api) api.serve = previous;
+    }
     expect(profiles.profileRequiresServe('web')).toBe(true);
-    expect(profiles.profileRequiresServe('qa')).toBe(true);
-    expect(profiles.profileRequiresServe('api')).toBe(false);
     expect(profiles.profileRequiresServe(null)).toBe(false);
+    expect(profiles.profileRequiresServe(undefined)).toBe(false);
   });
 });

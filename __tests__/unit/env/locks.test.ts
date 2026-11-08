@@ -91,6 +91,40 @@ describe('lock primitives', () => {
     expect(existsSync(lock.file)).toBe(false);
   });
 
+  it('recovers from an empty/partial lock without wedging', async () => {
+    const dir = registry();
+    const lockDir = join(dir, 'locks');
+    mkdirSync(lockDir, { recursive: true, mode: 0o700 });
+    writeFileSync(join(lockDir, 'start-partial.lock'), '{"pid":', { mode: 0o600 });
+
+    const lock = await locks.acquireStartLock(options('partial'));
+    expect(JSON.parse(readFileSync(lock.file, 'utf8'))).toMatchObject({ pid: process.pid });
+    lock.release();
+    expect(existsSync(lock.file)).toBe(false);
+  });
+
+  it('publishes complete lock content and never reaps a live holder', async () => {
+    registry();
+    const first = await locks.acquireStartLock(options('complete'));
+    const published = readFileSync(first.file, 'utf8');
+    const parsed: unknown = JSON.parse(published);
+    expect(parsed).toBeTruthy();
+
+    let secondAcquired = false;
+    const secondPromise = (async () => {
+      const lock = await locks.acquireStartLock(options('complete', 2));
+      secondAcquired = true;
+      lock.release();
+    })();
+
+    await sleep(250);
+    expect(secondAcquired).toBe(false);
+    expect(readFileSync(first.file, 'utf8')).toBe(published);
+    first.release();
+    await secondPromise;
+    expect(secondAcquired).toBe(true);
+  });
+
   it('lets only one waiter acquire the start lock after a release', async () => {
     registry();
     const first = await locks.acquireStartLock(options('one-waiter'));

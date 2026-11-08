@@ -10,7 +10,6 @@ interface Lease {
 }
 
 interface LeaseModule {
-  LEASE_TTL_SEC: number;
   isLeaseReclaimable(input: {
     pidAlive: boolean;
     heartbeatAgeMs: number;
@@ -49,7 +48,7 @@ function record(overrides: Partial<Lease> = {}): Lease {
     projectId: 'env-abc',
     appPort: 3000,
     heartbeatAt: new Date(0).toISOString(),
-    ttlSec: lease.LEASE_TTL_SEC,
+    ttlSec: 15 * 60,
     projectRoot: identity.projectRoot,
     branch: identity.branch,
     stackName: identity.stackName,

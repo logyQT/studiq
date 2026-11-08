@@ -153,9 +153,14 @@ function parsePort(value: string, flag: string): number {
 }
 
 function parseWait(value: string): number {
-  if (!/^[0-9]+$/.test(value)) throw new UsageError(`--wait='${value}' is not a number of seconds`);
+  // Bound the digit count before Number(): a 310-digit string becomes Infinity.
+  if (!/^[0-9]{1,4}$/.test(value)) {
+    throw new UsageError(`--wait='${value}' is not a number of seconds (1-3600)`);
+  }
   const seconds = Number(value);
-  if (seconds < 1) throw new UsageError('--wait must be at least 1 second');
+  if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 3600) {
+    throw new UsageError(`--wait='${value}' is out of range (1-3600)`);
+  }
   return seconds;
 }
 

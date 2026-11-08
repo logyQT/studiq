@@ -84,6 +84,14 @@ describe('env atom grammar', () => {
     throwsUsage(['ensure', '--profile', 'api', '--web'], /--web.*--prod/);
   });
 
+  it('bounds --wait to a safe integer range', () => {
+    expect(
+      atoms.parseCommand(['ensure', '--profile', 'api', '--wait', '3600']).ensure,
+    ).toMatchObject({ waitSeconds: 3600 });
+    throwsUsage(['ensure', '--profile', 'api', '--wait', '3601'], /1-3600|range/);
+    throwsUsage(['ensure', '--profile', 'api', '--wait', '9'.repeat(310)], /1-3600|range|number/);
+  });
+
   it('parses capability atoms and the remaining value flags', () => {
     const parsed = atoms.parseCommand([
       'ensure',
@@ -128,7 +136,7 @@ describe('env atom grammar', () => {
     throwsUsage(['ensure', '--profile', 'api', '--build'], /does not build or serve/);
     throwsUsage(['ensure', '--profile', 'api', '--prod'], /does not build or serve/);
     throwsUsage(['ensure', '--profile', 'api', '--app-port', '0'], /out of range/);
-    throwsUsage(['ensure', '--profile', 'api', '--wait', '0'], /at least 1/);
+    throwsUsage(['ensure', '--profile', 'api', '--wait', '0'], /1-3600|range/);
     throwsUsage(['ensure', '--profile', 'api', '--stack', 'bad name'], /valid stack name/);
   });
 

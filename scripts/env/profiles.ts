@@ -198,5 +198,6 @@ export function excludesFor(capabilities: Iterable<Capability>): Capability[] {
 }
 
 export function profileRequiresServe(profile: string | null | undefined): boolean {
-  return profile === 'web' || profile === 'qa' || profile === 'e2e' || profile === 'admin';
+  if (!profile || !isProfileName(profile)) return false;
+  return PROFILES[profile].serve;
 }
