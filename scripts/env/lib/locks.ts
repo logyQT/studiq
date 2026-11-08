@@ -14,8 +14,8 @@ import {
   type Stats,
 } from 'node:fs';
 import { join } from 'node:path';
-import { EXIT_CONFLICT, EXIT_TIMEOUT, EXIT_USAGE, EnvFailure } from './exit';
-import { appendEnvLog, ensureDevDir } from './state';
+import { EXIT_CONFLICT, EXIT_TIMEOUT, EnvFailure } from './exit';
+import { appendEnvLog } from './state';
 import { resolveRegistryDir } from './registry';
 import { REPO_ROOT } from './repo';
 
@@ -643,156 +643,21 @@ export interface BuildRunResult {
   backupPath: string;
 }
 
-export interface BuildRunOptions {
-  waitSeconds?: number;
-  env: NodeJS.ProcessEnv;
-}
-
-/** The same heap cap `scripts/dev` uses (`DEV_BUILD_MEMORY_MB`, default 4096). */
-function buildEnvWithHeap(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const raw = process.env.DEV_BUILD_MEMORY_MB ?? '4096';
-  const memory = Number(raw);
-  if (!Number.isInteger(memory) || memory <= 0) {
-    throw new EnvFailure(
-      EXIT_USAGE,
-      `DEV_BUILD_MEMORY_MB='${raw}' is not a positive number of megabytes`,
-    );
-  }
-  const inherited = process.env['NODE_OPTIONS'];
-  const nodeOptions = inherited
-    ? `${inherited} --max-old-space-size=${memory}`
-    : `--max-old-space-size=${memory}`;
-  return { ...env, NODE_OPTIONS: nodeOptions };
-}
-
 /**
- * Run `next build` under the cross-worktree lock.
- *
- * `flock` is preferred because it is the same lock `scripts/dev` holds; the
- * fallback is the atomic `mkdir` + pid lock (also `scripts/dev`'s fallback).
- * The lock covers the build only, never the whole `ensure`.
+ * Run a whole stable-build operation (fingerprint, backup, build, validation,
+ * restore/cleanup) under the cross-worktree build lock. The lock is the same
+ * `flock`/mkdir lock `scripts/dev` uses; the callback runs after the lock is
+ * held, so no second build can start between validation and cleanup.
  */
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
+export async function withBuildLock<T>(waitSeconds: number, fn: () => Promise<T> | T): Promise<T> {
   const dir = ensureRegistryDir();
   const lock = join(dir, 'build.lock');
-  const waitSeconds = options.waitSeconds ?? 1800;
-  const buildEnv = buildEnvWithHeap(options.env);
-  ensureDevDir();
-
-  // `next build` empties `.next` before compiling, so a failed build would
-  // otherwise leave the checkout with a broken/partial build. Move the old
-  // output aside first; the shell restores it on failure. On success the
-  // caller keeps/discards the backup after the fingerprint is verified.
-  // Keep the backup beside `apps/web/.next` so the move is a same-filesystem
-  // rename and does not depend on the volatile `.dev/` location.
-  const backupPath = join(
-    REPO_ROOT,
-    'apps',
-    'web',
-    `.next-build-backup-${process.pid}-${randomBytes(6).toString('hex')}`,
-  );
-  const buildCommand = `${shellQuote(process.execPath)} run --filter @studiq/web build`;
-  const backup = shellQuote(backupPath);
-  const script = [
-    `rm -rf ${backup}`,
-    'if [ -d apps/web/.next ]; then',
-    `  if ! mv apps/web/.next ${backup}; then exit 1; fi`,
-    'fi',
-    buildCommand,
-    'status=$?',
-    'if [ "$status" -ne 0 ]; then',
-    '  rm -rf apps/web/.next',
-    `  if [ -d ${backup} ]; then mv ${backup} apps/web/.next; fi`,
-    '  exit "$status"',
-    'fi',
-    'exit 0',
-  ].join('\n');
-  const command = ['sh', '-c', script];
-
-  // The build lock is a kernel flock on an empty file (its content is never
-  // read) or an atomic mkdir with a diagnostic pid; neither has the
-  // partial-content window the JSON lock files had.
-  if (hasFlock()) {
-    const result = spawnSync('flock', ['-E', '75', '-w', String(waitSeconds), lock, ...command], {
-      cwd: REPO_ROOT,
-      env: buildEnv,
-      encoding: 'utf8',
-      timeout: (waitSeconds + 120) * 1000,
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-    if (result.status === 75) {
-      return { ok: false, timedOut: true, exitCode: 75, output, backupPath };
-    }
-    return {
-      ok: result.status === 0,
-      timedOut: false,
-      exitCode: result.status,
-      output,
-      backupPath,
-    };
-  }
-
-  const lockDir = `${lock}.d`;
-  const deadline = Date.now() + waitSeconds * 1000;
-  for (;;) {
-    try {
-      mkdirSync(lockDir, { mode: 0o700 });
-      writeFileSync(join(lockDir, 'pid'), `${process.pid}\n`, { mode: 0o600 });
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      let observed: StatIdentity | null = null;
-      try {
-        observed = lstatSync(lockDir);
-      } catch {
-        continue;
-      }
-      let owner = 0;
-      let ownerMissing = false;
-      try {
-        owner = Number(readFileSync(join(lockDir, 'pid'), 'utf8').trim());
-        ownerMissing = !owner;
-      } catch (error) {
-        ownerMissing = (error as NodeJS.ErrnoException).code === 'ENOENT';
-      }
-      const missingLongEnough = ownerMissing && Date.now() - observed.mtimeMs > 5_000;
-      if ((owner && !pidAlive(owner)) || missingLongEnough) {
-        try {
-          const current = lstatSync(lockDir);
-          if (sameEntry(observed, current)) rmSync(lockDir, { recursive: true, force: true });
-        } catch {
-          /* vanished */
-        }
-        continue;
-      }
-      if (Date.now() >= deadline) {
-        return { ok: false, timedOut: true, exitCode: null, output: '', backupPath };
-      }
-      spawnSync('sleep', ['1']);
-    }
-  }
-
+  const mutex =
+    (await acquireKernelMutex(lock, waitSeconds)) ??
+    (await acquireDirMutex(`${lock}.d`, waitSeconds));
   try {
-    const result = spawnSync(command[0] as string, command.slice(1), {
-      cwd: REPO_ROOT,
-      env: buildEnv,
-      encoding: 'utf8',
-      timeout: (waitSeconds + 120) * 1000,
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    return {
-      ok: result.status === 0,
-      timedOut: false,
-      exitCode: result.status,
-      output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
-      backupPath,
-    };
+    return await fn();
   } finally {
-    rmSync(lockDir, { recursive: true, force: true });
+    await mutex.release();
   }
 }

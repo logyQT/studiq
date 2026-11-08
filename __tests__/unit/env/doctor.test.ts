@@ -99,6 +99,20 @@ describe('env:doctor', () => {
     expect(stringList(report.warnings)).toHaveLength(1);
   });
 
+  it('checks the default stack when SUPABASE_STACK is unset', async () => {
+    const appPort = await firstBindablePort(3900);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      SUPABASE_STACK: '',
+    });
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls()).toContain('stack status --output-format json');
+    expect(harness.bunxCalls()).not.toContain('--stack');
+  });
+
   it('warns when the Supabase CLI cannot be spawned', async () => {
     const appPort = await firstBindablePort(3900);
     const harness = newHarness();

@@ -70,6 +70,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
   const contract = readContractLenient();
   const branch = currentBranchRef();
   const cliStackName = options.stack ?? contract.stackName;
+  const snapshotContract = { ...contract, stackName: cliStackName };
   const key = identityKey(REPO_ROOT, branch, cliStackName ?? '');
   const dir = ensureRegistryDir();
   const projectId = leaseProjectId(key);
@@ -105,7 +106,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
       human(parsed, lines);
       if (parsed.json) {
         const snapshot = await collectSnapshot({
-          contract,
+          contract: snapshotContract,
           stack: null,
           record: null,
           skipStackLookup: true,
@@ -135,6 +136,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
         if (!stackRunning && listed !== null && lease) {
           // A stopped stack does not need its app-port lease; release it exactly once.
           removeLease(dir, projectId);
+          removeStackRecord(stateKeyFor(cliStackName));
           lines.push('Released the app-port lease (stack is stopped).');
         } else if (lease) {
           lines.push(`Kept the app-port lease on ${lease.appPort} while the stack runs.`);
@@ -142,7 +144,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
         human(parsed, lines);
         if (parsed.json) {
           const snapshot = await collectSnapshot({
-            contract,
+            contract: snapshotContract,
             stack,
             record: readStackRecord(stateKeyFor(cliStackName)),
           });
@@ -226,7 +228,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
 
       if (parsed.json) {
         const snapshot = await collectSnapshot({
-          contract,
+          contract: snapshotContract,
           stack: readStackStatus(cliStackName),
           record: readStackRecord(stateKeyFor(cliStackName)),
         });

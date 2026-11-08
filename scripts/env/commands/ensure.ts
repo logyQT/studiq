@@ -488,7 +488,7 @@ async function runSharedEnsure(
         }
       }
       appendEnvLog('ensure(shared): building @studiq/web');
-      const build = buildWithStableFingerprint({
+      const build = await buildWithStableFingerprint({
         root: REPO_ROOT,
         mode: BUILD_MODE,
         envHash,
@@ -521,7 +521,7 @@ async function runSharedEnsure(
           EXIT_START_FAILED,
           `${
             build.ok
-              ? 'source changed while the build ran; re-run env:ensure to rebuild'
+              ? 'build output is incomplete or source changed while the build ran; re-run env:ensure to rebuild'
               : `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`
           }${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
         );
@@ -609,7 +609,7 @@ async function runSharedEnsure(
     for (const warning of warnings) writeStderrLine(`env: warning: ${warning}`);
   }
   emit(parsed, snapshot, { profile: options.profile, cold: false, appUrl: contract.appUrl });
-  return ready ? 0 : 4;
+  return 0;
 }
 
 export async function runEnsure(parsed: ParsedCommand): Promise<number> {
@@ -799,16 +799,15 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       });
       if (started.timedOut) {
         if (!wasRunning) stopStack(cliStackName);
+        if (lease) removeLease(dir, projectId, lease.claimId);
         throw new EnvFailure(
           EXIT_TIMEOUT,
           `'supabase stack start' did not finish within ${timeoutSeconds + 120}s`,
         );
       }
       if (!started.ok) {
-        if (!wasRunning) {
-          stopStack(cliStackName);
-          if (lease) removeLease(dir, projectId, lease.claimId);
-        }
+        if (!wasRunning) stopStack(cliStackName);
+        if (lease) removeLease(dir, projectId, lease.claimId);
         throw new EnvFailure(
           EXIT_START_FAILED,
           `failed to start this checkout's stack (${started.stderr.trim() || 'supabase stack start failed'})`,
@@ -918,7 +917,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           }
         }
         appendEnvLog('ensure: building @studiq/web (fingerprint mismatch or --force-build)');
-        const build = buildWithStableFingerprint({
+        const build = await buildWithStableFingerprint({
           root: REPO_ROOT,
           mode: BUILD_MODE,
           envHash: effectiveEnvHash,
@@ -942,7 +941,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         if (!build.ok || !build.stable) {
           appendEnvLog(
             build.ok
-              ? 'ensure: source changed while the build ran; not persisting the fingerprint'
+              ? 'ensure: build output is incomplete or source changed; not persisting the fingerprint'
               : `ensure: build failed (exit ${build.exitCode ?? 'unknown'})`,
           );
           const restore = webPidBefore
@@ -958,7 +957,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
             EXIT_START_FAILED,
             `${
               build.ok
-                ? 'source changed while the build ran; re-run env:ensure to rebuild'
+                ? 'build output is incomplete or source changed while the build ran; re-run env:ensure to rebuild'
                 : `build failed (exit ${build.exitCode ?? 'unknown'}); see .dev/env.log`
             }${restore && !restore.ok && restore.recovery ? `; ${restore.recovery}` : ''}`,
           );

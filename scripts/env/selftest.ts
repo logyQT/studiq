@@ -626,10 +626,10 @@ async function main(): Promise<number> {
 
     // A port claimed during the build/handover must be reported as degraded,
     // not silently treated as a healthy recovery.
-    const appPort = number(object(handoverJson.ports).app);
+    const handoverAppPort = number(object(handoverJson.ports).app);
     const portDown = run(['env:down'], childEnv);
     assertOk(portDown.code === 0, 'plain down before the port-conflict test exits 0');
-    const squatter = await occupyPort(appPort);
+    const squatter = await occupyPort(handoverAppPort);
     try {
       const blocked = run(['env:ensure', '--profile', 'web', '--force-build', '--json'], childEnv);
       assertOk(blocked.code === 4, `blocked app port exits 4 (got ${blocked.code})`);

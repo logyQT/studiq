@@ -214,6 +214,26 @@ describe('env:status --json', () => {
     expect(calls).not.toMatch(/stack (start|stop|destroy|install|logs)/);
   });
 
+  it('asks the CLI for the default stack when SUPABASE_STACK is unset', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['status', '--json'], { SUPABASE_STACK: '' });
+
+    expect(result.status).toBe(0);
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack status --output-format json');
+    expect(calls).not.toContain('--stack');
+  });
+
+  it('passes --stack for a named stack', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['status', '--json']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls()).toContain('--stack env-unit-');
+  });
+
   it('reports a broken APP_PORT instead of crashing', async () => {
     const harness = newHarness();
     harness.setStatusFixture(stoppedStackFixture());

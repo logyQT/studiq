@@ -107,7 +107,7 @@ export async function runBuild(parsed: ParsedCommand): Promise<number> {
   let built = false;
   if (options.force || !current || !buildArtifactPresent()) {
     appendEnvLog('build: building @studiq/web');
-    const result = buildWithStableFingerprint({
+    const result = await buildWithStableFingerprint({
       root: REPO_ROOT,
       mode: BUILD_MODE,
       envHash,
@@ -121,7 +121,7 @@ export async function runBuild(parsed: ParsedCommand): Promise<number> {
       throw new EnvFailure(
         EXIT_START_FAILED,
         result.ok
-          ? 'source changed while the build ran; re-run env:build to rebuild'
+          ? 'build output is incomplete or source changed while the build ran; re-run env:build to rebuild'
           : `build failed (exit ${result.exitCode ?? 'unknown'}); see .dev/env.log`,
       );
     }

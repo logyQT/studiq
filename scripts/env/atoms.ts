@@ -375,24 +375,20 @@ function parseDown(rest: string[]): ParsedCommand {
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index] as string;
     if (token === '--help' || token === '-h') return helpResult();
+    if (!token.startsWith('--')) {
+      throw new UsageError(`unexpected argument '${token}' for 'down'`);
+    }
     const { name, inline } = flagToken(token);
     if (name === '--stack') {
-      if (inline !== undefined && inline !== '') {
-        stack = parseStackName(inline);
-        continue;
-      }
-      const value = rest[index + 1];
-      if (value === undefined || value.startsWith('--')) {
-        throw new UsageError("'--stack' needs a value");
-      }
-      stack = parseStackName(value);
-      index += 1;
+      const read = readValue(name, inline, rest, index);
+      index = read.next;
+      stack = parseStackName(read.value);
       continue;
     }
-    if (token.startsWith('--') && token.includes('=')) {
-      throw new UsageError(`'${token.split('=')[0]}' does not take a value`);
+    if (inline !== undefined) {
+      throw new UsageError(`'${name}' does not take a value`);
     }
-    switch (token) {
+    switch (name) {
       case '--all':
         all = true;
         break;
