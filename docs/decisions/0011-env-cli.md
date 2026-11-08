@@ -49,7 +49,9 @@ checkouts. The corrected spec is
    `stop --all`, `db reset` and `stack destroy` are rejected, and every
    stop/restart form (`stop`, `stack stop`, `restart`, `stack restart`) must
    target a stack whose `project_root` is this checkout (usage errors exit 2,
-   ownership conflicts exit 6).
+   ownership conflicts exit 6). Starts are normalized instead: `stack start …`
+   always carries the selected runtime (`--runtime native` by default, injected
+   when absent; an explicit value is preserved).
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover (phase 3);
    no aliases and no back-compat layer. Root `build`/`start` and the low-level
    `build:web`/`start:web`/`build:admin`/`start:admin` scripts stay.
