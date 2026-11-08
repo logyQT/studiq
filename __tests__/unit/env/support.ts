@@ -60,6 +60,25 @@ function readLog(path: string): string {
   }
 }
 
+/**
+ * Kill the child's whole process group. `run()` spawns detached, so the direct
+ * `bun` child is a group leader and its `bunx`/CLI grandchildren are killed
+ * too; SIGKILL to an already-gone group raises ESRCH, which is expected.
+ */
+function killTree(child: ChildProcess): void {
+  if (child.pid === undefined) return;
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ESRCH') return;
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
 async function terminate(child: ChildProcess): Promise<void> {
   await new Promise<void>((done) => {
     let settled = false;
@@ -76,7 +95,11 @@ async function terminate(child: ChildProcess): Promise<void> {
       finish();
       return;
     }
-    if (!child.kill('SIGKILL')) finish();
+    if (child.pid === undefined) {
+      finish();
+      return;
+    }
+    killTree(child);
   });
 }
 
@@ -87,6 +110,7 @@ export interface Harness {
   env: NodeJS.ProcessEnv;
   run(args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<RunResult>;
   setStatusFixture(value: unknown): void;
+  setRawStatus(text: string): void;
   setListFixture(value: unknown): void;
   writeRegistryEntry(entry: Record<string, unknown>): void;
   writeRawEntry(name: string, entry: unknown): void;
@@ -203,10 +227,16 @@ export function createHarness(): Harness {
         const child = spawn(BUN, [CLI_PATH, ...args], {
           cwd: dir,
           env: { ...env, ...extraEnv },
-          timeout: 20_000,
-          killSignal: 'SIGKILL',
+          // Detached makes the child a process-group leader, so a timeout or
+          // cleanup can SIGKILL the whole tree (CLI + bunx + supabase).
+          detached: true,
         });
         children.add(child);
+
+        // Own timer (instead of spawn's `timeout`) so the whole group dies, not
+        // just `bun`, and so cleanup() cannot race a hung grandchild.
+        const timer = setTimeout(() => killTree(child), 20_000);
+
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', (chunk: Buffer | string) => {
@@ -216,6 +246,7 @@ export function createHarness(): Harness {
           stderr += String(chunk);
         });
         child.on('error', (error) => {
+          clearTimeout(timer);
           children.delete(child);
           resolvePromise({
             status: null,
@@ -224,6 +255,7 @@ export function createHarness(): Harness {
           });
         });
         child.on('close', (code) => {
+          clearTimeout(timer);
           children.delete(child);
           resolvePromise({ status: code, stdout, stderr });
         });
@@ -231,6 +263,9 @@ export function createHarness(): Harness {
     },
     setStatusFixture(value) {
       writeFileSync(statusFile, JSON.stringify(value));
+    },
+    setRawStatus(text) {
+      writeFileSync(statusFile, text);
     },
     setListFixture(value) {
       writeFileSync(listFile, JSON.stringify(value));

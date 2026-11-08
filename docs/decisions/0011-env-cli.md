@@ -81,10 +81,11 @@ checkouts. The corrected spec is
    use a separate worktree. Detection uses the existing `.dev/web.pid`, the
    registry entry and the per-identity start lock, and detection plus server
    start run under a short-lived checkout-wide server-claim lock. Under
-   `SUPABASE_SHARED=1`
-   this checkout reuses another checkout's stack without any stack mutation;
-   `down --all`, `recreate`, `reset-db` and `--reseed` refuse with exit 6, while
-   plain `down` still stops only the local web server.
+   `SUPABASE_SHARED=1` this checkout reuses another checkout's stack without any
+   stack mutation; `down --all`, `recreate`, `reset-db` and `--reseed` refuse
+   with exit 6, while plain `down` still stops only the local web server. A
+   shared-mode seeded profile requires verified existing fixtures for
+   `(stackId, runId)` or explicit `--no-seed`.
 6. **The app port is the only lease until phase 4.** Stack ports are discovered
    from `stack status`. The app-port lease follows the **stack** lifetime: plain
    `down` keeps it, because `supabase/config.toml` binds the auth redirect URLs

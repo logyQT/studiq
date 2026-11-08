@@ -86,6 +86,19 @@ describe('env:doctor', () => {
     expect(stringList(report.warnings).join('\n')).toContain("cannot read 'supabase stack status'");
   });
 
+  it('warns when stack status returns non-JSON output', async () => {
+    const appPort = await firstBindablePort(3900);
+    const harness = newHarness();
+    harness.setRawStatus('Warning: banner\nnot-json');
+
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report.ok).toBe(true);
+    expect(stringList(report.warnings)).toHaveLength(1);
+  });
+
   it('warns when the Supabase CLI cannot be spawned', async () => {
     const appPort = await firstBindablePort(3900);
     const harness = newHarness();

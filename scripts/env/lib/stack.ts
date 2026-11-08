@@ -245,7 +245,14 @@ function readStackWithError(stackName: string | null): StackReadResult {
   const { ok, stdout, error } = runSupabase(stackArgs('status', stackName));
   if (!ok) return { read: null, error };
   const parsed = parseJsonObject(stdout);
-  if (!parsed) return { read: null, error: null };
+  if (!parsed) {
+    // Exit 0 without a JSON object means a broken/truncated CLI (or a banner on
+    // stdout), not a stopped stack — those still print identity JSON.
+    return {
+      read: null,
+      error: '`supabase stack status --output-format json` did not return a JSON object',
+    };
+  }
   const status = parseStatus(parsed);
   if (!status) return { read: null, error: null };
   return {
@@ -257,7 +264,7 @@ function readStackWithError(stackName: string | null): StackReadResult {
 export interface StackStatusProbe {
   /** The running stack, or null when it is stopped/unusable/absent. */
   stack: StackStatus | null;
-  /** Spawn/timeout failure or non-zero exit of the CLI; null means it answered. */
+  /** Spawn/timeout, non-zero exit or non-JSON stdout; null means it answered. */
   error: string | null;
 }
 
