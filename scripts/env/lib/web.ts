@@ -1,9 +1,12 @@
-import { readFileSync, statSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { closeSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { probeHttp } from './health';
+import { DEV_DIR, ensureDevDir } from './state';
 import { REPO_ROOT } from './repo';
 
-const WEB_PID_FILE = join(REPO_ROOT, '.dev', 'web.pid');
+const WEB_PID_FILE = join(DEV_DIR, 'web.pid');
+const WEB_LOG = join(DEV_DIR, 'web.log');
 
 function pidAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 1) return false;
@@ -58,4 +61,116 @@ export function readWebPid(): number | null {
   }
   if (command.includes(REPO_ROOT)) return pid;
   return null;
+}
+
+function terminateWebPid(pid: number): void {
+  if (!pidAlive(pid)) {
+    try {
+      if (readFileSync(WEB_PID_FILE, 'utf8').trim() === String(pid)) rmSync(WEB_PID_FILE);
+    } catch {
+      /* gone */
+    }
+    return;
+  }
+  if (!hasWorktreeMarker(pid)) return;
+
+  if (spawnSync('kill', ['-TERM', '--', `-${pid}`]).status !== 0) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      /* already gone */
+    }
+  }
+  const deadline = Date.now() + 15_000;
+  while (pidAlive(pid) && Date.now() < deadline) {
+    spawnSync('sleep', ['0.2']);
+  }
+  if (pidAlive(pid)) {
+    if (spawnSync('kill', ['-KILL', '--', `-${pid}`]).status !== 0) {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+  try {
+    if (readFileSync(WEB_PID_FILE, 'utf8').trim() === String(pid)) rmSync(WEB_PID_FILE);
+  } catch {
+    /* gone */
+  }
+}
+
+/** Stop only this checkout's web server; idempotent. */
+export function stopWebServer(): number | null {
+  const pid = readWebPid();
+  if (!pid) {
+    rmSync(WEB_PID_FILE, { force: true });
+    return null;
+  }
+  terminateWebPid(pid);
+  return pid;
+}
+
+export interface StartWebOptions {
+  appPort: number;
+  appUrl: string;
+  env: NodeJS.ProcessEnv;
+}
+
+/**
+ * Start `next start` through the workspace script, so `--keepAliveTimeout
+ * 55000` is kept (a raw `next start` loses it and Playwright sees ECONNRESET).
+ * The process is detached in its own group so one signal stops its children.
+ */
+export function startWebServer(options: StartWebOptions): number {
+  ensureDevDir();
+  const log = openSync(WEB_LOG, 'a', 0o600);
+  const line = `\n===== ${new Date().toISOString()} env:ensure (prod, port ${options.appPort}) =====\n`;
+  writeFileSync(WEB_LOG, line, { flag: 'a', mode: 0o600 });
+
+  const child = spawn(process.execPath, ['run', '--filter', '@studiq/web', 'start'], {
+    cwd: REPO_ROOT,
+    env: {
+      ...options.env,
+      PORT: String(options.appPort),
+      APP_URL: options.appUrl,
+      NEXT_PUBLIC_SITE_URL: options.env.NEXT_PUBLIC_SITE_URL || options.appUrl,
+      STUDIQ_DEV_WORKTREE: REPO_ROOT,
+    },
+    detached: true,
+    stdio: ['ignore', log, log],
+  });
+  closeSync(log);
+  const pid = child.pid;
+  if (!pid) throw new Error('could not start the web server');
+  child.unref();
+  writeFileSync(WEB_PID_FILE, `${pid}\n`, { mode: 0o600 });
+  return pid;
+}
+
+export interface WaitWebResult {
+  ok: boolean;
+  reason: 'ready' | 'exited' | 'timeout';
+  http: number;
+}
+
+export async function waitForWeb(
+  appUrl: string,
+  pid: number,
+  timeoutSeconds: number,
+): Promise<WaitWebResult> {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  let http = 0;
+  while (Date.now() < deadline) {
+    http = await probeHttp(appUrl);
+    if (http === 200) return { ok: true, reason: 'ready', http };
+    if (!pidAlive(pid)) return { ok: false, reason: 'exited', http };
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return { ok: false, reason: 'timeout', http };
+}
+
+export function webLogPath(): string {
+  return WEB_LOG;
 }

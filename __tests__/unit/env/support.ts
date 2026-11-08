@@ -146,6 +146,8 @@ export function createHarness(): Harness {
     LANG: process.env.LANG,
     LC_ALL: process.env.LC_ALL,
     STUDIQ_DEV_REGISTRY: registryDir,
+    // Isolate the per-stack `.dev` state: every harness gets its own identity.
+    SUPABASE_STACK: `env-unit-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
     FAKE_BUNX_LOG: bunxLog,
     FAKE_ENGINE_LOG: engineLog,
     FAKE_STACK_STATUS_FILE: statusFile,

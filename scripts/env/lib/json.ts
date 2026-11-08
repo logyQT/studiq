@@ -52,16 +52,16 @@ export interface StatusSnapshot {
   supabase: { url: string | null; http: number };
   dbUrl: string | null;
   mailUrl: string | null;
-  profile: null;
-  cold: null;
+  profile: string | null;
+  cold: boolean | null;
   stack: {
     id: string;
     name: string;
     branch: string | null;
     projectRoot: string;
   } | null;
-  seeded: null;
-  build: { present: boolean; fingerprint: null };
+  seeded: boolean | null;
+  build: { present: boolean; fingerprint: string | null };
   warnings: string[];
   log: string;
 }
@@ -85,6 +85,16 @@ export interface StatusInputs {
   web: { pid: number | null; http: number };
   supabaseHttp: number;
   buildPresent: boolean;
+  // Lifecycle facts (phase 2); all default to "unknown" for read-only calls.
+  profile?: string | null;
+  cold?: boolean | null;
+  seeded?: boolean | null;
+  buildFingerprint?: string | null;
+  warnings?: string[];
+  ready?: boolean;
+  runtime?: string | null;
+  stackId?: string | null;
+  branch?: string | null;
 }
 
 /** `200-399` for the web app and a healthy Supabase, exactly like `dev:status`. */
@@ -95,7 +105,7 @@ function isReady(webHttp: number, supabaseHttp: number): boolean {
 export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
   const { contract, stack } = inputs;
   return {
-    ready: isReady(inputs.web.http, inputs.supabaseHttp),
+    ready: inputs.ready ?? isReady(inputs.web.http, inputs.supabaseHttp),
     projectId: inputs.projectId,
     worktree: REPO_ROOT,
     mode: inputs.mode,
@@ -103,9 +113,9 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
     sharedOwner: contract.sharedOwner,
     owner: inputs.owner,
     registry: inputs.registryDir,
-    stackId: stack?.id ?? null,
-    runtime: stack?.runtime ?? null,
-    branch: stack?.branch ?? null,
+    stackId: inputs.stackId ?? stack?.id ?? null,
+    runtime: inputs.runtime ?? stack?.runtime ?? null,
+    branch: inputs.branch ?? stack?.branch ?? null,
     ports: {
       app: contract.appPort,
       api: inputs.ports.api,
@@ -132,8 +142,8 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
     supabase: { url: inputs.urls.supabase, http: inputs.supabaseHttp },
     dbUrl: inputs.urls.db,
     mailUrl: inputs.urls.mail,
-    profile: null,
-    cold: null,
+    profile: inputs.profile ?? null,
+    cold: inputs.cold ?? null,
     stack: stack
       ? {
           id: stack.id,
@@ -142,9 +152,12 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
           projectRoot: stack.projectRoot,
         }
       : null,
-    seeded: null,
-    build: { present: inputs.buildPresent, fingerprint: null },
-    warnings: [],
+    seeded: inputs.seeded ?? null,
+    build: {
+      present: inputs.buildPresent,
+      fingerprint: inputs.buildFingerprint ?? null,
+    },
+    warnings: inputs.warnings ?? [],
     log: '.dev/env.log',
   };
 }

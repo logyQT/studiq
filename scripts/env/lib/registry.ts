@@ -56,7 +56,7 @@ type RawEntry = Partial<Record<keyof RegistryEntry, unknown>>;
  * `${STUDIQ_DEV_REGISTRY:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-<uid>}`.
  * A relative override is resolved against the checkout, like `scripts/dev`.
  */
-function resolveRegistryDir(): string {
+export function resolveRegistryDir(): string {
   const explicit = process.env.STUDIQ_DEV_REGISTRY ?? '';
   const runtimeDir = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || '/tmp';
   const fallback = join(runtimeDir, `studiq-dev-${process.getuid?.() ?? 0}`);

@@ -66,3 +66,36 @@ export function readContract(): Contract {
     appUrl,
   };
 }
+
+/**
+ * `down`/`status` must remain usable even with an invalid contract: teardown of
+ * this checkout's own web server must not be blocked by a bad `APP_PORT` or
+ * `APP_URL`. The fallback is the same documented default, never a value file.
+ */
+export function readContractLenient(): Contract {
+  try {
+    return readContract();
+  } catch {
+    const shared = (process.env.SUPABASE_SHARED ?? '') === '1';
+    return {
+      shared,
+      sharedOwner: process.env.SUPABASE_SHARED_OWNER || null,
+      stackName: null,
+      appPort: 3000,
+      appUrl: 'http://localhost:3000',
+    };
+  }
+}
+
+/** Apply an app-port lease to a contract whose URL was not explicitly set. */
+export function contractWithPort(contract: Contract, appPort: number): Contract {
+  let appUrl: string;
+  try {
+    const parsed = new URL(contract.appUrl);
+    parsed.port = String(appPort);
+    appUrl = parsed.toString().replace(/\/$/, '');
+  } catch {
+    appUrl = `http://localhost:${appPort}`;
+  }
+  return { ...contract, appPort, appUrl };
+}

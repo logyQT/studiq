@@ -116,7 +116,7 @@ describe('env:status --json', () => {
     expect(supabase).toEqual({ url: `http://localhost:${server.port}`, http: 200 });
     expect(web.http).toBe(200);
     expect(typeof build.present).toBe('boolean');
-    expect(build.fingerprint).toBeNull();
+    expect(build.fingerprint === null || typeof build.fingerprint === 'string').toBe(true);
     expect('warmMs' in status).toBe(false);
 
     // No sentinel, key name or password may survive anywhere in stdout.

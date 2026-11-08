@@ -1,5 +1,6 @@
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
+import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { portInUse } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
@@ -42,7 +43,7 @@ function stackLines(stack: StackStatus | null): string[] {
 }
 
 async function buildReport(): Promise<DoctorReport> {
-  const contract = readContract();
+  const contract = contractWithLease(readContract());
   const registry = readRegistry();
   const trusted = registryDirTrusted(registry.dir);
   const stack = contract.shared ? null : readStackStatus(contract.stackName);
