@@ -31,17 +31,21 @@ export function readWebPort(pid: number): number | null {
   return match(result.stdout ?? '');
 }
 
-function hasWorktreeMarker(pid: number): boolean {
+/** The process environment as NUL/space-separated text, or ''. */
+export function readProcessEnvironment(pid: number): string {
   try {
-    const environ = readFileSync(`/proc/${pid}/environ`, 'utf8');
-    return environ.includes(`STUDIQ_DEV_WORKTREE=${REPO_ROOT}`);
+    return readFileSync(`/proc/${pid}/environ`, 'utf8');
   } catch {
     const result = spawnSync('ps', ['eww', '-p', String(pid)], {
       encoding: 'utf8',
       timeout: 5_000,
     });
-    return (result.stdout ?? '').includes(`STUDIQ_DEV_WORKTREE=${REPO_ROOT}`);
+    return result.stdout ?? '';
   }
+}
+
+function hasWorktreeMarker(pid: number): boolean {
+  return readProcessEnvironment(pid).includes(`STUDIQ_DEV_WORKTREE=${REPO_ROOT}`);
 }
 
 /**
@@ -144,6 +148,9 @@ export interface StartWebOptions {
   appPort: number;
   appUrl: string;
   env: NodeJS.ProcessEnv;
+  /** Recorded in the child env so a later `ensure`/`build` can attribute it. */
+  stackName: string;
+  profile: string;
 }
 
 /**
@@ -165,6 +172,8 @@ export function startWebServer(options: StartWebOptions): number {
       APP_URL: options.appUrl,
       NEXT_PUBLIC_SITE_URL: options.env.NEXT_PUBLIC_SITE_URL || options.appUrl,
       STUDIQ_DEV_WORKTREE: REPO_ROOT,
+      STUDIQ_ENV_STACK: options.stackName,
+      STUDIQ_ENV_PROFILE: options.profile,
     },
     detached: true,
     stdio: ['ignore', log, log],

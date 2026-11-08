@@ -60,6 +60,8 @@ import {
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot, stateKeyFor, statusFromRecord } from '../lib/snapshot';
 import { assertSeedingAllowed, seedMarkerCurrent } from '../lib/seed';
+import { liveServerConflict } from '../lib/web-owner';
+import { refuseSecondServer } from '../lib/refusal';
 
 const MIN_PORT = 3000;
 const MAX_PORT = 3999;
@@ -481,6 +483,8 @@ async function runSharedEnsure(
             appPort: contract.appPort,
             appUrl: contract.appUrl,
             env: process.env,
+            stackName: contract.stackName ?? 'default',
+            profile: options.profile,
           });
           const waited = await waitForWeb(contract.appUrl, restored, 120);
           if (waited.ok) {
@@ -500,6 +504,8 @@ async function runSharedEnsure(
             appPort: contract.appPort,
             appUrl: contract.appUrl,
             env: process.env,
+            stackName: contract.stackName ?? 'default',
+            profile: options.profile,
           });
           const waited = await waitForWeb(contract.appUrl, restored, 120);
           if (waited.ok) {
@@ -546,6 +552,8 @@ async function runSharedEnsure(
         appPort: contract.appPort,
         appUrl: contract.appUrl,
         env: process.env,
+        stackName: contract.stackName ?? 'default',
+        profile: options.profile,
       });
       const waited = await waitForWeb(contract.appUrl, webPid, 120);
       webHttp = waited.http;
@@ -610,6 +618,14 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
     profile: options.profile,
     shared: baseContract.shared,
   });
+
+  if (options.serve || options.build) {
+    const conflict = liveServerConflict(
+      { stackName: cliStackName ?? 'default', profile: options.profile },
+      'start',
+    );
+    if (conflict) return refuseSecondServer(parsed, baseContract, conflict);
+  }
 
   if (baseContract.shared) {
     return runSharedEnsure(parsed, options, baseContract, branch, appEnv);
@@ -901,6 +917,8 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
               appPort: contract.appPort,
               appUrl: contract.appUrl,
               env: process.env,
+              stackName: cliStackName ?? 'default',
+              profile: options.profile,
             });
             const waited = await waitForWeb(contract.appUrl, restored, 120);
             if (waited.ok) {
@@ -925,6 +943,8 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
               appPort: contract.appPort,
               appUrl: contract.appUrl,
               env: process.env,
+              stackName: cliStackName ?? 'default',
+              profile: options.profile,
             });
             const waited = await waitForWeb(contract.appUrl, restored, 120);
             if (waited.ok) {
@@ -976,6 +996,8 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           appPort: contract.appPort,
           appUrl: contract.appUrl,
           env: process.env,
+          stackName: cliStackName ?? 'default',
+          profile: options.profile,
         });
         const waited = await waitForWeb(contract.appUrl, webPid, 120);
         webHttp = waited.http;

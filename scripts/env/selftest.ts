@@ -498,6 +498,73 @@ async function main(): Promise<number> {
       );
     }
 
+    // One environment per worktree: a live server for this scratch stack must
+    // refuse a different named stack (and an env:build for a different target)
+    // without stopping the server or rebuilding `.next`.
+    const livePid = number(object(reconcileJson.web).pid);
+    const buildStatePath = join(REPO_ROOT, '.dev', 'build.json');
+    const buildStateBefore = existsSync(buildStatePath)
+      ? readFileSync(buildStatePath, 'utf8')
+      : null;
+    clearTrace();
+    const named = run(
+      ['env:ensure', '--profile', 'web', '--stack', `${scratchName}-other`, '--json'],
+      childEnv,
+    );
+    assertOk(named.code === 6, `a second named stack must be refused (got ${named.code})`);
+    const namedJson = json(named);
+    assertOk(
+      Array.isArray(namedJson.warnings) &&
+        namedJson.warnings.join(' ').includes('separate worktree'),
+      'the refusal JSON stays valid and names the remedy',
+    );
+    assertOk(
+      countCalls('stack stop') === 0 && countCalls('stack start') === 0,
+      'the second-stack refusal never starts or stops a stack',
+    );
+    assertOk(
+      readWebPid() === livePid,
+      'the second-stack refusal leaves the current web server running',
+    );
+    const buildStateAfterRefusal = existsSync(buildStatePath)
+      ? readFileSync(buildStatePath, 'utf8')
+      : null;
+    assertOk(
+      buildStateAfterRefusal === buildStateBefore,
+      'the second-stack refusal does not touch the build state',
+    );
+    console.log('    refused a second named stack without stopping/building');
+
+    clearTrace();
+    const buildConflict = run(['env:build', '--json'], {
+      ...childEnv,
+      SUPABASE_STACK: `${scratchName}-other`,
+    });
+    assertOk(
+      buildConflict.code === 6,
+      `env:build for another stack must be refused (got ${buildConflict.code})`,
+    );
+    json(buildConflict);
+    assertOk(
+      countCalls('stack stop') === 0 && countCalls('stack start') === 0,
+      'the build refusal never starts or stops a stack',
+    );
+
+    // Same stack/profile keeps the normal handover: stop own server, build,
+    // start a new server.
+    clearTrace();
+    const handover = run(['env:ensure', '--profile', 'web', '--force-build', '--json'], childEnv);
+    assertOk(
+      handover.code === 0,
+      `same-stack handover exits 0 (got ${handover.code}): ${handover.stderr.slice(-300)}`,
+    );
+    const handoverJson = json(handover);
+    const newPid = number(object(handoverJson.web).pid);
+    assertOk(newPid > 0 && newPid !== livePid, 'same-stack handover replaces the web PID');
+    assertOk(number(object(handoverJson.web).http) === 200, 'same-stack handover is healthy');
+    assertOk(readWebPid() === newPid, 'the new web PID is recorded');
+    console.log(`    same-stack handover: pid ${livePid} -> ${newPid}`);
+
     clearTrace();
     const narrow = run(['env:ensure', '--profile', 'api', '--json'], childEnv);
     check(narrow.code === 0, 'a narrower request against the superset is ready');

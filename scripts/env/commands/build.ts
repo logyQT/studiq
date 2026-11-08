@@ -18,6 +18,8 @@ import { readWebPid } from '../lib/web';
 import { REPO_ROOT } from '../lib/repo';
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot, stateKeyFor } from '../lib/snapshot';
+import { liveServerConflict } from '../lib/web-owner';
+import { refuseSecondServer } from '../lib/refusal';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
 import { normalizeLocalhost, trimTrailingSlash } from '../lib/urls';
 
@@ -58,6 +60,13 @@ export async function runBuild(parsed: ParsedCommand): Promise<number> {
   process.env.APP_URL = contract.appUrl;
   process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;
   appendEnvLog(`build: shared=${contract.shared} force=${options.force}`);
+
+  const targetProfile = readStackRecord(stateKeyFor(contract.stackName))?.profile ?? null;
+  const conflict = liveServerConflict(
+    { stackName: contract.stackName ?? 'default', profile: targetProfile },
+    'rebuild',
+  );
+  if (conflict) return refuseSecondServer(parsed, contract, conflict);
 
   if (readWebPid()) {
     throw new EnvFailure(
