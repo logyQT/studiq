@@ -556,12 +556,14 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
 - `--prod` implies build + serve. `--web` without `--prod` is rejected (exit 2);
   `env:dev` is the only HMR path (web, or `apps/admin` with `--admin`) and it is
   human-only.
-- **Set the local posture: `APP_ENV=development`.** Before build/serve, the tool
-  sets `APP_ENV=development` when it is unset or empty and preserves an explicit
-  value (the app's non-production posture rule; `scripts/dev` does the same). The
-  app defaults to `production`, whose payment preflight needs a live Stripe key
-  and an `https` site URL, so an unset `APP_ENV` otherwise fails a local
-  build/serve. `env:dev` does the same.
+- **Validate the local posture: `APP_ENV`.** Before build/serve/HMR (`env:ensure`
+  build/serve, `env:serve`, `env:build`, `env:dev`) set `APP_ENV=development`
+  only when it is unset or empty; preserve an explicit
+  `development`/`test`/`qa` and normalize like `scripts/dev` (trim +
+  lowercase). Reject `production` (exit 2 — it needs a live Stripe key and an
+  `https` site URL) and any other value (exit 2) **before** building, serving or
+  starting HMR. The app defaults to `production`, so an unset value would fail
+  the payment preflight.
 - **Build fingerprint** must include:
   - the `NEXT_PUBLIC_*` values that get inlined at build time
     (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SITE_URL`,

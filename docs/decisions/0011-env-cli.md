@@ -110,11 +110,12 @@ checkouts. The corrected spec is
     runtime and the currently observed API/DB/Studio/mail endpoints
     (read-then-pin, not the phase-4 block), never destroys data, and re-probes
     every requested capability (phase-0: ≈1.7 s stop + 5.0 s resume).
-14. **Local posture is explicit.** Before build/serve (and in `env:dev`) the tool
-    sets `APP_ENV=development` when it is unset or empty and preserves an
-    explicit value; an unset `APP_ENV` otherwise defaults the app to
-    `production`, whose payment preflight needs Stripe. `APP_ENV` is part of the
-    build fingerprint.
+14. **Local posture is explicit and validated.** Before build/serve/HMR
+    (`ensure` build/serve, `serve`, `build`, `dev`) the tool sets
+    `APP_ENV=development` only when it is unset or empty, preserves an explicit
+    `development`/`test`/`qa` (normalized like `scripts/dev`), and rejects
+    `production` or any other value with exit 2 before acting. `APP_ENV` is part
+    of the build fingerprint.
 
 > **Superseded wording.** The issue's pre-review appendix and its "varlock is
 > validator-only" acceptance line are superseded by item 3. varlock remains the
