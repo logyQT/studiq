@@ -386,7 +386,11 @@ does this).
   keep their endpoints (read-then-pin in phases 1–3; the phase-4 block replaces
   the read). It then re-probes and reports. Phase 0 measured stop + resume at
   ≈1.7 s + 5.0 s, so a warm `ensure --profile web --reconcile` after
-  `ensure --profile api` adds `mail` without moving endpoints.
+  `ensure --profile api` adds `mail` without moving endpoints. **A reconcile
+  never changes blocks or endpoints:** on `EADDRINUSE` or any restart failure
+  it fails the reconciliation, restores the previous capability set and keeps
+  the same block/ports (exit 4; exit 6 for an ownership conflict); only a cold
+  start or `env:recreate` may take a different block.
 - `down` stops only the web server and is idempotent. It **keeps** the app-port
   lease (and, in phase 4, the block) while the Supabase stack still runs:
   `supabase/config.toml` binds the auth `site_url` / `additional_redirect_urls`
@@ -465,8 +469,13 @@ the same port.
   not-running rules.
 - The block is held while the stack runs and released when the stack stops
   (`down --all`), matching the app-port lease; a plain `down` keeps both.
-- `EADDRINUSE` releases the block, marks it suspect for 10 min, takes the next
-  block, retries up to 3 times, then exits 4 with the collected logs.
+- `EADDRINUSE` during a **cold start / block allocation** releases the block,
+  marks it suspect for 10 min, takes the next block, retries up to 3 times, then
+  exits 4 with the collected logs. A **reconciliation never changes blocks or
+  endpoints**: on `EADDRINUSE` or any other restart failure it fails the
+  reconciliation, restores the previous capability set (same block, same ports)
+  and reports exit 4 (exit 6 if the conflict is ownership-related); only a cold
+  start or `env:recreate` may move the stack to another block.
 - Pass the leased ports on **every** `start` (create and resume). Phase 0 proved
   the CLI re-rolls API/DB/Studio when no overrides are supplied.
 
