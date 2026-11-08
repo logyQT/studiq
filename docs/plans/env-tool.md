@@ -132,10 +132,15 @@ Rules:
 - Destructive commands (`down --all`, `reset-db`, `recreate`, `--reseed`) refuse
   to run non-interactively without `--yes`.
 - Every command accepts `--json` and prints **nothing but JSON** to stdout
-  (human diagnostics go to stderr). `supa` is a passthrough: `--json` is passed
-  to the CLI, not interpreted by the tool. Long-running commands (`dev`,
-  `serve`, `logs`) treat `--json` as a **startup** contract: one JSON object
-  when ready, then output on stderr.
+  (human diagnostics go to stderr). Long-running commands (`dev`, `serve`,
+  `logs`) treat `--json` as a **startup** contract: one JSON object when ready,
+  then output on stderr.
+- `supa --json` is **translated**, not forwarded: it becomes the CLI's
+  `--output-format json` for commands that accept it (notably `stack status`
+  and `stack list`). An explicit `--output-format`/`-o` wins and is left
+  untouched. Never forward a bare `--json` the CLI would reject (CLI 3.0.0 does
+  not accept it for `stack status`). All other passthrough arguments are
+  unchanged.
 - `supa` forwards arguments unchanged **except for stack starts and for
   destructive or stop-capable subcommands**, which it normalizes or validates
   before forwarding — it never spawns the CLI on a rejected call:
@@ -542,11 +547,13 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
     **same** run id reuses the existing fixtures and does not reseed — the warm
     path stays idempotent. A new run id is created only for a new independent
     run (`--reseed`, or a new suite run); `--no-seed` disables seeding.
-- **Run-id selection and handoff.** The run id is `QA_RUN_SUFFIX` when set;
-  otherwise `ensure` generates one once and passes it as `--run <suffix>`.
-  `--reseed` always generates a **new** suffix (ignoring/overriding
-  `QA_RUN_SUFFIX`) and returns it, so a reseed cannot reuse accounts the prior
-  run mutated. A plain repeated `ensure` reuses the current run id. The run id is
+- **Run-id selection and handoff.** Precedence: an explicit flag (`--reseed`, or
+  a caller-supplied `--run`) selects intentionally; otherwise `ensure` prefers
+  the current run id persisted in `.dev/` state; otherwise `QA_RUN_SUFFIX`;
+  otherwise it generates one. `--reseed` always generates a **new** suffix
+  (overriding `QA_RUN_SUFFIX`) and persists it as the current run id, so a later
+  plain `ensure` keeps the reseeded suffix instead of falling back to the stale
+  env value. A plain repeated `ensure` reuses the persisted id. The run id is
   exported to the seed invocation, returned as `runId` in `ensure --json`, and
   set for the `env:qa`/`env:e2e` child (phase 3) — a separate
   `bun run test:qa` process cannot inherit `ensure`'s environment, so the JSON
@@ -564,6 +571,15 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   in the marker and reject mismatches). Readers must take the run id from the
   environment/seed output, never from a fixed path. The phase-3 cutover updates
   `scripts/seed/qa.ts`, the QA/e2e helpers and the docs.
+- **E2E fixtures are run-scoped too.** `scripts/seed/e2e.ts` currently derives
+  tenant ids without a run id and writes one shared
+  `__tests__/e2e/.seed/index.json`, while `__tests__/e2e/global-setup.ts` resets
+  all E2E tenants — two runs can overwrite or delete each other. Fold the run id
+  into every E2E tenant key and index entry, store per-run state under
+  `__tests__/e2e/.seed/<stackId>/<runId>/` (the E2E equivalent of the QA path),
+  have readers take the run id from the environment/`ensure --json`, and make
+  `global-setup` reset only the current run's tenants. Phase 3 updates the
+  seeder, `global-setup` and the docs.
 - Markers live in `.dev/` (gitignored, mode 600) or the registry; never in the
   database. A reset removes the marker, and **any destroy/recreate removes it
   too** (`env:recreate`): stack ids can be reused and a marker for a destroyed

@@ -51,7 +51,9 @@ checkouts. The corrected spec is
    target a stack whose `project_root` is this checkout (usage errors exit 2,
    ownership conflicts exit 6). Starts are normalized instead: `stack start …`
    always carries the selected runtime (`--runtime native` by default, injected
-   when absent; an explicit value is preserved).
+   when absent; an explicit value is preserved). `--json` is translated to the
+   CLI's `--output-format json` where the CLI accepts it (an explicit
+   `--output-format`/`-o` wins); a bare `--json` is never forwarded.
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover (phase 3);
    no aliases and no back-compat layer. Root `build`/`start` and the low-level
    `build:web`/`start:web`/`build:admin`/`start:admin` scripts stay.
