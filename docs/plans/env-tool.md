@@ -399,8 +399,13 @@ does this).
   `ensure --profile api` adds `mail` without moving endpoints. **A reconcile
   never changes blocks or endpoints:** on `EADDRINUSE` or any restart failure
   it fails the reconciliation, restores the previous capability set and keeps
-  the same block/ports (exit 4; exit 6 for an ownership conflict); only a cold
-  start or `env:recreate` may take a different block.
+  the same block/ports (exit 4; exit 6 for an ownership conflict). If the
+  **restore also fails** (another process now holds an endpoint), it never
+  reports ready: it reports the stack as stopped/degraded, names the endpoints
+  that could not be restored and why, and gives a concrete recovery action
+  (`env:recreate --yes`, or free the port and retry `env:ensure`), still exit
+  4/6. No automatic block or port move happens during reconcile or rollback;
+  only a cold start or `env:recreate` may take a different block.
 - `down` stops only the web server and is idempotent. It **keeps** the app-port
   lease (and, in phase 4, the block) while the Supabase stack still runs:
   `supabase/config.toml` binds the auth `site_url` / `additional_redirect_urls`
@@ -485,7 +490,10 @@ the same port.
   endpoints**: on `EADDRINUSE` or any other restart failure it fails the
   reconciliation, restores the previous capability set (same block, same ports)
   and reports exit 4 (exit 6 if the conflict is ownership-related); only a cold
-  start or `env:recreate` may move the stack to another block.
+  start or `env:recreate` may move the stack to another block. If the restore
+  itself hits `EADDRINUSE`, the stack stays stopped/degraded: never ready, exit
+  4/6, with the unrestorable endpoints, the reason and a recovery action
+  (`env:recreate --yes`, or free the port and retry `env:ensure`).
 - Pass the leased ports on **every** `start` (create and resume). Phase 0 proved
   the CLI re-rolls API/DB/Studio when no overrides are supplied.
 
