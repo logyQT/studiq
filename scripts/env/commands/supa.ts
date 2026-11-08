@@ -57,10 +57,30 @@ const VALUE_FLAGS = new Set([
 ]);
 
 /**
+ * Boolean global flags. pflag also accepts a separated `true`/`false`/`1`/`0`
+ * value (`--debug false`), which would otherwise be read as the command.
+ */
+const BOOLEAN_FLAGS = new Set([
+  '--debug',
+  '--yes',
+  '--experimental',
+  '--frozen',
+  '--wizard',
+  '--json',
+  '--quiet',
+  '--verbose',
+  '--version',
+  '--help',
+]);
+
+const BOOLEAN_VALUES = new Set(['true', 'false', '1', '0']);
+
+/**
  * The CLI's command words (first two bare tokens), skipping flags and the values
- * of flags that take one. `start --stack stop` therefore has the command
- * `start`; only a bare `stop`/`restart`/`destroy` or `stack <verb>` is a guard
- * target, and a stack literally named `stop` stays a value.
+ * of flags that take one (including a separated boolean value). `start --stack
+ * stop` therefore has the command `start`; only a bare
+ * `stop`/`restart`/`destroy` or `stack <verb>` is a guard target, and a stack
+ * literally named `stop` stays a value.
  */
 function commandWords(args: string[]): string[] {
   const words: string[] = [];
@@ -68,7 +88,14 @@ function commandWords(args: string[]): string[] {
     const token = args[index];
     if (!token) continue;
     if (token.startsWith('-')) {
-      if (!token.includes('=') && VALUE_FLAGS.has(token)) index += 1;
+      if (token.includes('=')) continue;
+      if (VALUE_FLAGS.has(token)) {
+        index += 1;
+        continue;
+      }
+      if (BOOLEAN_FLAGS.has(token) && BOOLEAN_VALUES.has(args[index + 1] ?? '')) {
+        index += 1;
+      }
       continue;
     }
     words.push(token);

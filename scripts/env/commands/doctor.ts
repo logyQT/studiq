@@ -1,7 +1,7 @@
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
 import { probeHttp } from '../lib/health';
-import { portInUse } from '../lib/net';
+import { canBindPort } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
 import { REPO_ROOT, canon, currentBranchName } from '../lib/repo';
@@ -69,7 +69,9 @@ async function buildReport(): Promise<DoctorReport> {
 
   const webPid = readWebPid();
   const webHttp = await probeHttp(contract.appUrl);
-  const appPortBusy = await portInUse(contract.appPort);
+  // Same probe `env:ports` uses: "cannot bind 0.0.0.0" includes a listener on
+  // any other interface, which a loopback connect probe would miss.
+  const appPortBusy = !(await canBindPort(contract.appPort));
 
   const sharedSupabaseUrl = contract.shared
     ? process.env.SUPABASE_URL
