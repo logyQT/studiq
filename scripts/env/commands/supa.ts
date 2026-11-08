@@ -206,12 +206,14 @@ function hasAllFlag(args: string[]): boolean {
  * an explicit APP_URL wins, exactly like `scripts/dev supa`.
  *
  * Guards (the command position is parsed apart from flag values, so
- * `start --stack stop` is not mistaken for a stop): `stop --all` /
- * `restart --all` and a `destroy` command are refused outright, `db reset` is
- * refused, a `stop`/`restart` must name a stack this checkout owns, and a
- * `--workdir`/`SUPABASE_WORKDIR` must resolve to this checkout's root
- * (otherwise the CLI could operate on another checkout's stack). Usage errors
- * exit 2, ownership conflicts 6, and nothing is ever written to stdout.
+ * `start --stack stop` is not mistaken for a stop): under `SUPABASE_SHARED=1`
+ * every stop-capable or destructive form is refused outright (this checkout
+ * does not own the stack); otherwise `stop --all` / `restart --all` and a
+ * `destroy` command are refused, `db reset` is refused, a `stop`/`restart`
+ * must name a stack this checkout owns, and a `--workdir`/`SUPABASE_WORKDIR`
+ * must resolve to this checkout's root (otherwise the CLI could operate on
+ * another checkout's stack). Usage errors exit 2, ownership conflicts 6, and
+ * nothing is ever written to stdout.
  */
 export function runSupa(args: string[]): number {
   const [first, second] = commandWords(args);
@@ -221,6 +223,21 @@ export function runSupa(args: string[]): number {
     (first === 'stack' && (second === 'stop' || second === 'restart'));
   const destroyCommand = first === 'destroy' || (first === 'stack' && second === 'destroy');
   const dbReset = first === 'db' && second === 'reset';
+  const migrationDown = first === 'migration' && second === 'down';
+  const storageRm = first === 'storage' && second === 'rm';
+  const mutating = stopCapable || destroyCommand || dbReset || migrationDown || storageRm;
+
+  // Shared mode disables every stack mutation: refuse before any ownership
+  // check or spawn, naming the checkout that actually owns the stack.
+  if (mutating && process.env.SUPABASE_SHARED === '1') {
+    const owner = process.env.SUPABASE_SHARED_OWNER || 'owner unknown';
+    const command = [first, second].filter(Boolean).join(' ');
+    return reject(
+      `env:supa: refusing '${command}' under SUPABASE_SHARED=1 — this checkout does not own ` +
+        `the stack (owner: ${owner}); run it in the owning checkout.`,
+      6,
+    );
+  }
 
   if (stopCapable && hasAllFlag(args)) return reject(ALL_MESSAGE, 2);
   if (destroyCommand) return reject(DESTROY_MESSAGE, 2);
