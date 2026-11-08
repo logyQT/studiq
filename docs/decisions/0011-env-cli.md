@@ -11,8 +11,9 @@ Local provisioning is spread across `scripts/dev` and the `dev:*` scripts: an ag
 incantation, and nothing gives it one idempotent call that composes start, build and serve. Cold work (`--eager` capabilities,
 migrations, seeds, `next build`) is paid once per checkout; the missing piece is a warm path (< 1 s) and a stable `--json`
 contract.
-The 2026-11-07/08 review settled the shape and made the port allocator conditional on a recorded spike. Phase 0 recorded it: the
-allocator is not justified for now, so the tool leases only the app port and discovers stack ports from `status`.
+The 2026-11-07/08 review settled the shape and made the port allocator conditional on a recorded spike. Phase 0 recorded a GO
+(explicit ports survive create and resume); the 20-port allocator is nevertheless deferred by the operator's minimal-v1
+decision and is not built. The tool leases only the app port and discovers stack ports from `status`.
 
 ## Decision
 
@@ -30,10 +31,12 @@ allocator is not justified for now, so the tool leases only the app port and dis
 5. **Identity is `projectRoot + branch + stackName`; one environment per checkout.** A second server, or rebuilding the `.next`
    another server serves for a different stack/profile, exits 6; `--attach` is future work.
 6. **The app port is the only lease; stack ports are discovered.** A single per-checkout lock (`locks/checkout.lock`)
-   serializes `ensure`, `down`, `serve` and every app-port lease read/write. The lease follows the stack lifetime
-   (plain `down` keeps it because auth redirects bind `APP_URL`; `down --all` releases it under the same lock only
-   after stopping the stack; `ensure` revalidates and re-claims it under the lock). The build lock stays separate and
-   is never held while taking the checkout lock. The allocator is not built.
+   serializes `ensure`, `down`, `serve` and every lease read/write for that checkout; the port itself is reserved
+   atomically in shared registry state (`wx` claim file or a registry-wide lock held only for selection), so two
+   checkouts cannot hand out the same one. The lease follows the stack lifetime (plain `down` keeps it because auth
+   redirects bind `APP_URL`; `down --all` releases it under the same lock only after stopping the stack; `ensure`
+   revalidates and re-claims it under the lock). The build lock stays separate and is never held while taking the
+   checkout lock. The allocator is not built.
 7. **`db` = database + auth + storage** — migrations need `storage.buckets`, seeds need `auth.users.email_confirmed_at`; no skip path.
 8. **The vault seam is varlock's; `.env.vault` is opt-in.** `.env.local` is the only required values file; `.env.vault` is
    human-created in the primary checkout, Git-ignored, for LLM/Stripe refs only, resolved via `STUDIQ_ENV_VAULT`. `env:setup`
@@ -41,7 +44,7 @@ allocator is not justified for now, so the tool leases only the app port and dis
 9. **Shared mode is read-only for the shared stack.** `SUPABASE_SHARED=1` forbids start/stop/destroy/reseed; local build/serve and
    a local app-port lease are allowed; `down --all` and `reset-db` exit 6; `supa` forwards only read-only forms.
 10. **Profile changes are not reconciled.** `env:down --all` then `env:ensure`; a capability superset satisfies a narrower
-    profile; `dev:admin` becomes `env:dev --admin`.
+    profile. `apps/admin` HMR/serve is deferred (spec §14, §13).
 11. **Caching is out of scope** (#1078); CI is untouched and calls `supabase stack` directly.
 12. **Native platform matrix:** Linux x86_64/arm64 and macOS arm64 only; elsewhere exit 3 with the Docker opt-in; Windows is WSL2-only; CI stays Linux native.
 

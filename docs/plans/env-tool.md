@@ -1,7 +1,8 @@
 # `env` — one command to a predictable local environment
 
 Status: **phase 0 complete** (evidence + this spec + [ADR-0011](../decisions/0011-env-cli.md), 2026-11-08). Operator
-decisions are settled: `db` = db + auth + storage (§3), `dev:admin` → `env:dev --admin` (§13); phases 1–3 are unblocked.
+decisions are settled: `db` = db + auth + storage (§3); `apps/admin` HMR/serve is deferred (§14). Phases 1–3 are
+unblocked.
 
 Replaces `scripts/dev` and the `dev:*` sprawl. Scope: local development and agent workflows; not CI, not hosted,
 not production. Related: [#1077](https://github.com/logyQT/studiq/issues/1077),
@@ -29,9 +30,9 @@ no silent fallback; composable profiles; agents read `--json`, not files; keep t
 3. **Native default; Docker explicit.** Every start passes `--runtime native` unless Docker is selected; no
    automatic fallback.
 4. **Identity per checkout:** `projectRoot + branch + stackName`; `--attach` is future work.
-5. **App and admin ports leased, stack ports discovered.** There is no port block allocator. `.env.vault` is opt-in (LLM +
+5. **App port leased, stack ports discovered.** There is no port block allocator. `.env.vault` is opt-in (LLM +
    Stripe only, §10); `.env.local` is the only required values file.
-6. **`db` = database + auth + storage** (no skip path); **`dev:admin` → `env:dev --admin`**, human-only.
+6. **`db` = database + auth + storage** (no skip path).
 7. **No secrets in output**, no `dev:*` aliases or back-compat layers. `scripts/dev` dies in the cutover; phases
    are serial; caching/CI are out of scope.
 
@@ -45,7 +46,7 @@ env:status   [--json]                            # never mutates; works with no 
 env:down     [--all] [--yes]                     # stop web; --all also stops the stack
 env:build    [--force] [--json]                  # explicit build only
 env:serve    [--json]                            # serve an existing build
-env:dev      [--admin] [atoms]                   # human-only HMR (admin port leased)
+env:dev      [atoms]                             # human-only HMR
 env:supa     <args…>                             # bunx supabase with the contract exported
 env:reset-db [--yes]                             # destructive; this checkout only
 env:logs     [--no-follow]                       # stack logs + .dev/web.log
@@ -69,16 +70,15 @@ exits 1 on problems.
 
 ## 3. Profiles
 
-| Profile | Starts                              | Seed | Build / serve       | Typical use                     |
-| ------- | ----------------------------------- | ---- | ------------------- | ------------------------------- |
-| `db`    | database, auth, storage             | no   | no                  | SQL, migrations, SQL-only tests |
-| `api`   | db, rest, auth, storage             | no   | no                  | API checks, integration tests   |
-| `mail`  | api + local_smtp (Mailpit)          | no   | no                  | auth e-mail specs               |
-| `full`  | db, rest, auth, storage, local_smtp | no   | no                  | the stack without the app       |
-| `web`   | full                                | no   | build + serve       | the old `dev:up --prod`         |
-| `qa`    | full                                | yes  | build + serve       | `__tests__/qa`                  |
-| `e2e`   | full                                | yes  | build + serve       | `__tests__/e2e`                 |
-| `admin` | full                                | no   | admin build + serve | `apps/admin`                    |
+| Profile | Starts                              | Seed | Build / serve | Typical use                     |
+| ------- | ----------------------------------- | ---- | ------------- | ------------------------------- |
+| `db`    | database, auth, storage             | no   | no            | SQL, migrations, SQL-only tests |
+| `api`   | db, rest, auth, storage             | no   | no            | API checks, integration tests   |
+| `mail`  | api + local_smtp (Mailpit)          | no   | no            | auth e-mail specs               |
+| `full`  | db, rest, auth, storage, local_smtp | no   | no            | the stack without the app       |
+| `web`   | full                                | no   | build + serve | the old `dev:up --prod`         |
+| `qa`    | full                                | yes  | build + serve | `__tests__/qa`                  |
+| `e2e`   | full                                | yes  | build + serve | `__tests__/e2e`                 |
 
 `db` is db + auth + storage (settled): migrations insert into `storage.buckets` and seeds need
 `auth.users.email_confirmed_at` (`SQLSTATE 42P01` / `42703`); cold start is p50 7.3 s / p95 8.0 s. `qa`/`e2e` are
@@ -89,20 +89,20 @@ Start contract: `database` is always on; `db` excludes `rest,studio,mail,realtim
 `--functions`/`--analytics` remove their entry; `--pooler` exits 2. Reject impossible combinations (exit 2).
 
 Atoms: `--db --rest --auth --storage --studio --mail --realtime --functions --analytics --seed --no-seed
---web --build --force-build --prod --admin --runtime <native|docker> --stack <name> --app-port <n> --wait <s>
+--web --build --force-build --prod --runtime <native|docker> --stack <name> --app-port <n> --wait <s>
 --json --yes --quiet --verbose`. `--prod` implies build + serve; `--web` without `--prod` exits 2. `--no-seed`
-wins over a profile default; `--seed` forces it. `--admin` targets `apps/admin` on a leased admin port (preferred
-:4000).
+wins over a profile default; `--seed` forces it.
 
 ## 4. Runtime and platform
 
 Every start carries the **selected** runtime (`native` by default, `docker` only when selected); never rely on CLI
 auto-detection. **No automatic fallback**: native unavailable or failing → exit **3** with the exact opt-in
 (`bun run env:ensure --runtime docker …` or `SUPABASE_RUNTIME=docker bun run env:ensure …`). An existing stack
-keeps its runtime; a Docker stack warns on observation. A runtime conversion is a manual operation: verify the
-stack belongs to this checkout (`project_root` match), then `bunx supabase stack destroy --stack <name>` (or
-`--stack-id <id>`) followed by `env:ensure --runtime …`. A first-class command is deferred. Never mix runtimes in
-one stack. `status --json` reports `runtime`. CI stays native and calls `supabase stack` directly.
+keeps its runtime; a Docker stack warns on observation. A runtime conversion is a manual operation: resolve the
+stack's **name + branch**, verify the stack belongs to this checkout (`project_root` match) and that its branch matches
+the current branch, then `bunx supabase stack destroy --stack <name>` (or `--stack-id <id>`) and `env:ensure --runtime …
+--stack <name>` — `--stack` only for a named stack, so a blank name keeps branch-default selection. A first-class
+command is deferred. Never mix runtimes in one stack. `status --json` reports `runtime`; CI calls `supabase stack` directly.
 
 Native supports Linux x86_64/arm64 (glibc ≥ 2.35, `tar`, non-root) and macOS arm64; macOS x86_64, native Windows
 and anything else exit 3 with the Docker opt-in (Windows is WSL2-only). The CLI is authoritative; the tool's check
@@ -113,26 +113,29 @@ makes the failure actionable. Root requires `SUPABASE_NATIVE_POSTGRES_USER`.
 Stack identity is the CLI's `projectRoot + "\0" + branch + "\0" + stackName` (blank = branch default); the tool
 matches `stack list`/`stack status` on `project_root` + `name` + `branch_context`, and `status --json` exposes it.
 
-The tool leases **one app port** (default 3000 if free) under the **per-checkout lock**; read-only `env:ports` never
-writes. It also leases an **admin port** (preferred 4000) through the same mechanism for `env:dev --admin` and
-`--profile admin`. The lease follows the **stack** lifetime: plain `down` keeps it (`config.toml` binds auth redirects
-to `APP_URL`), `down --all` releases it under the same lock only after stopping the stack; in shared mode it is a
-local web lease only. Stack ports are **discovered** from `stack status --output-format json` — no port math. In
-stack mode inherited `SUPABASE_*_PORT` values are cleared from the child environment; `.env.local` is never edited.
-`env:ports --json` reports `{ appPort, adminPort, stackPorts: "dynamic" }`.
+The tool leases **one app port** (default 3000 if free); read-only `env:ports` never writes. Selection **atomically
+reserves** it in **shared registry state**: each candidate takes an exclusive claim — a `flag 'wx'` claim file, or a
+registry-wide lease lock held only for selection — and a failed claim moves to the next candidate, so two checkouts
+can never pick the same port. The **per-checkout** lock serializes local lifecycle only; it does not serialize
+checkouts. The lease follows the **stack** lifetime: plain `down` keeps it (`config.toml` binds auth redirects to
+`APP_URL`), `down --all` releases it under the same lock only after stopping the stack; in shared mode it is a local
+web lease only. Stack ports are **discovered** from `stack status --output-format json` — no port math. In stack mode
+inherited `SUPABASE_*_PORT` values are cleared from the child environment; `.env.local` is never edited; `env:ports
+--json` reports `{ appPort, stackPorts: "dynamic" }`.
 
 ## 6. Locks and lifecycle
 
 **One per-checkout lock.** `locks/checkout.lock` (a simple file + `flock` in a mode-700, user-owned, non-symlink
-registry) serializes `ensure`, `down`, `serve` and every app-port lease read/write for that checkout. The build
-lock stays separate and is never held while taking the checkout lock. While `checkout.lock` is held the lease is
-authoritative: `down --all` releases it under that lock only after stopping the stack, and `ensure` revalidates
-the lease and re-claims it if missing.
+registry) serializes `ensure`, `down`, `serve` and every lease read/write for that checkout; cross-checkout port
+reservation lives in the shared registry claim (§5). The build lock stays separate and is never held while taking the
+checkout lock. While `checkout.lock` is held the lease is authoritative: `down --all` releases it under that lock only
+after stopping the stack, and `ensure` revalidates the lease and re-claims it if missing.
 
-`ensure` order (phases 1–3): (0) acquire `checkout.lock` and revalidate/re-claim the app-port lease (plus the
-admin-port lease for `--admin`); (1) health probes, one per requested capability; (2) cold start if needed; (3) wait
-ready; (4) if a build is needed, release `checkout.lock`, build under the build lock alone, then re-take
-`checkout.lock`; (5) serve/handover; (6) heartbeat and JSON while still holding the lock.
+`ensure` order (phases 1–3): (0) acquire `checkout.lock` and revalidate/re-claim the app-port lease, atomically
+reserving it (§5); (1) health probes, one per requested capability; (2) cold start if needed; (3) wait ready; (4) if a
+build is needed, release `checkout.lock`, build under the build lock alone, then re-take `checkout.lock`; (5)
+**re-probe every requested capability** before serving or reporting readiness — the pre-build probes are stale and
+never reused; (6) serve/handover; (7) heartbeat and JSON while still holding the lock.
 
 **Warm path:** one probe per requested capability + one schema read, **p95 < 1000 ms**; no `stack status` when the
 heartbeat is fresh. A down requested service means `ready: false`; a capability **superset** satisfies a narrower
@@ -148,7 +151,7 @@ plain `down`; `down --all` and `reset-db` exit 6, while `status`/`ports`/`verify
 
 ## 7. Building and serving
 
-- **Never build** for `db`/`api`/`mail`/`full`; build only for `web`/`qa`/`e2e`/`admin` or `env:build`.
+- **Never build** for `db`/`api`/`mail`/`full`; build only for `web`/`qa`/`e2e` or `env:build`.
 - **Validate `APP_ENV`:** default `development` only when unset/empty; preserve `development`/`test`/`qa`; reject
   `production` or anything else (exit 2).
 - **Fingerprint** covers inlined `NEXT_PUBLIC_*`, `APP_ENV`, build mode and a **working-tree content hash** (tracked
@@ -173,6 +176,7 @@ checkout does not own.
 ## 9. Safety invariants (non-negotiable)
 
 1. **Ownership:** only the checkout that created a stack may stop/destroy it; `project_root` is checked first.
+   Ownership is per checkout, not per process: a second terminal in that checkout may stop it, another checkout never can.
 2. **Build lock:** one `next build` across all worktrees.
 3. **Shared mode:** disables shared-stack mutation; plain `down`, local build/serve and the local lease still work.
 4. **No `stop --all`, `pkill` or unscoped `docker rm`; destructive actions require `--yes` when non-interactive.**
@@ -185,7 +189,9 @@ checkout does not own.
 
 - Value-consuming commands keep `varlock run --inject vars -- bun scripts/env/cli.ts <command>`. `status`/`ports`/
   `doctor` run **unwrapped**; `verify` invokes `varlock load` and consumes only exit status/metadata. The CLI never
-  parses a dotenv file and never relies on Bun auto-load; unwrapped commands read the process environment only.
+  parses a dotenv file and never relies on Bun auto-load; unwrapped commands read the process environment only, so
+  a setting that lives only in `.env.local` (`APP_PORT`, `SUPABASE_STACK`, `SUPABASE_SHARED`) is not guaranteed to
+  reach them — export it when `status`/`ports`/`doctor` must agree with `ensure`.
 - **`.env.vault` is opt-in, not required.** `.env.local` is the only required hand-edited values file. The vault
   holds only third-party refs that cannot come from the local stack — locally **LLM** (`LLM_API_KEY`, optionally
   `LLM_BASE_URL`/`LLM_PROVIDER`) and **Stripe** (`STRIPE_SECRET_KEY`, plus `STRIPE_WEBHOOK_SECRET` for webhook
@@ -235,12 +241,12 @@ Legacy camelCase fields (`stackId`, `branch`, `web`, `supabase`, `dbUrl`, `mailU
 
 ## 12. Phases, budgets and acceptance
 
-| Phase             | Scope                                                                                                                                                                  | Gate                                |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| **0 — evidence**  | Port create/resume spike, identity, baseline timings, `dev:*` inventory, spec + ADR. No product code.                                                                  | Evidence in the issue; ADR reviewed |
-| **1 — read-only** | `status`/`doctor`/`ports`/`supa`; stable `--json`. `scripts/dev` untouched.                                                                                            | Read-only parity, unit tests        |
-| **2 — ensure**    | `ensure --profile api\|web`, `down`, `build`, `serve` (api/web only); varlock-injected; app-port lease; warm path. Keep `scripts/dev`.                                 | Acceptance 1–6, 8–10 (no `db`)      |
-| **3 — cutover**   | Remaining profiles (`db`, `mail`, `full`, `qa`, `e2e`, `admin`), `env:dev --admin`, `reset-db`, `logs`, `setup`, `verify`; delete `scripts/dev` + `dev:*`; docs sweep. | All acceptance tests; `rg` clean    |
+| Phase             | Scope                                                                                                                                      | Gate                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| **0 — evidence**  | Port create/resume spike, identity, baseline timings, `dev:*` inventory, spec + ADR. No product code.                                      | Evidence in the issue; ADR reviewed |
+| **1 — read-only** | `status`/`doctor`/`ports`/`supa`; stable `--json`. `scripts/dev` untouched.                                                                | Read-only parity, unit tests        |
+| **2 — ensure**    | `ensure --profile api\|web`, `down`, `build`, `serve` (api/web only); varlock-injected; app-port lease; warm path. Keep `scripts/dev`.     | Acceptance 1–6, 8–10 (no `db`)      |
+| **3 — cutover**   | Remaining profiles (`db`, `mail`, `full`, `qa`, `e2e`), `reset-db`, `logs`, `setup`, `verify`; delete `scripts/dev` + `dev:*`; docs sweep. | All acceptance tests; `rg` clean    |
 
 Phases are serial (every phase touches `scripts/env/**`).
 
@@ -282,31 +288,28 @@ Pure parts live in `__tests__/unit/env/`; lifecycle tests run via `bun run env:s
 
 ## 13. Command map
 
-| Old                                      | New                                      | Notes                                  |
-| ---------------------------------------- | ---------------------------------------- | -------------------------------------- |
-| `bun run dev` / `dev:web`                | `bun run env:dev`                        | human-only HMR; agents build+serve     |
-| `bun run dev:up` / `dev:up --prod`       | `bun run env:ensure --profile web`       | behavior change: no `next dev`         |
-| `dev:serve` / `dev:build` / `dev:status` | `env:serve` / `env:build` / `env:status` | `--json` preserved                     |
-| `dev:down [--all]` / `dev:reset-db`      | `env:down [--all]` / `env:reset-db`      | `--yes` when non-interactive           |
-| `dev:logs` / `dev:doctor` / `dev:ports`  | `env:logs` / `env:doctor` / `env:ports`  | exit 1 on a real conflict              |
-| `bash scripts/dev supa …`                | `bun run env:supa …`                     | APP_URL + contract exported            |
-| `bun run dev:admin`                      | `bun run env:dev --admin`                | admin HMR on leased port (pref. :4000) |
-| `scripts/dev` / `dev:*`                  | —                                        | deleted with the cutover               |
+| Old                                      | New                                      | Notes                              |
+| ---------------------------------------- | ---------------------------------------- | ---------------------------------- |
+| `bun run dev` / `dev:web`                | `bun run env:dev`                        | human-only HMR; agents build+serve |
+| `bun run dev:up` / `dev:up --prod`       | `bun run env:ensure --profile web`       | behavior change: no `next dev`     |
+| `dev:serve` / `dev:build` / `dev:status` | `env:serve` / `env:build` / `env:status` | `--json` preserved                 |
+| `dev:down [--all]` / `dev:reset-db`      | `env:down [--all]` / `env:reset-db`      | `--yes` when non-interactive       |
+| `dev:logs` / `dev:doctor` / `dev:ports`  | `env:logs` / `env:doctor` / `env:ports`  | exit 1 on a real conflict          |
+| `bash scripts/dev supa …`                | `bun run env:supa …`                     | APP_URL + contract exported        |
+| `scripts/dev` / `dev:*`                  | —                                        | deleted with the cutover           |
 
-New commands with no old equivalent: `env:ensure` (composed from `dev:up`), `env:setup`, `env:verify`.
+New commands with no old equivalent: `env:ensure` (composed from `dev:up`), `env:setup`, `env:verify`. Deferred:
+`apps/admin` HMR/serve — run its own dev command manually until a first-class command is added.
 
-`env:dev --admin` is human-only admin HMR on a leased admin port (preferred :4000, loopback only); agents use
-`env:ensure --profile admin`.
 The cutover updates every live reference (`AGENTS.md`, `README.md`, `docs/ONBOARDING.md`, ADR-0010, the native
 audit, code comments, `scripts/load-test/README.md`).
 
 ## 14. Deferred and out of scope
 
-**Deferred** (one line each, no v1 surface): `prepull` (ensure downloads on demand) and `recreate` (manual destroy
-
-- ensure); the port allocator (the CLI assigns stack ports), capability reconcile (`env:down --all` then
-  `env:ensure`), seed markers/run ids, build rollback (fail and stop), multi-lock hierarchies and provider-status
-  ceremony.
+**Deferred** (one line each, no v1 surface): `prepull` (ensure downloads on demand), `recreate` (manual destroy then
+ensure), the port allocator (phase 0 GO: explicit ports survive create and resume; the operator's minimal-v1 decision defers
+it, so it is not built — ports come from `status`), `apps/admin` HMR/serve, capability reconcile (`env:down --all` then
+`env:ensure`), seed markers/run ids, build rollback (fail and stop), multi-lock hierarchies and provider-status ceremony.
 
 Also out of scope: caching (#1078); CI changes; the vault provider implementation; removing the `varlock run`
 wrappers (post-stability); `--attach`; `next dev` for agents; two environments per checkout; per-agent stacks;
