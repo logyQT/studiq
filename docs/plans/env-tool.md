@@ -1,8 +1,10 @@
 # `env` — one command to a predictable local environment
 
 Status: **phase 0 complete** (evidence + this spec + [ADR-0011](../decisions/0011-env-cli.md),
-2026-11-08). Phases 1–3 are ready to implement; phase 4 is conditional on the
-phase-0 port spike and is a **go** (see §6.4).
+2026-11-08). The two phase-0 operator decisions are **settled**: `db` is
+db + auth + storage (§3) and `dev:admin` becomes `env:dev --admin` (§14.2), so
+phases 1–3 are unblocked. Phase 4 is conditional on the phase-0 port spike and is
+a **go** (see §6.4).
 
 Replaces: `scripts/dev` and the `dev:*` script sprawl.
 Scope: local development and agent workflows. Not CI provisioning, not hosted,
@@ -47,16 +49,19 @@ not this tool.
 
 ## 1. Fixed decisions (do not reopen)
 
-These were settled in the 2026-11-07/08 review and confirmed by phase-0
-measurements. They are constraints on every phase.
+These were settled in the 2026-11-07/08 review, confirmed by the phase-0
+measurements, and (items 13–14) by the operator on 2026-11-08. They are
+constraints on every phase.
 
 1. **Target is per checkout, not per branch.** Stack identity stays
    `projectRoot + branch + stackName`. `--attach` (cross-checkout reuse) is
    future work.
-2. **varlock is the only env loader.** Value-consuming commands (`ensure`,
-   `serve`, `build`, tests) keep `varlock run --inject vars --`. `status`,
-   `ports` and `doctor` run **unwrapped** so a locked vault never blocks them.
-   The `env` CLI **never parses a dotenv file**.
+2. **varlock is the only env loader, injector and validator.**
+   Value-consuming commands (`ensure`, `serve`, `build`, tests) keep
+   `varlock run --inject vars --`. `status`, `ports` and `doctor` run
+   **unwrapped** so a locked vault never blocks them. The `env` CLI **never
+   parses a dotenv file**. Removing the wrappers is a post-stability migration
+   (after #1077 **and** #1078), never part of this issue.
 3. **Ports: evidence before allocation.** The 20-port allocator is conditional
    on the phase-0 spike. Until it lands, the tool leases **only the app port**
    and discovers stack ports from `stack status`. The allocator is **phase 4**,
@@ -84,6 +89,13 @@ measurements. They are constraints on every phase.
     (ADR-0010). `.env.schema` stays value-free. The vault pointer (phase 2) is
     `.env.vault` in the primary checkout, Git-ignored, resolved through
     `STUDIQ_ENV_VAULT`.
+13. **`db` = database + auth + storage.** Confirmed by the operator. Migrations
+    need `storage.buckets` and the repo seeds need `auth.users.email_confirmed_at`,
+    so a database-only stack cannot be provisioned; no `--no-migrate`/`--no-seed`
+    skip path is added. See §3.
+14. **`dev:admin` → `env:dev --admin`.** Confirmed by the operator. Admin HMR
+    (port 4000) stays human-only; `apps/admin` is not part of `env:ensure`
+    defaults. See §14.2.
 
 ---
 
@@ -99,7 +111,7 @@ env:recreate --runtime <native|docker> --yes        # destroy + create
 env:doctor   [--json]                               # explain state; exit 1 on a real conflict
 env:ports    [--json]                               # app port (+ block in phase 4)
 env:supa     <args…>                                # bunx supabase with the contract exported
-env:dev      [--admin] [atoms]                      # human-only HMR; agents must not use it
+env:dev      [--admin] [atoms]                      # human-only HMR (web, or admin with --admin)
 env:reset-db [--yes]                                # destructive; this checkout only
 env:logs     [--no-follow]                          # stack logs + .dev/web.log
 env:prepull                                         # download artifacts without starting
@@ -163,8 +175,10 @@ can hand-craft one.
 | `e2e`   | full                                      | yes         | build + serve       | `__tests__/e2e`                 |
 | `admin` | full                                      | no          | admin build + serve | `apps/admin`                    |
 
-**Phase-0 correction — `db` includes auth + storage.** A database-only stack
-cannot apply this repo's migrations and seeds:
+**`db` = db + auth + storage (settled).** This table is the operator-confirmed
+definition: `db` starts the database together with `auth` and `storage`, not the
+database alone. A database-only stack cannot apply this repo's migrations and
+seeds:
 
 - `supabase/migrations/20260713000001_teacher_assignments.sql` inserts into
   `storage.buckets` (requires the `storage` capability);
@@ -172,12 +186,10 @@ cannot apply this repo's migrations and seeds:
   `email_confirmed_at` (requires the `auth` capability).
 
 Both failures were reproduced in phase 0 (exit 1, `SQLSTATE 42P01` and
-`SQLSTATE 42703`). The minimum viable database profile is therefore
-**db + auth + storage**, which cold-starts in ~7.3 s (p50). This corrects the
-draft table's `db = database only`. If the operator prefers a true DB-only
-profile, the alternative is a migration/seed-skip path (not in the CLI's
-`stack start` surface today) — an explicit decision, not an implementation
-detail. See §17.
+`SQLSTATE 42703`). With that minimum viable set a cold start is comfortably
+inside the §12 budget: p50 **7.3 s**, p95 **8.0 s**. No `--no-migrate` /
+`--no-seed` skip path is being added — `stack start` exposes no such switch, and
+a profile that cannot apply the repo's own migrations and seeds is not useful.
 
 Exact `supabase stack start -x` lists (the runtime contract; the table above is
 the human view):
@@ -194,7 +206,7 @@ the human view):
 | `admin` | `studio,realtime,functions,analytics,pooler`           |
 
 `database` is always on. `db` keeps `auth` and `storage` because migrations and
-seeds need them (see the phase-0 correction below); `api` adds `rest`. `studio`
+seeds need them (settled above); `api` adds `rest`. `studio`
 is excluded from every default profile; `--studio` removes it from the list.
 `--mail` enables `local_smtp`; `full`/`web`/`qa`/`e2e` include it because the
 app's auth flows use Mailpit. `--realtime`/`--functions`/`--analytics`/`--pooler`
@@ -219,8 +231,9 @@ Atoms (all idempotent, all composable):
 - `--prod` implies build + serve. `--web` without `--prod` is rejected (exit 2):
   the tool never runs `next dev`.
 - `--no-seed` wins over a profile default; `--reseed` forces tenant seeding.
-- `--admin` is only meaningful with `--prod`/`dev` and selects the admin app
-  (see the `dev:admin` gap in §14.2).
+- `--admin` targets `apps/admin` on port 4000: with `env:dev` it starts the admin
+  app's HMR, with `--prod` it builds and serves it (see §14.2). It is
+  human-only either way.
 
 ---
 
@@ -431,7 +444,8 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
 - **Never build for `db` / `api` / `mail` / `full`.** Build only for `web`,
   `qa`, `e2e`, `admin`, or an explicit `env:build`.
 - `--prod` implies build + serve. `--web` without `--prod` is rejected (exit 2);
-  `env:dev` is the only HMR path and it is human-only.
+  `env:dev` is the only HMR path (web, or `apps/admin` with `--admin`) and it is
+  human-only.
 - **Build fingerprint** must include:
   - the `NEXT_PUBLIC_*` values that get inlined at build time
     (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SITE_URL`,
@@ -552,9 +566,10 @@ Rules:
 
 ## 11. Environment loading (varlock seam)
 
-- **Value-consuming commands keep the wrapper:**
+- **Value-consuming commands keep the wrapper for the whole of #1077:**
   `varlock run --inject vars -- bun scripts/env/cli.ts <command>`. This is
-  exactly how `dev:serve` / `dev:build` work today.
+  exactly how `dev:serve` / `dev:build` work today, and no phase of this plan
+  drops it.
 - **Unwrapped read-only commands:** `env:status`, `env:ports` and `env:doctor`
   run **without** varlock so a locked vault cannot block them. They read only
   discovered stack/registry state and the schema file's key names. `env:verify`
@@ -563,12 +578,25 @@ Rules:
 - The CLI **never parses a dotenv file**. It reads the process environment
   (already resolved by varlock), adds the discovered stack URLs/keys to the
   child environment, and never prints/logs/stores them.
-- `varlock` stays the validator (`env:check`, `env:scan`, the inventory guard).
-  Do **not** remove the wrappers or replace varlock.
+- **varlock is the loader, the injector and the validator** — not
+  "validator-only". It loads/injects values for value-consuming commands and
+  keeps validating (`env:check`, `env:scan`, the inventory guard).
+- **Removing the wrappers is a post-stability migration, not this issue.** Only
+  once **both #1077 and #1078** are stable does the wrapper removal become a
+  deliberate migration, and only through a framework integration (Next/Bun) or
+  an `env`-owned injection path. Plugins/resolvers resolve provider **values**;
+  they do **not** remove wrappers. Never propose dropping the wrappers in any
+  phase.
 - New keys introduced by the tool (e.g. `STUDIQ_ENV_VAULT`, the
   `SUPABASE_LOCAL_SMTP_*_PORT` trio) must be added to `.env.schema` in the same
   PR that reads them (the `check-env-inventory` guard fails otherwise).
   `.env.schema` stays value-free.
+
+> **Superseded wording — do not delete the wrappers.** Issue #1077's pre-review
+> appendix and its "varlock is validator-only" acceptance line predate this
+> correction. varlock stays the loader/injector for value-consuming commands and
+> the validator; `varlock run` is removed only in the post-stability migration
+> (after #1077 **and** #1078), never inside this issue.
 
 ### 11.1 Vault seam (phase 2; the `setup`/`verify` commands land in phase 3)
 
@@ -707,28 +735,30 @@ Add tests for the phase-0 corrections:
 | `bun run dev:prepull`                                                           | `bun run env:prepull`              | `stack install`                        |
 | `bash scripts/dev supa …`                                                       | `bun run env:supa …`               | APP_URL + contract exported            |
 | `bash scripts/dev up\|serve\|status\|down\|build\|logs\|doctor\|ports\|prepull` | —                                  | deleted with `scripts/dev`             |
-| `bun run dev:admin`                                                             | **unmapped — see 14.2**            | STOP item                              |
+| `bun run dev:admin`                                                             | `bun run env:dev --admin`          | admin HMR on :4000; human-only         |
 
 New commands with no old equivalent: `env:ensure` (composed from `dev:up`),
 `env:recreate`, `env:setup`, `env:verify`.
 
-### 14.2 The `dev:admin` gap (STOP — needs a decision)
+### 14.2 `dev:admin` → `env:dev --admin` (settled)
 
-`bun run dev:admin` (admin HMR on :4000) is a `dev:*` script and must be deleted
-under the "no `dev:*` scripts" rule, but the corrected command map has **no**
-replacement. It is referenced in `AGENTS.md`, `README.md`,
-`apps/admin/README.md` and ADR-0009.
+`bun run dev:admin` (admin HMR on :4000) is a `dev:*` script and is deleted under
+the "no `dev:*` scripts" rule. The confirmed replacement is **`bun run env:dev
+--admin`**:
 
-Options (do not pick one unilaterally):
+- `env:dev --admin` starts `apps/admin`'s HMR on port 4000; without `--admin`
+  it starts the web app's HMR exactly as today.
+- It stays **human-only**, symmetric with `env:dev` for web: agents use
+  `env:build` + `env:serve`, or `env:ensure --profile admin`, and never HMR.
+- `env:ensure --profile admin` (and `--admin --prod`) remains the build + serve
+  path for the admin app, so the profile table in §3 and the atom agree.
+- `apps/admin` stays **out of `env:ensure` defaults** — nothing selects it
+  unless asked.
+- The phase-3 cutover updates the references in `AGENTS.md`, `README.md`,
+  `apps/admin/README.md` and ADR-0009 to `bun run env:dev --admin`.
 
-- **A:** `env:dev --admin` — human-only HMR for `apps/admin`, symmetric with
-  `env:dev` for web. Recommended, smallest surface.
-- **B:** `env:ensure --profile admin` — build + serve only (no HMR), matching
-  the `admin` profile in §3.
-- **C:** keep `dev:admin` as the one exception to "no `dev:*`" (violates the
-  correction; not recommended).
-
-Phase 3 is blocked on this choice. Everything else in the map is complete.
+The rejected options were `env:ensure --profile admin` alone (no HMR) and
+keeping `dev:admin` as the one `dev:*` exception (violates the no-`dev:*` rule).
 
 ### 14.3 References the cutover must update
 
@@ -747,13 +777,13 @@ Phase 3 is blocked on this choice. Everything else in the map is complete.
 
 ## 15. Phase plan
 
-| Phase                           | Scope                                                                                                                                                                                                                 | Gate                                |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| **0 — evidence**                | Port create/resume spike, key identity, baseline timings, `dev:*` inventory, this spec + ADR-0011. No product code.                                                                                                   | Evidence in the issue; ADR reviewed |
-| **1 — read-only**               | `status` / `doctor` / `ports` / `supa`; stable `--json`; no lifecycle change. `scripts/dev` untouched.                                                                                                                | Read-only parity, unit tests        |
-| **2 — ensure**                  | `ensure --profile api\|web`, `down`, `build`; varlock-injected; **app-port lease only**; warm path. Keep `scripts/dev`.                                                                                               | issue §11 tests 3, 6, 7, 8, 9, 10   |
-| **3 — cutover**                 | Remaining profiles/commands (`mail`, `full`, `qa`, `e2e`, `admin`, `env:dev`, `reset-db`, `logs`, `prepull`, `setup` scaffold, `verify`); delete `scripts/dev` + `dev:*`; docs sweep; resolve the `dev:admin` choice. | Full acceptance; `rg` clean         |
-| **4 — allocator (conditional)** | 20-port blocks, lease registry, reclaim, retry loop, separate app-port lease.                                                                                                                                         | issue §11 tests 1, 2, 4, 5          |
+| Phase                           | Scope                                                                                                                                                                                                                           | Gate                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **0 — evidence**                | Port create/resume spike, key identity, baseline timings, `dev:*` inventory, this spec + ADR-0011. No product code.                                                                                                             | Evidence in the issue; ADR reviewed |
+| **1 — read-only**               | `status` / `doctor` / `ports` / `supa`; stable `--json`; no lifecycle change. `scripts/dev` untouched.                                                                                                                          | Read-only parity, unit tests        |
+| **2 — ensure**                  | `ensure --profile api\|web`, `down`, `build`; varlock-injected; **app-port lease only**; warm path. Keep `scripts/dev`.                                                                                                         | issue §11 tests 3, 6, 7, 8, 9, 10   |
+| **3 — cutover**                 | Remaining profiles/commands (`mail`, `full`, `qa`, `e2e`, `admin`, `env:dev --admin`, `reset-db`, `logs`, `prepull`, `setup` scaffold, `verify`); delete `scripts/dev` + `dev:*`; docs sweep (`dev:admin` → `env:dev --admin`). | Full acceptance; `rg` clean         |
+| **4 — allocator (conditional)** | 20-port blocks, lease registry, reclaim, retry loop, separate app-port lease.                                                                                                                                                   | issue §11 tests 1, 2, 4, 5          |
 
 Do not run phases in parallel: every phase touches `scripts/env/**`. Merge
 order is 0 → 1 → 2 → 3 → (4). Each phase is its own PR; phase 4 is a **go** but
@@ -785,6 +815,8 @@ No provider code, no ref parsing, no dotenv parsing in `scripts/env/**`.
 - **CI changes.** CI keeps calling `supabase stack` directly with fixed ports.
 - **Provider/vault implementation.** Phase 2 only defines and verifies the seam;
   the provider choice is a separate decision.
+- **Removing the `varlock run` wrappers.** A post-stability migration, after
+  #1077 **and** #1078, via a framework integration or `env`-owned injection.
 - **`--attach` / cross-checkout stack reuse.**
 - **Kubernetes, remote stacks, production.** Local only.
 - **`next dev` for agents.** `env:dev` is human-only; agents use build + serve.
@@ -794,15 +826,22 @@ No provider code, no ref parsing, no dotenv parsing in `scripts/env/**`.
 
 ---
 
-## 17. Open decisions and STOP items
+## 17. Settled decisions and remaining implementation notes
 
-1. **`db` profile (STOP).** The draft defines `db` as database-only, but the
-   repo's migrations/seeds require `storage` and `auth`. This spec defines `db`
-   as **db + auth + storage** (the minimum viable set). The operator must
-   confirm that correction, or choose a migration/seed-skip path. Phase 2 is
-   blocked until then.
-2. **`dev:admin` (STOP).** No mapped replacement. Choose A/B/C in §14.2 before
-   phase 3 deletes `dev:*`.
+**Settled in phase 0 (operator, 2026-11-08):**
+
+1. **`db` profile = db + auth + storage.** Confirmed. Migrations need
+   `storage.buckets` and the repo's seeds need `auth.users.email_confirmed_at`,
+   so a database-only stack cannot be provisioned; cold start is p50 ~7.3 s /
+   p95 ~8.0 s, inside the §12 budget. No `--no-migrate` / `--no-seed` skip path
+   is added. See §3.
+2. **`dev:admin` → `env:dev --admin`.** Confirmed. Admin HMR on :4000 lives in
+   `env:dev --admin`, stays human-only, and `apps/admin` remains out of
+   `env:ensure` defaults. See §14.1 and §14.2.
+
+**Remaining implementation notes (not blockers — each is decided in the phase
+that owns it):**
+
 3. **pgmeta port (phase 4).** It has no config section and cannot be pinned.
    Accept one unpredictable internal port or reserve/probe a slot; decide in the
    phase-4 PR.
