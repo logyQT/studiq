@@ -1,3 +1,5 @@
+import { mkdirSync, symlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createHarness,
@@ -79,6 +81,47 @@ describe('env:status --json', () => {
     expect(status.ready).toBe(false);
     expect(status.stack).toBeNull();
     expect(stringList(status.warnings).join('\n')).toContain("cannot read 'supabase stack status'");
+  });
+
+  it('warns when the registry exists but is untrusted', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    mkdirSync(join(harness.dir, 'real-registry'), { recursive: true });
+    symlinkSync(join(harness.dir, 'real-registry'), harness.registryDir);
+
+    const result = await harness.run(['status', '--json']);
+
+    expect(result.status).toBe(0);
+    const status = parseJsonObject(result.stdout);
+    expect(stringList(status.warnings)).toHaveLength(1);
+  });
+
+  it('strips query and fragment credentials from the database URL', async () => {
+    const server = await startHttpServer(200);
+    const harness = newHarness();
+    harness.track(() => server.close());
+    harness.setStatusFixture(
+      stackStatusFixture({
+        apiUrl: server.url,
+        apiPort: server.port,
+        dbUrl:
+          'postgresql://postgres:user-password@127.0.0.1:30040/postgres' +
+          '?password=query-secret&sslpassword=qsecret#frag-secret',
+      }),
+    );
+
+    const result = await harness.run(['status', '--json'], {
+      APP_PORT: String(server.port),
+      APP_URL: server.url,
+    });
+
+    expect(result.status).toBe(0);
+    const status = parseJsonObject(result.stdout);
+    expect(status.dbUrl).toBe('postgresql://localhost:30040/postgres');
+    expect(result.stdout).not.toContain('user-password');
+    expect(result.stdout).not.toContain('query-secret');
+    expect(result.stdout).not.toContain('qsecret');
+    expect(result.stdout).not.toContain('frag-secret');
   });
 
   it('shapes a running stack and never emits key material or the DB password', async () => {

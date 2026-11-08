@@ -5,7 +5,7 @@ import { readContract } from '../lib/contract';
 import { probeHttp } from '../lib/health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from '../lib/json';
 import { printJson, writeLine } from '../lib/output';
-import { findEntry, readRegistry } from '../lib/registry';
+import { findEntry, readRegistry, registryPathExists } from '../lib/registry';
 import { REPO_ROOT, canon, deriveProjectId, sanitizeProjectId } from '../lib/repo';
 import { probeStackStatus, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
@@ -122,6 +122,17 @@ async function buildSnapshot(): Promise<StatusSnapshot> {
   const owner = entryWorktree && canon(entryWorktree) !== REPO_ROOT ? entryWorktree : null;
   const mode = contract.shared ? (entry?.mode ?? null) : stack ? stack.name || 'default' : null;
 
+  const warnings: string[] = [];
+  if (statusProbe.error) {
+    warnings.push(`cannot read 'supabase stack status': ${statusProbe.error}`);
+  }
+  if (!registry.trusted && registryPathExists(registry.dir)) {
+    warnings.push(
+      `registry directory ${registry.dir} exists but is not a trusted private directory; ` +
+        'ownership cannot be verified',
+    );
+  }
+
   return shapeStatus({
     contract,
     registryDir: registry.dir,
@@ -139,9 +150,7 @@ async function buildSnapshot(): Promise<StatusSnapshot> {
     web: { pid: webPid, http: webHttp },
     supabaseHttp,
     buildPresent: existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID')),
-    warnings: statusProbe.error
-      ? [`cannot read 'supabase stack status': ${statusProbe.error}`]
-      : [],
+    warnings,
   });
 }
 

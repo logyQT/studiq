@@ -27,6 +27,44 @@ interface StopScope {
 
 type ScopeResolution = { stack: ListedStack } | { problem: string };
 
+/** Flags that consume the following token as their value. */
+const VALUE_FLAGS = new Set([
+  '--stack',
+  '--stack-id',
+  '--workdir',
+  '--project-id',
+  '--output',
+  '-o',
+  '--runtime',
+  '-x',
+  '--exclude',
+  '--timeout',
+  '--wait',
+  '--profile',
+  '--port-block',
+  '--app-port',
+]);
+
+/**
+ * The CLI's command words (first two bare tokens), skipping flags and the values
+ * of flags that take one. `start --stack stop` therefore has the command
+ * `start`; only a bare `stop`/`restart`/`destroy` or `stack <verb>` is a guard
+ * target, and a stack literally named `stop` stays a value.
+ */
+function commandWords(args: string[]): string[] {
+  const words: string[] = [];
+  for (let index = 0; index < args.length && words.length < 2; index += 1) {
+    const token = args[index];
+    if (!token) continue;
+    if (token.startsWith('-')) {
+      if (!token.includes('=') && VALUE_FLAGS.has(token)) index += 1;
+      continue;
+    }
+    words.push(token);
+  }
+  return words;
+}
+
 /** `--stack <name>`, `--stack=<name>`, `--stack-id <id>`, `--stack-id=<id>`. */
 function stopScopes(args: string[]): StopScope[] {
   const scopes: StopScope[] = [];
@@ -128,19 +166,26 @@ function hasAllFlag(args: string[]): boolean {
  * come from the process environment (varlock injects them for this command);
  * an explicit APP_URL wins, exactly like `scripts/dev supa`.
  *
- * Guards (the argv is scanned as tokens, so argument order never bypasses
- * them): `stop --all` / `restart --all` and any `destroy` are refused outright,
- * `db reset` is refused, a `stop`/`restart` must name a stack this checkout
- * owns, and a `--workdir`/`SUPABASE_WORKDIR` must resolve to this checkout's
- * root (otherwise the CLI could operate on another checkout's stack). Usage
- * errors exit 2, ownership conflicts 6, and nothing is ever written to stdout.
+ * Guards (the command position is parsed apart from flag values, so
+ * `start --stack stop` is not mistaken for a stop): `stop --all` /
+ * `restart --all` and a `destroy` command are refused outright, `db reset` is
+ * refused, a `stop`/`restart` must name a stack this checkout owns, and a
+ * `--workdir`/`SUPABASE_WORKDIR` must resolve to this checkout's root
+ * (otherwise the CLI could operate on another checkout's stack). Usage errors
+ * exit 2, ownership conflicts 6, and nothing is ever written to stdout.
  */
 export function runSupa(args: string[]): number {
-  const stopCapable = args.includes('stop') || args.includes('restart');
+  const [first, second] = commandWords(args);
+  const stopCapable =
+    first === 'stop' ||
+    first === 'restart' ||
+    (first === 'stack' && (second === 'stop' || second === 'restart'));
+  const destroyCommand = first === 'destroy' || (first === 'stack' && second === 'destroy');
+  const dbReset = first === 'db' && second === 'reset';
 
   if (stopCapable && hasAllFlag(args)) return reject(ALL_MESSAGE, 2);
-  if (args.includes('destroy')) return reject(DESTROY_MESSAGE, 2);
-  if (args.includes('db') && args.includes('reset')) return reject(DB_RESET_MESSAGE, 2);
+  if (destroyCommand) return reject(DESTROY_MESSAGE, 2);
+  if (dbReset) return reject(DB_RESET_MESSAGE, 2);
 
   if (stopCapable) {
     // The CLI resolves a stack against `--workdir`, so approving a local stack

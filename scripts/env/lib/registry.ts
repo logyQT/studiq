@@ -70,7 +70,7 @@ function resolveRegistryDir(): string {
  * by the current user — the same read-side guard `scripts/dev` uses. A symlink
  * or a foreign directory is reported, never followed.
  */
-export function registryDirTrusted(dir: string): boolean {
+function registryDirTrusted(dir: string): boolean {
   try {
     const stat = lstatSync(dir);
     if (stat.isSymbolicLink() || !stat.isDirectory()) return false;
@@ -78,6 +78,25 @@ export function registryDirTrusted(dir: string): boolean {
     return uid === undefined || stat.uid === uid;
   } catch {
     return false;
+  }
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
+/**
+ * Whether anything exists at the registry path. A missing registry is normal
+ * (nothing has started yet); any other stat failure (EACCES, EIO, …) must
+ * surface instead of being reported as "missing".
+ */
+export function registryPathExists(dir: string): boolean {
+  try {
+    lstatSync(dir);
+    return true;
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ENOENT') return false;
+    throw error;
   }
 }
 

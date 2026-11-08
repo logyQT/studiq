@@ -1,3 +1,5 @@
+import { mkdirSync, symlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createHarness,
@@ -38,6 +40,33 @@ describe('env:doctor', () => {
     expect(Array.isArray(report.warnings)).toBe(true);
     // A stopped/absent stack is a clean CLI answer, not a CLI failure.
     expect(stringList(report.warnings).join('\n')).not.toContain('supabase stack status');
+  });
+
+  it('does not warn about a missing registry directory', async () => {
+    const appPort = await firstFreePort(3900);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    // A missing registry is normal: no warning at all here.
+    expect(stringList(report.warnings)).toHaveLength(0);
+  });
+
+  it('warns when an existing registry directory is untrusted', async () => {
+    const appPort = await firstFreePort(3900);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    mkdirSync(join(harness.dir, 'real-registry'), { recursive: true });
+    symlinkSync(join(harness.dir, 'real-registry'), harness.registryDir);
+
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    // Exactly the untrusted-registry warning; a missing one stays silent.
+    expect(stringList(report.warnings)).toHaveLength(1);
   });
 
   it('warns when the stack status lookup fails but stays exit 0', async () => {

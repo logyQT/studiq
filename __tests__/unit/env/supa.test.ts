@@ -130,6 +130,37 @@ describe('env:supa', () => {
     expect(harness.bunxCalls()).toBe('');
   });
 
+  it('forwards start --stack stop (the stack name is a value, not a command)', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'start', '--stack', 'stop']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('start --stack stop');
+  });
+
+  it('still guards stop --stack stop', async () => {
+    const harness = newHarness();
+    harness.setListFixture({
+      stacks: [
+        {
+          id: 'c'.repeat(64),
+          name: 'stop',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+      ],
+    });
+
+    const result = await harness.run(['supa', 'stop', '--stack', 'stop']);
+
+    expect(result.status).toBe(0);
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack list --output-format json');
+    expect(calls).toContain('stop --stack stop');
+  });
+
   it('forwards a scoped stack stop for a stack this checkout owns', async () => {
     const harness = newHarness();
     harness.setListFixture(listFixture());
