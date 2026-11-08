@@ -164,6 +164,21 @@ describe('env:supa', () => {
     expect(harness.bunxCalls().trim()).toBe('--debug false stack list');
   });
 
+  it('skips every separated boolean value before the command', async () => {
+    const harness = newHarness();
+
+    for (const value of ['no', 'yes', 'on', 'off', '0', '1']) {
+      const result = await harness.run(['supa', '--debug', value, 'stop', '--all']);
+      expect(result.status, value).toBe(2);
+      expect(result.stdout, value).toBe('');
+      expect(harness.bunxCalls(), value).toBe('');
+    }
+
+    const list = await harness.run(['supa', '--debug', 'no', 'stack', 'list']);
+    expect(list.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('--debug no stack list');
+  });
+
   it('forwards start --stack stop (the stack name is a value, not a command)', async () => {
     const harness = newHarness();
 
@@ -346,6 +361,92 @@ describe('env:supa', () => {
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain("not found in 'supabase stack list'");
     expect(harness.bunxCalls()).not.toContain('stop');
+  });
+
+  it('refuses to stop when stack list cannot be read (exit 6)', async () => {
+    const harness = newHarness();
+    harness.setListFixture('not-json');
+
+    const result = await harness.run(['supa', 'stop', '--stack', 'default']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.length).toBeGreaterThan(0);
+    expect(harness.bunxCalls()).not.toContain('stop');
+  });
+
+  it('refuses an ambiguous --stack-id prefix (exit 6)', async () => {
+    const harness = newHarness();
+    harness.setListFixture({
+      stacks: [
+        {
+          id: `${'a'.repeat(63)}1`,
+          name: 'one',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+        {
+          id: `${'a'.repeat(63)}2`,
+          name: 'two',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+      ],
+    });
+
+    const result = await harness.run(['supa', 'stop', '--stack-id', 'a']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.length).toBeGreaterThan(0);
+    expect(harness.bunxCalls()).not.toContain('stop');
+  });
+
+  it('refuses a --stack and --stack-id that name different stacks (exit 6)', async () => {
+    const harness = newHarness();
+    harness.setListFixture({
+      stacks: [
+        {
+          id: 'b'.repeat(64),
+          name: 'default',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+        {
+          id: 'c'.repeat(64),
+          name: 'other',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+      ],
+    });
+
+    const result = await harness.run(['supa', 'stop', '--stack', 'default', '--stack-id', 'cccc']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.length).toBeGreaterThan(0);
+    expect(harness.bunxCalls()).not.toContain('stop');
+  });
+
+  it('refuses an empty --workdir (exit 6)', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const variants = [
+      ['stop', '--stack', 'default', '--workdir', ''],
+      ['stop', '--stack', 'default', '--workdir='],
+    ];
+    for (const args of variants) {
+      const result = await harness.run(['supa', ...args]);
+      expect(result.status, args.join(' ')).toBe(6);
+      expect(result.stdout, args.join(' ')).toBe('');
+      expect(harness.bunxCalls(), args.join(' ')).not.toContain('stop');
+    }
   });
 
   it('refuses stop without a stack scope (exit 2, no spawn)', async () => {

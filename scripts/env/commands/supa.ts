@@ -57,8 +57,9 @@ const VALUE_FLAGS = new Set([
 ]);
 
 /**
- * Boolean global flags. pflag also accepts a separated `true`/`false`/`1`/`0`
- * value (`--debug false`), which would otherwise be read as the command.
+ * Boolean global flags. pflag also accepts a separated boolean value
+ * (`true`/`false`, `yes`/`no`, `1`/`0`, `on`/`off`), which would otherwise be
+ * read as the command.
  */
 const BOOLEAN_FLAGS = new Set([
   '--debug',
@@ -73,7 +74,7 @@ const BOOLEAN_FLAGS = new Set([
   '--help',
 ]);
 
-const BOOLEAN_VALUES = new Set(['true', 'false', '1', '0']);
+const BOOLEAN_VALUES = new Set(['true', 'false', 'yes', 'no', '1', '0', 'on', 'off']);
 
 /**
  * The CLI's command words (first two bare tokens), skipping flags and the values
