@@ -122,6 +122,14 @@ describe('env:ports --json', () => {
     expect(appPort).not.toBe(3010);
   });
 
+  it('rejects the removed --suggest flag (exit 2, no spawn)', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['ports', '--suggest']);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.length).toBeGreaterThan(0);
+  });
+
   it('rejects unknown flags with exit code 2', async () => {
     const harness = newHarness();
     const result = await harness.run(['ports', '--block', '2']);

@@ -158,7 +158,8 @@ describe('env atom grammar', () => {
 
   it('keeps the phase-1 read-only commands and supa passthrough', () => {
     expect(atoms.parseCommand(['status', '--json']).json).toBe(true);
-    expect(atoms.parseCommand(['ports', '--suggest']).command).toBe('ports');
+    expect(atoms.parseCommand(['ports', '--json']).command).toBe('ports');
+    throwsUsage(['ports', '--suggest'], /unknown option/);
     const supa = atoms.parseCommand(['supa', '--', 'stack', 'status']);
     expect(supa.passthrough).toEqual(['stack', 'status']);
   });

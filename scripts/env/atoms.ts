@@ -57,7 +57,6 @@ export interface BuildOptions {
 export interface ParsedCommand {
   command: EnvCommand;
   json: boolean;
-  suggest: boolean;
   /** `supa` only: arguments forwarded verbatim to `bunx supabase`. */
   passthrough: string[];
   ensure: EnsureOptions | null;
@@ -83,7 +82,7 @@ type FlagCommand = (typeof FLAG_COMMANDS)[number];
 const ALLOWED_FLAGS: Record<FlagCommand, ReadonlyArray<string>> = {
   status: ['--json'],
   doctor: ['--json'],
-  ports: ['--json', '--suggest'],
+  ports: ['--json'],
 };
 
 function isFlagCommand(value: string): value is FlagCommand {
@@ -98,7 +97,7 @@ export const USAGE = [
   '  env:down    [--all] [--yes] [--json]           Stop this web server; --all also the stack',
   '  env:build   [--force] [--json]                 Build @studiq/web (production)',
   '  env:doctor  [--json]                           Explain runtime/stack/registry problems',
-  '  env:ports   [--json]                           Print a free APP_PORT (--suggest is the default)',
+  '  env:ports   [--json]                           Print a free APP_PORT',
   '  env:supa    <args…>                            Run `bunx supabase` with APP_URL exported',
   '',
   'Profiles (phase 2): api, web. The remaining profiles (db, mail, full, qa, e2e, admin)',
@@ -188,7 +187,6 @@ function emptyParsed(command: EnvCommand): ParsedCommand {
   return {
     command,
     json: false,
-    suggest: false,
     passthrough: [],
     ensure: null,
     down: null,
@@ -445,7 +443,6 @@ function parseFlagCommand(command: FlagCommand, rest: string[]): ParsedCommand {
       throw new UsageError(`unknown option '${arg}' for '${command}'`);
     }
     if (arg === '--json') parsed.json = true;
-    else parsed.suggest = true;
   }
   return parsed;
 }
