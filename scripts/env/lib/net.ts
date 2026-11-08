@@ -1,4 +1,4 @@
-import { createConnection } from 'node:net';
+import { createConnection, createServer } from 'node:net';
 import { entryForPort, type RegistryEntry } from './registry';
 
 const PORT_SCAN_START = 3000;
@@ -26,10 +26,33 @@ export function portInUse(port: number, timeoutMs = 300): Promise<boolean> {
 }
 
 /**
+ * Whether `127.0.0.1:<port>` can be bound right now. A connect probe only sees
+ * a listener accepting on loopback; a wildcard or another-interface socket can
+ * still make our own `listen()` fail, so port selection asks the kernel.
+ * Any bind error (EADDRINUSE, EACCES, …) means the port is unusable.
+ */
+function canBindPort(port: number): Promise<boolean> {
+  if (port <= 0) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const server = createServer();
+    let settled = false;
+    const finish = (available: boolean): void => {
+      if (settled) return;
+      settled = true;
+      resolve(available);
+    };
+    server.once('error', () => finish(false));
+    server.listen(port, '127.0.0.1', () => {
+      server.close(() => finish(true));
+    });
+  });
+}
+
+/**
  * The first free app port in `3000-3999`, mirroring `scripts/dev`'s
- * `suggest_free_app_port`: skip the reserved QA port, ports already listening,
- * and ports another checkout has claimed in the registry. Read-only: no lease
- * is written (that is phase 2/4).
+ * `suggest_free_app_port`: skip the reserved QA port, ports this checkout
+ * cannot bind, and ports another checkout has claimed in the registry.
+ * Read-only: no lease is written (that is phase 2/4).
  */
 export async function suggestFreeAppPort(entries: RegistryEntry[]): Promise<number> {
   const candidates: number[] = [];
@@ -39,12 +62,12 @@ export async function suggestFreeAppPort(entries: RegistryEntry[]): Promise<numb
     candidates.push(port);
   }
 
-  // Probe in batches so a filtered port cannot serialise 1000 timeouts.
+  // Probe in batches so a slow bind cannot serialise the whole scan.
   const BATCH = 64;
   for (let offset = 0; offset < candidates.length; offset += BATCH) {
     const batch = candidates.slice(offset, offset + BATCH);
-    const states = await Promise.all(batch.map((port) => portInUse(port)));
-    const freeIndex = states.indexOf(false);
+    const states = await Promise.all(batch.map((port) => canBindPort(port)));
+    const freeIndex = states.indexOf(true);
     if (freeIndex !== -1) return batch[freeIndex] as number;
   }
 

@@ -138,6 +138,60 @@ describe('env:supa', () => {
     expect(harness.bunxCalls()).toContain('stop --stack-id aaaa');
   });
 
+  it('forwards a scoped stack restart for a stack this checkout owns', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'stack', 'restart', '--stack', 'default']);
+
+    expect(result.status).toBe(0);
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack list --output-format json');
+    expect(calls).toContain('stack restart --stack default');
+  });
+
+  it('refuses restart without a stack scope (exit 2, no spawn)', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'restart']);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--stack <name>');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('rejects restart --all (exit 2, no spawn)', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'stack', 'restart', '--all']);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('restart --all');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('refuses to restart a stack owned by another checkout (exit 6)', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'restart', '--stack', 'foreign']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('owned by /tmp/foreign-checkout');
+    expect(harness.bunxCalls()).not.toContain('restart');
+  });
+
+  it('rejects db reset outright (exit 2, no spawn)', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'db', 'reset']);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('env:reset-db --yes');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
   it('refuses to stop a stack owned by another checkout (exit 6)', async () => {
     const harness = newHarness();
     harness.setListFixture(listFixture());

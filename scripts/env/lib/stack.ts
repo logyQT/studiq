@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { REPO_ROOT, currentBranchRef } from './repo';
+import { REPO_ROOT, canon, currentBranchRef } from './repo';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from './urls';
 
 /**
@@ -185,7 +185,7 @@ export function readListedStackRuntime(stackName: string | null): string | null 
   const wantedBranch = currentBranchRef();
   const hit = stacks.find(
     (stack) =>
-      stack.projectRoot === REPO_ROOT &&
+      canon(stack.projectRoot) === REPO_ROOT &&
       stack.name === wantedName &&
       (stack.branch ?? '') === wantedBranch,
   );
