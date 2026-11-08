@@ -167,8 +167,8 @@ status`). All other passthrough arguments are unchanged.
     deletion) are rejected (exit 2). They can delete buckets or objects in
     another checkout's stack; the message points at the owning checkout.
   - `stack destroy` / `destroy` is rejected outright (exit 2). Stack deletion is
-    owned only by `env:recreate --yes`, which performs the ownership check;
-    `down --all` merely stops the stack and keeps its data.
+    owned only by `env:recreate --runtime <native|docker> --yes`, which performs
+    the ownership check; `down --all` merely stops the stack and keeps its data.
   - Every stop-capable form — `stop`, `stack stop`, `restart`, `stack restart` —
     must name a stack (`--stack <name>` or `--stack-id <id>`) whose
     `project_root` is this checkout, matched from
@@ -418,7 +418,8 @@ does this).
   **restore also fails** (another process now holds an endpoint), it never
   reports ready: it reports the stack as stopped/degraded, names the endpoints
   that could not be restored and why, and gives a concrete recovery action
-  (`env:recreate --yes`, or free the port and retry `env:ensure`), still exit
+  (`env:recreate --runtime <native|docker> --yes`, or free the port and retry
+  `env:ensure`), still exit
   4/6. No automatic block or port move happens during reconcile or rollback;
   only a cold start or `env:recreate` may take a different block. The app-port
   lease (and the phase-4 block) is **retained through the reconcile and its
@@ -521,7 +522,8 @@ the same port.
   start or `env:recreate` may move the stack to another block. If the restore
   itself hits `EADDRINUSE`, the stack stays stopped/degraded: never ready, exit
   4/6, with the unrestorable endpoints, the reason and a recovery action
-  (`env:recreate --yes`, or free the port and retry `env:ensure`).
+  (`env:recreate --runtime <native|docker> --yes`, or free the port and retry
+  `env:ensure`).
 - Pass the leased ports on **every** `start` (create and resume). Phase 0 proved
   the CLI re-rolls API/DB/Studio when no overrides are supplied.
 
@@ -673,23 +675,29 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   the existing `.dev/web.pid` (+ live-process check), the registry entry and the
   per-identity start lock — no new coordination mechanism. Detection **and** the
   server start run under a short-lived **checkout-wide server-claim lock**
-  (separate from the per-identity stack start lock), held only around
-  claim/start — never the whole command — so concurrent starts in one checkout
-  cannot both pass the check. The same lock covers the `env:dev` web start.
+  (separate from the per-identity stack start lock), held around claim/start
+  and, for a rebuild handover, **across the build and rollback until the new (or
+  restored) server is running** — never the whole `ensure` — so concurrent
+  starts in one checkout cannot both pass the check. The same lock covers the
+  `env:dev` web start.
 - **Safe rebuild handover.** `scripts/dev` refuses to build while the web server
   runs, and Next 16 deletes the existing `.next` before building, so "restart
   the previous build" requires preserving its output first. Under the build
   lock, the tool stops **its own** web server, copies the current build output
   aside (or builds into an alternate dist dir), builds, starts the new build and
-  health-checks it. If the build fails, or the new server fails to start or
-  fails health, it stops the new server, restores the preserved output,
-  restarts the previous build and reports exit 4 — it never reports the old PID
-  as ready. If the app port was claimed in the meantime and even the restored
-  server cannot start, it reports a stopped/degraded state, names the port
-  conflict, and gives a recovery action (`env:down`, free the port, retry
-  `env:ensure`), exit 4.
-- `env:serve` serves an existing build; if the fingerprint is stale, fail with
-  a clear message and `env:build` (or `ensure --profile web`).
+  health-checks it. It holds the server claim across the build and rollback, so
+  `env:serve` or another start cannot slip in while `.next` is replaced. If the
+  build fails, or the new server fails to start or fails health, it stops the new
+  server, restores the preserved output, restarts the previous build and reports
+  exit 4 — it never reports the old PID as ready. If the app port was claimed in
+  the meantime and even the restored server cannot start, it reports a
+  stopped/degraded state, names the port conflict, and gives a recovery action
+  (`env:down`, free the port, retry `env:ensure`), exit 4.
+- `env:serve` serves an existing build. It takes/respects the same checkout-wide
+  server claim and must not start while a handover is replacing `.next` (wait for
+  the claim or exit 6 — never serve a half-replaced build). If the fingerprint
+  is stale, fail with a clear message and `env:build` (or
+  `ensure --profile web`).
 - `next start` must keep `--keepAliveTimeout 55000` (the app's `start` script
   already does); the tool calls the workspace script, not a raw `next start`.
 
@@ -800,6 +808,8 @@ Rules:
 7. **Registry trust:** the registry directory must be a real directory owned by
    the current user, mode 700, not a symlink; otherwise refuse to read/write.
 8. **No secrets in the registry, `.dev/`, logs or `--json`.**
+9. **One server per checkout:** the checkout-wide server claim is held across a
+   rebuild handover, and `env:serve` / `env:dev` take or respect it (see §8).
 
 ---
 

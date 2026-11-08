@@ -85,7 +85,8 @@ restart`) must target a stack whose `project_root` is this checkout (usage
    `apps/web/.next` another server is serving, for a different stack/profile —
    use a separate worktree. Detection uses the existing `.dev/web.pid`, the
    registry entry and the per-identity start lock, and detection plus server
-   start run under a short-lived checkout-wide server-claim lock. Under
+   start run under a short-lived checkout-wide server-claim lock (held across a
+   rebuild handover, so `env:serve` cannot serve a half-replaced build). Under
    `SUPABASE_SHARED=1` this checkout reuses another checkout's stack without any
    stack mutation; `down --all`, `recreate`, `reset-db` and `--reseed` refuse
    with exit 6, while plain `down` still stops only the local web server. A
