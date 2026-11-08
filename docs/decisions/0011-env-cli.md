@@ -88,13 +88,14 @@ checkouts. The corrected spec is
    reports missing key _names_; `--full` adds `.env.vault` refs and provider
    status.
 9. **The vault seam belongs to varlock.** `.env.vault` lives in the primary
-   checkout, is Git-ignored, resolved through `STUDIQ_ENV_VAULT` (default: the
-   first entry of `git worktree list --porcelain`), and is passed as
-   `varlock run --path "$STUDIQ_ENV_VAULT" --path .` (vault first, checkout
-   last, so `.env.local` wins; verified that `--path` replaces the default entry
-   point and that the last path wins on a duplicate key). Without `.env.vault`
-   the wrapper passes no `--path`. `scripts/env/**` contains no provider code and
-   no ref parsing.
+   checkout, is Git-ignored, and `STUDIQ_ENV_VAULT` defaults to
+   `<primary>/.env.vault`, where `<primary>` is the first entry of
+   `git worktree list --porcelain` — a directory, so the file name is appended.
+   It is passed as `varlock run --path "$STUDIQ_ENV_VAULT" --path .` (vault
+   first, checkout last, so `.env.local` wins; verified that `--path` replaces
+   the default entry point and that the last path wins on a duplicate key).
+   Without `.env.vault` the wrapper passes no `--path`. `scripts/env/**` contains
+   no provider code and no ref parsing.
 10. **Caching is out of scope** (#1078); CI is untouched and keeps calling
     `supabase stack` directly with `SUPABASE_EXPERIMENTAL_STACK=1`, the native
     runtime and CLI-assigned ports per runner.
