@@ -452,7 +452,14 @@ the same port.
   (default 15 min), and the stack is not running per `stack list`. Never reclaim
   a leaked block whose stack is healthy.
 - App port is a **separate single-port lease** in the same registry, default
-  3000 if free, never carved from the stack block.
+  3000 if free, never carved from the stack block. Conversely, an app-port lease
+  never takes a port inside a leased stack block.
+- **Block candidates respect app-port leases.** Under the same mutex, check each
+  candidate block against **all app-port leases**: never allocate a block that
+  contains a leased app port. A checkout can hold an app lease inside
+  `20000–32767` while its web server is stopped, so an `EADDRINUSE` probe would
+  not catch the collision. Reclaim follows the existing pid + TTL +
+  not-running rules.
 - The block is held while the stack runs and released when the stack stops
   (`down --all`), matching the app-port lease; a plain `down` keeps both.
 - `EADDRINUSE` releases the block, marks it suspect for 10 min, takes the next
@@ -801,7 +808,8 @@ Caveats:
 
 ## 13. Acceptance tests (issue §11)
 
-Pure parts live in `__tests__/unit/env/` (run by `checks`); lifecycle tests run
+Pure parts live in `__tests__/unit/env/` (run by the `unit` job,
+`bun run test:unit`); lifecycle tests run
 via `bun run env:selftest` (a script that creates and destroys its own scratch
 stacks, never a stack it does not own).
 
