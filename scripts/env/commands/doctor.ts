@@ -1,7 +1,7 @@
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
 import { probeHttp } from '../lib/health';
-import { canBindPort } from '../lib/net';
+import { probePortBind } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
 import { REPO_ROOT, canon, currentBranchName } from '../lib/repo';
@@ -69,9 +69,11 @@ async function buildReport(): Promise<DoctorReport> {
 
   const webPid = readWebPid();
   const webHttp = await probeHttp(contract.appUrl);
-  // Same probe `env:ports` uses: "cannot bind 0.0.0.0" includes a listener on
-  // any other interface, which a loopback connect probe would miss.
-  const appPortBusy = !(await canBindPort(contract.appPort));
+  // Same probe `env:ports` uses: a bind failure includes a listener on any
+  // other interface, which a loopback connect probe would miss. Only
+  // EADDRINUSE is a conflict; other bind errors are reported as warnings.
+  const appPortProbe = await probePortBind(contract.appPort);
+  const appPortBusy = appPortProbe.state === 'in-use';
 
   const sharedSupabaseUrl = contract.shared
     ? process.env.SUPABASE_URL
@@ -121,6 +123,12 @@ async function buildReport(): Promise<DoctorReport> {
       'SUPABASE_SHARED=1 but SUPABASE_URL is not exported to this unwrapped command (run `bun run env:verify` for env checks)',
     );
   }
+  if (appPortProbe.state === 'unavailable') {
+    warnings.push(
+      `cannot check app port ${contract.appPort}: ${appPortProbe.error ?? 'bind failed'} ` +
+        '(not a listener conflict)',
+    );
+  }
 
   // Only a port that nothing in this contract can explain is a conflict. A pid
   // in `.dev/web.pid` alone is not proof the server serves APP_URL (the operator
@@ -161,7 +169,11 @@ async function buildReport(): Promise<DoctorReport> {
   );
 
   lines.push('', '▸ Ports');
-  if (appPortBusy && webPid && isWebHealthy(webHttp)) {
+  if (appPortProbe.state === 'unavailable') {
+    lines.push(
+      `  app        ${contract.appPort}  check failed (${appPortProbe.error ?? 'bind failed'})`,
+    );
+  } else if (appPortBusy && webPid && isWebHealthy(webHttp)) {
     lines.push(`  app        ${contract.appPort}  in use (this checkout)`);
   } else if (appPortBusy) {
     lines.push(`  app        ${contract.appPort}  in use (another process)`);
