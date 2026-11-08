@@ -56,8 +56,10 @@ restart`) must target a stack whose `project_root` is this checkout (usage
    `--output-format json`, not the legacy `-o json`; `--json` with
    `--output-format text` exits 2); a bare `--json` is never forwarded.
    Destructive `storage rm` commands are rejected (exit 2). Under
-   `SUPABASE_SHARED=1` every stop-capable or destructive form exits 6 before
-   spawning; read-only `stack list` / `stack status` / `--version` still work.
+   `SUPABASE_SHARED=1` only read-only forms (`stack list`, `stack status`,
+   `--version`, equivalent read-only inspect commands) are forwarded; everything
+   else — `stack start`, `storage cp`/`mv`/`rm`, `db reset`, `migration down`,
+   `stop`/`restart`/`destroy` — exits 6 before spawning.
 2. **Delete `scripts/dev` and every `dev:*` script** in the cutover (phase 3);
    no aliases and no back-compat layer. Root `build`/`start` and the low-level
    `build:web`/`start:web`/`build:admin`/`start:admin` scripts stay.
@@ -87,20 +89,28 @@ restart`) must target a stack whose `project_root` is this checkout (usage
    `apps/web/.next` another server is serving, for a different stack/profile —
    use a separate worktree. Detection uses the existing `.dev/web.pid`, the
    registry entry and the per-identity start lock, and detection plus server
-   start run under a short-lived checkout-wide server-claim lock (held across a
-   rebuild handover, so `env:serve` cannot serve a half-replaced build). Under
-   `SUPABASE_SHARED=1` this checkout reuses another checkout's stack without any
-   stack mutation; `down --all`, `recreate`, `reset-db` and `--reseed` refuse
-   with exit 6, while plain `down` still stops only the local web server. A
-   shared-mode seeded profile requires verified existing fixtures for
-   `(stackId, runId)` or explicit `--no-seed`.
+   start run under a short-lived checkout-wide server-claim lock. Canonical lock
+   order is registry lease lock → start lock → web claim → build lock (§5.2);
+   the build lock is taken alone between the stop and the restart, and
+   `env:serve` respects the claim and the build lock. Under `SUPABASE_SHARED=1`
+   this checkout never mutates the **shared stack** (no start/stop/destroy/
+   reseed/reconcile), but it **does** build/serve the local web app and holds a
+   **local** app-port lease (not tied to the shared stack's lifetime);
+   `down --all`, `recreate`, `reset-db` and `--reseed` refuse with exit 6, while
+   plain `down` stops the local web server and releases the local lease, and a
+   stopped or foreign stack must not strand it. A shared-mode seeded profile
+   requires verified existing fixtures for `(stackId, runId)` or explicit
+   `--no-seed`. See §5.3.
 6. **The app port is the only lease until phase 4.** Stack ports are discovered
-   from `stack status`. The app-port lease follows the **stack** lifetime: plain
-   `down` keeps it, because `supabase/config.toml` binds the auth redirect URLs
-   to `APP_URL`, and a reconcile's temporary stop keeps it too;
-   `down --all` (or a stopped stack) releases it. The 20-port block allocator
-   lands after the cutover and stays conditional on the recorded create **and**
-   resume port evidence.
+   from `stack status`. The app-port lease is claimed once under the **registry
+   lease lock** and never written outside it; a read-only `ports` never writes.
+   It follows the **stack** lifetime: plain `down` keeps it, because
+   `supabase/config.toml` binds the auth redirect URLs to `APP_URL`, and a
+   reconcile's temporary stop keeps it too; `down --all` (or a stopped stack)
+   releases it under the lease lock. In shared mode it is a **local web lease
+   only**, released by plain `down` and never stranded by a stopped/foreign
+   stack. The 20-port block allocator lands after the cutover and stays
+   conditional on the recorded create **and** resume port evidence.
 7. **`env:dev` is human-only HMR.** It starts web/admin HMR with `next dev`;
    agents never run `next dev` and use build + serve instead.
 8. **`env:setup` mutates, `env:verify` observes.** Setup is human-only,

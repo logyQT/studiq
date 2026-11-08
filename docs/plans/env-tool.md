@@ -175,11 +175,12 @@ status`). All other passthrough arguments are unchanged.
     `stack list --output-format json`; otherwise exit **6**. `restart` (stop then
     start) gets the same ownership check.
   - Usage-shaped rejections exit 2; ownership conflicts exit 6.
-  - **Shared mode rejects all mutation.** Under `SUPABASE_SHARED=1`, every
-    stop-capable or destructive form — `stop`, `stack stop`, `restart`,
-    `stack restart`, `destroy`, `stack destroy`, `db reset`, `migration down`,
-    `storage rm` — is rejected with **exit 6** before spawning. Read-only
-    commands (`stack list`, `stack status`, `--version`) still work.
+  - **Shared mode: read-only allowlist.** Under `SUPABASE_SHARED=1` only
+    read-only forms — `stack list`, `stack status`, `--version` and equivalent
+    read-only inspect commands — are forwarded. **Everything else** is rejected
+    with **exit 6** before spawning, including `stack start`, `storage cp` /
+    `mv` / `rm`, `db reset`, `migration down`, and `stop` / `restart` /
+    `destroy`.
 - This passthrough policy lands in phase 1 (the spec is the contract).
 - `env --help` and `env <command> --help` document the surface; `dev:help` is
   not replaced by a command.
@@ -359,10 +360,17 @@ does this).
 - The registry (below) may record the identity, but the CLI remains the source
   of truth for "does this stack exist?".
 
-### 5.2 Start lock and warm path
+### 5.2 Locks, start and warm path
 
-- **Start lock per stack identity**, separate from the port lock (phase 4) and
-  the build lock (existing). Lock directory:
+- **Canonical lock order** (acquire only in this order, release in reverse):
+  **registry lease lock → per-identity start lock → checkout web-claim lock →
+  build lock.** Never hold a later lock while acquiring an earlier one. The
+  build lock is taken **alone**, not nested under the web claim: a rebuild
+  handover stops the server under the claim, releases the claim, builds under
+  the build lock, then re-takes the claim to start the new (or restored) server
+  (§8).
+- **Start lock per stack identity**, separate from the lease lock and the build
+  lock. Lock directory:
   `${STUDIQ_DEV_REGISTRY:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)}/locks/`.
   The directory must be private (mode 700), owned by the current user, not a
   symlink; refuse otherwise.
@@ -370,21 +378,28 @@ does this).
   after the TTL (default 15 min). The **start lock** can take over immediately
   when the holder pid is dead: there is no healthy stack to protect, and the
   waiter re-checks `stack status` before starting.
+- **The app port is claimed once, under the registry lease lock.** `ensure`
+  reads the registry, chooses/probes the app port (the single port in phases
+  1–3; the block in phase 4) and writes the lease — all under the lease lock —
+  then releases it before taking the start lock. Nothing re-probes or writes the
+  app port outside that lock, and read-only `env:ports` never writes.
 - **Every `stack start` passes `--eager`** so a warm probe cannot trigger a cold
   service start and blow the 1 s budget; readiness is reported only once the
   eager services are up.
 - `ensure` order:
 
-  1. registry claim (if phase 4)
-  2. start lock
-  3. health probes (one per requested capability)
-  4. capability check
-  5. start (cold, or restart on a capability mismatch)
-  6. wait ready
-  7. seed-marker check
-  8. build-fingerprint check
-  9. serve if requested
-  10. heartbeat + JSON
+  0. registry **lease lock**: read the registry, choose/probe the app port,
+     write the lease, release
+  1. start lock
+  2. health probes (one per requested capability)
+  3. capability check
+  4. cold start, or `--reconcile` restart
+  5. wait ready
+  6. seed-marker check
+  7. build fingerprint / build (handover: web claim → stop → release → build
+     lock alone → re-take the claim in step 8)
+  8. checkout web claim → serve/handover
+  9. heartbeat + JSON
 
 - **Warm path:** one probe per requested capability + one schema read;
   **p95 < 1000 ms covers the whole set**. Do not spawn `stack status` on the
@@ -431,12 +446,15 @@ does this).
   rollback** — a temporary stop is not a release — so another checkout cannot
   claim the port before the stack resumes; only an intentional shutdown
   (`down --all`, or a stopped stack) releases it.
-- `down` stops only the web server and is idempotent. It **keeps** the app-port
-  lease (and, in phase 4, the block) while the Supabase stack still runs:
-  `supabase/config.toml` binds the auth `site_url` / `additional_redirect_urls`
-  to `APP_URL`, so the stack must stay on the port it was started with. The
-  lease is released by `down --all` or once the stack is stopped. This is a
-  deliberate correction to the issue's "down releases the lease" wording.
+- `down` takes the checkout web claim to stop the web server and is idempotent.
+  It **keeps** the app-port lease (and, in phase 4, the block) while the
+  Supabase stack still runs: `supabase/config.toml` binds the auth `site_url` /
+  `additional_redirect_urls` to `APP_URL`, so the stack must stay on the port it
+  was started with. `down --all` then stops the stack under the start lock and
+  releases the lease under the registry lease lock — start lock released first,
+  never held while taking the earlier lease lock. The lease is released only
+  there or once the stack is stopped. This is a deliberate correction to the
+  issue's "down releases the lease" wording.
 - Hard rules: never `supabase stop --all`, never `pkill`, never an unscoped
   `docker rm`. The only stop is `supabase stack stop --stack <name>` for a stack
   this checkout owns.
@@ -444,14 +462,21 @@ does this).
 ### 5.3 Shared mode (`SUPABASE_SHARED=1`)
 
 - `SUPABASE_SHARED=1` means this checkout reuses a stack another checkout owns.
-  `ensure` never starts/stops/destroys/reseeds/reconciles; it reads explicit
+  It **never mutates the shared stack** — no start/stop/destroy/reseed/reconcile
+  — but it **does** build and serve the local web app (writes `.next`, starts
+  the local server) and holds a **local app-port lease**. It reads explicit
   `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`
   from `.env.local` (or the process environment). A capability gap is reported,
-  not fixed. `env:supa` rejects every stop-capable or destructive form (`stop`,
-  `stack stop`, `restart`, `stack restart`, `destroy`, `stack destroy`,
-  `db reset`, `migration down`, `storage rm`) with exit 6 before spawning;
-  read-only passthrough (`stack list`, `stack status`, `--version`) still
-  works.
+  not fixed.
+- **`env:supa` is read-only under shared mode.** Only read-only forms
+  (`stack list`, `stack status`, `--version`, and equivalent read-only inspect
+  commands) are forwarded; **everything else** — `stack start`,
+  `storage cp`/`mv`/`rm`, `db reset`, `migration down`, `stop`/`restart`/
+  `destroy` — is rejected with exit 6 before spawning.
+- **The app-port lease is local only.** In shared mode it covers just this
+  checkout's web server, not the shared stack's lifetime (the shared stack binds
+  the _owner's_ `APP_URL`). Plain `down` releases it; `down --all` stays refused
+  (exit 6); a stopped or foreign stack must never strand it.
 - Plain `down` is allowed: it stops only this checkout's local web server and
   never touches the shared stack. `down --all`, `recreate`, `reset-db` and
   `--reseed` fail with exit 6; `status` / `ports` / `verify` still work.
@@ -473,10 +498,16 @@ does this).
 ### 6.1 Phases 1–3: app port only, stack ports discovered
 
 - The tool leases **one app port** (default 3000 if free) in the existing
-  registry. It is a single-port lease, never carved from a stack block. The
-  lease follows the **stack** lifetime, not the web server's: plain `down` keeps
-  it (see §5.2), a reconcile's temporary stop keeps it, and `down --all` (or a
-  stopped stack) releases it.
+  registry. It is a single-port lease, never carved from a stack block, and is
+  claimed and released under the **registry lease lock** (§5.2) — never outside
+  it; a read-only `env:ports` never writes. The lease follows the **stack**
+  lifetime, not the web server's: plain `down` keeps it (see §5.2), a
+  reconcile's temporary stop keeps it, and `down --all` (or a stopped stack)
+  releases it.
+- In **shared mode** the app-port lease is a **local web lease only**: it is not
+  tied to the shared stack's lifetime (the shared stack binds the _owner's_
+  `APP_URL`), plain `down` releases it, and a stopped or foreign stack must not
+  strand it (§5.3).
 - Stack ports are **discovered** from `supabase stack status --output-format json`
   after start. The tool never does port math or assumes a base port.
 - In stack mode the tool **clears inherited `SUPABASE_*_PORT` values from the
@@ -519,9 +550,10 @@ the same port.
   `20000–32767` while its web server is stopped, so an `EADDRINUSE` probe would
   not catch the collision. Reclaim follows the existing pid + TTL +
   not-running rules.
-- The block is held while the stack runs and released when the stack stops
-  (`down --all`), matching the app-port lease; a plain `down` keeps both, and a
-  reconcile's temporary stop is not a release.
+- The block is allocated and released under the **registry lease lock** (§5.2),
+  held while the stack runs and released when the stack stops (`down --all`),
+  matching the app-port lease; a plain `down` keeps both, and a reconcile's
+  temporary stop is not a release.
 - `EADDRINUSE` during a **cold start / block allocation** releases the block,
   marks it suspect for 10 min, takes the next block, retries up to 3 times, then
   exits 4 with the collected logs. A **reconciliation never changes blocks or
@@ -684,19 +716,20 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   the existing `.dev/web.pid` (+ live-process check), the registry entry and the
   per-identity start lock — no new coordination mechanism. Detection **and** the
   server start run under a short-lived **checkout-wide server-claim lock**
-  (separate from the per-identity stack start lock), held around claim/start
-  and, for a rebuild handover, **across the build and rollback until the new (or
-  restored) server is running** — never the whole `ensure` — so concurrent
-  starts in one checkout cannot both pass the check. The same lock covers the
-  `env:dev` web start.
+  (separate from the per-identity stack start lock). A rebuild handover takes
+  the claim to stop the server, releases it, takes the build lock **alone**, and
+  re-takes the claim to start the new (or restored) server — canonical lock
+  order, §5.2 — never holding it for the whole `ensure`. The same lock covers
+  the `env:dev` web start.
 - **Safe rebuild handover.** `scripts/dev` refuses to build while the web server
   runs, and Next 16 deletes the existing `.next` before building, so "restart
-  the previous build" requires preserving its output first. Under the build
-  lock, the tool stops **its own** web server, copies the current build output
-  aside (or builds into an alternate dist dir), builds, starts the new build and
-  health-checks it. It holds the server claim across the build and rollback, so
-  `env:serve` or another start cannot slip in while `.next` is replaced. If the
-  build fails, or the new server fails to start or fails health, it stops the new
+  the previous build" requires preserving its output first. The handover stops
+  **its own** web server under the web claim, releases the claim, then takes the
+  build lock alone, copies the current build output aside (or builds into an
+  alternate dist dir), builds, re-takes the claim, starts the new build and
+  health-checks it. `env:serve` respects the claim **and** the build lock, so it
+  waits or exits 6 rather than serving a half-replaced `.next`. If the build
+  fails, or the new server fails to start or fails health, it stops the new
   server, restores the preserved output, restarts the previous build and reports
   exit 4 — it never reports the old PID as ready. If the app port was claimed in
   the meantime and even the restored server cannot start, it reports a
@@ -808,17 +841,18 @@ Rules:
 2. **Build lock:** one `next build` across all worktrees (it serializes builds,
    not readers; a second server for a different stack/profile is refused with
    exit 6 — §8).
-3. **Shared mode:** `SUPABASE_SHARED=1` disables stack
-   start/stop/destroy/reseed/reconcile; read-only commands and plain `down`
-   (local web server only) still work.
+3. **Shared mode:** `SUPABASE_SHARED=1` disables **shared-stack** start/stop/
+   destroy/reseed/reconcile; read-only commands, plain `down`, the local web
+   build/serve and its local app-port lease still work.
 4. **No `stop --all`, no `pkill`, no unscoped `docker rm`.**
 5. **Destructive actions require `--yes` when non-interactive.**
 6. **Every mutating command logs what it did to `.dev/env.log` (mode 600).**
 7. **Registry trust:** the registry directory must be a real directory owned by
    the current user, mode 700, not a symlink; otherwise refuse to read/write.
 8. **No secrets in the registry, `.dev/`, logs or `--json`.**
-9. **One server per checkout:** the checkout-wide server claim is held across a
-   rebuild handover, and `env:serve` / `env:dev` take or respect it (see §8).
+9. **One server per checkout:** the checkout-wide server claim covers web
+   stop/start (the build lock is taken alone between them, §5.2), and
+   `env:serve` / `env:dev` take or respect both (see §8).
 
 ---
 
