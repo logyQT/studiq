@@ -101,6 +101,10 @@ constraints on every phase.
 14. **`dev:admin` → `env:dev --admin`.** Confirmed by the operator. Admin HMR
     (port 4000) stays human-only; `apps/admin` is not part of `env:ensure`
     defaults. See §14.2.
+15. **One environment per worktree/checkout.** The tool manages one stack and
+    one web server per checkout. Named stacks (`--stack`) isolate data and
+    ports; running two servers against the shared `apps/web/.next` from one
+    checkout is unsupported and out of scope. See §8.
 
 ---
 
@@ -631,17 +635,14 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   is a required fix, not a nice-to-have.
 - Build lock: one `next build` across all worktrees (port the existing
   `flock`/mkdir lock from `scripts/dev`). The lock is held across the snapshot,
-  build and rollback/handover — not the whole `ensure` — so two `ensure` runs in
-  one checkout (different named stacks share `.next`) cannot snapshot or restore
-  each other's output.
-- **Shared build output across named stacks.** Two named stacks in one checkout
-  share `apps/web/.next`; the build lock serializes builds, not readers. While
-  another checkout-owned server (a different stack in this checkout) is reading
-  that output, the tool must not rebuild or serve a second stack: refuse with
-  exit 6, naming the running server and its stack. Stopping only its own web
-  server is not enough — Next deletes/replaces the output the other server is
-  serving. Future option: give each stack its own `distDir` (a Next config
-  change) instead of refusing.
+  build and rollback/handover — not the whole `ensure`. It serializes builds; it
+  is not a reader lock.
+- **One server per checkout.** The tool assumes one environment per worktree:
+  one stack and one web server. A second server serving the shared
+  `apps/web/.next` from the same checkout is an out-of-scope setup:
+  `env:status` / `env:doctor` report the extra checkout-owned server (pid and
+  stack) as unexpected, but the tool does not coordinate two servers or refuse
+  a build for one — use a separate worktree instead.
 - **Safe rebuild handover.** `scripts/dev` refuses to build while the web server
   runs, and Next 16 deletes the existing `.next` before building, so "restart
   the previous build" requires preserving its output first. Under the build
@@ -751,9 +752,8 @@ Rules:
 
 1. **Ownership:** only the checkout that created a stack may stop/destroy it.
    The CLI's `project_root` is checked before `stack stop`/`destroy`.
-2. **Build lock:** one `next build` across all worktrees. It serializes builds,
-   not readers — a second named stack must not rebuild or serve over shared
-   `.next` while another checkout-owned server reads it (§8).
+2. **Build lock:** one `next build` across all worktrees (it serializes builds,
+   not readers; the tool assumes one server per checkout — see §8).
 3. **Shared mode:** `SUPABASE_SHARED=1` disables stack
    start/stop/destroy/reseed/reconcile; read-only commands and plain `down`
    (local web server only) still work.
@@ -1062,6 +1062,9 @@ No provider code, no ref parsing, no dotenv parsing in `scripts/env/**`.
 - **`next dev` for agents.** Agents never run `next dev` (matching
   `AGENTS.md`); `env:dev` (human-only) starts web/admin HMR with it, and agents
   use build + serve.
+- **Two environments in one checkout.** One stack and one web server per
+  worktree; concurrent named stacks serving the same checkout are out of scope
+  (§1 item 15, §8). Use separate worktrees for parallel environments.
 - **Per-agent stacks when a healthy stack exists.**
 - **A 30 s cold full-app promise.** The lever is a build cache, not this tool.
 - **Changing the pinned Supabase CLI** or the `[experimental] stack` backend.
