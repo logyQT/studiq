@@ -634,6 +634,14 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   build and rollback/handover — not the whole `ensure` — so two `ensure` runs in
   one checkout (different named stacks share `.next`) cannot snapshot or restore
   each other's output.
+- **Shared build output across named stacks.** Two named stacks in one checkout
+  share `apps/web/.next`; the build lock serializes builds, not readers. While
+  another checkout-owned server (a different stack in this checkout) is reading
+  that output, the tool must not rebuild or serve a second stack: refuse with
+  exit 6, naming the running server and its stack. Stopping only its own web
+  server is not enough — Next deletes/replaces the output the other server is
+  serving. Future option: give each stack its own `distDir` (a Next config
+  change) instead of refusing.
 - **Safe rebuild handover.** `scripts/dev` refuses to build while the web server
   runs, and Next 16 deletes the existing `.next` before building, so "restart
   the previous build" requires preserving its output first. Under the build
@@ -743,7 +751,9 @@ Rules:
 
 1. **Ownership:** only the checkout that created a stack may stop/destroy it.
    The CLI's `project_root` is checked before `stack stop`/`destroy`.
-2. **Build lock:** one `next build` across all worktrees.
+2. **Build lock:** one `next build` across all worktrees. It serializes builds,
+   not readers — a second named stack must not rebuild or serve over shared
+   `.next` while another checkout-owned server reads it (§8).
 3. **Shared mode:** `SUPABASE_SHARED=1` disables stack
    start/stop/destroy/reseed/reconcile; read-only commands and plain `down`
    (local web server only) still work.
