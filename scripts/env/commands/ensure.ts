@@ -34,7 +34,7 @@ import {
 } from '../lib/lease';
 import { readRegistry } from '../lib/registry';
 import { REPO_ROOT, canon, currentBranchRef, isThisCheckout } from '../lib/repo';
-import { canBindPort } from '../lib/net';
+import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { readListedStackRuntime, readStack, readStackList, type StackRead } from '../lib/stack';
 import { applyStackEnv, startStack, stopStack } from '../lib/stack-lifecycle';
@@ -152,7 +152,7 @@ function recordFromExisting(
 }
 
 async function freePort(port: number): Promise<boolean> {
-  return port > 0 && (await canBindPort(port));
+  return port > 0 && (await probePortBind(port)).state === 'free';
 }
 
 async function ownWebOn(port: number): Promise<boolean> {
@@ -305,11 +305,14 @@ async function describeWebStartFailure(
   reason: string,
   profile: string,
 ): Promise<string> {
-  const bindable = await canBindPort(contract.appPort);
-  if (bindable) {
-    return `web did not become healthy on ${contract.appUrl} (${reason}); see ${webLogPath()}`;
+  const probe = await probePortBind(contract.appPort);
+  if (probe.state === 'in-use') {
+    return `app port ${contract.appPort} is claimed by another process; the environment is stopped/degraded. Free the port (or set APP_PORT), then run 'env:ensure --profile ${profile}' to recover.`;
   }
-  return `app port ${contract.appPort} is claimed by another process; the environment is stopped/degraded. Free the port (or set APP_PORT), then run 'env:ensure --profile ${profile}' to recover.`;
+  if (probe.state === 'unavailable') {
+    return `app port ${contract.appPort} cannot be bound (${probe.error ?? 'bind failed'}); the environment is stopped/degraded. Choose another APP_PORT, then run 'env:ensure --profile ${profile}' to recover.`;
+  }
+  return `web did not become healthy on ${contract.appUrl} (${reason}); see ${webLogPath()}`;
 }
 
 interface RestartPreviousBuild {
