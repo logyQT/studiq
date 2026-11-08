@@ -28,9 +28,11 @@ allocator is not justified for now, so the tool leases only the app port and dis
    `env:recreate --runtime native --yes`.
 5. **Identity is `projectRoot + branch + stackName`; one environment per checkout.** A second server, or rebuilding the `.next`
    another server serves for a different stack/profile, exits 6; `--attach` is future work.
-6. **The app port is the only lease; stack ports are discovered.** The lease is claimed once under the registry lock in
-   every phase and follows the stack lifetime (plain `down` keeps it because auth redirects bind `APP_URL`; `down --all` releases
-   it). The allocator is not built.
+6. **The app port is the only lease; stack ports are discovered.** A single per-checkout lock (`locks/checkout.lock`)
+   serializes `ensure`, `down`, `serve` and every app-port lease read/write. The lease follows the stack lifetime
+   (plain `down` keeps it because auth redirects bind `APP_URL`; `down --all` releases it under the same lock only
+   after stopping the stack; `ensure` revalidates and re-claims it under the lock). The build lock stays separate and
+   is never held while taking the checkout lock. The allocator is not built.
 7. **`db` = database + auth + storage** — migrations need `storage.buckets`, seeds need `auth.users.email_confirmed_at`; no skip path.
 8. **The vault seam is varlock's; `.env.vault` is opt-in.** `.env.local` is the only required values file; `.env.vault` is
    human-created in the primary checkout, Git-ignored, for LLM/Stripe refs only, resolved via `STUDIQ_ENV_VAULT`. `env:setup`
@@ -52,8 +54,9 @@ comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664)):
   without them re-rolls ports; `SUPABASE_MAIL_PORT` is dead; `pgmeta` is unpinnable;
 - stack keys are fixed demo JWTs shared by every stack; only URLs differ (never printed);
 - native runs with Docker running, no fallback;
-- baselines: warm 885/936 ms p50/p95, cold api 7.3/7.3 s, cold db+auth+storage 7.3/8.0 s, cached web 2.2/2.4 s, code-changed
-  10.2/11.8 s — all inside the budgets;
+- baselines: warm 885/936 ms p50/p95, cold api 7.3/7.3 s, cold db+auth+storage 7.3/8.0 s, cached web (warm stack)
+  2.2/2.4 s, code-changed (warm stack) 10.2/11.8 s, with cold-stack variants 13.4/13.6 s and 20.3/21.7 s — all inside
+  the budgets;
 - db-only fails (42P01/42703); the build fingerprint has no tree hash, so a source edit is served stale.
 
 ## Consequences
@@ -68,9 +71,9 @@ comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664)):
 
 ## Rollback
 
-Revert the phase PR: phases 1–2 keep `scripts/dev`; phase 3 restores it and the `dev:*` scripts. Registry leases are runtime state
-outside the repo — remove only **this checkout's** entries, never the shared registry directory, and let TTL + dead-pid reclaim
-the rest.
+Revert the phase PR: phases 1–2 keep `scripts/dev`; phase 3 restores it and the `dev:*` scripts. Registry leases are runtime
+state outside the repo — remove only **this checkout's** entries, never the shared registry directory; `ensure`
+revalidates and reclaims stale entries under the checkout lock.
 
 ## References
 

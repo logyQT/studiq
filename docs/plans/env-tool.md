@@ -115,30 +115,34 @@ makes the failure actionable. Root requires `SUPABASE_NATIVE_POSTGRES_USER`.
 Stack identity is the CLI's `projectRoot + "\0" + branch + "\0" + stackName` (blank = branch default); the tool
 matches `stack list`/`stack status` on `project_root` + `name` + `branch_context`, and `status --json` exposes it.
 
-The tool leases **one app port** (default 3000 if free) under the **registry lock**; read-only `env:ports` never
+The tool leases **one app port** (default 3000 if free) under the **per-checkout lock**; read-only `env:ports` never
 writes. The lease follows the **stack** lifetime: plain `down` keeps it (`config.toml` binds auth redirects to
-`APP_URL`), `down --all` releases it; in shared mode it is a local web lease only. Stack ports are **discovered**
-from `stack status --output-format json` — no port math. In stack mode inherited `SUPABASE_*_PORT` values are
-cleared from the child environment; `.env.local` is never edited. `env:ports --json` reports `{ appPort,
-stackPorts: "dynamic" }`.
+`APP_URL`), `down --all` releases it under the same lock only after stopping the stack; in shared mode it is a
+local web lease only. Stack ports are **discovered** from `stack status --output-format json` — no port math. In
+stack mode inherited `SUPABASE_*_PORT` values are cleared from the child environment; `.env.local` is never edited.
+`env:ports --json` reports `{ appPort, stackPorts: "dynamic" }`.
 
 ## 6. Locks and lifecycle
 
-**Lock order, stated once:** app-port lease under the **registry lock** → the **per-checkout start/serve lock** →
-the **build lock**, taken alone, never nested. Release in reverse. Locks are simple files + `flock`; the registry
-is mode 700, owned by the user, not a symlink.
+**One per-checkout lock.** `locks/checkout.lock` (a simple file + `flock` in a mode-700, user-owned, non-symlink
+registry) serializes `ensure`, `down`, `serve` and every app-port lease read/write for that checkout. The build
+lock stays separate and is never held while taking the checkout lock. While `checkout.lock` is held the lease is
+authoritative: `down --all` releases it under that lock only after stopping the stack, and `ensure` revalidates
+the lease and re-claims it if missing.
 
-`ensure` order, identical in every phase (1–3): (0) registry lock — choose/probe the app port, write the lease,
-release; (1) start/serve lock; (2) health probes, one per requested capability; (3) cold start if needed; (4) wait
-ready; (5) seed/build; (6) serve/handover; (7) heartbeat + JSON.
+`ensure` order (phases 1–3): (0) acquire `checkout.lock` and revalidate/re-claim the app-port lease; (1) health
+probes, one per requested capability; (2) cold start if needed; (3) wait ready; (4) if a build is needed, release
+`checkout.lock`, build under the build lock alone, then re-take `checkout.lock`; (5) serve/handover; (6) heartbeat
+
+- JSON while still holding the lock.
 
 **Warm path:** one probe per requested capability + one schema read, **p95 < 1000 ms**; no `stack status` when the
 heartbeat is fresh. A down requested service means `ready: false`; a capability **superset** satisfies a narrower
 profile. **Missing capability:** exit **6**, then `env:down --all` and re-ensure — no in-place restart.
 
-`down` stops this checkout's web server and **keeps** the app-port lease while the stack runs; `down --all` stops
-the stack and releases the lease (start lock first, then registry lock). Never `supabase stop --all`, `pkill` or
-an unscoped `docker rm`; the only stop is `supabase stack stop` for a stack this checkout owns.
+`down` takes `checkout.lock`, stops this checkout's web server and **keeps** the app-port lease while the stack
+runs; `down --all` stops the stack and then releases the lease under the same lock. Never `supabase stop --all`,
+`pkill` or an unscoped `docker rm`; the only stop is `supabase stack stop` for a stack this checkout owns.
 
 **Shared mode (`SUPABASE_SHARED=1`):** reuse another checkout's stack and **never mutate the shared stack** — no
 start/stop/destroy/reseed. Still build/serve the local web app and hold a **local app-port lease**, released by
@@ -156,9 +160,10 @@ Keys come from the environment; a capability gap is reported, not fixed. `env:su
 - **Build lock:** one `next build` across all worktrees, held only across the build.
 - **One server per checkout.** A live web PID with a different stack/profile → exit 6, naming the server and the
   remedy (`env:down` or a separate worktree). Same stack = normal handover.
-- **Handover:** stop the tool's own server, build under the lock, start and health-check; on failure leave the
-  environment stopped (no rollback). `env:serve` respects the same lock; a stale fingerprint points at `env:build`;
-  `next start` keeps `--keepAliveTimeout 55000` via the workspace script.
+- **Handover:** under `checkout.lock`, stop the tool's own server; release `checkout.lock`, build under the build
+  lock alone, re-take `checkout.lock`, start and health-check. On failure leave the environment stopped (no
+  rollback). `env:serve` takes `checkout.lock`; a stale fingerprint points at `env:build`; `next start` keeps
+  `--keepAliveTimeout 55000` via the workspace script.
 
 ## 8. Seeding
 
@@ -177,7 +182,7 @@ otherwise. Never tenant-seed a stack this checkout does not own.
 5. **Every mutating command logs to `.dev/env.log` (mode 600).**
 6. **Registry trust:** real directory, owned by the user, mode 700, not a symlink — otherwise refuse.
 7. **No secrets in the registry, `.dev/`, logs or `--json`.**
-8. **One server per checkout**, enforced by the start/serve lock (§7).
+8. **One server per checkout**, enforced by `checkout.lock` (§7).
 
 ## 10. Environment loading and the vault
 
@@ -235,12 +240,12 @@ Every command accepts `--json` and prints **only** JSON to stdout; the shape is 
 
 ## 12. Phases, budgets and acceptance
 
-| Phase             | Scope                                                                                                                                                          | Gate                                |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| **0 — evidence**  | Port create/resume spike, identity, baseline timings, `dev:*` inventory, spec + ADR. No product code.                                                          | Evidence in the issue; ADR reviewed |
-| **1 — read-only** | `status`/`doctor`/`ports`/`supa`; stable `--json`. `scripts/dev` untouched.                                                                                    | Read-only parity, unit tests        |
-| **2 — ensure**    | `ensure --profile api\|web`, `down`, `build`, `serve`; varlock-injected; app-port lease; warm path. Keep `scripts/dev`.                                        | Acceptance 1–10                     |
-| **3 — cutover**   | `mail`/`full`/`qa`/`e2e`/`admin`, `env:dev --admin`, `recreate`, `reset-db`, `logs`, `prepull`, `setup`, `verify`; delete `scripts/dev` + `dev:*`; docs sweep. | All acceptance tests; `rg` clean    |
+| Phase             | Scope                                                                                                                                                                                         | Gate                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **0 — evidence**  | Port create/resume spike, identity, baseline timings, `dev:*` inventory, spec + ADR. No product code.                                                                                         | Evidence in the issue; ADR reviewed |
+| **1 — read-only** | `status`/`doctor`/`ports`/`supa`; stable `--json`. `scripts/dev` untouched.                                                                                                                   | Read-only parity, unit tests        |
+| **2 — ensure**    | `ensure --profile api\|web`, `down`, `build`, `serve` (api/web only); varlock-injected; app-port lease; warm path. Keep `scripts/dev`.                                                        | Acceptance 1–6, 8–10 (no `db`)      |
+| **3 — cutover**   | Remaining profiles (`db`, `mail`, `full`, `qa`, `e2e`, `admin`), `env:dev --admin`, `recreate`, `reset-db`, `logs`, `prepull`, `setup`, `verify`; delete `scripts/dev` + `dev:*`; docs sweep. | All acceptance tests; `rg` clean    |
 
 Phases are serial (every phase touches `scripts/env/**`).
 
@@ -250,14 +255,16 @@ Host: WSL2, Debian 12, x86_64, 16 vCPU, 19 GiB RAM, glibc 2.36, Bun 1.4.4, Supab
 cache warm. Raw runs: the
 [phase-0 evidence comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664).
 
-| Path                     | Target  | p50                       | p95              | Verdict              |
-| ------------------------ | ------- | ------------------------- | ---------------- | -------------------- |
-| warm `ensure`            | ≤ 1 s   | 885 ms                    | 936 ms           | pass (tight)         |
-| cold `db`                | ≤ 45 s  | 7347 ms (db+auth+storage) | 7994 ms          | pass                 |
-| cold `api`               | ≤ 75 s  | 7250 ms                   | 7277 ms          | pass                 |
-| cold `web`, build cached | ≤ 120 s | 2207 / 13416 ms           | 2388 / 13558 ms  | pass                 |
-| cold `web`, code changed | ≤ 300 s | 10184 / 20274 ms          | 11780 / 21651 ms | pass                 |
-| tenant seed              | ≤ 20 s  | not measured              | —                | phase 3 must measure |
+| Path                            | Target  | p50                       | p95      | Verdict              |
+| ------------------------------- | ------- | ------------------------- | -------- | -------------------- |
+| warm `ensure`                   | ≤ 1 s   | 885 ms                    | 936 ms   | pass (tight)         |
+| cold `db`                       | ≤ 45 s  | 7347 ms (db+auth+storage) | 7994 ms  | pass                 |
+| cold `api`                      | ≤ 75 s  | 7250 ms                   | 7277 ms  | pass                 |
+| cold `web`, cached, warm stack  | ≤ 120 s | 2207 ms                   | 2388 ms  | pass                 |
+| cold `web`, cached, cold stack  | ≤ 120 s | 13416 ms                  | 13558 ms | pass                 |
+| cold `web`, changed, warm stack | ≤ 300 s | 10184 ms                  | 11780 ms | pass                 |
+| cold `web`, changed, cold stack | ≤ 300 s | 20274 ms                  | 21651 ms | pass                 |
+| tenant seed                     | ≤ 20 s  | not measured              | —        | phase 3 must measure |
 
 "Cold" = a new stack with the artifact cache warm; a first-ever download is ~46 s (one-time machine cost).
 
