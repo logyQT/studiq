@@ -89,9 +89,12 @@ checkouts. The corrected spec is
    status.
 9. **The vault seam belongs to varlock.** `.env.vault` lives in the primary
    checkout, is Git-ignored, resolved through `STUDIQ_ENV_VAULT` (default: the
-   first entry of `git worktree list --porcelain`), and is passed with
-   `varlock run --path`. `scripts/env/**` contains no provider code and no ref
-   parsing.
+   first entry of `git worktree list --porcelain`), and is passed as
+   `varlock run --path "$STUDIQ_ENV_VAULT" --path .` (vault first, checkout
+   last, so `.env.local` wins; verified that `--path` replaces the default entry
+   point and that the last path wins on a duplicate key). Without `.env.vault`
+   the wrapper passes no `--path`. `scripts/env/**` contains no provider code and
+   no ref parsing.
 10. **Caching is out of scope** (#1078); CI is untouched and keeps calling
     `supabase stack` directly with `SUPABASE_EXPERIMENTAL_STACK=1`, the native
     runtime and CLI-assigned ports per runner.
@@ -101,7 +104,8 @@ checkouts. The corrected spec is
     provisioned. No migration/seed-skip path is added.
 12. **`dev:admin` becomes `env:dev --admin`.** Human-only admin HMR on :4000,
     symmetric with `env:dev` for web; `apps/admin` stays out of `env:ensure`
-    defaults.
+    defaults. Because the admin app is internal and unauthenticated, admin HMR
+    and admin build/serve bind loopback only (`127.0.0.1`), never `0.0.0.0`.
 13. **`ensure` reconciles capabilities only on request.** A running capability
     superset satisfies a narrower profile; only **adding** capabilities can need
     a restart. That restart requires `--reconcile` (plus `--yes` when
@@ -110,11 +114,12 @@ checkouts. The corrected spec is
     runtime and the currently observed API/DB/Studio/mail endpoints
     (read-then-pin, not the phase-4 block), never destroys data, and re-probes
     every requested capability (phase-0: ≈1.7 s stop + 5.0 s resume).
-14. **Local posture is explicit.** Before build/serve (and in `env:dev`) the tool
-    sets `APP_ENV=development` when it is unset or empty and preserves an
-    explicit value; an unset `APP_ENV` otherwise defaults the app to
-    `production`, whose payment preflight needs Stripe. `APP_ENV` is part of the
-    build fingerprint.
+14. **Local posture is explicit and validated.** Before build/serve/HMR
+    (`ensure` build/serve, `serve`, `build`, `dev`) the tool sets
+    `APP_ENV=development` only when it is unset or empty, preserves an explicit
+    `development`/`test`/`qa` (normalized like `scripts/dev`), and rejects
+    `production` or any other value with exit 2 before acting. `APP_ENV` is part
+    of the build fingerprint.
 
 > **Superseded wording.** The issue's pre-review appendix and its "varlock is
 > validator-only" acceptance line are superseded by item 3. varlock remains the
