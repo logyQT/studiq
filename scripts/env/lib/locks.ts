@@ -591,16 +591,21 @@ export function runBuildUnderLock(options: BuildRunOptions): BuildRunResult {
   // otherwise leave the checkout with a broken/partial build. Move the old
   // output aside first; the shell restores it on failure. On success the
   // caller keeps/discards the backup after the fingerprint is verified.
+  // Keep the backup beside `apps/web/.next` so the move is a same-filesystem
+  // rename and does not depend on the volatile `.dev/` location.
   const backupPath = join(
     REPO_ROOT,
-    '.dev',
-    `next-build-backup-${process.pid}-${randomBytes(6).toString('hex')}`,
+    'apps',
+    'web',
+    `.next-build-backup-${process.pid}-${randomBytes(6).toString('hex')}`,
   );
   const buildCommand = `${shellQuote(process.execPath)} run --filter @studiq/web build`;
   const backup = shellQuote(backupPath);
   const script = [
     `rm -rf ${backup}`,
-    `if [ -d apps/web/.next ]; then mv apps/web/.next ${backup}; fi`,
+    'if [ -d apps/web/.next ]; then',
+    `  if ! mv apps/web/.next ${backup}; then exit 1; fi`,
+    'fi',
     buildCommand,
     'status=$?',
     'if [ "$status" -ne 0 ]; then',

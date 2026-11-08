@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface StartLockOptions {
@@ -23,8 +23,19 @@ interface LocksModule {
   withRegistryLeaseLock<T>(fn: () => Promise<T>): Promise<T>;
 }
 
+// `state.ts` captures DEV_DIR at import time; point it at a temp dir before
+// loading any scripts/env module so the suite never writes the real `.dev/`.
+const stateDir = mkdtempSync(join(tmpdir(), 'studiq-env-locks-state-'));
+const savedStateDir = process.env.STUDIQ_ENV_STATE_DIR;
+process.env.STUDIQ_ENV_STATE_DIR = stateDir;
 const locks = await loadEnvModule<LocksModule>('lib/locks.ts');
 const dirs: string[] = [];
+
+afterAll(() => {
+  if (savedStateDir === undefined) delete process.env.STUDIQ_ENV_STATE_DIR;
+  else process.env.STUDIQ_ENV_STATE_DIR = savedStateDir;
+  rmSync(stateDir, { recursive: true, force: true });
+});
 
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
