@@ -21,12 +21,14 @@ review (2026-11-08)" and the phase-0 measurements.
 
 ## 0. Problem and goals
 
-An agent currently spends 5–10 minutes per task provisioning: it reads
-`AGENTS.md`, `scripts/dev` and `.env.schema` to learn the incantation, then pays
-for a cold stack, migrations, seeds and `next build` even when it only needs an
-API endpoint or a database. The cost is not port discovery — it is cold-start
-work plus the fact that nothing tells a second agent that a healthy stack
-already exists in this checkout.
+An agent currently spends 5–10 minutes on a task when the checkout's stack is
+cold: it reads `AGENTS.md`, `scripts/dev` and `.env.schema` to learn the
+incantation, then waits for the cold stack, migrations, seeds and `next build`.
+The cost is not port discovery. `scripts/dev up` is idempotent and reuses a
+running stack, so the cold path is paid once per cold checkout/stack — what is
+missing is a machine-readable signal that a healthy stack already exists in this
+checkout, and the current build fingerprint goes stale after a source edit (a
+source change can be served by an old build).
 
 Goals, in priority order:
 
@@ -82,7 +84,8 @@ constraints on every phase.
 9. **Caching is out of scope.** Stack artifacts, build output and provider value
    caches are [#1078](https://github.com/logyQT/studiq/issues/1078).
 10. **CI does not depend on the tool.** CI keeps calling `supabase stack`
-    directly with fixed ports and the native runtime.
+    directly with `SUPABASE_EXPERIMENTAL_STACK=1` and the native runtime; the
+    CLI assigns ports per runner (CI does not supply fixed stack ports).
 11. **`env:setup` mutates; `env:verify` observes.** `env:setup` is human-only
     and idempotent; `env:verify` is read-only and agent-safe.
 12. **One values file.** Root `.env.local` is the only hand-edited values file
@@ -241,8 +244,9 @@ Atoms (all idempotent, all composable):
 
 ### 4.1 Native is the default and the only auto-selected runtime
 
-- Every stack start passes `--runtime native` explicitly. Never rely on the
-  CLI's auto-detection (it prefers Docker when available).
+- Every stack start passes the **selected** runtime explicitly — `--runtime native`
+  by default, `--runtime docker` only when selected. Never rely on the CLI's
+  auto-detection (it prefers Docker when available).
 - **No automatic fallback.** If native is unavailable or fails, exit **3** with
   a diagnostic and the exact opt-in:
   `SUPABASE_RUNTIME=docker bun run env:ensure …` or
@@ -312,17 +316,39 @@ does this).
   when the holder pid is dead: there is no healthy stack to protect, and the
   waiter re-checks `stack status` before starting.
 - `ensure` order:
-  1. registry claim (if phase 4) → 2. start lock → 3. health probe →
-  2. (cold) start → 5. wait ready → 6. seed-marker check →
-  3. build-fingerprint check → 8. serve if requested → 9. heartbeat → 10. JSON.
+
+  1. registry claim (if phase 4)
+  2. start lock
+  3. health probe
+  4. capability check
+  5. start (cold, or restart on a capability mismatch)
+  6. wait ready
+  7. seed-marker check
+  8. build-fingerprint check
+  9. serve if requested
+  10. heartbeat + JSON
+
 - **Warm path:** one health probe + one schema read; **p95 < 1000 ms**. Do not
   spawn `stack status` on the warm path when the heartbeat is fresh; verify
-  health with one HTTP call (`GET /auth/v1/health` or the API root). The
-  phase-0 baseline for the current warm `dev:up --prod` is p50 885 ms / p95
-  936 ms (it still spawns `stack status`), so the budget is achievable but tight
-  on WSL2 — the heartbeat cache is required for margin.
-- `down` releases the app-port lease (and, in phase 4, the block), is
-  idempotent, and `down --all` is refused under `SUPABASE_SHARED=1` (exit 6).
+  health with one HTTP call (`GET /auth/v1/health` or the API root), and take the
+  running capability set from the record written at start (only a missing or
+  stale record costs one `stack status`). The phase-0 baseline for the current
+  warm `dev:up --prod` is p50 885 ms / p95 936 ms (it still spawns
+  `stack status`), so the budget is achievable but tight on WSL2 — the heartbeat
+  cache is required for margin.
+- **Warm path reconciles capabilities.** Before reporting ready, compare the
+  running stack's enabled capabilities with the requested profile's exclude set.
+  On a mismatch, stop and restart **this checkout's** stack with the requested
+  exclusion set — never destroy; data is preserved — then re-probe and report.
+  Phase 0 measured that path at ≈1.7 s stop + 5.0 s resume. A warm
+  `ensure --profile web` after `ensure --profile api` therefore restarts to add
+  `mail` instead of reporting a stack that is still missing a capability.
+- `down` stops only the web server and is idempotent. It **keeps** the app-port
+  lease (and, in phase 4, the block) while the Supabase stack still runs:
+  `supabase/config.toml` binds the auth `site_url` / `additional_redirect_urls`
+  to `APP_URL`, so the stack must stay on the port it was started with. The
+  lease is released by `down --all` or once the stack is stopped. This is a
+  deliberate correction to the issue's "down releases the lease" wording.
 - Hard rules: never `supabase stop --all`, never `pkill`, never an unscoped
   `docker rm`. The only stop is `supabase stack stop --stack <name>` for a stack
   this checkout owns.
@@ -333,8 +359,9 @@ does this).
   `ensure` never starts/stops/destroys/reseeds; it reads explicit
   `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`
   from `.env.local` (or the process environment).
-- `down`, `down --all`, `recreate`, `reset-db` and `--reseed` fail with exit 6;
-  `status` / `ports` / `verify` still work.
+- Plain `down` is allowed: it stops only this checkout's local web server and
+  never touches the shared stack. `down --all`, `recreate`, `reset-db` and
+  `--reseed` fail with exit 6; `status` / `ports` / `verify` still work.
 - The shared QA stack (`:3010` / `:54421`) is protected: `ensure` refuses
   `APP_URL`/`SUPABASE_URL` on those ports unless `DEV_ALLOW_SHARED=1` or
   `SUPABASE_SHARED=1`.
@@ -346,7 +373,9 @@ does this).
 ### 6.1 Phases 1–3: app port only, stack ports discovered
 
 - The tool leases **one app port** (default 3000 if free) in the existing
-  registry. It is a single-port lease, never carved from a stack block.
+  registry. It is a single-port lease, never carved from a stack block. The
+  lease follows the **stack** lifetime, not the web server's: plain `down` keeps
+  it (see §5.2) and `down --all` (or a stopped stack) releases it.
 - Stack ports are **discovered** from `supabase stack status --output-format json`
   after start. The tool never does port math or assumes a base port.
 - In stack mode the tool **clears inherited `SUPABASE_*_PORT` values from the
@@ -380,6 +409,8 @@ the same port.
   a leaked block whose stack is healthy.
 - App port is a **separate single-port lease** in the same registry, default
   3000 if free, never carved from the stack block.
+- The block is held while the stack runs and released when the stack stops
+  (`down --all`), matching the app-port lease; a plain `down` keeps both.
 - `EADDRINUSE` releases the block, marks it suspect for 10 min, takes the next
   block, retries up to 3 times, then exits 4 with the collected logs.
 - Pass the leased ports on **every** `start` (create and resume). Phase 0 proved
@@ -450,9 +481,10 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   - the `NEXT_PUBLIC_*` values that get inlined at build time
     (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SITE_URL`,
     `NEXT_PUBLIC_SUPABASE_ANON_KEY`);
-  - the **git tree hash** (`git rev-parse HEAD^{tree}` plus
-    `git status --porcelain` dirty state, or a working-tree hash), so a source
-    edit invalidates the build;
+  - a **working-tree content hash**, not just `HEAD^{tree}` +
+    `git status --porcelain`: a second edit to the same modified file leaves
+    both unchanged. Hash the contents of tracked changes **and** build-relevant
+    untracked source files, so any source edit invalidates the build;
   - the build mode (`production`).
 - Build only on mismatch; `--force-build` overrides. The phase-0 baseline shows
   the current fingerprint has **no tree hash**, so `dev:up --prod` serves a
@@ -479,7 +511,6 @@ superset of the current `dev:status --json` (no renames that break consumers):
   "profile": "api",
   "runtime": "native",
   "cold": false,
-  "warmMs": 240,
   "stack": {
     "id": "65c7…",
     "name": "default",
@@ -541,6 +572,8 @@ Rules:
   `--studio` is the only way Studio starts.
 - `warnings` is an array of short strings (no key names/values).
 - `log` points at `.dev/env.log` (mode 600).
+- **Timing is not part of the machine contract.** There is no `warmMs` field;
+  measure warm/cold latency from `.dev/` logs or benchmarks. `cold` stays.
 - The legacy camelCase fields (`projectId`, `worktree`, `mode`, `shared`,
   `sharedOwner`, `owner`, `registry`, `stackId`, `branch`, `web`, `supabase`,
   `dbUrl`, `mailUrl`) stay for compatibility; the current `dev:status --json`
@@ -553,8 +586,8 @@ Rules:
 1. **Ownership:** only the checkout that created a stack may stop/destroy it.
    The CLI's `project_root` is checked before `stack stop`/`destroy`.
 2. **Build lock:** one `next build` across all worktrees.
-3. **Shared mode:** `SUPABASE_SHARED=1` disables start/stop/destroy/reseed;
-   read-only commands still work.
+3. **Shared mode:** `SUPABASE_SHARED=1` disables stack start/stop/destroy/reseed;
+   read-only commands and plain `down` (local web server only) still work.
 4. **No `stop --all`, no `pkill`, no unscoped `docker rm`.**
 5. **Destructive actions require `--yes` when non-interactive.**
 6. **Every mutating command logs what it did to `.dev/env.log` (mode 600).**
@@ -692,12 +725,16 @@ stacks, never a stack it does not own).
    within the TTL, ends ready, lease reclaimed.
 5. **Foreign port:** occupy the hashed block (phase 4) with a listener →
    allocator bumps, records a deviation, still succeeds.
-6. **Idempotent down:** `env:down` twice → exit 0 both times, block released
-   once.
+6. **Idempotent down:** `env:down` twice → exit 0 both times; the app-port
+   lease is kept while the stack runs and released exactly once by
+   `down --all`.
 7. **Native-only:** with Docker running, default ensure reports
    `runtime: "native"`; only `--runtime docker` produces a Docker stack.
-8. **Shared mode:** `SUPABASE_SHARED=1` → `ensure`/`down --all`/`recreate`/
-   `reseed` fail with exit 6; `status`/`ports` succeed.
+8. **Shared mode:** `SUPABASE_SHARED=1` → `ensure` succeeds against the shared
+   stack with zero stack mutation (no start/stop/destroy/reseed); `status` /
+   `ports` succeed; `down --all` / `recreate` / `reset-db` / `--reseed` exit 6.
+   (Supersedes the issue's literal test 8, which predates the existing
+   `dev:up`/`AGENTS.md` shared-mode behaviour.)
 9. **JSON contract:** schema snapshot; no sensitive stack key name or value in
    the output (`.env.local` inventory key names may appear only in
    `env:verify`).
@@ -708,8 +745,13 @@ Add tests for the phase-0 corrections:
 
 11. **db profile:** `env:ensure --profile db` succeeds (db+auth+storage) and
     applies migrations + seeds.
-12. **Build fingerprint:** a source edit invalidates the build; `ensure
---profile web` rebuilds; `--force-build` always builds.
+12. **Build fingerprint:** a source edit invalidates the build; two successive
+    edits to the **same** file both invalidate it (the second leaves
+    `HEAD^{tree}` and `git status --porcelain` unchanged); `--force-build`
+    always builds.
+13. **Capability change:** `env:ensure --profile api` then
+    `env:ensure --profile web` restarts this checkout's stack with the requested
+    exclusion set, keeps data (no destroy) and reports the new capability set.
 
 ---
 
@@ -767,6 +809,10 @@ keeping `dev:admin` as the one `dev:*` exception (violates the no-`dev:*` rule).
   `docs/deployment.md`, `docs/e2e-campaign.md`, `docs/limits.md`,
   `docs/project-structure.md`, `docs/decisions/0010-env-ssot.md`,
   `docs/audits/supabase-native-runtime.md`, `scripts/load-test/README.md`.
+- `AGENTS.md` currently says CI is "non-stack" with fixed `SUPABASE_*_PORT`
+  variables; that is wrong. Correct it in the cutover to
+  `SUPABASE_EXPERIMENTAL_STACK=1` + `SUPABASE_RUNTIME=native` + CLI-assigned
+  ports per runner (matching `verify.yml`).
 - Code comments: `scripts/check-env-inventory.ts`,
   `packages/server/src/lib/site-url.ts`, `scripts/load-test/config.ts`,
   `scripts/seed/qa.ts`, `knip.ts`.
@@ -777,13 +823,13 @@ keeping `dev:admin` as the one `dev:*` exception (violates the no-`dev:*` rule).
 
 ## 15. Phase plan
 
-| Phase                           | Scope                                                                                                                                                                                                                           | Gate                                |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| **0 — evidence**                | Port create/resume spike, key identity, baseline timings, `dev:*` inventory, this spec + ADR-0011. No product code.                                                                                                             | Evidence in the issue; ADR reviewed |
-| **1 — read-only**               | `status` / `doctor` / `ports` / `supa`; stable `--json`; no lifecycle change. `scripts/dev` untouched.                                                                                                                          | Read-only parity, unit tests        |
-| **2 — ensure**                  | `ensure --profile api\|web`, `down`, `build`; varlock-injected; **app-port lease only**; warm path. Keep `scripts/dev`.                                                                                                         | issue §11 tests 3, 6, 7, 8, 9, 10   |
-| **3 — cutover**                 | Remaining profiles/commands (`mail`, `full`, `qa`, `e2e`, `admin`, `env:dev --admin`, `reset-db`, `logs`, `prepull`, `setup` scaffold, `verify`); delete `scripts/dev` + `dev:*`; docs sweep (`dev:admin` → `env:dev --admin`). | Full acceptance; `rg` clean         |
-| **4 — allocator (conditional)** | 20-port blocks, lease registry, reclaim, retry loop, separate app-port lease.                                                                                                                                                   | issue §11 tests 1, 2, 4, 5          |
+| Phase                           | Scope                                                                                                                                                                                                                           | Gate                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **0 — evidence**                | Port create/resume spike, key identity, baseline timings, `dev:*` inventory, this spec + ADR-0011. No product code.                                                                                                             | Evidence in the issue; ADR reviewed            |
+| **1 — read-only**               | `status` / `doctor` / `ports` / `supa`; stable `--json`; no lifecycle change. `scripts/dev` untouched.                                                                                                                          | Read-only parity, unit tests                   |
+| **2 — ensure**                  | `ensure --profile api\|web`, `down`, `build`; varlock-injected; **app-port lease only**; warm path; capability reconciliation on the warm path. Keep `scripts/dev`.                                                             | issue §11 tests 3, 6, 7, 8, 9, 10; §13 test 13 |
+| **3 — cutover**                 | Remaining profiles/commands (`mail`, `full`, `qa`, `e2e`, `admin`, `env:dev --admin`, `reset-db`, `logs`, `prepull`, `setup` scaffold, `verify`); delete `scripts/dev` + `dev:*`; docs sweep (`dev:admin` → `env:dev --admin`). | Full acceptance; `rg` clean                    |
+| **4 — allocator (conditional)** | 20-port blocks, lease registry, reclaim, retry loop, separate app-port lease.                                                                                                                                                   | issue §11 tests 1, 2, 4, 5                     |
 
 Do not run phases in parallel: every phase touches `scripts/env/**`. Merge
 order is 0 → 1 → 2 → 3 → (4). Each phase is its own PR; phase 4 is a **go** but
@@ -812,7 +858,8 @@ No provider code, no ref parsing, no dotenv parsing in `scripts/env/**`.
 ## 16. Out of scope
 
 - **Caching** of stack artifacts, build output or provider values — #1078.
-- **CI changes.** CI keeps calling `supabase stack` directly with fixed ports.
+- **CI changes.** CI keeps calling `supabase stack` directly, with
+  `SUPABASE_EXPERIMENTAL_STACK=1`, the native runtime and CLI-assigned ports.
 - **Provider/vault implementation.** Phase 2 only defines and verifies the seam;
   the provider choice is a separate decision.
 - **Removing the `varlock run` wrappers.** A post-stability migration, after

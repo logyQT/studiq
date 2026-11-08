@@ -15,10 +15,11 @@ values-file decision) and the `dev:*` scripts documented in `AGENTS.md`.
 
 Local provisioning is spread across `scripts/dev` (a 2,305-line Bash program)
 and twelve `dev:*` package scripts plus the root `dev` script. An agent must
-read several files to learn the incantation, and every task pays for a cold
-stack, migrations, seeds and `next build` even when it only needs an API
-endpoint or a database. Nothing tells a second agent that a healthy stack
-already exists in the same checkout.
+read several files to learn the incantation. `scripts/dev up` is idempotent and
+reuses a running stack, so the cold stack, migrations, seeds and `next build`
+are paid only when the checkout/stack is cold; the gaps are that nothing tells a
+second agent a healthy stack already exists in the same checkout, and that the
+current build fingerprint goes stale after a source edit.
 
 The 2026-11-07/08 review settled the target shape: one idempotent `ensure`
 command with profiles, a warm path under a second, a stable `--json` contract,
@@ -52,15 +53,23 @@ spec is [`docs/plans/env-tool.md`](../plans/env-tool.md).
    once #1077 **and** #1078 are stable, through a framework integration
    (Next/Bun) or `env`-owned injection. Plugins resolve provider values; they do
    not remove wrappers. No phase of this plan drops them.
-4. **Native is the default and the only auto-selected runtime.** Docker is
-   `--runtime docker` / `SUPABASE_RUNTIME=docker` only; no silent fallback.
-   An existing Docker stack is warned about and continues to work;
-   `env:recreate --runtime native --yes` converts it.
+4. **Native is the default and the only auto-selected runtime.** Every start
+   passes the **selected** runtime explicitly (`native` by default, `docker`
+   only when selected); Docker is `--runtime docker` / `SUPABASE_RUNTIME=docker`
+   only, and there is no silent fallback. An existing Docker stack is warned
+   about and continues to work; `env:recreate --runtime native --yes` converts
+   it.
 5. **Identity is per checkout.** Stack identity is the CLI's
-   `projectRoot + branch + stackName`; `--attach` is future work.
+   `projectRoot + branch + stackName`; `--attach` is future work. Under
+   `SUPABASE_SHARED=1` this checkout reuses another checkout's stack without any
+   stack mutation; `down --all`, `recreate`, `reset-db` and `--reseed` refuse
+   with exit 6, while plain `down` still stops only the local web server.
 6. **The app port is the only lease until phase 4.** Stack ports are discovered
-   from `stack status`. The 20-port block allocator lands after the cutover and
-   stays conditional on the recorded create **and** resume port evidence.
+   from `stack status`. The app-port lease follows the **stack** lifetime: plain
+   `down` keeps it, because `supabase/config.toml` binds the auth redirect URLs
+   to `APP_URL`; `down --all` (or a stopped stack) releases it. The 20-port block
+   allocator lands after the cutover and stays conditional on the recorded
+   create **and** resume port evidence.
 7. **`env:dev` is human-only HMR.** Agents use build + serve; the tool never
    runs `next dev`.
 8. **`env:setup` mutates, `env:verify` observes.** Setup is human-only,
@@ -74,7 +83,8 @@ spec is [`docs/plans/env-tool.md`](../plans/env-tool.md).
    `varlock run --path`. `scripts/env/**` contains no provider code and no ref
    parsing.
 10. **Caching is out of scope** (#1078); CI is untouched and keeps calling
-    `supabase stack` directly.
+    `supabase stack` directly with `SUPABASE_EXPERIMENTAL_STACK=1`, the native
+    runtime and CLI-assigned ports per runner.
 11. **The `db` profile is db + auth + storage.** Confirmed by the operator: the
     repo's migrations need `storage.buckets` and its seeds need
     `auth.users.email_confirmed_at`, so a database-only stack cannot be
@@ -82,6 +92,11 @@ spec is [`docs/plans/env-tool.md`](../plans/env-tool.md).
 12. **`dev:admin` becomes `env:dev --admin`.** Human-only admin HMR on :4000,
     symmetric with `env:dev` for web; `apps/admin` stays out of `env:ensure`
     defaults.
+13. **`ensure` reconciles capabilities on the warm path.** When the requested
+    profile's exclude set differs from the running stack's enabled capabilities,
+    it stops and restarts **this checkout's** stack with the requested set —
+    never destroy, data is preserved — then re-probes (phase-0: ≈1.7 s stop +
+    5.0 s resume).
 
 > **Superseded wording.** The issue's pre-review appendix and its "varlock is
 > validator-only" acceptance line are superseded by item 3. varlock remains the
@@ -139,7 +154,10 @@ Host as above; native artifact cache warm; "cold" = new stack. Raw runs in
 The current warm path still spawns `stack status`; the new heartbeat cache is
 what gives the 1 s budget margin. The current build fingerprint has no git tree
 hash, so `dev:up --prod` serves a stale build after a source edit (measured:
-2.1 s, `BUILD_ID` unchanged). The new fingerprint must include the tree hash.
+2.1 s, `BUILD_ID` unchanged). The new fingerprint must hash the working-tree
+contents (tracked changes plus build-relevant untracked source), because
+`HEAD^{tree}` + `git status --porcelain` do not change on a second edit to the
+same modified file.
 
 ### `db` profile (settled: db + auth + storage)
 
