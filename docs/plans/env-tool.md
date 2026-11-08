@@ -101,10 +101,11 @@ constraints on every phase.
 14. **`dev:admin` → `env:dev --admin`.** Confirmed by the operator. Admin HMR
     (port 4000) stays human-only; `apps/admin` is not part of `env:ensure`
     defaults. See §14.2.
-15. **One environment per worktree/checkout.** The tool manages one stack and
-    one web server per checkout. Named stacks (`--stack`) isolate data and
-    ports; running two servers against the shared `apps/web/.next` from one
-    checkout is unsupported and out of scope. See §8.
+15. **One environment per worktree/checkout, enforced.** The tool manages one
+    stack and one web server per checkout and **refuses** (exit 6) a request
+    that would start a second server, or rebuild the `apps/web/.next` another
+    server is serving, for a different stack/profile. `--stack` is for
+    naming/isolation only. See §8.
 
 ---
 
@@ -175,14 +176,14 @@ Rules:
 Lifecycle commands (`ensure`, `down`, `build`, `serve`, `recreate`,
 `reset-db`, `setup`, `prepull`) use:
 
-| Code | Meaning                                                               |
-| ---- | --------------------------------------------------------------------- |
-| `0`  | ready / success                                                       |
-| `2`  | bad usage (unknown flag, invalid profile, incompatible atoms)         |
-| `3`  | native unavailable on this platform (message names the Docker opt-in) |
-| `4`  | start failed (CLI error, migrations/seeds failed, port bind failed)   |
-| `5`  | timeout waiting for readiness / build lock / start lock               |
-| `6`  | conflict (another checkout owns the stack, shared-mode refusal)       |
+| Code | Meaning                                                                                         |
+| ---- | ----------------------------------------------------------------------------------------------- |
+| `0`  | ready / success                                                                                 |
+| `2`  | bad usage (unknown flag, invalid profile, incompatible atoms)                                   |
+| `3`  | native unavailable on this platform (message names the Docker opt-in)                           |
+| `4`  | start failed (CLI error, migrations/seeds failed, port bind failed)                             |
+| `5`  | timeout waiting for readiness / build lock / start lock                                         |
+| `6`  | conflict (another checkout owns the stack, shared-mode refusal, second server in this checkout) |
 
 Read-only commands:
 
@@ -637,12 +638,15 @@ gated on the phase-3 cutover and on issue §11 tests 1, 2, 4 and 5.
   `flock`/mkdir lock from `scripts/dev`). The lock is held across the snapshot,
   build and rollback/handover — not the whole `ensure`. It serializes builds; it
   is not a reader lock.
-- **One server per checkout.** The tool assumes one environment per worktree:
-  one stack and one web server. A second server serving the shared
-  `apps/web/.next` from the same checkout is an out-of-scope setup:
-  `env:status` / `env:doctor` report the extra checkout-owned server (pid and
-  stack) as unexpected, but the tool does not coordinate two servers or refuse
-  a build for one — use a separate worktree instead.
+- **One server per checkout, enforced.** The tool manages one environment per
+  worktree: one stack and one web server. `env:ensure` / `env:serve` /
+  `env:build` refuse a request that would start a second web server, or rebuild
+  the `apps/web/.next` another server is serving, **for a different
+  stack/profile** — exit 6, naming the running server (pid/stack) and the remedy
+  (`env:down` first, or use a separate worktree). Same-environment lifecycle is
+  normal: the handover stops its own server, builds and restarts. Detection uses
+  the existing `.dev/web.pid` (+ live-process check), the registry entry and the
+  per-identity start lock — no new coordination mechanism.
 - **Safe rebuild handover.** `scripts/dev` refuses to build while the web server
   runs, and Next 16 deletes the existing `.next` before building, so "restart
   the previous build" requires preserving its output first. Under the build
@@ -753,7 +757,8 @@ Rules:
 1. **Ownership:** only the checkout that created a stack may stop/destroy it.
    The CLI's `project_root` is checked before `stack stop`/`destroy`.
 2. **Build lock:** one `next build` across all worktrees (it serializes builds,
-   not readers; the tool assumes one server per checkout — see §8).
+   not readers; a second server for a different stack/profile is refused with
+   exit 6 — §8).
 3. **Shared mode:** `SUPABASE_SHARED=1` disables stack
    start/stop/destroy/reseed/reconcile; read-only commands and plain `down`
    (local web server only) still work.
@@ -1062,9 +1067,9 @@ No provider code, no ref parsing, no dotenv parsing in `scripts/env/**`.
 - **`next dev` for agents.** Agents never run `next dev` (matching
   `AGENTS.md`); `env:dev` (human-only) starts web/admin HMR with it, and agents
   use build + serve.
-- **Two environments in one checkout.** One stack and one web server per
-  worktree; concurrent named stacks serving the same checkout are out of scope
-  (§1 item 15, §8). Use separate worktrees for parallel environments.
+- **Two environments in one checkout.** Refused with exit 6 (one stack + one web
+  server per checkout); use a separate worktree for parallel environments
+  (§1 item 15, §8).
 - **Per-agent stacks when a healthy stack exists.**
 - **A 30 s cold full-app promise.** The lever is a build cache, not this tool.
 - **Changing the pinned Supabase CLI** or the `[experimental] stack` backend.
