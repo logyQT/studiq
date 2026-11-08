@@ -120,7 +120,9 @@ checkouts. The corrected spec is
     (read-then-pin, not the phase-4 block), never destroys data, and re-probes
     every requested capability (phase-0: ≈1.7 s stop + 5.0 s resume). A failed
     reconcile restores the previous capability set and never moves the block or
-    endpoints; only a cold start or `env:recreate` may take a different block.
+    endpoints; if the restore itself fails, the stack stays stopped/degraded
+    (never ready, exit 4/6) with the unrestorable endpoints and a recovery
+    action. Only a cold start or `env:recreate` may take a different block.
 14. **Local posture is explicit and validated.** Before build/serve/HMR
     (`ensure` build/serve, `serve`, `build`, `dev`) the tool sets
     `APP_ENV=development` only when it is unset or empty, preserves an explicit
