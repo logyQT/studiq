@@ -72,11 +72,7 @@ function killTree(child: ChildProcess): void {
     process.kill(-child.pid, 'SIGKILL');
   } catch (error) {
     if (isErrnoException(error) && error.code === 'ESRCH') return;
-    try {
-      child.kill('SIGKILL');
-    } catch {
-      /* already gone */
-    }
+    throw error;
   }
 }
 

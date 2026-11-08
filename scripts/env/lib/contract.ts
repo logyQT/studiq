@@ -26,7 +26,11 @@ function parsePort(value: string, label: string): number {
   return port;
 }
 
-function readShared(): boolean {
+/**
+ * Strict shared-mode flag: only ''/'0'/'1' are accepted, so a value like
+ * `true` is a usage error instead of silently meaning "not shared".
+ */
+export function isSharedMode(): boolean {
   const raw = process.env.SUPABASE_SHARED ?? '';
   if (raw === '' || raw === '0') return false;
   if (raw === '1') return true;
@@ -53,7 +57,7 @@ function readAppPort(appUrl: string): number {
 }
 
 export function readContract(): Contract {
-  const shared = readShared();
+  const shared = isSharedMode();
   const stackName = readStackName();
   const rawAppUrl = process.env.APP_URL ?? '';
   const appPort = readAppPort(rawAppUrl);

@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { UsageError } from '../atoms';
+import { isSharedMode } from '../lib/contract';
 import { writeStderrLine } from '../lib/output';
 import { REPO_ROOT, canon } from '../lib/repo';
 import { readStackList, type ListedStack } from '../lib/stack';
@@ -228,15 +230,26 @@ export function runSupa(args: string[]): number {
   const mutating = stopCapable || destroyCommand || dbReset || migrationDown || storageRm;
 
   // Shared mode disables every stack mutation: refuse before any ownership
-  // check or spawn, naming the checkout that actually owns the stack.
-  if (mutating && process.env.SUPABASE_SHARED === '1') {
-    const owner = process.env.SUPABASE_SHARED_OWNER || 'owner unknown';
-    const command = [first, second].filter(Boolean).join(' ');
-    return reject(
-      `env:supa: refusing '${command}' under SUPABASE_SHARED=1 — this checkout does not own ` +
-        `the stack (owner: ${owner}); run it in the owning checkout.`,
-      6,
-    );
+  // check or spawn, naming the checkout that actually owns the stack. The flag
+  // is parsed strictly (''/'0'/'1'), so an invalid value like `true` is a usage
+  // error instead of silently allowing a mutation to forward.
+  if (mutating) {
+    let shared: boolean;
+    try {
+      shared = isSharedMode();
+    } catch (error) {
+      if (error instanceof UsageError) return reject(`env:supa: ${error.message}`, 2);
+      throw error;
+    }
+    if (shared) {
+      const owner = process.env.SUPABASE_SHARED_OWNER || 'owner unknown';
+      const command = [first, second].filter(Boolean).join(' ');
+      return reject(
+        `env:supa: refusing '${command}' under SUPABASE_SHARED=1 — this checkout does not own ` +
+          `the stack (owner: ${owner}); run it in the owning checkout.`,
+        6,
+      );
+    }
   }
 
   if (stopCapable && hasAllFlag(args)) return reject(ALL_MESSAGE, 2);

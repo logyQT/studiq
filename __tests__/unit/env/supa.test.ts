@@ -539,4 +539,17 @@ describe('env:supa under SUPABASE_SHARED=1', () => {
     expect(versionResult.status).toBe(0);
     expect(version.bunxCalls().trim()).toBe('--version');
   });
+
+  it('rejects a non-boolean SUPABASE_SHARED before forwarding a mutation', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'migration', 'down'], {
+      SUPABASE_SHARED: 'true',
+      SUPABASE_SHARED_OWNER: 'qa-crew',
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('SUPABASE_SHARED must be 0 or 1');
+    expect(harness.bunxCalls()).toBe('');
+  });
 });

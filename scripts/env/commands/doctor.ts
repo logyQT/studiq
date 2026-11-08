@@ -110,7 +110,8 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (observedRuntime === 'docker') {
     warnings.push(
-      'stack runtime=docker (compatibility mode); env:recreate --runtime native --yes will convert it',
+      'stack runtime=docker (compatibility mode); the stack keeps running as-is ' +
+        '(no runtime conversion is available)',
     );
   }
   if (!trusted && registryExists) {
@@ -120,7 +121,7 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (contract.shared && !sharedSupabaseUrl) {
     warnings.push(
-      'SUPABASE_SHARED=1 but SUPABASE_URL is not exported to this unwrapped command (run `bun run env:verify` for env checks)',
+      'SUPABASE_SHARED=1 but SUPABASE_URL is not exported to this unwrapped command (run `bun run env:check:quiet` for env checks; exit code only)',
     );
   }
   if (appPortProbe.state === 'unavailable') {
@@ -165,7 +166,7 @@ async function buildReport(): Promise<DoctorReport> {
     '▸ Runtime',
     `  observed   ${observedRuntime ?? 'unknown (not observable here)'}`,
     `  source     ${runtimeSource}`,
-    '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
+    '  selection  read-only commands never choose a runtime',
   );
 
   lines.push('', '▸ Ports');
