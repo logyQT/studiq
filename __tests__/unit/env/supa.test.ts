@@ -192,6 +192,57 @@ describe('env:supa', () => {
     expect(harness.bunxCalls()).toBe('');
   });
 
+  it('refuses a stop whose --workdir is another checkout (exit 6, no spawn)', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run([
+      'supa',
+      'stop',
+      '--stack',
+      'default',
+      '--workdir',
+      '/tmp/foreign-checkout',
+    ]);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--workdir');
+    expect(result.stderr).toContain(REPO_ROOT);
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('refuses a restart when SUPABASE_WORKDIR is another checkout (exit 6)', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'restart', '--stack', 'default'], {
+      SUPABASE_WORKDIR: '/tmp/foreign-checkout',
+    });
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--workdir');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('allows a workdir that resolves to this checkout', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run([
+      'supa',
+      'stop',
+      '--stack',
+      'default',
+      '--workdir',
+      REPO_ROOT,
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls()).toContain(`stop --stack default --workdir ${REPO_ROOT}`);
+  });
+
   it('refuses to stop a stack owned by another checkout (exit 6)', async () => {
     const harness = newHarness();
     harness.setListFixture(listFixture());

@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { writeStderrLine } from '../lib/output';
 import { REPO_ROOT, canon } from '../lib/repo';
 import { readStackList, type ListedStack } from '../lib/stack';
@@ -93,6 +94,27 @@ function reject(message: string, code: 2 | 6): number {
   return code;
 }
 
+/** `--workdir <path>` / `--workdir=<path>`, else `SUPABASE_WORKDIR`. */
+function cliWorkdir(args: string[]): string | null {
+  let workdir: string | null = process.env.SUPABASE_WORKDIR || null;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (token === '--workdir') {
+      const value = args[index + 1];
+      workdir = value && !value.startsWith('-') ? value : '';
+      index += 1;
+      continue;
+    }
+    if (token?.startsWith('--workdir=')) workdir = token.slice('--workdir='.length);
+  }
+  return workdir;
+}
+
+/** The CLI resolves `--workdir` relative to our cwd, which is the repo root. */
+function isThisCheckout(workdir: string): boolean {
+  return canon(workdir.startsWith('/') ? workdir : resolve(REPO_ROOT, workdir)) === REPO_ROOT;
+}
+
 /**
  * Passthrough to `bunx supabase` from the checkout root.
  *
@@ -103,9 +125,10 @@ function reject(message: string, code: 2 | 6): number {
  *
  * Guards (the argv is scanned as tokens, so argument order never bypasses
  * them): `stop --all` / `restart --all` and any `destroy` are refused outright,
- * `db reset` is refused, and a `stop`/`restart` must name a stack this checkout
- * owns. Usage errors exit 2, ownership conflicts 6, and nothing is ever written
- * to stdout.
+ * `db reset` is refused, a `stop`/`restart` must name a stack this checkout
+ * owns, and a `--workdir`/`SUPABASE_WORKDIR` must resolve to this checkout's
+ * root (otherwise the CLI could operate on another checkout's stack). Usage
+ * errors exit 2, ownership conflicts 6, and nothing is ever written to stdout.
  */
 export function runSupa(args: string[]): number {
   const stopCapable = args.includes('stop') || args.includes('restart');
@@ -115,6 +138,17 @@ export function runSupa(args: string[]): number {
   if (args.includes('db') && args.includes('reset')) return reject(DB_RESET_MESSAGE, 2);
 
   if (stopCapable) {
+    // The CLI resolves a stack against `--workdir`, so approving a local stack
+    // name is not enough: a foreign workdir could make it stop another
+    // checkout's stack. Only this checkout's root is accepted.
+    const workdir = cliWorkdir(args);
+    if (workdir !== null && (workdir === '' || !isThisCheckout(workdir))) {
+      return reject(
+        `env:supa: refusing to stop/restart: --workdir '${workdir || '(empty)'}' is not this checkout (${REPO_ROOT}).`,
+        6,
+      );
+    }
+
     const scopes = stopScopes(args);
     if (scopes.length === 0) return reject(NO_SCOPE_MESSAGE, 2);
 
