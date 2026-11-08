@@ -66,10 +66,18 @@ export interface SpawnOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Superset of the two needs: phase 1 distinguishes "the CLI could not answer"
+ * (`error`) from "the CLI answered with no stack"; phase 2 additionally needs
+ * the exit status, stderr and timeout flag for start/stop/build handling.
+ */
 export interface SpawnResult {
+  ok: boolean;
   status: number | null;
   stdout: string;
   stderr: string;
+  /** Set only when the CLI could not be spawned or timed out. */
+  error: string | null;
   timedOut: boolean;
 }
 
@@ -104,6 +112,9 @@ function parseJsonObject(raw: string): JsonObject | null {
 /**
  * Run the CLI from the checkout root. `supabase/config.toml` resolves APP_URL
  * through `env()`; an explicit APP_URL still wins, exactly like `scripts/dev`.
+ *
+ * Lifecycle commands pass their own child environment (cleared/pinned port
+ * variables) and a longer timeout; read-only commands use the defaults.
  */
 export function runSupabase(args: string[], options: SpawnOptions = {}): SpawnResult {
   const base = options.env ?? process.env;
@@ -115,12 +126,22 @@ export function runSupabase(args: string[], options: SpawnOptions = {}): SpawnRe
     timeout: options.timeoutMs ?? 20_000,
     maxBuffer: 16 * 1024 * 1024,
   });
+  const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
+  const timedOut = code === 'ETIMEDOUT';
   return {
+    ok: result.error === undefined && result.status === 0,
     status: result.status,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
-    timedOut: (result.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT',
+    error: result.error ? result.error.message : null,
+    timedOut,
   };
+}
+
+function stackArgs(command: 'status' | 'list', stackName: string | null): string[] {
+  const args = ['stack', command, '--output-format', 'json'];
+  if (stackName) args.push('--stack', stackName);
+  return args;
 }
 
 function parseStatus(parsed: JsonObject): StackStatus | null {
@@ -179,12 +200,6 @@ function parseEnv(parsed: JsonObject): StackEnv {
   };
 }
 
-function stackArgs(command: 'status' | 'list', stackName: string | null): string[] {
-  const args = ['stack', command, '--output-format', 'json'];
-  if (stackName) args.push('--stack', stackName);
-  return args;
-}
-
 function parseServices(parsed: JsonObject): string[] {
   const composition = asObject(parsed.composition);
   const members = composition?.members;
@@ -202,19 +217,51 @@ function parseServices(parsed: JsonObject): string[] {
   return [];
 }
 
+interface StackReadResult {
+  read: StackRead | null;
+  /** Spawn/timeout failure of the CLI itself; null means the CLI answered. */
+  error: string | null;
+}
+
+/**
+ * Parse a status response into the phase-2 read shape while keeping phase 1's
+ * error distinction: `stack status` exits 0 for a stopped stack (identity +
+ * empty endpoints, no API URL), so an absent stack and a broken CLI stay
+ * distinguishable.
+ */
+function readStackWithError(stackName: string | null): StackReadResult {
+  const { ok, stdout, error } = runSupabase(stackArgs('status', stackName));
+  if (!ok) return { read: null, error };
+  const parsed = parseJsonObject(stdout);
+  if (!parsed) return { read: null, error: null };
+  const status = parseStatus(parsed);
+  if (!status) return { read: null, error: null };
+  return {
+    read: { status, env: parseEnv(parsed), services: parseServices(parsed) },
+    error: null,
+  };
+}
+
+export interface StackStatusProbe {
+  /** The running stack, or null when it is stopped/unusable/absent. */
+  stack: StackStatus | null;
+  /** Spawn/timeout failure of the CLI itself; null means the CLI answered. */
+  error: string | null;
+}
+
+/** Read-only probe used by `doctor` to distinguish "no stack" from "CLI broke". */
+export function probeStackStatus(stackName: string | null): StackStatusProbe {
+  const { read, error } = readStackWithError(stackName);
+  return { stack: read?.status ?? null, error };
+}
+
 /**
  * The running stack plus the values needed by a child process. A status
  * response without an API URL describes a stopped/unusable stack (`scripts/dev`
  * treats it the same way), so it also yields null.
  */
 export function readStack(stackName: string | null): StackRead | null {
-  const { status, stdout } = runSupabase(stackArgs('status', stackName));
-  if (status !== 0) return null;
-  const parsed = parseJsonObject(stdout);
-  if (!parsed) return null;
-  const parsedStatus = parseStatus(parsed);
-  if (!parsedStatus) return null;
-  return { status: parsedStatus, env: parseEnv(parsed), services: parseServices(parsed) };
+  return readStackWithError(stackName).read;
 }
 
 export function readStackStatus(stackName: string | null): StackStatus | null {
@@ -237,8 +284,8 @@ export interface ListedStack {
  * find a stopped stack's persisted runtime.
  */
 export function readStackList(): ListedStack[] | null {
-  const { status, stdout } = runSupabase(stackArgs('list', null));
-  if (status !== 0) return null;
+  const { ok, stdout } = runSupabase(stackArgs('list', null));
+  if (!ok) return null;
   const parsed = parseJsonObject(stdout);
   const stacks = parsed?.stacks;
   if (!Array.isArray(stacks)) return null;

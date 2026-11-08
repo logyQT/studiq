@@ -6,7 +6,7 @@ import { portInUse } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryDirTrusted } from '../lib/registry';
 import { REPO_ROOT, canon, currentBranchName } from '../lib/repo';
-import { readListedStackRuntime, readStackStatus, type StackStatus } from '../lib/stack';
+import { probeStackStatus, readListedStackRuntime, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
 import { readWebPid } from '../lib/web';
 
@@ -46,7 +46,10 @@ async function buildReport(): Promise<DoctorReport> {
   const contract = contractWithLease(readContract());
   const registry = readRegistry();
   const trusted = registryDirTrusted(registry.dir);
-  const stack = contract.shared ? null : readStackStatus(contract.stackName);
+  const statusProbe = contract.shared
+    ? { stack: null as StackStatus | null, error: null as string | null }
+    : probeStackStatus(contract.stackName);
+  const stack = statusProbe.stack;
   // A running stack already reports its runtime; only a stopped/missing one
   // needs the `stack list` lookup (one status call on the running path).
   const listedRuntime =
@@ -79,6 +82,12 @@ async function buildReport(): Promise<DoctorReport> {
 
   const problems: string[] = [];
   const warnings: string[] = [];
+
+  // A stopped stack answers cleanly (exit 0, no API URL), so an error here means
+  // the CLI itself could not be spawned or timed out — never "no stack".
+  if (statusProbe.error) {
+    warnings.push(`cannot read 'supabase stack status': ${statusProbe.error}`);
+  }
 
   // Shared mode never starts a stack in this checkout, so a missing engine is
   // not a conflict; runtime availability is phase 2's job, not doctor's.

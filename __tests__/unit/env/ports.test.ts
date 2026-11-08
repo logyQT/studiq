@@ -23,7 +23,8 @@ function newHarness(): Harness {
 async function nextFreePort(from: number, skip: ReadonlySet<number>): Promise<number> {
   for (let port = from; port <= 3999; port += 1) {
     if (port === 3010 || skip.has(port)) continue;
-    const listener = await startTcpListener(port).catch(() => null);
+    // `suggestFreeAppPort` bind-checks 127.0.0.1, so the oracle must too.
+    const listener = await startTcpListener(port, '127.0.0.1').catch(() => null);
     if (!listener) continue;
     await listener.close();
     return port;
@@ -53,7 +54,7 @@ describe('env:ports --json', () => {
   });
 
   it('skips a port bound on another interface', async () => {
-    const port = await firstFreePort(3000, new Set([3010]));
+    const port = await firstFreePort(3000, new Set([3010]), '0.0.0.0');
     const harness = newHarness();
     // Binding the wildcard address claims the port for every interface, so a
     // loopback `listen()` (and therefore `next start`) cannot use it.

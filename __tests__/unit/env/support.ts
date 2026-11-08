@@ -60,6 +60,14 @@ function readLog(path: string): string {
   }
 }
 
+async function terminate(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((done) => {
+    child.once('close', () => done());
+    child.kill('SIGKILL');
+  });
+}
+
 export interface Harness {
   dir: string;
   registryDir: string;
@@ -228,10 +236,23 @@ export function createHarness(): Harness {
       closers.push(closer);
     },
     async cleanup() {
-      for (const child of [...children]) child.kill('SIGKILL');
-      children.clear();
-      for (const close of closers.toReversed()) await close();
-      rmSync(dir, { recursive: true, force: true });
+      // Every closer runs even if an earlier one throws, children are awaited
+      // before their temp dir disappears, and the directory is removed last.
+      let failure: Error | null = null;
+      try {
+        await Promise.all([...children].map((child) => terminate(child)));
+        children.clear();
+        for (const close of closers.toReversed()) {
+          try {
+            await close();
+          } catch (error) {
+            failure ??= error instanceof Error ? error : new Error(String(error));
+          }
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+      if (failure) throw failure;
     },
   };
 }
@@ -302,10 +323,11 @@ export async function startTcpListener(port = 0, host?: string): Promise<TcpList
 export async function firstFreePort(
   from: number,
   skip: ReadonlySet<number> = new Set(),
+  host = '127.0.0.1',
 ): Promise<number> {
   for (let port = from; port < from + 200; port += 1) {
     if (skip.has(port)) continue;
-    const listener = await startTcpListener(port).catch(() => null);
+    const listener = await startTcpListener(port, host).catch(() => null);
     if (!listener) continue;
     await listener.close();
     return port;

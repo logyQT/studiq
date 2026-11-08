@@ -33,6 +33,23 @@ describe('env:doctor', () => {
     expect(report.ok).toBe(true);
     expect(report.problems).toEqual([]);
     expect(Array.isArray(report.warnings)).toBe(true);
+    // A stopped/absent stack is a clean CLI answer, not a CLI failure.
+    expect(stringList(report.warnings).join('\n')).not.toContain('supabase stack status');
+  });
+
+  it('warns when the Supabase CLI cannot be spawned', async () => {
+    const appPort = await firstFreePort(3900);
+    const harness = newHarness();
+    // No `bunx` on PATH: status/list spawn with ENOENT.
+    const result = await harness.run(['doctor', '--json'], {
+      PATH: harness.dir,
+      APP_PORT: String(appPort),
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report.ok).toBe(true);
+    expect(stringList(report.warnings).join('\n')).toContain("cannot read 'supabase stack status'");
   });
 
   it('exits 1 when the app port is occupied by another process', async () => {
