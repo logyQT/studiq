@@ -6,17 +6,18 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
 import { tmpdir, networkInterfaces } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CLI_PATH = fileURLToPath(new URL('../../../scripts/env/cli.ts', import.meta.url));
-export const REPO_ROOT = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
+export const REPO_ROOT = realpathSync(fileURLToPath(new URL('../../../', import.meta.url)));
 
 export interface RunResult {
   status: number | null;
