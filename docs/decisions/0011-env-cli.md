@@ -11,8 +11,9 @@ Local provisioning is spread across `scripts/dev` and the `dev:*` scripts: an ag
 incantation, and nothing gives it one idempotent call that composes start, build and serve. Cold work (`--eager` capabilities,
 migrations, seeds, `next build`) is paid once per checkout; the missing piece is a warm path (< 1 s) and a stable `--json`
 contract.
-The 2026-11-07/08 review settled the shape and made the port allocator conditional on a recorded spike. Phase 0 recorded it: the
-allocator is not justified for now, so the tool leases only the app port and discovers stack ports from `status`.
+The 2026-11-07/08 review settled the shape and made the port allocator conditional on a recorded spike. Phase 0 recorded a GO
+(explicit ports survive create and resume); the 20-port allocator is nevertheless deferred by the operator's minimal-v1
+decision and is not built. The tool leases only the app port and discovers stack ports from `status`.
 
 ## Decision
 

@@ -304,9 +304,9 @@ audit, code comments, `scripts/load-test/README.md`).
 ## 14. Deferred and out of scope
 
 **Deferred** (one line each, no v1 surface): `prepull` (ensure downloads on demand), `recreate` (manual destroy then
-ensure), the port allocator (the CLI assigns stack ports), `apps/admin` HMR/serve, capability reconcile (`env:down
---all` then `env:ensure`), seed markers/run ids, build rollback (fail and stop), multi-lock hierarchies and
-provider-status ceremony.
+ensure), the port allocator (phase 0 GO: explicit ports survive create and resume; the operator's minimal-v1 decision defers
+it, so it is not built — ports come from `status`), `apps/admin` HMR/serve, capability reconcile (`env:down --all` then
+`env:ensure`), seed markers/run ids, build rollback (fail and stop), multi-lock hierarchies and provider-status ceremony.
 
 Also out of scope: caching (#1078); CI changes; the vault provider implementation; removing the `varlock run`
 wrappers (post-stability); `--attach`; `next dev` for agents; two environments per checkout; per-agent stacks;
