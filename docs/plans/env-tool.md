@@ -136,9 +136,14 @@ Rules:
   to the CLI, not interpreted by the tool. Long-running commands (`dev`,
   `serve`, `logs`) treat `--json` as a **startup** contract: one JSON object
   when ready, then output on stderr.
-- `supa` forwards arguments unchanged **except for destructive or stop-capable
-  subcommands**, which it validates before forwarding — it never spawns the CLI
-  on a rejected call:
+- `supa` forwards arguments unchanged **except for stack starts and for
+  destructive or stop-capable subcommands**, which it normalizes or validates
+  before forwarding — it never spawns the CLI on a rejected call:
+  - **Starts carry the selected runtime.** `stack start …` (and any equivalent
+    start form) must include `--runtime <selected>`: inject the selected runtime
+    — `native` unless `--runtime docker` / `SUPABASE_RUNTIME=docker` was chosen —
+    when it is absent, and preserve an explicit one. Every other start argument
+    forwards unchanged.
   - `stop --all` is always rejected (exit 2, message naming the hard rule);
     there is no override.
   - `db reset` is rejected (exit 2): a database reset goes through the guarded
