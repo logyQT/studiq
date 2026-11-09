@@ -212,21 +212,19 @@ function parseEnv(parsed: JsonObject): StackEnv {
   };
 }
 
+function serviceNames(list: unknown): string[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((member) => asString(asObject(member)?.service))
+    .filter((service): service is string => service !== null);
+}
+
 function parseServices(parsed: JsonObject): string[] {
-  const composition = asObject(parsed.composition);
-  const members = composition?.members;
-  if (Array.isArray(members)) {
-    return members
-      .map((member) => asString(asObject(member)?.service))
-      .filter((service): service is string => service !== null);
-  }
-  const services = parsed.services;
-  if (Array.isArray(services)) {
-    return services
-      .map((member) => asString(asObject(member)?.service))
-      .filter((service): service is string => service !== null);
-  }
-  return [];
+  const members = asObject(parsed.composition)?.members;
+  // Both shapes are current (`composition.members` and the top-level `services`
+  // list carry the same `service` field); prefer the composition view.
+  if (Array.isArray(members)) return serviceNames(members);
+  return serviceNames(parsed.services);
 }
 
 interface StackReadResult {

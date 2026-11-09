@@ -78,7 +78,10 @@ interface ChangedFile {
   content: string;
 }
 
-/** Content hash of the working tree (tracked changes + untracked source). */
+/**
+ * Content hash of the working tree (tracked changes + untracked source).
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
 export function workingTreeHash(root: string): string {
   const headTree = git(root, ['rev-parse', 'HEAD^{tree}']).trim();
   const status = git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);

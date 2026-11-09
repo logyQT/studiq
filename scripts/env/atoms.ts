@@ -3,8 +3,6 @@ import { EXIT_USAGE, EnvFailure } from './lib/exit';
 import {
   PROFILE_NAMES,
   PROFILES,
-  ProfileError,
-  buildCapabilities,
   isCapabilityAtom,
   isProfileName,
   type CapabilityAtom,
@@ -236,12 +234,6 @@ function parseEnsure(rest: string[]): ParsedCommand {
   if (!profile) throw new UsageError("'ensure' needs '--profile <name>'");
   const spec = PROFILES[profile];
   if (webAtom && !prod) throw new UsageError("'--web' requires '--prod'");
-  try {
-    buildCapabilities(profile, atoms);
-  } catch (error) {
-    if (error instanceof ProfileError) throw new UsageError(error.message);
-    throw error;
-  }
   const build = spec.build || buildAtom || forceBuild || prod;
   const serve = spec.serve || prod;
   if ((build || serve) && !spec.build) {

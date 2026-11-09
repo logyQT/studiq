@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
@@ -87,7 +96,9 @@ describe('lock primitives', () => {
 
   it('creates the registry with private permissions', () => {
     const dir = registry();
+    chmodSync(dir, 0o755);
     expect(locks.ensureRegistryDir()).toBe(dir);
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
   });
 
   it('serializes ensure/down/serve and lease decisions per checkout', async () => {

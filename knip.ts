@@ -36,14 +36,6 @@ const config: KnipConfig = {
   ignoreBinaries: ['flock'],
 
   ignoreIssues: {
-    // Policy: pure unit tests load `scripts/env` modules through a computed
-    // file URL (scripts have no alias), which static analysis cannot follow.
-    // Only the exports exercised by those tests are suppressed here.
-    'scripts/env/lib/exit.ts': ['exports'],
-    'scripts/env/lib/fingerprint.ts': ['exports'],
-    'scripts/env/lib/lease.ts': ['exports'],
-    'scripts/env/lib/platform.ts': ['exports'],
-
     // Policy: shared integration-test seeding surface. Suites import the
     // helpers they need; de-exporting the rest would turn them into unused
     // locals, so the fixture API stays exported.

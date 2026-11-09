@@ -327,17 +327,17 @@ async function main(): Promise<number> {
 
     clearTrace();
     const warmTimes: number[] = [];
-    let warmCold = true;
+    let warmColdSeen = false;
     for (let i = 0; i < 10; i += 1) {
       const warm = run(['env:ensure', '--profile', 'api', '--json'], childEnv);
       if (warm.code !== 0) throw new Error(`warm ensure failed: ${warm.stderr}`);
       warmTimes.push(warm.ms);
-      warmCold = json(warm).cold === true;
+      if (json(warm).cold === true) warmColdSeen = true;
     }
     console.log(
       `    warm p50 ${percentile(warmTimes, 0.5)}ms, p95 ${percentile(warmTimes, 0.95)}ms`,
     );
-    check(warmCold === false, 'warm ensure reports cold:false');
+    check(!warmColdSeen, 'warm ensure reports cold:false on all 10 runs');
     check(calls('stack start') === 0, 'warm ensure does not restart the stack');
 
     clearTrace();

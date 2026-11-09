@@ -53,7 +53,6 @@ export function isProfileName(value: string): value is ProfileName {
 export function isCapabilityAtom(value: string): value is CapabilityAtom {
   return (CAPABILITY_ATOMS as ReadonlyArray<string>).includes(value);
 }
-export class ProfileError extends Error {}
 
 export function buildCapabilities(
   profile: ProfileName,
@@ -61,9 +60,6 @@ export function buildCapabilities(
 ): Set<Capability> {
   const capabilities = new Set<Capability>(PROFILES[profile].capabilities);
   for (const atom of atoms) capabilities.add(ATOM_CAPABILITY[atom]);
-  if (capabilities.has('studio') && !capabilities.has('rest')) {
-    throw new ProfileError("'--studio' requires '--rest'");
-  }
   return capabilities;
 }
 

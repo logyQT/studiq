@@ -126,11 +126,11 @@ export interface AppPortClaim {
 }
 
 /** How long a live claimant may hold a claim before its lease is written. */
-export const CLAIM_GRACE_MS = 5_000;
+const CLAIM_GRACE_MS = 5_000;
 
 const CLAIM_FILE_RE = /^port-(\d+)\.claim$/;
 
-export function claimsDir(dir: string): string {
+function claimsDir(dir: string): string {
   return join(dir, 'claims');
 }
 

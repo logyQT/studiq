@@ -250,6 +250,8 @@ Legacy camelCase fields (`stackId`, `branch`, `web`, `supabase`, `dbUrl`, `mailU
 
 Phases are serial (every phase touches `scripts/env/**`).
 
+`scripts/dev` and every `dev:*` script are deprecated/retired and deleted in phase 3; do not add features or fix bugs there.
+
 ### 12.1 Latency budgets (phase-0 baseline)
 
 Host: WSL2, Debian 12, x86_64, 16 vCPU, 19 GiB RAM, glibc 2.36, Bun 1.4.4, Supabase CLI 3.0.0, native artifact

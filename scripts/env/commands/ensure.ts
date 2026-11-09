@@ -1,3 +1,4 @@
+import { lstatSync } from 'node:fs';
 import type { ParsedCommand, RuntimeChoice } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from '../lib/exit';
 import { contractWithPort, readContract, type Contract } from '../lib/contract';
@@ -27,6 +28,7 @@ import { pidAlive, withCheckoutLock } from '../lib/locks';
 import {
   heartbeatAgeMs,
   isLeaseReclaimable,
+  leasePath,
   leaseProjectId,
   newLease,
   readLease,
@@ -169,7 +171,13 @@ async function resolveLease(
     // process is gone, its heartbeat expired and its stack is not running.
     reclaimForeign: async (foreign, port) => {
       const raw = readLease(dir, foreign.projectId);
-      if (!raw) return true;
+      if (!raw) {
+        // `readLease` also returns null for a foreign/non-env entry: only a
+        // genuinely missing file may be reclaimed, never one we do not own.
+        return (
+          lstatSync(leasePath(dir, foreign.projectId), { throwIfNoEntry: false }) === undefined
+        );
+      }
       const listed = readStackList();
       if (listed === null) return false;
       const running = listed.some(
@@ -391,7 +399,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       return 0;
     }
 
-    let running = stack !== null;
+    let cold = false;
     if (stack) {
       const missing = missingCapabilities(observedCapabilities(stack.services), requested);
       if (missing.length > 0) {
@@ -404,18 +412,16 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       if (!(await probeCapabilities(requested, probeContextFromStatus(stack.status))).ok) {
         stopStack(cliStackName);
         stack = null;
-        running = false;
       }
     }
-    let cold = false;
     if (!stack) {
+      cold = true;
       const runtime = runtimeFor(
         options.runtime,
         readListedStackRuntime(cliStackName),
         options.profile,
       );
       const timeout = (options.waitSeconds ?? 180) * 1000;
-      if (running) stopStack(cliStackName);
       const result = startStack({
         stackName: cliStackName,
         runtime,
@@ -436,7 +442,6 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       stack = readStack(cliStackName);
       if (!stack) throw new EnvFailure(EXIT_START_FAILED, 'stack started without endpoints');
       assertOwnedStack(stack, cliStackName);
-      cold = !running;
       if (!(await waitReady(requested, stack, options.waitSeconds ?? 180))) {
         throw new EnvFailure(EXIT_TIMEOUT, 'stack did not become ready');
       }

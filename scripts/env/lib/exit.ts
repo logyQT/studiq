@@ -5,6 +5,7 @@
  * native runtime, `4` a failed start/build, `5` a timeout and `6` a conflict
  * (another checkout owns the stack, shared-mode refusal, missing capability).
  */
+/** @public Exercised by the unit tests, which load this module by computed URL. */
 export const EXIT_OK = 0;
 export const EXIT_USAGE = 2;
 export const EXIT_NATIVE_UNAVAILABLE = 3;

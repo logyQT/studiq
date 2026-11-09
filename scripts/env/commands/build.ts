@@ -31,8 +31,13 @@ export async function runBuild(parsed: ParsedCommand): Promise<number> {
   // The checkout lock also covers the lease read this build adopts.
   return withCheckoutLock(async () => {
     const appEnv = resolveLocalAppEnv();
-    const base = contractWithLease(readContract());
-    const contract = { ...base, stackName: options.stack ?? base.stackName };
+    // Select the requested stack before resolving its lease, so lease-derived
+    // URLs/ports belong to the stack this build is actually for.
+    const base = readContract();
+    const contract = contractWithLease({
+      ...base,
+      stackName: options.stack ?? base.stackName,
+    });
     process.env.APP_PORT = String(contract.appPort);
     process.env.APP_URL = contract.appUrl;
     process.env.NEXT_PUBLIC_SITE_URL ||= contract.appUrl;

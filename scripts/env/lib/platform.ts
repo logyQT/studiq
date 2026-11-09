@@ -38,6 +38,7 @@ export interface PlatformFacts {
   nativePostgresUser: string | undefined;
 }
 
+/** @public Exercised by the unit tests, which load this module by computed URL. */
 export function nativeUnsupportedReasonFor(facts: PlatformFacts): string | null {
   if (facts.platform === 'linux') {
     if (facts.arch !== 'x64' && facts.arch !== 'arm64') {
@@ -100,10 +101,4 @@ export function selectRuntime(flag: RuntimeChoice | null): RuntimeSelection {
     throw new UsageError('SUPABASE_RUNTIME=podman is not supported; use native or docker');
   }
   throw new UsageError(`SUPABASE_RUNTIME='${env}' is not valid (expected native or docker)`);
-}
-
-export const DOCKER_NOTICE = 'runtime=docker (explicit; expect slower boots)';
-
-export function dockerStackWarning(): string {
-  return 'this stack uses runtime=docker (explicit); recreate with --runtime native to convert';
 }

@@ -69,8 +69,11 @@ describe('env profiles (phase 2)', () => {
     ]);
   });
 
-  it('requires rest for studio', () => {
+  it('adds studio without requiring a second atom (every profile has rest)', () => {
     expect(() => profiles.buildCapabilities('api', ['studio'])).not.toThrow();
+  });
+
+  it('reports requested capabilities the stack is missing', () => {
     expect(profiles.missingCapabilities(['database', 'auth'], ['mail'])).toEqual(['mail']);
   });
 

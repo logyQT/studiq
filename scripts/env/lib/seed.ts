@@ -19,6 +19,7 @@ export function runSeeder(profile: ProfileName, env: NodeJS.ProcessEnv): void {
     cwd: REPO_ROOT,
     env,
     stdio: ['ignore', process.stderr, process.stderr],
+    timeout: 600_000,
   });
   if (result.status !== 0) throw new EnvFailure(EXIT_START_FAILED, `seeder '${script}' failed`);
 }
