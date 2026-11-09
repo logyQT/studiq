@@ -578,8 +578,9 @@ describe('exclusive stale-claim recovery', () => {
     lease.claimAppPort(dir, 3000, 'env-dead', 999_999_999);
     const go = join(dir, 'go');
     const projectIds = ['env-first', 'env-second'];
+    const script = recoveryScript(dir);
     const pending = projectIds.map((projectId) =>
-      runChild(recoveryScript(dir), [projectId, go], {
+      runChild(script, [projectId, go], {
         ...process.env,
         ...env,
         STUDIQ_DEV_REGISTRY: dir,

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { startHttpServer } from '#test/unit/env/support';
+import { startHttpServer, startTcpListener } from '#test/unit/env/support';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface ListenerLookup {
@@ -24,6 +24,7 @@ interface WebReadiness {
 interface WebModule {
   readWebPid(): number | null;
   readWebPort(): number | null;
+  lookupListeners(port: number): ListenerLookup;
   assessWebReadiness(
     input: { pid: number | null; appPort: number; recordedPort: number | null },
     ownership?: ListenerOwnership,
@@ -281,4 +282,28 @@ describe('web readiness is bound to the recorded listener', () => {
       await server.close();
     }
   });
+});
+
+describe('listener lookup without lsof', () => {
+  it.skipIf(process.platform !== 'linux' || !existsSync('/proc/net/tcp'))(
+    'uses the /proc listener table instead of reporting unsupported',
+    async () => {
+      const listener = await startTcpListener(0, '127.0.0.1');
+      const withoutLsof = mkdtempSync(join(tmpdir(), 'studiq-env-no-lsof-'));
+      const savedPath = process.env.PATH;
+      try {
+        // An empty PATH makes `lsof` an ENOENT inside the lookup.
+        process.env.PATH = withoutLsof;
+
+        const result = web.lookupListeners(listener.port);
+
+        expect(result.state).toBe('ok');
+        expect(result.pids).toContain(process.pid);
+      } finally {
+        process.env.PATH = savedPath;
+        rmSync(withoutLsof, { recursive: true, force: true });
+        await listener.close();
+      }
+    },
+  );
 });

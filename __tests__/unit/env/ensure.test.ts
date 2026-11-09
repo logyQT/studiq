@@ -30,6 +30,7 @@ interface RebuildWebGuard {
 
 interface WebModule {
   rebuildWithWebStopped<T>(build: () => Promise<T>, guard?: RebuildWebGuard): Promise<T>;
+  stopWebServerForReplacement(guard?: RebuildWebGuard): { pid: number | null; stopped: boolean };
 }
 
 const leaseModule = await loadEnvModule<LeaseModule>('lib/lease.ts');
@@ -231,6 +232,60 @@ describe('env:ensure rebuild stops the server first', () => {
     await expect(
       webModule.rebuildWithWebStopped(() => Promise.resolve('built'), guard),
     ).resolves.toBe('built');
+    expect(stops).toBe(0);
+  });
+});
+
+describe('env:ensure never starts a replacement over a surviving server', () => {
+  it('aborts the replacement start when the stop leaves the old server alive', () => {
+    let started = false;
+    const guard: RebuildWebGuard = {
+      readPid: () => 4242,
+      stop: () => ({ pid: 4242, stopped: false }),
+      alive: (pid) => pid === 4242,
+    };
+
+    const error = (() => {
+      try {
+        webModule.stopWebServerForReplacement(guard);
+        started = true;
+        return null;
+      } catch (reason: unknown) {
+        return reason;
+      }
+    })();
+
+    expect(error).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    expect(error instanceof Error ? error.message : '').toContain('still running after stop');
+    expect(started).toBe(false);
+  });
+
+  it('starts the replacement once the stop really removed the server', () => {
+    let pid: number | null = 4242;
+    const guard: RebuildWebGuard = {
+      readPid: () => pid,
+      stop: () => {
+        pid = null;
+        return { pid: 4242, stopped: true };
+      },
+      alive: () => false,
+    };
+
+    expect(webModule.stopWebServerForReplacement(guard)).toEqual({ pid: 4242, stopped: true });
+  });
+
+  it('starts without stopping when no server is recorded', () => {
+    let stops = 0;
+    const guard: RebuildWebGuard = {
+      readPid: () => null,
+      stop: () => {
+        stops += 1;
+        return { pid: null, stopped: false };
+      },
+      alive: () => false,
+    };
+
+    expect(webModule.stopWebServerForReplacement(guard)).toEqual({ pid: null, stopped: false });
     expect(stops).toBe(0);
   });
 });

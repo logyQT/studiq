@@ -62,6 +62,7 @@ import {
   rebuildWithWebStopped,
   startWebServer,
   stopWebServer,
+  stopWebServerForReplacement,
   waitForWeb,
   webLogPath,
 } from '../lib/web';
@@ -375,7 +376,8 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       if (options.serve && (!healthy(webHttp) || !warmWeb.ready)) {
         // Any owned server that is not (healthy and) serving the leased port is
         // replaced, so a foreign listener on the port cannot be mistaken for it.
-        if (webPid) stopWebServer();
+        // A stop that leaves the old server alive aborts the replacement.
+        if (webPid) stopWebServerForReplacement();
         webPid = startWebServer({
           appPort: contract.appPort,
           appUrl: contract.appUrl,
@@ -514,7 +516,9 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
     const warmWeb = recordedWebReadiness(contract.appPort);
     let webHttp = await probeHttp(contract.appUrl);
     if (options.serve && (built || !healthy(webHttp) || !warmWeb.ready)) {
-      if (webPid) stopWebServer();
+      // A server that survives its stop would race the replacement for the port;
+      // the guard aborts instead of starting a second one.
+      if (webPid) stopWebServerForReplacement();
       webPid = startWebServer({
         appPort: contract.appPort,
         appUrl: contract.appUrl,

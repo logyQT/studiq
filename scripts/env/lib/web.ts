@@ -207,6 +207,28 @@ export function stopWebServer(): StopWebResult {
   return { pid, stopped: terminateWebPid(pid) };
 }
 
+/**
+ * Stop this checkout's recorded server before a replacement is started. A
+ * declined or incomplete stop must abort: starting a second server would race
+ * the survivor for the port and leave an orphan answering requests, so a live
+ * PID after the stop is a conflict, not a warning.
+ */
+export function stopWebServerForReplacement(
+  guard: RebuildWebGuard = defaultRebuildWebGuard,
+): StopWebResult {
+  const pid = guard.readPid();
+  if (pid === null) return { pid: null, stopped: false };
+  const result = guard.stop();
+  const survivor = guard.readPid() ?? (result.stopped ? null : guard.alive(pid) ? pid : null);
+  if (survivor !== null) {
+    throw new EnvFailure(
+      EXIT_CONFLICT,
+      `web server (pid ${survivor}) is still running after stop; refusing to start a replacement.`,
+    );
+  }
+  return result;
+}
+
 export interface StartWebOptions {
   appPort: number;
   appUrl: string;
@@ -266,18 +288,18 @@ export type ListenerLookup =
  * real server (or a host that happens to have `lsof`).
  */
 export interface ListenerOwnership {
-  /** PIDs listening on TCP `port`; `unsupported` when `lsof` is unavailable. */
+  /** PIDs listening on TCP `port`; `unsupported` only when neither `lsof` nor `/proc` can answer. */
   listeners(port: number): ListenerLookup;
   /** Whether `listenerPid` belongs to the recorded server process. */
   owns(recordedPid: number, listenerPid: number): boolean;
 }
 
 /**
- * Linux-only `/proc` fallback for lsof's blind spot: lsof 4.95 cannot parse a
- * process whose `comm` contains a space, and Next 16 names its server
- * `next-server (v16.4.4)`, so the exact lsof query returns nothing even though
- * the socket is listening. `null` means the table could not be read (treat the
- * listener as unverifiable); `[]` means nothing listens on the port.
+ * Linux-only `/proc` fallback for lsof: it covers lsof's blind spot (4.95 cannot
+ * parse a process whose `comm` contains a space, and Next 16 names its server
+ * `next-server (v16.4.4)`) and hosts where `lsof` is absent entirely. `null`
+ * means the table could not be read (treat the listener as unverifiable); `[]`
+ * means nothing listens on the port.
  */
 function procListenerPids(port: number): number[] | null {
   if (process.platform !== 'linux') return null;
@@ -326,15 +348,19 @@ function procListenerPids(port: number): number[] | null {
   return pids;
 }
 
-function lookupListeners(port: number): ListenerLookup {
+/** @public Exercised by the unit tests, which load this module by computed URL. */
+export function lookupListeners(port: number): ListenerLookup {
   const result = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], {
     encoding: 'utf8',
     timeout: 5_000,
   });
   const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
-  // `lsof` is absent on some Linux images: skip the listener proof rather than
-  // turning every readiness check into a failure there.
-  if (code === 'ENOENT') return { state: 'unsupported' };
+  // `lsof` is absent on some Linux images: fall back to `/proc` there instead of
+  // skipping the listener proof (an empty list still means "nothing listens").
+  if (code === 'ENOENT') {
+    const fallback = procListenerPids(port);
+    return fallback === null ? { state: 'unsupported' } : { state: 'ok', pids: fallback };
+  }
   if (result.error || result.status === null) return { state: 'failed' };
   // `lsof` exits 1 when nothing matches; that is a valid "no listener".
   if (result.status !== 0 && result.status !== 1) return { state: 'failed' };
