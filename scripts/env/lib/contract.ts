@@ -48,9 +48,54 @@ function readStackName(): string | null {
   return raw;
 }
 
+/** Ports a scheme implies when the URL omits an explicit one. */
+const DEFAULT_PORTS: Record<string, number> = { 'http:': 80, 'https:': 443 };
+
+/**
+ * A URL this checkout serves itself: `APP_PORT` and `APP_URL` then describe the
+ * same listener, so the two must agree. Hosted/proxied URLs are exempt.
+ */
+function isLoopbackUrl(url: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
+}
+
+/** The URL's effective port (explicit, else the scheme default), or null. */
+function effectivePort(url: string): number | null {
+  const fromUrl = urlPort(url);
+  if (fromUrl) return parsePort(fromUrl, 'APP_URL');
+  try {
+    return DEFAULT_PORTS[new URL(url).protocol] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function readAppPort(appUrl: string): number {
   const explicit = process.env.APP_PORT ?? '';
-  if (explicit) return parsePort(explicit, 'APP_PORT');
+  if (!appUrl) return explicit ? parsePort(explicit, 'APP_PORT') : 3000;
+
+  const effective = isLoopbackUrl(appUrl) ? effectivePort(appUrl) : null;
+  if (explicit) {
+    const port = parsePort(explicit, 'APP_PORT');
+    if (effective !== null && port !== effective) {
+      throw new UsageError(
+        `APP_PORT=${port} does not match loopback APP_URL ${appUrl} (port ${effective}); set one or align them`,
+      );
+    }
+    return port;
+  }
+  if (effective !== null) return effective;
   const fromUrl = urlPort(appUrl);
   if (fromUrl) return parsePort(fromUrl, 'APP_URL');
   return 3000;
