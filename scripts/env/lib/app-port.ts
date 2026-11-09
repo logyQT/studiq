@@ -90,8 +90,8 @@ export async function chooseAppPort(input: ChooseAppPortInput): Promise<number> 
 
 /**
  * Atomic claim. A claim whose checkout never wrote a lease (crashed selector,
- * killed process) is removed and re-claimed; a live claim inside its grace
- * period is left alone.
+ * killed process) is removed and re-claimed; a live claim is left alone — age
+ * is not evidence, only a dead owner or a reused pid (different start time) is.
  *
  * A lease-backed claim is only ever reclaimed through `reclaimForeign`, which
  * re-reads the holder's lease with its heartbeat — claim age alone never

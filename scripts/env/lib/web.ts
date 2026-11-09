@@ -2,6 +2,7 @@ import { closeSync, openSync, readFileSync, rmSync, statSync, writeFileSync } fr
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { probeHttp } from './health';
+import { EXIT_CONFLICT, EnvFailure } from './exit';
 import { DEV_DIR, ensureDevDir } from './state';
 import { REPO_ROOT } from './repo';
 import { pidAlive } from './locks';
@@ -116,6 +117,43 @@ export interface StopWebResult {
   pid: number | null;
   /** True only when this checkout's server was signalled and is now gone. */
   stopped: boolean;
+}
+
+/** The process facts the rebuild guard needs (injected so it is testable). */
+export interface RebuildWebGuard {
+  readPid(): number | null;
+  stop(): StopWebResult;
+  alive(pid: number): boolean;
+}
+
+const defaultRebuildWebGuard: RebuildWebGuard = {
+  readPid: () => readWebPid(),
+  stop: () => stopWebServer(),
+  alive: (pid) => pidAlive(pid),
+};
+
+/**
+ * A rebuild replaces `apps/web/.next` under the running server, so the server
+ * must be *gone* first — not merely asked to stop. `stopWebServer` can decline
+ * (no marker, a signalled group that survived), and the build would then race a
+ * live server, so a surviving PID aborts before the caller builds anything.
+ */
+export async function rebuildWithWebStopped<T>(
+  build: () => Promise<T>,
+  guard: RebuildWebGuard = defaultRebuildWebGuard,
+): Promise<T> {
+  const pid = guard.readPid();
+  if (pid !== null) {
+    guard.stop();
+    const survivor = guard.readPid() ?? (guard.alive(pid) ? pid : null);
+    if (survivor !== null) {
+      throw new EnvFailure(
+        EXIT_CONFLICT,
+        `web server (pid ${survivor}) is still running after stop; refusing to rebuild over it.`,
+      );
+    }
+  }
+  return build();
 }
 
 /** Stop only this checkout's web server; idempotent. */

@@ -50,7 +50,14 @@ import {
   writeStackState,
   type StackState,
 } from '../lib/state';
-import { readWebPid, startWebServer, stopWebServer, waitForWeb, webLogPath } from '../lib/web';
+import {
+  readWebPid,
+  rebuildWithWebStopped,
+  startWebServer,
+  stopWebServer,
+  waitForWeb,
+  webLogPath,
+} from '../lib/web';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
 import { collectSnapshot } from '../lib/snapshot';
@@ -340,8 +347,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
             computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
           buildArtifactPresent();
         if (options.forceBuild || !current) {
-          if (readWebPid()) stopWebServer();
-          const result = await runProductionBuild(envHash);
+          const result = await rebuildWithWebStopped(() => runProductionBuild(envHash));
           if (!result.ok) {
             logBuildOutput(result.output);
             throw new EnvFailure(
@@ -464,8 +470,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
         buildArtifactPresent();
       if (options.forceBuild || !current) {
-        if (readWebPid()) stopWebServer();
-        const result = await runProductionBuild(envHash);
+        const result = await rebuildWithWebStopped(() => runProductionBuild(envHash));
         if (!result.ok) {
           logBuildOutput(result.output);
           throw new EnvFailure(

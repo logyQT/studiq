@@ -21,11 +21,22 @@ interface LeaseModule {
   readLease(dir: string, projectId: string): Record<string, unknown> | null;
 }
 
+interface RebuildWebGuard {
+  readPid(): number | null;
+  stop(): { pid: number | null; stopped: boolean };
+  alive(pid: number): boolean;
+}
+
+interface WebModule {
+  rebuildWithWebStopped<T>(build: () => Promise<T>, guard?: RebuildWebGuard): Promise<T>;
+}
+
 const leaseModule = await loadEnvModule<LeaseModule>('lib/lease.ts');
 const stateModule = await loadEnvModule<{
   identityKey(root: string, branch: string, stack: string): string;
 }>('lib/state.ts');
 const repoModule = await loadEnvModule<{ currentBranchRef(): string }>('lib/repo.ts');
+const webModule = await loadEnvModule<WebModule>('lib/web.ts');
 
 const harnesses: Harness[] = [];
 const closers: Array<{ close(): Promise<void> | void }> = [];
@@ -144,6 +155,61 @@ describe('env:ensure workdir and stack ownership', () => {
     expect(calls).not.toContain('stack start');
     expect(calls).not.toContain('stack stop');
     expect(result.stderr).not.toContain('sentinel-anon-key-value');
+  });
+});
+
+describe('env:ensure rebuild stops the server first', () => {
+  it('aborts without building when the stopped server is still alive', async () => {
+    let built = false;
+    const guard: RebuildWebGuard = {
+      readPid: () => 4242,
+      stop: () => ({ pid: 4242, stopped: false }),
+      alive: (pid) => pid === 4242,
+    };
+
+    const error: unknown = await webModule
+      .rebuildWithWebStopped(() => {
+        built = true;
+        return Promise.resolve('built');
+      }, guard)
+      .catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    expect(error instanceof Error ? error.message : '').toContain('still running after stop');
+    expect(built).toBe(false);
+  });
+
+  it('builds once the stop really removed the server', async () => {
+    let pid: number | null = 4242;
+    const guard: RebuildWebGuard = {
+      readPid: () => pid,
+      stop: () => {
+        pid = null;
+        return { pid: 4242, stopped: true };
+      },
+      alive: () => false,
+    };
+
+    await expect(
+      webModule.rebuildWithWebStopped(() => Promise.resolve('built'), guard),
+    ).resolves.toBe('built');
+  });
+
+  it('builds without stopping when no server is recorded', async () => {
+    let stops = 0;
+    const guard: RebuildWebGuard = {
+      readPid: () => null,
+      stop: () => {
+        stops += 1;
+        return { pid: null, stopped: false };
+      },
+      alive: () => false,
+    };
+
+    await expect(
+      webModule.rebuildWithWebStopped(() => Promise.resolve('built'), guard),
+    ).resolves.toBe('built');
+    expect(stops).toBe(0);
   });
 });
 

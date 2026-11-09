@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
   chmodSync,
@@ -123,10 +124,13 @@ export interface AppPortClaim {
   appPort: number;
   ownerPid: number;
   createdAt: string;
+  /**
+   * `ps -o lstart=` of `ownerPid` at claim time (null when `ps` could not tell).
+   * It is the PID-reuse witness: a live pid started at another time is a
+   * different process, so the claim belongs to a dead claimant.
+   */
+  ownerStartedAt: string | null;
 }
-
-/** How long a live claimant may hold a claim before its lease is written. */
-const CLAIM_GRACE_MS = 5_000;
 
 const CLAIM_FILE_RE = /^port-(\d+)\.claim$/;
 
@@ -138,13 +142,31 @@ function claimFile(dir: string, port: number): string {
   return join(claimsDir(dir), `port-${port}.claim`);
 }
 
-function claimBody(port: number, projectId: string, ownerPid: number): string {
+function claimBody(
+  port: number,
+  projectId: string,
+  ownerPid: number,
+  ownerStartedAt: string | null,
+): string {
   return `${JSON.stringify({
     projectId,
     appPort: port,
     ownerPid,
     createdAt: new Date().toISOString(),
+    ownerStartedAt,
   })}\n`;
+}
+
+/** `ps -o lstart= -p <pid>`: process identity, trimmed; null when unavailable. */
+function processStartedAt(pid: number): string | null {
+  if (!Number.isInteger(pid) || pid <= 1) return null;
+  const result = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  if (result.status !== 0) return null;
+  const value = (result.stdout ?? '').trim();
+  return value === '' ? null : value;
 }
 
 export function readAppPortClaim(dir: string, port: number): AppPortClaim | null {
@@ -160,6 +182,7 @@ export function readAppPortClaim(dir: string, port: number): AppPortClaim | null
       appPort: port,
       ownerPid: num(parsed.ownerPid),
       createdAt: str(parsed.createdAt),
+      ownerStartedAt: str(parsed.ownerStartedAt) || null,
     };
   } catch {
     return null;
@@ -185,7 +208,7 @@ export function claimAppPort(
 ): AppPortClaimResult {
   ensureRegistrySubdir('claims', dir);
   const file = claimFile(dir, port);
-  const body = claimBody(port, projectId, ownerPid);
+  const body = claimBody(port, projectId, ownerPid, processStartedAt(ownerPid));
   try {
     writeFileSync(file, body, { mode: 0o600, flag: 'wx' });
     chmodSync(file, 0o600);
@@ -240,15 +263,18 @@ export function releaseProjectClaims(
 
 /**
  * A claim is stale when its checkout has no lease left behind and either its
- * owner died (the lease can never arrive) or it is older than the grace period
- * (a crashed claimant whose pid was reused). A live claim is never stolen
- * while its lease exists — the lease's own reclaim rules decide that.
+ * owner died (the lease can never arrive) or its live pid belongs to another
+ * process (pid reuse, proven by a different start time). Age alone is never
+ * evidence: a slow-but-live claimant keeps its reservation. A claim whose lease
+ * exists is never stale — the lease's own reclaim rules decide that.
  */
-export function isClaimStale(dir: string, claim: AppPortClaim, now = Date.now()): boolean {
+export function isClaimStale(dir: string, claim: AppPortClaim): boolean {
   if (readLease(dir, claim.projectId)) return false;
   if (!pidAlive(claim.ownerPid)) return true;
-  const created = Date.parse(claim.createdAt);
-  return !Number.isFinite(created) || now - created > CLAIM_GRACE_MS;
+  const startedAt = processStartedAt(claim.ownerPid);
+  // Unknown start times on either side are not proof of reuse: keep the claim
+  // for the live pid instead of guessing.
+  return claim.ownerStartedAt !== null && startedAt !== null && startedAt !== claim.ownerStartedAt;
 }
 
 export function heartbeatAgeMs(lease: AppLease, now = Date.now()): number {

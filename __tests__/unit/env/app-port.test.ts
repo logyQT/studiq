@@ -14,6 +14,7 @@ interface AppPortClaim {
   appPort: number;
   ownerPid: number;
   createdAt: string;
+  ownerStartedAt: string | null;
 }
 
 interface LeaseModule {
@@ -25,7 +26,7 @@ interface LeaseModule {
   ): { ok: boolean; holder: AppPortClaim | null };
   readAppPortClaim(dir: string, port: number): AppPortClaim | null;
   releaseAppPortClaim(dir: string, port: number, projectId: string): boolean;
-  isClaimStale(dir: string, claim: AppPortClaim, now?: number): boolean;
+  isClaimStale(dir: string, claim: AppPortClaim): boolean;
   writeLease(lease: Record<string, unknown>): void;
   readLease(dir: string, projectId: string): Record<string, unknown> | null;
   removeLease(dir: string, projectId: string): void;
@@ -218,6 +219,35 @@ describe('cross-checkout app-port claims (spec §5)', () => {
       else process.env.STUDIQ_DEV_REGISTRY = savedRegistry;
     }
     expect(lease.isClaimStale(dir, requireClaim(dir, 3100))).toBe(false);
+  });
+
+  it('keeps a live claim at any age and only expires it on pid evidence', () => {
+    const dir = registry();
+    lease.claimAppPort(dir, 3200, 'env-live', process.pid);
+    const claimPath = join(dir, 'claims', 'port-3200.claim');
+    const original = requireClaim(dir, 3200);
+    // The start time is captured when the claim is written.
+    expect(original.ownerStartedAt).toBeTruthy();
+
+    const rewrite = (fields: Record<string, unknown>): void => {
+      writeFileSync(claimPath, `${JSON.stringify({ ...original, ...fields })}\n`);
+    };
+
+    // Age alone never expires a claim whose owner is alive.
+    rewrite({ createdAt: new Date(0).toISOString() });
+    expect(lease.isClaimStale(dir, requireClaim(dir, 3200))).toBe(false);
+
+    // A start time that cannot belong to the live pid proves pid reuse.
+    rewrite({ ownerStartedAt: 'Thu Jan  1 00:00:00 1970' });
+    expect(lease.isClaimStale(dir, requireClaim(dir, 3200))).toBe(true);
+
+    // With no start evidence, a live pid keeps the claim.
+    rewrite({ ownerStartedAt: null });
+    expect(lease.isClaimStale(dir, requireClaim(dir, 3200))).toBe(false);
+
+    // A dead owner is stale regardless of the recorded start time.
+    lease.claimAppPort(dir, 3201, 'env-dead', 999_999_999);
+    expect(lease.isClaimStale(dir, requireClaim(dir, 3201))).toBe(true);
   });
 
   it('moves to the next candidate when another checkout holds the claim', async () => {
