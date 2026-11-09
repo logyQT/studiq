@@ -157,12 +157,27 @@ function claimBody(
   })}\n`;
 }
 
-/** `ps -o lstart= -p <pid>`: process identity, trimmed; null when unavailable. */
+/**
+ * `ps -o lstart= -p <pid>`: process identity, trimmed; null when unavailable.
+ *
+ * `lstart` is rendered in the caller's timezone and locale, so the claim writer
+ * and a later checker with a different `TZ`/`LC_*`/`LANG` would read two
+ * different strings for the same live pid — and the checker would mistake a
+ * live claimant for a reused pid and steal the claim. Pin the environment so
+ * every process produces the identical identity string.
+ */
 function processStartedAt(pid: number): string | null {
   if (!Number.isInteger(pid) || pid <= 1) return null;
   const result = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
     encoding: 'utf8',
     timeout: 5_000,
+    env: {
+      ...process.env,
+      TZ: 'UTC',
+      LC_ALL: 'C',
+      LANG: 'C',
+      LC_TIME: 'C',
+    },
   });
   if (result.status !== 0) return null;
   const value = (result.stdout ?? '').trim();

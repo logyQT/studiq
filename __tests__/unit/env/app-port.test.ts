@@ -250,6 +250,39 @@ describe('cross-checkout app-port claims (spec §5)', () => {
     expect(lease.isClaimStale(dir, requireClaim(dir, 3201))).toBe(true);
   });
 
+  it('keeps a live claim when the checker runs under another timezone and locale', () => {
+    const dir = registry();
+    const keys = ['TZ', 'LC_ALL', 'LANG', 'LC_TIME'] as const;
+    const saved = new Map(keys.map((key) => [key, process.env[key]]));
+    const restore = (): void => {
+      for (const key of keys) {
+        const value = saved.get(key);
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    };
+    try {
+      // The claimant writes its start time under a pinned environment.
+      process.env.TZ = 'UTC';
+      process.env.LC_ALL = 'C';
+      process.env.LANG = 'C';
+      delete process.env.LC_TIME;
+      expect(lease.claimAppPort(dir, 3300, 'env-tz', process.pid).ok).toBe(true);
+      const written = requireClaim(dir, 3300);
+      expect(written.ownerStartedAt).toBeTruthy();
+
+      // A later checker with a different TZ/locale must read the same identity
+      // string, otherwise the live claimant looks like a reused pid.
+      process.env.TZ = 'Europe/Warsaw';
+      process.env.LC_ALL = 'pl_PL.UTF-8';
+      process.env.LANG = 'pl_PL.UTF-8';
+      process.env.LC_TIME = 'pl_PL.UTF-8';
+      expect(lease.isClaimStale(dir, requireClaim(dir, 3300))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
   it('moves to the next candidate when another checkout holds the claim', async () => {
     const dir = registry();
     lease.claimAppPort(dir, 3000, 'env-other', process.pid);
