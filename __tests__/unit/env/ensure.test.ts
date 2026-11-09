@@ -1,0 +1,214 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  createHarness,
+  firstFreePort,
+  objectField,
+  parseJsonObject,
+  REPO_ROOT,
+  stackStatusFixture,
+  startHttpServer,
+  startTcpListener,
+  type Harness,
+  type HttpServer,
+  type TcpListener,
+} from '#test/unit/env/support';
+import { loadEnvModule } from '#test/unit/env/load';
+
+interface LeaseModule {
+  leaseProjectId(identityKey: string): string;
+  newLease(input: Record<string, unknown>): Record<string, unknown>;
+  writeLease(lease: Record<string, unknown>): void;
+  readLease(dir: string, projectId: string): Record<string, unknown> | null;
+}
+
+const leaseModule = await loadEnvModule<LeaseModule>('lib/lease.ts');
+const stateModule = await loadEnvModule<{
+  identityKey(root: string, branch: string, stack: string): string;
+}>('lib/state.ts');
+const repoModule = await loadEnvModule<{ currentBranchRef(): string }>('lib/repo.ts');
+
+const harnesses: Harness[] = [];
+const closers: Array<{ close(): Promise<void> | void }> = [];
+
+afterEach(async () => {
+  for (const closer of closers.splice(0).toReversed()) await closer.close();
+  for (const harness of harnesses.splice(0)) await harness.cleanup();
+});
+
+function newHarness(): Harness {
+  const harness = createHarness();
+  harnesses.push(harness);
+  return harness;
+}
+
+/** Write this checkout's lease for the harness's stack name. */
+function writeLease(harness: Harness, appPort: number, stackName: string): string {
+  const branch = repoModule.currentBranchRef();
+  const projectId = leaseModule.leaseProjectId(
+    stateModule.identityKey(REPO_ROOT, branch, stackName),
+  );
+  const saved = process.env.STUDIQ_DEV_REGISTRY;
+  process.env.STUDIQ_DEV_REGISTRY = harness.registryDir;
+  try {
+    leaseModule.writeLease({
+      ...leaseModule.newLease({
+        projectId,
+        projectRoot: REPO_ROOT,
+        branch,
+        stackName,
+        appPort,
+        shared: false,
+        sharedOwner: null,
+        mode: 'dev',
+      }),
+      ownerPid: process.pid,
+    });
+  } finally {
+    if (saved === undefined) delete process.env.STUDIQ_DEV_REGISTRY;
+    else process.env.STUDIQ_DEV_REGISTRY = saved;
+  }
+  return projectId;
+}
+
+function harnessStackName(harness: Harness): string {
+  return harness.env.SUPABASE_STACK ?? '';
+}
+
+/** A running, fully healthy `api` stack so ensure takes the warm path. */
+async function healthyStack(harness: Harness): Promise<void> {
+  const http: HttpServer = await startHttpServer(200);
+  const db: TcpListener = await startTcpListener(0, '127.0.0.1');
+  closers.push(http, db);
+  const fixture = stackStatusFixture({ apiUrl: http.url, apiPort: http.port });
+  fixture.composition = {
+    members: [
+      { service: 'database' },
+      { service: 'rest' },
+      { service: 'auth' },
+      { service: 'storage' },
+    ],
+  };
+  fixture.endpoints = {
+    'rest.http': { port: http.port },
+    'auth.http': { port: http.port },
+    'database.sql': { port: db.port },
+    'studio.http': { port: 31136 },
+    'mail.http': { port: 20503 },
+    'mail.smtp': { port: 20395 },
+    'mail.pop3': { port: 29709 },
+    'pgmeta.http': { port: 29285 },
+  };
+  harness.setStatusFixture(fixture);
+}
+
+describe('env:ensure workdir and stack ownership', () => {
+  it('refuses a foreign SUPABASE_WORKDIR before any stack discovery', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(
+      stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
+    );
+
+    const result = await harness.run(['ensure', '--profile', 'api', '--no-seed'], {
+      SUPABASE_WORKDIR: '/tmp/foreign-checkout',
+    });
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('SUPABASE_WORKDIR');
+    expect(result.stderr).toContain(REPO_ROOT);
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('refuses a running stack whose project_root is another checkout', async () => {
+    const harness = newHarness();
+    const fixture = stackStatusFixture({
+      apiUrl: 'http://127.0.0.1:20041',
+      apiPort: 20041,
+    });
+    fixture.identity = {
+      id: 'foreign-fixture-id',
+      name: 'default',
+      project_root: '/tmp/foreign-checkout',
+      branch_context: 'refs/heads/other',
+    };
+    harness.setStatusFixture(fixture);
+
+    const result = await harness.run(['ensure', '--profile', 'api', '--no-seed']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('/tmp/foreign-checkout');
+    expect(result.stderr).toContain(REPO_ROOT);
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack status');
+    expect(calls).not.toContain('stack start');
+    expect(calls).not.toContain('stack stop');
+    expect(result.stderr).not.toContain('sentinel-anon-key-value');
+  });
+});
+
+describe('env:ensure keeps a live stack on its derived APP_URL port', () => {
+  it('refuses a different --app-port while a stack is running', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(
+      stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
+    );
+    const stackName = harnessStackName(harness);
+    const projectId = writeLease(harness, 3999, stackName);
+
+    const result = await harness.run([
+      'ensure',
+      '--profile',
+      'api',
+      '--no-seed',
+      '--app-port',
+      '3998',
+    ]);
+
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('differs from the running stack');
+    expect(result.stderr).toContain('env:down --all');
+    const calls = harness.bunxCalls();
+    expect(calls).not.toContain('stack start');
+    expect(calls).not.toContain('stack stop');
+    expect(leaseModule.readLease(harness.registryDir, projectId)?.appPort).toBe(3999);
+  });
+
+  it('accepts the same --app-port on a healthy running stack', async () => {
+    const harness = newHarness();
+    await healthyStack(harness);
+    const stackName = harnessStackName(harness);
+    writeLease(harness, 3999, stackName);
+
+    const result = await harness.run([
+      'ensure',
+      '--profile',
+      'api',
+      '--no-seed',
+      '--app-port',
+      '3999',
+      '--json',
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(objectField(parseJsonObject(result.stdout), 'ports').app).toBe(3999);
+  });
+
+  it('still allows a different --app-port when APP_URL is explicit', async () => {
+    const harness = newHarness();
+    await healthyStack(harness);
+    const stackName = harnessStackName(harness);
+    writeLease(harness, 3999, stackName);
+    const appPort = await firstFreePort(3900, new Set([3999]));
+
+    const result = await harness.run(
+      ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(appPort), '--json'],
+      {
+        APP_URL: `http://localhost:${appPort}`,
+      },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(objectField(parseJsonObject(result.stdout), 'ports').app).toBe(appPort);
+  });
+});

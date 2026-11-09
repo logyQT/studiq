@@ -147,17 +147,23 @@ function writeLease(dir: string, projectId: string, fields: Record<string, unkno
  * is re-read (heartbeat and pid included) and removed with its claim only when
  * the owner is gone, the TTL has expired and no stack is running.
  */
-function reclaimByLease(dir: string) {
+function reclaimByLease(dir: string, beforeRemove?: () => void) {
   return (entry: { projectId: string }, port: number): Promise<boolean> => {
     const raw = lease.readLease(dir, entry.projectId);
     if (!raw) return Promise.resolve(true);
-    const reclaimable = lease.isLeaseReclaimable({
-      pidAlive: locks.pidAlive(Number(raw.ownerPid)),
-      heartbeatAgeMs: lease.heartbeatAgeMs(raw),
-      ttlSec: Number(raw.ttlSec),
-      stackRunning: false,
-    });
-    if (!reclaimable) return Promise.resolve(false);
+    const reclaimable = (candidate: Record<string, unknown>): boolean =>
+      lease.isLeaseReclaimable({
+        pidAlive: locks.pidAlive(Number(candidate.ownerPid)),
+        heartbeatAgeMs: lease.heartbeatAgeMs(candidate),
+        ttlSec: Number(candidate.ttlSec),
+        stackRunning: false,
+      });
+    if (!reclaimable(raw)) return Promise.resolve(false);
+    beforeRemove?.();
+    // A heartbeat can be refreshed after the eligibility check: re-read before
+    // removing so a live lease (and its claim) is never stolen.
+    const latest = lease.readLease(dir, entry.projectId);
+    if (!latest || !reclaimable(latest)) return Promise.resolve(false);
     lease.removeLease(dir, entry.projectId);
     lease.releaseAppPortClaim(dir, port, entry.projectId);
     return Promise.resolve(true);
@@ -368,6 +374,37 @@ describe('cross-checkout app-port claims (spec §5)', () => {
     expect(chosen).toBe(3000);
     expect(lease.readAppPortClaim(dir, 3000)?.projectId).toBe('env-mine');
     expect(leaseFiles(dir)).toHaveLength(0);
+  });
+
+  it('re-reads a lease that is refreshed after the reclaim check', async () => {
+    const dir = registry();
+    lease.claimAppPort(dir, 3000, 'env-racing', process.pid);
+    writeLease(dir, 'env-racing', {
+      ownerPid: 999_999_999,
+      ttlSec: 60,
+      heartbeatAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    });
+
+    const chosen = await appPort.chooseAppPort({
+      dir,
+      projectId: 'env-mine',
+      candidates: [3000, 3001],
+      existingPort: null,
+      explicitPort: null,
+      isPortFree: () => Promise.resolve(true),
+      // The owner touches its lease between the eligibility check and removal.
+      reclaimForeign: reclaimByLease(dir, () => {
+        writeLease(dir, 'env-racing', {
+          ownerPid: 999_999_999,
+          ttlSec: 60,
+          heartbeatAt: new Date().toISOString(),
+        });
+      }),
+    });
+
+    expect(chosen).toBe(3001);
+    expect(lease.readAppPortClaim(dir, 3000)?.projectId).toBe('env-racing');
+    expect(lease.readLease(dir, 'env-racing')).not.toBeNull();
   });
 
   it('keeps a refreshed lease even when its claim file looks old', async () => {

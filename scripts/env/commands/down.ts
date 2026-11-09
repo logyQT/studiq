@@ -114,7 +114,9 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
 
     const stack = readStackStatus(cliStackName);
     if (!options.all) {
-      if (!stack && readStackList() !== null) {
+      // A null status alone proves nothing: only a readable list without this
+      // checkout's still-running entry confirms the stack is gone.
+      if (!stack && absenceConfirmed(cliStackName || 'default')) {
         releaseLease(dir, projectId);
         removeStackState();
         lines.push('Released the app-port lease (stack is stopped).');

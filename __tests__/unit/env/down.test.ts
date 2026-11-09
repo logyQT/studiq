@@ -6,6 +6,20 @@ import {
   stoppedStackFixture,
   type Harness,
 } from '#test/unit/env/support';
+import { loadEnvModule } from '#test/unit/env/load';
+
+interface LeaseModule {
+  leaseProjectId(identityKey: string): string;
+  newLease(input: Record<string, unknown>): Record<string, unknown>;
+  writeLease(lease: Record<string, unknown>): void;
+  readLease(dir: string, projectId: string): Record<string, unknown> | null;
+}
+
+const leaseModule = await loadEnvModule<LeaseModule>('lib/lease.ts');
+const stateModule = await loadEnvModule<{
+  identityKey(root: string, branch: string, stack: string): string;
+}>('lib/state.ts');
+const repoModule = await loadEnvModule<{ currentBranchRef(): string }>('lib/repo.ts');
 
 const harnesses: Harness[] = [];
 
@@ -17,6 +31,35 @@ function newHarness(): Harness {
   const harness = createHarness();
   harnesses.push(harness);
   return harness;
+}
+
+/** Write this checkout's lease for `stackName` (blank = branch default). */
+function writeLease(harness: Harness, stackName: string, appPort: number): string {
+  const branch = repoModule.currentBranchRef();
+  const projectId = leaseModule.leaseProjectId(
+    stateModule.identityKey(REPO_ROOT, branch, stackName),
+  );
+  const saved = process.env.STUDIQ_DEV_REGISTRY;
+  process.env.STUDIQ_DEV_REGISTRY = harness.registryDir;
+  try {
+    leaseModule.writeLease({
+      ...leaseModule.newLease({
+        projectId,
+        projectRoot: REPO_ROOT,
+        branch,
+        stackName,
+        appPort,
+        shared: false,
+        sharedOwner: null,
+        mode: 'dev',
+      }),
+      ownerPid: process.pid,
+    });
+  } finally {
+    if (saved === undefined) delete process.env.STUDIQ_DEV_REGISTRY;
+    else process.env.STUDIQ_DEV_REGISTRY = saved;
+  }
+  return projectId;
 }
 
 function listedStack(name: string, owner?: string): Record<string, unknown> {
@@ -60,6 +103,20 @@ describe('env:down stack selection', () => {
     expect(calls).toContain('stack status --output-format json');
     expect(calls).not.toContain('--stack');
     expect(calls).not.toContain('stack stop');
+  });
+
+  it('keeps the lease when a null status still lists our running stack', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    harness.setListFixture({ stacks: [listedStack('default', 'reachable')] });
+    const projectId = writeLease(harness, '', 3999);
+
+    const result = await harness.run(['down'], { SUPABASE_STACK: '' });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('Kept the app-port lease on 3999.');
+    expect(result.stderr).not.toContain('Released the app-port lease');
+    expect(leaseModule.readLease(harness.registryDir, projectId)).not.toBeNull();
   });
 
   it('uses an explicit --stack even when SUPABASE_STACK is invalid', async () => {

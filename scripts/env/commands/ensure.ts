@@ -5,7 +5,13 @@ import { assertNativeAvailable, selectRuntime } from '../lib/platform';
 import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { readRegistry } from '../lib/registry';
-import { REPO_ROOT, canon, currentBranchRef } from '../lib/repo';
+import {
+  REPO_ROOT,
+  canon,
+  currentBranchRef,
+  isThisCheckout,
+  isThisCheckoutWorkdir,
+} from '../lib/repo';
 import { readListedStackRuntime, readStack, readStackList, type StackRead } from '../lib/stack';
 import { applyStackEnv, startStack, stopStack } from '../lib/stack-lifecycle';
 import {
@@ -62,6 +68,31 @@ function withPort(contract: Contract, appPort: number): Contract {
 }
 
 /**
+ * `runSupabase` inherits `SUPABASE_WORKDIR`, and the CLI resolves the stack
+ * against it. Reject a foreign workdir before the first status/start/stop so
+ * this checkout can never discover, start or stop another checkout's stack.
+ */
+function assertOwnWorkdir(): void {
+  const workdir = process.env.SUPABASE_WORKDIR || null;
+  if (workdir !== null && !isThisCheckoutWorkdir(workdir)) {
+    throw new EnvFailure(
+      EXIT_CONFLICT,
+      `refusing to run with SUPABASE_WORKDIR '${workdir}': it is not this checkout (${REPO_ROOT}).`,
+    );
+  }
+}
+
+/** A stack read from status is only usable when `project_root` is this checkout. */
+function assertOwnedStack(stack: StackRead, stackName: string | null): void {
+  if (!isThisCheckout(stack.status.projectRoot)) {
+    throw new EnvFailure(
+      EXIT_CONFLICT,
+      `stack '${stackName || 'default'}' belongs to ${stack.status.projectRoot || 'an unknown checkout'}, not this checkout (${REPO_ROOT}); run 'env:down --all' then 'env:ensure' in its checkout.`,
+    );
+  }
+}
+
+/**
  * `.dev/stack.json` attributes the **web server** to a stack/profile; the
  * live-server guard reads it. A serving ensure owns the server, so it records
  * the requested profile. An API-only ensure must not overwrite a running
@@ -92,12 +123,37 @@ async function resolveLease(
     branch: string;
     explicitPort: number | null;
     serve: boolean;
+    /** A stack is already running and will be reused. */
+    runningStack: boolean;
   },
 ): Promise<{ contract: Contract; lease: AppLease; dir: string; projectId: string }> {
   const key = identityKey(REPO_ROOT, options.branch, options.stackName ?? '');
   const projectId = leaseProjectId(key);
   const dir = readRegistry().dir;
   const existing = readLease(dir, projectId);
+  // A running stack's auth redirects are bound to the URL it was started with,
+  // which the lease records. Moving the lease under it would leave those
+  // redirects on the old port, so a derived URL may not follow a new port.
+  const runningPort = options.runningStack ? existing?.appPort || contract.appPort : null;
+  const derivedUrl = !process.env.APP_URL;
+  if (
+    runningPort !== null &&
+    derivedUrl &&
+    options.explicitPort !== null &&
+    options.explicitPort !== runningPort
+  ) {
+    throw new EnvFailure(
+      EXIT_CONFLICT,
+      `app port ${options.explicitPort} differs from the running stack's port ${runningPort}; run 'env:down --all' then 'env:ensure'.`,
+    );
+  }
+  const reclaimable = (lease: AppLease, stackRunning: boolean): boolean =>
+    isLeaseReclaimable({
+      pidAlive: pidAlive(lease.ownerPid),
+      heartbeatAgeMs: heartbeatAgeMs(lease),
+      ttlSec: lease.ttlSec,
+      stackRunning,
+    });
   const chosen = await chooseAppPort({
     dir,
     projectId,
@@ -122,19 +178,23 @@ async function resolveLease(
           (stack.name || 'default') === (raw.stackName || 'default') &&
           stack.owner === 'reachable',
       );
-      const reclaimable =
-        isLeaseReclaimable({
-          pidAlive: pidAlive(raw.ownerPid),
-          heartbeatAgeMs: heartbeatAgeMs(raw),
-          ttlSec: raw.ttlSec,
-          stackRunning: running,
-        }) && (await freePort(port));
-      if (!reclaimable) return false;
+      if (!reclaimable(raw, running) || !(await freePort(port))) return false;
+      // The owner may have refreshed its heartbeat while the port was probed:
+      // never remove a lease that became live again.
+      const latest = readLease(dir, foreign.projectId);
+      if (!latest || !reclaimable(latest, running)) return false;
       removeLease(dir, foreign.projectId);
       releaseAppPortClaim(dir, port, foreign.projectId);
       return true;
     },
   });
+  if (runningPort !== null && derivedUrl && chosen !== runningPort) {
+    releaseAppPortClaim(dir, chosen, projectId);
+    throw new EnvFailure(
+      EXIT_CONFLICT,
+      `app port ${chosen} differs from the running stack's port ${runningPort}; run 'env:down --all' then 'env:ensure'.`,
+    );
+  }
   const next = withPort(contract, chosen);
   const lease = touchLease(
     existing ??
@@ -209,6 +269,7 @@ function emit(
 export async function runEnsure(parsed: ParsedCommand): Promise<number> {
   const options = parsed.ensure;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'ensure options are missing');
+  assertOwnWorkdir();
   const appEnv = resolveLocalAppEnv();
   const baseContract = readContract();
   const branch = currentBranchRef();
@@ -229,11 +290,17 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       if (conflict) return refuseConflict(parsed, baseContract, conflict);
     }
 
+    // Discover the running stack before touching the lease: a foreign stack is
+    // refused, and a live stack pins the derived APP_URL port it was started on.
+    let stack = baseContract.shared ? null : readStack(cliStackName);
+    if (stack) assertOwnedStack(stack, cliStackName);
+
     const lease = await resolveLease(baseContract, {
       stackName: cliStackName,
       branch,
       explicitPort: options.appPort,
       serve: options.serve,
+      runningStack: stack !== null,
     });
     const contract = { ...lease.contract, stackName: cliStackName };
     const { dir, projectId } = lease;
@@ -324,7 +391,6 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       return 0;
     }
 
-    let stack = readStack(cliStackName);
     let running = stack !== null;
     if (stack) {
       const missing = missingCapabilities(observedCapabilities(stack.services), requested);
@@ -369,6 +435,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       }
       stack = readStack(cliStackName);
       if (!stack) throw new EnvFailure(EXIT_START_FAILED, 'stack started without endpoints');
+      assertOwnedStack(stack, cliStackName);
       cold = !running;
       if (!(await waitReady(requested, stack, options.waitSeconds ?? 180))) {
         throw new EnvFailure(EXIT_TIMEOUT, 'stack did not become ready');

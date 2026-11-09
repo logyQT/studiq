@@ -28,6 +28,14 @@ export function isThisCheckout(path: string | null | undefined): boolean {
   return canon(path) === REPO_ROOT;
 }
 
+/**
+ * Whether a CLI `--workdir`/`SUPABASE_WORKDIR` value names this checkout. The
+ * CLI resolves a relative workdir from our cwd, which is the repo root.
+ */
+export function isThisCheckoutWorkdir(workdir: string): boolean {
+  return canon(workdir.startsWith('/') ? workdir : join(REPO_ROOT, workdir)) === REPO_ROOT;
+}
+
 function runGit(args: string[], input?: string): string | null {
   const result = spawnSync('git', ['-C', REPO_ROOT, ...args], {
     encoding: 'utf8',
