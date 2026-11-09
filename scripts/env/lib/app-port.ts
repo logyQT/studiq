@@ -1,9 +1,12 @@
 import { EXIT_CONFLICT, EnvFailure } from './exit';
+import { withClaimsLock } from './locks';
 import {
   claimAppPort,
   isClaimStale,
   readAppPortClaim,
   releaseAppPortClaim,
+  removeAppPortClaimIfHeldBy,
+  sameClaimHolder,
   type AppPortClaim,
 } from './lease';
 import { readRegistry, type RegistryEntry } from './registry';
@@ -102,11 +105,37 @@ async function acquireClaim(input: ChooseAppPortInput, port: number): Promise<bo
   if (claimAppPort(dir, port, projectId).ok) return true;
   const holder: AppPortClaim | null = readAppPortClaim(dir, port);
   if (!holder || holder.projectId === projectId) return false;
-  if (isClaimStale(dir, holder)) {
-    releaseAppPortClaim(dir, port, holder.projectId);
-    return claimAppPort(dir, port, projectId).ok;
-  }
+  if (isClaimStale(dir, holder)) return recoverStaleClaim(dir, port, projectId, holder);
   const entry = readRegistry(dir).entries.find((item) => item.projectId === holder.projectId);
   if (!entry || !(await input.reclaimForeign(entry, port))) return false;
   return claimAppPort(dir, port, projectId).ok;
+}
+
+/**
+ * Remove a stale claim and take it as one serialized unit.
+ *
+ * The stale path is a read → unlink → claim sequence: two recoverers can both
+ * validate the dead holder, one re-claims, and the other's pending unlink
+ * deletes the replacement. Under the registry-wide claims mutex the holder is
+ * re-read and only removed when it is still the claim the caller saw stale;
+ * if another recoverer already replaced it, this caller simply loses the race
+ * and moves to the next candidate. Callers that take the lock do so even when
+ * the claim vanished in between, so the `wx` claim stays the only writer.
+ */
+async function recoverStaleClaim(
+  dir: string,
+  port: number,
+  projectId: string,
+  observed: AppPortClaim,
+): Promise<boolean> {
+  return withClaimsLock(() => {
+    const current = readAppPortClaim(dir, port);
+    if (!current) return claimAppPort(dir, port, projectId).ok;
+    if (current.projectId === projectId) return claimAppPort(dir, port, projectId).ok;
+    // Only the exact observed holder may be removed; a replacement is never
+    // deleted, and a claim that became live again (lease written) is kept.
+    if (!sameClaimHolder(current, observed) || !isClaimStale(dir, current)) return false;
+    removeAppPortClaimIfHeldBy(dir, port, current);
+    return claimAppPort(dir, port, projectId).ok;
+  });
 }

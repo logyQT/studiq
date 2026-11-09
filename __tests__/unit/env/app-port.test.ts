@@ -1,5 +1,13 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -496,5 +504,111 @@ describe('cross-checkout app-port claims (spec §5)', () => {
     expect(chosen).toBe(3001);
     expect(lease.readAppPortClaim(dir, 3000)?.projectId).toBe('env-live');
     expect(lease.readLease(dir, 'env-live')).not.toBeNull();
+  });
+});
+
+function runChild(
+  script: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(BUN, [script, ...args], { env, detached: true });
+    children.push(child);
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      stdout += String(chunk);
+    });
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      stderr += String(chunk);
+    });
+    child.on('error', (error) => resolve({ code: null, stdout, stderr: error.message }));
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+function assertOneReplacement(
+  dir: string,
+  selected: Array<{ projectId: string; appPort: number }>,
+): void {
+  expect(selected.map((entry) => entry.appPort).toSorted()).toEqual([3000, 3001]);
+  const winner = selected.find((entry) => entry.appPort === 3000);
+  const loser = selected.find((entry) => entry.appPort === 3001);
+  if (!winner || !loser) throw new Error('expected one 3000 and one 3001 selection');
+  // The recovered claim survived: it is the winner's, not a lost replacement.
+  expect(requireClaim(dir, 3000).projectId).toBe(winner.projectId);
+  expect(requireClaim(dir, 3001).projectId).toBe(loser.projectId);
+}
+
+/**
+ * Two checkouts race to recover the same stale claim on 3000. Serialised
+ * recovery keeps the winner's replacement claim intact; the loser moves to
+ * 3001 instead of deleting the new claim.
+ */
+describe('exclusive stale-claim recovery', () => {
+  const candidates = [3000, 3001];
+
+  function recoveryScript(dir: string): string {
+    const script = join(dir, 'recover.ts');
+    writeFileSync(
+      script,
+      [
+        `const { chooseAppPort } = await import(${JSON.stringify(pathToFileURL(join(REPO_ROOT, 'scripts/env/lib/app-port.ts')).href)});`,
+        `const fs = await import('node:fs');`,
+        `const [projectId, go] = process.argv.slice(2);`,
+        `while (!fs.existsSync(go)) await new Promise((done) => setTimeout(done, 5));`,
+        `const port = await chooseAppPort({`,
+        `  dir: process.env.STUDIQ_DEV_REGISTRY,`,
+        `  projectId,`,
+        `  candidates: ${JSON.stringify(candidates)},`,
+        `  existingPort: null,`,
+        `  explicitPort: null,`,
+        `  isPortFree: () => Promise.resolve(true),`,
+        `  reclaimForeign: () => Promise.resolve(false),`,
+        `});`,
+        `console.log(JSON.stringify({ projectId, appPort: port }));`,
+        '',
+      ].join('\n'),
+    );
+    return script;
+  }
+
+  async function raceRecoverers(dir: string, env: NodeJS.ProcessEnv) {
+    lease.claimAppPort(dir, 3000, 'env-dead', 999_999_999);
+    const go = join(dir, 'go');
+    const projectIds = ['env-first', 'env-second'];
+    const pending = projectIds.map((projectId) =>
+      runChild(recoveryScript(dir), [projectId, go], {
+        ...process.env,
+        ...env,
+        STUDIQ_DEV_REGISTRY: dir,
+      }),
+    );
+    writeFileSync(go, 'go\n');
+    const results = await Promise.all(pending);
+    for (const result of results) expect(result.code, result.stderr).toBe(0);
+    return results.map((result) => selection(result.stdout));
+  }
+
+  it('serializes two recoverers of the same stale claim', async () => {
+    const dir = registry();
+    assertOneReplacement(dir, await raceRecoverers(dir, {}));
+  });
+
+  it('serializes stale recovery through the directory-mutex fallback', async () => {
+    const dir = registry();
+    // A `flock` that refuses to run forces the portable directory mutex (stock
+    // macOS has no flock); the rest of PATH still provides `ps` and `sh`.
+    const binDir = join(dir, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const fakeFlock = join(binDir, 'flock');
+    writeFileSync(fakeFlock, '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
+    chmodSync(fakeFlock, 0o755);
+
+    assertOneReplacement(
+      dir,
+      await raceRecoverers(dir, { PATH: `${binDir}:${process.env.PATH ?? ''}` }),
+    );
   });
 });

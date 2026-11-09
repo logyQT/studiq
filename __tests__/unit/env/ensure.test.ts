@@ -19,6 +19,7 @@ interface LeaseModule {
   newLease(input: Record<string, unknown>): Record<string, unknown>;
   writeLease(lease: Record<string, unknown>): void;
   readLease(dir: string, projectId: string): Record<string, unknown> | null;
+  readAppPortClaim(dir: string, port: number): { projectId: string } | null;
 }
 
 interface RebuildWebGuard {
@@ -83,6 +84,27 @@ function writeLease(harness: Harness, appPort: number, stackName: string): strin
 
 function harnessStackName(harness: Harness): string {
   return harness.env.SUPABASE_STACK ?? '';
+}
+
+function projectIdFor(harness: Harness): string {
+  return leaseModule.leaseProjectId(
+    stateModule.identityKey(REPO_ROOT, repoModule.currentBranchRef(), harnessStackName(harness)),
+  );
+}
+
+function liveStackFixture(harness: Harness): Record<string, unknown> {
+  return {
+    stacks: [
+      {
+        id: 'fixture-stack-id',
+        name: harnessStackName(harness),
+        project_root: REPO_ROOT,
+        branch_context: repoModule.currentBranchRef(),
+        runtime: 'native',
+        owner: 'reachable',
+      },
+    ],
+  };
 }
 
 /** A running, fully healthy `api` stack so ensure takes the warm path. */
@@ -276,5 +298,46 @@ describe('env:ensure keeps a live stack on its derived APP_URL port', () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(objectField(parseJsonObject(result.stdout), 'ports').app).toBe(appPort);
+  });
+});
+
+describe('env:ensure releases a failed start only when the stack is gone', () => {
+  it('keeps the lease and claim when the failed start cannot stop the stack', async () => {
+    const harness = newHarness();
+    harness.setListFixture(liveStackFixture(harness));
+    const appPort = await firstFreePort(3900);
+
+    const result = await harness.run(
+      ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(appPort)],
+      // Both the start and the follow-up stop fail, and the list still shows a
+      // reachable stack for this checkout: the port may still be in use.
+      { FAKE_SUPA_EXIT: '1' },
+    );
+
+    expect(result.status).toBe(4);
+    expect(result.stderr).toContain('keeping app port');
+    expect(result.stderr).toContain(String(appPort));
+    const projectId = projectIdFor(harness);
+    expect(leaseModule.readLease(harness.registryDir, projectId)?.appPort).toBe(appPort);
+    expect(leaseModule.readAppPortClaim(harness.registryDir, appPort)?.projectId).toBe(projectId);
+  });
+
+  it('releases the lease and claim when the list proves the stack is absent', async () => {
+    const harness = newHarness();
+    // No list fixture: the fake `stack list` reports no stacks at all, so the
+    // failed stop is forgiven like `down` does.
+    const appPort = await firstFreePort(3900);
+
+    const result = await harness.run(
+      ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(appPort)],
+      { FAKE_SUPA_EXIT: '1' },
+    );
+
+    expect(result.status).toBe(4);
+    expect(result.stderr).toContain('failed to start stack');
+    expect(result.stderr).not.toContain('keeping app port');
+    const projectId = projectIdFor(harness);
+    expect(leaseModule.readLease(harness.registryDir, projectId)).toBeNull();
+    expect(leaseModule.readAppPortClaim(harness.registryDir, appPort)).toBeNull();
   });
 });

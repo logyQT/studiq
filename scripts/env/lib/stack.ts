@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { REPO_ROOT, canon, currentBranchRef } from './repo';
+import { REPO_ROOT, canon, currentBranchRef, isThisCheckout } from './repo';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from './urls';
 
 /**
@@ -322,6 +322,22 @@ export function readStackList(): ListedStack[] | null {
     });
   }
   return listed;
+}
+
+/**
+ * Whether `stack list` proves this checkout's `wanted` stack is no longer
+ * running. A null status after a failed stop proves nothing, so only a readable
+ * list without an entry this checkout owns (with a reachable owner) counts.
+ */
+export function stackAbsenceConfirmed(wanted: string): boolean {
+  const listed = readStackList();
+  if (listed === null) return false;
+  return !listed.some(
+    (entry) =>
+      isThisCheckout(entry.projectRoot) &&
+      (entry.name || 'default') === wanted &&
+      entry.owner === 'reachable',
+  );
 }
 
 /** This checkout's stack entry from `stack list`, running or stopped. */

@@ -13,7 +13,13 @@ import {
   isThisCheckout,
   isThisCheckoutWorkdir,
 } from '../lib/repo';
-import { readListedStackRuntime, readStack, readStackList, type StackRead } from '../lib/stack';
+import {
+  readListedStackRuntime,
+  readStack,
+  readStackList,
+  stackAbsenceConfirmed,
+  type StackRead,
+} from '../lib/stack';
 import { applyStackEnv, startStack, stopStack } from '../lib/stack-lifecycle';
 import {
   observedCapabilities,
@@ -52,6 +58,7 @@ import {
 } from '../lib/state';
 import {
   readWebPid,
+  recordedWebReadiness,
   rebuildWithWebStopped,
   startWebServer,
   stopWebServer,
@@ -363,15 +370,18 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         }
       }
       let webPid = readWebPid();
+      const warmWeb = recordedWebReadiness(contract.appPort);
       let webHttp = await probeHttp(contract.appUrl);
-      if (options.serve && (!healthy(webHttp) || !webPid)) {
-        if (!healthy(webHttp) && webPid) stopWebServer();
+      if (options.serve && (!healthy(webHttp) || !warmWeb.ready)) {
+        // Any owned server that is not (healthy and) serving the leased port is
+        // replaced, so a foreign listener on the port cannot be mistaken for it.
+        if (webPid) stopWebServer();
         webPid = startWebServer({
           appPort: contract.appPort,
           appUrl: contract.appUrl,
           env: process.env,
         });
-        const waited = await waitForWeb(contract.appUrl, webPid, 120);
+        const waited = await waitForWeb(contract.appUrl, webPid, 120, contract.appPort);
         webHttp = waited.http;
         if (!waited.ok) {
           stopWebServer();
@@ -435,7 +445,18 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         timeoutMs: timeout,
       });
       if (!result.ok) {
-        stopStack(cliStackName);
+        // Same rule as `down`: a failed stop is only forgiven when `stack list`
+        // proves our stack is gone. Otherwise the stack may still own the port,
+        // so the lease and its claim stay put instead of being handed to the
+        // next checkout.
+        const stopped = stopStack(cliStackName);
+        if (!stopped.ok && !stackAbsenceConfirmed(cliStackName || 'default')) {
+          const heldPort = readLease(dir, projectId)?.appPort || contract.appPort;
+          throw new EnvFailure(
+            EXIT_START_FAILED,
+            `failed to start stack and its stop failed; keeping app port ${heldPort} claimed (run 'env:down --all' once the stack stops)`,
+          );
+        }
         removeLease(dir, projectId);
         releaseProjectClaims(dir, projectId);
         throw new EnvFailure(
@@ -490,15 +511,16 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
     }
 
     let webPid = readWebPid();
+    const warmWeb = recordedWebReadiness(contract.appPort);
     let webHttp = await probeHttp(contract.appUrl);
-    if (options.serve && (built || !healthy(webHttp) || !webPid)) {
-      if (!healthy(webHttp) && webPid) stopWebServer();
+    if (options.serve && (built || !healthy(webHttp) || !warmWeb.ready)) {
+      if (webPid) stopWebServer();
       webPid = startWebServer({
         appPort: contract.appPort,
         appUrl: contract.appUrl,
         env: process.env,
       });
-      const waited = await waitForWeb(contract.appUrl, webPid, 120);
+      const waited = await waitForWeb(contract.appUrl, webPid, 120, contract.appPort);
       webHttp = waited.http;
       if (!waited.ok) {
         stopWebServer();

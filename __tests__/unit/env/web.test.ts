@@ -6,13 +6,35 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { startHttpServer } from '#test/unit/env/support';
 import { loadEnvModule } from '#test/unit/env/load';
 
+interface ListenerLookup {
+  state: 'unsupported' | 'ok' | 'failed';
+  pids?: number[];
+}
+
+interface ListenerOwnership {
+  listeners(port: number): ListenerLookup;
+  owns(recordedPid: number, listenerPid: number): boolean;
+}
+
+interface WebReadiness {
+  ready: boolean;
+  reason: string;
+}
+
 interface WebModule {
   readWebPid(): number | null;
+  readWebPort(): number | null;
+  assessWebReadiness(
+    input: { pid: number | null; appPort: number; recordedPort: number | null },
+    ownership?: ListenerOwnership,
+  ): WebReadiness;
   stopWebServer(): { pid: number | null; stopped: boolean };
   waitForWeb(
     appUrl: string,
     pid: number,
     timeoutSeconds: number,
+    appPort: number,
+    ownership?: ListenerOwnership,
   ): Promise<{ ok: boolean; reason: string; http: number }>;
 }
 
@@ -87,8 +109,16 @@ async function waitForCommand(pid: number, needle: string): Promise<void> {
   throw new Error(`process ${pid} never showed '${needle}' in its command`);
 }
 
-function writePid(pid: number): void {
-  writeFileSync(pidFile, `${pid}\n`, { mode: 0o600 });
+function writePid(pid: number, port?: number): void {
+  writeFileSync(pidFile, port === undefined ? `${pid}\n` : `${pid}\n${port}\n`, { mode: 0o600 });
+}
+
+function ownership(
+  pids: number[],
+  owns: (recordedPid: number, listenerPid: number) => boolean = (recorded, listener) =>
+    recorded === listener,
+): ListenerOwnership {
+  return { listeners: () => ({ state: 'ok', pids }), owns };
 }
 
 function alive(pid: number): boolean {
@@ -159,10 +189,94 @@ describe('web PID ownership', () => {
   it('does not accept HTTP 200 from a dead process as ready', async () => {
     const server = await startHttpServer(200);
     try {
-      const result = await web.waitForWeb(server.url, 999_999_999, 1);
+      const result = await web.waitForWeb(server.url, 999_999_999, 1, server.port);
 
       expect(result.ok).toBe(false);
       expect(result.reason).toBe('exited');
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe('web readiness is bound to the recorded listener', () => {
+  it('is not ready when the recorded port is not the leased port', async () => {
+    const server = await startHttpServer(200);
+    try {
+      writePid(process.pid, server.port + 1);
+      const result = await web.waitForWeb(
+        server.url,
+        process.pid,
+        1,
+        server.port,
+        ownership([process.pid]),
+      );
+
+      expect(result).toMatchObject({ ok: false, reason: 'port-mismatch', http: 200 });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('is not ready when the leased port is served by another process', async () => {
+    const server = await startHttpServer(200);
+    try {
+      writePid(process.pid, server.port);
+      const result = await web.waitForWeb(server.url, process.pid, 1, server.port, {
+        listeners: () => ({ state: 'ok', pids: [999_999_999] }),
+        owns: () => false,
+      });
+
+      expect(result).toMatchObject({ ok: false, reason: 'foreign-listener', http: 200 });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('is ready when the listener belongs to the recorded process', async () => {
+    const server = await startHttpServer(200);
+    try {
+      writePid(process.pid, server.port);
+      const result = await web.waitForWeb(
+        server.url,
+        process.pid,
+        1,
+        server.port,
+        ownership([process.pid]),
+      );
+
+      expect(result).toMatchObject({ ok: true, reason: 'ready', http: 200 });
+      expect(web.readWebPort()).toBe(server.port);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('never reports ready when the listener cannot be verified', async () => {
+    const server = await startHttpServer(200);
+    try {
+      writePid(process.pid, server.port);
+      const result = await web.waitForWeb(server.url, process.pid, 1, server.port, {
+        listeners: () => ({ state: 'failed' }),
+        owns: () => true,
+      });
+
+      expect(result).toMatchObject({ ok: false, reason: 'listener-unverifiable', http: 200 });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('skips the listener proof when lsof is unavailable', async () => {
+    const server = await startHttpServer(200);
+    try {
+      writePid(process.pid, server.port);
+      const result = await web.waitForWeb(server.url, process.pid, 1, server.port, {
+        listeners: () => ({ state: 'unsupported' }),
+        owns: () => false,
+      });
+
+      expect(result).toMatchObject({ ok: true, reason: 'ready', http: 200 });
     } finally {
       await server.close();
     }

@@ -5,7 +5,7 @@ import { appendEnvLog, identityKey, readStackState, removeStackState } from '../
 import { ensureRegistryDir, withCheckoutLock } from '../lib/locks';
 import { leaseProjectId, readLease, releaseProjectClaims, removeLease } from '../lib/lease';
 import { REPO_ROOT, isThisCheckout, currentBranchRef } from '../lib/repo';
-import { readStackList, readStackStatus } from '../lib/stack';
+import { readStackList, readStackStatus, stackAbsenceConfirmed } from '../lib/stack';
 import { stopStack } from '../lib/stack-lifecycle';
 import { stopWebServer } from '../lib/web';
 import { printJson, writeStderrLine } from '../lib/output';
@@ -57,22 +57,6 @@ function downStackName(options: DownOptions, lenientName: string | null): string
   }
 }
 
-/**
- * Whether `stack list` proves `wanted` is no longer running in this checkout.
- * A null status after a failed stop proves nothing, so only a readable list
- * without an entry this checkout owns (with a reachable owner) counts.
- */
-function absenceConfirmed(wanted: string): boolean {
-  const listed = readStackList();
-  if (listed === null) return false;
-  return !listed.some(
-    (entry) =>
-      isThisCheckout(entry.projectRoot) &&
-      (entry.name || 'default') === wanted &&
-      entry.owner === 'reachable',
-  );
-}
-
 export async function runDown(parsed: ParsedCommand): Promise<number> {
   const options = parsed.down;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'down options are missing');
@@ -116,7 +100,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
     if (!options.all) {
       // A null status alone proves nothing: only a readable list without this
       // checkout's still-running entry confirms the stack is gone.
-      if (!stack && absenceConfirmed(cliStackName || 'default')) {
+      if (!stack && stackAbsenceConfirmed(cliStackName || 'default')) {
         releaseLease(dir, projectId);
         removeStackState();
         lines.push('Released the app-port lease (stack is stopped).');
@@ -153,7 +137,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
       const result = stopStack(cliStackName);
       // A failed stop is only forgiven when the list proves the stack is gone:
       // a null `readStackStatus` can equally mean the CLI could not be read.
-      if (!result.ok && !absenceConfirmed(wanted)) {
+      if (!result.ok && !stackAbsenceConfirmed(wanted)) {
         throw new EnvFailure(EXIT_START_FAILED, 'stack stop failed; keeping the lease');
       }
       lines.push(`Stopped Supabase stack '${wanted}' (data kept).`);

@@ -242,6 +242,40 @@ export function claimAppPort(
   return { ok: true, holder: null };
 }
 
+/**
+ * Whether two reads describe the same claimed holder. Recovery compares the
+ * observed claim with the current file under the claims mutex, so a claim that
+ * another recoverer replaced is never removed.
+ */
+export function sameClaimHolder(left: AppPortClaim, right: AppPortClaim): boolean {
+  return (
+    left.projectId === right.projectId &&
+    left.ownerPid === right.ownerPid &&
+    left.createdAt === right.createdAt &&
+    left.ownerStartedAt === right.ownerStartedAt
+  );
+}
+
+/**
+ * Compare-and-remove: drop `port`'s claim only when it is still exactly
+ * `expected`. Callers hold the claims mutex; the identity check also keeps a
+ * stale recovery from deleting a replacement claim read after the first look.
+ */
+export function removeAppPortClaimIfHeldBy(
+  dir: string,
+  port: number,
+  expected: AppPortClaim,
+): boolean {
+  const current = readAppPortClaim(dir, port);
+  if (!current || !sameClaimHolder(current, expected)) return false;
+  try {
+    rmSync(claimFile(dir, port), { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Release one claim, but only when this project is the holder. */
 export function releaseAppPortClaim(dir: string, port: number, projectId: string): boolean {
   if (readAppPortClaim(dir, port)?.projectId !== projectId) return false;

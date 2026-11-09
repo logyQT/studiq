@@ -1,4 +1,13 @@
-import { closeSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  openSync,
+  readFileSync,
+  readlinkSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { probeHttp } from './health';
@@ -33,6 +42,38 @@ function hasWorktreeMarker(pid: number): boolean {
   return marker.test(readProcessEnvironment(pid));
 }
 
+interface WebProcessRecord {
+  pid: number;
+  /** The app port recorded when the server was started, or null (legacy file). */
+  port: number | null;
+}
+
+/**
+ * Parsed `.dev/web.pid`: the first field is the server PID, the second the app
+ * port it was started for. The port is recorded with the process so readiness
+ * can prove *which* port the owned server serves instead of trusting a bare PID.
+ */
+function readWebRecord(): WebProcessRecord | null {
+  let raw: string;
+  try {
+    if (!statSync(WEB_PID_FILE).isFile()) return null;
+    raw = readFileSync(WEB_PID_FILE, 'utf8');
+  } catch {
+    return null;
+  }
+  const [pidLine = '', portLine = ''] = raw.trim().split(/\s+/);
+  const pid = Number(pidLine);
+  if (!Number.isInteger(pid) || pid <= 1) return null;
+  const recorded = Number(portLine);
+  const port = Number.isInteger(recorded) && recorded > 0 && recorded <= 65535 ? recorded : null;
+  return { pid, port };
+}
+
+/** Whether the PID file still records `pid` (checked before removing it). */
+function recordsPid(pid: number): boolean {
+  return readWebRecord()?.pid === pid;
+}
+
 /**
  * PID of this checkout's `next start`/dev server, or null.
  *
@@ -40,18 +81,13 @@ function hasWorktreeMarker(pid: number): boolean {
  * unrelated process. Both startup paths (`scripts/dev` and `startWebServer`)
  * set `STUDIQ_DEV_WORKTREE`, so this checkout's marker (and a Next-looking
  * command) is required: a command that merely mentions the checkout path is
- * not enough.
+ * not enough. Readiness additionally needs the recorded app port and listener
+ * (see `assessWebReadiness`).
  */
 export function readWebPid(): number | null {
-  let raw: string;
-  try {
-    if (!statSync(WEB_PID_FILE).isFile()) return null;
-    raw = readFileSync(WEB_PID_FILE, 'utf8').trim();
-  } catch {
-    return null;
-  }
-  const pid = Number(raw);
-  if (!Number.isInteger(pid) || !pidAlive(pid)) return null;
+  const record = readWebRecord();
+  if (!record || !pidAlive(record.pid)) return null;
+  const pid = record.pid;
 
   const result = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], {
     encoding: 'utf8',
@@ -65,10 +101,15 @@ export function readWebPid(): number | null {
   return pid;
 }
 
+/** @public Exercised by the unit tests, which load this module by computed URL. */
+export function readWebPort(): number | null {
+  return readWebRecord()?.port ?? null;
+}
+
 function terminateWebPid(pid: number): boolean {
   if (!pidAlive(pid)) {
     try {
-      if (readFileSync(WEB_PID_FILE, 'utf8').trim() === String(pid)) rmSync(WEB_PID_FILE);
+      if (recordsPid(pid)) rmSync(WEB_PID_FILE);
     } catch {
       /* gone */
     }
@@ -105,7 +146,7 @@ function terminateWebPid(pid: number): boolean {
   const stopped = !pidAlive(pid);
   if (stopped) {
     try {
-      if (readFileSync(WEB_PID_FILE, 'utf8').trim() === String(pid)) rmSync(WEB_PID_FILE);
+      if (recordsPid(pid)) rmSync(WEB_PID_FILE);
     } catch {
       /* gone */
     }
@@ -199,13 +240,170 @@ export function startWebServer(options: StartWebOptions): number {
   const pid = child.pid;
   if (!pid) throw new Error('could not start the web server');
   child.unref();
-  writeFileSync(WEB_PID_FILE, `${pid}\n`, { mode: 0o600 });
+  writeFileSync(WEB_PID_FILE, `${pid}\n${options.appPort}\n`, { mode: 0o600 });
   return pid;
+}
+
+export type WebReadinessReason =
+  | 'ready'
+  | 'no-pid'
+  | 'port-mismatch'
+  | 'listener-unverifiable'
+  | 'foreign-listener'
+  | 'not-listening';
+
+export interface WebReadiness {
+  ready: boolean;
+  reason: WebReadinessReason;
+}
+
+/** What `lsof` could tell about a TCP listen port. */
+export type ListenerLookup =
+  { state: 'unsupported' } | { state: 'ok'; pids: number[] } | { state: 'failed' };
+
+/**
+ * Listener evidence, injectable so the readiness rules are testable without a
+ * real server (or a host that happens to have `lsof`).
+ */
+export interface ListenerOwnership {
+  /** PIDs listening on TCP `port`; `unsupported` when `lsof` is unavailable. */
+  listeners(port: number): ListenerLookup;
+  /** Whether `listenerPid` belongs to the recorded server process. */
+  owns(recordedPid: number, listenerPid: number): boolean;
+}
+
+/**
+ * Linux-only `/proc` fallback for lsof's blind spot: lsof 4.95 cannot parse a
+ * process whose `comm` contains a space, and Next 16 names its server
+ * `next-server (v16.4.4)`, so the exact lsof query returns nothing even though
+ * the socket is listening. `null` means the table could not be read (treat the
+ * listener as unverifiable); `[]` means nothing listens on the port.
+ */
+function procListenerPids(port: number): number[] | null {
+  if (process.platform !== 'linux') return null;
+  const inodes = new Set<string>();
+  let readable = false;
+  for (const file of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    let text: string;
+    try {
+      text = readFileSync(file, 'utf8');
+      readable = true;
+    } catch {
+      continue;
+    }
+    for (const line of text.split('\n').slice(1)) {
+      const fields = line.trim().split(/\s+/);
+      if (fields.length < 10 || fields[3] !== '0A') continue; // 0A = LISTEN
+      const localPort = Number.parseInt(fields[1]?.split(':')[1] ?? '', 16);
+      if (localPort === port) inodes.add(fields[9] as string);
+    }
+  }
+  if (!readable) return null;
+  if (inodes.size === 0) return [];
+  const pids: number[] = [];
+  for (const name of readdirSync('/proc')) {
+    if (!/^\d+$/.test(name)) continue;
+    let fds: string[];
+    try {
+      fds = readdirSync(`/proc/${name}/fd`);
+    } catch {
+      continue;
+    }
+    for (const fd of fds) {
+      let target: string;
+      try {
+        target = readlinkSync(`/proc/${name}/fd/${fd}`);
+      } catch {
+        continue;
+      }
+      const match = /^socket:\[(\d+)\]$/.exec(target);
+      if (match && inodes.has(match[1] as string)) {
+        pids.push(Number(name));
+        break;
+      }
+    }
+  }
+  return pids;
+}
+
+function lookupListeners(port: number): ListenerLookup {
+  const result = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
+  // `lsof` is absent on some Linux images: skip the listener proof rather than
+  // turning every readiness check into a failure there.
+  if (code === 'ENOENT') return { state: 'unsupported' };
+  if (result.error || result.status === null) return { state: 'failed' };
+  // `lsof` exits 1 when nothing matches; that is a valid "no listener".
+  if (result.status !== 0 && result.status !== 1) return { state: 'failed' };
+  const pids = (result.stdout ?? '')
+    .split(/\s+/)
+    .map((value) => Number(value))
+    .filter((pid) => Number.isInteger(pid) && pid > 1);
+  if (pids.length > 0 || result.status === 0) return { state: 'ok', pids };
+  // lsof answered "nothing listens" — cross-check /proc before concluding that,
+  // because lsof cannot read a `next-server (v…)` process name.
+  const fallback = procListenerPids(port);
+  if (fallback === null) return { state: 'ok', pids: [] };
+  return { state: 'ok', pids: fallback };
+}
+
+function listenerBelongsTo(recordedPid: number, listenerPid: number): boolean {
+  if (listenerPid === recordedPid) return true;
+  // `startWebServer` spawns `bun run … start`, so the listening `next start` is
+  // a child in the detached server's process group (the recorded PID is the
+  // group leader). A listener outside that group is not ours.
+  const result = spawnSync('ps', ['-o', 'pgid=', '-p', String(listenerPid)], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  if (result.status !== 0) return false;
+  return Number((result.stdout ?? '').trim()) === recordedPid;
+}
+
+const defaultListenerOwnership: ListenerOwnership = {
+  listeners: lookupListeners,
+  owns: listenerBelongsTo,
+};
+
+/**
+ * Is the recorded server actually this checkout's server on `appPort`?
+ *
+ * A live owned PID plus an HTTP 200 is not proof: the 200 may come from a
+ * foreign listener while our process sits on another port. The PID file's
+ * recorded port must equal the leased port, and (when `lsof` is available) the
+ * listener on that port must belong to the recorded process. A mismatch or an
+ * unverifiable listener is never reported ready.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function assessWebReadiness(
+  input: { pid: number | null; appPort: number; recordedPort: number | null },
+  ownership: ListenerOwnership = defaultListenerOwnership,
+): WebReadiness {
+  const pid = input.pid;
+  if (pid === null || !pidAlive(pid)) return { ready: false, reason: 'no-pid' };
+  if (input.recordedPort !== input.appPort) return { ready: false, reason: 'port-mismatch' };
+  const listeners = ownership.listeners(input.appPort);
+  if (listeners.state === 'unsupported') return { ready: true, reason: 'ready' };
+  if (listeners.state === 'failed') return { ready: false, reason: 'listener-unverifiable' };
+  if (listeners.pids.length === 0) return { ready: false, reason: 'not-listening' };
+  if (!listeners.pids.some((listener) => ownership.owns(pid, listener))) {
+    return { ready: false, reason: 'foreign-listener' };
+  }
+  return { ready: true, reason: 'ready' };
+}
+
+/** Warm-path readiness for the recorded server on `appPort` (no HTTP probe). */
+export function recordedWebReadiness(appPort: number): WebReadiness {
+  return assessWebReadiness({ pid: readWebPid(), appPort, recordedPort: readWebPort() });
 }
 
 export interface WaitWebResult {
   ok: boolean;
-  reason: 'ready' | 'exited' | 'timeout';
+  reason: 'ready' | 'exited' | 'timeout' | Exclude<WebReadinessReason, 'ready'>;
   http: number;
 }
 
@@ -213,19 +411,27 @@ export async function waitForWeb(
   appUrl: string,
   pid: number,
   timeoutSeconds: number,
+  appPort: number,
+  ownership: ListenerOwnership = defaultListenerOwnership,
 ): Promise<WaitWebResult> {
   const deadline = Date.now() + timeoutSeconds * 1000;
   let http = 0;
   while (Date.now() < deadline) {
     // A dead `next start` can leave a socket that still answers for a moment;
-    // our own PID is the authority for "this checkout's server is up".
+    // our own PID is necessary but not sufficient for "this checkout's server".
     if (!pidAlive(pid)) return { ok: false, reason: 'exited', http };
     http = await probeHttp(appUrl);
     if (http === 200) {
       // Re-check: the process may have exited while the probe was in flight.
-      return pidAlive(pid)
-        ? { ok: true, reason: 'ready', http }
-        : { ok: false, reason: 'exited', http };
+      if (!pidAlive(pid)) return { ok: false, reason: 'exited', http };
+      // HTTP 200 alone can be a foreign listener on the leased port. Only the
+      // recorded port plus its owning listener proves our server serves it.
+      const readiness = assessWebReadiness(
+        { pid, appPort, recordedPort: readWebPort() },
+        ownership,
+      );
+      if (!readiness.ready) return { ok: false, reason: readiness.reason, http };
+      return { ok: true, reason: 'ready', http };
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }

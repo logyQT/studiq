@@ -220,3 +220,21 @@ export function withBuildLock<T>(fn: () => Promise<T> | T): Promise<T> {
     fn,
   );
 }
+
+/**
+ * Registry-wide mutex for app-port claim recovery. A stale claim is removed and
+ * re-claimed as one unit: without this, two recoverers can both observe the
+ * dead holder, one re-claims, and the other's pending unlink deletes the new
+ * claim. Initial `wx` acquisition never takes it, so a claim is still atomic on
+ * its own. The portable directory fallback covers hosts without `flock`.
+ */
+export function withClaimsLock<T>(fn: () => Promise<T> | T): Promise<T> {
+  const dir = ensureRegistrySubdir('locks');
+  return withLockAt(
+    join(dir, 'claims.lock'),
+    30,
+    EXIT_CONFLICT,
+    'timed out waiting for the app-port claims lock',
+    fn,
+  );
+}
