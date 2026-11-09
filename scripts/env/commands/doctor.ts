@@ -121,7 +121,7 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (contract.shared && !sharedSupabaseUrl) {
     warnings.push(
-      'SUPABASE_SHARED=1 but SUPABASE_URL is not exported to this unwrapped command (run `bun run env:check` for env checks)',
+      'SUPABASE_SHARED=1 but SUPABASE_URL is not exported to this unwrapped command (run `bun run env:check:quiet` for env checks; exit code only)',
     );
   }
   if (appPortProbe.state === 'unavailable') {

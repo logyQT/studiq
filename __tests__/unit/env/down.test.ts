@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   createHarness,
   REPO_ROOT,
+  stackStatusFixture,
   stoppedStackFixture,
   type Harness,
 } from '#test/unit/env/support';
@@ -18,13 +19,14 @@ function newHarness(): Harness {
   return harness;
 }
 
-function listedStack(name: string): Record<string, unknown> {
+function listedStack(name: string, owner?: string): Record<string, unknown> {
   return {
     id: `fixture-${name}`,
     name,
     project_root: REPO_ROOT,
     branch_context: 'refs/heads/feat/env-fixture',
     runtime: 'native',
+    ...(owner ? { owner } : {}),
   };
 }
 
@@ -85,5 +87,59 @@ describe('env:down stack selection', () => {
     const calls = harness.bunxCalls();
     expect(calls).toContain('stack stop --output-format json');
     expect(calls).not.toContain('--stack');
+  });
+
+  it('keeps the lease when a failed stop still lists the stack as running', async () => {
+    const harness = newHarness();
+    // No readable status (a null status is not proof of a stop), and the list
+    // still shows this checkout's running stack.
+    harness.setStatusFixture(stoppedStackFixture());
+    harness.setListFixture({ stacks: [listedStack('default', 'reachable')] });
+
+    const result = await harness.run(['down', '--all', '--yes'], {
+      SUPABASE_STACK: '',
+      FAKE_SUPA_EXIT: '1',
+    });
+
+    expect(result.status).toBe(4);
+    expect(result.stderr).toContain('stack stop failed');
+    expect(result.stderr).toContain('keeping the lease');
+    expect(result.stderr).not.toContain('Released the app-port lease.');
+  });
+
+  it('releases the lease when the list confirms a failed stop took effect', async () => {
+    const harness = newHarness();
+    // The stack was running when down started; after the failed stop the list
+    // no longer shows this checkout's stack, so absence is confirmed.
+    harness.setStatusFixture(
+      stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
+    );
+    harness.setListFixture({ stacks: [] });
+
+    const result = await harness.run(['down', '--all', '--yes'], {
+      SUPABASE_STACK: '',
+      FAKE_SUPA_EXIT: '1',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("Stopped Supabase stack 'default'");
+    expect(result.stderr).toContain('Released the app-port lease.');
+  });
+
+  it('refuses to clean up when a failed stop leaves the stack unverifiable', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(
+      stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
+    );
+    harness.setListFixture('not-json');
+
+    const result = await harness.run(['down', '--all', '--yes'], {
+      SUPABASE_STACK: '',
+      FAKE_SUPA_EXIT: '1',
+    });
+
+    expect(result.status).toBe(4);
+    expect(result.stderr).toContain('stack stop failed');
+    expect(result.stderr).not.toContain('Released the app-port lease.');
   });
 });

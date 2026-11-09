@@ -179,9 +179,16 @@ export async function waitForWeb(
   const deadline = Date.now() + timeoutSeconds * 1000;
   let http = 0;
   while (Date.now() < deadline) {
-    http = await probeHttp(appUrl);
-    if (http === 200) return { ok: true, reason: 'ready', http };
+    // A dead `next start` can leave a socket that still answers for a moment;
+    // our own PID is the authority for "this checkout's server is up".
     if (!pidAlive(pid)) return { ok: false, reason: 'exited', http };
+    http = await probeHttp(appUrl);
+    if (http === 200) {
+      // Re-check: the process may have exited while the probe was in flight.
+      return pidAlive(pid)
+        ? { ok: true, reason: 'ready', http }
+        : { ok: false, reason: 'exited', http };
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   return { ok: false, reason: 'timeout', http };

@@ -40,6 +40,7 @@ import {
   readStackState,
   writeBuildState,
   writeStackState,
+  type StackState,
 } from '../lib/state';
 import { readWebPid, startWebServer, stopWebServer, waitForWeb, webLogPath } from '../lib/web';
 import { liveServerConflict } from '../lib/web-owner';
@@ -58,6 +59,26 @@ function withPort(contract: Contract, appPort: number): Contract {
   process.env.APP_URL = next.appUrl;
   process.env.NEXT_PUBLIC_SITE_URL ||= next.appUrl;
   return next;
+}
+
+/**
+ * `.dev/stack.json` attributes the **web server** to a stack/profile; the
+ * live-server guard reads it. A serving ensure owns the server, so it records
+ * the requested profile. An API-only ensure must not overwrite a running
+ * server's attribution — and with no attribution to keep, it writes nothing.
+ */
+function stackAttribution(input: {
+  stackName: string;
+  profile: string;
+  cold: boolean;
+  serve: boolean;
+}): StackState | null {
+  const updatedAt = new Date().toISOString();
+  const previous = readStackState();
+  if (!input.serve && readWebPid()) {
+    return previous ? { ...previous, cold: input.cold, updatedAt } : null;
+  }
+  return { stackName: input.stackName, profile: input.profile, cold: input.cold, updatedAt };
 }
 
 async function freePort(port: number): Promise<boolean> {
@@ -277,15 +298,20 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         }
       }
       writeLease(touchLease(lease.lease, { appPort: contract.appPort, ownerPid: webPid ?? 0 }));
+      // There is no local stack to describe, but the served web process still
+      // needs attribution so a second shared ensure (or a later build) is not
+      // mistaken for a different environment.
+      const stackState = stackAttribution({
+        stackName: contract.stackName ?? 'default',
+        profile: options.profile,
+        cold: false,
+        serve: options.serve,
+      });
+      if (stackState) writeStackState(stackState);
       const snapshot = await collectSnapshot({
         contract,
         stack: null,
-        state: {
-          stackName: contract.stackName ?? 'default',
-          profile: options.profile,
-          cold: false,
-          updatedAt: '',
-        },
+        state: stackState,
         skipStackLookup: true,
         web: { pid: webPid, http: webHttp },
         supabaseHttp: 200,
@@ -410,12 +436,13 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       (!options.serve || healthy(webHttp)) &&
       (await probeCapabilities(requested, probeContextFromStatus(stack.status))).ok;
     if (!ready) throw new EnvFailure(EXIT_START_FAILED, 'stack is not ready');
-    writeStackState({
+    const stackState = stackAttribution({
       stackName: stack.status.name,
       profile: options.profile,
       cold,
-      updatedAt: new Date().toISOString(),
+      serve: options.serve,
     });
+    if (stackState) writeStackState(stackState);
     writeLease(
       touchLease(lease.lease, {
         appPort: contract.appPort,
@@ -430,7 +457,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
     const snapshot = await collectSnapshot({
       contract,
       stack: stack.status,
-      state: readStackState(),
+      state: stackState ?? readStackState(),
       skipStackLookup: true,
       web: { pid: webPid, http: webHttp },
       supabaseHttp: 200,

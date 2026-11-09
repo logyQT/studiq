@@ -57,6 +57,22 @@ function downStackName(options: DownOptions, lenientName: string | null): string
   }
 }
 
+/**
+ * Whether `stack list` proves `wanted` is no longer running in this checkout.
+ * A null status after a failed stop proves nothing, so only a readable list
+ * without an entry this checkout owns (with a reachable owner) counts.
+ */
+function absenceConfirmed(wanted: string): boolean {
+  const listed = readStackList();
+  if (listed === null) return false;
+  return !listed.some(
+    (entry) =>
+      isThisCheckout(entry.projectRoot) &&
+      (entry.name || 'default') === wanted &&
+      entry.owner === 'reachable',
+  );
+}
+
 export async function runDown(parsed: ParsedCommand): Promise<number> {
   const options = parsed.down;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'down options are missing');
@@ -133,7 +149,9 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
     }
     if (stack || ours) {
       const result = stopStack(cliStackName);
-      if (!result.ok && readStackStatus(cliStackName)) {
+      // A failed stop is only forgiven when the list proves the stack is gone:
+      // a null `readStackStatus` can equally mean the CLI could not be read.
+      if (!result.ok && !absenceConfirmed(wanted)) {
         throw new EnvFailure(EXIT_START_FAILED, 'stack stop failed; keeping the lease');
       }
       lines.push(`Stopped Supabase stack '${wanted}' (data kept).`);

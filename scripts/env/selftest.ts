@@ -16,7 +16,7 @@ import {
 } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { DEV_DIR, identityKey } from './lib/state';
+import { DEV_DIR, identityKey, readStackState } from './lib/state';
 import { REPO_ROOT, isThisCheckout, currentBranchRef } from './lib/repo';
 import { resolveRegistryDir } from './lib/registry';
 import { leaseProjectId, releaseProjectClaims } from './lib/lease';
@@ -199,6 +199,43 @@ function scanSecrets(label: string, text: string): void {
   check(!patterns.some((pattern) => pattern.test(text)), `${label}: no secrets`);
 }
 
+interface SharedScratchEnv {
+  SUPABASE_SHARED: string;
+  SUPABASE_URL: string;
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: string;
+  SUPABASE_MAIL_URL: string;
+}
+
+/**
+ * Shared-stack values for this run's own scratch stack, read from its status:
+ * a shared-mode `ensure` only borrows a stack, so it must be told where it is.
+ */
+function sharedScratchEnv(): SharedScratchEnv | null {
+  const result = spawnSync(
+    'bunx',
+    ['supabase', 'stack', 'status', '--output-format', 'json', '--stack', scratchName],
+    { cwd: REPO_ROOT, encoding: 'utf8', timeout: 60_000 },
+  );
+  if (result.status !== 0) return null;
+  try {
+    const parsed = object(JSON.parse(result.stdout));
+    const env = object(parsed.env);
+    const mailPort = number(object(object(parsed.endpoints)['mail.http']).port);
+    const mailUrl = string(env.MAILPIT_URL) || (mailPort ? `http://127.0.0.1:${mailPort}` : '');
+    const apiUrl = string(env.API_URL);
+    const anonKey = string(env.ANON_KEY);
+    if (!apiUrl || !anonKey || !mailUrl) return null;
+    return {
+      SUPABASE_SHARED: '1',
+      SUPABASE_URL: apiUrl,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
+      SUPABASE_MAIL_URL: mailUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function destroyScratch(): void {
   const listed = spawnSync('bunx', ['supabase', 'stack', 'list', '--output-format', 'json'], {
     cwd: REPO_ROOT,
@@ -222,7 +259,11 @@ function destroyScratch(): void {
       /* leave */
     }
   }
-  rmSync(join(DEV_DIR, 'stack.json'), { force: true });
+  // Only this run's attribution may be removed: a `stack.json` naming another
+  // stack belongs to the operator's session, not to this run.
+  if (readStackState()?.stackName === scratchName) {
+    rmSync(join(DEV_DIR, 'stack.json'), { force: true });
+  }
   for (const lease of scratchLeases()) {
     rmSync(join(resolveRegistryDir(), `${string(lease.projectId)}.json`), { force: true });
   }
@@ -230,6 +271,15 @@ function destroyScratch(): void {
 }
 
 async function main(): Promise<number> {
+  // `finally` stops this checkout's web server; one that was already up belongs
+  // to the operator, so refuse before creating anything.
+  const runningWeb = readWebPid();
+  if (runningWeb) {
+    console.error(
+      `env:selftest: this checkout's web server is already running (pid ${runningWeb}); run 'bun env:down' first`,
+    );
+    return 1;
+  }
   scratchName = `env-selftest-${process.pid}-${Date.now().toString(36)}`;
   tempDir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'studiq-env-selftest-'));
   const shimDir = join(tempDir, 'bin');
@@ -340,6 +390,27 @@ async function main(): Promise<number> {
       firstDown.code === 0 && secondDown.code === 0 && scratchLeases().length === 1,
       'plain down is idempotent and keeps the lease',
     );
+
+    // Two shared-mode web ensures against this run's own stack, with no
+    // attribution to start from: the first must record the server it starts and
+    // the second must still run — the build below must not be refused either.
+    const sharedWeb = sharedScratchEnv();
+    if (sharedWeb) {
+      rmSync(join(DEV_DIR, 'stack.json'), { force: true });
+      const sharedEnv = { ...childEnv, ...sharedWeb };
+      const sharedFirst = run(['env:ensure', '--profile', 'web', '--json'], sharedEnv);
+      check(
+        sharedFirst.code === 0,
+        `first shared web ensure exits 0 (${sharedFirst.code}: ${tail(sharedFirst)})`,
+      );
+      const sharedSecond = run(['env:ensure', '--profile', 'web', '--json'], sharedEnv);
+      check(
+        sharedSecond.code === 0,
+        `second shared web ensure exits 0 (${sharedSecond.code}: ${tail(sharedSecond)})`,
+      );
+    } else {
+      console.log('    (shared web ensures skipped: status has no API/mail endpoints)');
+    }
 
     clearTrace();
     const build = run(['env:build', '--json'], childEnv);

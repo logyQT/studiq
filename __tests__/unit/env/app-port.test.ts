@@ -27,7 +27,16 @@ interface LeaseModule {
   releaseAppPortClaim(dir: string, port: number, projectId: string): boolean;
   isClaimStale(dir: string, claim: AppPortClaim, now?: number): boolean;
   writeLease(lease: Record<string, unknown>): void;
+  readLease(dir: string, projectId: string): Record<string, unknown> | null;
+  removeLease(dir: string, projectId: string): void;
   newLease(input: Record<string, unknown>): Record<string, unknown>;
+  heartbeatAgeMs(lease: Record<string, unknown>): number;
+  isLeaseReclaimable(input: {
+    pidAlive: boolean;
+    heartbeatAgeMs: number;
+    ttlSec: number;
+    stackRunning: boolean;
+  }): boolean;
 }
 
 interface AppPortModule {
@@ -43,12 +52,13 @@ interface AppPortModule {
     existingPort: number | null;
     explicitPort: number | null;
     isPortFree(port: number): Promise<boolean>;
-    reclaimForeign(): Promise<boolean>;
+    reclaimForeign(entry: { projectId: string }, port: number): Promise<boolean>;
   }): Promise<number>;
 }
 
 const lease = await loadEnvModule<LeaseModule>('lib/lease.ts');
 const appPort = await loadEnvModule<AppPortModule>('lib/app-port.ts');
+const locks = await loadEnvModule<{ pidAlive(pid: number): boolean }>('lib/locks.ts');
 
 const dirs: string[] = [];
 const children: ChildProcess[] = [];
@@ -104,6 +114,54 @@ function selection(stdout: string): { projectId: string; appPort: number } {
     throw new Error(`unexpected selection output: ${stdout}`);
   }
   return { projectId: parsed.projectId, appPort: parsed.appPort };
+}
+
+/**
+ * Write a lease for `projectId` into `dir` (the registry `writeLease` resolves).
+ */
+function writeLease(dir: string, projectId: string, fields: Record<string, unknown>): void {
+  const saved = process.env.STUDIQ_DEV_REGISTRY;
+  process.env.STUDIQ_DEV_REGISTRY = dir;
+  try {
+    lease.writeLease({
+      ...lease.newLease({
+        projectId,
+        projectRoot: `/checkout/${projectId}`,
+        branch: 'refs/heads/test',
+        stackName: projectId,
+        appPort: 3000,
+        shared: false,
+        sharedOwner: null,
+        mode: 'dev',
+      }),
+      ...fields,
+    });
+  } finally {
+    if (saved === undefined) delete process.env.STUDIQ_DEV_REGISTRY;
+    else process.env.STUDIQ_DEV_REGISTRY = saved;
+  }
+}
+
+/**
+ * The real lease reclaim rule, mirroring `ensure`'s `reclaimForeign`: the lease
+ * is re-read (heartbeat and pid included) and removed with its claim only when
+ * the owner is gone, the TTL has expired and no stack is running.
+ */
+function reclaimByLease(dir: string) {
+  return (entry: { projectId: string }, port: number): Promise<boolean> => {
+    const raw = lease.readLease(dir, entry.projectId);
+    if (!raw) return Promise.resolve(true);
+    const reclaimable = lease.isLeaseReclaimable({
+      pidAlive: locks.pidAlive(Number(raw.ownerPid)),
+      heartbeatAgeMs: lease.heartbeatAgeMs(raw),
+      ttlSec: Number(raw.ttlSec),
+      stackRunning: false,
+    });
+    if (!reclaimable) return Promise.resolve(false);
+    lease.removeLease(dir, entry.projectId);
+    lease.releaseAppPortClaim(dir, port, entry.projectId);
+    return Promise.resolve(true);
+  };
 }
 
 describe('cross-checkout app-port claims (spec §5)', () => {
@@ -282,5 +340,61 @@ describe('cross-checkout app-port claims (spec §5)', () => {
       );
       expect(lease.readAppPortClaim(dir, entry.appPort)?.projectId).toBe(entry.projectId);
     }
+  });
+
+  it('reclaims an expired lease whose claim file remains', async () => {
+    const dir = registry();
+    lease.claimAppPort(dir, 3000, 'env-crashed', process.pid);
+    writeLease(dir, 'env-crashed', {
+      ownerPid: 999_999_999,
+      ttlSec: 60,
+      heartbeatAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    });
+
+    // The claim is fresh and its lease still exists: claim age alone would keep
+    // the port locked forever, so the lease reclaim rules must decide.
+    expect(lease.isClaimStale(dir, requireClaim(dir, 3000))).toBe(false);
+
+    const chosen = await appPort.chooseAppPort({
+      dir,
+      projectId: 'env-mine',
+      candidates: [3000],
+      existingPort: null,
+      explicitPort: null,
+      isPortFree: () => Promise.resolve(true),
+      reclaimForeign: reclaimByLease(dir),
+    });
+
+    expect(chosen).toBe(3000);
+    expect(lease.readAppPortClaim(dir, 3000)?.projectId).toBe('env-mine');
+    expect(leaseFiles(dir)).toHaveLength(0);
+  });
+
+  it('keeps a refreshed lease even when its claim file looks old', async () => {
+    const dir = registry();
+    lease.claimAppPort(dir, 3000, 'env-live', process.pid);
+    writeLease(dir, 'env-live', { ownerPid: process.pid });
+
+    const claimPath = join(dir, 'claims', 'port-3000.claim');
+    const claim: unknown = JSON.parse(readFileSync(claimPath, 'utf8'));
+    if (!isRecord(claim)) throw new Error('claim is not an object');
+    writeFileSync(
+      claimPath,
+      `${JSON.stringify({ ...claim, createdAt: new Date(Date.now() - 3_600_000).toISOString() })}\n`,
+    );
+
+    const chosen = await appPort.chooseAppPort({
+      dir,
+      projectId: 'env-mine',
+      candidates: [3000, 3001],
+      existingPort: null,
+      explicitPort: null,
+      isPortFree: () => Promise.resolve(true),
+      reclaimForeign: reclaimByLease(dir),
+    });
+
+    expect(chosen).toBe(3001);
+    expect(lease.readAppPortClaim(dir, 3000)?.projectId).toBe('env-live');
+    expect(lease.readLease(dir, 'env-live')).not.toBeNull();
   });
 });

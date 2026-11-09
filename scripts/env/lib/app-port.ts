@@ -62,7 +62,7 @@ export async function chooseAppPort(input: ChooseAppPortInput): Promise<number> 
   for (const port of input.candidates) {
     if (port < 1 || port > 65535 || RESERVED_APP_PORTS.has(port)) continue;
 
-    if (!acquireClaim(input.dir, input.projectId, port)) {
+    if (!(await acquireClaim(input, port))) {
       if (input.explicitPort) throw new EnvFailure(EXIT_CONFLICT, `app port ${port} is leased`);
       continue;
     }
@@ -89,14 +89,24 @@ export async function chooseAppPort(input: ChooseAppPortInput): Promise<number> 
 }
 
 /**
- * Atomic claim with one stale-claim retry: a claim whose checkout never wrote
- * a lease (crashed selector, killed process) is removed and re-claimed. A live
- * claim, or one still inside its grace period, is left alone.
+ * Atomic claim. A claim whose checkout never wrote a lease (crashed selector,
+ * killed process) is removed and re-claimed; a live claim inside its grace
+ * period is left alone.
+ *
+ * A lease-backed claim is only ever reclaimed through `reclaimForeign`, which
+ * re-reads the holder's lease with its heartbeat — claim age alone never
+ * removes a lease a live checkout has just refreshed.
  */
-function acquireClaim(dir: string, projectId: string, port: number): boolean {
+async function acquireClaim(input: ChooseAppPortInput, port: number): Promise<boolean> {
+  const { dir, projectId } = input;
   if (claimAppPort(dir, port, projectId).ok) return true;
   const holder: AppPortClaim | null = readAppPortClaim(dir, port);
-  if (!holder || holder.projectId === projectId || !isClaimStale(dir, holder)) return false;
-  releaseAppPortClaim(dir, port, holder.projectId);
+  if (!holder || holder.projectId === projectId) return false;
+  if (isClaimStale(dir, holder)) {
+    releaseAppPortClaim(dir, port, holder.projectId);
+    return claimAppPort(dir, port, projectId).ok;
+  }
+  const entry = readRegistry(dir).entries.find((item) => item.projectId === holder.projectId);
+  if (!entry || !(await input.reclaimForeign(entry, port))) return false;
   return claimAppPort(dir, port, projectId).ok;
 }

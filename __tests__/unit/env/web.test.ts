@@ -3,11 +3,17 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { startHttpServer } from '#test/unit/env/support';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface WebModule {
   readWebPid(): number | null;
   stopWebServer(): { pid: number | null; stopped: boolean };
+  waitForWeb(
+    appUrl: string,
+    pid: number,
+    timeoutSeconds: number,
+  ): Promise<{ ok: boolean; reason: string; http: number }>;
 }
 
 interface RepoModule {
@@ -36,11 +42,12 @@ function shellQuote(value: string): string {
 /**
  * A long-running process that is *not* a direct child of this test process, so
  * the parent reaps cleanly and `stopWebServer` sees the same situation as a
- * detached server from an earlier `env:ensure`. `setsid` makes it its own group
- * leader, exactly like `startWebServer`'s `detached` spawn.
+ * detached server from an earlier `env:ensure`. `set -m` gives the background
+ * job its own process group — the portable equivalent of `setsid`, which stock
+ * macOS does not ship.
  */
 function spawnSleeper(extra: string[], env: NodeJS.ProcessEnv = baseEnv()): Promise<number> {
-  const inner = `setsid bash -c 'while :; do sleep 5; done' bash ${extra
+  const inner = `set -m; bash -c 'while :; do sleep 5; done' bash ${extra
     .map(shellQuote)
     .join(' ')} >/dev/null 2>&1 & echo $!`;
   const outer = spawn('bash', ['-c', inner], {
@@ -147,5 +154,17 @@ describe('web PID ownership', () => {
     expect(web.stopWebServer()).toEqual({ pid, stopped: true });
     expect(existsSync(pidFile)).toBe(false);
     expect(alive(pid)).toBe(false);
+  });
+
+  it('does not accept HTTP 200 from a dead process as ready', async () => {
+    const server = await startHttpServer(200);
+    try {
+      const result = await web.waitForWeb(server.url, 999_999_999, 1);
+
+      expect(result.ok).toBe(false);
+      expect(result.reason).toBe('exited');
+    } finally {
+      await server.close();
+    }
   });
 });

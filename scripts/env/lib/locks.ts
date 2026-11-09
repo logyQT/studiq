@@ -48,9 +48,13 @@ export function ensureRegistryDir(): string {
   return trustRegistryDir(resolveRegistryDir());
 }
 
-/** A private subdirectory of the shared registry (for example `claims/`). */
+/**
+ * A private subdirectory of the shared registry (for example `claims/`). The
+ * parent is validated first: a symlinked or foreign registry root must never be
+ * joined into, or the subdirectory guard would validate the wrong path.
+ */
 export function ensureRegistrySubdir(name: string, parent = resolveRegistryDir()): string {
-  return trustRegistryDir(join(parent, name));
+  return trustRegistryDir(join(trustRegistryDir(parent), name));
 }
 
 function sleep(ms: number): Promise<void> {

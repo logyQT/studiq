@@ -246,17 +246,48 @@ describe('JSON contract and exit codes (spec §2.1, §9)', () => {
   });
 
   it('changes only the app port in a derived contract URL', () => {
-    const derived = contract.contractWithPort(
-      {
-        shared: false,
-        sharedOwner: null,
-        stackName: null,
-        appPort: 3000,
-        appUrl: 'http://localhost:3000',
-      },
-      3011,
-    );
-    expect(derived.appPort).toBe(3011);
-    expect(derived.appUrl).toBe('http://localhost:3011');
+    const savedUrl = process.env.APP_URL;
+    delete process.env.APP_URL;
+    try {
+      const derived = contract.contractWithPort(
+        {
+          shared: false,
+          sharedOwner: null,
+          stackName: null,
+          appPort: 3000,
+          appUrl: 'http://localhost:3000',
+        },
+        3011,
+      );
+      expect(derived.appPort).toBe(3011);
+      expect(derived.appUrl).toBe('http://localhost:3011');
+    } finally {
+      if (savedUrl === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = savedUrl;
+    }
+  });
+
+  it('keeps an explicit APP_URL (loopback included) when the lease moves the port', () => {
+    const savedUrl = process.env.APP_URL;
+    try {
+      for (const explicit of ['http://localhost:3000', 'http://127.0.0.1:3000']) {
+        process.env.APP_URL = explicit;
+        const applied = contract.contractWithPort(
+          {
+            shared: false,
+            sharedOwner: null,
+            stackName: null,
+            appPort: 3000,
+            appUrl: explicit,
+          },
+          3011,
+        );
+        expect(applied.appPort, explicit).toBe(3011);
+        expect(applied.appUrl, explicit).toBe(explicit);
+      }
+    } finally {
+      if (savedUrl === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = savedUrl;
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
@@ -56,6 +56,21 @@ async function serializes(acquire: (fn: () => Promise<void>) => Promise<void>): 
   return maximum;
 }
 
+/**
+ * Hide every executable so `hasFlock()` fails and the portable directory
+ * mutex is used (stock macOS has no `flock`).
+ */
+async function withoutPath<T>(fn: () => Promise<T>): Promise<T> {
+  const savedPath = process.env.PATH;
+  process.env.PATH = '';
+  try {
+    return await fn();
+  } finally {
+    if (savedPath === undefined) delete process.env.PATH;
+    else process.env.PATH = savedPath;
+  }
+}
+
 describe('lock primitives', () => {
   const savedRegistry = process.env.STUDIQ_DEV_REGISTRY;
 
@@ -94,5 +109,46 @@ describe('lock primitives', () => {
     ).rejects.toThrow('boom');
     const value = await locks.withCheckoutLock(() => 'free');
     expect(value).toBe('free');
+  });
+
+  it('falls back to the directory mutex when flock is unavailable', async () => {
+    const dir = registry();
+    await withoutPath(async () => {
+      expect(await serializes((fn) => locks.withBuildLock(fn))).toBe(1);
+    });
+    expect(existsSync(join(dir, 'build.lock.d'))).toBe(false);
+  });
+
+  it('takes over a directory lock left by a dead pid', async () => {
+    const dir = registry();
+    const lockDir = join(dir, 'build.lock.d');
+    mkdirSync(lockDir, { mode: 0o700 });
+    writeFileSync(join(lockDir, 'pid'), '999999999\n');
+
+    let ran = false;
+    await withoutPath(async () => {
+      await locks.withBuildLock(() => {
+        ran = true;
+      });
+    });
+    expect(ran).toBe(true);
+    expect(existsSync(lockDir)).toBe(false);
+  });
+
+  it('takes over a directory lock with a missing pid after the grace period', async () => {
+    const dir = registry();
+    const lockDir = join(dir, 'build.lock.d');
+    mkdirSync(lockDir, { mode: 0o700 });
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lockDir, old, old);
+
+    let ran = false;
+    await withoutPath(async () => {
+      await locks.withBuildLock(() => {
+        ran = true;
+      });
+    });
+    expect(ran).toBe(true);
+    expect(existsSync(lockDir)).toBe(false);
   });
 });

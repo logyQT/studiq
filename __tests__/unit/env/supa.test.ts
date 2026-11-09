@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createHarness, REPO_ROOT, type Harness } from '#test/unit/env/support';
+import {
+  createHarness,
+  REPO_ROOT,
+  stoppedStackFixture,
+  type Harness,
+} from '#test/unit/env/support';
 
 const harnesses: Harness[] = [];
 
@@ -485,5 +490,66 @@ describe('env:supa', () => {
 
     expect(result.status).toBe(0);
     expect(harness.bunxCalls().trim()).toBe('stack list');
+  });
+});
+
+describe('env:supa under SUPABASE_SHARED=1', () => {
+  const sharedEnv = { SUPABASE_SHARED: '1', SUPABASE_SHARED_OWNER: 'qa-crew' };
+
+  const rejected = [
+    ['stop'],
+    ['stack', 'stop'],
+    ['restart'],
+    ['stack', 'restart'],
+    ['destroy'],
+    ['stack', 'destroy'],
+    ['db', 'reset'],
+    ['migration', 'down'],
+    ['storage', 'rm'],
+  ];
+
+  it('refuses every stop-capable or destructive form (exit 6, no spawn)', async () => {
+    for (const args of rejected) {
+      const harness = newHarness();
+      const result = await harness.run(['supa', ...args], sharedEnv);
+      const label = args.join(' ');
+
+      expect(result.status, label).toBe(6);
+      expect(result.stdout, label).toBe('');
+      expect(result.stderr, label).toContain('SUPABASE_SHARED');
+      expect(result.stderr, label).toContain('qa-crew');
+      expect(harness.bunxCalls(), label).toBe('');
+    }
+  });
+
+  it('still forwards read-only forms', async () => {
+    const list = newHarness();
+    const listResult = await list.run(['supa', 'stack', 'list'], sharedEnv);
+    expect(listResult.status).toBe(0);
+    expect(list.bunxCalls().trim()).toBe('stack list');
+
+    const status = newHarness();
+    status.setStatusFixture(stoppedStackFixture());
+    const statusResult = await status.run(['supa', 'stack', 'status'], sharedEnv);
+    expect(statusResult.status).toBe(0);
+    expect(status.bunxCalls().trim()).toBe('stack status');
+
+    const version = newHarness();
+    const versionResult = await version.run(['supa', '--version'], sharedEnv);
+    expect(versionResult.status).toBe(0);
+    expect(version.bunxCalls().trim()).toBe('--version');
+  });
+
+  it('rejects a non-boolean SUPABASE_SHARED before forwarding a mutation', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'migration', 'down'], {
+      SUPABASE_SHARED: 'true',
+      SUPABASE_SHARED_OWNER: 'qa-crew',
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('SUPABASE_SHARED must be 0 or 1');
+    expect(harness.bunxCalls()).toBe('');
   });
 });

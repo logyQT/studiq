@@ -26,7 +26,11 @@ function parsePort(value: string, label: string): number {
   return port;
 }
 
-function readShared(): boolean {
+/**
+ * Strict shared-mode flag: only ''/'0'/'1' are accepted, so a value like
+ * `true` is a usage error instead of silently meaning "not shared".
+ */
+export function isSharedMode(): boolean {
   const raw = process.env.SUPABASE_SHARED ?? '';
   if (raw === '' || raw === '0') return false;
   if (raw === '1') return true;
@@ -60,7 +64,7 @@ function readAppPort(appUrl: string): number {
 }
 
 export function readContract(): Contract {
-  const shared = readShared();
+  const shared = isSharedMode();
   const stackName = readStackName();
   const rawAppUrl = process.env.APP_URL ?? '';
   const appPort = readAppPort(rawAppUrl);
@@ -84,7 +88,7 @@ export function readContractLenient(): Contract {
   // away a valid SUPABASE_STACK, or `down --all` could target the wrong stack.
   let shared = false;
   try {
-    shared = readShared();
+    shared = isSharedMode();
   } catch {
     shared = false;
   }
@@ -137,8 +141,13 @@ export function readContractLenient(): Contract {
   };
 }
 
-/** Apply an app-port lease to a contract whose URL was not explicitly set. */
+/**
+ * Apply an app-port lease to the contract. Only a **derived** URL follows the
+ * port: an explicit `APP_URL` — loopback included — names the operator's
+ * listener and is preserved, exactly like the `env:supa` APP_URL precedence.
+ */
 export function contractWithPort(contract: Contract, appPort: number): Contract {
+  if (process.env.APP_URL) return { ...contract, appPort };
   let appUrl: string;
   try {
     const parsed = new URL(contract.appUrl);
