@@ -20,6 +20,6 @@ COMMENT ON TABLE public.user_study_settings IS 'Per-user flashcard study prefere
 COMMENT ON COLUMN public.user_study_settings.learning_steps IS 'Minute durations per learning step. Indexed by flashcard_review_state.learning_step. Graduate after last step.';
 COMMENT ON COLUMN public.user_study_settings.new_cards_per_day IS 'Maximum new cards to introduce per day';
 COMMENT ON COLUMN public.user_study_settings.daily_review_goal IS 'Target number of review cards per day';
-COMMENT ON COLUMN public.user_study_settings.leech_threshold IS 'lapse_count >= this -> card flagged as leech';
+COMMENT ON COLUMN public.user_study_settings.leech_threshold IS 'sm2_lapse_count >= this -> card flagged as leech';
 COMMENT ON COLUMN public.user_study_settings.new_cards_introduced IS 'Count of new cards introduced today (reset to 0 when daily_reset_date < current_date)';
 COMMENT ON COLUMN public.user_study_settings.daily_reset_date IS 'Last date new_cards_introduced was reset';

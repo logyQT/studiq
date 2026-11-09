@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
         easinessFactor: existingState?.easiness_factor ?? 2.5,
         interval: existingState?.interval_days ?? 0,
         repetitions: existingState?.repetitions ?? 0,
-        lapseCount: existingState?.lapse_count ?? 0,
+        lapseCount: existingState?.sm2_lapse_count ?? 0,
         leechThreshold: 8,
       });
 
@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
           last_quality: quality,
           learning_state: result.learningState,
           learning_step: result.learningStep,
-          lapse_count: result.lapseCount,
+          sm2_lapse_count: result.lapseCount,
           is_leech: result.isLeech,
         },
         {

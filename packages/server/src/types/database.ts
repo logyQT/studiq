@@ -471,13 +471,13 @@ export type Database = {
           interval_days: number;
           interval_unit: string;
           is_leech: boolean;
-          lapse_count: number;
           last_quality: number | null;
           last_reviewed_at: string | null;
           learning_state: string;
           learning_step: number;
           next_review_at: string;
           repetitions: number;
+          sm2_lapse_count: number;
           user_id: string;
         };
         ComputedFields: never;
@@ -487,13 +487,13 @@ export type Database = {
           interval_days?: number;
           interval_unit?: string;
           is_leech?: boolean;
-          lapse_count?: number;
           last_quality?: number | null;
           last_reviewed_at?: string | null;
           learning_state?: string;
           learning_step?: number;
           next_review_at?: string;
           repetitions?: number;
+          sm2_lapse_count?: number;
           user_id: string;
         };
         Update: {
@@ -502,13 +502,13 @@ export type Database = {
           interval_days?: number;
           interval_unit?: string;
           is_leech?: boolean;
-          lapse_count?: number;
           last_quality?: number | null;
           last_reviewed_at?: string | null;
           learning_state?: string;
           learning_step?: number;
           next_review_at?: string;
           repetitions?: number;
+          sm2_lapse_count?: number;
           user_id?: string;
         };
         Relationships: [

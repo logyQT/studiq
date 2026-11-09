@@ -66,7 +66,7 @@ BEGIN
       m.id, m.front, m.back, m.created_at,
       rs.easiness_factor, rs.interval_days, rs.interval_unit, rs.repetitions,
       rs.next_review_at, rs.last_reviewed_at, rs.last_quality,
-      rs.learning_state, rs.learning_step, rs.lapse_count, rs.is_leech
+      rs.learning_state, rs.learning_step, rs.sm2_lapse_count, rs.is_leech
     FROM matching m
     LEFT JOIN flashcard_review_state rs
       ON rs.flashcard_id = m.id AND rs.user_id = p_user_id
@@ -108,7 +108,7 @@ BEGIN
           'lastQuality', c.last_quality,
           'learningState', c.learning_state,
           'learningStep', c.learning_step,
-          'lapseCount', c.lapse_count,
+          'sm2LapseCount', c.sm2_lapse_count,
           'isLeech', c.is_leech
         )
       ELSE NULL END,

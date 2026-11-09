@@ -536,6 +536,60 @@ describe(`Flashcard Practice Integration`, () => {
     });
   });
 
+  describe('cards-stats Pomyłki (#809)', () => {
+    let mistakes!: BeforeResult;
+
+    beforeAll(async () => {
+      mistakes = await before({ role: 'student', decks: 1, flashcards: 2 });
+    });
+
+    afterAll(async () => {
+      await cleanupFlashcardPractice(mistakes.user.id);
+      await cleanupFlashcardReviewState(mistakes.user.id);
+      await cleanupFlashcards(mistakes.user.id);
+      await cleanupFlashcardDecks(mistakes.user.id);
+    });
+
+    async function practice(flashcardId: string, confidenceLevel: number) {
+      mockUser(mistakes.user);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+        { id: flashcardId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wasCorrect: confidenceLevel >= 3, confidenceLevel }),
+        },
+      );
+      const response = await logPractice(request, { params });
+      expect(response.status).toBe(201);
+    }
+
+    it('counts a wrong first answer before the card graduates', async () => {
+      const [cardA, cardB] = mistakes.created.flashcards;
+
+      // A: „Łatwe” -> review with no wrong answer.
+      await practice(cardA, 4);
+      // B: „Nie pamiętam” -> learning; sm2_lapse_count stays 0 by design.
+      await practice(cardB, 1);
+
+      mockUser(mistakes.user);
+      const response = await getCardsStats(
+        createNextRequest('http://localhost/api/v1/flashcards/practice/cards-stats?limit=100'),
+      );
+      const body = await json<CardsStatsBody>(response);
+      expect(response.status).toBe(200);
+
+      const items = body.data.items;
+      const itemA = items.find((i) => i.id === cardA);
+      const itemB = items.find((i) => i.id === cardB);
+
+      expect(itemA).toMatchObject({ state: 'review', mistakeCount: 0 });
+      expect(itemB).toMatchObject({ state: 'learning', mistakeCount: 1 });
+      expect(items.every((i) => !('lapseCount' in i))).toBe(true);
+    });
+  });
+
   describe('cram mode (#617)', () => {
     let cram!: BeforeResult;
 

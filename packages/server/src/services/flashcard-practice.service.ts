@@ -123,7 +123,7 @@ type ReviewStateRow = {
   easiness_factor: number;
   interval_days: number;
   repetitions: number;
-  lapse_count: number;
+  sm2_lapse_count: number;
   is_leech: boolean;
 };
 
@@ -361,7 +361,7 @@ export class FlashcardPracticeService {
       easinessFactor: existing?.easiness_factor ?? 2.5,
       interval: existing?.interval_days ?? 0,
       repetitions: existing?.repetitions ?? 0,
-      lapseCount: existing?.lapse_count ?? 0,
+      lapseCount: existing?.sm2_lapse_count ?? 0,
       leechThreshold: settings.leech_threshold,
     });
 
@@ -390,7 +390,7 @@ export class FlashcardPracticeService {
           last_quality: quality,
           learning_state: result.learningState,
           learning_step: result.learningStep,
-          lapse_count: result.lapseCount,
+          sm2_lapse_count: result.lapseCount,
           is_leech: result.isLeech,
         },
         {
@@ -652,6 +652,8 @@ export class FlashcardPracticeService {
       totalAttempts,
       correctRate: totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0,
       averageResponseTimeMs: Math.round(avgResponseTime),
+      mistakeCount: totalAttempts - correctAttempts,
+      // Raw SM-2 scheduling row; `sm2_lapse_count` is a leech signal, not „Pomyłki”.
       reviewState: reviewStateResult.data,
     });
   }
@@ -733,10 +735,12 @@ export class FlashcardPracticeService {
       const entry = practiceByCard.get(row.flashcard_id) ?? {
         total: 0,
         correct: 0,
+        wrong: 0,
         lastPracticedAt: null,
       };
       entry.total++;
       if (row.was_correct) entry.correct++;
+      else entry.wrong++;
       if (!entry.lastPracticedAt) entry.lastPracticedAt = row.practiced_at;
       practiceByCard.set(row.flashcard_id, entry);
     }
@@ -771,7 +775,9 @@ export class FlashcardPracticeService {
         repetitions: state?.repetitions ?? null,
         isLeech,
         learningStep: state?.learning_step ?? null,
-        lapseCount: state?.lapse_count ?? null,
+        // „Pomyłki” is the practice log's wrong-answer count — the SM-2 lapse
+        // counter is 0 until a card graduates, so it cannot represent this.
+        mistakeCount: practice?.wrong ?? 0,
       };
     });
 
@@ -891,7 +897,7 @@ export class FlashcardPracticeService {
     const { data: reviewStates } = await supabase
       .from('flashcard_review_state')
       .select(
-        'flashcard_id, easiness_factor, interval_days, interval_unit, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, lapse_count, is_leech',
+        'flashcard_id, easiness_factor, interval_days, interval_unit, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, sm2_lapse_count, is_leech',
       )
       .eq('user_id', ctx.userId)
       .in('flashcard_id', matchingIds);
@@ -934,7 +940,7 @@ export class FlashcardPracticeService {
                 lastQuality: state.last_quality,
                 learningState: state.learning_state,
                 learningStep: state.learning_step,
-                lapseCount: state.lapse_count,
+                sm2LapseCount: state.sm2_lapse_count,
                 isLeech: state.is_leech,
               }
             : null,
