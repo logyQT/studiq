@@ -28,7 +28,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 const ROOT = process.cwd();
 const SCHEMA_FILE = '.env.schema';
@@ -43,6 +43,27 @@ const CODE_ROOTS = ['apps/web/src', 'apps/admin/src', 'packages', 'scripts', '__
  * names the operating system or shell owns.
  */
 const AMBIENT_ALLOWLIST = new Set(['PATH', 'HOME', 'LANG', 'LC_ALL']);
+
+/**
+ * Path-scoped ambient names: OS-owned values one narrow scope may read without
+ * declaring them. `scripts/env/**` needs the runtime-directory roots to locate
+ * the cross-checkout dev registry (the same fallback `scripts/dev` uses); no
+ * other scope may read them undeclared.
+ */
+const SCOPED_AMBIENT_ALLOWLIST: ReadonlyArray<{ scope: string; keys: ReadonlySet<string> }> = [
+  {
+    scope: 'scripts/env/',
+    keys: new Set(['TMPDIR', 'XDG_RUNTIME_DIR']),
+  },
+];
+
+function isAllowedAmbientKey(file: string, key: string): boolean {
+  if (AMBIENT_ALLOWLIST.has(key)) return true;
+  const filePath = relative(ROOT, file).split(sep).join('/');
+  return SCOPED_AMBIENT_ALLOWLIST.some(
+    ({ scope, keys }) => filePath.startsWith(scope) && keys.has(key),
+  );
+}
 
 /** Values-file names that must not exist under `apps/*` or `supabase/`. */
 const VALUES_FILE_NAMES = new Set(['.env', '.env.local']);
@@ -145,7 +166,7 @@ const references = staticReferences();
 const referenced = new Set<string>();
 for (const keys of references.values()) for (const key of keys) referenced.add(key);
 for (const [file, keys] of [...references.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-  const missing = [...keys].filter((key) => !declared.has(key) && !AMBIENT_ALLOWLIST.has(key));
+  const missing = [...keys].filter((key) => !declared.has(key) && !isAllowedAmbientKey(file, key));
   for (const key of missing.sort()) {
     violations.push(
       `${relative(ROOT, file)} reads process.env.${key}, which is not declared in ${SCHEMA_FILE}`,
