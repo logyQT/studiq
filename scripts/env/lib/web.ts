@@ -173,30 +173,6 @@ const defaultRebuildWebGuard: RebuildWebGuard = {
   alive: (pid) => pidAlive(pid),
 };
 
-/**
- * A rebuild replaces `apps/web/.next` under the running server, so the server
- * must be *gone* first — not merely asked to stop. `stopWebServer` can decline
- * (no marker, a signalled group that survived), and the build would then race a
- * live server, so a surviving PID aborts before the caller builds anything.
- */
-export async function rebuildWithWebStopped<T>(
-  build: () => Promise<T>,
-  guard: RebuildWebGuard = defaultRebuildWebGuard,
-): Promise<T> {
-  const pid = guard.readPid();
-  if (pid !== null) {
-    guard.stop();
-    const survivor = guard.readPid() ?? (guard.alive(pid) ? pid : null);
-    if (survivor !== null) {
-      throw new EnvFailure(
-        EXIT_CONFLICT,
-        `web server (pid ${survivor}) is still running after stop; refusing to rebuild over it.`,
-      );
-    }
-  }
-  return build();
-}
-
 /** Stop only this checkout's web server; idempotent. */
 export function stopWebServer(): StopWebResult {
   const pid = readWebPid();
@@ -399,9 +375,9 @@ const defaultListenerOwnership: ListenerOwnership = {
  *
  * A live owned PID plus an HTTP 200 is not proof: the 200 may come from a
  * foreign listener while our process sits on another port. The PID file's
- * recorded port must equal the leased port, and (when `lsof` is available) the
- * listener on that port must belong to the recorded process. A mismatch or an
- * unverifiable listener is never reported ready.
+ * recorded port must equal the leased port, and the listener on that port must
+ * belong to the recorded process. A mismatch, an unreadable listener table or
+ * an unverifiable listener is never reported ready.
  *
  * @public Exercised by the unit tests, which load this module by computed URL.
  */
@@ -413,8 +389,10 @@ export function assessWebReadiness(
   if (pid === null || !pidAlive(pid)) return { ready: false, reason: 'no-pid' };
   if (input.recordedPort !== input.appPort) return { ready: false, reason: 'port-mismatch' };
   const listeners = ownership.listeners(input.appPort);
-  if (listeners.state === 'unsupported') return { ready: true, reason: 'ready' };
-  if (listeners.state === 'failed') return { ready: false, reason: 'listener-unverifiable' };
+  // Readiness must be provable: without a listener table we cannot show that
+  // the recorded process serves the leased port, so an unknown state is never
+  // treated as ready (that would let a foreign listener impersonate us).
+  if (listeners.state !== 'ok') return { ready: false, reason: 'listener-unverifiable' };
   if (listeners.pids.length === 0) return { ready: false, reason: 'not-listening' };
   if (!listeners.pids.some((listener) => ownership.owns(pid, listener))) {
     return { ready: false, reason: 'foreign-listener' };

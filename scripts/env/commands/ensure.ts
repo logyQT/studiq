@@ -29,7 +29,7 @@ import {
 } from '../lib/capabilities';
 import { buildCapabilities, excludesFor, missingCapabilities, type Capability } from '../profiles';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
-import { logBuildOutput, runProductionBuild } from '../lib/build';
+import { rebuildWithRecovery } from '../lib/rebuild';
 import { pidAlive, withCheckoutLock } from '../lib/locks';
 import {
   heartbeatAgeMs,
@@ -59,12 +59,12 @@ import {
 import {
   readWebPid,
   recordedWebReadiness,
-  rebuildWithWebStopped,
   startWebServer,
   stopWebServer,
   stopWebServerForReplacement,
   waitForWeb,
   webLogPath,
+  type WebReadiness,
 } from '../lib/web';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
@@ -82,6 +82,52 @@ function withPort(contract: Contract, appPort: number): Contract {
   process.env.APP_URL = next.appUrl;
   process.env.NEXT_PUBLIC_SITE_URL ||= next.appUrl;
   return next;
+}
+
+/**
+ * A port that already answers belongs to someone. Starting a replacement there
+ * would race an unknown listener (and could silently serve another checkout),
+ * so readiness must prove the listener is this checkout's recorded server.
+ */
+function refuseAnsweringPort(appPort: number, webHttp: number, readiness: WebReadiness): void {
+  if (healthy(webHttp) && !readiness.ready) {
+    throw new EnvFailure(
+      EXIT_CONFLICT,
+      `port ${appPort} is already answering but is not this checkout's server`,
+    );
+  }
+}
+
+/**
+ * Stop the previously recorded server (if any), start the replacement, and
+ * wait until readiness proves it serves the leased port. A stop that leaves a
+ * surviving server aborts before anything is spawned.
+ *
+ * @public Used by `env:ensure` and exercised by the unit tests, which load this
+ * module by computed URL.
+ */
+export async function startWebReplacement(input: {
+  appPort: number;
+  appUrl: string;
+  env: NodeJS.ProcessEnv;
+  webPid: number | null;
+  timeoutSeconds?: number;
+}): Promise<{ pid: number; http: number }> {
+  if (input.webPid !== null) stopWebServerForReplacement();
+  const pid = startWebServer({
+    appPort: input.appPort,
+    appUrl: input.appUrl,
+    env: input.env,
+  });
+  const waited = await waitForWeb(input.appUrl, pid, input.timeoutSeconds ?? 120, input.appPort);
+  if (!waited.ok) {
+    stopWebServer();
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      `web did not start (${waited.reason}); see ${webLogPath()}`,
+    );
+  }
+  return { pid, http: waited.http };
 }
 
 /**
@@ -347,6 +393,9 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
         anonKey: sharedEnv.anonKey ?? '',
       });
+      let webPid = readWebPid();
+      let webHttp = 0;
+      let webStarted = false;
       if (options.build) {
         const state = readBuildState();
         const current =
@@ -355,39 +404,40 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
             computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
           buildArtifactPresent();
         if (options.forceBuild || !current) {
-          const result = await rebuildWithWebStopped(() => runProductionBuild(envHash));
-          if (!result.ok) {
-            logBuildOutput(result.output);
-            throw new EnvFailure(
-              result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
-              result.timedOut ? 'timed out waiting for the build lock' : 'build failed',
-            );
-          }
+          const outcome = await rebuildWithRecovery({
+            envHash,
+            appPort: contract.appPort,
+            appUrl: contract.appUrl,
+            env: process.env,
+            serve: options.serve,
+          });
           writeBuildState({
-            fingerprint: result.fingerprintAfter,
+            fingerprint: outcome.build.fingerprintAfter,
             envHash,
             builtAt: new Date().toISOString(),
           });
+          webPid = outcome.webPid;
+          webHttp = outcome.webHttp;
+          webStarted = outcome.webStarted;
         }
       }
-      let webPid = readWebPid();
-      const warmWeb = recordedWebReadiness(contract.appPort);
-      let webHttp = await probeHttp(contract.appUrl);
-      if (options.serve && (!healthy(webHttp) || !warmWeb.ready)) {
-        // Any owned server that is not (healthy and) serving the leased port is
-        // replaced, so a foreign listener on the port cannot be mistaken for it.
-        // A stop that leaves the old server alive aborts the replacement.
-        if (webPid) stopWebServerForReplacement();
-        webPid = startWebServer({
-          appPort: contract.appPort,
-          appUrl: contract.appUrl,
-          env: process.env,
-        });
-        const waited = await waitForWeb(contract.appUrl, webPid, 120, contract.appPort);
-        webHttp = waited.http;
-        if (!waited.ok) {
-          stopWebServer();
-          throw new EnvFailure(EXIT_START_FAILED, `web did not start (${waited.reason})`);
+      if (!webStarted) {
+        const warmWeb = recordedWebReadiness(contract.appPort);
+        webHttp = await probeHttp(contract.appUrl);
+        if (options.serve && (!healthy(webHttp) || !warmWeb.ready)) {
+          // Any owned server that is not (healthy and) serving the leased port is
+          // replaced, so a foreign listener on the port cannot be mistaken for it.
+          // A port that already answers without a provable owner is refused, and
+          // a stop that leaves the old server alive aborts the replacement.
+          refuseAnsweringPort(contract.appPort, webHttp, warmWeb);
+          const started = await startWebReplacement({
+            appPort: contract.appPort,
+            appUrl: contract.appUrl,
+            env: process.env,
+            webPid,
+          });
+          webPid = started.pid;
+          webHttp = started.http;
         }
       }
       writeLease(touchLease(lease.lease, { appPort: contract.appPort, ownerPid: webPid ?? 0 }));
@@ -484,7 +534,9 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
       anonKey: stack.env.anonKey ?? '',
     });
-    let built = false;
+    let webPid = readWebPid();
+    let webHttp = 0;
+    let webStarted = false;
     if (options.build) {
       const state = readBuildState();
       const current =
@@ -493,45 +545,40 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
         buildArtifactPresent();
       if (options.forceBuild || !current) {
-        const result = await rebuildWithWebStopped(() => runProductionBuild(envHash));
-        if (!result.ok) {
-          logBuildOutput(result.output);
-          throw new EnvFailure(
-            result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
-            result.timedOut
-              ? 'timed out waiting for the build lock'
-              : 'build failed; environment is stopped',
-          );
-        }
+        const outcome = await rebuildWithRecovery({
+          envHash,
+          appPort: contract.appPort,
+          appUrl: contract.appUrl,
+          env: process.env,
+          serve: options.serve,
+        });
         writeBuildState({
-          fingerprint: result.fingerprintAfter,
+          fingerprint: outcome.build.fingerprintAfter,
           envHash,
           builtAt: new Date().toISOString(),
         });
-        built = true;
+        webPid = outcome.webPid;
+        webHttp = outcome.webHttp;
+        webStarted = outcome.webStarted;
       }
     }
 
-    let webPid = readWebPid();
-    const warmWeb = recordedWebReadiness(contract.appPort);
-    let webHttp = await probeHttp(contract.appUrl);
-    if (options.serve && (built || !healthy(webHttp) || !warmWeb.ready)) {
-      // A server that survives its stop would race the replacement for the port;
-      // the guard aborts instead of starting a second one.
-      if (webPid) stopWebServerForReplacement();
-      webPid = startWebServer({
-        appPort: contract.appPort,
-        appUrl: contract.appUrl,
-        env: process.env,
-      });
-      const waited = await waitForWeb(contract.appUrl, webPid, 120, contract.appPort);
-      webHttp = waited.http;
-      if (!waited.ok) {
-        stopWebServer();
-        throw new EnvFailure(
-          EXIT_START_FAILED,
-          `web did not start (${waited.reason}); see ${webLogPath()}`,
-        );
+    if (!webStarted) {
+      const warmWeb = recordedWebReadiness(contract.appPort);
+      webHttp = await probeHttp(contract.appUrl);
+      if (options.serve && (!healthy(webHttp) || !warmWeb.ready)) {
+        // A port that already answers without a provable owner is refused, and a
+        // server that survives its stop would race the replacement for the port;
+        // both abort instead of starting a second server.
+        refuseAnsweringPort(contract.appPort, webHttp, warmWeb);
+        const started = await startWebReplacement({
+          appPort: contract.appPort,
+          appUrl: contract.appUrl,
+          env: process.env,
+          webPid,
+        });
+        webPid = started.pid;
+        webHttp = started.http;
       }
     }
 

@@ -268,7 +268,7 @@ describe('web readiness is bound to the recorded listener', () => {
     }
   });
 
-  it('skips the listener proof when lsof is unavailable', async () => {
+  it('never reports ready when the listener table is unsupported', async () => {
     const server = await startHttpServer(200);
     try {
       writePid(process.pid, server.port);
@@ -277,7 +277,7 @@ describe('web readiness is bound to the recorded listener', () => {
         owns: () => false,
       });
 
-      expect(result).toMatchObject({ ok: true, reason: 'ready', http: 200 });
+      expect(result).toMatchObject({ ok: false, reason: 'listener-unverifiable', http: 200 });
     } finally {
       await server.close();
     }
