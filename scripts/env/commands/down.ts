@@ -1,6 +1,6 @@
-import type { ParsedCommand } from '../atoms';
+import { UsageError, type DownOptions, type ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
-import { readContractLenient } from '../lib/contract';
+import { readContractLenient, readStackName } from '../lib/contract';
 import { appendEnvLog, identityKey, readStackState, removeStackState } from '../lib/state';
 import { ensureRegistryDir, withCheckoutLock } from '../lib/locks';
 import { leaseProjectId, readLease, releaseProjectClaims, removeLease } from '../lib/lease';
@@ -35,20 +35,44 @@ function releaseLease(dir: string, projectId: string): void {
   releaseProjectClaims(dir, projectId);
 }
 
+/**
+ * The stack `down` acts on.
+ *
+ * `readContractLenient` folds a malformed `SUPABASE_STACK` to null so reporting
+ * and plain `down` never break, but `down --all` actually stops a stack: an
+ * invalid name must surface as a usage error (exit 2) instead of silently
+ * stopping the default one. An explicit `--stack` is already validated by the
+ * parser and always wins.
+ */
+function downStackName(options: DownOptions, lenientName: string | null): string | null {
+  if (options.stack) return options.stack;
+  if (!options.all) return lenientName;
+  try {
+    return readStackName();
+  } catch (error) {
+    if (error instanceof UsageError) {
+      throw new UsageError(`${error.message} Refusing 'down --all' without an explicit --stack.`);
+    }
+    throw error;
+  }
+}
+
 export async function runDown(parsed: ParsedCommand): Promise<number> {
   const options = parsed.down;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'down options are missing');
   const contract = readContractLenient();
-  const cliStackName = options.stack ?? contract.stackName;
+
+  if (options.all && contract.shared) {
+    throw new EnvFailure(EXIT_CONFLICT, 'SUPABASE_SHARED=1: refusing to stop a foreign stack');
+  }
+
+  const cliStackName = downStackName(options, contract.stackName);
   const snapshotContract = { ...contract, stackName: cliStackName };
   const branch = currentBranchRef();
   const projectId = leaseProjectId(identityKey(REPO_ROOT, branch, cliStackName ?? ''));
   const dir = ensureRegistryDir();
   appendEnvLog(`down: all=${options.all} stack=${cliStackName ?? 'default'}`);
 
-  if (options.all && contract.shared) {
-    throw new EnvFailure(EXIT_CONFLICT, 'SUPABASE_SHARED=1: refusing to stop a foreign stack');
-  }
   if (options.all && !parsed.yes && !(await confirm("Stop this checkout's stack? [y/N] "))) {
     throw new EnvFailure(2, 'refusing to stop without confirmation (pass --yes)');
   }

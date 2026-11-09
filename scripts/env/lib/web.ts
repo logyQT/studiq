@@ -35,9 +35,11 @@ function hasWorktreeMarker(pid: number): boolean {
 /**
  * PID of this checkout's `next start`/dev server, or null.
  *
- * Ported from `scripts/dev`'s `read_web_pid`: the pid file alone is not proof —
- * the process must still be alive and either carry this checkout's marker (and
- * look like Next) or reference the checkout path.
+ * The pid file alone is not proof — the PID may have been reused by an
+ * unrelated process. Both startup paths (`scripts/dev` and `startWebServer`)
+ * set `STUDIQ_DEV_WORKTREE`, so this checkout's marker (and a Next-looking
+ * command) is required: a command that merely mentions the checkout path is
+ * not enough.
  */
 export function readWebPid(): number | null {
   let raw: string;
@@ -57,13 +59,9 @@ export function readWebPid(): number | null {
   if (result.status !== 0) return null;
   const command = result.stdout ?? '';
 
-  if (hasWorktreeMarker(pid) && (command.includes('next') || command.includes('@studiq/web'))) {
-    return pid;
-  }
-  // Same delimiter rule for the command fallback.
-  const commandPath = new RegExp(`(?:^|\\s)${escapeRegExp(REPO_ROOT)}(?:[\\s/]|$)`);
-  if (commandPath.test(command)) return pid;
-  return null;
+  if (!hasWorktreeMarker(pid)) return null;
+  if (!command.includes('next') && !command.includes('@studiq/web')) return null;
+  return pid;
 }
 
 function terminateWebPid(pid: number): boolean {

@@ -33,7 +33,14 @@ function readShared(): boolean {
   throw new UsageError(`SUPABASE_SHARED must be 0 or 1 (got '${raw}').`);
 }
 
-function readStackName(): string | null {
+/**
+ * A validated `SUPABASE_STACK`, or null when it is unset.
+ *
+ * Exported for callers that act on a stack (`down --all`): the lenient reader
+ * below folds a malformed value to null so reporting and plain teardown keep
+ * working, and acting on that null would silently target the default stack.
+ */
+export function readStackName(): string | null {
   const raw = process.env.SUPABASE_STACK ?? '';
   if (!raw) return null;
   if (!/^[A-Za-z0-9_-]+$/.test(raw)) {
