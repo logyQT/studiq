@@ -23,8 +23,12 @@ export function pidAlive(pid: number): boolean {
   }
 }
 
-export function ensureRegistryDir(): string {
-  const dir = resolveRegistryDir();
+/**
+ * Registry state is trusted only when it is a real directory owned by the
+ * current user. The same guard covers the registry root and the shared
+ * `claims/` subdirectory, so a precreated symlink can never redirect a claim.
+ */
+function trustRegistryDir(dir: string): string {
   if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
     throw new EnvFailure(EXIT_CONFLICT, `registry path ${dir} is a symlink; refusing to use it`);
   }
@@ -38,6 +42,15 @@ export function ensureRegistryDir(): string {
   }
   chmodSync(dir, 0o700);
   return dir;
+}
+
+export function ensureRegistryDir(): string {
+  return trustRegistryDir(resolveRegistryDir());
+}
+
+/** A private subdirectory of the shared registry (for example `claims/`). */
+export function ensureRegistrySubdir(name: string, parent = resolveRegistryDir()): string {
+  return trustRegistryDir(join(parent, name));
 }
 
 function sleep(ms: number): Promise<void> {

@@ -3,7 +3,7 @@ import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContractLenient } from '../lib/contract';
 import { appendEnvLog, identityKey, readStackState, removeStackState } from '../lib/state';
 import { ensureRegistryDir, withCheckoutLock } from '../lib/locks';
-import { leaseProjectId, readLease, removeLease } from '../lib/lease';
+import { leaseProjectId, readLease, releaseProjectClaims, removeLease } from '../lib/lease';
 import { REPO_ROOT, isThisCheckout, currentBranchRef } from '../lib/repo';
 import { readStackList, readStackStatus } from '../lib/stack';
 import { stopStack } from '../lib/stack-lifecycle';
@@ -29,6 +29,12 @@ function webStopLine(): string {
       : 'Web server is not running in this checkout.';
 }
 
+/** Drop the app-port lease **and** its cross-checkout claim together. */
+function releaseLease(dir: string, projectId: string): void {
+  removeLease(dir, projectId);
+  releaseProjectClaims(dir, projectId);
+}
+
 export async function runDown(parsed: ParsedCommand): Promise<number> {
   const options = parsed.down;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'down options are missing');
@@ -50,7 +56,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
   return withCheckoutLock(async () => {
     const lines = [webStopLine()];
     if (contract.shared) {
-      removeLease(dir, projectId);
+      releaseLease(dir, projectId);
       removeStackState();
       lines.push('Released the app-port lease (shared stack).');
       if (parsed.json) {
@@ -69,7 +75,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
     const stack = readStackStatus(cliStackName);
     if (!options.all) {
       if (!stack && readStackList() !== null) {
-        removeLease(dir, projectId);
+        releaseLease(dir, projectId);
         removeStackState();
         lines.push('Released the app-port lease (stack is stopped).');
       } else {
@@ -108,7 +114,7 @@ export async function runDown(parsed: ParsedCommand): Promise<number> {
       }
       lines.push(`Stopped Supabase stack '${wanted}' (data kept).`);
     } else lines.push('Supabase stack is already stopped.');
-    removeLease(dir, projectId);
+    releaseLease(dir, projectId);
     removeStackState();
     lines.push('Released the app-port lease.');
     if (parsed.json) {

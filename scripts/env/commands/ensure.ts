@@ -24,11 +24,14 @@ import {
   leaseProjectId,
   newLease,
   readLease,
+  releaseAppPortClaim,
+  releaseProjectClaims,
   removeLease,
   touchLease,
   writeLease,
   type AppLease,
 } from '../lib/lease';
+import { appPortCandidates, chooseAppPort } from '../lib/app-port';
 import {
   appendEnvLog,
   buildArtifactPresent,
@@ -45,10 +48,6 @@ import { collectSnapshot } from '../lib/snapshot';
 import { assertSeedingAllowed, runSeeder } from '../lib/seed';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
 import { printJson, writeStderrLine } from '../lib/output';
-
-const MIN_PORT = 3000;
-const MAX_PORT = 3999;
-const RESERVED = new Set([3010]);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const healthy = (code: number) => code >= 200 && code < 400;
@@ -78,58 +77,43 @@ async function resolveLease(
   const projectId = leaseProjectId(key);
   const dir = readRegistry().dir;
   const existing = readLease(dir, projectId);
-  const candidates: number[] = [];
-  if (options.explicitPort) candidates.push(options.explicitPort);
-  else if (existing?.appPort) candidates.push(existing.appPort);
-  else candidates.push(contract.appPort || 3000);
-  if (!options.explicitPort) {
-    for (let port = MIN_PORT; port <= MAX_PORT; port += 1) {
-      if (!RESERVED.has(port) && !candidates.includes(port)) candidates.push(port);
-    }
-  }
-  let chosen = 0;
-  for (const port of candidates) {
-    if (port < 1 || port > 65535 || RESERVED.has(port)) continue;
-    const registry = readRegistry();
-    const foreign = registry.entries.find(
-      (entry) => entry.projectId !== projectId && entry.appPort === port,
-    );
-    if (foreign && port !== existing?.appPort) {
+  const chosen = await chooseAppPort({
+    dir,
+    projectId,
+    candidates: appPortCandidates({
+      existingPort: existing?.appPort || null,
+      defaultPort: contract.appPort,
+      explicitPort: options.explicitPort,
+    }),
+    existingPort: existing?.appPort || null,
+    explicitPort: options.explicitPort,
+    isPortFree: freePort,
+    // Another checkout's lease holds the candidate: reclaim it only when its
+    // process is gone, its heartbeat expired and its stack is not running.
+    reclaimForeign: async (foreign, port) => {
       const raw = readLease(dir, foreign.projectId);
-      const listed = raw ? readStackList() : null;
-      const running =
-        raw !== null &&
-        (listed === null ||
-          listed.some(
-            (stack) =>
-              canon(stack.projectRoot) === canon(raw.projectRoot) &&
-              (stack.name || 'default') === (raw.stackName || 'default') &&
-              stack.owner === 'reachable',
-          ));
+      if (!raw) return true;
+      const listed = readStackList();
+      if (listed === null) return false;
+      const running = listed.some(
+        (stack) =>
+          canon(stack.projectRoot) === canon(raw.projectRoot) &&
+          (stack.name || 'default') === (raw.stackName || 'default') &&
+          stack.owner === 'reachable',
+      );
       const reclaimable =
-        raw !== null &&
-        listed !== null &&
         isLeaseReclaimable({
           pidAlive: pidAlive(raw.ownerPid),
           heartbeatAgeMs: heartbeatAgeMs(raw),
           ttlSec: raw.ttlSec,
           stackRunning: running,
-        }) &&
-        (await freePort(port));
-      if (!reclaimable) {
-        if (options.explicitPort) throw new EnvFailure(EXIT_CONFLICT, `app port ${port} is leased`);
-        continue;
-      }
+        }) && (await freePort(port));
+      if (!reclaimable) return false;
       removeLease(dir, foreign.projectId);
-    }
-    if (port !== existing?.appPort && !(await freePort(port))) {
-      if (options.explicitPort) throw new EnvFailure(EXIT_CONFLICT, `app port ${port} is in use`);
-      continue;
-    }
-    chosen = port;
-    break;
-  }
-  if (!chosen) throw new EnvFailure(EXIT_CONFLICT, `no free app port in ${MIN_PORT}-${MAX_PORT}`);
+      releaseAppPortClaim(dir, port, foreign.projectId);
+      return true;
+    },
+  });
   const next = withPort(contract, chosen);
   const lease = touchLease(
     existing ??
@@ -150,6 +134,8 @@ async function resolveLease(
     },
   );
   writeLease(lease);
+  // The claim follows the selected port only: a moved lease drops the old one.
+  releaseProjectClaims(dir, projectId, chosen);
   return { contract: next, lease, dir, projectId };
 }
 
@@ -347,6 +333,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       if (!result.ok) {
         stopStack(cliStackName);
         removeLease(dir, projectId);
+        releaseProjectClaims(dir, projectId);
         throw new EnvFailure(
           result.timedOut ? EXIT_TIMEOUT : EXIT_START_FAILED,
           result.timedOut

@@ -16,9 +16,10 @@ import {
 } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { DEV_DIR } from './lib/state';
-import { REPO_ROOT, isThisCheckout } from './lib/repo';
+import { DEV_DIR, identityKey } from './lib/state';
+import { REPO_ROOT, isThisCheckout, currentBranchRef } from './lib/repo';
 import { resolveRegistryDir } from './lib/registry';
+import { leaseProjectId, releaseProjectClaims } from './lib/lease';
 import { readWebPid, stopWebServer } from './lib/web';
 
 interface RunResult {
@@ -159,6 +160,34 @@ function scratchLeases(): Array<Record<string, unknown>> {
   return leases().filter((lease) => lease.stackName === scratchName);
 }
 
+function scratchProjectId(): string {
+  return leaseProjectId(identityKey(REPO_ROOT, currentBranchRef(), scratchName));
+}
+
+/** Port claims this scratch stack still holds in the shared registry. */
+function scratchClaims(): Array<Record<string, unknown>> {
+  const dir = join(resolveRegistryDir(), 'claims');
+  if (!existsSync(dir)) return [];
+  const projectId = scratchProjectId();
+  const claims: Array<Record<string, unknown>> = [];
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.claim')) continue;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        (parsed as Record<string, unknown>).projectId === projectId
+      ) {
+        claims.push(parsed as Record<string, unknown>);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return claims;
+}
+
 function scanSecrets(label: string, text: string): void {
   const patterns = [
     /eyJ[A-Za-z0-9_-]{10,}/,
@@ -197,6 +226,7 @@ function destroyScratch(): void {
   for (const lease of scratchLeases()) {
     rmSync(join(resolveRegistryDir(), `${string(lease.projectId)}.json`), { force: true });
   }
+  releaseProjectClaims(resolveRegistryDir(), scratchProjectId());
 }
 
 async function main(): Promise<number> {
@@ -268,7 +298,10 @@ async function main(): Promise<number> {
     );
 
     const downAll = run(['env:down', '--all', '--yes', '--json'], childEnv);
-    check(downAll.code === 0 && scratchLeases().length === 0, 'down --all releases the lease');
+    check(
+      downAll.code === 0 && scratchLeases().length === 0 && scratchClaims().length === 0,
+      'down --all releases the lease and its app-port claim',
+    );
 
     clearTrace();
     const web = run(['env:ensure', '--profile', 'web', '--json'], childEnv);

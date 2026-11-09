@@ -121,7 +121,7 @@ export interface Harness {
 }
 
 /** The Bun binary running this suite (absolute, so a child PATH cannot hide it). */
-const BUN = (() => {
+export const BUN = (() => {
   if (process.versions.bun) return process.execPath;
   for (const dir of (process.env.PATH ?? '').split(':')) {
     if (!dir) continue;
