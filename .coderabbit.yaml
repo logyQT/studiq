@@ -328,6 +328,14 @@ reviews:
         - No third-party action may be used without a pinned version and a note
           about why it is needed.
 
+    - path: 'docs/**'
+      instructions: |
+        Design prose and plans, not executable code.
+        - Review only for: contradictions with the current repository code or AGENTS.md, contradictions with the linked issue's operator decisions, and broken file paths/links.
+        - Do NOT report Functional Correctness, Stability & Availability, race conditions, performance, "an implementation could…" scenarios, or missing specification text for behavior that is not implemented yet. Those are implementation-time decisions for the phase PR.
+        - Do not require a spec section for runtime details that can be settled while coding; do not propose style/formatting changes.
+        - A future phase's behavior is out of scope for a docs PR unless it contradicts existing code or an operator decision.
+
     - path: '**/*.md'
       instructions: |
         Docs are English-only and are the source of truth for how the repo works
