@@ -51,6 +51,16 @@ function readStackName(): string | null {
 /** Ports a scheme implies when the URL omits an explicit one. */
 const DEFAULT_PORTS: Record<string, number> = { 'http:': 80, 'https:': 443 };
 
+/** Four decimal octets, first one 127 — the whole IPv4 loopback block. */
+const LOOPBACK_IPV4 = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+
+/** True for 127.0.0.0/8 only: a strict 127. prefix plus valid octets. */
+function isLoopbackIPv4(hostname: string): boolean {
+  const octets = LOOPBACK_IPV4.exec(hostname);
+  if (!octets) return false;
+  return octets.slice(1).every((octet) => Number(octet) <= 255);
+}
+
 /**
  * A URL this checkout serves itself: `APP_PORT` and `APP_URL` then describe the
  * same listener, so the two must agree. Hosted/proxied URLs are exempt.
@@ -64,7 +74,7 @@ function isLoopbackUrl(url: string): boolean {
   }
   return (
     hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
+    isLoopbackIPv4(hostname) ||
     hostname === '::1' ||
     hostname === '[::1]'
   );

@@ -57,6 +57,43 @@ describe('env contract: APP_PORT vs loopback APP_URL', () => {
     );
   });
 
+  it('treats the whole 127.0.0.0/8 range as loopback', async () => {
+    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://127.0.0.2:9999' });
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(
+      'APP_PORT=3011 does not match loopback APP_URL http://127.0.0.2:9999 (port 9999)',
+    );
+  });
+
+  it('accepts matching ports on any 127.x.y.z address', async () => {
+    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://127.1.2.3:3011' });
+
+    expect(result.status).toBe(0);
+    expect(appPort(result.stdout)).toBe(3011);
+    expect(appUrl(result.stdout)).toBe('http://127.1.2.3:3011');
+  });
+
+  it('does not treat a 127-prefixed hostname as loopback', async () => {
+    const result = await readStatus({
+      APP_PORT: '3011',
+      APP_URL: 'http://127.0.0.1.example.com:9999',
+    });
+
+    expect(result.status).toBe(0);
+    expect(appPort(result.stdout)).toBe(3011);
+    expect(appUrl(result.stdout)).toBe('http://127.0.0.1.example.com:9999');
+  });
+
+  it('does not treat an out-of-range 127 address as loopback', async () => {
+    // `new URL` rejects invalid IPv4 hosts outright, so the mismatch check never runs.
+    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://127.999.0.1:9999' });
+
+    expect(result.status).not.toBe(2);
+    expect(result.stderr).not.toContain('does not match loopback');
+  });
+
   it('treats [::1] as loopback too', async () => {
     const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://[::1]:443' });
 
