@@ -24,7 +24,7 @@
     "@opentelemetry/api-logs": "^0.223.0",
     "@studiq/authz": "workspace:*",
     "@supabase/ssr": "^0.12.7",
-    "@supabase/supabase-js": "^2.118.0",
+    "@supabase/supabase-js": "^2.119.0",
     "ai": "^7.0.153",
     "nodemailer": "^10.3.1",
     "stripe": "^23.1.0",
