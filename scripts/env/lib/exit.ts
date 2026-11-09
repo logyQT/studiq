@@ -18,8 +18,9 @@ export class EnvFailure extends Error {
   constructor(
     readonly exitCode: number,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = 'EnvFailure';
   }
 }

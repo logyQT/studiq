@@ -84,6 +84,11 @@ function restoreArtifact(deps: RebuildRecoveryDeps, backup: string): void {
   renameSync(backup, deps.artifactDir);
 }
 
+/** Discard a rebuild backup; no backup (nothing to move aside) is a no-op. */
+function discardBackup(backup: string | null): void {
+  if (backup) rmSync(backup, { recursive: true, force: true });
+}
+
 /** Restart the server that was serving before the rebuild, if there was one. */
 async function restartPrevious(
   deps: RebuildRecoveryDeps,
@@ -123,19 +128,48 @@ async function failWithRecovery(input: {
   backup: string | null;
   code: number;
   message: string;
+  cause?: unknown;
 }): Promise<never> {
-  if (input.backup) restoreArtifact(input.deps, input.backup);
-  const restarted = await restartPrevious(input.deps, input.request, input.previousPid);
+  let restored = false;
+  let restoreFailure: unknown;
+  if (input.backup) {
+    try {
+      restoreArtifact(input.deps, input.backup);
+      restored = true;
+    } catch (error) {
+      // A restore that cannot land must keep the backup: it is the only copy
+      // of the previous build, and the caller has to be told where it is.
+      restoreFailure = error;
+    }
+  }
+
+  // Never start the previous server over an unrestored/half-restored `.next`.
+  const restarted =
+    input.backup === null || restored
+      ? await restartPrevious(input.deps, input.request, input.previousPid)
+      : false;
+
   let message = input.message;
-  if (input.backup) message += '; restored the previous build';
+  if (restored) {
+    message += '; restored the previous build';
+  } else if (input.backup) {
+    const reason =
+      restoreFailure instanceof Error ? restoreFailure.message : String(restoreFailure);
+    message += `; could not restore the previous build (${reason}), kept the backup at ${input.backup}`;
+  }
   if (restarted) {
     message += '; previous web server restarted';
   } else if (input.previousPid !== null) {
-    message += `; the previous web server did not restart (environment stopped, port ${input.request.appPort} retained)`;
+    message +=
+      input.backup && !restored
+        ? '; the previous web server was not restarted'
+        : `; the previous web server did not restart (environment stopped, port ${input.request.appPort} retained)`;
   } else if (!input.backup) {
     message += '; environment is stopped';
   }
-  throw new EnvFailure(input.code, message);
+  throw input.cause === undefined
+    ? new EnvFailure(input.code, message)
+    : new EnvFailure(input.code, message, { cause: input.cause });
 }
 
 /**
@@ -157,7 +191,22 @@ export async function rebuildWithRecovery(
   if (previousPid !== null) deps.stopForReplacement();
   const backup = backupArtifact(deps);
 
-  const result = await deps.build(request.envHash);
+  let result: BuildResult;
+  try {
+    result = await deps.build(request.envHash);
+  } catch (error) {
+    // A thrown build (not a `{ ok: false }` result) would otherwise skip
+    // recovery entirely and leave the previous build stranded in the backup.
+    return failWithRecovery({
+      deps,
+      request,
+      previousPid,
+      backup,
+      code: EXIT_START_FAILED,
+      message: `build failed (${error instanceof Error ? error.message : String(error)})`,
+      cause: error,
+    });
+  }
   if (!result.ok || result.timedOut) {
     logBuildOutput(result.output);
     return failWithRecovery({
@@ -171,6 +220,8 @@ export async function rebuildWithRecovery(
   }
 
   if (!request.serve) {
+    // The new build is complete; the previous artifact is no longer needed.
+    discardBackup(backup);
     return { build: result, webPid: deps.readPid(), webHttp: 0, webStarted: false };
   }
 
@@ -211,6 +262,6 @@ export async function rebuildWithRecovery(
     });
   }
 
-  if (backup) rmSync(backup, { recursive: true, force: true });
+  discardBackup(backup);
   return { build: result, webPid: pid, webHttp: waited.http, webStarted: true };
 }
