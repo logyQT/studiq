@@ -13,7 +13,7 @@ The suite lives in this repo and runs on `main` — `__tests__/e2e/cases/<ID>.sp
 Playwright, nothing QA-specific. Exploratory, agent-driven QA and the semantic cases below
 (still requiring human/agent judgment) run against the shared QA stack: set
 `SUPABASE_SHARED=1` and fill in `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in the root `.env`.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in the root `.env.local`.
 `bun run env:ensure --profile web` on its own starts an isolated stack instead. The automated QA suite runs
 in two steps: `bun run env:ensure --profile qa` brings up this checkout's stack,
 builds, serves and runs the QA tenant seeder (no run ids or markers in v1), then

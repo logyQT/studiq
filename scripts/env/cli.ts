@@ -2,13 +2,15 @@
 /**
  * `env` CLI — one command surface for the local environment.
  *
- * `status`, `doctor`, `ports`, `setup` and `verify` are deliberately unwrapped:
- * they read only the process environment, the cross-checkout registry, the
- * value-free schema and `supabase stack status`, so a locked vault never blocks
- * them. The value-consuming commands (`ensure`, `serve`, `build`, `dev`, `down`,
+ * `status`, `doctor` and `ports` are deliberately unwrapped *and* read-only:
+ * they read only the process environment, the cross-checkout registry and
+ * `supabase stack status`, so a locked vault never blocks them. `setup` and
+ * `verify` are unwrapped too, but they do touch the root `.env.local` — `setup`
+ * scaffolds it, `verify` loads it through `varlock` (names/presence only). The
+ * value-consuming commands (`ensure`, `serve`, `build`, `dev`, `down`,
  * `reset-db`, `logs`, `supa`) run under `varlock run --inject vars --` (see
  * `scripts/env/varlock-run.sh` and root `package.json`), which is where their
- * values come from. No dotenv file is ever parsed here.
+ * values come from. The CLI itself never parses a dotenv file.
  *
  * Exit codes: 0 success/ready, 1 doctor found a problem (and verify cannot read
  * the schema), 2 bad usage, 3 native unavailable, 4 start or build failed, 5

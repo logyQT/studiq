@@ -10,8 +10,9 @@ export interface PortsSnapshot {
 }
 
 /**
- * Suggest a free app port. Phase 1 leases nothing: stack ports are assigned by
- * the CLI and the block allocator arrives in phase 4, so `block` stays null.
+ * Suggest a free app port. `ports` leases nothing: stack ports are assigned by
+ * the CLI, and the block allocator is deferred by the spec (§14), so `block`
+ * stays null.
  *
  * A registry that exists but is not a trusted private directory cannot be read,
  * so suggestions could collide with another checkout's claimed port. That is an

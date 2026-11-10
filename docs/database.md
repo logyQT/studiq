@@ -34,7 +34,7 @@ migrations:
 
 ```bash
 # Apply migrations to the selected stack (default or SUPABASE_STACK)
-STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env 2>/dev/null | tail -n1 | tr -d "'\"")}
+STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"")}
 if [ -n "$STACK" ]; then
   DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
   bunx supabase db push --remote="$DB_URL" --yes
@@ -45,7 +45,7 @@ fi
 
 In CLI v3 a bare `db push` targets the local **default** stack; database commands
 cannot take `--stack`. The conditional above reads `SUPABASE_STACK` from the
-shell or root `.env`, resolves that stack's `DB_URL`, and passes it as
+shell or root `.env.local`, resolves that stack's `DB_URL`, and passes it as
 `--remote`, so it cannot silently migrate the default database.
 
 A fresh `supabase start` (new volume) applies migrations during initialization;

@@ -270,7 +270,8 @@ bun run env:ensure --profile web
 `env:ensure` starts (or resumes) **this branch's** Supabase stack, discovers its
 URLs/keys with `supabase stack status --output-format json`, **exports** them to
 the web process, builds if the fingerprint changed, and serves on `APP_PORT`. It
-never writes a per-app env file, installs, resets or re-seeds anything.
+never writes a per-app env file, installs or resets anything; the `qa`/`e2e`
+profiles seed by default (`--no-seed` skips).
 
 Agents (and anyone running several checkouts) should use the production server
 instead of `next dev`:

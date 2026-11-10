@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Lean phase-2 lifecycle gate. Creates one scratch stack, drives the real CLI,
+ * Lean phase-3 lifecycle gate. Creates one scratch stack, drives the real CLI,
  * then stops/destroys only that stack.
  */
 import { spawnSync } from 'node:child_process';

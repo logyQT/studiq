@@ -141,7 +141,8 @@ export const USAGE = [
   '',
   '`--web` requires `--prod` (the tool never runs `next dev` outside env:dev).',
   '`--studio` requires `--rest`. Destructive commands need `--yes` when',
-  'non-interactive. status, ports, doctor and verify never read a values file.',
+  'non-interactive. status, ports and doctor never read a values file;',
+  'verify loads .env.local through varlock and reports key names only.',
 ].join('\n');
 
 interface FlagToken {

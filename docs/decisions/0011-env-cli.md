@@ -25,7 +25,7 @@ decision and is not built. The tool leases only the app port and discovers stack
    them. The standalone human shortcuts `dev:web` (raw `next dev`) and `dev:admin` (`apps/admin` HMR) never called
    `scripts/dev` and stay; `env` has no admin equivalent.
 3. **varlock is the only loader, injector and validator.** Value-consuming commands keep `varlock run --inject vars --`;
-   `status`/`ports`/`doctor` run unwrapped. The CLI never parses a dotenv file; the wrappers stay for #1077 (removal is a
+   `status`/`ports`/`doctor`/`setup`/`verify` run unwrapped. The CLI never parses a dotenv file; the wrappers stay for #1077 (removal is a
    post-stability migration after #1077 and #1078).
 4. **Native is the default and the only auto-selected runtime.** Every start passes the selected runtime explicitly; Docker only
    via `--runtime docker` / `SUPABASE_RUNTIME=docker`, with no silent fallback. A runtime conversion is a manual operation

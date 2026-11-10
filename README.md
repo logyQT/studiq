@@ -33,8 +33,9 @@ bun run env:ensure --profile web     # stack (if needed) + build + serve on :300
 (optional; see [`.env.schema`](.env.schema)), resolves this checkout's stack
 contract and **exports** the values to the web process — no per-app env file is
 generated. It starts Supabase only if needed, reuses a current build, and serves
-the production server. It never installs, resets or re-seeds anything — those
-are explicit. Agents use `env:ensure`/`env:build` + `env:serve`; `env:dev` is
+the production server. It never installs or resets anything, and it seeds only
+for the `qa`/`e2e` profiles (`--no-seed` skips); everything else is explicit.
+Agents use `env:ensure`/`env:build` + `env:serve`; `env:dev` is
 human-only HMR (`bun run dev:web` is the same server without the env handling).
 
 The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it
@@ -119,10 +120,11 @@ reads; it is documentation, not an access control list, and `varlock` uses it to
 validate/inject env for the `bun run …` scripts (`bun run env:check`,
 `bun run env:scan`).
 
-The `env:*` wrappers run under `varlock run --inject vars --`, ask
-`supabase stack status --output-format json` for this checkout's stack
+The value-consuming `env:*` commands run under `varlock run --inject vars --`,
+ask `supabase stack status --output-format json` for this checkout's stack
 URLs/keys, and **export** the resolved values to the Supabase and web child
-processes. No `apps/web/.env`, `apps/admin/.env` or `supabase/.env` is generated
+processes; `status`/`ports`/`doctor`/`setup`/`verify` are unwrapped by design.
+No `apps/web/.env`, `apps/admin/.env` or `supabase/.env` is generated
 or read. Change `.env.local` (or use `bun run env:supa …` for a direct CLI
 command) — never a generated file.
 
