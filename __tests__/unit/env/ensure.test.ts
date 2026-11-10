@@ -247,6 +247,33 @@ async function healthyStack(harness: Harness): Promise<void> {
   harness.setStatusFixture(fixture);
 }
 
+/**
+ * A stack whose status reads fine but whose endpoints do not answer their
+ * capability probes: every HTTP probe gets a 404.
+ */
+async function unresponsiveStack(harness: Harness): Promise<void> {
+  const http: HttpServer = await startHttpServer(404);
+  const db: TcpListener = await startTcpListener(0, '127.0.0.1');
+  closers.push(http, db);
+  const fixture = stackStatusFixture({ apiUrl: http.url, apiPort: http.port });
+  fixture.composition = {
+    members: [
+      { service: 'database' },
+      { service: 'rest' },
+      { service: 'auth' },
+      { service: 'storage' },
+    ],
+  };
+  fixture.endpoints = {
+    'rest.http': { port: http.port },
+    'auth.http': { port: http.port },
+    'database.sql': { port: db.port },
+    'studio.http': { port: 31136 },
+    'mail.http': { port: 20503 },
+  };
+  harness.setStatusFixture(fixture);
+}
+
 describe('env:ensure workdir and stack ownership', () => {
   it('refuses a foreign SUPABASE_WORKDIR before any stack discovery', async () => {
     const harness = newHarness();
@@ -1213,6 +1240,51 @@ describe('env:ensure reclaims a foreign lease only under shared coordination', (
     expect(reclaimed).toBe(false);
     expect(leaseModule.readLease(registryDir, projectId)?.heartbeatAt).toBe(refreshedAt);
     expect(leaseModule.readAppPortClaim(registryDir, port)?.projectId).toBe(projectId);
+  });
+});
+
+describe('env:ensure restarts an unresponsive stack only when its stop is provable', () => {
+  it('keeps the lease and does not restart when the stop fails and the stack is still listed', async () => {
+    const harness = newHarness();
+    await unresponsiveStack(harness);
+    harness.setListFixture(liveStackFixture(harness));
+    const appPort = await firstFreePort(3900);
+    writeLease(harness, appPort, harnessStackName(harness));
+
+    const result = await harness.run(['ensure', '--profile', 'api', '--no-seed'], {
+      FAKE_SUPA_EXIT: '1',
+    });
+
+    expect(result.status, result.stderr).toBe(4);
+    expect(result.stderr).toContain('unresponsive and its stop failed');
+    expect(result.stderr).toContain(`keeping app port ${appPort}`);
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack stop');
+    expect(calls).not.toContain('stack start');
+    const projectId = projectIdFor(harness);
+    expect(leaseModule.readLease(harness.registryDir, projectId)?.appPort).toBe(appPort);
+    expect(leaseModule.readAppPortClaim(harness.registryDir, appPort)?.projectId).toBe(projectId);
+  });
+
+  it('cleans up and retries the cold start when the list proves the stack is gone', async () => {
+    const harness = newHarness();
+    await unresponsiveStack(harness);
+    const appPort = await firstFreePort(3900);
+    writeLease(harness, appPort, harnessStackName(harness));
+
+    const result = await harness.run(['ensure', '--profile', 'api', '--no-seed'], {
+      FAKE_SUPA_EXIT: '1',
+    });
+
+    expect(result.status, result.stderr).toBe(4);
+    expect(result.stderr).toContain('failed to start stack');
+    expect(result.stderr).not.toContain('kept the app-port lease');
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack stop');
+    expect(calls).toContain('stack start');
+    const projectId = projectIdFor(harness);
+    expect(leaseModule.readLease(harness.registryDir, projectId)).toBeNull();
+    expect(leaseModule.readAppPortClaim(harness.registryDir, appPort)).toBeNull();
   });
 });
 

@@ -106,6 +106,15 @@ export function writeBuildState(state: BuildState): void {
   atomicWrite(BUILD_FILE, `${JSON.stringify(state, null, 2)}\n`);
 }
 
+/**
+ * Forget the recorded build. Recovery calls this before putting an older
+ * artifact back: the restored `.next` must never inherit the interrupted run's
+ * "this build is current" claim.
+ */
+export function removeBuildState(): void {
+  rmSync(BUILD_FILE, { force: true });
+}
+
 export function buildArtifactPresent(): boolean {
   return existsSync(join(REPO_ROOT, 'apps', 'web', '.next', 'BUILD_ID'));
 }

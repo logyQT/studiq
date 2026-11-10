@@ -162,6 +162,27 @@ async function dirMutex(path: string, waitSeconds: number): Promise<Mutex> {
   }
 }
 
+/**
+ * Acquire one mutex at `file`, honouring `flock` and falling back to the
+ * portable directory mutex. A wait timeout is reported as the caller's code and
+ * message instead of the generic lock timeout.
+ */
+async function acquireMutex(
+  file: string,
+  waitSeconds: number,
+  timeoutCode: number,
+  message: string,
+): Promise<Mutex> {
+  try {
+    return (await flockMutex(file, waitSeconds)) ?? (await dirMutex(`${file}.d`, waitSeconds));
+  } catch (error) {
+    if (error instanceof EnvFailure && error.exitCode === EXIT_TIMEOUT) {
+      throw new EnvFailure(timeoutCode, message);
+    }
+    throw error;
+  }
+}
+
 async function withLockAt<T>(
   file: string,
   waitSeconds: number,
@@ -169,15 +190,7 @@ async function withLockAt<T>(
   message: string,
   fn: () => Promise<T> | T,
 ): Promise<T> {
-  let mutex: Mutex;
-  try {
-    mutex = (await flockMutex(file, waitSeconds)) ?? (await dirMutex(`${file}.d`, waitSeconds));
-  } catch (error) {
-    if (error instanceof EnvFailure && error.exitCode === EXIT_TIMEOUT) {
-      throw new EnvFailure(timeoutCode, message);
-    }
-    throw error;
-  }
+  const mutex = await acquireMutex(file, waitSeconds, timeoutCode, message);
   try {
     return await fn();
   } finally {
@@ -185,20 +198,70 @@ async function withLockAt<T>(
   }
 }
 
-export function withCheckoutLock<T>(fn: () => Promise<T> | T): Promise<T> {
-  // `.dev/locks/checkout.lock` is per checkout and covers ensure/down/serve and
-  // every app-port lease read/write; while it is held the lease is authoritative.
+/**
+ * A held checkout lock that its owner can deliberately release and re-acquire.
+ *
+ * `ensure` needs this around a production build: the build takes minutes, and
+ * holding the checkout-wide lock for it would block every other env command
+ * (`down` included). The lock is released only while the build runs and is
+ * always taken back before anything is served or reported.
+ */
+export interface CheckoutLock {
+  /** Release the lock. A no-op when it is already free. */
+  release(): Promise<void>;
+  /** Take the lock back after a deliberate release. A no-op while held. */
+  acquire(): Promise<void>;
+}
+
+const CHECKOUT_LOCK_WAIT_SECONDS = 180;
+const CHECKOUT_LOCK_BUSY = 'another env process is using this checkout; retry after it finishes';
+
+function checkoutLockFile(): string {
   ensureDevDir();
   const locksDir = join(DEV_DIR, 'locks');
   mkdirSync(locksDir, { recursive: true, mode: 0o700 });
   chmodSync(locksDir, 0o700);
-  return withLockAt(
-    join(locksDir, 'checkout.lock'),
-    180,
+  return join(locksDir, 'checkout.lock');
+}
+
+/**
+ * `.dev/locks/checkout.lock` is per checkout and covers ensure/down/serve and
+ * every app-port lease read/write; while it is held the lease is authoritative.
+ */
+export async function acquireCheckoutLock(): Promise<CheckoutLock> {
+  const file = checkoutLockFile();
+  let mutex: Mutex | null = await acquireMutex(
+    file,
+    CHECKOUT_LOCK_WAIT_SECONDS,
     EXIT_CONFLICT,
-    'another env process is using this checkout; retry after it finishes',
-    fn,
+    CHECKOUT_LOCK_BUSY,
   );
+  return {
+    async release() {
+      const held = mutex;
+      if (!held) return;
+      mutex = null;
+      await held.release();
+    },
+    async acquire() {
+      if (mutex) return;
+      mutex = await acquireMutex(
+        file,
+        CHECKOUT_LOCK_WAIT_SECONDS,
+        EXIT_CONFLICT,
+        CHECKOUT_LOCK_BUSY,
+      );
+    },
+  };
+}
+
+export async function withCheckoutLock<T>(fn: () => Promise<T> | T): Promise<T> {
+  const lock = await acquireCheckoutLock();
+  try {
+    return await fn();
+  } finally {
+    await lock.release();
+  }
 }
 
 function withLock<T>(
