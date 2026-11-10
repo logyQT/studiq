@@ -158,6 +158,27 @@ function newHarness(): Harness {
   return harness;
 }
 
+/**
+ * Explicit app ports for the `ensure` runs in this file.
+ *
+ * Without a lease yet, `resolveLease` treats the contract port as the running
+ * stack's port, so an `ensure` that has to fall back to the shared 3000-3999
+ * scan trips its own port-conflict guard as soon as another unit file holds
+ * 3000. Every run here therefore pins `--app-port`, and the base is derived from
+ * the worker pid outside both that scan range and the ephemeral range, so the
+ * ports are per-worker and only a genuine foreign holder can take one (which
+ * `firstFreePort` checks by binding).
+ */
+const APP_PORT_BASE = 10_000 + (process.pid % 400) * 20;
+
+async function explicitAppPorts(count: number): Promise<number[]> {
+  const ports: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    ports.push(await firstFreePort(APP_PORT_BASE, new Set(ports)));
+  }
+  return ports;
+}
+
 function parse(args: string[]): ParsedCommand {
   return atomsModule.parseCommand(args);
 }
@@ -334,13 +355,13 @@ describe('env:dev always relays the stack environment to HMR', () => {
       }),
     );
     applyHarnessEnv(harness);
-    const appPort = await firstFreePort(3900);
+    const [appPort] = await explicitAppPorts(1);
     process.env.APP_PORT = String(appPort);
     // The lease pins the port and keeps it out of the bind probe's way.
     writeLeaseFor(harness, appPort);
 
     // An authoritative run leaves a warm record behind for the next ensure.
-    const setup = parse(['ensure', '--profile', 'web', '--no-seed']);
+    const setup = parse(['ensure', '--profile', 'web', '--no-seed', '--app-port', String(appPort)]);
     setup.ensure.build = false;
     setup.ensure.serve = false;
     const setupDeps: EnsureDeps = {
@@ -389,11 +410,11 @@ describe('env:dev always relays the stack environment to HMR', () => {
     closers.push(http, db);
     harness.setStatusFixture(fullStackFixture(http, db.port, { anon: 'anon', service: 'service' }));
     applyHarnessEnv(harness);
-    const appPort = await firstFreePort(3900);
+    const [appPort] = await explicitAppPorts(1);
     process.env.APP_PORT = String(appPort);
     writeLeaseFor(harness, appPort);
 
-    const setup = parse(['ensure', '--profile', 'web', '--no-seed']);
+    const setup = parse(['ensure', '--profile', 'web', '--no-seed', '--app-port', String(appPort)]);
     setup.ensure.build = false;
     setup.ensure.serve = false;
     const setupDeps: EnsureDeps = {
@@ -428,11 +449,11 @@ describe('env:ensure drops the warm evidence when it restarts the stack', () => 
       fullStackFixture(http, db.port, { anon: 'stale-anon', service: 'stale-service' }),
     );
     applyHarnessEnv(harness);
-    const appPort = await firstFreePort(3900);
+    const [appPort] = await explicitAppPorts(1);
     process.env.APP_PORT = String(appPort);
 
     // Authoritative run: writes the warm record used by the next ensure.
-    const setup = parse(['ensure', '--profile', 'web', '--no-seed']);
+    const setup = parse(['ensure', '--profile', 'web', '--no-seed', '--app-port', String(appPort)]);
     setup.ensure.build = false;
     setup.ensure.serve = false;
     const setupDeps: EnsureDeps = {
@@ -473,7 +494,7 @@ describe('env:ensure drops the warm evidence when it restarts the stack', () => 
         return Promise.resolve(buildOutcome());
       },
     };
-    const run = parse(['ensure', '--profile', 'web', '--no-seed']);
+    const run = parse(['ensure', '--profile', 'web', '--no-seed', '--app-port', String(appPort)]);
     run.ensure.build = true;
     run.ensure.serve = false;
 
@@ -493,12 +514,20 @@ describe('env:ensure only trusts warm evidence that still matches the stack', ()
   it('allows a new --app-port once the vanished stack is proven absent', async () => {
     const harness = newHarness();
     await apiStack(harness);
-    const first = await harness.run(['ensure', '--profile', 'api', '--no-seed']);
+    const [leasePort, changedPort] = await explicitAppPorts(2);
+    // The case only proves anything if the requested port really differs from
+    // the one the lease holds.
+    expect(changedPort).not.toBe(leasePort);
+    const first = await harness.run(
+      ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(leasePort)],
+      // There is no lease yet, so the contract port is what the running stack is
+      // assumed to use: it must be the port we request, not the global default.
+      { APP_PORT: String(leasePort) },
+    );
     expect(first.status, first.stderr).toBe(0);
     // The stack dies after the observation: status no longer reports endpoints
     // while the cached endpoints still answer, so the warm proof passes.
     harness.setStatusFixture(stoppedStackFixture());
-    const appPort = await firstFreePort(3900);
 
     const result = await harness.run([
       'ensure',
@@ -506,7 +535,7 @@ describe('env:ensure only trusts warm evidence that still matches the stack', ()
       'api',
       '--no-seed',
       '--app-port',
-      String(appPort),
+      String(changedPort),
     ]);
 
     expect(result.stderr).not.toContain('differs from the running stack');
@@ -519,9 +548,15 @@ describe('env:ensure only trusts warm evidence that still matches the stack', ()
   it('keeps the port conflict when the stack is still running', async () => {
     const harness = newHarness();
     await apiStack(harness);
-    const first = await harness.run(['ensure', '--profile', 'api', '--no-seed']);
+    const [leasePort, changedPort] = await explicitAppPorts(2);
+    expect(changedPort).not.toBe(leasePort);
+    const first = await harness.run(
+      ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(leasePort)],
+      // There is no lease yet, so the contract port is what the running stack is
+      // assumed to use: it must be the port we request, not the global default.
+      { APP_PORT: String(leasePort) },
+    );
     expect(first.status, first.stderr).toBe(0);
-    const appPort = await firstFreePort(3900);
 
     const result = await harness.run([
       'ensure',
@@ -529,7 +564,7 @@ describe('env:ensure only trusts warm evidence that still matches the stack', ()
       'api',
       '--no-seed',
       '--app-port',
-      String(appPort),
+      String(changedPort),
     ]);
 
     expect(result.status).toBe(6);
@@ -540,11 +575,17 @@ describe('env:ensure only trusts warm evidence that still matches the stack', ()
   it('keeps the port conflict when stack absence cannot be established', async () => {
     const harness = newHarness();
     await apiStack(harness);
-    const first = await harness.run(['ensure', '--profile', 'api', '--no-seed']);
+    const [leasePort, changedPort] = await explicitAppPorts(2);
+    expect(changedPort).not.toBe(leasePort);
+    const first = await harness.run(
+      ['ensure', '--profile', 'api', '--no-seed', '--app-port', String(leasePort)],
+      // There is no lease yet, so the contract port is what the running stack is
+      // assumed to use: it must be the port we request, not the global default.
+      { APP_PORT: String(leasePort) },
+    );
     expect(first.status, first.stderr).toBe(0);
     // The CLI answers with no JSON at all: that proves nothing about the stack.
     harness.setRawStatus('');
-    const appPort = await firstFreePort(3900);
 
     const result = await harness.run([
       'ensure',
@@ -552,7 +593,7 @@ describe('env:ensure only trusts warm evidence that still matches the stack', ()
       'api',
       '--no-seed',
       '--app-port',
-      String(appPort),
+      String(changedPort),
     ]);
 
     expect(result.status).toBe(6);
@@ -565,7 +606,13 @@ describe('env:ensure re-anchors the warm record only on an authoritative read', 
   it('does not extend the heartbeat on a warm run but does on a cold one', async () => {
     const harness = newHarness();
     await apiStack(harness);
-    const first = await harness.run(['ensure', '--profile', 'api', '--no-seed']);
+    const [appPort] = await explicitAppPorts(1);
+    const portArgs = ['--app-port', String(appPort)];
+    const first = await harness.run(['ensure', '--profile', 'api', '--no-seed', ...portArgs], {
+      // No lease exists yet, so the running stack's assumed port is the contract
+      // port: pin it to the explicit port instead of the global default.
+      APP_PORT: String(appPort),
+    });
     expect(first.status, first.stderr).toBe(0);
     const cachePath = join(harness.stateDir, 'stack-cache.json');
     const authoritative = statusCalls(harness);
@@ -576,7 +623,7 @@ describe('env:ensure re-anchors the warm record only on an authoritative read', 
     const heartbeatAt = Date.now() - 60_000;
     writeFileSync(cachePath, `${JSON.stringify({ ...record, heartbeatAt }, null, 2)}\n`);
 
-    const warm = await harness.run(['ensure', '--profile', 'api', '--no-seed']);
+    const warm = await harness.run(['ensure', '--profile', 'api', '--no-seed', ...portArgs]);
     expect(warm.status, warm.stderr).toBe(0);
     // It really took the warm path: no second `stack status`.
     expect(statusCalls(harness)).toBe(authoritative);
@@ -586,7 +633,7 @@ describe('env:ensure re-anchors the warm record only on an authoritative read', 
 
     // An authoritative run re-anchors the record.
     rmSync(cachePath);
-    const cold = await harness.run(['ensure', '--profile', 'api', '--no-seed']);
+    const cold = await harness.run(['ensure', '--profile', 'api', '--no-seed', ...portArgs]);
     expect(cold.status, cold.stderr).toBe(0);
     expect(statusCalls(harness)).toBeGreaterThan(authoritative);
     expect(
