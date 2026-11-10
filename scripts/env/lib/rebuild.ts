@@ -190,8 +190,13 @@ function containReplacement(
  * the surviving process still owns the port, and its PID record is the only
  * thing that can stop it later.
  */
-function restartSurvivorFailure(survivor: number, kept: string, cause?: unknown): EnvFailure {
-  const message = `web server (pid ${survivor}) is still running after its rollback restart; refusing to report the environment as stopped (${kept})`;
+function restartSurvivorFailure(
+  survivor: number,
+  kept: string,
+  original: string,
+  cause?: unknown,
+): EnvFailure {
+  const message = `web server (pid ${survivor}) is still running after its rollback restart; refusing to report the environment as stopped (${original}; ${kept})`;
   return cause === undefined
     ? new EnvFailure(EXIT_CONFLICT, message)
     : new EnvFailure(EXIT_CONFLICT, message, { cause });
@@ -253,7 +258,7 @@ async function failWithRecovery(input: {
       : input.backup
         ? `kept the previous build backup at ${input.backup}`
         : 'there is no previous build backup';
-    throw restartSurvivorFailure(restart.survivor, kept, input.cause);
+    throw restartSurvivorFailure(restart.survivor, kept, input.message, input.cause);
   }
 
   let message = input.message;

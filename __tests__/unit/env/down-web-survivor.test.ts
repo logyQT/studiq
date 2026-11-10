@@ -104,8 +104,11 @@ async function withHarness<T>(
   extra: NodeJS.ProcessEnv,
   run: () => Promise<T>,
 ): Promise<T> {
-  const saved = new Map(HARNESS_ENV_KEYS.map((key) => [key, process.env[key]]));
-  for (const [key, value] of Object.entries({ ...harness.env, ...extra })) {
+  const applied = { ...harness.env, ...extra };
+  // Restore every key this call changed, not just the fixed harness set.
+  const keys = new Set<string>([...HARNESS_ENV_KEYS, ...Object.keys(applied)]);
+  const saved = new Map([...keys].map((key) => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(applied)) {
     if (value !== undefined) process.env[key] = value;
   }
   try {

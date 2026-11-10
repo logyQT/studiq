@@ -551,7 +551,7 @@ describe('env:ensure rebuilds recoverably', () => {
     expect(failure.message).toContain('7001');
     expect(failure.message).toContain('rollback restart');
     expect(failure.message).not.toContain('environment is stopped');
-    // The previous build is back in place, and its backup was not discarded.
+    // The previous build is back in place, and the restore consumed its backup.
     expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
     expect(readdirSync(backupDir)).toEqual([]);
     // The survivor's PID record is not overwritten by another start.
