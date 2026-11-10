@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   utimesSync,
@@ -28,6 +29,11 @@ interface LocksModule {
   ensureRegistryDir(): string;
   withCheckoutLock<T>(fn: () => Promise<T> | T): Promise<T>;
   withBuildLock<T>(fn: () => Promise<T> | T): Promise<T>;
+  takeoverStaleDirLock(
+    path: string,
+    observed: { dev: number; ino: number; mtimeMs: number },
+    owner: { pid: number; token: string },
+  ): boolean;
 }
 
 // `state.ts` captures DEV_DIR at import time; point it at a temp dir before
@@ -171,6 +177,55 @@ describe('lock primitives', () => {
     });
     expect(ran).toBe(true);
     expect(existsSync(lockDir)).toBe(false);
+  });
+
+  it('removes only the observed stale lock through a tombstone', () => {
+    const dir = registry();
+    const lockDir = join(dir, 'build.lock.d');
+    mkdirSync(lockDir, { mode: 0o700 });
+    writeFileSync(join(lockDir, 'pid'), '999999999\n');
+    writeFileSync(join(lockDir, 'token'), 'stale-token\n');
+    const stat = statSync(lockDir);
+
+    const removed = locks.takeoverStaleDirLock(
+      lockDir,
+      { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs },
+      { pid: 999999999, token: 'stale-token' },
+    );
+
+    expect(removed).toBe(true);
+    expect(existsSync(lockDir)).toBe(false);
+    expect(readdirSync(dir).filter((name) => name.includes('tombstone'))).toEqual([]);
+  });
+
+  it('never deletes a successor installed during a stale takeover', () => {
+    const dir = registry();
+    const lockDir = join(dir, 'build.lock.d');
+    mkdirSync(lockDir, { mode: 0o700 });
+    writeFileSync(join(lockDir, 'pid'), '999999999\n');
+    writeFileSync(join(lockDir, 'token'), 'stale-token\n');
+    const stat = statSync(lockDir);
+    // The stale observation the takeover starts from.
+    const observed = { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs };
+
+    // A successor replaces the lock in the window between the observation and
+    // the takeover: it now owns a new inode, pid and token.
+    rmSync(lockDir, { recursive: true, force: true });
+    mkdirSync(lockDir, { mode: 0o700 });
+    writeFileSync(join(lockDir, 'pid'), `${process.pid}\n`);
+    writeFileSync(join(lockDir, 'token'), 'successor-token\n');
+
+    const removed = locks.takeoverStaleDirLock(lockDir, observed, {
+      pid: 999999999,
+      token: 'stale-token',
+    });
+
+    // The takeover moved the successor aside, detected that it was not the
+    // observed stale lock, and put it back: nothing a successor owns was lost.
+    expect(removed).toBe(false);
+    expect(existsSync(lockDir)).toBe(true);
+    expect(readFileSync(join(lockDir, 'token'), 'utf8').trim()).toBe('successor-token');
+    expect(readdirSync(dir).filter((name) => name.includes('tombstone'))).toEqual([]);
   });
 
   it('never removes a successor directory when a presumed-stale holder releases', async () => {

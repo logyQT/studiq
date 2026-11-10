@@ -75,6 +75,15 @@ export interface RebuildRecoveryInput {
   env: NodeJS.ProcessEnv;
   /** Also start (and health-check) the web server after the build. */
   serve: boolean;
+  /**
+   * Fencing hook invoked immediately before the replacement server is started
+   * (only when `serve`). `ensure` uses it to re-acquire `checkout.lock` and
+   * prove the lease, stack and capabilities still belong to this environment:
+   * a `down` during the build must never be followed by a replacement server.
+   * Throwing aborts before `startWeb`, restores the previous build and starts
+   * no server, so the conflict is surfaced instead of served.
+   */
+  beforeServe?(): Promise<void> | void;
   timeoutSeconds?: number;
 }
 
@@ -636,6 +645,37 @@ async function failWithRecovery(input: {
 }
 
 /**
+ * Abort a rebuild whose serve fence refused: the environment was taken away
+ * (lease released or moved, stack stopped) while the build ran, so starting a
+ * server would serve an environment another process now owns. The previous
+ * build is restored and the handover resolved, and **no server is started**.
+ * A restore that cannot land keeps the backup and names it.
+ */
+function failFenced(deps: RebuildRecoveryDeps, backup: string | null, cause: unknown): never {
+  let restored = false;
+  let restoreFailure: unknown;
+  if (backup !== null) {
+    try {
+      restoreArtifact(deps, backup);
+      restored = true;
+    } catch (error) {
+      restoreFailure = error;
+    }
+  }
+  if (backup === null || restored) removeHandover();
+  const code = cause instanceof EnvFailure ? cause.exitCode : EXIT_CONFLICT;
+  let message = cause instanceof Error ? cause.message : String(cause);
+  if (restored) {
+    message += '; restored the previous build';
+  } else if (backup !== null) {
+    const reason =
+      restoreFailure instanceof Error ? restoreFailure.message : String(restoreFailure);
+    message += `; could not restore the previous build (${reason}), kept the backup at ${backup}`;
+  }
+  throw new EnvFailure(code, message, { cause });
+}
+
+/**
  * Rebuild `apps/web/.next` with a recoverable transaction.
  *
  * The rebuild owns the handover record before it stops the running server, so a
@@ -645,6 +685,11 @@ async function failWithRecovery(input: {
  * build lock. Any failure restores that build (and restarts the previous server
  * when it was serving); only a fully successful build/start discards the backup
  * and releases the record.
+ *
+ * The transaction's own start is fenced: `request.beforeServe` runs immediately
+ * before `startWeb`, so the caller can re-take the checkout lock and prove that
+ * its lease and stack survived the build. A refused fence rolls the artifact
+ * back and never starts a server (see `failFenced`).
  *
  * @public Used by `env:ensure` and exercised by the unit tests, which load this
  * module by computed URL.
@@ -715,6 +760,16 @@ export async function rebuildWithRecovery(
       webStarted: false,
       ...(warnings ? { warnings } : {}),
     };
+  }
+
+  if (request.beforeServe) {
+    try {
+      // Immediately before the start: the caller re-acquires `checkout.lock`
+      // here and holds it through the start and its health check.
+      await request.beforeServe();
+    } catch (error) {
+      return failFenced(deps, backup, error);
+    }
   }
 
   let pid: number | null = null;

@@ -56,6 +56,7 @@ interface RebuildModule {
       appUrl: string;
       env: NodeJS.ProcessEnv;
       serve: boolean;
+      beforeServe?(): Promise<void> | void;
       timeoutSeconds?: number;
     },
     deps: RebuildDeps,
@@ -403,6 +404,58 @@ describe('env rebuild handover recovery', () => {
     expect(phaseDuringWait).toBe('backed-up');
     // The rollback restores the backup instead of discarding it, so the
     // previous build is back in place and the record is spent.
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(readdirSync(backupDir)).toEqual([]);
+    expect(existsSync(handoverPath)).toBe(false);
+  });
+
+  it('restores the previous build and starts no server when the serve fence refuses', async () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'old-build');
+    let starts = 0;
+    let fences = 0;
+    const deps: RebuildDeps = {
+      build: () => {
+        mkdirSync(artifactDir, { recursive: true });
+        writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
+        return Promise.resolve({ ok: true, timedOut: false, output: '', fingerprintAfter: 'new' });
+      },
+      startWeb: () => {
+        starts += 1;
+        return 7001;
+      },
+      waitWeb: () => Promise.reject(new Error('a fenced rebuild must not wait for web')),
+      stopWeb: () => ({ pid: null, stopped: true }),
+      stopForReplacement: () => ({ pid: null, stopped: true }),
+      readPid: () => null,
+      pidAlive: () => false,
+      artifactDir,
+      backupDir,
+    };
+
+    await expect(
+      rebuildModule.rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: true,
+          // A concurrent `down` released the lease while the build ran: the
+          // fence refuses the start, so no replacement may be served.
+          beforeServe: () => {
+            fences += 1;
+            throw new Error('the app-port lease was released during the build');
+          },
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+
+    expect(fences).toBe(1);
+    expect(starts).toBe(0);
+    // The previous build is back in place and the handover is resolved.
     expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
     expect(readdirSync(backupDir)).toEqual([]);
     expect(existsSync(handoverPath)).toBe(false);

@@ -326,6 +326,21 @@ export function isClaimStale(dir: string, claim: AppPortClaim): boolean {
   return claim.ownerStartedAt !== null && startedAt !== null && startedAt !== claim.ownerStartedAt;
 }
 
+/**
+ * Whether the claiming process is still alive (and is not a reused pid).
+ *
+ * This is deliberately narrower than `isClaimStale`: that rule treats *any*
+ * lease as liveness, which is right for "may I steal this claim?" but wrong for
+ * the window a claimant is in after refreshing its claim and before it publishes
+ * the lease. There the claim's live owner is the only evidence, and a stale
+ * lease from the previous process must not erase it.
+ */
+export function isClaimOwnerLive(claim: AppPortClaim): boolean {
+  if (!pidAlive(claim.ownerPid)) return false;
+  const startedAt = processStartedAt(claim.ownerPid);
+  return claim.ownerStartedAt === null || startedAt === null || startedAt === claim.ownerStartedAt;
+}
+
 export function heartbeatAgeMs(lease: AppLease, now = Date.now()): number {
   const heartbeat = Date.parse(lease.heartbeatAt);
   return Number.isFinite(heartbeat) ? Math.max(0, now - heartbeat) : Number.POSITIVE_INFINITY;
