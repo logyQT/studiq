@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { REPO_ROOT } from './repo';
 
 /**
@@ -43,7 +43,10 @@ export function primaryCheckout(root = REPO_ROOT): string {
 
 export function vaultFilePath(root = REPO_ROOT): string {
   const explicit = (process.env.STUDIQ_ENV_VAULT ?? '').trim();
-  if (explicit) return explicit.startsWith('/') ? explicit : resolve(root, explicit);
+  // `isAbsolute` (not a leading `/`) so a Windows path is not resolved against
+  // the checkout root. `~` is not expanded here; a relative pointer resolves
+  // against `root`, not the process cwd.
+  if (explicit) return isAbsolute(explicit) ? explicit : resolve(root, explicit);
   return join(primaryCheckout(root), '.env.vault');
 }
 

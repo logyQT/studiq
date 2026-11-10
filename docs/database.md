@@ -37,6 +37,13 @@ migrations:
 STACK=${SUPABASE_STACK:-$(sed -n 's/^SUPABASE_STACK=\([^#[:space:]]*\).*/\1/p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"")}
 if [ -n "$STACK" ]; then
   DB_URL=$(bunx supabase status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  # The local Postgres is plaintext, so `--remote` needs sslmode=disable (the
+  # same rule as `env:reset-db`); keep the URL's existing query params.
+  case "$DB_URL" in
+    *sslmode=*) ;;
+    *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
+    *) DB_URL="$DB_URL?sslmode=disable" ;;
+  esac
   bunx supabase db push --remote="$DB_URL" --yes
 else
   bunx supabase db push
@@ -45,8 +52,9 @@ fi
 
 In CLI v3 a bare `db push` targets the local **default** stack; database commands
 cannot take `--stack`. The conditional above reads `SUPABASE_STACK` from the
-shell or root `.env.local`, resolves that stack's `DB_URL`, and passes it as
-`--remote`, so it cannot silently migrate the default database.
+shell or root `.env.local`, resolves that stack's `DB_URL`, appends
+`sslmode=disable` (preserving any query params the URL already carries), and
+passes it as `--remote`, so it cannot silently migrate the default database.
 
 A fresh `supabase start` (new volume) applies migrations during initialization;
 use `bun run env:reset-db --yes` to drop, recreate and re-seed this branch's database.

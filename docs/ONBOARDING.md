@@ -296,13 +296,15 @@ bun run env:supa status --env      # exportable KEY=VALUE (APP_URL exported)
 ```
 
 For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and
-add `--stack "$SUPABASE_STACK"` to `bun run env:supa status|logs`. Stack
-start/stop go through `env:ensure` / `env:down` / `env:reset-db` (the passthrough
-refuses destructive and stop-capable forms). Destroying a stack is a manual,
+add `--stack "$SUPABASE_STACK"` to `bun run env:supa status|logs`. The stack
+lifecycle goes through `env:ensure` / `env:down` / `env:reset-db`, which own the
+app-port lease and the build lock; the passthrough refuses `stop --all` /
+`restart --all`, `destroy`, `db reset`, `migration down`, `storage rm`, and any
+unscoped or foreign stop/restart. Destroying a stack is a manual,
 ownership-checked `bunx supabase stack destroy --stack <name>`; v1 has no
 command for it. Database commands do
-not accept `--stack`; use the `DB_URL` + `--remote` form shown above or
-`bun run env:reset-db --yes`.
+not accept `--stack`; use the `DB_URL` + `--remote` form in the Author and Team
+member workflows (Team Collaboration) below, or `bun run env:reset-db --yes`.
 
 #### The vault is optional
 
@@ -558,18 +560,20 @@ exit codes) so a full pass reports all error-handling issues together.
 > `bun run env:supa status|list|db …` targets this branch's **default** stack
 > because `supabase/config.toml` enables `[experimental] stack = true`.
 > For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`)
-> and add `--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`;
-> database commands do not take `--stack` — read the URL and pass it as a remote
-> target:
+> and add `--stack "$SUPABASE_STACK"` to `status`/`list`/`logs`, or to a
+> `start`/`stop` of a stack this checkout owns; database commands do not take
+> `--stack` — read the URL and pass it as a remote target:
 >
 > ```bash
 > DB_URL=$(bun run env:supa status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
 > bun run env:supa db push --remote="$DB_URL" --yes
 > ```
 >
-> `env:supa` is a guarded passthrough: `stop --all`, `db reset`, `stack destroy`
-> and unscoped/foreign stop/restart forms are refused. Use `env:ensure` /
-> `env:down` / `env:reset-db`; they own the port lease and build lock.
+> `env:supa` is a guarded passthrough: `stop --all`/`restart --all`, `destroy`,
+> `db reset`, `migration down`, `storage rm`, and unscoped or foreign
+> stop/restart forms are refused (every stack mutation is refused under
+> `SUPABASE_SHARED=1`). Use `env:ensure` / `env:down` / `env:reset-db`; they own
+> the port lease and build lock.
 
 ---
 

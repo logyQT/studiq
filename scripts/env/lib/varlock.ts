@@ -35,6 +35,8 @@ interface RawItem {
  * `locked` is a credential-provider refusal. The leading word boundary keeps
  * ordinary words that merely contain the letters (`blocked`, `clock`, `varlock`)
  * out of it; `unlocked` is not a refusal either.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
  */
 export function classify(stderr: string): 'locked' | 'missing' {
   const text = stderr.toLowerCase();
@@ -52,6 +54,8 @@ export function classify(stderr: string): 'locked' | 'missing' {
  * Map `varlock load --format json-full` output to names and presence only.
  * A non-JSON banner or a malformed payload yields an empty map; the exit code
  * remains the authority on success.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
  */
 export function itemsFromPayload(stdout: string): Map<string, VarlockItem> {
   const items = new Map<string, VarlockItem>();

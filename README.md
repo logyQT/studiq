@@ -35,8 +35,9 @@ contract and **exports** the values to the web process — no per-app env file i
 generated. It starts Supabase only if needed, reuses a current build, and serves
 the production server. It never installs or resets anything, and it seeds only
 for the `qa`/`e2e` profiles (`--no-seed` skips); everything else is explicit.
-Agents use `env:ensure`/`env:build` + `env:serve`; `env:dev` is
-human-only HMR (`bun run dev:web` is the same server without the env handling).
+Agents use `env:ensure`/`env:build` + `env:serve`; `env:dev` is human-only HMR.
+`bun run dev:web` is a raw workspace `next dev`: it runs no varlock and exports no
+stack values, so it is not a substitute for `env:dev` or `env:ensure`.
 
 The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it
 (`dev:up`, `dev:serve`, `dev:status`, `dev:down`, `dev:reset-db`, `dev:build`,

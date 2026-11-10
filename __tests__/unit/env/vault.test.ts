@@ -98,11 +98,21 @@ function lines(path: string): string[] {
     .filter((line) => line.trim().length > 0);
 }
 
+/**
+ * The scaffold is mode 600 on POSIX. Windows reports `0o666` for every file, so
+ * there only the existence of the file is asserted.
+ */
+function expectMode600(path: string): void {
+  const stat = statSync(path);
+  if (process.platform === 'win32') expect(stat.isFile()).toBe(true);
+  else expect(stat.mode & 0o777).toBe(0o600);
+}
+
 describe('env:setup scaffold (spec §11.1)', () => {
   it('creates a comment-only .env.local, mode 600, idempotently', () => {
     expect(vault.scaffoldLocalEnv(root)).toBe('created');
     const path = join(root, '.env.local');
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expectMode600(path);
     expect(lines(path).every((line) => line.startsWith('#'))).toBe(true);
     expect(vault.scaffoldLocalEnv(root)).toBe('unchanged');
     expect(vault.scaffoldLocalEnv(root, true)).toBe('overwritten');
@@ -111,7 +121,7 @@ describe('env:setup scaffold (spec §11.1)', () => {
   it('lists the @sensitive key names commented out (never a value)', () => {
     const path = join(root, '.env.vault');
     expect(vault.scaffoldVault(root)).toBe('created');
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expectMode600(path);
     const content = readFileSync(path, 'utf8');
     expect(content).toContain('# STRIPE_SECRET_KEY=');
     expect(content).toContain('# LLM_API_KEY=');
@@ -127,6 +137,11 @@ describe('env:setup scaffold (spec §11.1)', () => {
   it('honours STUDIQ_ENV_VAULT and defaults to the literal checkout path', () => {
     process.env.STUDIQ_ENV_VAULT = join(root, 'custom.vault');
     expect(vault.vaultFilePath(root)).toBe(join(root, 'custom.vault'));
+
+    // An absolute pointer outside the checkout is used verbatim, never joined.
+    const elsewhere = join(tmpdir(), 'studiq-env-vault-elsewhere.vault');
+    process.env.STUDIQ_ENV_VAULT = elsewhere;
+    expect(vault.vaultFilePath(root)).toBe(elsewhere);
 
     // A relative pointer resolves against the checkout, not the process cwd.
     process.env.STUDIQ_ENV_VAULT = 'relative.vault';

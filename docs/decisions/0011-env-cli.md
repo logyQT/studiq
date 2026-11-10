@@ -78,9 +78,9 @@ comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664)):
 
 ## Rollback
 
-Revert the phase PR: phases 1–2 keep `scripts/dev`; phase 3 restores it and its `dev:*` wrappers (`dev:web`/`dev:admin`
-never left). Registry leases are runtime state outside the repo — remove only **this checkout's** entries, never the
-shared registry directory; `ensure` revalidates and reclaims stale entries under the checkout lock.
+Revert the phase PR. Registry leases are runtime state outside the repo — remove only **this
+checkout's** entries, never the shared registry directory; `ensure` revalidates and reclaims stale
+entries under the checkout lock.
 
 ## References
 

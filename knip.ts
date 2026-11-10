@@ -16,7 +16,9 @@ import type { KnipConfig } from 'knip';
  *      finding.
  *
  * `ignoreIssues` is not covered by the config-hint check, so re-check those
- * entries by hand whenever the matching declaration is removed.
+ * entries by hand whenever the matching declaration is removed. An export that
+ * only the unit tests use (they load `scripts/env` modules through a computed
+ * file URL) carries `@public` in the module instead of an entry here.
  */
 const config: KnipConfig = {
   // Policy: vendored shadcn/ui sources are upstream copies, not this repo's
@@ -36,15 +38,6 @@ const config: KnipConfig = {
   ignoreBinaries: ['flock', 'tail'],
 
   ignoreIssues: {
-    // Policy: pure unit tests load `scripts/env` modules through a computed
-    // file URL (scripts have no alias), which static analysis cannot follow.
-    // Only the exports exercised by those tests are suppressed here.
-    'scripts/env/lib/exit.ts': ['exports'],
-    'scripts/env/lib/fingerprint.ts': ['exports'],
-    'scripts/env/lib/lease.ts': ['exports'],
-    'scripts/env/lib/platform.ts': ['exports'],
-    'scripts/env/lib/varlock.ts': ['exports'],
-
     // Policy: shared integration-test seeding surface. Suites import the
     // helpers they need; de-exporting the rest would turn them into unused
     // locals, so the fixture API stays exported.

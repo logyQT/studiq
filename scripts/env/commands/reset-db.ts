@@ -7,12 +7,10 @@ import { readListedStackRuntime, readStack, type StackRead } from '../lib/stack'
 import { resetDatabase, startStack } from '../lib/stack-lifecycle';
 import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
 import { assertNativeAvailable, selectRuntime } from '../lib/platform';
-import { excludesFor, type Capability } from '../profiles';
+import { excludesFor, PROFILES } from '../profiles';
 import { probeCapabilities, probeContextFromStatus } from '../lib/capabilities';
 import { printJson, writeStderrLine } from '../lib/output';
 import { collectSnapshot } from '../lib/snapshot';
-
-const FULL: readonly Capability[] = ['database', 'rest', 'auth', 'storage', 'mail'];
 
 async function confirm(question: string): Promise<boolean> {
   if (!process.stdin.isTTY) return false;
@@ -29,7 +27,7 @@ async function waitReady(stack: StackRead, timeoutSeconds: number): Promise<bool
   const deadline = Date.now() + timeoutSeconds * 1000;
   const context = probeContextFromStatus(stack.status);
   for (;;) {
-    if ((await probeCapabilities(FULL, context)).ok) return true;
+    if ((await probeCapabilities(PROFILES.full.capabilities, context)).ok) return true;
     if (Date.now() >= deadline) return false;
     await sleep(500);
   }
@@ -88,7 +86,7 @@ export async function runResetDb(parsed: ParsedCommand): Promise<number> {
       const started = startStack({
         stackName: cliStackName,
         runtime,
-        excludes: excludesFor(FULL),
+        excludes: excludesFor(PROFILES.full.capabilities),
         timeoutMs: 360_000,
       });
       if (started.timedOut) {

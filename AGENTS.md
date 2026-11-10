@@ -177,8 +177,10 @@ bun run env:down                           # stop this checkout's web; `--all` a
 >
 > **What the cutover deleted:** `scripts/dev` and the `dev:*` wrappers that called it (`dev:up`, `dev:serve`,
 > `dev:status`, `dev:down`, `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`).
-> `dev:web` and `dev:admin` never called `scripts/dev`; they stay as human-only conveniences, so
-> `rg 'scripts/dev|dev:up|dev:serve|dev:build|dev:status'` is the acceptance grep and does not match them.
+> `dev:web` and `dev:admin` never called `scripts/dev`; they stay as human-only conveniences. Acceptance is
+> the live surface, not this paragraph: the grep excludes Markdown, so it cannot match this line or the
+> historical names above, and it must return nothing —
+> `rg -n 'scripts/dev|dev:(up|serve|status|down|reset-db|build|logs|doctor|ports|prepull)' package.json scripts apps packages supabase .github -g '!*.md'`.
 
 - **`.env.schema` stays value-free.** It declares shapes, sensitivity and ownership only — never a
   real value, never a default that carries a secret. The vendored Varlock skill's schema checklist and

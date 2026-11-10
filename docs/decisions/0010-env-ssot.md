@@ -95,8 +95,5 @@ the inventory and the code agree, and finally this consolidation.
 
 ## Rollback
 
-Revert this change (or the whole stack, `#1071`–`#1073` plus this PR). The
-per-app renderers (`render_web_env`, `render_supabase_env`) and the
-`load_web_env_fallback` reader return with the legacy dev script (revert the
-phase-3 cutover), and the generated files come back on the next start. No data migration is involved: the
-values file was always operator-owned, and reverting only changes who reads it.
+Revert the phase PR. No data migration is involved: the values file was always
+operator-owned, and reverting only changes who reads it.

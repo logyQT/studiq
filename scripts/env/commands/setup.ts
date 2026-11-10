@@ -31,14 +31,21 @@ interface SetupReport {
 export async function runSetup(parsed: ParsedCommand): Promise<number> {
   const options = parsed.setup;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'setup options are missing');
-  const primary = primaryCheckout();
   const report: SetupReport = {
     envLocal: { path: localEnvFilePath(), result: 'skipped' },
-    vault: { path: vaultFilePath(), primary, result: 'skipped' },
+    // `primaryCheckout()` shells out to `git worktree list`, so the vault fields
+    // are resolved only when `--vault` scaffolds it; the default path keeps the
+    // same report shape with empty paths.
+    vault: { path: '', primary: '', result: 'skipped' },
   };
 
   if (options.vault) {
-    report.vault.result = scaffoldVault(REPO_ROOT, options.force);
+    const primary = primaryCheckout();
+    report.vault = {
+      path: vaultFilePath(),
+      primary,
+      result: scaffoldVault(REPO_ROOT, options.force),
+    };
   } else {
     report.envLocal.result = scaffoldLocalEnv(REPO_ROOT, options.force);
   }
@@ -50,7 +57,7 @@ export async function runSetup(parsed: ParsedCommand): Promise<number> {
   if (!parsed.quiet) {
     if (options.vault) {
       writeStderrLine(
-        `env: setup --vault — ${report.vault.result} ${report.vault.path} (mode 600, primary checkout: ${primary})`,
+        `env: setup --vault — ${report.vault.result} ${report.vault.path} (mode 600, primary checkout: ${report.vault.primary})`,
       );
       writeStderrLine(
         '  fill the refs you use with varlock resolvers (LLM/Stripe only); never a literal',
