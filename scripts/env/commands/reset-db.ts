@@ -5,6 +5,7 @@ import { withCheckoutLock } from '../lib/locks';
 import { appendEnvLog, readStackState } from '../lib/state';
 import { readListedStackRuntime, readStack, type StackRead } from '../lib/stack';
 import { resetDatabase, startStack } from '../lib/stack-lifecycle';
+import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
 import { assertNativeAvailable, selectRuntime } from '../lib/platform';
 import { excludesFor, type Capability } from '../profiles';
 import { probeCapabilities, probeContextFromStatus } from '../lib/capabilities';
@@ -43,6 +44,9 @@ async function waitReady(stack: StackRead, timeoutSeconds: number): Promise<bool
 export async function runResetDb(parsed: ParsedCommand): Promise<number> {
   const options = parsed.resetDb;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'reset-db options are missing');
+  // Ownership first: the reset is destructive and acts on whatever stack the
+  // CLI resolves, so a foreign `SUPABASE_WORKDIR` may not reach it.
+  assertOwnWorkdir();
   const contract = readContractLenient();
   if (contract.shared) {
     throw new EnvFailure(
@@ -67,6 +71,7 @@ export async function runResetDb(parsed: ParsedCommand): Promise<number> {
   appendEnvLog(`reset-db: stack=${cliStackName ?? 'default'}`);
   return withCheckoutLock(async () => {
     let stack = readStack(cliStackName);
+    if (stack) assertOwnedStack(stack, cliStackName);
     if (!stack) {
       // A stopped stack is started for the reset: `db reset` needs a live
       // database, and the runtime must match the one the stack was created with.
@@ -102,6 +107,7 @@ export async function runResetDb(parsed: ParsedCommand): Promise<number> {
           "the stack started but 'supabase stack status' did not report endpoints",
         );
       }
+      assertOwnedStack(stack, cliStackName);
       if (!(await waitReady(stack, 180))) {
         throw new EnvFailure(EXIT_TIMEOUT, 'the stack did not become ready within 180s');
       }

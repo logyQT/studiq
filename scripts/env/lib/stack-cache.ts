@@ -27,6 +27,10 @@ import { DEV_DIR, ensureDevDir } from './state';
  * The record lives in this checkout's mode-700 `.dev/` and is discarded by
  * `down --all`; it is evidence a stack *was* observed here, never authority to
  * start, stop or adopt one.
+ *
+ * The TTL is anchored to the last **authoritative** observation: a warm run
+ * (which skips `stack status`) never rewrites the record, so it cannot extend
+ * the heartbeat of an observation that is never re-proven.
  */
 const CACHE_FILE = join(DEV_DIR, 'stack-cache.json');
 
@@ -116,7 +120,7 @@ export function readCachedStack(
   }
 }
 
-/** Record an observation that just proved the stack is up and owned here. */
+/** Record an authoritative observation that just proved the stack is up and owned here. */
 export function writeCachedStack(entry: Omit<CachedStack, 'heartbeatAt'>, now = Date.now()): void {
   atomicWrite(CACHE_FILE, `${JSON.stringify({ ...entry, heartbeatAt: now }, null, 2)}\n`);
 }

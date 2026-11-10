@@ -7,14 +7,9 @@ import { assertNativeAvailable, selectRuntime } from '../lib/platform';
 import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { readRegistry } from '../lib/registry';
+import { REPO_ROOT, canon, currentBranchRef } from '../lib/repo';
 import {
-  REPO_ROOT,
-  canon,
-  currentBranchRef,
-  isThisCheckout,
-  isThisCheckoutWorkdir,
-} from '../lib/repo';
-import {
+  probeStackStatus,
   readListedStackRuntime,
   readStack,
   readStackList,
@@ -23,6 +18,7 @@ import {
   type StackRead,
   type StackStatus,
 } from '../lib/stack';
+import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
 import { applyStackEnv, startStack, stopStack } from '../lib/stack-lifecycle';
 import {
   observedCapabilities,
@@ -145,31 +141,6 @@ export async function startWebReplacement(input: {
     );
   }
   return { pid, http: waited.http };
-}
-
-/**
- * `runSupabase` inherits `SUPABASE_WORKDIR`, and the CLI resolves the stack
- * against it. Reject a foreign workdir before the first status/start/stop so
- * this checkout can never discover, start or stop another checkout's stack.
- */
-function assertOwnWorkdir(): void {
-  const workdir = process.env.SUPABASE_WORKDIR || null;
-  if (workdir !== null && !isThisCheckoutWorkdir(workdir)) {
-    throw new EnvFailure(
-      EXIT_CONFLICT,
-      `refusing to run with SUPABASE_WORKDIR '${workdir}': it is not this checkout (${REPO_ROOT}).`,
-    );
-  }
-}
-
-/** A stack read from status is only usable when `project_root` is this checkout. */
-function assertOwnedStack(stack: StackRead, stackName: string | null): void {
-  if (!isThisCheckout(stack.status.projectRoot)) {
-    throw new EnvFailure(
-      EXIT_CONFLICT,
-      `stack '${stackName || 'default'}' belongs to ${stack.status.projectRoot || 'an unknown checkout'}, not this checkout (${REPO_ROOT}); run 'env:down --all' then 'env:ensure' in its checkout.`,
-    );
-  }
 }
 
 /**
@@ -435,6 +406,8 @@ async function resolveLease(
     serve: boolean;
     /** A stack is already running and will be reused. */
     runningStack: boolean;
+    /** `runningStack` came from the warm cache, not an authoritative read. */
+    warmStack?: boolean;
   },
 ): Promise<{ contract: Contract; lease: AppLease; dir: string; projectId: string }> {
   const key = identityKey(REPO_ROOT, options.branch, options.stackName ?? '');
@@ -444,7 +417,7 @@ async function resolveLease(
   // A running stack's auth redirects are bound to the URL it was started with,
   // which the lease records. Moving the lease under it would leave those
   // redirects on the old port, so a derived URL may not follow a new port.
-  const runningPort = options.runningStack ? existing?.appPort || contract.appPort : null;
+  let runningPort = options.runningStack ? existing?.appPort || contract.appPort : null;
   const derivedUrl = !process.env.APP_URL;
   if (
     runningPort !== null &&
@@ -452,10 +425,19 @@ async function resolveLease(
     options.explicitPort !== null &&
     options.explicitPort !== runningPort
   ) {
-    throw new EnvFailure(
-      EXIT_CONFLICT,
-      `app port ${options.explicitPort} differs from the running stack's port ${runningPort}; run 'env:down --all' then 'env:ensure'.`,
-    );
+    // Warm evidence can outlive the stack it describes. Only an authoritative
+    // read may turn "a stack is running" into a port conflict: allow the change
+    // when that read proves the stack is gone, and keep the conflict when it
+    // exists or the CLI cannot answer (absence is never assumed).
+    const probe = options.warmStack === true ? probeStackStatus(options.stackName) : null;
+    if (probe?.stack === null && probe.error === null) {
+      runningPort = null;
+    } else {
+      throw new EnvFailure(
+        EXIT_CONFLICT,
+        `app port ${options.explicitPort} differs from the running stack's port ${runningPort}; run 'env:down --all' then 'env:ensure'.`,
+      );
+    }
   }
   const reclaimable = (lease: AppLease, stackRunning: boolean): boolean =>
     isLeaseReclaimable({
@@ -629,8 +611,8 @@ interface WarmEvidence {
  *
  * Anything unproven returns null: the caller then takes the authoritative
  * `stack status` read (and, if needed, the cold-start path). Keys are never
- * cached, so a request that needs them (a build, a seed, or starting/replacing
- * the server) also takes the authoritative read.
+ * cached, so a request that needs them (a build, a seed, starting/replacing the
+ * server, or `env:dev`'s HMR) also takes the authoritative read.
  */
 async function warmFromCache(input: {
   cached: CachedStack;
@@ -640,9 +622,11 @@ async function warmFromCache(input: {
   forceBuild: boolean;
   serve: boolean;
   seed: boolean;
+  /** The caller hands the stack values to a child process (HMR). */
+  keys: boolean;
 }): Promise<WarmEvidence | null> {
   const { cached } = input;
-  if (input.seed || input.forceBuild) return null;
+  if (input.seed || input.forceBuild || input.keys) return null;
   if (missingCapabilities(observedCapabilities(cached.services), input.requested).length > 0) {
     return null;
   }
@@ -667,9 +651,21 @@ async function warmFromCache(input: {
   return { status: cached.status, services: cached.services, envHash: cached.envHash };
 }
 
+/**
+ * What the caller needs from the resolved stack, beyond "it is up".
+ *
+ * `keys` means the caller hands `process.env` to a child process (HMR): the
+ * warm record deliberately carries no keys, so such a caller must always take
+ * the authoritative `stack status` read and relay its values.
+ */
+export interface EnsureCaller {
+  keys?: boolean;
+}
+
 export async function runEnsure(
   parsed: ParsedCommand,
   deps: EnsureDeps = defaultEnsureDeps,
+  caller: EnsureCaller = {},
 ): Promise<number> {
   const options = parsed.ensure;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'ensure options are missing');
@@ -735,6 +731,7 @@ export async function runEnsure(
           forceBuild: options.forceBuild,
           serve: options.serve,
           seed,
+          keys: caller.keys === true,
         })
       : null;
 
@@ -751,6 +748,7 @@ export async function runEnsure(
       explicitPort: options.appPort,
       serve: options.serve,
       runningStack: stack !== null,
+      warmStack: warm !== null,
     });
     const contract = { ...lease.contract, stackName: cliStackName };
     const { dir, projectId } = lease;
@@ -893,6 +891,10 @@ export async function runEnsure(
           );
         }
         stack = null;
+        // The restart makes the observation and everything derived from it (the
+        // URL/keys relay, the build env hash, the build recheck) stale: drop the
+        // warm evidence so the cold path below re-reads and re-applies them.
+        warm = null;
       }
     }
     if (!stack) {
@@ -1072,14 +1074,19 @@ export async function runEnsure(
       }),
     );
     // Record what was just proven so the next warm `ensure` can skip
-    // `stack status` (keys are never part of this record).
-    writeCachedStack({
-      stackName: cliStackName ?? '',
-      status: stack.status,
-      services: stack.services,
-      envHash,
-      appUrl: contract.appUrl,
-    });
+    // `stack status` (keys are never part of this record). Only an
+    // authoritative read may (re)anchor the record: a warm run never refreshes
+    // its heartbeat, so a chain of warm runs cannot keep a stale observation
+    // alive past the cache TTL.
+    if (!warm) {
+      writeCachedStack({
+        stackName: cliStackName ?? '',
+        status: stack.status,
+        services: stack.services,
+        envHash,
+        appUrl: contract.appUrl,
+      });
+    }
     const snapshot = await collectSnapshot({
       contract,
       stack: stack.status,

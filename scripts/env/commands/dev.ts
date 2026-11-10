@@ -12,6 +12,28 @@ import { appendEnvLog } from '../lib/state';
 import { printJson, writeStderrLine } from '../lib/output';
 import { runEnsure } from './ensure';
 
+/**
+ * The stack values HMR cannot start without: `@supabase/ssr` throws on a
+ * missing URL/anon key, and the server needs the service-role key. The warm
+ * `ensure` path carries no keys, so the caller must prove they arrived before
+ * `next dev` is spawned.
+ */
+const HMR_REQUIRED_ENV = [
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+] as const;
+
+function assertHmrStackEnv(): void {
+  const missing = HMR_REQUIRED_ENV.filter((name) => !process.env[name]);
+  if (missing.length > 0) {
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      `HMR needs the stack environment, but ${missing.join(', ')} is unset; run 'env:ensure' and retry`,
+    );
+  }
+}
+
 /** The stack-only `ensure` that runs before HMR (no build, no serve). */
 function stackOnly(parsed: ParsedCommand): ParsedCommand {
   const options = parsed.dev;
@@ -60,8 +82,12 @@ export async function runDev(parsed: ParsedCommand): Promise<number> {
   resolveLocalAppEnv();
   appendEnvLog('dev: profile=full (human-only HMR)');
 
-  const ensured = await runEnsure(stackOnly(parsed));
+  // HMR is handed `process.env`: force the authoritative stack read so the
+  // URL/keys are always relayed, even when the warm cache would satisfy the
+  // probes (it never carries them).
+  const ensured = await runEnsure(stackOnly(parsed), undefined, { keys: true });
   if (ensured !== 0) return ensured;
+  assertHmrStackEnv();
 
   const base = readContract();
   const stackName = options.stack ?? base.stackName;

@@ -5,6 +5,7 @@ import { contractWithLease } from '../lib/contract-lease';
 import { withCheckoutLock } from '../lib/locks';
 import { readStack } from '../lib/stack';
 import { applyStackEnv } from '../lib/stack-lifecycle';
+import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
 import {
   identityKey,
   appendEnvLog,
@@ -44,6 +45,9 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
   const options = parsed.serve;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'serve options are missing');
   const appEnv = resolveLocalAppEnv();
+  // A foreign `SUPABASE_WORKDIR` (or a named stack it resolves to) would make
+  // this serve another checkout's URL and keys; refuse before any read.
+  assertOwnWorkdir();
 
   return withCheckoutLock(async () => {
     // Settle an artifact left behind by an interrupted rebuild before `.next`
@@ -81,6 +85,7 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
         "no running Supabase stack for this checkout; run 'env:ensure --profile api' first",
       );
     }
+    if (stack) assertOwnedStack(stack, stackName);
     const stackEnv = contract.shared ? sharedStackEnv() : stack!.env;
     if (contract.shared) {
       const missing = ['SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'].filter(
