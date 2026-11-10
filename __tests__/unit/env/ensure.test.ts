@@ -496,6 +496,126 @@ describe('env:ensure rebuilds recoverably', () => {
     expect(readdirSync(backupDir)).toEqual([]);
   });
 
+  it('reports a surviving rollback restart instead of a stopped environment', async () => {
+    const harness = newHarness();
+    const { artifactDir, backupDir } = recoveryPaths(harness);
+    let pid: number | null = 4242;
+    let writes = 0;
+    const deps: RebuildDeps = {
+      build: () => {
+        mkdirSync(artifactDir, { recursive: true });
+        writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
+        return Promise.resolve({
+          ok: false,
+          timedOut: false,
+          output: 'boom',
+          fingerprintAfter: 'new',
+        });
+      },
+      startWeb: () => {
+        writes += 1;
+        pid = 7001;
+        return 7001;
+      },
+      // The rollback restart comes up but never proves ready.
+      waitWeb: () => Promise.resolve({ ok: false, reason: 'timeout', http: 0 }),
+      stopWeb: () => ({ pid: 7001, stopped: false }),
+      stopForReplacement: () => {
+        pid = null;
+        return { pid: 4242, stopped: true };
+      },
+      readPid: () => pid,
+      pidAlive: (candidate) => candidate === 7001,
+      artifactDir,
+      backupDir,
+    };
+
+    let failure: unknown;
+    try {
+      await rebuildModule.rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: true,
+        },
+        deps,
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain('7001');
+    expect(failure.message).toContain('rollback restart');
+    expect(failure.message).not.toContain('environment is stopped');
+    // The previous build is back in place, and its backup was not discarded.
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(readdirSync(backupDir)).toEqual([]);
+    // The survivor's PID record is not overwritten by another start.
+    expect(writes).toBe(1);
+    expect(pid).toBe(7001);
+  });
+
+  it('reports a cleanly stopped rollback restart with the existing stopped message', async () => {
+    const harness = newHarness();
+    const { artifactDir, backupDir } = recoveryPaths(harness);
+    let pid: number | null = 4242;
+    const deps: RebuildDeps = {
+      build: () => {
+        mkdirSync(artifactDir, { recursive: true });
+        writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
+        return Promise.resolve({
+          ok: false,
+          timedOut: false,
+          output: 'boom',
+          fingerprintAfter: 'new',
+        });
+      },
+      startWeb: () => {
+        pid = 7001;
+        return 7001;
+      },
+      waitWeb: () => Promise.resolve({ ok: false, reason: 'timeout', http: 0 }),
+      stopWeb: () => {
+        pid = null;
+        return { pid: 7001, stopped: true };
+      },
+      stopForReplacement: () => {
+        pid = null;
+        return { pid: 4242, stopped: true };
+      },
+      readPid: () => pid,
+      pidAlive: () => false,
+      artifactDir,
+      backupDir,
+    };
+
+    let failure: unknown;
+    try {
+      await rebuildModule.rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: true,
+        },
+        deps,
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 4 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain('the previous web server did not restart');
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(readdirSync(backupDir)).toEqual([]);
+  });
+
   it('restores the previous build when the build throws instead of returning', async () => {
     const harness = newHarness();
     const { artifactDir, backupDir } = recoveryPaths(harness);

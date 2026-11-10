@@ -118,31 +118,49 @@ function restoreArtifact(deps: RebuildRecoveryDeps, backup: string): void {
   renameSync(backup, deps.artifactDir);
 }
 
+/** What a rollback restart achieved: a serving server, or a PID that outlived it. */
+interface RestartOutcome {
+  restarted: boolean;
+  /** The restart attempt's PID when it survived its stop, else null. */
+  survivor: number | null;
+}
+
+/**
+ * Stop the failed restart attempt and report its PID only when it is still
+ * alive: a stop that cannot be proven must never be reported as stopped.
+ */
+function containRestartAttempt(deps: RebuildRecoveryDeps, attempt: number | null): number | null {
+  try {
+    deps.stopWeb();
+  } catch {
+    /* already gone */
+  }
+  if (attempt === null) return null;
+  const alive = deps.pidAlive?.(attempt) ?? pidAlive(attempt);
+  return alive ? attempt : null;
+}
+
 /** Restart the server that was serving before the rebuild, if there was one. */
 async function restartPrevious(
   deps: RebuildRecoveryDeps,
   input: RebuildRecoveryInput,
   previousPid: number | null,
-): Promise<boolean> {
-  if (previousPid === null) return false;
+): Promise<RestartOutcome> {
+  if (previousPid === null) return { restarted: false, survivor: null };
+  let attempt: number | null = null;
   try {
-    const pid = deps.startWeb({ appPort: input.appPort, appUrl: input.appUrl, env: input.env });
+    attempt = deps.startWeb({ appPort: input.appPort, appUrl: input.appUrl, env: input.env });
     const waited = await deps.waitWeb(
       input.appUrl,
-      pid,
+      attempt,
       input.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS,
       input.appPort,
     );
-    if (waited.ok) return true;
-    deps.stopWeb();
+    if (waited.ok) return { restarted: true, survivor: null };
   } catch {
-    try {
-      deps.stopWeb();
-    } catch {
-      /* already gone */
-    }
+    /* a thrown start/wait is a failed restart: contain the attempt below */
   }
-  return false;
+  return { restarted: false, survivor: containRestartAttempt(deps, attempt) };
 }
 
 /**
@@ -165,6 +183,18 @@ function containReplacement(
   if (candidate === null) return null;
   const alive = deps.pidAlive?.(candidate) ?? pidAlive(candidate);
   return alive ? candidate : null;
+}
+
+/**
+ * A failed rollback restart must never be reported as a stopped environment:
+ * the surviving process still owns the port, and its PID record is the only
+ * thing that can stop it later.
+ */
+function restartSurvivorFailure(survivor: number, kept: string, cause?: unknown): EnvFailure {
+  const message = `web server (pid ${survivor}) is still running after its rollback restart; refusing to report the environment as stopped (${kept})`;
+  return cause === undefined
+    ? new EnvFailure(EXIT_CONFLICT, message)
+    : new EnvFailure(EXIT_CONFLICT, message, { cause });
 }
 
 /** Fail without touching the surviving process, its PID record, or the backup. */
@@ -211,10 +241,20 @@ async function failWithRecovery(input: {
   }
 
   // Never start the previous server over an unrestored/half-restored `.next`.
-  const restarted =
+  const restart: RestartOutcome =
     input.backup === null || restored
       ? await restartPrevious(input.deps, input.request, input.previousPid)
-      : false;
+      : { restarted: false, survivor: null };
+  // A restart that left a live process behind is a conflict, not a stopped
+  // environment: keep the backup and report the PID instead of hiding it.
+  if (restart.survivor !== null) {
+    const kept = restored
+      ? `the previous build is restored at ${input.deps.artifactDir}`
+      : input.backup
+        ? `kept the previous build backup at ${input.backup}`
+        : 'there is no previous build backup';
+    throw restartSurvivorFailure(restart.survivor, kept, input.cause);
+  }
 
   let message = input.message;
   if (restored) {
@@ -224,7 +264,7 @@ async function failWithRecovery(input: {
       restoreFailure instanceof Error ? restoreFailure.message : String(restoreFailure);
     message += `; could not restore the previous build (${reason}), kept the backup at ${input.backup}`;
   }
-  if (restarted) {
+  if (restart.restarted) {
     message += '; previous web server restarted';
   } else if (input.previousPid !== null) {
     message +=
