@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { logBuildOutput, runProductionBuild, type BuildResult } from './build';
-import { EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
+import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
+import { pidAlive } from './locks';
+import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
 import { DEV_DIR } from './state';
 import {
@@ -36,6 +38,10 @@ interface RebuildRecoveryDeps {
   stopWeb(): StopWebResult;
   stopForReplacement(): StopWebResult;
   readPid(): number | null;
+  /** Liveness probe for the replacement server; defaults to the real `pidAlive`. */
+  pidAlive?(pid: number): boolean;
+  /** Remove a spent backup; defaults to `rmSync`. */
+  removeBackup?(backup: string): void;
   artifactDir: string;
   backupDir: string;
 }
@@ -47,6 +53,8 @@ const defaultDeps: RebuildRecoveryDeps = {
   stopWeb: stopWebServer,
   stopForReplacement: stopWebServerForReplacement,
   readPid: readWebPid,
+  pidAlive,
+  removeBackup: removeBackupDir,
   artifactDir: join(REPO_ROOT, 'apps', 'web', '.next'),
   backupDir: DEV_DIR,
 };
@@ -66,6 +74,32 @@ export interface RebuildRecoveryResult {
   webPid: number | null;
   webHttp: number;
   webStarted: boolean;
+  /** Set when the new build landed but its backup could not be removed. */
+  warnings?: string[];
+}
+
+/** Remove a spent backup; failure only warns because the new build is in place. */
+function removeBackupDir(backup: string): void {
+  rmSync(backup, { recursive: true, force: true });
+}
+
+function discardBackup(deps: RebuildRecoveryDeps, backup: string | null): string | null {
+  if (backup === null) return null;
+  try {
+    (deps.removeBackup ?? removeBackupDir)(backup);
+    return null;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    writeStderrLine(
+      `warning: could not remove the previous build backup at ${backup} (${reason}); the new build is in place`,
+    );
+    return backup;
+  }
+}
+
+/** Result fields for a backup that outlived a successful rebuild. */
+function leftoverWarning(backup: string | null): string[] | undefined {
+  return backup === null ? undefined : [`could not remove the previous build backup at ${backup}`];
 }
 
 function backupArtifact(deps: RebuildRecoveryDeps): string | null {
@@ -82,11 +116,6 @@ function backupArtifact(deps: RebuildRecoveryDeps): string | null {
 function restoreArtifact(deps: RebuildRecoveryDeps, backup: string): void {
   rmSync(deps.artifactDir, { recursive: true, force: true });
   renameSync(backup, deps.artifactDir);
-}
-
-/** Discard a rebuild backup; no backup (nothing to move aside) is a no-op. */
-function discardBackup(backup: string | null): void {
-  if (backup) rmSync(backup, { recursive: true, force: true });
 }
 
 /** Restart the server that was serving before the rebuild, if there was one. */
@@ -114,6 +143,44 @@ async function restartPrevious(
     }
   }
   return false;
+}
+
+/**
+ * Stop the replacement server and prove it is gone. A live process after the
+ * stop must not be restored over or replaced by a second server; the reported
+ * PID tells the operator which process still owns the port.
+ */
+function containReplacement(
+  deps: RebuildRecoveryDeps,
+  newPid: number | null,
+  previousPid: number | null,
+): number | null {
+  try {
+    deps.stopWeb();
+  } catch {
+    /* already gone */
+  }
+  const recorded = deps.readPid();
+  const candidate = newPid ?? (recorded !== null && recorded !== previousPid ? recorded : null);
+  if (candidate === null) return null;
+  const alive = deps.pidAlive?.(candidate) ?? pidAlive(candidate);
+  return alive ? candidate : null;
+}
+
+/** Fail without touching the surviving process, its PID record, or the backup. */
+function survivingReplacementFailure(
+  survivor: number,
+  backup: string | null,
+  cause?: unknown,
+): EnvFailure {
+  const kept =
+    backup === null
+      ? 'there is no previous build backup'
+      : `kept the previous build backup at ${backup}`;
+  const message = `web server (pid ${survivor}) is still running after stop; refusing to restore or restart another server (${kept})`;
+  return cause === undefined
+    ? new EnvFailure(EXIT_CONFLICT, message)
+    : new EnvFailure(EXIT_CONFLICT, message, { cause });
 }
 
 /**
@@ -189,7 +256,23 @@ export async function rebuildWithRecovery(
 ): Promise<RebuildRecoveryResult> {
   const previousPid = deps.readPid();
   if (previousPid !== null) deps.stopForReplacement();
-  const backup = backupArtifact(deps);
+
+  let backup: string | null;
+  try {
+    backup = backupArtifact(deps);
+  } catch (error) {
+    // The previous server was already stopped, so a backup that cannot be
+    // created must restore service (not build) and keep the original cause.
+    return failWithRecovery({
+      deps,
+      request,
+      previousPid,
+      backup: null,
+      code: EXIT_START_FAILED,
+      message: `could not move the previous build aside (${error instanceof Error ? error.message : String(error)})`,
+      cause: error,
+    });
+  }
 
   let result: BuildResult;
   try {
@@ -221,11 +304,18 @@ export async function rebuildWithRecovery(
 
   if (!request.serve) {
     // The new build is complete; the previous artifact is no longer needed.
-    discardBackup(backup);
-    return { build: result, webPid: deps.readPid(), webHttp: 0, webStarted: false };
+    const leftover = discardBackup(deps, backup);
+    const warnings = leftoverWarning(leftover);
+    return {
+      build: result,
+      webPid: deps.readPid(),
+      webHttp: 0,
+      webStarted: false,
+      ...(warnings ? { warnings } : {}),
+    };
   }
 
-  let pid: number;
+  let pid: number | null = null;
   let waited: WaitWebResult;
   try {
     pid = deps.startWeb({ appPort: request.appPort, appUrl: request.appUrl, env: request.env });
@@ -236,11 +326,8 @@ export async function rebuildWithRecovery(
       request.appPort,
     );
   } catch (error) {
-    try {
-      deps.stopWeb();
-    } catch {
-      /* already gone */
-    }
+    const survivor = containReplacement(deps, pid, previousPid);
+    if (survivor !== null) throw survivingReplacementFailure(survivor, backup, error);
     return failWithRecovery({
       deps,
       request,
@@ -251,7 +338,8 @@ export async function rebuildWithRecovery(
     });
   }
   if (!waited.ok) {
-    deps.stopWeb();
+    const survivor = containReplacement(deps, pid, previousPid);
+    if (survivor !== null) throw survivingReplacementFailure(survivor, backup);
     return failWithRecovery({
       deps,
       request,
@@ -262,6 +350,13 @@ export async function rebuildWithRecovery(
     });
   }
 
-  discardBackup(backup);
-  return { build: result, webPid: pid, webHttp: waited.http, webStarted: true };
+  const leftover = discardBackup(deps, backup);
+  const warnings = leftoverWarning(leftover);
+  return {
+    build: result,
+    webPid: pid,
+    webHttp: waited.http,
+    webStarted: true,
+    ...(warnings ? { warnings } : {}),
+  };
 }

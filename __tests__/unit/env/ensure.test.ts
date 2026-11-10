@@ -83,6 +83,8 @@ interface RebuildDeps {
   stopWeb(): { pid: number | null; stopped: boolean };
   stopForReplacement(): { pid: number | null; stopped: boolean };
   readPid(): number | null;
+  pidAlive?(pid: number): boolean;
+  removeBackup?(backup: string): void;
   artifactDir: string;
   backupDir: string;
 }
@@ -103,6 +105,7 @@ interface RebuildModule {
     webPid: number | null;
     webHttp: number;
     webStarted: boolean;
+    warnings?: string[];
   }>;
 }
 
@@ -470,6 +473,7 @@ describe('env:ensure rebuilds recoverably', () => {
         return { pid: 4242, stopped: true };
       },
       readPid: () => pid,
+      pidAlive: () => false,
       artifactDir,
       backupDir,
     };
@@ -681,6 +685,236 @@ describe('env:ensure rebuilds recoverably', () => {
 
     expect(result.webStarted).toBe(false);
     expect(readdirSync(backupDir)).toEqual([]);
+  });
+
+  it('keeps the backup instead of restoring over a replacement that survives its stop', async () => {
+    const harness = newHarness();
+    const { artifactDir, backupDir } = recoveryPaths(harness);
+    let pid: number | null = 4242;
+    const starts: number[] = [];
+    const deps: RebuildDeps = {
+      build: () => {
+        mkdirSync(artifactDir, { recursive: true });
+        writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
+        return Promise.resolve({
+          ok: true,
+          timedOut: false,
+          output: '',
+          fingerprintAfter: 'new',
+        });
+      },
+      startWeb: () => {
+        starts.push(7001);
+        pid = 7001;
+        return 7001;
+      },
+      waitWeb: () => Promise.resolve({ ok: false, reason: 'timeout', http: 0 }),
+      stopWeb: () => ({ pid: 7001, stopped: false }),
+      stopForReplacement: () => {
+        pid = null;
+        return { pid: 4242, stopped: true };
+      },
+      readPid: () => pid,
+      pidAlive: (candidate) => candidate === 7001,
+      artifactDir,
+      backupDir,
+    };
+
+    let failure: unknown;
+    try {
+      await rebuildModule.rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: true,
+        },
+        deps,
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain('7001');
+    const backups = readdirSync(backupDir);
+    expect(backups).toHaveLength(1);
+    const kept = join(backupDir, backups[0]);
+    expect(failure.message).toContain(kept);
+    expect(readFileSync(join(kept, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    // No restore over the survivor and no second server.
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('new-build');
+    expect(starts).toEqual([7001]);
+    expect(pid).toBe(7001);
+  });
+
+  it('keeps the backup when the start throws but the replacement survives', async () => {
+    const harness = newHarness();
+    const { artifactDir, backupDir } = recoveryPaths(harness);
+    let pid: number | null = 4242;
+    const starts: number[] = [];
+    const boom = new Error('health probe crashed');
+    const deps: RebuildDeps = {
+      build: () => {
+        mkdirSync(artifactDir, { recursive: true });
+        writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
+        return Promise.resolve({
+          ok: true,
+          timedOut: false,
+          output: '',
+          fingerprintAfter: 'new',
+        });
+      },
+      startWeb: () => {
+        starts.push(7001);
+        pid = 7001;
+        return 7001;
+      },
+      waitWeb: () => Promise.reject(boom),
+      stopWeb: () => ({ pid: 7001, stopped: false }),
+      stopForReplacement: () => {
+        pid = null;
+        return { pid: 4242, stopped: true };
+      },
+      readPid: () => pid,
+      pidAlive: (candidate) => candidate === 7001,
+      artifactDir,
+      backupDir,
+    };
+
+    let failure: unknown;
+    try {
+      await rebuildModule.rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: true,
+        },
+        deps,
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.cause).toBe(boom);
+    expect(failure.message).toContain('7001');
+    expect(readdirSync(backupDir)).toHaveLength(1);
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('new-build');
+    expect(starts).toEqual([7001]);
+  });
+
+  it('restarts the previous server without building when the build cannot be moved aside', async () => {
+    const harness = newHarness();
+    const { artifactDir, backupDir } = recoveryPaths(harness);
+    // A file where the backup directory should be makes the move-aside throw.
+    rmSync(backupDir, { recursive: true, force: true });
+    writeFileSync(backupDir, 'not a directory');
+    let pid: number | null = 4242;
+    let starts = 0;
+    let builds = 0;
+    const deps: RebuildDeps = {
+      build: () => {
+        builds += 1;
+        return Promise.resolve({
+          ok: true,
+          timedOut: false,
+          output: '',
+          fingerprintAfter: 'new',
+        });
+      },
+      startWeb: () => {
+        starts += 1;
+        pid = 5151;
+        return 5151;
+      },
+      waitWeb: () => Promise.resolve({ ok: true, reason: 'ready', http: 200 }),
+      stopWeb: () => ({ pid: null, stopped: true }),
+      stopForReplacement: () => {
+        pid = null;
+        return { pid: 4242, stopped: true };
+      },
+      readPid: () => pid,
+      artifactDir,
+      backupDir,
+    };
+
+    let failure: unknown;
+    try {
+      await rebuildModule.rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: true,
+        },
+        deps,
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 4 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain('could not move the previous build aside');
+    expect(failure.cause).toMatchObject({ code: 'EEXIST' });
+    expect(builds).toBe(0);
+    expect(starts).toBe(1);
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+  });
+
+  it('returns success and reports the leftover backup when discarding it fails', async () => {
+    const harness = newHarness();
+    const { artifactDir, backupDir } = recoveryPaths(harness);
+    const deps: RebuildDeps = {
+      build: () => {
+        mkdirSync(artifactDir, { recursive: true });
+        writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
+        return Promise.resolve({
+          ok: true,
+          timedOut: false,
+          output: '',
+          fingerprintAfter: 'new',
+        });
+      },
+      startWeb: () => {
+        throw new Error('a --no-serve rebuild must not start the web server');
+      },
+      waitWeb: () => Promise.reject(new Error('a --no-serve rebuild must not wait for web')),
+      stopWeb: () => ({ pid: null, stopped: false }),
+      stopForReplacement: () => ({ pid: null, stopped: false }),
+      readPid: () => null,
+      removeBackup: () => {
+        throw new Error('backup is busy');
+      },
+      artifactDir,
+      backupDir,
+    };
+
+    const result = await rebuildModule.rebuildWithRecovery(
+      {
+        envHash: 'env-hash',
+        appPort: 3999,
+        appUrl: 'http://localhost:3999',
+        env: process.env,
+        serve: false,
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({ webPid: null, webHttp: 0, webStarted: false });
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('new-build');
+    const backups = readdirSync(backupDir);
+    expect(backups).toHaveLength(1);
+    const leftover = join(backupDir, backups[0]);
+    expect(result.warnings).toEqual([expect.stringContaining(leftover)]);
+    expect(readFileSync(join(leftover, 'BUILD_ID'), 'utf8')).toBe('old-build');
   });
 });
 
