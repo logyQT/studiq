@@ -85,5 +85,5 @@ pass is most valuable on large or risky PRs, not on every 40-line change.
   scoped) or to a local `bun run review` command.
 - Collect ~20 recent CodeRabbit findings and encode the recurring deterministic
   ones as `scripts/check-*.ts` rules; do not add semgrep/ast-grep wholesale.
-- Revisit the limit after a few weeks of data: 400 total is the starting point;
-  300 is a one-variable change if reviews still feel heavy.
+- Revisit the limit after a few weeks of data: 400 reviewable lines is the
+  starting point; 300 is a one-variable change if reviews still feel heavy.
