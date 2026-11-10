@@ -35,8 +35,13 @@ import {
   type Capability,
 } from '../profiles';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
-import { rebuildWithRecovery, recoverHandover } from '../lib/rebuild';
-import { pidAlive, withCheckoutLock, withClaimsLock } from '../lib/locks';
+import {
+  rebuildWithRecovery,
+  recoverHandover,
+  type RebuildRecoveryInput,
+  type RebuildRecoveryResult,
+} from '../lib/rebuild';
+import { acquireCheckoutLock, pidAlive, withClaimsLock, type CheckoutLock } from '../lib/locks';
 import {
   heartbeatAgeMs,
   isLeaseReclaimable,
@@ -183,6 +188,185 @@ function stackAttribution(input: {
 
 async function freePort(port: number): Promise<boolean> {
   return port > 0 && (await probePortBind(port)).state === 'free';
+}
+
+/**
+ * The one I/O seam for the rebuild transaction (and the tests' injection
+ * point). Production always uses `rebuildWithRecovery`.
+ */
+export interface EnsureDeps {
+  rebuild(request: RebuildRecoveryInput): Promise<RebuildRecoveryResult>;
+}
+
+const defaultEnsureDeps: EnsureDeps = { rebuild: rebuildWithRecovery };
+
+interface BuildRevalidation {
+  dir: string;
+  projectId: string;
+  contract: Contract;
+  requested: Capability[];
+  /** The environment the build actually ran against. */
+  envHash: string;
+}
+
+/**
+ * Run the rebuild while `checkout.lock` is free and take it back afterwards.
+ *
+ * A production build takes minutes; holding the checkout-wide lock for it would
+ * block every other env command (`down` included) for that whole time. The
+ * handover record written before the build keeps recovery ownership of `.next`,
+ * so releasing the lock does not hand the artifact to another process. The lock
+ * is re-acquired even when the build fails, so the failure path still owns the
+ * lease and the attribution it writes.
+ */
+async function rebuildWithoutCheckoutLock(
+  lock: CheckoutLock,
+  request: RebuildRecoveryInput,
+  deps: EnsureDeps,
+): Promise<RebuildRecoveryResult> {
+  await lock.release();
+  let outcome: RebuildRecoveryResult | null = null;
+  let failure: unknown;
+  let failed = false;
+  try {
+    outcome = await deps.rebuild(request);
+  } catch (error) {
+    failed = true;
+    failure = error;
+  }
+  try {
+    await lock.acquire();
+  } catch (error) {
+    // The build failure is the useful report: do not mask it with a lock
+    // conflict from the re-acquire. A successful build must surface it.
+    if (!failed) throw error;
+  }
+  if (failed) throw failure;
+  if (outcome === null) throw new EnvFailure(EXIT_START_FAILED, 'rebuild returned no result');
+  return outcome;
+}
+
+/**
+ * Rebuild only when nothing proves the recorded build still matches this
+ * environment. The rebuild itself runs without the checkout lock (see
+ * `rebuildWithoutCheckoutLock`).
+ */
+async function rebuildIfNeeded(
+  input: {
+    lock: CheckoutLock;
+    force: boolean;
+    envHash: string;
+    appPort: number;
+    appUrl: string;
+    serve: boolean;
+  },
+  deps: EnsureDeps,
+): Promise<RebuildRecoveryResult | null> {
+  const state = readBuildState();
+  const current =
+    state?.envHash === input.envHash &&
+    state.fingerprint ===
+      computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash: input.envHash }) &&
+    buildArtifactPresent();
+  if (!input.force && current) return null;
+  return rebuildWithoutCheckoutLock(
+    input.lock,
+    {
+      envHash: input.envHash,
+      appPort: input.appPort,
+      appUrl: input.appUrl,
+      env: process.env,
+      serve: input.serve,
+    },
+    deps,
+  );
+}
+
+/**
+ * The build ran while `checkout.lock` was free: `down` (or another env process)
+ * may have released this checkout's lease or moved it to another port. Re-read
+ * it before anything is written, served or reported.
+ */
+function reassertLease(input: BuildRevalidation): void {
+  const lease = readLease(input.dir, input.projectId);
+  if (!lease) {
+    throw new EnvFailure(
+      EXIT_CONFLICT,
+      "another env process released this checkout's app-port lease during the build; re-run 'env:ensure'",
+    );
+  }
+  if (lease.appPort !== input.contract.appPort) {
+    throw new EnvFailure(
+      EXIT_CONFLICT,
+      `the app-port lease moved to ${lease.appPort} during the build (was ${input.contract.appPort}); re-run 'env:ensure'`,
+    );
+  }
+}
+
+/**
+ * Re-read the local stack after a build, then prove it still matches the
+ * environment the build was made for. A stack that stopped, changed its
+ * endpoints or lost a requested capability means the build and the environment
+ * no longer agree: fail instead of serving or reporting stale state.
+ */
+async function revalidateLocalStack(
+  input: BuildRevalidation & { stackName: string | null },
+): Promise<StackRead> {
+  reassertLease(input);
+  const stack = readStack(input.stackName);
+  if (!stack) {
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      `stack '${input.stackName || 'default'}' stopped during the build; re-run 'env:ensure' to start it (the build is kept)`,
+    );
+  }
+  assertOwnedStack(stack, input.stackName);
+  const probe = await probeCapabilities(input.requested, probeContextFromStatus(stack.status));
+  if (!probe.ok) {
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      `stack '${input.stackName || 'default'}' changed during the build and is missing: ${probe.failed.join(', ')}; re-run 'env:ensure'`,
+    );
+  }
+  const envHash = buildEnvHash({
+    supabaseUrl: stack.env.apiUrl,
+    siteUrl: process.env.NEXT_PUBLIC_SITE_URL || input.contract.appUrl,
+    anonKey: stack.env.anonKey ?? '',
+  });
+  if (envHash !== input.envHash) {
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      "the stack endpoints changed during the build; re-run 'env:ensure' so the build matches the stack",
+    );
+  }
+  return stack;
+}
+
+/** The shared-stack counterpart of `revalidateLocalStack`: no stack to start. */
+async function revalidateSharedStack(input: BuildRevalidation): Promise<void> {
+  reassertLease(input);
+  const env = sharedStackEnv();
+  if (!env.apiUrl) {
+    throw new EnvFailure(EXIT_START_FAILED, 'SUPABASE_SHARED=1 needs SUPABASE_URL and keys');
+  }
+  const probe = await probeCapabilities(input.requested, sharedProbeContext());
+  if (!probe.ok) {
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      `shared stack changed during the build and is missing: ${probe.failed.join(', ')}; re-run 'env:ensure'`,
+    );
+  }
+  const envHash = buildEnvHash({
+    supabaseUrl: env.apiUrl,
+    siteUrl: process.env.NEXT_PUBLIC_SITE_URL || input.contract.appUrl,
+    anonKey: env.anonKey ?? '',
+  });
+  if (envHash !== input.envHash) {
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      "the shared Supabase environment changed during the build; re-run 'env:ensure'",
+    );
+  }
 }
 
 export interface ReclaimForeignLeaseInput {
@@ -377,7 +561,10 @@ function emit(
   }
 }
 
-export async function runEnsure(parsed: ParsedCommand): Promise<number> {
+export async function runEnsure(
+  parsed: ParsedCommand,
+  deps: EnsureDeps = defaultEnsureDeps,
+): Promise<number> {
   const options = parsed.ensure;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'ensure options are missing');
   assertOwnWorkdir();
@@ -396,8 +583,12 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
   appendEnvLog(`ensure: profile=${options.profile} stack=${cliStackName ?? 'default'}`);
 
   // One lock per checkout: the app-port lease and the web claim are authoritative
-  // while it is held. The build lock is taken later, inside this callback.
-  return withCheckoutLock(async () => {
+  // while it is held. The build lock is taken later, inside the build, and the
+  // checkout lock is deliberately released around that build (see
+  // `rebuildWithoutCheckoutLock`) so a concurrent `down` is never blocked for
+  // the whole build.
+  const lock = await acquireCheckoutLock();
+  try {
     // Settle an artifact left behind by an interrupted rebuild before the lease
     // or the build looks at `.next`; the record lives in this checkout's `.dev/`.
     recoverHandover();
@@ -449,20 +640,21 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
       let webHttp = 0;
       let webStarted = false;
       if (options.build) {
-        const state = readBuildState();
-        const current =
-          state?.envHash === envHash &&
-          state.fingerprint ===
-            computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
-          buildArtifactPresent();
-        if (options.forceBuild || !current) {
-          const outcome = await rebuildWithRecovery({
+        const outcome = await rebuildIfNeeded(
+          {
+            lock,
+            force: options.forceBuild,
             envHash,
             appPort: contract.appPort,
             appUrl: contract.appUrl,
-            env: process.env,
             serve: options.serve,
-          });
+          },
+          deps,
+        );
+        if (outcome) {
+          // The checkout lock was free for the build: re-read the lease and the
+          // shared environment before anything is written or reported.
+          await revalidateSharedStack({ dir, projectId, contract, requested, envHash });
           writeBuildState({
             fingerprint: outcome.build.fingerprintAfter,
             envHash,
@@ -471,6 +663,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
           webPid = outcome.webPid;
           webHttp = outcome.webHttp;
           webStarted = outcome.webStarted;
+          if (options.serve) webHttp = await probeHttp(contract.appUrl);
         }
       }
       if (!webStarted) {
@@ -530,7 +723,19 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         );
       }
       if (!(await probeCapabilities(requested, probeContextFromStatus(stack.status))).ok) {
-        stopStack(cliStackName);
+        // The stack answers status but not its capabilities: stop it and start a
+        // fresh one, but only when that stop is provable. A failed stop with the
+        // stack still listed may still own its ports, so the lease, its claim and
+        // the attribution stay put instead of being handed to the next checkout —
+        // and no restart is attempted over a stack that may still be running.
+        const stopped = stopStack(cliStackName);
+        if (!stopped.ok && !stackAbsenceConfirmed(cliStackName || 'default')) {
+          const heldPort = readLease(dir, projectId)?.appPort || contract.appPort;
+          throw new EnvFailure(
+            EXIT_START_FAILED,
+            `running stack is unresponsive and its stop failed; keeping app port ${heldPort} claimed (run 'env:down --all' once the stack stops)`,
+          );
+        }
         stack = null;
       }
     }
@@ -590,20 +795,30 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
     let webHttp = 0;
     let webStarted = false;
     if (options.build) {
-      const state = readBuildState();
-      const current =
-        state?.envHash === envHash &&
-        state.fingerprint ===
-          computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash }) &&
-        buildArtifactPresent();
-      if (options.forceBuild || !current) {
-        const outcome = await rebuildWithRecovery({
+      const outcome = await rebuildIfNeeded(
+        {
+          lock,
+          force: options.forceBuild,
           envHash,
           appPort: contract.appPort,
           appUrl: contract.appUrl,
-          env: process.env,
           serve: options.serve,
+        },
+        deps,
+      );
+      if (outcome) {
+        // The checkout lock was free for the build: `down` (or another env
+        // process) may have released the lease or stopped/changed the stack.
+        // Prove the environment still matches the build before serving it.
+        stack = await revalidateLocalStack({
+          dir,
+          projectId,
+          contract,
+          requested,
+          envHash,
+          stackName: cliStackName,
         });
+        applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
         writeBuildState({
           fingerprint: outcome.build.fingerprintAfter,
           envHash,
@@ -612,6 +827,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
         webPid = outcome.webPid;
         webHttp = outcome.webHttp;
         webStarted = outcome.webStarted;
+        if (options.serve) webHttp = await probeHttp(contract.appUrl);
       }
     }
 
@@ -669,5 +885,7 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
     });
     emit(parsed, snapshot, options.profile, cold, contract.appUrl);
     return 0;
-  });
+  } finally {
+    await lock.release();
+  }
 }

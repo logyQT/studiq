@@ -5,7 +5,7 @@ import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './ex
 import { pidAlive } from './locks';
 import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
-import { DEV_DIR } from './state';
+import { DEV_DIR, removeBuildState } from './state';
 import {
   readWebPid,
   startWebServer,
@@ -130,6 +130,12 @@ interface HandoverRecord {
   artifactDir: string;
   backupPath: string;
   previousPid: number | null;
+  /**
+   * The process that owns this in-flight handover (the rebuild). `checkout.lock`
+   * is deliberately free while that process builds, so only its death releases
+   * the artifact to another recovery.
+   */
+  ownerPid: number | null;
   phase: HandoverPhase;
   at: string;
 }
@@ -168,6 +174,7 @@ function readHandover(): HandoverRecord | null {
     artifactDir: record.artifactDir,
     backupPath: record.backupPath,
     previousPid: typeof record.previousPid === 'number' ? record.previousPid : null,
+    ownerPid: typeof record.ownerPid === 'number' ? record.ownerPid : null,
     // Anything else (including a record from an older run) is unverified by
     // definition: only the exact committed marker may discard the backup.
     phase: record.phase === 'committed' ? 'committed' : 'backed-up',
@@ -202,7 +209,10 @@ function commitHandover(): void {
 interface HandoverRecoveryDeps {
   /** PID recorded for this checkout's web server (the replacement), or null. */
   readPid(): number | null;
-  /** Liveness probe for the recorded replacement; defaults to the real `pidAlive`. */
+  /**
+   * Liveness probe for a recorded PID (the replacement server or the process
+   * that owns the handover); defaults to the real `pidAlive`.
+   */
   pidAlive?(pid: number): boolean;
 }
 
@@ -222,14 +232,19 @@ const defaultHandoverDeps: HandoverRecoveryDeps = {
  * - `backed-up` while the replacement is still alive: the process serving the
  *   unverified artifact still owns `.next`, so recovery is deferred (record and
  *   backup untouched) and a later `ensure` retries once it stops.
+ * - a record owned by another live process: its owner is the in-flight build,
+ *   which owns `.next` even though `checkout.lock` is deliberately free, so
+ *   recovery defers (record and backup untouched) until that process exits.
  * - anything else with a backup: the previous build was never verified as
  *   replaced, so it is restored over `.next` — even when an unverified
- *   artifact is present — and the record is removed afterwards.
+ *   artifact is present — and the record is removed afterwards. The build state
+ *   is invalidated first, so the restored artifact is never reported current.
  * - no backup left: there is nothing to restore or clean up, so the record is
  *   cleared.
  *
  * A restore that cannot land keeps the record (and its backup path) for the
  * next attempt, and the record is only ever removed after the backup is gone.
+ * A build-state invalidation that fails aborts before `.next` is touched.
  *
  * @public Used by `env:ensure` and exercised by the unit tests.
  */
@@ -239,6 +254,15 @@ export function recoverHandover(deps: HandoverRecoveryDeps = defaultHandoverDeps
   if (!existsSync(record.backupPath)) {
     // The backup is gone, so there is nothing left to restore or clean up.
     removeHandover();
+    return;
+  }
+  const owner = record.ownerPid;
+  if (owner !== null && owner !== process.pid && (deps.pidAlive?.(owner) ?? pidAlive(owner))) {
+    // `checkout.lock` is deliberately free while the owner builds, so a live
+    // owner — not the lock — is what keeps `.next` and the backup untouched.
+    writeStderrLine(
+      `warning: the build that owns the handover record (pid ${owner}) is still running; deferring recovery of the interrupted build until it exits (kept the handover record and backup at ${record.backupPath})`,
+    );
     return;
   }
   if (record.phase === 'committed' && existsSync(join(record.artifactDir, 'BUILD_ID'))) {
@@ -271,6 +295,11 @@ export function recoverHandover(deps: HandoverRecoveryDeps = defaultHandoverDeps
     }
   }
   try {
+    // The artifact about to be restored is the *previous* build, so the build
+    // state that described the interrupted run must not survive the restore. An
+    // invalidation that fails aborts before `.next` is touched: the record and
+    // its backup stay, and the next recovery retries both steps.
+    removeBuildState();
     rmSync(record.artifactDir, { recursive: true, force: true });
     renameSync(record.backupPath, record.artifactDir);
   } catch (error) {
@@ -295,6 +324,7 @@ function backupArtifact(deps: RebuildRecoveryDeps, previousPid: number | null): 
     artifactDir: deps.artifactDir,
     backupPath: backup,
     previousPid,
+    ownerPid: process.pid,
     phase: 'backed-up',
     at: new Date().toISOString(),
   });

@@ -59,10 +59,17 @@ interface RebuildModule {
   }>;
 }
 
+interface StateModule {
+  writeBuildState(state: { fingerprint: string; envHash: string; builtAt: string }): void;
+  readBuildState(): Record<string, unknown> | null;
+}
+
 interface HandoverRecord {
   artifactDir: string;
   backupPath: string;
   previousPid: number | null;
+  /** The process that owns the in-flight handover (the build). */
+  ownerPid?: number | null;
   phase: 'backed-up' | 'committed';
   at: string;
 }
@@ -71,9 +78,11 @@ const stateDir = mkdtempSync(join(tmpdir(), 'studiq-env-handover-'));
 process.env.STUDIQ_ENV_STATE_DIR = stateDir;
 
 const handoverPath = join(stateDir, 'handover.json');
+const buildStatePath = join(stateDir, 'build.json');
 const caseDirs: string[] = [];
 
 const rebuildModule = await loadEnvModule<RebuildModule>('lib/rebuild.ts');
+const stateModule = await loadEnvModule<StateModule>('lib/state.ts');
 
 afterAll(() => {
   for (const dir of caseDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -82,6 +91,7 @@ afterAll(() => {
 
 beforeEach(() => {
   rmSync(handoverPath, { force: true });
+  rmSync(buildStatePath, { recursive: true, force: true });
 });
 
 function newCase(): { dir: string; artifactDir: string; backupDir: string } {
@@ -121,6 +131,7 @@ function readRecord(): HandoverRecord {
     artifactDir: parsed.artifactDir,
     backupPath: parsed.backupPath,
     previousPid: typeof parsed.previousPid === 'number' ? parsed.previousPid : null,
+    ownerPid: typeof parsed.ownerPid === 'number' ? parsed.ownerPid : null,
     phase: parsed.phase === 'committed' ? 'committed' : 'backed-up',
     at: typeof parsed.at === 'string' ? parsed.at : '',
   };
@@ -286,11 +297,13 @@ describe('env rebuild handover recovery', () => {
     mkdirSync(artifactDir, { recursive: true });
     writeFileSync(join(artifactDir, 'BUILD_ID'), 'old-build');
     let recordedDuringBuild = false;
+    let ownerPidDuringBuild = 0;
     let recordMode = 0;
     let phaseAtDiscard = '';
     const deps: RebuildDeps = {
       build: () => {
         recordedDuringBuild = existsSync(handoverPath) && readRecord().phase === 'backed-up';
+        ownerPidDuringBuild = readRecord().ownerPid ?? 0;
         recordMode = statSync(handoverPath).mode & 0o777;
         mkdirSync(artifactDir, { recursive: true });
         writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
@@ -329,8 +342,10 @@ describe('env rebuild handover recovery', () => {
     );
 
     expect(result.build.ok).toBe(true);
-    // The record is persisted (mode 600) as unverified before the build starts.
+    // The record is persisted (mode 600) as unverified before the build starts,
+    // and it names the process that owns the in-flight handover.
     expect(recordedDuringBuild).toBe(true);
+    expect(ownerPidDuringBuild).toBe(process.pid);
     expect(recordMode).toBe(0o600);
     expect(phaseAtDiscard).toBe('committed');
     expect(existsSync(handoverPath)).toBe(false);
@@ -382,5 +397,114 @@ describe('env rebuild handover recovery', () => {
     expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
     expect(readdirSync(backupDir)).toEqual([]);
     expect(existsSync(handoverPath)).toBe(false);
+  });
+
+  it('defers a handover whose owning build process is still alive', () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'unverified-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-owner-live');
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: null,
+      ownerPid: 91001,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+
+    // `checkout.lock` is free while that process builds, so only its liveness
+    // keeps another recovery away from `.next` and the backup.
+    rebuildModule.recoverHandover({ readPid: () => null, pidAlive: (pid) => pid === 91001 });
+
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('unverified-build');
+    expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(existsSync(handoverPath)).toBe(true);
+    expect(readRecord().phase).toBe('backed-up');
+  });
+
+  it('restores once the owning build process is dead', () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'unverified-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-owner-dead');
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: null,
+      ownerPid: 91001,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+
+    rebuildModule.recoverHandover({ readPid: () => null, pidAlive: () => false });
+
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(existsSync(backupPath)).toBe(false);
+    expect(existsSync(handoverPath)).toBe(false);
+  });
+
+  it('invalidates the recorded build state when it restores the previous build', () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'unverified-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-state');
+    // The interrupted run recorded its own build as current.
+    stateModule.writeBuildState({
+      fingerprint: 'interrupted-fingerprint',
+      envHash: 'interrupted-env-hash',
+      builtAt: '2026-01-01T00:00:00.000Z',
+    });
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: 4242,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+
+    rebuildModule.recoverHandover();
+
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(stateModule.readBuildState()).toBeNull();
+    expect(existsSync(buildStatePath)).toBe(false);
+    expect(existsSync(handoverPath)).toBe(false);
+    expect(existsSync(backupPath)).toBe(false);
+  });
+
+  it('keeps the record and backup when the build-state invalidation fails', () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'unverified-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-state-failure');
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: 4242,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+    // A directory where `build.json` should be makes the invalidation fail.
+    mkdirSync(buildStatePath);
+
+    try {
+      let failure: unknown;
+      try {
+        rebuildModule.recoverHandover();
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 4 });
+      if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+      expect(failure.message).toContain(backupPath);
+      // Nothing was restored and nothing was forgotten.
+      expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('unverified-build');
+      expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
+      expect(existsSync(handoverPath)).toBe(true);
+      expect(readRecord().backupPath).toBe(backupPath);
+    } finally {
+      rmSync(buildStatePath, { recursive: true, force: true });
+    }
   });
 });

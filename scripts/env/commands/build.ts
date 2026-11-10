@@ -19,17 +19,38 @@ import {
   readStackState,
   writeBuildState,
 } from '../lib/state';
-import { logBuildOutput, runProductionBuild } from '../lib/build';
+import { logBuildOutput, runProductionBuild, type BuildResult } from '../lib/build';
+import { recoverHandover } from '../lib/rebuild';
 import { normalizeLocalhost, trimTrailingSlash } from '../lib/urls';
 import { REPO_ROOT } from '../lib/repo';
 import { withCheckoutLock } from '../lib/locks';
 
-export async function runBuild(parsed: ParsedCommand): Promise<number> {
+/**
+ * The one I/O seam for this command (and the tests' injection point).
+ *
+ * Production always uses `runProductionBuild`; the unit tests inject a fake so
+ * handover recovery can be proven to run before any real build is attempted.
+ */
+export interface BuildDeps {
+  build(envHash: string): Promise<BuildResult>;
+}
+
+const defaultBuildDeps: BuildDeps = { build: runProductionBuild };
+
+export async function runBuild(
+  parsed: ParsedCommand,
+  deps: BuildDeps = defaultBuildDeps,
+): Promise<number> {
   const options = parsed.build;
   if (!options) throw new EnvFailure(EXIT_START_FAILED, 'build options are missing');
 
   // The checkout lock also covers the lease read this build adopts.
   return withCheckoutLock(async () => {
+    // Settle an artifact left behind by an interrupted rebuild before `.next`
+    // or the build state is read. An unresolved recovery aborts the build
+    // instead of building over (or reporting) an unproven artifact.
+    recoverHandover();
+
     const appEnv = resolveLocalAppEnv();
     // Select the requested stack before resolving its lease, so lease-derived
     // URLs/ports belong to the stack this build is actually for.
@@ -84,7 +105,7 @@ export async function runBuild(parsed: ParsedCommand): Promise<number> {
       if (readWebPid()) {
         throw new EnvFailure(EXIT_CONFLICT, "the web server is running; run 'env:down' first");
       }
-      const result = await runProductionBuild(envHash);
+      const result = await deps.build(envHash);
       if (!result.ok) {
         logBuildOutput(result.output);
         throw new EnvFailure(
