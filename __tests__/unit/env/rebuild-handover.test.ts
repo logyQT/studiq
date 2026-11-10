@@ -32,6 +32,7 @@ interface RebuildDeps {
   stopWeb(): { pid: number | null; stopped: boolean };
   stopForReplacement(): { pid: number | null; stopped: boolean };
   readPid(): number | null;
+  removeBackup?(backup: string): void;
   artifactDir: string;
   backupDir: string;
 }
@@ -61,7 +62,7 @@ interface HandoverRecord {
   artifactDir: string;
   backupPath: string;
   previousPid: number | null;
-  phase: string;
+  phase: 'backed-up' | 'committed';
   at: string;
 }
 
@@ -119,20 +120,24 @@ function readRecord(): HandoverRecord {
     artifactDir: parsed.artifactDir,
     backupPath: parsed.backupPath,
     previousPid: typeof parsed.previousPid === 'number' ? parsed.previousPid : null,
-    phase: typeof parsed.phase === 'string' ? parsed.phase : '',
+    phase: parsed.phase === 'committed' ? 'committed' : 'backed-up',
     at: typeof parsed.at === 'string' ? parsed.at : '',
   };
 }
 
 describe('env rebuild handover recovery', () => {
-  it('restores the backup when the interrupted artifact is missing', () => {
+  it('restores the previous build over an unverified artifact', () => {
     const { artifactDir, backupDir } = newCase();
-    const backupPath = makeBackup(backupDir, 'next-backup-restore');
+    // The interrupted run built `.next` but never committed the handover, so its
+    // artifact is unverified and the previous build is the one to keep.
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'unverified-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-uncommitted');
     writeRecord({
       artifactDir,
       backupPath,
       previousPid: 4242,
-      phase: 'backup',
+      phase: 'backed-up',
       at: '2026-01-01T00:00:00.000Z',
     });
 
@@ -143,16 +148,16 @@ describe('env rebuild handover recovery', () => {
     expect(existsSync(handoverPath)).toBe(false);
   });
 
-  it('drops the stale backup and record when an artifact is already present', () => {
+  it('drops the backup of a committed handover and keeps the new artifact', () => {
     const { artifactDir, backupDir } = newCase();
     mkdirSync(artifactDir, { recursive: true });
     writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
-    const backupPath = makeBackup(backupDir, 'next-backup-stale');
+    const backupPath = makeBackup(backupDir, 'next-backup-committed');
     writeRecord({
       artifactDir,
       backupPath,
       previousPid: null,
-      phase: 'backup',
+      phase: 'committed',
       at: '2026-01-01T00:00:00.000Z',
     });
 
@@ -163,13 +168,31 @@ describe('env rebuild handover recovery', () => {
     expect(existsSync(handoverPath)).toBe(false);
   });
 
+  it('restores the backup when the interrupted artifact is missing', () => {
+    const { artifactDir, backupDir } = newCase();
+    const backupPath = makeBackup(backupDir, 'next-backup-restore');
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: 4242,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+
+    rebuildModule.recoverHandover();
+
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(existsSync(backupPath)).toBe(false);
+    expect(existsSync(handoverPath)).toBe(false);
+  });
+
   it('clears the record when its backup no longer exists', () => {
     const { artifactDir, backupDir } = newCase();
     writeRecord({
       artifactDir,
       backupPath: join(backupDir, 'next-backup-gone'),
       previousPid: 4242,
-      phase: 'backup',
+      phase: 'committed',
       at: '2026-01-01T00:00:00.000Z',
     });
 
@@ -187,7 +210,7 @@ describe('env rebuild handover recovery', () => {
       artifactDir,
       backupPath,
       previousPid: 4242,
-      phase: 'backup',
+      phase: 'backed-up',
       at: '2026-01-01T00:00:00.000Z',
     });
 
@@ -206,15 +229,16 @@ describe('env rebuild handover recovery', () => {
     expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
   });
 
-  it('leaves no record after a successful rebuild', async () => {
+  it('writes the committed phase before discarding and leaves no record after a successful rebuild', async () => {
     const { artifactDir, backupDir } = newCase();
     mkdirSync(artifactDir, { recursive: true });
     writeFileSync(join(artifactDir, 'BUILD_ID'), 'old-build');
     let recordedDuringBuild = false;
     let recordMode = 0;
+    let phaseAtDiscard = '';
     const deps: RebuildDeps = {
       build: () => {
-        recordedDuringBuild = existsSync(handoverPath) && readRecord().phase === 'backup';
+        recordedDuringBuild = existsSync(handoverPath) && readRecord().phase === 'backed-up';
         recordMode = statSync(handoverPath).mode & 0o777;
         mkdirSync(artifactDir, { recursive: true });
         writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
@@ -232,6 +256,11 @@ describe('env rebuild handover recovery', () => {
       stopWeb: () => ({ pid: null, stopped: true }),
       stopForReplacement: () => ({ pid: null, stopped: true }),
       readPid: () => null,
+      // The backup is only discarded once the handover is committed.
+      removeBackup: (backup) => {
+        phaseAtDiscard = existsSync(handoverPath) ? readRecord().phase : 'missing';
+        rmSync(backup, { recursive: true, force: true });
+      },
       artifactDir,
       backupDir,
     };
@@ -248,11 +277,58 @@ describe('env rebuild handover recovery', () => {
     );
 
     expect(result.build.ok).toBe(true);
-    // The record is persisted (mode 600) before the build starts.
+    // The record is persisted (mode 600) as unverified before the build starts.
     expect(recordedDuringBuild).toBe(true);
     expect(recordMode).toBe(0o600);
+    expect(phaseAtDiscard).toBe('committed');
     expect(existsSync(handoverPath)).toBe(false);
     expect(readdirSync(backupDir)).toEqual([]);
     expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('new-build');
+  });
+
+  it('commits only after the health check and restores when it fails', async () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'old-build');
+    let phaseDuringWait = '';
+    const deps: RebuildDeps = {
+      build: () => {
+        mkdirSync(artifactDir, { recursive: true });
+        writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
+        return Promise.resolve({ ok: true, timedOut: false, output: '', fingerprintAfter: 'new' });
+      },
+      startWeb: () => 7001,
+      waitWeb: () => {
+        // The replacement build is in place but has not been verified yet.
+        phaseDuringWait = readRecord().phase;
+        return Promise.resolve({ ok: false, reason: 'timeout', http: 0 });
+      },
+      stopWeb: () => ({ pid: 7001, stopped: true }),
+      stopForReplacement: () => ({ pid: null, stopped: true }),
+      readPid: () => 7001,
+      pidAlive: () => false,
+      artifactDir,
+      backupDir,
+    };
+
+    await expect(
+      rebuildModule.rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: true,
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ name: 'EnvFailure', exitCode: 4 });
+
+    expect(phaseDuringWait).toBe('backed-up');
+    // The rollback restores the backup instead of discarding it, so the
+    // previous build is back in place and the record is spent.
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(readdirSync(backupDir)).toEqual([]);
+    expect(existsSync(handoverPath)).toBe(false);
   });
 });

@@ -102,14 +102,35 @@ function leftoverWarning(backup: string | null): string[] | undefined {
   return backup === null ? undefined : [`could not remove the previous build backup at ${backup}`];
 }
 
+/**
+ * Settle a successful rebuild: commit the handover, then drop the spent backup
+ * and only then the record. A backup that cannot be removed keeps the record,
+ * so the next recovery retries the removal of a handover that is already
+ * verified rather than restoring over the new build.
+ */
+function settleCommitted(deps: RebuildRecoveryDeps, backup: string | null): string[] | undefined {
+  commitHandover();
+  const leftover = discardBackup(deps, backup);
+  if (leftover === null) removeHandover();
+  return leftoverWarning(leftover);
+}
+
 /** Interrupted-rebuild record; `.dev/` is checkout-scoped, so recovery never crosses checkouts. */
 const HANDOVER_FILE = join(DEV_DIR, 'handover.json');
+
+/**
+ * `backed-up`: the previous artifact is in the backup and nothing has verified
+ * the replacement yet. `committed`: the replacement build (and, when serving,
+ * its health check) succeeded, so the backup is spent. Only a committed
+ * handover may discard the previous build.
+ */
+type HandoverPhase = 'backed-up' | 'committed';
 
 interface HandoverRecord {
   artifactDir: string;
   backupPath: string;
   previousPid: number | null;
-  phase: string;
+  phase: HandoverPhase;
   at: string;
 }
 
@@ -147,33 +168,62 @@ function readHandover(): HandoverRecord | null {
     artifactDir: record.artifactDir,
     backupPath: record.backupPath,
     previousPid: typeof record.previousPid === 'number' ? record.previousPid : null,
-    phase: typeof record.phase === 'string' ? record.phase : '',
+    // Anything else (including a record from an older run) is unverified by
+    // definition: only the exact committed marker may discard the backup.
+    phase: record.phase === 'committed' ? 'committed' : 'backed-up',
     at: typeof record.at === 'string' ? record.at : '',
   };
+}
+
+/**
+ * Mark the in-flight handover committed once the replacement build — and, when
+ * serving, its required health check — has succeeded. Best effort: a record
+ * that cannot be rewritten leaves the handover uncommitted, so a later recovery
+ * conservatively restores the previous build instead of discarding it.
+ */
+function commitHandover(): void {
+  const record = readHandover();
+  if (!record || record.phase === 'committed') return;
+  try {
+    writeHandover({ ...record, phase: 'committed' });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    writeStderrLine(
+      `warning: could not mark the build handover committed (${reason}); the previous build is restored if recovery runs`,
+    );
+  }
 }
 
 /**
  * Settle a handover left by an interrupted rebuild.
  *
  * Runs inside the checkout lock, before the lease/build, so the artifact is
- * consistent before `ensure` decides whether it needs to build. A record whose
- * `.next` is gone and whose backup exists is restored; every other resolved
- * state drops the stale backup and/or the record. A restore that cannot land
- * keeps the record (and its backup path) for the next attempt.
+ * consistent before `ensure` decides whether it needs to build.
+ *
+ * - `committed` with an artifact present: the replacement completed and was
+ *   verified, so the spent backup and the record are removed.
+ * - anything else with a backup: the previous build was never verified as
+ *   replaced, so it is restored over `.next` — even when an unverified
+ *   artifact is present — and the record is removed afterwards.
+ * - no backup left: there is nothing to restore or clean up, so the record is
+ *   cleared.
+ *
+ * A restore that cannot land keeps the record (and its backup path) for the
+ * next attempt, and the record is only ever removed after the backup is gone.
  *
  * @public Used by `env:ensure` and exercised by the unit tests.
  */
 export function recoverHandover(): void {
   const record = readHandover();
   if (!record) return;
-  const backupPresent = existsSync(record.backupPath);
-  if (!backupPresent) {
+  if (!existsSync(record.backupPath)) {
     // The backup is gone, so there is nothing left to restore or clean up.
     removeHandover();
     return;
   }
-  if (existsSync(join(record.artifactDir, 'BUILD_ID'))) {
-    // A complete artifact is in place; the backup is spent unless removal fails.
+  if (record.phase === 'committed' && existsSync(join(record.artifactDir, 'BUILD_ID'))) {
+    // Only a committed handover may drop the previous build; a removal that
+    // fails keeps the record so the next recovery retries it.
     try {
       rmSync(record.backupPath, { recursive: true, force: true });
     } catch (error) {
@@ -211,7 +261,7 @@ function backupArtifact(deps: RebuildRecoveryDeps, previousPid: number | null): 
     artifactDir: deps.artifactDir,
     backupPath: backup,
     previousPid,
-    phase: 'backup',
+    phase: 'backed-up',
     at: new Date().toISOString(),
   });
   try {
@@ -463,10 +513,9 @@ export async function rebuildWithRecovery(
   }
 
   if (!request.serve) {
-    // The new build is complete; the previous artifact is no longer needed.
-    const leftover = discardBackup(deps, backup);
-    removeHandover();
-    const warnings = leftoverWarning(leftover);
+    // The build is complete and `--no-serve` has no health check to wait for,
+    // so the handover is committed before the previous artifact is discarded.
+    const warnings = settleCommitted(deps, backup);
     return {
       build: result,
       webPid: deps.readPid(),
@@ -520,9 +569,9 @@ export async function rebuildWithRecovery(
     });
   }
 
-  const leftover = discardBackup(deps, backup);
-  removeHandover();
-  const warnings = leftoverWarning(leftover);
+  // The replacement build answered its health check, so the handover is
+  // committed and only now may the previous build be discarded.
+  const warnings = settleCommitted(deps, backup);
   return {
     build: result,
     webPid: pid,

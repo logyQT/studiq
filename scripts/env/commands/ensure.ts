@@ -30,7 +30,7 @@ import {
 import { buildCapabilities, excludesFor, missingCapabilities, type Capability } from '../profiles';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
 import { rebuildWithRecovery, recoverHandover } from '../lib/rebuild';
-import { pidAlive, withCheckoutLock } from '../lib/locks';
+import { pidAlive, withCheckoutLock, withClaimsLock } from '../lib/locks';
 import {
   heartbeatAgeMs,
   isLeaseReclaimable,
@@ -179,6 +179,43 @@ async function freePort(port: number): Promise<boolean> {
   return port > 0 && (await probePortBind(port)).state === 'free';
 }
 
+export interface ReclaimForeignLeaseInput {
+  dir: string;
+  foreignProjectId: string;
+  port: number;
+  /** Point-in-time verdict for a foreign lease: owner dead, expired, stack down. */
+  isReclaimable(lease: AppLease): boolean;
+  /** The async window between the first look and the coordinated re-check. */
+  probeFree(port: number): Promise<boolean>;
+  /** Test seam: a concurrent owner heartbeat refresh landing in that window. */
+  afterInitialCheck?(): void;
+}
+
+/**
+ * Reclaim another checkout's lease for `port` once its owner is provably gone.
+ *
+ * The first look is uncoordinated, so the owner can refresh its heartbeat (or a
+ * peer can reclaim the same lease) before the removal. The final re-check, the
+ * lease removal and the claim release therefore run as one unit under the
+ * registry-wide claims mutex, and the lease is re-read inside it: a lease that
+ * became live again keeps both the lease and its port claim.
+ *
+ * @public Used by `env:ensure` and exercised by the unit tests, which load this
+ * module by computed URL.
+ */
+export async function reclaimForeignLease(input: ReclaimForeignLeaseInput): Promise<boolean> {
+  const raw = readLease(input.dir, input.foreignProjectId);
+  if (!raw || !input.isReclaimable(raw) || !(await input.probeFree(input.port))) return false;
+  input.afterInitialCheck?.();
+  return withClaimsLock(() => {
+    const latest = readLease(input.dir, input.foreignProjectId);
+    if (!latest || !input.isReclaimable(latest)) return false;
+    removeLease(input.dir, input.foreignProjectId);
+    releaseAppPortClaim(input.dir, input.port, input.foreignProjectId);
+    return true;
+  });
+}
+
 async function resolveLease(
   contract: Contract,
   options: {
@@ -247,14 +284,13 @@ async function resolveLease(
           (stack.name || 'default') === (raw.stackName || 'default') &&
           stack.owner === 'reachable',
       );
-      if (!reclaimable(raw, running) || !(await freePort(port))) return false;
-      // The owner may have refreshed its heartbeat while the port was probed:
-      // never remove a lease that became live again.
-      const latest = readLease(dir, foreign.projectId);
-      if (!latest || !reclaimable(latest, running)) return false;
-      removeLease(dir, foreign.projectId);
-      releaseAppPortClaim(dir, port, foreign.projectId);
-      return true;
+      return reclaimForeignLease({
+        dir,
+        foreignProjectId: foreign.projectId,
+        port,
+        isReclaimable: (lease) => reclaimable(lease, running),
+        probeFree: freePort,
+      });
     },
   });
   if (runningPort !== null && derivedUrl && chosen !== runningPort) {

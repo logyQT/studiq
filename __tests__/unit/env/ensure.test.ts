@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createHarness,
   firstFreePort,
@@ -31,6 +31,14 @@ interface LeaseModule {
   writeLease(lease: Record<string, unknown>): void;
   readLease(dir: string, projectId: string): Record<string, unknown> | null;
   readAppPortClaim(dir: string, port: number): { projectId: string } | null;
+  claimAppPort(dir: string, port: number, projectId: string): { ok: boolean };
+  heartbeatAgeMs(lease: Record<string, unknown>): number;
+  isLeaseReclaimable(input: {
+    pidAlive: boolean;
+    heartbeatAgeMs: number;
+    ttlSec: number;
+    stackRunning: boolean;
+  }): boolean;
 }
 
 interface RebuildWebGuard {
@@ -58,6 +66,14 @@ interface EnsureModule {
     webPid: number | null;
     timeoutSeconds?: number;
   }): Promise<{ pid: number; http: number }>;
+  reclaimForeignLease(input: {
+    dir: string;
+    foreignProjectId: string;
+    port: number;
+    isReclaimable(lease: Record<string, unknown>): boolean;
+    probeFree(port: number): Promise<boolean>;
+    afterInitialCheck?(): void;
+  }): Promise<boolean>;
 }
 
 interface ExitModule {
@@ -1101,6 +1117,102 @@ describe('env:ensure keeps a live stack on its derived APP_URL port', () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(objectField(parseJsonObject(result.stdout), 'ports').app).toBe(appPort);
+  });
+});
+
+/** The shipped reclaim rule, with the caller's process facts left to the test. */
+function reclaimableNow(candidate: Record<string, unknown>): boolean {
+  return leaseModule.isLeaseReclaimable({
+    pidAlive: false,
+    heartbeatAgeMs: leaseModule.heartbeatAgeMs(candidate),
+    ttlSec: Number(candidate.ttlSec),
+    stackRunning: false,
+  });
+}
+
+describe('env:ensure reclaims a foreign lease only under shared coordination', () => {
+  let registryDir = '';
+  let savedRegistry: string | undefined;
+
+  beforeEach(() => {
+    savedRegistry = process.env.STUDIQ_DEV_REGISTRY;
+    registryDir = mkdtempSync(join(tmpdir(), 'studiq-env-reclaim-'));
+    process.env.STUDIQ_DEV_REGISTRY = registryDir;
+  });
+
+  afterEach(() => {
+    if (savedRegistry === undefined) delete process.env.STUDIQ_DEV_REGISTRY;
+    else process.env.STUDIQ_DEV_REGISTRY = savedRegistry;
+    rmSync(registryDir, { recursive: true, force: true });
+  });
+
+  /** A dead foreign checkout: expired heartbeat and its port claim. */
+  function staleForeignLease(port: number): {
+    projectId: string;
+    lease: Record<string, unknown>;
+  } {
+    const projectId = 'env-foreign-stale';
+    const lease: Record<string, unknown> = {
+      ...leaseModule.newLease({
+        projectId,
+        projectRoot: '/tmp/foreign-checkout',
+        branch: 'refs/heads/feat/foreign',
+        stackName: '',
+        appPort: port,
+        shared: false,
+        sharedOwner: null,
+        mode: 'dev',
+      }),
+      ownerPid: 999_999,
+      heartbeatAt: new Date(Date.now() - 3_600_000).toISOString(),
+      ttlSec: 60,
+    };
+    leaseModule.writeLease(lease);
+    expect(leaseModule.claimAppPort(registryDir, port, projectId).ok).toBe(true);
+    return { projectId, lease };
+  }
+
+  it('reclaims a stale foreign lease and releases its claim', async () => {
+    const port = await firstFreePort(3800);
+    const { projectId } = staleForeignLease(port);
+
+    const reclaimed = await ensureModule.reclaimForeignLease({
+      dir: registryDir,
+      foreignProjectId: projectId,
+      port,
+      isReclaimable: reclaimableNow,
+      probeFree: () => Promise.resolve(true),
+    });
+
+    expect(reclaimed).toBe(true);
+    expect(leaseModule.readLease(registryDir, projectId)).toBeNull();
+    expect(leaseModule.readAppPortClaim(registryDir, port)).toBeNull();
+  });
+
+  it('keeps a foreign lease and claim that a concurrent heartbeat refreshed', async () => {
+    const port = await firstFreePort(3800);
+    const { projectId, lease } = staleForeignLease(port);
+    const refreshedAt = new Date().toISOString();
+    let refreshed = false;
+
+    const reclaimed = await ensureModule.reclaimForeignLease({
+      dir: registryDir,
+      foreignProjectId: projectId,
+      port,
+      isReclaimable: reclaimableNow,
+      probeFree: () => Promise.resolve(true),
+      // The owner refreshes its heartbeat after the first look and before the
+      // coordinated re-check: the refreshed lease must survive.
+      afterInitialCheck: () => {
+        refreshed = true;
+        leaseModule.writeLease({ ...lease, heartbeatAt: refreshedAt });
+      },
+    });
+
+    expect(refreshed).toBe(true);
+    expect(reclaimed).toBe(false);
+    expect(leaseModule.readLease(registryDir, projectId)?.heartbeatAt).toBe(refreshedAt);
+    expect(leaseModule.readAppPortClaim(registryDir, port)?.projectId).toBe(projectId);
   });
 });
 
