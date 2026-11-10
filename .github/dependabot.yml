@@ -25,6 +25,12 @@ updates:
     # supported yet at all; alerts come from the dependency graph instead).
     # With the weekly Monday run the effective lag is 7-13 days: a release must
     # already be 7 days old at the moment the schedule fires.
+    #
+    # This is one third of the gate, not all of it: cooldown cannot see a
+    # transitive that a re-resolution drags in, and Bun security updates are not
+    # supported at all. `[install] minimumReleaseAge` in bunfig.toml covers local
+    # resolution and `scripts/check-lockfile-age.ts` checks the lockfile diff on
+    # every PR. All three use the same 7-day window; change them together.
     cooldown:
       default-days: 7
     # Only minor/patch bumps are grouped. Major versions arrive as separate
