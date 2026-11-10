@@ -6,8 +6,10 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -33,6 +35,11 @@ interface LocksModule {
     path: string,
     observed: { dev: number; ino: number; mtimeMs: number },
     owner: { pid: number; token: string },
+  ): boolean;
+  writeDirLockOwner(
+    path: string,
+    token: string,
+    owned: { dev: number; ino: number; mtimeMs: number },
   ): boolean;
 }
 
@@ -63,6 +70,11 @@ function registry(): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function dirIdentity(path: string): { dev: number; ino: number; mtimeMs: number } {
+  const stat = statSync(path);
+  return { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs };
 }
 
 async function serializes(acquire: (fn: () => Promise<void>) => Promise<void>): Promise<number> {
@@ -226,6 +238,56 @@ describe('lock primitives', () => {
     expect(existsSync(lockDir)).toBe(true);
     expect(readFileSync(join(lockDir, 'token'), 'utf8').trim()).toBe('successor-token');
     expect(readdirSync(dir).filter((name) => name.includes('tombstone'))).toEqual([]);
+  });
+
+  it('never deletes a successor directory when the owner write loses the path', () => {
+    const dir = registry();
+    const lockDir = join(dir, 'build.lock.d');
+    mkdirSync(lockDir, { mode: 0o700 });
+    const owned = dirIdentity(lockDir);
+
+    // Our directory vanished and a successor installed its own (new inode,
+    // own token) before the owner write. The write then fails ENOENT because
+    // the successor's `pid` is a dangling link into a missing directory.
+    renameSync(lockDir, join(dir, 'replaced'));
+    mkdirSync(lockDir, { mode: 0o700 });
+    symlinkSync(join(dir, 'absent', 'pid'), join(lockDir, 'pid'));
+    writeFileSync(join(lockDir, 'token'), 'successor-token\n');
+
+    const recorded = locks.writeDirLockOwner(lockDir, 'our-token', owned);
+
+    // Ownership was lost: the attempt retries without touching the successor.
+    expect(recorded).toBe(false);
+    expect(existsSync(lockDir)).toBe(true);
+    expect(readFileSync(join(lockDir, 'token'), 'utf8').trim()).toBe('successor-token');
+  });
+
+  it('removes only its own directory when the owner write fails', () => {
+    const dir = registry();
+    const lockDir = join(dir, 'build.lock.d');
+    mkdirSync(lockDir, { mode: 0o700 });
+    const owned = dirIdentity(lockDir);
+    // A directory at `pid` makes the owner write fail with EISDIR, not ENOENT.
+    mkdirSync(join(lockDir, 'pid'));
+
+    expect(() => locks.writeDirLockOwner(lockDir, 'our-token', owned)).toThrow();
+    expect(existsSync(lockDir)).toBe(false);
+  });
+
+  it('keeps a successor directory when the owner write fails for another reason', () => {
+    const dir = registry();
+    const lockDir = join(dir, 'build.lock.d');
+    mkdirSync(lockDir, { mode: 0o700 });
+    const owned = dirIdentity(lockDir);
+
+    renameSync(lockDir, join(dir, 'replaced'));
+    mkdirSync(lockDir, { mode: 0o700 });
+    writeFileSync(join(lockDir, 'token'), 'successor-token\n');
+    mkdirSync(join(lockDir, 'pid'));
+
+    expect(() => locks.writeDirLockOwner(lockDir, 'our-token', owned)).toThrow();
+    expect(existsSync(lockDir)).toBe(true);
+    expect(readFileSync(join(lockDir, 'token'), 'utf8').trim()).toBe('successor-token');
   });
 
   it('never removes a successor directory when a presumed-stale holder releases', async () => {

@@ -240,6 +240,35 @@ export function takeoverStaleDirLock(
 }
 
 /**
+ * Record this attempt as the directory lock's owner.
+ *
+ * `true` means the directory now names its owner. `false` means the directory
+ * vanished before it could be named (`ENOENT`): ownership is lost, and a
+ * successor may already hold the path, so the caller retries without removing
+ * anything. Any other failure removes the directory only while it is still the
+ * object this attempt created (same dev and inode), then rethrows; a successor
+ * installed in the meantime is never deleted.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function writeDirLockOwner(path: string, token: string, owned: DirLockIdentity): boolean {
+  try {
+    writeFileSync(join(path, 'pid'), `${process.pid}\n`, { mode: 0o600 });
+    writeFileSync(join(path, 'token'), `${token}\n`, { mode: 0o600 });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    // A lock that cannot name its owner would never be taken over, but only
+    // the directory this attempt created may be cleaned up.
+    const current = dirLockIdentity(path);
+    if (current && current.dev === owned.dev && current.ino === owned.ino) {
+      rmSync(path, { recursive: true, force: true });
+    }
+    throw error;
+  }
+}
+
+/**
  * The fallback for hosts without `flock`: `mkdir` is the acquisition primitive
  * and the directory holds the holder's pid and a random token. The token makes
  * release and stale takeover identity-checked, so a holder that was presumed
@@ -251,14 +280,10 @@ async function dirMutex(path: string, waitSeconds: number): Promise<Mutex> {
   for (;;) {
     try {
       mkdirSync(path, { mode: 0o700 });
-      try {
-        writeFileSync(join(path, 'pid'), `${process.pid}\n`, { mode: 0o600 });
-        writeFileSync(join(path, 'token'), `${token}\n`, { mode: 0o600 });
-      } catch (error) {
-        // A lock that cannot name its owner would never be taken over.
-        rmSync(path, { recursive: true, force: true });
-        throw error;
-      }
+      // Capture the identity immediately: it is what proves (on a later write
+      // failure) that the directory being removed is still ours.
+      const owned = dirLockIdentity(path);
+      if (!owned || !writeDirLockOwner(path, token, owned)) continue;
       return {
         async release() {
           releaseDirMutex(path, token);
