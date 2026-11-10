@@ -100,7 +100,9 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bun run env:ensure --profile web` | **The blessed path** — idempotent stack + build + serve (production); `--json` is the agent contract. Other profiles: `db`, `api`, `mail`, `full`, `qa`, `e2e` |
 | `bun run env:serve`                | Serve an existing production build (refuses a stale/missing build)                                                                                             |
-| `bun run env:dev`                  | **Human-only** web HMR (`next dev`). Agents never run this; they build + serve                                                                                 |
+| `bun run env:dev`                  | **Human-only** web HMR (`next dev`) through the tool. Agents never run this; they build + serve (`dev:web` is the raw shortcut)                                |
+| `bun run dev:web`                  | Raw `@studiq/web` dev server (no env handling); human-only, same server as `env:dev`                                                                           |
+| `bun run dev:admin`                | Raw `@studiq/admin` HMR on `127.0.0.1:4000` (varlock-injected); `env` has no admin equivalent                                                                  |
 | `bun run env:build`                | Explicit production build of `@studiq/web` (serialized by a registry-level build lock)                                                                         |
 | `bun run env:status`               | Web/Supabase health, PIDs, stack id/endpoints (`--json` = stable machine shape)                                                                                |
 | `bun run env:down`                 | Stop this checkout's web server; `env:down --all` also stops **this branch's** Supabase stack (data kept)                                                      |
@@ -172,6 +174,11 @@ bun run env:down                           # stop this checkout's web; `--all` a
 > every stack on the machine), and never stop/reset a stack you did not start.
 > Agents must use `bun run env:build` + `bun run env:serve` (or
 > `bun run env:ensure --profile web`), not `next dev`; `env:dev` is human-only.
+>
+> **What the cutover deleted:** `scripts/dev` and the `dev:*` wrappers that called it (`dev:up`, `dev:serve`,
+> `dev:status`, `dev:down`, `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`).
+> `dev:web` and `dev:admin` never called `scripts/dev`; they stay as human-only conveniences, so
+> `rg 'scripts/dev|dev:up|dev:serve|dev:build|dev:status'` is the acceptance grep and does not match them.
 
 - **`.env.schema` stays value-free.** It declares shapes, sensitivity and ownership only — never a
   real value, never a default that carries a secret. The vendored Varlock skill's schema checklist and
@@ -194,7 +201,7 @@ bun run env:down                           # stop this checkout's web; `--all` a
 - **`env:ensure` is fast and idempotent**: no `bun install`, no unconditional `next build`, no `supabase db reset`, no automatic tenant seeds. Cold time is dominated by the first `supabase stack start` (artifact pull). Supabase starts **lean** with `supabase stack start --eager -x studio,realtime,functions,analytics,pooler` (capability names); a profile's table is the source of truth. Builds are held by the registry build lock (`DEV_BUILD_MEMORY_MB=4096`).
 - **Destructive/explicit steps are separate**: `bun run env:reset-db --yes` (drops and re-seeds **this branch's** DB) and `bun run env:build` (production build; stop the web server first). Tenant seeding is `env:ensure --profile qa|e2e` (profile default) or an explicit `--seed`; there are no seed markers or run ids in v1.
 - **The shared QA stack is protected**: `env:ensure` refuses `APP_URL`/`SUPABASE_URL` on `:3010` / `:54421` unless `DEV_ALLOW_SHARED=1` (or the checkout is in `SUPABASE_SHARED=1` mode).
-- **`apps/admin` is out of scope** for the `env` tool: run its own workspace dev command (`bun run --filter @studiq/admin dev`) or `build:admin`/`start:admin`. Admin HMR/serve is deferred; admin binds loopback only and has no app-specific env file.
+- **`apps/admin` is out of scope** for the `env` tool: use the standalone `bun run dev:admin` shortcut (or the workspace's own `bun run --filter @studiq/admin dev`) plus `build:admin`/`start:admin`. An `env` admin command is deferred; admin binds loopback only and has no app-specific env file.
 
 | Variable                        | Source                                                                                                                    |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |

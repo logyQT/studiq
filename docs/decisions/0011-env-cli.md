@@ -20,7 +20,10 @@ decision and is not built. The tool leases only the app port and discovers stack
 1. **Adopt `env` as the single local-environment command.** Surface: `ensure`, `status`, `down`, `build`, `serve`,
    `dev`, `supa`, `reset-db`, `logs`, `setup`, `verify`, `ports`, `doctor`; `ensure` is the blessed agent path and
    `status`/`ports`/`doctor` are read-only. `prepull` and `recreate` are deferred (spec §14).
-2. **Delete `scripts/dev` and every `dev:*` script** in the cutover; no aliases.
+2. **Delete `scripts/dev` and the `dev:*` wrappers that call it** (`dev:up`, `dev:serve`, `dev:status`, `dev:down`,
+   `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`) in the cutover; no aliases for
+   them. The standalone human shortcuts `dev:web` (raw `next dev`) and `dev:admin` (`apps/admin` HMR) never called
+   `scripts/dev` and stay; `env` has no admin equivalent.
 3. **varlock is the only loader, injector and validator.** Value-consuming commands keep `varlock run --inject vars --`;
    `status`/`ports`/`doctor` run unwrapped. The CLI never parses a dotenv file; the wrappers stay for #1077 (removal is a
    post-stability migration after #1077 and #1078).
@@ -75,9 +78,9 @@ comment](https://github.com/logyQT/studiq/issues/1077#issuecomment-6722102664)):
 
 ## Rollback
 
-Revert the phase PR: phases 1–2 keep `scripts/dev`; phase 3 restores it and the `dev:*` scripts. Registry leases are runtime
-state outside the repo — remove only **this checkout's** entries, never the shared registry directory; `ensure`
-revalidates and reclaims stale entries under the checkout lock.
+Revert the phase PR: phases 1–2 keep `scripts/dev`; phase 3 restores it and its `dev:*` wrappers (`dev:web`/`dev:admin`
+never left). Registry leases are runtime state outside the repo — remove only **this checkout's** entries, never the
+shared registry directory; `ensure` revalidates and reclaims stale entries under the checkout lock.
 
 ## References
 

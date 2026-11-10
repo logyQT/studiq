@@ -56,9 +56,11 @@ the inventory and the code agree, and finally this consolidation.
    second environment for a different stack or profile in the same checkout is
    refused (exit 6); parallel work spins another worktree instead. There is no
    multi-environment mode.
-7. **`scripts/dev` is retired and deleted.** `scripts/dev` and every `dev:*`
-   script were deleted in the phase-3 cutover; `env:*` is the only local
-   lifecycle surface, with no aliases and no back-compat layer. CI keeps calling
+7. **`scripts/dev` is retired and deleted.** `scripts/dev` and the `dev:*`
+   wrappers that called it were deleted in the phase-3 cutover; `env:*` is the
+   only local lifecycle surface, with no aliases and no back-compat layer. The
+   standalone human shortcuts `dev:web` (raw `next dev`) and `dev:admin`
+   (`apps/admin` HMR) remain — `env` does not replace admin HMR. CI keeps calling
    `supabase stack` directly.
 8. **CI uses the job environment.** Workflows export the local stack's values to
    `$GITHUB_ENV` instead of writing a root or app-directory `.env`. Vitest's

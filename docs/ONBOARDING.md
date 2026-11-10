@@ -383,8 +383,14 @@ bunx playwright install chromium
 ### 8. Start the development server
 
 `bun run env:ensure --profile web` already started it. Use `bun run env:dev` only for a local manual
-dev server (human-only `next dev`); parallel agents should use `bun run env:build && bun run env:serve` (or
+dev server (human-only `next dev`); `bun run dev:web` starts the same server as a raw shortcut without the env
+handling. Parallel agents should use `bun run env:build && bun run env:serve` (or
 `bun run env:ensure --profile web`) to avoid several `next dev` processes competing for RAM.
+
+The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it (`dev:up`, `dev:serve`, `dev:status`,
+`dev:down`, `dev:reset-db`, `dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`). `dev:web` and
+`dev:admin` never called it: they stay as human-only conveniences (`dev:admin` is the `apps/admin` HMR on
+`127.0.0.1:4000`; `env` has no admin equivalent).
 
 ### 9. Start the local observability stack (recommended)
 
@@ -536,6 +542,8 @@ exit codes) so a full pass reports all error-handling issues together.
 | `bun run env:supa migration new <name>` | Create an empty migration manually                                               |
 | `bun run env:supa db push`              | Push migrations to the **default** stack (named stack: see Team member workflow) |
 | `bun run env:dev`                       | Human-only web `next dev` HMR; agents use build+serve                            |
+| `bun run dev:web`                       | Raw web dev server (human-only shortcut, no env handling)                        |
+| `bun run dev:admin`                     | `apps/admin` HMR on `127.0.0.1:4000` (human-only; no `env` equivalent)           |
 | `bun test`                              | Bun's built-in test runner — **not** Vitest; use `bun run test`                  |
 | `bun run test`                          | Vitest: all unit + integration tests (no DB reset)                               |
 | `bun test:unit`                         | Run unit tests only                                                              |

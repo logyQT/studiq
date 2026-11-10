@@ -32,6 +32,8 @@
     "env:setup": "bun scripts/env/cli.ts setup",
     "env:verify": "bun scripts/env/cli.ts verify",
     "env:supa": "bash scripts/env/varlock-run.sh supa",
+    "dev:web": "bun run --filter @studiq/web dev",
+    "dev:admin": "varlock run --inject vars -- bun run --filter @studiq/admin dev",
     "knip": "knip --treat-config-hints-as-errors --no-progress",
     "knip:report": "knip --reporter compact",
     "knip:files": "knip --include files,binaries --no-config-hints",

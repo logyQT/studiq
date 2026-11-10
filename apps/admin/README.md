@@ -8,7 +8,7 @@ clear (see Auth below).
 
 ```bash
 # From repo root (admin HMR is outside the env tool)
-bun run --filter @studiq/admin dev
+bun run dev:admin
 
 # Or directly
 cd apps/admin && bun run dev

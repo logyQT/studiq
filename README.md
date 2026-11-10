@@ -35,7 +35,12 @@ contract and **exports** the values to the web process — no per-app env file i
 generated. It starts Supabase only if needed, reuses a current build, and serves
 the production server. It never installs, resets or re-seeds anything — those
 are explicit. Agents use `env:ensure`/`env:build` + `env:serve`; `env:dev` is
-human-only HMR.
+human-only HMR (`bun run dev:web` is the same server without the env handling).
+
+The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it
+(`dev:up`, `dev:serve`, `dev:status`, `dev:down`, `dev:reset-db`, `dev:build`,
+`dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`). `dev:web` and `dev:admin`
+never called it and remain as human-only shortcuts.
 
 ```bash
 bun run env:status --json   # health, ports, URLs (stable agent contract)
@@ -56,7 +61,7 @@ can collide across worktrees.
 The admin panel and observability stack are opt-in and outside the `env` tool:
 
 ```bash
-bun run --filter @studiq/admin dev   # apps/admin HMR on 127.0.0.1:4000 (human-only)
+bun run dev:admin                    # apps/admin HMR on 127.0.0.1:4000 (human-only)
 bun run build:admin && bun run start:admin  # production build + serve
 docker compose up -d                 # Grafana on :3001
 ```
@@ -87,18 +92,20 @@ Full setup (Docker, env vars, seeding, Playwright) is in the
 
 ## Scripts
 
-| Command                                          | Description                                                    |
-| ------------------------------------------------ | -------------------------------------------------------------- |
-| `bun run env:ensure --profile web`               | Local stack + build + serve (idempotent; `--json` contract)    |
-| `bun run env:serve`                              | Serve an existing production build on `APP_PORT`               |
-| `bun run env:dev`                                | Human-only web HMR (`next dev`); agents build + serve          |
-| `bun lint`                                       | Lint + repo guards (no typecheck)                              |
-| `bun lint:all`                                   | Typecheck + lint (admin typechecked via `typecheck:admin`)     |
-| `bun format` / `bun format:check`                | Format the repo / check formatting                             |
-| `bun run test`                                   | Product unit + integration tests (admin: `bun run test:admin`) |
-| `bun run test:unit` / `bun run test:integration` | Run one Vitest suite only (integration needs local Supabase)   |
-| `bun run test:e2e`                               | Playwright E2E                                                 |
-| `scripts/spin <branch>` / `scripts/pr`           | Create an isolated worktree / open a PR                        |
+| Command                                          | Description                                                     |
+| ------------------------------------------------ | --------------------------------------------------------------- |
+| `bun run env:ensure --profile web`               | Local stack + build + serve (idempotent; `--json` contract)     |
+| `bun run env:serve`                              | Serve an existing production build on `APP_PORT`                |
+| `bun run env:dev`                                | Human-only web HMR (`next dev`); agents build + serve           |
+| `bun run dev:web`                                | Raw web dev server (human-only; same server as `env:dev`)       |
+| `bun run dev:admin`                              | Admin HMR on `127.0.0.1:4000` (human-only; no `env` equivalent) |
+| `bun lint`                                       | Lint + repo guards (no typecheck)                               |
+| `bun lint:all`                                   | Typecheck + lint (admin typechecked via `typecheck:admin`)      |
+| `bun format` / `bun format:check`                | Format the repo / check formatting                              |
+| `bun run test`                                   | Product unit + integration tests (admin: `bun run test:admin`)  |
+| `bun run test:unit` / `bun run test:integration` | Run one Vitest suite only (integration needs local Supabase)    |
+| `bun run test:e2e`                               | Playwright E2E                                                  |
+| `scripts/spin <branch>` / `scripts/pr`           | Create an isolated worktree / open a PR                         |
 
 Every script is defined in [`package.json`](package.json); the full annotated
 list is in [`AGENTS.md`](AGENTS.md).
