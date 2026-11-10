@@ -19,6 +19,10 @@ import { loadEnvModule } from '#test/unit/env/load';
 
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
+// Shorter than the enclosing test timeout, so a hung child fails the assertion
+// with its own message while `finally` still gets to kill the process groups.
+const CHILD_DEADLINE_MS = 20_000;
+
 interface LocksModule {
   pidAlive(pid: number): boolean;
   ensureRegistryDir(): string;
@@ -254,10 +258,25 @@ describe('lock primitives', () => {
       return { child, closed };
     });
     writeFileSync(go, 'go\n');
+    // A child that never exits must not burn the whole test timeout and leave
+    // this cleanup racing the harness: expire first, then let `finally` kill
+    // every child process group.
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const results = await Promise.all(children.map((entry) => entry.closed));
+      const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(new Error(`lock stress children did not exit within ${CHILD_DEADLINE_MS} ms`)),
+          CHILD_DEADLINE_MS,
+        );
+      });
+      const results = await Promise.race([
+        Promise.all(children.map((entry) => entry.closed)),
+        deadline,
+      ]);
       for (const result of results) expect(result.code, result.stderr).toBe(0);
     } finally {
+      if (timer !== undefined) clearTimeout(timer);
       for (const entry of children) {
         if (entry.child.exitCode !== null) continue;
         try {
@@ -278,5 +297,6 @@ describe('lock primitives', () => {
     expect(sections).toHaveLength(ids.length * rounds);
     expect(new Set(sections).size).toBe(ids.length * rounds);
     expect(existsSync(join(dir, 'build.lock.d'))).toBe(false);
-  });
+    // Four real `bun` children under CI load need more than the 5 s default.
+  }, 60_000);
 });
