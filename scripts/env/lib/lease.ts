@@ -12,7 +12,7 @@ import {
 import { join } from 'node:path';
 import { ensureRegistryDir, ensureRegistrySubdir, pidAlive } from './locks';
 
-/** App-port lease in `scripts/dev-registry.ts`'s entry format. */
+/** App-port lease in the cross-checkout registry's entry format. */
 export interface AppLease {
   projectId: string;
   worktree: string;

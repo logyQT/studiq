@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-/** This checkout's root, canonicalised like `pwd -P` in `scripts/dev`. */
+/** This checkout's root, canonicalised like `pwd -P` in the legacy dev script. */
 export const REPO_ROOT = realpathSync(join(HERE, '..', '..', '..'));
 
 /** Resolve a path to its real form; unmatched paths are returned unchanged. */
@@ -56,7 +56,7 @@ export function currentBranchName(): string {
   return runGit(['branch', '--show-current']) || 'detached';
 }
 
-/** Same normalisation as `scripts/dev`'s `sanitize_project_id`. */
+/** Same normalisation as the legacy dev script's `sanitize_project_id`. */
 export function sanitizeProjectId(value: string): string {
   return value
     .toLowerCase()
@@ -81,7 +81,7 @@ function pathHash(root: string): string {
 }
 
 /**
- * Project id used only by the shared-stack path (borrowed from `scripts/dev`'s
+ * Project id used only by the shared-stack path (borrowed from the legacy dev script's
  * `derive_project_id`): slugged directory name plus a stable path hash.
  */
 export function deriveProjectId(): string {

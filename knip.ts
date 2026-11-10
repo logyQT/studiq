@@ -31,11 +31,19 @@ const config: KnipConfig = {
   // interfaces and types are covered here.
   ignoreExportsUsedInFile: { interface: true, type: true },
 
-  // Policy: `flock` is an OS binary invoked by the build lock (the same lock
-  // `scripts/dev` uses); it is not an npm dependency.
-  ignoreBinaries: ['flock'],
+  // Policy: `flock` is an OS binary invoked by the build lock and `tail` prints
+  // logs; neither is an npm dependency.
+  ignoreBinaries: ['flock', 'tail'],
 
   ignoreIssues: {
+    // Policy: pure unit tests load `scripts/env` modules through a computed
+    // file URL (scripts have no alias), which static analysis cannot follow.
+    // Only the exports exercised by those tests are suppressed here.
+    'scripts/env/lib/exit.ts': ['exports'],
+    'scripts/env/lib/fingerprint.ts': ['exports'],
+    'scripts/env/lib/lease.ts': ['exports'],
+    'scripts/env/lib/platform.ts': ['exports'],
+
     // Policy: shared integration-test seeding surface. Suites import the
     // helpers they need; de-exporting the rest would turn them into unused
     // locals, so the fixture API stays exported.
@@ -74,7 +82,6 @@ const config: KnipConfig = {
         'scripts/stripe-bootstrap.ts',
         // Policy: live operator/dev scripts run by hand or spawned by path (the
         // e2e global setup spawns `e2e-seed.ts`), so they are entry points.
-        'scripts/dev-registry.ts',
         'scripts/qa-issue.ts',
         'scripts/storage-orphan-sweep.ts',
         // `scripts/e2e-seed.ts` is also a live entry, but knip already derives

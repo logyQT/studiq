@@ -26,7 +26,8 @@ function isWebHealthy(code: number): boolean {
 }
 
 function stackLines(stack: StackStatus | null): string[] {
-  if (!stack) return ['  none for this branch — `bun dev:up` creates or resumes one'];
+  if (!stack)
+    return ['  none for this branch — `bun run env:ensure --profile web` creates or resumes one'];
   const lines = [
     `  id         ${stack.id}`,
     `  name       ${stack.name}`,
@@ -222,7 +223,7 @@ async function buildReport(): Promise<DoctorReport> {
     lines.push('', '▸ Next steps');
     for (const problem of problems) lines.push(`  ✘ ${problem}`);
     lines.push('  Pick a free APP_PORT: bun run env:ports');
-    lines.push('  Start/repair:         bun dev:up');
+    lines.push('  Start/repair:         bun run env:ensure --profile web');
   } else {
     lines.push('', '✔ No ownership or port conflicts for this checkout.');
   }

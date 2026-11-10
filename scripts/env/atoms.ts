@@ -1,8 +1,10 @@
-/** argv parsing for the lean `env` surface. */
+/** argv parsing for the `env` surface (spec §2/§3). */
 import { EXIT_USAGE, EnvFailure } from './lib/exit';
 import {
   PROFILE_NAMES,
   PROFILES,
+  ProfileError,
+  buildCapabilities,
   isCapabilityAtom,
   isProfileName,
   type CapabilityAtom,
@@ -10,7 +12,20 @@ import {
 } from './profiles';
 
 export type EnvCommand =
-  'status' | 'doctor' | 'ports' | 'supa' | 'ensure' | 'down' | 'build' | 'help';
+  | 'status'
+  | 'doctor'
+  | 'ports'
+  | 'supa'
+  | 'ensure'
+  | 'down'
+  | 'build'
+  | 'serve'
+  | 'dev'
+  | 'reset-db'
+  | 'logs'
+  | 'setup'
+  | 'verify'
+  | 'help';
 
 export type RuntimeChoice = 'native' | 'docker';
 export type SeedMode = 'default' | 'seed' | 'no-seed';
@@ -19,9 +34,12 @@ export interface EnsureOptions {
   profile: ProfileName;
   capabilityAtoms: CapabilityAtom[];
   seed: SeedMode;
+  /** Build the app (profile default or `--build`/`--prod`). */
   build: boolean;
+  /** Serve the production build (profile default or `--prod`). */
   serve: boolean;
   forceBuild: boolean;
+  /** Explicit flag value; `null` means "resolve from `SUPABASE_RUNTIME`". */
   runtime: RuntimeChoice | null;
   stack: string | null;
   appPort: number | null;
@@ -36,14 +54,50 @@ export interface BuildOptions {
   force: boolean;
   stack: string | null;
 }
+export interface ServeOptions {
+  stack: string | null;
+}
+export interface DevOptions {
+  capabilityAtoms: CapabilityAtom[];
+  runtime: RuntimeChoice | null;
+  stack: string | null;
+  waitSeconds: number | null;
+}
+export interface ResetDbOptions {
+  stack: string | null;
+}
+export interface LogsOptions {
+  follow: boolean;
+  stack: string | null;
+}
+export interface SetupOptions {
+  force: boolean;
+  /** Scaffold the optional primary-checkout `.env.vault` ref file instead. */
+  vault: boolean;
+}
+export interface VerifyOptions {
+  full: boolean;
+}
+
 export interface ParsedCommand {
   command: EnvCommand;
   json: boolean;
+  /** `supa` only: arguments forwarded verbatim to `bunx supabase`. */
   passthrough: string[];
   ensure: EnsureOptions | null;
   down: DownOptions | null;
   build: BuildOptions | null;
+  serve: ServeOptions | null;
+  dev: DevOptions | null;
+  resetDb: ResetDbOptions | null;
+  logs: LogsOptions | null;
+  setup: SetupOptions | null;
+  verify: VerifyOptions | null;
   yes: boolean;
+  /** Suppress informative stderr lines (`--quiet`). */
+  quiet: boolean;
+  /** Print extra diagnostics (`--verbose`). */
+  verbose: boolean;
 }
 
 export class UsageError extends EnvFailure {
@@ -64,17 +118,30 @@ const ALLOWED_FLAGS: Record<FlagCommand, ReadonlyArray<string>> = {
 export const USAGE = [
   'Usage: bun run env:<command> [options]',
   '',
-  '  env:ensure --profile <api|web> [--stack <name>] [--json]',
-  '  env:status [--json]',
-  '  env:down   [--all] [--stack <name>] [--yes] [--json]',
-  '  env:build  [--force] [--stack <name>] [--json]',
-  '  env:doctor [--json]',
-  '  env:ports  [--json]',
-  '  env:supa   <args…>',
+  '  env:ensure   --profile <name> [atoms] [--json]   Idempotent start/seed/build/serve',
+  '  env:status   [--json]                           Web/Supabase health, stack identity (read-only)',
+  '  env:down     [--all] [--stack <name>] [--yes]   Stop this web server; --all also the stack',
+  '  env:build    [--force] [--json]                 Build @studiq/web (production)',
+  '  env:serve    [--json]                           Serve the existing production build',
+  '  env:dev      [atoms]                            Human-only `next dev` HMR (agents build + serve)',
+  '  env:supa     <args…>                            Run `bunx supabase` with the contract exported',
+  '  env:reset-db [--yes]                            Destructive: reset this checkout’s database',
+  '  env:logs     [--no-follow]                      Stack logs + .dev/web.log',
+  '  env:setup    [--force] [--vault]                Human-only: scaffold .env.local (or optional vault refs)',
+  '  env:verify   [--full] [--json]                  Read-only env/schema check (names only)',
+  '  env:ports    [--json]                           Print a free APP_PORT',
+  '  env:doctor   [--json]                           Explain runtime/stack/registry problems',
   '',
-  'Atoms: --db --rest --auth --storage --studio --mail --realtime --functions --analytics --seed --no-seed',
-  '       --build --force-build --web --prod --runtime native|docker',
-  '       --app-port <n> --wait <s> --json --yes',
+  `Profiles: ${PROFILE_NAMES.join(', ')} (web/qa/e2e build and serve; qa/e2e seed).`,
+  '',
+  'Atoms: --db --rest --auth --storage --studio --mail --realtime --functions --analytics',
+  '       --seed --no-seed --web --build --force-build --prod',
+  '       --runtime <native|docker> --stack <name> --app-port <n> --wait <s>',
+  '       --json --yes --quiet --verbose',
+  '',
+  '`--web` requires `--prod` (the tool never runs `next dev` outside env:dev).',
+  '`--studio` requires `--rest`. Destructive commands need `--yes` when',
+  'non-interactive. status, ports, doctor and verify never read a values file.',
 ].join('\n');
 
 interface FlagToken {
@@ -130,28 +197,81 @@ function empty(command: EnvCommand): ParsedCommand {
     ensure: null,
     down: null,
     build: null,
+    serve: null,
+    dev: null,
+    resetDb: null,
+    logs: null,
+    setup: null,
+    verify: null,
     yes: false,
+    quiet: false,
+    verbose: false,
   };
 }
 
 function parseRuntime(value: string): RuntimeChoice {
   if (value === 'native' || value === 'docker') return value;
-  throw new UsageError(`unknown runtime '${value}'`);
+  if (value === 'podman') {
+    throw new UsageError(
+      "'podman' is not supported; choose '--runtime native' or '--runtime docker'",
+    );
+  }
+  if (value === 'auto') {
+    throw new UsageError("'auto' is not allowed: runtime selection is explicit ('native' default)");
+  }
+  throw new UsageError(`unknown runtime '${value}' (expected native or docker)`);
+}
+
+/** Shared result flags accepted by every non-passthrough command. */
+function parseCommon(parsed: ParsedCommand, name: string): boolean {
+  if (name === '--json') {
+    parsed.json = true;
+    return true;
+  }
+  if (name === '--yes') {
+    parsed.yes = true;
+    return true;
+  }
+  if (name === '--quiet') {
+    parsed.quiet = true;
+    return true;
+  }
+  if (name === '--verbose') {
+    parsed.verbose = true;
+    return true;
+  }
+  return false;
+}
+
+interface EnsureDraft {
+  profile: ProfileName | null;
+  capabilityAtoms: CapabilityAtom[];
+  seed: SeedMode;
+  buildAtom: boolean;
+  forceBuild: boolean;
+  prod: boolean;
+  webAtom: boolean;
+  runtime: RuntimeChoice | null;
+  stack: string | null;
+  appPort: number | null;
+  waitSeconds: number | null;
 }
 
 function parseEnsure(rest: string[]): ParsedCommand {
   const parsed = empty('ensure');
-  let profile: ProfileName | null = null;
-  const atoms: CapabilityAtom[] = [];
-  let seed: SeedMode = 'default';
-  let buildAtom = false;
-  let forceBuild = false;
-  let prod = false;
-  let webAtom = false;
-  let runtime: RuntimeChoice | null = null;
-  let stack: string | null = null;
-  let appPort: number | null = null;
-  let waitSeconds: number | null = null;
+  const draft: EnsureDraft = {
+    profile: null,
+    capabilityAtoms: [],
+    seed: 'default',
+    buildAtom: false,
+    forceBuild: false,
+    prod: false,
+    webAtom: false,
+    runtime: null,
+    stack: null,
+    appPort: null,
+    waitSeconds: null,
+  };
 
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index] as string;
@@ -161,6 +281,7 @@ function parseEnsure(rest: string[]): ParsedCommand {
     if (inline !== undefined && !VALUE_FLAGS.has(name)) {
       throw new UsageError(`'${name}' does not take a value`);
     }
+    if (parseCommon(parsed, name)) continue;
     switch (name) {
       case '--profile': {
         const read = readValue(name, inline, rest, index);
@@ -170,86 +291,87 @@ function parseEnsure(rest: string[]): ParsedCommand {
             `unknown profile '${read.value}' (expected ${PROFILE_NAMES.join(' or ')})`,
           );
         }
-        profile = read.value;
+        draft.profile = read.value;
         break;
       }
       case '--seed':
-        if (seed === 'no-seed') throw new UsageError("'--seed' conflicts with '--no-seed'");
-        seed = 'seed';
+        if (draft.seed === 'no-seed') throw new UsageError("'--seed' conflicts with '--no-seed'");
+        draft.seed = 'seed';
         break;
       case '--no-seed':
-        if (seed === 'seed') throw new UsageError("'--no-seed' conflicts with '--seed'");
-        seed = 'no-seed';
+        if (draft.seed === 'seed') throw new UsageError("'--no-seed' conflicts with '--seed'");
+        draft.seed = 'no-seed';
         break;
       case '--build':
-        buildAtom = true;
+        draft.buildAtom = true;
         break;
       case '--force-build':
-        forceBuild = true;
+        draft.forceBuild = true;
         break;
       case '--web':
-        webAtom = true;
+        draft.webAtom = true;
         break;
       case '--prod':
-        prod = true;
+        draft.prod = true;
         break;
       case '--runtime': {
         const read = readValue(name, inline, rest, index);
         index = read.next;
-        runtime = parseRuntime(read.value);
+        draft.runtime = parseRuntime(read.value);
         break;
       }
       case '--stack': {
         const read = readValue(name, inline, rest, index);
         index = read.next;
-        stack = parseStackName(read.value);
+        draft.stack = parseStackName(read.value);
         break;
       }
       case '--app-port': {
         const read = readValue(name, inline, rest, index);
         index = read.next;
-        appPort = parsePort(read.value);
+        draft.appPort = parsePort(read.value);
         break;
       }
       case '--wait': {
         const read = readValue(name, inline, rest, index);
         index = read.next;
-        waitSeconds = parseWait(read.value);
+        draft.waitSeconds = parseWait(read.value);
         break;
       }
-      case '--json':
-        parsed.json = true;
-        break;
-      case '--yes':
-        parsed.yes = true;
-        break;
       default: {
         const atom = name.slice(2);
-        if (isCapabilityAtom(atom)) atoms.push(atom);
+        if (isCapabilityAtom(atom)) draft.capabilityAtoms.push(atom);
         else throw new UsageError(`unknown option '${name}' for 'ensure'`);
       }
     }
   }
 
+  const profile = draft.profile;
   if (!profile) throw new UsageError("'ensure' needs '--profile <name>'");
   const spec = PROFILES[profile];
-  if (webAtom && !prod) throw new UsageError("'--web' requires '--prod'");
-  const build = spec.build || buildAtom || forceBuild || prod;
-  const serve = spec.serve || prod;
+  if (draft.webAtom && !draft.prod) throw new UsageError("'--web' requires '--prod'");
+  const build = spec.build || draft.buildAtom || draft.forceBuild || draft.prod;
+  const serve = spec.serve || draft.prod;
   if ((build || serve) && !spec.build) {
     throw new UsageError(`profile '${profile}' does not build or serve`);
   }
+  try {
+    buildCapabilities(profile, draft.capabilityAtoms);
+  } catch (error) {
+    if (error instanceof ProfileError) throw new UsageError(error.message);
+    throw error;
+  }
   parsed.ensure = {
     profile,
-    capabilityAtoms: atoms,
-    seed,
+    capabilityAtoms: draft.capabilityAtoms,
+    seed: draft.seed,
     build,
     serve,
-    forceBuild,
-    runtime,
-    stack,
-    appPort,
-    waitSeconds,
+    forceBuild: draft.forceBuild,
+    runtime: draft.runtime,
+    stack: draft.stack,
+    appPort: draft.appPort,
+    waitSeconds: draft.waitSeconds,
   };
   return parsed;
 }
@@ -270,53 +392,105 @@ function parseDown(rest: string[]): ParsedCommand {
       continue;
     }
     if (inline !== undefined) throw new UsageError(`'${name}' does not take a value`);
-    switch (name) {
-      case '--all':
-        all = true;
-        break;
-      case '--yes':
-        parsed.yes = true;
-        break;
-      case '--json':
-        parsed.json = true;
-        break;
-      default:
-        throw new UsageError(`unknown option '${name}' for 'down'`);
-    }
+    if (parseCommon(parsed, name)) continue;
+    if (name === '--all') all = true;
+    else throw new UsageError(`unknown option '${name}' for 'down'`);
   }
   parsed.down = { all, stack };
   return parsed;
 }
 
-function parseBuild(rest: string[]): ParsedCommand {
-  const parsed = empty('build');
-  let force = false;
+/**
+ * One loop for the single-stack commands. `flags` maps a value-less flag to its
+ * handler; `--stack` takes a value and is handed to the finalizer.
+ */
+function parseSingle(
+  command: EnvCommand,
+  rest: string[],
+  flags: Readonly<Record<string, () => void>>,
+  finalize: (parsed: ParsedCommand, stack: string | null) => void,
+  options: { allowStack?: boolean } = {},
+): ParsedCommand {
+  const parsed = empty(command);
   let stack: string | null = null;
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index] as string;
     if (token === '--help' || token === '-h') return empty('help');
-    if (!token.startsWith('--')) throw new UsageError(`unexpected argument '${token}' for 'build'`);
+    if (!token.startsWith('--')) {
+      throw new UsageError(`unexpected argument '${token}' for '${command}'`);
+    }
     const { name, inline } = flagToken(token);
-    if (name === '--stack') {
+    if (name === '--stack' && options.allowStack !== false) {
       const read = readValue(name, inline, rest, index);
       index = read.next;
       stack = parseStackName(read.value);
       continue;
     }
     if (inline !== undefined) throw new UsageError(`'${name}' does not take a value`);
-    switch (name) {
-      case '--force':
-        force = true;
-        break;
-      case '--json':
-        parsed.json = true;
-        break;
-      default:
-        throw new UsageError(`unknown option '${name}' for 'build'`);
+    const flag = flags[name];
+    if (flag) {
+      flag();
+      continue;
     }
+    if (parseCommon(parsed, name)) continue;
+    throw new UsageError(`unknown option '${name}' for '${command}'`);
   }
-  parsed.build = { force, stack };
+  finalize(parsed, stack);
   return parsed;
+}
+
+function parseBuild(rest: string[]): ParsedCommand {
+  let force = false;
+  return parseSingle(
+    'build',
+    rest,
+    { '--force': () => void (force = true) },
+    (parsed, stack) => void (parsed.build = { force, stack }),
+  );
+}
+
+function parseServe(rest: string[]): ParsedCommand {
+  return parseSingle('serve', rest, {}, (parsed, stack) => void (parsed.serve = { stack }));
+}
+
+function parseResetDb(rest: string[]): ParsedCommand {
+  return parseSingle('reset-db', rest, {}, (parsed, stack) => void (parsed.resetDb = { stack }));
+}
+
+function parseLogs(rest: string[]): ParsedCommand {
+  let follow = true;
+  return parseSingle(
+    'logs',
+    rest,
+    { '--no-follow': () => void (follow = false) },
+    (parsed, stack) => void (parsed.logs = { follow, stack }),
+  );
+}
+
+function parseSetup(rest: string[]): ParsedCommand {
+  let force = false;
+  let vault = false;
+  return parseSingle(
+    'setup',
+    rest,
+    {
+      '--force': () => void (force = true),
+      '--vault': () => void (vault = true),
+    },
+    (parsed) => void (parsed.setup = { force, vault }),
+    { allowStack: false },
+  );
+}
+
+function parseVerify(rest: string[]): ParsedCommand {
+  let full = false;
+  return parseSingle(
+    'verify',
+    rest,
+    { '--full': () => void (full = true) },
+    (parsed) => void (parsed.verify = { full }),
+    { allowStack: false },
+  );
 }
 
 function parseFlagCommand(command: FlagCommand, rest: string[]): ParsedCommand {
@@ -328,6 +502,55 @@ function parseFlagCommand(command: FlagCommand, rest: string[]): ParsedCommand {
     }
     parsed.json = true;
   }
+  return parsed;
+}
+
+/** `env:dev` takes the same stack/timing atoms as `ensure`, minus the profile. */
+function parseDev(rest: string[]): ParsedCommand {
+  const parsed = empty('dev');
+  const capabilityAtoms: CapabilityAtom[] = [];
+  let runtime: RuntimeChoice | null = null;
+  let stack: string | null = null;
+  let waitSeconds: number | null = null;
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const token = rest[index] as string;
+    if (token === '--help' || token === '-h') return empty('help');
+    if (!token.startsWith('--')) throw new UsageError(`unexpected argument '${token}' for 'dev'`);
+    const { name, inline } = flagToken(token);
+    if (inline !== undefined && !VALUE_FLAGS.has(name)) {
+      throw new UsageError(`'${name}' does not take a value`);
+    }
+    if (parseCommon(parsed, name)) continue;
+    switch (name) {
+      case '--runtime': {
+        const read = readValue(name, inline, rest, index);
+        index = read.next;
+        runtime = parseRuntime(read.value);
+        break;
+      }
+      case '--stack': {
+        const read = readValue(name, inline, rest, index);
+        index = read.next;
+        stack = parseStackName(read.value);
+        break;
+      }
+      case '--wait': {
+        const read = readValue(name, inline, rest, index);
+        index = read.next;
+        waitSeconds = parseWait(read.value);
+        break;
+      }
+      case '--admin':
+        throw new UsageError("'--admin' is deferred: run apps/admin's own dev command");
+      default: {
+        const atom = name.slice(2);
+        if (isCapabilityAtom(atom)) capabilityAtoms.push(atom);
+        else throw new UsageError(`unknown option '${name}' for 'dev'`);
+      }
+    }
+  }
+  parsed.dev = { capabilityAtoms, runtime, stack, waitSeconds };
   return parsed;
 }
 
@@ -343,7 +566,13 @@ export function parseCommand(argv: string[]): ParsedCommand {
   }
   if (command === 'ensure') return parseEnsure(rest);
   if (command === 'down') return parseDown(rest);
+  if (command === 'dev') return parseDev(rest);
   if (command === 'build') return parseBuild(rest);
+  if (command === 'serve') return parseServe(rest);
+  if (command === 'reset-db') return parseResetDb(rest);
+  if (command === 'logs') return parseLogs(rest);
+  if (command === 'setup') return parseSetup(rest);
+  if (command === 'verify') return parseVerify(rest);
   if (!(FLAG_COMMANDS as ReadonlyArray<string>).includes(command)) {
     throw new UsageError(`unknown command '${command}'`);
   }

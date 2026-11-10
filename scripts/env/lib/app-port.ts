@@ -13,7 +13,7 @@ import { readRegistry, type RegistryEntry } from './registry';
 
 const APP_PORT_MIN = 3000;
 const APP_PORT_MAX = 3999;
-/** :3010 is the shared QA app; `scripts/dev` refuses to serve it. */
+/** :3010 is the shared QA app; the tool refuses to serve it. */
 const RESERVED_APP_PORTS = new Set([3010]);
 
 export interface AppPortCandidatesInput {

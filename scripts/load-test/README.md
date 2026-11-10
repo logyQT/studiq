@@ -18,7 +18,7 @@ Both run directly with Bun (no build step) and are dependency-free.
 
 ## 1. Prerequisites
 
-- This checkout's local stack via `bun dev:up` — root `.env.local` (or the
+- This checkout's local stack via `bun run env:ensure --profile web` — root `.env.local` (or the
   process environment) supplies the target that seeding and reset use
   implicitly — and a working app:
   - app on `http://localhost:$APP_PORT` (default `3000`, or pass `--app-url`), and
@@ -63,7 +63,7 @@ bots from one machine at once will trip it. Either:
   ```
 
   ```bash
-  bun dev:down --all && bun dev:up   # this checkout only; never `supabase stop --all`
+  bun run env:down --all && bun run env:ensure --profile web   # this checkout only; never `supabase stop --all`
   ```
 
 Sessions are cookie-based and auto-refresh on each request, so bots log in once

@@ -89,7 +89,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PORTAL_CONFIGURATION_ID=bpc_...
 ```
 
-`bun run start` (and `bun dev:serve`) runs `scripts/payment-preflight.ts`
+`bun run start` (and `bun run env:serve`) runs `scripts/payment-preflight.ts`
 **before the port binds**, because `next start` does not exit on an
 instrumentation rejection. `next build` needs no Stripe secret: the gateway is
 constructed lazily on the first request, not at module import.

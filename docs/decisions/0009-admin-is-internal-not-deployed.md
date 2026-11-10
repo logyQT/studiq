@@ -37,7 +37,7 @@ vocabulary or grant model introduced today would be a second model to migrate.
 ## Decision
 
 1. **Keep `apps/admin`.** Pages, controllers, services and the manual scripts
-   (`dev:admin`, `build:admin`, `start:admin`, `lint:admin`, `typecheck:admin`,
+   (`bun run --filter @studiq/admin dev`, `build:admin`, `start:admin`, `lint:admin`, `typecheck:admin`,
    `test:admin`) stay.
 2. **Do not deploy it.** It is repo-only and local-only. There is no target
    date. "Not deployed" is the current mitigation, not an assumption that an
@@ -60,13 +60,13 @@ vocabulary or grant model introduced today would be a second model to migrate.
 
 ## Current gap (accepted risk)
 
-| Surface             | Current state                                             | Risk if reachable                                          | Mitigation today                |
-| ------------------- | --------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------- |
-| Admin UI pages      | No auth; static/CSR shell                                 | Anyone with the URL sees the panel                         | Not deployed                    |
-| `/api/v1/*`         | No `withAuth`; service-role client                        | Full platform read/write, including user purge             | Not deployed                    |
-| Attribution / audit | None at the admin boundary                                | No actor, no before/after, no denial record                | Not deployed                    |
-| Network exposure    | Repo-only; `dev:admin` / `start:admin` are local commands | Accidental LAN/host exposure if someone runs `start:admin` | Operator discipline; not public |
-| Machine/CLI callers | Previously PEM-signed; now no path                        | No safe automation path until a gated API exists           | None — do not automate admin    |
+| Surface             | Current state                                                           | Risk if reachable                                          | Mitigation today                |
+| ------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------- |
+| Admin UI pages      | No auth; static/CSR shell                                               | Anyone with the URL sees the panel                         | Not deployed                    |
+| `/api/v1/*`         | No `withAuth`; service-role client                                      | Full platform read/write, including user purge             | Not deployed                    |
+| Attribution / audit | None at the admin boundary                                              | No actor, no before/after, no denial record                | Not deployed                    |
+| Network exposure    | Repo-only; `@studiq/admin`'s own dev / `start:admin` are local commands | Accidental LAN/host exposure if someone runs `start:admin` | Operator discipline; not public |
+| Machine/CLI callers | Previously PEM-signed; now no path                                      | No safe automation path until a gated API exists           | None — do not automate admin    |
 
 **Explicitly accepted:** if this app is exposed without the gates below, it is a
 full compromise of the service-role surface. It must not be exposed "temporarily

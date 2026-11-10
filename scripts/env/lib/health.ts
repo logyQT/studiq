@@ -4,7 +4,7 @@ import { request as httpsRequest } from 'node:https';
 /**
  * One HTTP GET, returning the status code (or 0 when unreachable/timeout).
  *
- * Mirrors `scripts/dev`'s `curl -s -o /dev/null --max-time 2 -w '%{http_code}'`:
+ * Mirrors the legacy dev script's `curl -s -o /dev/null --max-time 2 -w '%{http_code}'`:
  * redirects are not followed, no cookies/proxy, and a healthy check is a 2xx.
  * No keep-alive agent is kept, so a read-only command exits immediately.
  */

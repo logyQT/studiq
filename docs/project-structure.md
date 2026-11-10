@@ -98,7 +98,7 @@ studiq/
 ├── tsconfig.json                     # Root TS config with workspace path aliases
 ├── docker-compose.yml
 ├── .env.schema                       # Value-free env inventory (varlock input)
-├── .env.local                        # Optional root values file (gitignored), read by scripts/dev + varlock
+├── .env.local                        # Optional root values file (gitignored), read by the `env` tool + varlock
 └── README.md
 ```
 

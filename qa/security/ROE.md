@@ -30,7 +30,7 @@ as an action.
 ## 2. Environment
 
 1. **Own Supabase first.** If this checkout already has a stack running, stop it with
-   `bun dev:down --all` (never `supabase stop --all`, which stops every stack on the
+   `bun run env:down --all` (never `supabase stop --all`, which stops every stack on the
    machine), then `bunx supabase start` for the run. Before seeding, read the endpoints
    from `bunx supabase status --output-format json` (`API_URL`, `DB_URL`) rather than
    assuming the default `:54321` — stack mode assigns ports per checkout.

@@ -27,7 +27,13 @@ import {
   probeContextFromStatus,
   sharedProbeContext,
 } from '../lib/capabilities';
-import { buildCapabilities, excludesFor, missingCapabilities, type Capability } from '../profiles';
+import {
+  buildCapabilities,
+  excludesFor,
+  missingCapabilities,
+  profileSeeds,
+  type Capability,
+} from '../profiles';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
 import { rebuildWithRecovery, recoverHandover } from '../lib/rebuild';
 import { pidAlive, withCheckoutLock, withClaimsLock } from '../lib/locks';
@@ -380,7 +386,13 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
   const branch = currentBranchRef();
   const cliStackName = options.stack ?? baseContract.stackName;
   const requested = [...buildCapabilities(options.profile, options.capabilityAtoms)];
-  const seed = assertSeedingAllowed({ mode: options.seed, shared: baseContract.shared });
+  // The profile default decides unless an atom overrides it (`--no-seed` wins).
+  const seedRequested =
+    options.seed === 'default' ? profileSeeds(options.profile) : options.seed === 'seed';
+  const seed = assertSeedingAllowed({
+    mode: seedRequested ? 'seed' : 'no-seed',
+    shared: baseContract.shared,
+  });
   appendEnvLog(`ensure: profile=${options.profile} stack=${cliStackName ?? 'default'}`);
 
   // One lock per checkout: the app-port lease and the web claim are authoritative

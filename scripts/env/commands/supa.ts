@@ -199,7 +199,7 @@ function hasAllFlag(args: string[]): boolean {
  * `supabase/config.toml` resolves `APP_URL` through `env()`, and the CLI reads
  * no values file, so the resolved APP_URL is exported around the child. Values
  * come from the process environment (varlock injects them for this command);
- * an explicit APP_URL wins, exactly like `scripts/dev supa`.
+ * an explicit APP_URL wins, exactly like `env:supa`.
  *
  * Guards (the command position is parsed apart from flag values, so
  * `start --stack stop` is not mistaken for a stop): under `SUPABASE_SHARED=1`

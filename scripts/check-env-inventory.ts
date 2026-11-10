@@ -9,7 +9,7 @@
  *    (`process.env[name]`, destructuring) is deliberately not statically
  *    resolvable and is skipped — those keys are still expected to be declared,
  *    which is why the schema also carries the names the tooling reads through
- *    helpers (`scripts/dev`, `scripts/load-test/config.ts`, the seeders).
+ *    helpers (the legacy dev script, `scripts/load-test/config.ts`, the seeders).
  * 2. No root `.env` values file may exist. The root file is the operator's
  *    hand-edited local state and must never be committed or required by a gate.
  * 3. No generated values file may live under `apps/<app>/` or `supabase/`
@@ -47,7 +47,7 @@ const AMBIENT_ALLOWLIST = new Set(['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_TIME', 
 /**
  * Path-scoped ambient names: OS-owned values one narrow scope may read without
  * declaring them. `scripts/env/**` needs the runtime-directory roots to locate
- * the cross-checkout dev registry (the same fallback `scripts/dev` uses); no
+ * the cross-checkout dev registry (the same fallback the legacy dev script uses); no
  * other scope may read them undeclared.
  */
 const SCOPED_AMBIENT_ALLOWLIST: ReadonlyArray<{ scope: string; keys: ReadonlySet<string> }> = [
