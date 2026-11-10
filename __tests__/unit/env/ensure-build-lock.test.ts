@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -57,6 +57,8 @@ interface RebuildRequest {
   appUrl: string;
   env: NodeJS.ProcessEnv;
   serve: boolean;
+  /** The fence `ensure` installs immediately before the replacement starts. */
+  beforeServe?(): Promise<void> | void;
   timeoutSeconds?: number;
 }
 
@@ -257,6 +259,77 @@ describe('env:ensure releases the checkout lock for the build', () => {
     expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
     if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
     expect(failure.message).toContain('lease');
+  });
+
+  it('refuses to serve when a concurrent env:down released the lease during the build', async () => {
+    const harness = newHarness();
+    await healthyStack(harness);
+    applyHarnessEnv(harness);
+    const appPort = await firstAppPort();
+    writeLease(harness, appPort);
+
+    let downStatus: number | null = null;
+    let fenced = false;
+    const deps: EnsureDeps = {
+      async rebuild(request) {
+        if (!request.beforeServe) throw new Error('ensure did not install the serve fence');
+        // A real `down` in another process releases the lease and stops the
+        // stack while the build runs; the fence runs immediately before the
+        // replacement would be started.
+        const down = await harness.run(['down', '--all', '--yes']);
+        downStatus = down.status;
+        await request.beforeServe();
+        fenced = true;
+        return buildOutcome();
+      },
+    };
+
+    const failure = await failureOf(
+      ensureModule.runEnsure(
+        parse(['ensure', '--profile', 'web', '--no-seed', '--app-port', String(appPort)]),
+        deps,
+      ),
+    );
+
+    expect(downStatus).toBe(0);
+    // The fence refused before the build could be reported as served.
+    expect(fenced).toBe(false);
+    expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+    if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+    expect(failure.message).toContain('lease');
+    // The down's release stands: ensure published no lease over it.
+    expect(leaseModule.readLease(harness.registryDir, projectIdFor(harness))).toBeNull();
+  });
+
+  it('holds the checkout lock from the serve fence through the replacement start', async () => {
+    const harness = newHarness();
+    const app = await healthyStack(harness);
+    applyHarnessEnv(harness);
+    writeLease(harness, app.port);
+    const lockFile = join(stateDir, 'locks', 'checkout.lock');
+    // `flock -n` proves the lock is held by someone else; the portable fallback
+    // (no flock) has no equivalent probe, so the assertion is skipped there.
+    const flockAvailable = spawnSync('flock', ['--version'], { timeout: 5_000 }).status === 0;
+
+    let lockHeldInFence: boolean | null = null;
+    const deps: EnsureDeps = {
+      async rebuild(request) {
+        if (!request.beforeServe) throw new Error('ensure did not install the serve fence');
+        await request.beforeServe();
+        lockHeldInFence = flockAvailable
+          ? spawnSync('flock', ['-n', lockFile, 'true'], { timeout: 5_000 }).status !== 0
+          : null;
+        return buildOutcome();
+      },
+    };
+
+    const code = await ensureModule.runEnsure(
+      parse(['ensure', '--profile', 'web', '--no-seed', '--app-port', String(app.port)]),
+      deps,
+    );
+
+    expect(code).toBe(0);
+    if (flockAvailable) expect(lockHeldInFence).toBe(true);
   });
 
   it('detects a lease that moved during the build when the lock is re-acquired', async () => {

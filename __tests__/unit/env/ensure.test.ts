@@ -31,7 +31,7 @@ interface LeaseModule {
   writeLease(lease: Record<string, unknown>): void;
   readLease(dir: string, projectId: string): Record<string, unknown> | null;
   readAppPortClaim(dir: string, port: number): { projectId: string } | null;
-  claimAppPort(dir: string, port: number, projectId: string): { ok: boolean };
+  claimAppPort(dir: string, port: number, projectId: string, ownerPid?: number): { ok: boolean };
   heartbeatAgeMs(lease: Record<string, unknown>): number;
   isLeaseReclaimable(input: {
     pidAlive: boolean;
@@ -1195,7 +1195,9 @@ describe('env:ensure reclaims a foreign lease only under shared coordination', (
       ttlSec: 60,
     };
     leaseModule.writeLease(lease);
-    expect(leaseModule.claimAppPort(registryDir, port, projectId).ok).toBe(true);
+    // The claim belongs to the dead owner too: a live claim owner would (rightly)
+    // keep the port for a claimant that is still selecting it.
+    expect(leaseModule.claimAppPort(registryDir, port, projectId, 999_999).ok).toBe(true);
     return { projectId, lease };
   }
 
@@ -1214,6 +1216,39 @@ describe('env:ensure reclaims a foreign lease only under shared coordination', (
     expect(reclaimed).toBe(true);
     expect(leaseModule.readLease(registryDir, projectId)).toBeNull();
     expect(leaseModule.readAppPortClaim(registryDir, port)).toBeNull();
+  });
+
+  it('refuses to reclaim a port whose claim a live claimant refreshed before its lease', async () => {
+    const port = await firstFreePort(3800);
+    const { projectId, lease } = staleForeignLease(port);
+    // The claimant refreshed its port claim in the window before publishing its
+    // lease: the claim names this live process while the lease is still the
+    // stale one. Reclaiming here would delete a running checkout's reservation.
+    expect(leaseModule.claimAppPort(registryDir, port, projectId, process.pid).ok).toBe(true);
+
+    const reclaimed = await ensureModule.reclaimForeignLease({
+      dir: registryDir,
+      foreignProjectId: projectId,
+      port,
+      isReclaimable: reclaimableNow,
+      probeFree: () => Promise.resolve(true),
+    });
+
+    expect(reclaimed).toBe(false);
+    expect(leaseModule.readLease(registryDir, projectId)).not.toBeNull();
+    expect(leaseModule.readAppPortClaim(registryDir, port)?.projectId).toBe(projectId);
+
+    // The claimant publishes its lease: the port keeps exactly one lease owner.
+    leaseModule.writeLease({
+      ...lease,
+      ownerPid: process.pid,
+      heartbeatAt: new Date().toISOString(),
+    });
+    const leases = readdirSync(registryDir).filter(
+      (name) => name.startsWith('env-') && name.endsWith('.json'),
+    );
+    expect(leases).toHaveLength(1);
+    expect(leaseModule.readLease(registryDir, projectId)?.ownerPid).toBe(process.pid);
   });
 
   it('keeps a foreign lease and claim that a concurrent heartbeat refreshed', async () => {

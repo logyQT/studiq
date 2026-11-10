@@ -6,11 +6,13 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT_CONFLICT, EXIT_TIMEOUT, EnvFailure } from './exit';
+import { writeStderrLine } from './output';
 import { resolveRegistryDir } from './registry';
 import { DEV_DIR, ensureDevDir } from './state';
 
@@ -120,13 +122,13 @@ async function flockMutex(path: string, waitSeconds: number): Promise<Mutex | nu
 /** The 5 s a directory lock with no owner record is trusted before takeover. */
 const DIR_LOCK_NO_OWNER_GRACE_MS = 5_000;
 
-interface DirLockIdentity {
+/** The directory's identity: a released or replaced lock changes it. */
+export interface DirLockIdentity {
   dev: number;
   ino: number;
   mtimeMs: number;
 }
 
-/** The directory's identity: a released or replaced lock changes it. */
 function dirLockIdentity(path: string): DirLockIdentity | null {
   try {
     const stat = lstatSync(path);
@@ -144,7 +146,8 @@ function readOwnerField(path: string, name: string): string | null {
   }
 }
 
-interface DirLockOwner {
+/** The holder identity a directory lock records (`pid` and a random `token`). */
+export interface DirLockOwner {
   pid: number;
   /** Holder identity written with the pid; '' when the holder left no token. */
   token: string;
@@ -175,6 +178,97 @@ function releaseDirMutex(path: string, token: string): void {
 }
 
 /**
+ * Take over a directory lock whose recorded owner is provably gone.
+ *
+ * A "re-read the identity, then `rmSync(path, { recursive: true })`" sequence
+ * still has a takeover race: a successor can replace the directory between the
+ * check and the recursive delete, and the delete then removes the successor's
+ * lock. The takeover therefore *moves* whatever sits at `path` to a unique
+ * tombstone (an atomic `rename` within the same directory) and inspects the
+ * object it actually moved: only a tombstone that still matches the observed
+ * stale owner (same dev/inode, pid and token) is removed. Anything else — a
+ * successor installed in the window — is renamed back and left alone.
+ *
+ * Residual limitation on hosts without `flock`: if a successor appears at
+ * `path` after a *different* object was moved aside, the rename back cannot
+ * overwrite it (a non-empty directory is never replaced), so that successor's
+ * lock stays in the tombstone and this process retries/fails closed. Nothing a
+ * successor still owns is ever deleted; only `flock` makes the whole sequence
+ * race-free, which is why it stays the preferred path.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function takeoverStaleDirLock(
+  path: string,
+  observed: DirLockIdentity,
+  owner: DirLockOwner,
+): boolean {
+  const tombstone = `${path}.tombstone-${process.pid}-${randomBytes(6).toString('hex')}`;
+  try {
+    // The rename is the observation: it moves exactly the object that is at
+    // `path` now, so the verification below cannot describe another directory.
+    renameSync(path, tombstone);
+  } catch (error) {
+    // A successor released or replaced it first (or the parent is gone): the
+    // retry loop re-observes. Only a missing path is an expected outcome.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return false;
+  }
+  const moved = dirLockIdentity(tombstone);
+  const movedOwner = readDirLockOwner(tombstone);
+  if (
+    moved === null ||
+    moved.dev !== observed.dev ||
+    moved.ino !== observed.ino ||
+    movedOwner.pid !== owner.pid ||
+    movedOwner.token !== owner.token
+  ) {
+    // A successor got moved instead of the stale lock: put it back untouched.
+    // If the name is already taken again, its lock stays in the tombstone and
+    // is never deleted.
+    try {
+      renameSync(tombstone, path);
+    } catch {
+      writeStderrLine(
+        `warning: could not restore the directory lock at ${path} after a takeover race; left it at ${tombstone}`,
+      );
+    }
+    return false;
+  }
+  rmSync(tombstone, { recursive: true, force: true });
+  return true;
+}
+
+/**
+ * Record this attempt as the directory lock's owner.
+ *
+ * `true` means the directory now names its owner. `false` means the directory
+ * vanished before it could be named (`ENOENT`): ownership is lost, and a
+ * successor may already hold the path, so the caller retries without removing
+ * anything. Any other failure removes the directory only while it is still the
+ * object this attempt created (same dev and inode), then rethrows; a successor
+ * installed in the meantime is never deleted.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export function writeDirLockOwner(path: string, token: string, owned: DirLockIdentity): boolean {
+  try {
+    writeFileSync(join(path, 'pid'), `${process.pid}\n`, { mode: 0o600 });
+    writeFileSync(join(path, 'token'), `${token}\n`, { mode: 0o600 });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    // A lock that cannot name its owner would never be taken over, but only
+    // the directory this attempt created may be cleaned up.
+    const current = dirLockIdentity(path);
+    if (current && current.dev === owned.dev && current.ino === owned.ino) {
+      rmSync(path, { recursive: true, force: true });
+    }
+    throw error;
+  }
+}
+
+/**
  * The fallback for hosts without `flock`: `mkdir` is the acquisition primitive
  * and the directory holds the holder's pid and a random token. The token makes
  * release and stale takeover identity-checked, so a holder that was presumed
@@ -186,14 +280,10 @@ async function dirMutex(path: string, waitSeconds: number): Promise<Mutex> {
   for (;;) {
     try {
       mkdirSync(path, { mode: 0o700 });
-      try {
-        writeFileSync(join(path, 'pid'), `${process.pid}\n`, { mode: 0o600 });
-        writeFileSync(join(path, 'token'), `${token}\n`, { mode: 0o600 });
-      } catch (error) {
-        // A lock that cannot name its owner would never be taken over.
-        rmSync(path, { recursive: true, force: true });
-        throw error;
-      }
+      // Capture the identity immediately: it is what proves (on a later write
+      // failure) that the directory being removed is still ours.
+      const owned = dirLockIdentity(path);
+      if (!owned || !writeDirLockOwner(path, token, owned)) continue;
       return {
         async release() {
           releaseDirMutex(path, token);
@@ -208,20 +298,10 @@ async function dirMutex(path: string, waitSeconds: number): Promise<Mutex> {
         (owner.pid > 0 && !pidAlive(owner.pid)) ||
         (owner.pid === 0 && Date.now() - observed.mtimeMs > DIR_LOCK_NO_OWNER_GRACE_MS);
       if (stale) {
-        // Remove only the exact directory observed above: a successor rewrites
-        // the inode, pid and token, so its lock is never deleted. Anything that
-        // changed since the first look means another process got here first.
-        const current = dirLockIdentity(path);
-        const latest = readDirLockOwner(path);
-        if (
-          current !== null &&
-          current.dev === observed.dev &&
-          current.ino === observed.ino &&
-          latest.pid === owner.pid &&
-          latest.token === owner.token
-        ) {
-          rmSync(path, { recursive: true, force: true });
-        }
+        // Move the observed object aside and verify what was actually moved: a
+        // successor that replaced the directory in the window is never deleted
+        // (see `takeoverStaleDirLock`).
+        takeoverStaleDirLock(path, observed, owner);
         continue;
       }
       if (Date.now() >= deadline) {

@@ -47,10 +47,12 @@ import {
 import { acquireCheckoutLock, pidAlive, withClaimsLock, type CheckoutLock } from '../lib/locks';
 import {
   heartbeatAgeMs,
+  isClaimOwnerLive,
   isLeaseReclaimable,
   leasePath,
   leaseProjectId,
   newLease,
+  readAppPortClaim,
   readLease,
   releaseAppPortClaim,
   releaseProjectClaims,
@@ -263,6 +265,8 @@ async function rebuildIfNeeded(
     appPort: number;
     appUrl: string;
     serve: boolean;
+    /** Fence run immediately before the replacement server is started. */
+    beforeServe?: () => Promise<void>;
   },
   deps: EnsureDeps,
 ): Promise<RebuildRecoveryResult | null> {
@@ -281,6 +285,7 @@ async function rebuildIfNeeded(
       appUrl: input.appUrl,
       env: process.env,
       serve: input.serve,
+      ...(input.beforeServe ? { beforeServe: input.beforeServe } : {}),
     },
     deps,
   );
@@ -394,6 +399,12 @@ export interface ReclaimForeignLeaseInput {
  * registry-wide claims mutex, and the lease is re-read inside it: a lease that
  * became live again keeps both the lease and its port claim.
  *
+ * A lease is published *after* its port claim, so the claim can be fresher than
+ * the lease. A claimant that refreshed its claim but has not written its lease
+ * yet is therefore still live, and re-reading only the (stale) lease would
+ * reclaim a port a running checkout is about to own. The claim's owner is
+ * checked under the same mutex: a live claimant keeps its port and its lease.
+ *
  * @public Used by `env:ensure` and exercised by the unit tests, which load this
  * module by computed URL.
  */
@@ -404,6 +415,11 @@ export async function reclaimForeignLease(input: ReclaimForeignLeaseInput): Prom
   return withClaimsLock(() => {
     const latest = readLease(input.dir, input.foreignProjectId);
     if (!latest || !input.isReclaimable(latest)) return false;
+    const claim = readAppPortClaim(input.dir, input.port);
+    // The claim on the port is fresher than the lease by design: only the
+    // foreign holder's live claim protects it (a claim that is ours means we won
+    // the `wx` race and the stale lease is exactly what we are reclaiming).
+    if (claim?.projectId === input.foreignProjectId && isClaimOwnerLive(claim)) return false;
     removeLease(input.dir, input.foreignProjectId);
     releaseAppPortClaim(input.dir, input.port, input.foreignProjectId);
     return true;
@@ -513,9 +529,22 @@ async function resolveLease(
       mode: options.serve ? 'prod' : 'dev',
     },
   );
-  writeLease(lease);
-  // The claim follows the selected port only: a moved lease drops the old one.
-  releaseProjectClaims(dir, projectId, chosen);
+  // The claim is the port reservation and the lease is its publication. Another
+  // checkout publishes after its claim, so this publication must be paired with
+  // a re-read of the claim: a selector that lost the port in the window must not
+  // write a lease claiming it (that is how two leases end up on one port).
+  await withClaimsLock(() => {
+    const holder = readAppPortClaim(dir, chosen);
+    if (holder?.projectId !== projectId) {
+      throw new EnvFailure(
+        EXIT_CONFLICT,
+        `the app-port claim for ${chosen} was released or taken by ${holder?.projectId ?? 'another process'}; re-run 'env:ensure'`,
+      );
+    }
+    writeLease(lease);
+    // The claim follows the selected port only: a moved lease drops the old one.
+    releaseProjectClaims(dir, projectId, chosen);
+  });
   return { contract: next, lease, dir, projectId };
 }
 
@@ -756,6 +785,9 @@ export async function runEnsure(
       let webHttp = 0;
       let webStarted = false;
       if (options.build) {
+        // The fence re-takes the checkout lock and proves the lease and shared
+        // environment survived the build before a replacement is started.
+        let fenced = false;
         const outcome = await rebuildIfNeeded(
           {
             lock,
@@ -764,13 +796,21 @@ export async function runEnsure(
             appPort: contract.appPort,
             appUrl: contract.appUrl,
             serve: options.serve,
+            beforeServe: async () => {
+              await lock.acquire();
+              await revalidateSharedStack({ dir, projectId, contract, requested, envHash });
+              fenced = true;
+            },
           },
           deps,
         );
         if (outcome) {
           // The checkout lock was free for the build: re-read the lease and the
-          // shared environment before anything is written or reported.
-          await revalidateSharedStack({ dir, projectId, contract, requested, envHash });
+          // shared environment before anything is written or reported. The fence
+          // already did this immediately before the start, under the lock.
+          if (!fenced) {
+            await revalidateSharedStack({ dir, projectId, contract, requested, envHash });
+          }
           writeBuildState({
             fingerprint: outcome.build.fingerprintAfter,
             envHash,
@@ -917,6 +957,18 @@ export async function runEnsure(
     let webHttp = 0;
     let webStarted = false;
     if (options.build && !warm) {
+      const revalidation = {
+        dir,
+        projectId,
+        contract,
+        requested,
+        envHash,
+        stackName: cliStackName,
+      };
+      // The fence re-takes the checkout lock and proves the lease, stack and its
+      // capabilities survived the build; the lock is then held through the
+      // replacement start and its health check.
+      const fence: { stack: StackRead | null } = { stack: null };
       const outcome = await rebuildIfNeeded(
         {
           lock,
@@ -925,22 +977,31 @@ export async function runEnsure(
           appPort: contract.appPort,
           appUrl: contract.appUrl,
           serve: options.serve,
+          beforeServe: async () => {
+            await lock.acquire();
+            const verified = await revalidateLocalStack(revalidation);
+            fence.stack = verified;
+            applyStackEnv(verified.env, {
+              appUrl: contract.appUrl,
+              appEnv,
+              stackId: verified.status.id,
+            });
+          },
         },
         deps,
       );
       if (outcome) {
         // The checkout lock was free for the build: `down` (or another env
         // process) may have released the lease or stopped/changed the stack.
-        // Prove the environment still matches the build before serving it.
-        stack = await revalidateLocalStack({
-          dir,
-          projectId,
-          contract,
-          requested,
-          envHash,
-          stackName: cliStackName,
+        // Prove the environment still matches the build before serving it; the
+        // fence already did so under the lock immediately before the start.
+        const verified = fence.stack ?? (await revalidateLocalStack(revalidation));
+        stack = verified;
+        applyStackEnv(verified.env, {
+          appUrl: contract.appUrl,
+          appEnv,
+          stackId: verified.status.id,
         });
-        applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
         writeBuildState({
           fingerprint: outcome.build.fingerprintAfter,
           envHash,
