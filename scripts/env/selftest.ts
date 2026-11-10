@@ -340,6 +340,9 @@ async function main(): Promise<number> {
     );
     check(!warmColdSeen, 'warm ensure reports cold:false on all 10 runs');
     check(calls('stack start') === 0, 'warm ensure does not restart the stack');
+    // Spec §6: the warm path is probes + a schema read, with no `stack status`
+    // while this checkout's recorded observation is fresh.
+    check(calls('stack status') === 0, 'warm ensure skips stack status (fresh heartbeat)');
 
     clearTrace();
     const conflict = run(['env:ensure', '--profile', 'web', '--json'], childEnv);
@@ -352,6 +355,10 @@ async function main(): Promise<number> {
     check(
       downAll.code === 0 && scratchLeases().length === 0 && scratchClaims().length === 0,
       'down --all releases the lease and its app-port claim',
+    );
+    check(
+      !existsSync(join(DEV_DIR, 'stack-cache.json')),
+      'down --all forgets the warm-path stack observation',
     );
 
     clearTrace();

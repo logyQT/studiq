@@ -2,6 +2,7 @@ import { UsageError, type DownOptions, type ParsedCommand } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from '../lib/exit';
 import { readContractLenient, readStackName } from '../lib/contract';
 import { appendEnvLog, identityKey, readStackState, removeStackState } from '../lib/state';
+import { removeCachedStack } from '../lib/stack-cache';
 import { ensureRegistryDir, pidAlive, withCheckoutLock } from '../lib/locks';
 import { leaseProjectId, readLease, releaseProjectClaims, removeLease } from '../lib/lease';
 import { REPO_ROOT, isThisCheckout, currentBranchRef } from '../lib/repo';
@@ -131,6 +132,7 @@ export async function runDown(
       refuseOverWebSurvivor(web);
       releaseLease(dir, projectId);
       removeStackState();
+      removeCachedStack();
       lines.push('Released the app-port lease (shared stack).');
       if (parsed.json) {
         printJson(
@@ -153,6 +155,7 @@ export async function runDown(
         refuseOverWebSurvivor(web);
         releaseLease(dir, projectId);
         removeStackState();
+        removeCachedStack();
         lines.push('Released the app-port lease (stack is stopped).');
       } else {
         const lease = readLease(dir, projectId);
@@ -199,6 +202,7 @@ export async function runDown(
     refuseOverWebSurvivor(web);
     releaseLease(dir, projectId);
     removeStackState();
+    removeCachedStack();
     lines.push('Released the app-port lease.');
     if (parsed.json) {
       printJson(

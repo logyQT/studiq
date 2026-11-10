@@ -2,6 +2,7 @@ import { lstatSync } from 'node:fs';
 import type { ParsedCommand, RuntimeChoice } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from '../lib/exit';
 import { contractWithPort, readContract, type Contract } from '../lib/contract';
+import { contractWithLease } from '../lib/contract-lease';
 import { assertNativeAvailable, selectRuntime } from '../lib/platform';
 import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
@@ -18,7 +19,9 @@ import {
   readStack,
   readStackList,
   stackAbsenceConfirmed,
+  type StackEnv,
   type StackRead,
+  type StackStatus,
 } from '../lib/stack';
 import { applyStackEnv, startStack, stopStack } from '../lib/stack-lifecycle';
 import {
@@ -57,6 +60,7 @@ import {
   type AppLease,
 } from '../lib/lease';
 import { appPortCandidates, chooseAppPort } from '../lib/app-port';
+import { readCachedStack, writeCachedStack, type CachedStack } from '../lib/stack-cache';
 import {
   appendEnvLog,
   buildArtifactPresent,
@@ -561,6 +565,79 @@ function emit(
   }
 }
 
+/**
+ * A `StackEnv` shaped from a status record. The key fields stay null: the warm
+ * path never applies this to `process.env` (see the `applyStackEnv` guard), it
+ * only satisfies the `StackRead` shape the reporting path already understands.
+ */
+function stackEnvFromStatus(status: StackStatus): StackEnv {
+  return {
+    apiUrl: status.apiUrl,
+    restUrl: status.apiUrl ? `${status.apiUrl}/rest/v1` : null,
+    dbUrl: status.dbUrl,
+    anonKey: null,
+    serviceRoleKey: null,
+    publishableKey: null,
+    secretKey: null,
+    mailUrl: status.mailUrl,
+    studioUrl: status.studioUrl,
+  };
+}
+
+/** What the warm path proved, and therefore what it may skip. */
+interface WarmEvidence {
+  status: StackStatus;
+  services: string[];
+  /** Build environment hash recorded with the observation (no keys needed). */
+  envHash: string;
+}
+
+/**
+ * The warm path (spec §6): reuse this checkout's recorded stack observation
+ * when every decision it feeds is independently proven — requested capabilities
+ * answer their probes, the recorded build still matches, and the owned server
+ * still serves the leased port. Nothing here mutates state.
+ *
+ * Anything unproven returns null: the caller then takes the authoritative
+ * `stack status` read (and, if needed, the cold-start path). Keys are never
+ * cached, so a request that needs them (a build, a seed, or starting/replacing
+ * the server) also takes the authoritative read.
+ */
+async function warmFromCache(input: {
+  cached: CachedStack;
+  requested: Capability[];
+  contract: Contract;
+  build: boolean;
+  forceBuild: boolean;
+  serve: boolean;
+  seed: boolean;
+}): Promise<WarmEvidence | null> {
+  const { cached } = input;
+  if (input.seed || input.forceBuild) return null;
+  if (missingCapabilities(observedCapabilities(cached.services), input.requested).length > 0) {
+    return null;
+  }
+  if (!(await probeCapabilities(input.requested, probeContextFromStatus(cached.status))).ok) {
+    return null;
+  }
+  if (input.build) {
+    const state = readBuildState();
+    const current =
+      state?.envHash === cached.envHash &&
+      state.fingerprint ===
+        computeBuildFingerprint({ root: REPO_ROOT, mode: BUILD_MODE, envHash: cached.envHash }) &&
+      buildArtifactPresent();
+    if (!current || cached.appUrl !== input.contract.appUrl) return null;
+  }
+  if (input.serve) {
+    // A server that must be started or replaced needs the stack's keys, which
+    // are deliberately not cached. Only an already-proven server is warm.
+    const readiness = recordedWebReadiness(input.contract.appPort);
+    if (!readiness.ready || !healthy(await probeHttp(input.contract.appUrl))) return null;
+  }
+  return { status: cached.status, services: cached.services, envHash: cached.envHash };
+}
+
 export async function runEnsure(
   parsed: ParsedCommand,
   deps: EnsureDeps = defaultEnsureDeps,
@@ -604,8 +681,31 @@ export async function runEnsure(
 
     // Discover the running stack before touching the lease: a foreign stack is
     // refused, and a live stack pins the derived APP_URL port it was started on.
-    let stack = baseContract.shared ? null : readStack(cliStackName);
-    if (stack) assertOwnedStack(stack, cliStackName);
+    //
+    // Warm path first: this checkout's recent own observation can stand in for
+    // `stack status` (~650 ms) only when the capability probes, the recorded
+    // build and the owned server all still prove the same facts (see
+    // `warmFromCache`). Everything else takes the authoritative read below.
+    const cached = baseContract.shared ? null : readCachedStack(cliStackName);
+    const warmContract = contractWithLease(baseContract);
+    let warm = cached
+      ? await warmFromCache({
+          cached,
+          requested,
+          contract: warmContract,
+          build: options.build,
+          forceBuild: options.forceBuild,
+          serve: options.serve,
+          seed,
+        })
+      : null;
+
+    let stack = baseContract.shared
+      ? null
+      : warm
+        ? { status: warm.status, services: warm.services, env: stackEnvFromStatus(warm.status) }
+        : readStack(cliStackName);
+    if (stack && !warm) assertOwnedStack(stack, cliStackName);
 
     const lease = await resolveLease(baseContract, {
       stackName: cliStackName,
@@ -616,6 +716,13 @@ export async function runEnsure(
     });
     const contract = { ...lease.contract, stackName: cliStackName };
     const { dir, projectId } = lease;
+    if (warm && contract.appPort !== warmContract.appPort) {
+      // The lease moved between the warm proof and the claim: the web evidence
+      // belongs to the old port, so re-read the stack authoritatively.
+      warm = null;
+      stack = baseContract.shared ? null : readStack(cliStackName);
+      if (stack) assertOwnedStack(stack, cliStackName);
+    }
 
     if (baseContract.shared) {
       const sharedEnv = sharedStackEnv();
@@ -783,18 +890,24 @@ export async function runEnsure(
       }
     }
 
-    applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
+    // The warm path carries no keys and needs none: it only reuses a server that
+    // is already running. Every other path relays the discovered values.
+    if (!warm) {
+      applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
+    }
     if (seed) runSeeder(options.profile, process.env);
 
-    const envHash = buildEnvHash({
-      supabaseUrl: stack.env.apiUrl,
-      siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
-      anonKey: stack.env.anonKey ?? '',
-    });
+    const envHash =
+      warm?.envHash ??
+      buildEnvHash({
+        supabaseUrl: stack.env.apiUrl,
+        siteUrl: process.env.NEXT_PUBLIC_SITE_URL || contract.appUrl,
+        anonKey: stack.env.anonKey ?? '',
+      });
     let webPid = readWebPid();
     let webHttp = 0;
     let webStarted = false;
-    if (options.build) {
+    if (options.build && !warm) {
       const outcome = await rebuildIfNeeded(
         {
           lock,
@@ -835,6 +948,22 @@ export async function runEnsure(
       const warmWeb = recordedWebReadiness(contract.appPort);
       webHttp = await probeHttp(contract.appUrl);
       if (options.serve && (!healthy(webHttp) || !warmWeb.ready)) {
+        if (warm) {
+          // The warm path carries no keys, so it may not start a replacement.
+          // The server stopped after the warm probes: re-read the stack (it is
+          // still up — the capability probes just passed) and relay its values.
+          const refreshed = readStack(cliStackName);
+          if (!refreshed) {
+            throw new EnvFailure(
+              EXIT_START_FAILED,
+              `stack '${cliStackName || 'default'}' changed while serving; re-run 'env:ensure'`,
+            );
+          }
+          assertOwnedStack(refreshed, cliStackName);
+          stack = refreshed;
+          warm = null;
+          applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
+        }
         // A port that already answers without a provable owner is refused, and a
         // server that survives its stop would race the replacement for the port;
         // both abort instead of starting a second server.
@@ -872,6 +1001,15 @@ export async function runEnsure(
         mode: options.serve ? 'prod' : 'dev',
       }),
     );
+    // Record what was just proven so the next warm `ensure` can skip
+    // `stack status` (keys are never part of this record).
+    writeCachedStack({
+      stackName: cliStackName ?? '',
+      status: stack.status,
+      services: stack.services,
+      envHash,
+      appUrl: contract.appUrl,
+    });
     const snapshot = await collectSnapshot({
       contract,
       stack: stack.status,

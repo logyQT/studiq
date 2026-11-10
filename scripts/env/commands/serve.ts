@@ -30,6 +30,7 @@ import { collectSnapshot } from '../lib/snapshot';
 import { liveServerConflict } from '../lib/web-owner';
 import { refuseConflict } from '../lib/refusal';
 import { resolveLocalAppEnv, sharedStackEnv } from '../lib/app-env';
+import { recoverHandover } from '../lib/rebuild';
 
 const healthy = (code: number) => code >= 200 && code < 400;
 
@@ -45,6 +46,11 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
   const appEnv = resolveLocalAppEnv();
 
   return withCheckoutLock(async () => {
+    // Settle an artifact left behind by an interrupted rebuild before `.next`
+    // or the build state is read, exactly like `env:build`: a restored `.next`
+    // must never inherit the interrupted run's "this build is current" claim.
+    recoverHandover();
+
     const base = readContract();
     const stackName = options.stack ?? base.stackName;
     const contract = contractWithLease({ ...base, stackName });
