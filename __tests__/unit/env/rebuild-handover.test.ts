@@ -32,6 +32,7 @@ interface RebuildDeps {
   stopWeb(): { pid: number | null; stopped: boolean };
   stopForReplacement(): { pid: number | null; stopped: boolean };
   readPid(): number | null;
+  pidAlive?(pid: number): boolean;
   removeBackup?(backup: string): void;
   artifactDir: string;
   backupDir: string;
