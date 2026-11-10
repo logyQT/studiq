@@ -49,7 +49,15 @@ export async function runServe(parsed: ParsedCommand): Promise<number> {
     // Settle an artifact left behind by an interrupted rebuild before `.next`
     // or the build state is read, exactly like `env:build`: a restored `.next`
     // must never inherit the interrupted run's "this build is current" claim.
-    recoverHandover();
+    // A record owned by a live process is that process's in-flight rebuild (the
+    // checkout lock is free for it), so refuse rather than serve its artifact.
+    const recovery = recoverHandover();
+    if (recovery.status === 'in-flight') {
+      throw new EnvFailure(
+        EXIT_CONFLICT,
+        `another env process (pid ${recovery.ownerPid}) is rebuilding apps/web/.next; retry once its build handover settles`,
+      );
+    }
 
     const base = readContract();
     const stackName = options.stack ?? base.stackName;
