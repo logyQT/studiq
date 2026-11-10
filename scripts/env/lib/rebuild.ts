@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { logBuildOutput, runProductionBuild, type BuildResult } from './build';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
@@ -102,14 +102,127 @@ function leftoverWarning(backup: string | null): string[] | undefined {
   return backup === null ? undefined : [`could not remove the previous build backup at ${backup}`];
 }
 
-function backupArtifact(deps: RebuildRecoveryDeps): string | null {
+/** Interrupted-rebuild record; `.dev/` is checkout-scoped, so recovery never crosses checkouts. */
+const HANDOVER_FILE = join(DEV_DIR, 'handover.json');
+
+interface HandoverRecord {
+  artifactDir: string;
+  backupPath: string;
+  previousPid: number | null;
+  phase: string;
+  at: string;
+}
+
+/** Persist the handover atomically (mode 600) before the artifact is moved aside. */
+function writeHandover(record: HandoverRecord): void {
+  mkdirSync(DEV_DIR, { recursive: true, mode: 0o700 });
+  const temp = `${HANDOVER_FILE}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(temp, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    renameSync(temp, HANDOVER_FILE);
+  } finally {
+    rmSync(temp, { force: true });
+  }
+}
+
+function removeHandover(): void {
+  try {
+    rmSync(HANDOVER_FILE, { force: true });
+  } catch {
+    /* best effort: a stale record resolves itself on the next recovery */
+  }
+}
+
+function readHandover(): HandoverRecord | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(HANDOVER_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.artifactDir !== 'string' || typeof record.backupPath !== 'string') return null;
+  return {
+    artifactDir: record.artifactDir,
+    backupPath: record.backupPath,
+    previousPid: typeof record.previousPid === 'number' ? record.previousPid : null,
+    phase: typeof record.phase === 'string' ? record.phase : '',
+    at: typeof record.at === 'string' ? record.at : '',
+  };
+}
+
+/**
+ * Settle a handover left by an interrupted rebuild.
+ *
+ * Runs inside the checkout lock, before the lease/build, so the artifact is
+ * consistent before `ensure` decides whether it needs to build. A record whose
+ * `.next` is gone and whose backup exists is restored; every other resolved
+ * state drops the stale backup and/or the record. A restore that cannot land
+ * keeps the record (and its backup path) for the next attempt.
+ *
+ * @public Used by `env:ensure` and exercised by the unit tests.
+ */
+export function recoverHandover(): void {
+  const record = readHandover();
+  if (!record) return;
+  const backupPresent = existsSync(record.backupPath);
+  if (!backupPresent) {
+    // The backup is gone, so there is nothing left to restore or clean up.
+    removeHandover();
+    return;
+  }
+  if (existsSync(join(record.artifactDir, 'BUILD_ID'))) {
+    // A complete artifact is in place; the backup is spent unless removal fails.
+    try {
+      rmSync(record.backupPath, { recursive: true, force: true });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      writeStderrLine(
+        `warning: could not remove the stale handover backup at ${record.backupPath} (${reason}); keeping the handover record`,
+      );
+      return;
+    }
+    removeHandover();
+    return;
+  }
+  try {
+    rmSync(record.artifactDir, { recursive: true, force: true });
+    renameSync(record.backupPath, record.artifactDir);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new EnvFailure(
+      EXIT_START_FAILED,
+      `could not restore the interrupted build from ${record.backupPath} (${reason}); kept the handover record`,
+      { cause: error },
+    );
+  }
+  removeHandover();
+}
+
+function backupArtifact(deps: RebuildRecoveryDeps, previousPid: number | null): string | null {
   if (!existsSync(join(deps.artifactDir, 'BUILD_ID'))) return null;
   mkdirSync(deps.backupDir, { recursive: true, mode: 0o700 });
   const stamp = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const backup = join(deps.backupDir, `next-backup-${stamp}`);
-  // A rename is atomic and stays on the same filesystem (`.dev/` is inside the
-  // checkout). The web server was stopped before this runs.
-  renameSync(deps.artifactDir, backup);
+  // The record must exist before the rename: a process that dies between the
+  // two must leave proof of where the previous build went.
+  writeHandover({
+    artifactDir: deps.artifactDir,
+    backupPath: backup,
+    previousPid,
+    phase: 'backup',
+    at: new Date().toISOString(),
+  });
+  try {
+    // A rename is atomic and stays on the same filesystem (`.dev/` is inside the
+    // checkout). The web server was stopped before this runs.
+    renameSync(deps.artifactDir, backup);
+  } catch (error) {
+    // The artifact was not moved, so there is nothing to hand over.
+    removeHandover();
+    throw error;
+  }
   return backup;
 }
 
@@ -237,6 +350,8 @@ async function failWithRecovery(input: {
   if (input.backup) {
     try {
       restoreArtifact(input.deps, input.backup);
+      // The previous build is back, so the inherited handover is resolved.
+      removeHandover();
       restored = true;
     } catch (error) {
       // A restore that cannot land must keep the backup: it is the only copy
@@ -304,7 +419,7 @@ export async function rebuildWithRecovery(
 
   let backup: string | null;
   try {
-    backup = backupArtifact(deps);
+    backup = backupArtifact(deps, previousPid);
   } catch (error) {
     // The previous server was already stopped, so a backup that cannot be
     // created must restore service (not build) and keep the original cause.
@@ -350,6 +465,7 @@ export async function rebuildWithRecovery(
   if (!request.serve) {
     // The new build is complete; the previous artifact is no longer needed.
     const leftover = discardBackup(deps, backup);
+    removeHandover();
     const warnings = leftoverWarning(leftover);
     return {
       build: result,
@@ -372,7 +488,12 @@ export async function rebuildWithRecovery(
     );
   } catch (error) {
     const survivor = containReplacement(deps, pid, previousPid);
-    if (survivor !== null) throw survivingReplacementFailure(survivor, backup, error);
+    if (survivor !== null) {
+      // The new build is in place and deliberately kept with its backup: the
+      // handover is no longer actionable, so it must not restore on a later run.
+      removeHandover();
+      throw survivingReplacementFailure(survivor, backup, error);
+    }
     return failWithRecovery({
       deps,
       request,
@@ -380,11 +501,15 @@ export async function rebuildWithRecovery(
       backup,
       code: EXIT_START_FAILED,
       message: `web did not start (${error instanceof Error ? error.message : String(error)})`,
+      cause: error,
     });
   }
   if (!waited.ok) {
     const survivor = containReplacement(deps, pid, previousPid);
-    if (survivor !== null) throw survivingReplacementFailure(survivor, backup);
+    if (survivor !== null) {
+      removeHandover();
+      throw survivingReplacementFailure(survivor, backup);
+    }
     return failWithRecovery({
       deps,
       request,
@@ -396,6 +521,7 @@ export async function rebuildWithRecovery(
   }
 
   const leftover = discardBackup(deps, backup);
+  removeHandover();
   const warnings = leftoverWarning(leftover);
   return {
     build: result,

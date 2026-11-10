@@ -29,7 +29,7 @@ import {
 } from '../lib/capabilities';
 import { buildCapabilities, excludesFor, missingCapabilities, type Capability } from '../profiles';
 import { BUILD_MODE, buildEnvHash, computeBuildFingerprint } from '../lib/fingerprint';
-import { rebuildWithRecovery } from '../lib/rebuild';
+import { rebuildWithRecovery, recoverHandover } from '../lib/rebuild';
 import { pidAlive, withCheckoutLock } from '../lib/locks';
 import {
   heartbeatAgeMs,
@@ -350,6 +350,10 @@ export async function runEnsure(parsed: ParsedCommand): Promise<number> {
   // One lock per checkout: the app-port lease and the web claim are authoritative
   // while it is held. The build lock is taken later, inside this callback.
   return withCheckoutLock(async () => {
+    // Settle an artifact left behind by an interrupted rebuild before the lease
+    // or the build looks at `.next`; the record lives in this checkout's `.dev/`.
+    recoverHandover();
+
     // Refuse a second environment before claiming a port or writing state.
     if (options.build || options.serve) {
       const conflict = liveServerConflict(
