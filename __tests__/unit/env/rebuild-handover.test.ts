@@ -39,7 +39,7 @@ interface RebuildDeps {
 }
 
 interface RebuildModule {
-  recoverHandover(): void;
+  recoverHandover(deps?: { readPid(): number | null; pidAlive?(pid: number): boolean }): void;
   rebuildWithRecovery(
     input: {
       envHash: string;
@@ -228,6 +228,57 @@ describe('env rebuild handover recovery', () => {
     expect(existsSync(handoverPath)).toBe(true);
     expect(readRecord().backupPath).toBe(backupPath);
     expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
+  });
+
+  it('defers restoring an uncommitted handover while the replacement is alive', () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'unverified-build');
+    writeFileSync(join(artifactDir, 'marker'), 'served-by-replacement');
+    const backupPath = makeBackup(backupDir, 'next-backup-live');
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: 4242,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+
+    // The replacement server still owns the unverified `.next`: nothing may be
+    // removed, renamed or forgotten until it stops.
+    rebuildModule.recoverHandover({
+      readPid: () => 9001,
+      pidAlive: (pid) => pid === 9001,
+    });
+
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('unverified-build');
+    expect(readFileSync(join(artifactDir, 'marker'), 'utf8')).toBe('served-by-replacement');
+    expect(existsSync(backupPath)).toBe(true);
+    expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(existsSync(handoverPath)).toBe(true);
+    expect(readRecord().phase).toBe('backed-up');
+  });
+
+  it('restores an uncommitted handover once the replacement is dead', () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'unverified-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-dead');
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: 4242,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+
+    // A PID record can outlive its process; only a proven-dead replacement lets
+    // the previous build take the artifact back.
+    rebuildModule.recoverHandover({ readPid: () => 9001, pidAlive: () => false });
+
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(existsSync(backupPath)).toBe(false);
+    expect(existsSync(handoverPath)).toBe(false);
   });
 
   it('writes the committed phase before discarding and leaves no record after a successful rebuild', async () => {

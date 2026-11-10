@@ -90,6 +90,12 @@ export function observedCapabilities(services: readonly string[]): Capability[] 
   );
 }
 
+/** A shared-mode TCP port from the environment; 0 when unset or invalid. */
+function envPort(value: string | undefined): number {
+  const port = Number(value ?? '0');
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : 0;
+}
+
 export function sharedProbeContext(): ProbeContext {
   const apiUrl = (process.env.SUPABASE_URL ?? '').replace(/\/$/, '');
   const mailUrl = process.env.SUPABASE_MAIL_URL ?? process.env.MAILPIT_URL ?? null;
@@ -107,8 +113,10 @@ export function sharedProbeContext(): ProbeContext {
       mail: 0,
       mailSmtp: 0,
       mailPop3: 0,
-      realtime: 0,
-      analytics: 0,
+      // Shared stacks publish these as plain port variables; an unset value
+      // stays 0 so the readiness probe fails instead of probing port 0.
+      realtime: envPort(process.env.SUPABASE_REALTIME_PORT),
+      analytics: envPort(process.env.SUPABASE_ANALYTICS_PORT),
       edgeInspector: 0,
       pooler: 0,
       pgmeta: 0,

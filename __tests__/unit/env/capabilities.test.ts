@@ -8,6 +8,7 @@ interface CapabilitiesModule {
     capabilities: Iterable<string>,
     context: Record<string, unknown>,
   ): Promise<{ ok: boolean; failed: string[] }>;
+  sharedProbeContext(): Record<string, unknown> & { ports: Record<string, number> };
 }
 
 const capabilities = await loadEnvModule<CapabilitiesModule>('lib/capabilities.ts');
@@ -80,5 +81,60 @@ describe('capability probes (spec §5.2)', () => {
   it('deduplicates requested capabilities', async () => {
     const result = await capabilities.probeCapabilities(['auth', 'auth'], context());
     expect(result.failed).toEqual(['auth']);
+  });
+
+  it('reads the shared realtime and analytics ports for readiness', async () => {
+    const realtime = await startTcpListener(0);
+    const analytics = await startTcpListener(0);
+    const saved = {
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      SUPABASE_REALTIME_PORT: process.env.SUPABASE_REALTIME_PORT,
+      SUPABASE_ANALYTICS_PORT: process.env.SUPABASE_ANALYTICS_PORT,
+    };
+    try {
+      process.env.SUPABASE_URL = 'http://127.0.0.1:1';
+      process.env.SUPABASE_REALTIME_PORT = String(realtime.port);
+      process.env.SUPABASE_ANALYTICS_PORT = String(analytics.port);
+
+      const ctx = capabilities.sharedProbeContext();
+      expect(ctx.ports.realtime).toBe(realtime.port);
+      expect(ctx.ports.analytics).toBe(analytics.port);
+      expect(await capabilities.probeCapabilities(['realtime', 'analytics'], ctx)).toEqual({
+        ok: true,
+        failed: [],
+      });
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      await realtime.close();
+      await analytics.close();
+    }
+  });
+
+  it('fails shared realtime and analytics readiness when the ports are unset', async () => {
+    const saved = {
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      SUPABASE_REALTIME_PORT: process.env.SUPABASE_REALTIME_PORT,
+      SUPABASE_ANALYTICS_PORT: process.env.SUPABASE_ANALYTICS_PORT,
+    };
+    try {
+      process.env.SUPABASE_URL = 'http://127.0.0.1:1';
+      delete process.env.SUPABASE_REALTIME_PORT;
+      delete process.env.SUPABASE_ANALYTICS_PORT;
+
+      const ctx = capabilities.sharedProbeContext();
+      expect(ctx.ports.realtime).toBe(0);
+      expect(ctx.ports.analytics).toBe(0);
+      const result = await capabilities.probeCapabilities(['realtime', 'analytics'], ctx);
+      expect(result.ok).toBe(false);
+      expect(result.failed.toSorted()).toEqual(['analytics', 'realtime']);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });

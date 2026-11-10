@@ -195,6 +195,23 @@ function commitHandover(): void {
 }
 
 /**
+ * Liveness seams for handover recovery. The replacement server started by
+ * `rebuildWithRecovery` is the process that owns `.next`, so while it is alive
+ * nothing may be restored over (or moved out of) that directory.
+ */
+interface HandoverRecoveryDeps {
+  /** PID recorded for this checkout's web server (the replacement), or null. */
+  readPid(): number | null;
+  /** Liveness probe for the recorded replacement; defaults to the real `pidAlive`. */
+  pidAlive?(pid: number): boolean;
+}
+
+const defaultHandoverDeps: HandoverRecoveryDeps = {
+  readPid: readWebPid,
+  pidAlive,
+};
+
+/**
  * Settle a handover left by an interrupted rebuild.
  *
  * Runs inside the checkout lock, before the lease/build, so the artifact is
@@ -202,6 +219,9 @@ function commitHandover(): void {
  *
  * - `committed` with an artifact present: the replacement completed and was
  *   verified, so the spent backup and the record are removed.
+ * - `backed-up` while the replacement is still alive: the process serving the
+ *   unverified artifact still owns `.next`, so recovery is deferred (record and
+ *   backup untouched) and a later `ensure` retries once it stops.
  * - anything else with a backup: the previous build was never verified as
  *   replaced, so it is restored over `.next` — even when an unverified
  *   artifact is present — and the record is removed afterwards.
@@ -213,7 +233,7 @@ function commitHandover(): void {
  *
  * @public Used by `env:ensure` and exercised by the unit tests.
  */
-export function recoverHandover(): void {
+export function recoverHandover(deps: HandoverRecoveryDeps = defaultHandoverDeps): void {
   const record = readHandover();
   if (!record) return;
   if (!existsSync(record.backupPath)) {
@@ -235,6 +255,20 @@ export function recoverHandover(): void {
     }
     removeHandover();
     return;
+  }
+  if (record.phase !== 'committed') {
+    // The replacement server was started with this checkout's worktree marker,
+    // so `readWebPid` can only return a replacement that owns the port and the
+    // unverified `.next`. Restoring under it would yank the artifact it serves,
+    // so defer without touching the record or the backup.
+    const replacement = deps.readPid();
+    const alive = replacement !== null && (deps.pidAlive?.(replacement) ?? pidAlive(replacement));
+    if (alive) {
+      writeStderrLine(
+        `warning: the replacement web server (pid ${replacement}) is still running; deferring recovery of the interrupted build until it stops (kept the handover record and backup at ${record.backupPath})`,
+      );
+      return;
+    }
   }
   try {
     rmSync(record.artifactDir, { recursive: true, force: true });

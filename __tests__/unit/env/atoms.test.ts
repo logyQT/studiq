@@ -115,6 +115,11 @@ describe('env atom grammar', () => {
     expect(parsed.yes).toBe(true);
   });
 
+  it('parses the realtime and analytics capability atoms', () => {
+    const parsed = atoms.parseCommand(['ensure', '--profile', 'api', '--realtime', '--analytics']);
+    expect(parsed.ensure).toMatchObject({ capabilityAtoms: ['realtime', 'analytics'] });
+  });
+
   it('rejects conflicting, unsupported and unknown atoms', () => {
     throwsUsage(['ensure', '--profile', 'api', '--seed', '--no-seed'], /conflicts/);
     throwsUsage(['ensure', '--profile', 'api', '--reconcile'], /unknown option/);

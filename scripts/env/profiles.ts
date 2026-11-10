@@ -12,7 +12,16 @@ export type Capability =
   | 'functions'
   | 'analytics'
   | 'pooler';
-export const CAPABILITY_ATOMS = ['db', 'rest', 'auth', 'storage', 'studio', 'mail'] as const;
+export const CAPABILITY_ATOMS = [
+  'db',
+  'rest',
+  'auth',
+  'storage',
+  'studio',
+  'mail',
+  'realtime',
+  'analytics',
+] as const;
 export type CapabilityAtom = (typeof CAPABILITY_ATOMS)[number];
 
 const ATOM_CAPABILITY: Record<CapabilityAtom, Capability> = {
@@ -22,6 +31,8 @@ const ATOM_CAPABILITY: Record<CapabilityAtom, Capability> = {
   storage: 'storage',
   studio: 'studio',
   mail: 'mail',
+  realtime: 'realtime',
+  analytics: 'analytics',
 };
 
 export interface ProfileSpec {
@@ -36,7 +47,8 @@ export const PROFILES: Record<ProfileName, ProfileSpec> = {
   web: { capabilities: [...API, 'mail'], build: true, serve: true },
 };
 // The lean stack never starts realtime/functions/analytics/pooler; they stay in
-// the capability union only so `-x` always excludes them.
+// the capability union so `-x` always excludes them unless an atom requests one
+// (`--realtime`/`--analytics`).
 const EXCLUDE_ORDER: readonly Capability[] = [
   'rest',
   'studio',

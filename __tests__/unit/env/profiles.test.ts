@@ -73,6 +73,13 @@ describe('env profiles (phase 2)', () => {
     expect(() => profiles.buildCapabilities('api', ['studio'])).not.toThrow();
   });
 
+  it('accepts realtime and analytics atoms and removes them from -x', () => {
+    const caps = profiles.buildCapabilities('api', ['realtime', 'analytics']);
+    expect(caps.has('realtime')).toBe(true);
+    expect(caps.has('analytics')).toBe(true);
+    expect(profiles.excludesFor(caps)).toEqual(['studio', 'mail', 'functions', 'pooler']);
+  });
+
   it('reports requested capabilities the stack is missing', () => {
     expect(profiles.missingCapabilities(['database', 'auth'], ['mail'])).toEqual(['mail']);
   });
