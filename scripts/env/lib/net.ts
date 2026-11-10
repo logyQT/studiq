@@ -1,4 +1,4 @@
-import { createServer } from 'node:net';
+import { createConnection, createServer } from 'node:net';
 import { entryForPort, type RegistryEntry } from './registry';
 
 const PORT_SCAN_START = 3000;
@@ -57,6 +57,35 @@ export function probePortBind(port: number): Promise<PortBindProbe> {
 
 async function canBindPort(port: number): Promise<boolean> {
   return (await probePortBind(port)).state === 'free';
+}
+
+/**
+ * Whether something is accepting TCP connections on `host:port`.
+ *
+ * This is a **liveness** probe (a service is up and listening), deliberately
+ * different from `canBindPort` (whether this checkout could bind the port for
+ * a new server). Do not use it for app-port selection.
+ */
+export function portAcceptsConnections(
+  port: number,
+  host = '127.0.0.1',
+  timeoutMs = 300,
+): Promise<boolean> {
+  if (port <= 0) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const socket = createConnection({ host, port });
+    let settled = false;
+    const finish = (accepts: boolean): void => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(accepts);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
 }
 
 /**

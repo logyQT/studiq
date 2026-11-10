@@ -1,9 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
 import { UsageError } from '../atoms';
 import { isSharedMode } from '../lib/contract';
 import { writeStderrLine } from '../lib/output';
-import { REPO_ROOT, canon } from '../lib/repo';
+import { REPO_ROOT, canon, isThisCheckoutWorkdir } from '../lib/repo';
 import { readStackList, type ListedStack } from '../lib/stack';
 
 const ALL_MESSAGE =
@@ -11,12 +10,12 @@ const ALL_MESSAGE =
   "on the machine. Stop only this checkout's stack with 'stack stop --stack <name>'.";
 
 const DESTROY_MESSAGE =
-  "env:supa: refusing 'destroy' — stack deletion is owned by 'env:recreate --yes' / " +
+  "env:supa: refusing 'destroy' — stack deletion is owned by " +
   "'env:down --all --yes' (with ownership checks).";
 
 const DB_RESET_MESSAGE =
-  "env:supa: refusing 'db reset' — database reset is owned by 'env:reset-db --yes' " +
-  "(this checkout's stack only).";
+  "env:supa: refusing 'db reset' — stop this checkout's stack with 'env:down --all' " +
+  'and reset it explicitly.';
 
 const NO_SCOPE_MESSAGE =
   "env:supa: 'stop'/'restart' requires --stack <name> or --stack-id <id>; " +
@@ -189,11 +188,6 @@ function cliWorkdir(args: string[]): string | null {
   return workdir;
 }
 
-/** The CLI resolves `--workdir` relative to our cwd, which is the repo root. */
-function isThisCheckout(workdir: string): boolean {
-  return canon(workdir.startsWith('/') ? workdir : resolve(REPO_ROOT, workdir)) === REPO_ROOT;
-}
-
 /** `--all` and pflag's `--all=true|false` all mean "every stack". */
 function hasAllFlag(args: string[]): boolean {
   return args.some((arg) => arg === '--all' || arg.startsWith('--all='));
@@ -261,7 +255,7 @@ export function runSupa(args: string[]): number {
     // name is not enough: a foreign workdir could make it stop another
     // checkout's stack. Only this checkout's root is accepted.
     const workdir = cliWorkdir(args);
-    if (workdir !== null && (workdir === '' || !isThisCheckout(workdir))) {
+    if (workdir !== null && (workdir === '' || !isThisCheckoutWorkdir(workdir))) {
       return reject(
         `env:supa: refusing to stop/restart: --workdir '${workdir || '(empty)'}' is not this checkout (${REPO_ROOT}).`,
         6,

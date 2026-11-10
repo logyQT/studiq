@@ -42,7 +42,7 @@ const CODE_ROOTS = ['apps/web/src', 'apps/admin/src', 'packages', 'scripts', '__
  * configuration, so they are never part of the inventory. Keep this list to
  * names the operating system or shell owns.
  */
-const AMBIENT_ALLOWLIST = new Set(['PATH', 'HOME', 'LANG', 'LC_ALL']);
+const AMBIENT_ALLOWLIST = new Set(['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_TIME', 'TZ']);
 
 /**
  * Path-scoped ambient names: OS-owned values one narrow scope may read without

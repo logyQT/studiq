@@ -1,130 +1,293 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { createHarness, objectField, parseJsonObject, type Harness } from '#test/unit/env/support';
+import { describe, expect, it } from 'vitest';
+import { loadEnvModule } from '#test/unit/env/load';
 
-const harnesses: Harness[] = [];
-
-afterEach(async () => {
-  for (const harness of harnesses.splice(0)) await harness.cleanup();
-});
-
-function newHarness(): Harness {
-  const harness = createHarness();
-  harnesses.push(harness);
-  return harness;
+interface StatusSnapshot {
+  ready: boolean;
+  profile: string | null;
+  cold: boolean | null;
+  seeded: boolean | null;
+  build: { present: boolean; fingerprint: string | null };
+  ports: Record<string, unknown>;
+  warnings: string[];
+  [key: string]: unknown;
 }
 
-/**
- * `status --json` is the cheapest read of the contract: no stack fixture, so
- * both probes fail fast and the JSON still exposes `ports.app` / `urls.app`.
- */
-function readStatus(env: NodeJS.ProcessEnv): ReturnType<Harness['run']> {
-  return newHarness().run(['status', '--json'], env);
+interface JsonModule {
+  shapeStatus(inputs: Record<string, unknown>): StatusSnapshot;
 }
 
-function appPort(stdout: string): unknown {
-  return objectField(parseJsonObject(stdout), 'ports').app;
+interface ExitModule {
+  EXIT_OK: number;
+  EXIT_USAGE: number;
+  EXIT_NATIVE_UNAVAILABLE: number;
+  EXIT_START_FAILED: number;
+  EXIT_TIMEOUT: number;
+  EXIT_CONFLICT: number;
+  EnvFailure: new (code: number, message: string) => Error & { exitCode: number };
 }
 
-function appUrl(stdout: string): unknown {
-  return objectField(parseJsonObject(stdout), 'urls').app;
+interface ContractModule {
+  contractWithPort(
+    contract: {
+      shared: boolean;
+      sharedOwner: string | null;
+      stackName: string | null;
+      appPort: number;
+      appUrl: string;
+    },
+    port: number,
+  ): { appPort: number; appUrl: string };
+  readContractLenient(): {
+    shared: boolean;
+    sharedOwner: string | null;
+    stackName: string | null;
+    appPort: number;
+    appUrl: string;
+  };
 }
 
-describe('env contract: APP_PORT vs loopback APP_URL', () => {
-  it('rejects an APP_PORT that disagrees with a loopback APP_URL', async () => {
-    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://localhost:3000' });
+const json = await loadEnvModule<JsonModule>('lib/json.ts');
+const exit = await loadEnvModule<ExitModule>('lib/exit.ts');
+const contract = await loadEnvModule<ContractModule>('lib/contract.ts');
 
-    expect(result.status).toBe(2);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(
-      'APP_PORT=3011 does not match loopback APP_URL http://localhost:3000 (port 3000)',
-    );
-  });
+const baseInputs = {
+  contract: {
+    shared: false,
+    sharedOwner: null,
+    stackName: null,
+    appPort: 3011,
+    appUrl: 'http://localhost:3011',
+  },
+  registryDir: '/tmp/studiq-dev-1000',
+  projectId: 'stack-abcdef123456',
+  mode: 'default',
+  owner: null,
+  stack: {
+    id: 'abcdef1234567890',
+    name: 'default',
+    projectRoot: '/checkout',
+    branch: 'refs/heads/feat/x',
+    runtime: 'native',
+    lifecycle: 'running',
+    configDrift: 'unchanged',
+    apiUrl: 'http://localhost:20041',
+    dbUrl: 'postgresql://localhost:20042/postgres',
+    studioUrl: null,
+    mailUrl: null,
+    ports: {
+      api: 20041,
+      db: 20042,
+      studio: 0,
+      mail: 0,
+      mailSmtp: 0,
+      mailPop3: 0,
+      analytics: 0,
+      edgeInspector: 0,
+      pooler: 0,
+      pgmeta: 20043,
+    },
+  },
+  ports: {
+    api: 20041,
+    db: 20042,
+    studio: 0,
+    mail: 0,
+    analytics: 0,
+    edgeInspector: 0,
+    shadow: 0,
+    pooler: 0,
+    mailSmtp: 0,
+    mailPop3: 0,
+    pgmeta: 20043,
+  },
+  urls: {
+    supabase: 'http://localhost:20041',
+    db: 'postgresql://localhost:20042/postgres',
+    mail: null,
+    studio: null,
+  },
+  web: { pid: 1234, http: 200 },
+  supabaseHttp: 200,
+  buildPresent: true,
+};
 
-  it('accepts matching loopback ports', async () => {
-    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://localhost:3011' });
-
-    expect(result.status).toBe(0);
-    expect(appPort(result.stdout)).toBe(3011);
-    expect(appUrl(result.stdout)).toBe('http://localhost:3011');
-  });
-
-  it('rejects APP_PORT when a loopback URL omits its port (scheme default applies)', async () => {
-    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://127.0.0.1' });
-
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain(
-      'APP_PORT=3011 does not match loopback APP_URL http://127.0.0.1 (port 80)',
-    );
-  });
-
-  it('treats the whole 127.0.0.0/8 range as loopback', async () => {
-    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://127.0.0.2:9999' });
-
-    expect(result.status).toBe(2);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(
-      'APP_PORT=3011 does not match loopback APP_URL http://127.0.0.2:9999 (port 9999)',
-    );
-  });
-
-  it('accepts matching ports on any 127.x.y.z address', async () => {
-    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://127.1.2.3:3011' });
-
-    expect(result.status).toBe(0);
-    expect(appPort(result.stdout)).toBe(3011);
-    expect(appUrl(result.stdout)).toBe('http://127.1.2.3:3011');
-  });
-
-  it('does not treat a 127-prefixed hostname as loopback', async () => {
-    const result = await readStatus({
-      APP_PORT: '3011',
-      APP_URL: 'http://127.0.0.1.example.com:9999',
+describe('JSON contract and exit codes (spec §2.1, §9)', () => {
+  it('fills lifecycle facts and keeps unknown values null, known false false', () => {
+    const snapshot = json.shapeStatus({
+      ...baseInputs,
+      profile: 'api',
+      cold: false,
+      seeded: false,
+      buildFingerprint: 'abc123',
+      warnings: ['warning'],
+      ready: true,
     });
-
-    expect(result.status).toBe(0);
-    expect(appPort(result.stdout)).toBe(3011);
-    expect(appUrl(result.stdout)).toBe('http://127.0.0.1.example.com:9999');
+    expect(snapshot.ready).toBe(true);
+    expect(snapshot.profile).toBe('api');
+    expect(snapshot.cold).toBe(false);
+    expect(snapshot.seeded).toBe(false);
+    expect(snapshot.build).toEqual({ present: true, fingerprint: 'abc123' });
+    expect(snapshot.ports.block).toBeNull();
+    expect(snapshot.warnings).toEqual(['warning']);
+    expect('warmMs' in snapshot).toBe(false);
   });
 
-  it('does not treat an out-of-range 127 address as loopback', async () => {
-    // `new URL` rejects invalid IPv4 hosts outright, so the mismatch check never runs.
-    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://127.999.0.1:9999' });
-
-    expect(result.status).not.toBe(2);
-    expect(result.stderr).not.toContain('does not match loopback');
-  });
-
-  it('treats [::1] as loopback too', async () => {
-    const result = await readStatus({ APP_PORT: '3011', APP_URL: 'http://[::1]:443' });
-
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain('(port 443)');
-  });
-
-  it('leaves a non-loopback (proxied) APP_URL alone', async () => {
-    const result = await readStatus({
-      APP_PORT: '3011',
-      APP_URL: 'https://app.example.com',
+  it('derives readiness from the profile when no explicit ready is supplied', () => {
+    const api = json.shapeStatus({
+      ...baseInputs,
+      web: { pid: null, http: 0 },
+      supabaseHttp: 200,
+      profile: 'api',
     });
-
-    expect(result.status).toBe(0);
-    expect(appPort(result.stdout)).toBe(3011);
-    expect(appUrl(result.stdout)).toBe('https://app.example.com');
+    expect(api.ready).toBe(true);
+    const web = json.shapeStatus({
+      ...baseInputs,
+      web: { pid: null, http: 0 },
+      supabaseHttp: 200,
+      profile: 'web',
+    });
+    expect(web.ready).toBe(false);
   });
 
-  it('derives the port from APP_URL when APP_PORT is unset', async () => {
-    const result = await readStatus({ APP_URL: 'http://127.0.0.1:3088' });
-
-    expect(result.status).toBe(0);
-    expect(appPort(result.stdout)).toBe(3088);
-    expect(appUrl(result.stdout)).toBe('http://127.0.0.1:3088');
+  it('defaults lifecycle facts to null (unknown) for a read-only call', () => {
+    const snapshot = json.shapeStatus(baseInputs);
+    expect(snapshot.profile).toBeNull();
+    expect(snapshot.cold).toBeNull();
+    expect(snapshot.seeded).toBeNull();
+    expect(snapshot.build).toEqual({ present: true, fingerprint: null });
   });
 
-  it('derives the scheme default for a loopback URL without a port', async () => {
-    const result = await readStatus({ APP_URL: 'https://localhost' });
+  it('keeps the legacy camelCase fields', () => {
+    const snapshot = json.shapeStatus(baseInputs);
+    for (const key of [
+      'projectId',
+      'worktree',
+      'mode',
+      'shared',
+      'sharedOwner',
+      'owner',
+      'registry',
+      'stackId',
+      'branch',
+      'urls',
+      'web',
+      'supabase',
+      'dbUrl',
+      'mailUrl',
+      'log',
+    ]) {
+      expect(key in snapshot).toBe(true);
+    }
+    expect(snapshot.dbUrl).toBe('postgresql://localhost:20042/postgres');
+  });
 
-    expect(result.status).toBe(0);
-    expect(appPort(result.stdout)).toBe(443);
-    expect(appUrl(result.stdout)).toBe('https://localhost');
+  it('uses the documented lifecycle exit codes', () => {
+    expect([
+      exit.EXIT_OK,
+      exit.EXIT_USAGE,
+      exit.EXIT_NATIVE_UNAVAILABLE,
+      exit.EXIT_START_FAILED,
+      exit.EXIT_TIMEOUT,
+      exit.EXIT_CONFLICT,
+    ]).toEqual([0, 2, 3, 4, 5, 6]);
+    expect(new exit.EnvFailure(exit.EXIT_CONFLICT, 'conflict').exitCode).toBe(6);
+  });
+
+  it('keeps a valid stack name when another field is invalid (down --all safety)', () => {
+    const saved = {
+      SUPABASE_STACK: process.env.SUPABASE_STACK,
+      APP_PORT: process.env.APP_PORT,
+      APP_URL: process.env.APP_URL,
+      SUPABASE_SHARED: process.env.SUPABASE_SHARED,
+    };
+    try {
+      process.env.SUPABASE_STACK = 'named-stack';
+      process.env.APP_PORT = 'not-a-port';
+      process.env.APP_URL = 'http://localhost:3123';
+      delete process.env.SUPABASE_SHARED;
+
+      const lenient = contract.readContractLenient();
+      expect(lenient.stackName).toBe('named-stack');
+      expect(lenient.appPort).toBe(3123);
+      expect(lenient.appUrl).toBe('http://localhost:3123');
+      expect(lenient.shared).toBe(false);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it('falls back only the invalid fields in a fully invalid contract', () => {
+    const saved = {
+      SUPABASE_STACK: process.env.SUPABASE_STACK,
+      APP_PORT: process.env.APP_PORT,
+      APP_URL: process.env.APP_URL,
+      SUPABASE_SHARED: process.env.SUPABASE_SHARED,
+    };
+    try {
+      process.env.SUPABASE_STACK = 'bad stack name';
+      process.env.APP_PORT = '0';
+      process.env.APP_URL = 'not a url';
+      process.env.SUPABASE_SHARED = 'maybe';
+
+      const lenient = contract.readContractLenient();
+      expect(lenient.stackName).toBeNull();
+      expect(lenient.appPort).toBe(3000);
+      expect(lenient.appUrl).toBe('http://localhost:3000');
+      expect(lenient.shared).toBe(false);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it('changes only the app port in a derived contract URL', () => {
+    const savedUrl = process.env.APP_URL;
+    delete process.env.APP_URL;
+    try {
+      const derived = contract.contractWithPort(
+        {
+          shared: false,
+          sharedOwner: null,
+          stackName: null,
+          appPort: 3000,
+          appUrl: 'http://localhost:3000',
+        },
+        3011,
+      );
+      expect(derived.appPort).toBe(3011);
+      expect(derived.appUrl).toBe('http://localhost:3011');
+    } finally {
+      if (savedUrl === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = savedUrl;
+    }
+  });
+
+  it('keeps an explicit APP_URL (loopback included) when the lease moves the port', () => {
+    const savedUrl = process.env.APP_URL;
+    try {
+      for (const explicit of ['http://localhost:3000', 'http://127.0.0.1:3000']) {
+        process.env.APP_URL = explicit;
+        const applied = contract.contractWithPort(
+          {
+            shared: false,
+            sharedOwner: null,
+            stackName: null,
+            appPort: 3000,
+            appUrl: explicit,
+          },
+          3011,
+        );
+        expect(applied.appPort, explicit).toBe(3011);
+        expect(applied.appUrl, explicit).toBe(explicit);
+      }
+    } finally {
+      if (savedUrl === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = savedUrl;
+    }
   });
 });

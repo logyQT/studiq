@@ -1,5 +1,6 @@
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
+import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
@@ -42,7 +43,7 @@ function stackLines(stack: StackStatus | null): string[] {
 }
 
 async function buildReport(): Promise<DoctorReport> {
-  const contract = readContract();
+  const contract = contractWithLease(readContract());
   const registry = readRegistry();
   // A missing registry is normal on a fresh machine; only an existing but
   // untrusted directory is worth a warning.
@@ -110,8 +111,7 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (observedRuntime === 'docker') {
     warnings.push(
-      'stack runtime=docker (compatibility mode); the stack keeps running as-is ' +
-        '(no runtime conversion is available)',
+      'stack runtime=docker (compatibility mode); run `env:down --all` then `env:ensure` to recreate it',
     );
   }
   if (!trusted && registryExists) {
@@ -166,7 +166,7 @@ async function buildReport(): Promise<DoctorReport> {
     '▸ Runtime',
     `  observed   ${observedRuntime ?? 'unknown (not observable here)'}`,
     `  source     ${runtimeSource}`,
-    '  selection  read-only commands never choose a runtime',
+    '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
   );
 
   lines.push('', '▸ Ports');

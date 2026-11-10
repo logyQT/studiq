@@ -17,6 +17,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CLI_PATH = fileURLToPath(new URL('../../../scripts/env/cli.ts', import.meta.url));
+// Canonical like `scripts/env/lib/repo.ts`: a symlinked checkout would otherwise
+// disagree with the CLI's own project_root in the fixtures.
 export const REPO_ROOT = realpathSync(fileURLToPath(new URL('../../../', import.meta.url)));
 
 export interface RunResult {
@@ -72,7 +74,11 @@ function killTree(child: ChildProcess): void {
     process.kill(-child.pid, 'SIGKILL');
   } catch (error) {
     if (isErrnoException(error) && error.code === 'ESRCH') return;
-    throw error;
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      /* already gone */
+    }
   }
 }
 
@@ -103,6 +109,7 @@ async function terminate(child: ChildProcess): Promise<void> {
 export interface Harness {
   dir: string;
   registryDir: string;
+  stateDir: string;
   env: NodeJS.ProcessEnv;
   run(args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<RunResult>;
   setStatusFixture(value: unknown): void;
@@ -117,7 +124,7 @@ export interface Harness {
 }
 
 /** The Bun binary running this suite (absolute, so a child PATH cannot hide it). */
-const BUN = (() => {
+export const BUN = (() => {
   if (process.versions.bun) return process.execPath;
   for (const dir of (process.env.PATH ?? '').split(':')) {
     if (!dir) continue;
@@ -166,7 +173,9 @@ export function createHarness(): Harness {
   const dir = mkdtempSync(join(tmpdir(), 'studiq-env-test-'));
   const binDir = join(dir, 'bin');
   const registryDir = join(dir, 'registry');
+  const stateDir = join(dir, 'state');
   mkdirSync(binDir, { recursive: true });
+  mkdirSync(stateDir, { recursive: true });
   const bunxPath = join(binDir, 'bunx');
   writeFileSync(bunxPath, FAKE_BUNX, { mode: 0o755 });
   chmodSync(bunxPath, 0o755);
@@ -201,6 +210,9 @@ export function createHarness(): Harness {
     LANG: process.env.LANG,
     LC_ALL: process.env.LC_ALL,
     STUDIQ_DEV_REGISTRY: registryDir,
+    STUDIQ_ENV_STATE_DIR: stateDir,
+    // Isolate the per-stack `.dev` state: every harness gets its own identity.
+    SUPABASE_STACK: `env-unit-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
     FAKE_BUNX_LOG: bunxLog,
     FAKE_ENGINE_LOG: engineLog,
     FAKE_STACK_STATUS_FILE: statusFile,
@@ -211,6 +223,7 @@ export function createHarness(): Harness {
   return {
     dir,
     registryDir,
+    stateDir,
     env,
     run(args, extraEnv = {}) {
       return new Promise<RunResult>((resolvePromise) => {
@@ -359,6 +372,11 @@ export async function startTcpListener(port = 0, host?: string): Promise<TcpList
         server.close(() => done());
       }),
   };
+}
+
+/** First port this checkout can bind on the wildcard address (doctor parity). */
+export async function firstBindablePort(from = 3900): Promise<number> {
+  return firstFreePort(from, new Set(), '0.0.0.0');
 }
 
 /** First free port at or above `from`, skipping `skip`; defaults to the wildcard. */

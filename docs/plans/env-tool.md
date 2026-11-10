@@ -160,10 +160,14 @@ plain `down`; `down --all` and `reset-db` exit 6, while `status`/`ports`/`verify
 - **Build lock:** one `next build` across all worktrees, held only across the build.
 - **One server per checkout.** A live web PID with a different stack/profile → exit 6, naming the server and the
   remedy (`env:down` or a separate worktree). Same stack = normal handover.
-- **Handover:** under `checkout.lock`, stop the tool's own server; release `checkout.lock`, build under the build
-  lock alone, re-take `checkout.lock`, start and health-check. On failure leave the environment stopped (no
-  rollback). `env:serve` takes `checkout.lock`; a stale fingerprint points at `env:build`; `next start` keeps
-  `--keepAliveTimeout 55000` via the workspace script.
+- **Handover:** `ensure` releases `checkout.lock` first; the rebuild transaction then atomically claims `.dev/handover.json`
+  (owner = this process) **before** stopping its own server or moving `.next`, and builds under the build lock alone.
+  On success the record is committed and the backup discarded — with `--serve` the replacement server is started and
+  health-checked inside that transaction — and `checkout.lock` is re-taken before state is written or reported. On
+  failure the previous `.next` is restored and its server restarted (when one was serving), leaving the environment
+  stopped if restore/restart also fail. A live foreign owner makes a second `ensure`/`env:build`/`env:serve` refuse
+  (exit 6) instead of stopping that server or moving `.next`. `env:serve` takes `checkout.lock`; a stale fingerprint
+  points at `env:build`; `next start` keeps `--keepAliveTimeout 55000` via the workspace script.
 
 ## 8. Seeding
 
@@ -250,6 +254,8 @@ Legacy camelCase fields (`stackId`, `branch`, `web`, `supabase`, `dbUrl`, `mailU
 
 Phases are serial (every phase touches `scripts/env/**`).
 
+`scripts/dev` and every `dev:*` script are deprecated/retired and deleted in phase 3; do not add features or fix bugs there.
+
 ### 12.1 Latency budgets (phase-0 baseline)
 
 Host: WSL2, Debian 12, x86_64, 16 vCPU, 19 GiB RAM, glibc 2.36, Bun 1.4.4, Supabase CLI 3.0.0, native artifact
@@ -309,7 +315,7 @@ audit, code comments, `scripts/load-test/README.md`).
 **Deferred** (one line each, no v1 surface): `prepull` (ensure downloads on demand), `recreate` (manual destroy then
 ensure), the port allocator (phase 0 GO: explicit ports survive create and resume; the operator's minimal-v1 decision defers
 it, so it is not built — ports come from `status`), `apps/admin` HMR/serve, capability reconcile (`env:down --all` then
-`env:ensure`), seed markers/run ids, build rollback (fail and stop), multi-lock hierarchies and provider-status ceremony.
+`env:ensure`), seed markers/run ids, multi-lock hierarchies and provider-status ceremony.
 
 Also out of scope: caching (#1078); CI changes; the vault provider implementation; removing the `varlock run`
 wrappers (post-stability); `--attach`; `next dev` for agents; two environments per checkout; per-agent stacks;

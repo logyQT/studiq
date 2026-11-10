@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# DEPRECATED — superseded by `bun run env:*` (see docs/plans/env-tool.md).
+# Retired in the phase-3 cutover (#1077) and deleted with every `dev:*` script.
 # ─────────────────────────────────────────────────────────────────────────────
 # scripts/dev — one-command, multi-checkout-safe local stack for @studiq/web.
 #

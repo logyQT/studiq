@@ -31,6 +31,10 @@ const config: KnipConfig = {
   // interfaces and types are covered here.
   ignoreExportsUsedInFile: { interface: true, type: true },
 
+  // Policy: `flock` is an OS binary invoked by the build lock (the same lock
+  // `scripts/dev` uses); it is not an npm dependency.
+  ignoreBinaries: ['flock'],
+
   ignoreIssues: {
     // Policy: shared integration-test seeding surface. Suites import the
     // helpers they need; de-exporting the rest would turn them into unused
