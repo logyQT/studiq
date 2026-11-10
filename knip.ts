@@ -43,6 +43,7 @@ const config: KnipConfig = {
     'scripts/env/lib/fingerprint.ts': ['exports'],
     'scripts/env/lib/lease.ts': ['exports'],
     'scripts/env/lib/platform.ts': ['exports'],
+    'scripts/env/lib/varlock.ts': ['exports'],
 
     // Policy: shared integration-test seeding surface. Suites import the
     // helpers they need; de-exporting the rest would turn them into unused

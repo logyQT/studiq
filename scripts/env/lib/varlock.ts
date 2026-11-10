@@ -16,12 +16,14 @@ export interface VarlockItem {
   sensitive: boolean;
 }
 
+export type VarlockFailure = 'locked' | 'missing' | 'timeout' | 'spawn-error';
+
 export interface VarlockResult {
   ok: boolean;
   exitCode: number | null;
   items: Map<string, VarlockItem>;
-  /** `locked`/`missing` classification; null when the load succeeded. */
-  failure: 'locked' | 'missing' | null;
+  /** Failure classification; null when the load succeeded. */
+  failure: VarlockFailure | null;
 }
 
 interface RawItem {
@@ -29,16 +31,53 @@ interface RawItem {
   isSensitive?: unknown;
 }
 
-function classify(stderr: string): 'locked' | 'missing' {
+/**
+ * `locked` is a credential-provider refusal. The leading word boundary keeps
+ * ordinary words that merely contain the letters (`blocked`, `clock`, `varlock`)
+ * out of it; `unlocked` is not a refusal either.
+ */
+export function classify(stderr: string): 'locked' | 'missing' {
   const text = stderr.toLowerCase();
   if (
-    /locked|lock(ed|ing)?\b|biometric|keychain|unlock|denied|unauthorized|forbidden|auth(entication)? required/.test(
+    /\b(?:lock(?:ed|ing)?|unlock|biometric|keychain|denied|unauthorized|forbidden|auth(?:entication)? required)\b/.test(
       text,
     )
   ) {
     return 'locked';
   }
   return 'missing';
+}
+
+/**
+ * Map `varlock load --format json-full` output to names and presence only.
+ * A non-JSON banner or a malformed payload yields an empty map; the exit code
+ * remains the authority on success.
+ */
+export function itemsFromPayload(stdout: string): Map<string, VarlockItem> {
+  const items = new Map<string, VarlockItem>();
+  if (!stdout) return items;
+  try {
+    const parsed: unknown = JSON.parse(stdout);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const config = (parsed as { config?: unknown }).config;
+      if (config !== null && typeof config === 'object' && !Array.isArray(config)) {
+        for (const [key, value] of Object.entries(config)) {
+          if (value === null || typeof value !== 'object') continue;
+          const item = value as RawItem;
+          items.set(key, {
+            // A value-less optional item has no `value` key; an explicit `null`
+            // is still a resolved value.
+            present: Object.hasOwn(item, 'value') && item.value !== undefined,
+            sensitive: item.isSensitive === true,
+          });
+        }
+      }
+    }
+  } catch {
+    // A non-JSON workload (or a truncated banner) is reported through the exit
+    // code; never echo stdout.
+  }
+  return items;
 }
 
 /**
@@ -60,37 +99,23 @@ export function loadVarlock(options: {
     timeout: options.timeoutMs ?? 60_000,
     maxBuffer: 8 * 1024 * 1024,
   });
-  const timedOut = (result.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
+  const error = result.error as NodeJS.ErrnoException | undefined;
+  const timedOut = error?.code === 'ETIMEDOUT';
+  const spawnFailed = !timedOut && error !== undefined;
   const exitCode = timedOut ? null : result.status;
-  const ok = !timedOut && result.status === 0;
-  const items = new Map<string, VarlockItem>();
-
-  if (result.stdout) {
-    try {
-      const parsed: unknown = JSON.parse(result.stdout);
-      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const config = (parsed as { config?: unknown }).config;
-        if (config !== null && typeof config === 'object' && !Array.isArray(config)) {
-          for (const [key, value] of Object.entries(config)) {
-            if (value === null || typeof value !== 'object') continue;
-            const item = value as RawItem;
-            items.set(key, {
-              present: Object.hasOwn(item, 'value') && item.value !== undefined,
-              sensitive: item.isSensitive === true,
-            });
-          }
-        }
-      }
-    } catch {
-      // A non-JSON workload (or a truncated banner) is reported through the exit
-      // code; never echo stdout.
-    }
-  }
+  const ok = !timedOut && !spawnFailed && result.status === 0;
+  const items = itemsFromPayload(result.stdout ?? '');
 
   return {
     ok,
     exitCode,
     items,
-    failure: ok ? null : classify(result.stderr ?? ''),
+    failure: ok
+      ? null
+      : timedOut
+        ? 'timeout'
+        : spawnFailed
+          ? 'spawn-error'
+          : classify(result.stderr ?? ''),
   };
 }

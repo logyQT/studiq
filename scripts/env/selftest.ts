@@ -35,6 +35,9 @@ const failures: string[] = [];
 let scratchName = '';
 let tempDir = '';
 let traceFile = '';
+// Only a `.env.local` this run created may be removed; an operator-owned file is
+// never touched, even when a later check fails.
+let scaffoldedEnvLocal = false;
 
 function check(ok: boolean, message: string): void {
   if (ok) {
@@ -449,6 +452,7 @@ async function main(): Promise<number> {
     } else {
       const setup = run(['env:setup'], childEnv);
       const created = existsSync(envLocal);
+      scaffoldedEnvLocal = created;
       const mode = created ? statSync(envLocal).mode & 0o777 : 0;
       check(
         setup.code === 0 && created && mode === 0o600,
@@ -465,7 +469,6 @@ async function main(): Promise<number> {
           second.code === 0 && readFileSync(envLocal, 'utf8') === scaffold,
           'env:setup is idempotent without --force',
         );
-        rmSync(envLocal, { force: true });
       }
     }
 
@@ -503,6 +506,9 @@ async function main(): Promise<number> {
     const build = run(['env:build', '--json'], childEnv);
     check(build.code === 0, `explicit build exits 0 (${build.code}: ${tail(build)})`);
   } finally {
+    // A check may throw between scaffolding and the end of the block above; the
+    // scaffold is this run's, so it is cleaned up here either way.
+    if (scaffoldedEnvLocal) rmSync(join(REPO_ROOT, '.env.local'), { force: true });
     stopWebServer();
     destroyScratch();
     rmSync(tempDir, { recursive: true, force: true });

@@ -1,7 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface VaultModule {
@@ -13,6 +14,7 @@ interface VaultModule {
 
 const vault = await loadEnvModule<VaultModule>('lib/vault.ts');
 const root = mkdtempSync(join(tmpdir(), 'studiq-env-vault-'));
+const gitFixtures: string[] = [];
 writeFileSync(
   join(root, '.env.schema'),
   [
@@ -44,6 +46,36 @@ afterAll(() => {
   delete process.env.STUDIQ_ENV_VAULT;
   rmSync(root, { recursive: true, force: true });
 });
+
+afterEach(() => {
+  for (const dir of gitFixtures.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 30_000,
+  }).trim();
+}
+
+/** A primary checkout plus a linked worktree, so `git worktree list` has two entries. */
+function worktreeFixture(): { primary: string; worktree: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'studiq-env-git-'));
+  gitFixtures.push(dir);
+  const primary = join(dir, 'primary');
+  git(dir, ['init', primary]);
+  git(primary, ['config', 'user.email', 'fixture@example.invalid']);
+  git(primary, ['config', 'user.name', 'Fixture']);
+  git(primary, ['config', 'commit.gpgsign', 'false']);
+  writeFileSync(join(primary, 'README.md'), 'fixture\n');
+  git(primary, ['add', 'README.md']);
+  git(primary, ['commit', '-m', 'fixture']);
+  const worktree = join(dir, 'worktree');
+  git(primary, ['worktree', 'add', '--detach', worktree]);
+  return { primary: realpathSync(primary), worktree: realpathSync(worktree) };
+}
 
 function lines(path: string): string[] {
   return readFileSync(path, 'utf8')
@@ -77,10 +109,40 @@ describe('env:setup scaffold (spec §11.1)', () => {
     expect(vault.scaffoldVault(root)).toBe('unchanged');
   });
 
-  it('honours STUDIQ_ENV_VAULT and falls back to the primary checkout', () => {
+  it('honours STUDIQ_ENV_VAULT and defaults to the literal checkout path', () => {
     process.env.STUDIQ_ENV_VAULT = join(root, 'custom.vault');
     expect(vault.vaultFilePath(root)).toBe(join(root, 'custom.vault'));
+
+    // A relative pointer resolves against the checkout, not the process cwd.
+    process.env.STUDIQ_ENV_VAULT = 'relative.vault';
+    expect(vault.vaultFilePath(root)).toBe(join(root, 'relative.vault'));
+
+    // Surrounding whitespace means unset, matching `.trim()`.
+    process.env.STUDIQ_ENV_VAULT = '   ';
+    expect(vault.vaultFilePath(root)).toBe(join(root, '.env.vault'));
+
     delete process.env.STUDIQ_ENV_VAULT;
-    expect(vault.vaultFilePath(root)).toBe(join(vault.primaryCheckout(root), '.env.vault'));
+    // `root` is not a git checkout, so the primary-checkout lookup falls back to
+    // it; assert the literal path rather than reconstructing it from the lookup.
+    expect(vault.vaultFilePath(root)).toBe(join(root, '.env.vault'));
+  });
+
+  it('resolves the default vault in a real primary checkout', () => {
+    const fixture = worktreeFixture();
+    // Ambient Git names, not app configuration; dynamic access keeps the env
+    // inventory's static scan focused on declared keys.
+    const gitDirName = 'GIT_DIR';
+    const previousGitDir = process.env[gitDirName];
+    // A git hook exports GIT_DIR; the lookup must still answer for `worktree`.
+    process.env[gitDirName] = join(fixture.worktree, 'not-a-git-dir');
+    try {
+      expect(vault.primaryCheckout(fixture.worktree)).toBe(fixture.primary);
+      expect(vault.vaultFilePath(fixture.worktree)).toBe(join(fixture.primary, '.env.vault'));
+    } finally {
+      if (previousGitDir === undefined) delete process.env[gitDirName];
+      else process.env[gitDirName] = previousGitDir;
+    }
+    // A non-git directory keeps the checkout itself.
+    expect(vault.primaryCheckout(root)).toBe(root);
   });
 });

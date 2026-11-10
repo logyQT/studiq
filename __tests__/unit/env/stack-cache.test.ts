@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -38,6 +38,7 @@ const stateDir = mkdtempSync(join(tmpdir(), 'studiq-env-stack-cache-'));
 process.env.STUDIQ_ENV_STATE_DIR = stateDir;
 const cache = await loadEnvModule<StackCacheModule>('lib/stack-cache.ts');
 const repo = await loadEnvModule<{ REPO_ROOT: string }>('lib/repo.ts');
+const cacheFile = join(stateDir, 'stack-cache.json');
 
 const PORTS = {
   api: 21001,
@@ -112,6 +113,44 @@ describe('warm-path stack cache (spec §6)', () => {
 
   it('ignores a record made for another checkout', () => {
     cache.writeCachedStack(entry({ projectRoot: '/somewhere/else' }), 1_000);
+    expect(cache.readCachedStack(null, 1_500)).toBeNull();
+  });
+
+  it('refuses a symlinked record', () => {
+    const target = join(stateDir, 'elsewhere.json');
+    writeFileSync(target, JSON.stringify({ ...entry(), heartbeatAt: 1_000 }));
+    symlinkSync(target, cacheFile);
+
+    expect(cache.readCachedStack(null, 1_500)).toBeNull();
+  });
+
+  it.each(['{not json', '[]', 'null', '"text"'])(
+    'returns null for a non-record payload (%s)',
+    (raw) => {
+      writeFileSync(cacheFile, raw);
+
+      expect(cache.readCachedStack(null, 1_500)).toBeNull();
+    },
+  );
+
+  it.each([
+    ['status is null', { status: null }],
+    ['status is not an object', { status: 'running' }],
+    ['ports are missing', { status: { ...entry().status, ports: null } }],
+    [
+      'API port is not a number',
+      { status: { ...entry().status, ports: { ...PORTS, api: '21001' } } },
+    ],
+    ['envHash is not a string', { envHash: 42 }],
+    ['appUrl is not a string', { appUrl: null }],
+    ['heartbeatAt is not a number', { heartbeatAt: '1000' }],
+    ['services is not an array', { services: { rest: true } }],
+  ])('returns null when %s', (_label, overrides) => {
+    writeFileSync(
+      cacheFile,
+      JSON.stringify({ ...entry(), heartbeatAt: 1_000, ...(overrides as Record<string, unknown>) }),
+    );
+
     expect(cache.readCachedStack(null, 1_500)).toBeNull();
   });
 

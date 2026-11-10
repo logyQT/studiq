@@ -9,7 +9,10 @@ import { REPO_ROOT } from '../lib/repo';
 interface VerifyReport {
   ok: boolean;
   envFile: boolean;
-  vault: { present: boolean; status: 'available' | 'locked' | 'missing' | null };
+  vault: {
+    present: boolean;
+    status: 'available' | 'locked' | 'missing' | 'timeout' | 'spawn-error' | null;
+  };
   missingKeys: string[];
   nextAction: string;
 }
@@ -54,7 +57,11 @@ export async function runVerify(parsed: ParsedCommand): Promise<number> {
       ? missingKeys.length > 0
         ? 'optional keys are unset; set them in .env.local only if this workflow needs them'
         : 'nothing to do'
-      : 'fix the invalid values in .env.local (or the vault refs with --full); run `bun run env:setup` to scaffold',
+      : loaded.failure === 'timeout'
+        ? 'varlock did not finish in time; re-run `bun run env:verify --full`'
+        : loaded.failure === 'spawn-error'
+          ? 'could not run varlock through `bunx`; check that Bun is installed and on PATH'
+          : 'fix the invalid values in .env.local (or the vault refs with --full); run `bun run env:setup` to scaffold',
   };
 
   if (parsed.json) {

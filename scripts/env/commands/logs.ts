@@ -22,7 +22,9 @@ function tail(path: string, follow: boolean): void {
     return;
   }
   const args = follow ? ['-n', '50', '-f', path] : ['-n', '100', path];
-  spawnSync('tail', args, { stdio: 'inherit' });
+  // Human log lines are diagnostics: route both child streams to our stderr so
+  // `--json` stdout stays exactly one JSON object.
+  spawnSync('tail', args, { stdio: ['inherit', 2, 2] });
 }
 
 /**

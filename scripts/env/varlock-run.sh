@@ -19,10 +19,24 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$repo_root"
 
 vault=${STUDIQ_ENV_VAULT:-}
+# Mirror `vaultFilePath`: surrounding whitespace makes the value empty (unset).
+vault="${vault#"${vault%%[![:space:]]*}"}"
+vault="${vault%"${vault##*[![:space:]]}"}"
 if [[ -z "$vault" ]]; then
-  primary=$(git -C "$repo_root" worktree list --porcelain 2>/dev/null | awk '/^worktree /{if (!found) { primary=$2; found=1 }} END{print primary}')
+  # Mirror `primaryCheckout`: a git hook exports GIT_DIR/GIT_WORK_TREE, and the
+  # lookup must still answer for this checkout. A non-git checkout keeps the
+  # fallback instead of aborting under `set -e`.
+  primary=''
+  if worktrees=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES \
+    git -C "$repo_root" worktree list --porcelain 2>/dev/null); then
+    primary=$(printf '%s\n' "$worktrees" | awk '/^worktree /{sub(/^worktree /, ""); print; exit}')
+  fi
   [[ -n "$primary" ]] || primary=$repo_root
   vault="$primary/.env.vault"
+else
+  # A relative pointer resolves against the checkout, like `resolve(root, value)`.
+  [[ "$vault" = /* ]] || vault="$repo_root/$vault"
 fi
 
 if [[ $# -eq 0 ]]; then
