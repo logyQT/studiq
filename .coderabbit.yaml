@@ -12,6 +12,9 @@
 #   3. Teach the reviewer this repo's non-obvious rules (4-layer backend,
 #      alias-only imports, service-role admin app, tenant-per-test e2e) so it
 #      doesn't re-derive them — or get them wrong — on every PR.
+#   4. Review on demand, not on every push. Deterministic checks live in
+#      `bun run lint` and verify.yml; CodeRabbit is reserved for PRs where an
+#      LLM pass adds signal. See docs/decisions/0012-review-routing-and-pr-size.md.
 
 language: 'en-US'
 early_access: false
@@ -72,7 +75,14 @@ reviews:
     - '!**/coverage/**'
 
   auto_review:
-    enabled: true
+    # On demand only. A PR is reviewed when it carries `review:deep` (applied by
+    # .github/workflows/pr-triage.yml for an over-budget PR or a sensitive path)
+    # or when a maintainer comments `@coderabbitai review`. This keeps the
+    # mechanical findings in CI and reserves the LLM pass for PRs where it
+    # earns its keep.
+    enabled: false
+    labels:
+      - 'review:deep'
     # Drafts are a work-in-progress signal in this repo (several open at once).
     # Reviewing them burns tokens on code that is still moving.
     drafts: false
@@ -344,6 +354,8 @@ reviews:
         Do not comment on Markdown formatting; `bun fmt` owns it. Flag stale
         cross-links and commands that no longer exist.
 
+  # These checks run as part of a review, so with `auto_review.enabled: false`
+  # they apply to deep-reviewed PRs only. The hard gates are in verify.yml.
   pre_merge_checks:
     title:
       mode: 'warning'

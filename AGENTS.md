@@ -58,7 +58,7 @@ studiq/
 - **PR to main**: Open a PR from `feat/<short-name>` → `main`. Merge via GitHub (squash or merge commit — your call per PR).
 - **Delete after merge**: Always delete the feature branch after the PR is merged.
 - **Naming**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/` prefixes.
-- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch.
+- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch. The target budget is **400 reviewable lines** — tests, generated files, the lockfile and vendored skills are excluded (see `scripts/pr-triage.ts`). `bun run pr:size` reports it locally; `pr-triage.yml` labels every PR and adds `review:deep` when the PR is over budget or touches a sensitive path. Over-budget PRs need the `size:exception` label once `PR_SIZE_ENFORCE=true`.
 
 ```
 main ← feat/quiz-bank-ui (PR, merge, delete)
@@ -127,6 +127,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run test:watch`              | `vitest` (watch mode)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `bun run test:coverage`           | `vitest run --coverage`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `bun run test:e2e`                | `playwright test` — runs `__tests__/e2e/` specs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `bun run pr:size`                 | `scripts/pr-triage.ts` — reviewable line count vs `origin/main`, with tests/generated/lockfile/vendored files excluded; `--json` for machines, `--limit` overrides the 400-line budget, `--enforce` exits 1 over it                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
@@ -234,6 +235,7 @@ These scripts help devs (and agents) work with feature branches and isolated wor
 | `scripts/spin <branch> --clean`   | Remove worktree and delete branch                                   |
 | `scripts/pr [title]`              | Create a PR from current branch via `gh` CLI                        |
 | `scripts/pr --draft`              | Create a draft PR                                                   |
+| `scripts/pr --deep`               | Create a PR and force a CodeRabbit deep review (`review:deep`)      |
 | `scripts/pr --list`               | List open PRs for this repo                                         |
 
 #### Multi-worktree workflow

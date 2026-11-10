@@ -37,18 +37,21 @@ BASE_BRANCH="main"
 
 # ── Parse flags ────────────────────────────────────────────────
 DRAFT=false
+FORCE_DEEP=false
 ACTION="create"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --draft|-d) DRAFT=true; shift ;;
+    --deep)     FORCE_DEEP=true; shift ;;
     --list|-l)  ACTION="list"; shift ;;
     --view|-v)  ACTION="view"; shift ;;
     --help|-h)
-      echo "Usage: scripts/pr [title] [--draft] [--list] [--view]"
+      echo "Usage: scripts/pr [title] [--draft] [--deep] [--list] [--view]"
       echo ""
       echo "  [title]      PR title (auto-generated from commits if omitted)"
       echo "  --draft, -d  Create as draft PR"
+      echo "  --deep       Force a CodeRabbit deep review (review:deep label)"
       echo "  --list, -l   List open PRs for this repo"
       echo "  --view, -v   Open PR page in browser"
       echo ""
@@ -110,6 +113,51 @@ else
   BODY=$(git log --pretty=format:"- %s (%h)" -5)
 fi
 
+# ── Triage: size + deep-review routing ─────────────────────────
+# Same script as .github/workflows/pr-triage.yml so the labels match what the
+# workflow would apply. `--deep` forces review:deep for a risky PR the size
+# heuristic would miss.
+SIZE_LABEL=""
+DEEP_LABEL=""
+LABEL_FLAGS=""
+LIMIT_LINES=400
+
+git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
+TRIAGE_BASE="origin/$BASE_BRANCH"
+git rev-parse --verify --quiet "$TRIAGE_BASE" >/dev/null || TRIAGE_BASE="$BASE_BRANCH"
+
+if command -v jq >/dev/null 2>&1 \
+  && TRIAGE_JSON=$(bun scripts/pr-triage.ts --base "$TRIAGE_BASE" --json 2>/dev/null); then
+  SIZE_LABEL="size/$(jq -r '.bucket' <<<"$TRIAGE_JSON")"
+  TOTAL_LINES=$(jq -r '.total' <<<"$TRIAGE_JSON")
+  LIMIT_LINES=$(jq -r '.limit' <<<"$TRIAGE_JSON")
+  printf "  ${CYAN}Size:${NC}   %s/%s reviewable lines (%s)\n" \
+    "$TOTAL_LINES" "$LIMIT_LINES" "$SIZE_LABEL"
+  [ "$(jq -r '.deepReview' <<<"$TRIAGE_JSON")" = "true" ] && DEEP_LABEL="review:deep"
+else
+  warn "Could not compute PR size; skipping size/deep-review labels"
+fi
+$FORCE_DEEP && DEEP_LABEL="review:deep"
+
+ensure_label() {
+  gh label create "$1" --color "$2" --description "$3" --force >/dev/null 2>&1 || true
+}
+
+if [ -n "$SIZE_LABEL" ]; then
+  case "$SIZE_LABEL" in
+    size/XS) ensure_label 'size/XS' '0e8a16' 'Under 10 reviewable lines' ;;
+    size/S)  ensure_label 'size/S'  '1d76db' 'Within the review budget' ;;
+    size/M)  ensure_label 'size/M'  'fbca04' 'Within the review budget' ;;
+    size/L)  ensure_label 'size/L'  'd93f0b' "At the ${LIMIT_LINES}-line review budget" ;;
+    size/XL) ensure_label 'size/XL' 'b60205' "Over the ${LIMIT_LINES}-line review budget" ;;
+  esac
+  LABEL_FLAGS="$LABEL_FLAGS --label $SIZE_LABEL"
+fi
+if [ -n "$DEEP_LABEL" ]; then
+  ensure_label 'review:deep' '5319e7' 'Triggers an on-demand CodeRabbit review'
+  LABEL_FLAGS="$LABEL_FLAGS --label $DEEP_LABEL"
+fi
+
 # ── Create PR ──────────────────────────────────────────────────
 DRAFT_FLAG=""
 $DRAFT && DRAFT_FLAG="--draft"
@@ -126,6 +174,7 @@ PR_URL=$(gh pr create \
   --title "$TITLE" \
   --body "$BODY" \
   $DRAFT_FLAG \
+  $LABEL_FLAGS \
   2>&1) || fail "Failed to create PR: $PR_URL"
 
 info "PR created: $PR_URL"
