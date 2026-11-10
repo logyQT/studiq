@@ -15,6 +15,18 @@ updates:
       interval: 'weekly'
       day: 'monday'
     open-pull-requests-limit: 5
+    # Give every release a week on the registry before Dependabot will propose
+    # it, so a bad publish (broken build, yanked version, compromised
+    # maintainer) has time to be caught by someone else first. GitHub's
+    # built-in default is 3 days when `cooldown` is absent; we want 7.
+    #
+    # Cooldown only gates *version* updates — a fix for a known vulnerability
+    # always comes through straight away (for `bun`, security updates aren't
+    # supported yet at all; alerts come from the dependency graph instead).
+    # With the weekly Monday run the effective lag is 7-13 days: a release must
+    # already be 7 days old at the moment the schedule fires.
+    cooldown:
+      default-days: 7
     # Only minor/patch bumps are grouped. Major versions arrive as separate
     # PRs so a single bump (e.g. recharts 3, react-resizable-panels 4) can be
     # migrated and reviewed on its own instead of landing in one mega-PR.
@@ -36,6 +48,30 @@ updates:
       development-minor-patch:
         dependency-type: 'development'
         exclude-patterns: ['@opentelemetry/*', 'ai', '@ai-sdk/*']
+        update-types: ['minor', 'patch']
+    commit-message:
+      prefix: 'build(deps)'
+
+  # Workflow actions (actions/checkout, actions/cache, …) are pinned by major
+  # tag, so they only move when a new major lands. They still belong in
+  # Dependabot: a pinned major goes stale and eventually runs on a deprecated
+  # runner Node version, and a compromised tag push is exactly the class of
+  # supply-chain change a cooldown protects against.
+  #
+  # Cooldown here supports `default-days` only (no semver-* tiers): Actions
+  # versions are often tag moves rather than fresh publishes.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    # All action bumps in one PR — they are independent of app code and the
+    # workflow diffs are trivial to review together.
+    groups:
+      actions-minor-patch:
         update-types: ['minor', 'patch']
     commit-message:
       prefix: 'build(deps)'
