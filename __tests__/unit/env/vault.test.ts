@@ -1,8 +1,17 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { hermeticGitEnv } from '#test/helpers/hermetic-git';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface VaultModule {
@@ -51,10 +60,12 @@ afterEach(() => {
   for (const dir of gitFixtures.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, {
+function git(cwd: string, hooksDir: string, args: string[]): string {
+  return execFileSync('git', ['-c', `core.hooksPath=${hooksDir}`, ...args], {
     cwd,
     encoding: 'utf8',
+    // Never inherit the hook's repo selection; see `#test/helpers/hermetic-git`.
+    env: hermeticGitEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 30_000,
   }).trim();
@@ -64,16 +75,20 @@ function git(cwd: string, args: string[]): string {
 function worktreeFixture(): { primary: string; worktree: string } {
   const dir = mkdtempSync(join(tmpdir(), 'studiq-env-git-'));
   gitFixtures.push(dir);
+  // An existing, empty hooks dir makes "no hooks run" deterministic even when
+  // the caller is a git hook (lefthook would otherwise look for its config here).
+  const hooksDir = join(dir, 'no-hooks');
+  mkdirSync(hooksDir, { recursive: true });
   const primary = join(dir, 'primary');
-  git(dir, ['init', primary]);
-  git(primary, ['config', 'user.email', 'fixture@example.invalid']);
-  git(primary, ['config', 'user.name', 'Fixture']);
-  git(primary, ['config', 'commit.gpgsign', 'false']);
+  git(dir, hooksDir, ['init', primary]);
+  git(primary, hooksDir, ['config', 'user.email', 'fixture@example.invalid']);
+  git(primary, hooksDir, ['config', 'user.name', 'Fixture']);
+  git(primary, hooksDir, ['config', 'commit.gpgsign', 'false']);
   writeFileSync(join(primary, 'README.md'), 'fixture\n');
-  git(primary, ['add', 'README.md']);
-  git(primary, ['commit', '-m', 'fixture']);
+  git(primary, hooksDir, ['add', 'README.md']);
+  git(primary, hooksDir, ['commit', '--no-verify', '-m', 'fixture']);
   const worktree = join(dir, 'worktree');
-  git(primary, ['worktree', 'add', '--detach', worktree]);
+  git(primary, hooksDir, ['worktree', 'add', '--detach', worktree]);
   return { primary: realpathSync(primary), worktree: realpathSync(worktree) };
 }
 
