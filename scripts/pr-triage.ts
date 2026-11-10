@@ -2,10 +2,11 @@
 /**
  * PR triage: reviewable size, size bucket and deep-review routing.
  *
- * The size budget counts production/reviewable lines only. Test files,
- * generated files, the lockfile and vendored agent skills are excluded — they
- * are still reported, so a large test suite is visible without spending the
- * budget that decides whether the PR is small enough to review in one pass.
+ * The size budget counts production/reviewable lines only. Test files, Markdown
+ * docs, generated files, the lockfile and vendored agent skills are excluded —
+ * they are still reported, so a large test suite or a long design doc is visible
+ * without spending the budget that decides whether the code is small enough to
+ * review in one pass.
  *
  * A PR over the budget is not automatically wrong, but it must be split or
  * carry the `size:exception` label once `PR_SIZE_ENFORCE=true`.
@@ -33,6 +34,7 @@ interface TriageResult {
   limit: number;
   total: number;
   testLines: number;
+  docLines: number;
   excludedLines: number;
   changedFiles: number;
   bucket: SizeBucket;
@@ -44,8 +46,10 @@ interface TriageResult {
 const DEFAULT_BASE = 'origin/main';
 const DEFAULT_LIMIT = 400;
 
-// Excluded from the budget, but their lines are reported separately.
+// Excluded from the budget, but their lines are reported separately. Markdown
+// is prose, not production code; contract and decision docs stay sensitive below.
 const TEST_PATHS = [/^__tests__\//, /\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs|cjs)$/];
+const DOC_PATHS = [/\.mdx?$/];
 const EXCLUDED_PATHS = [
   /^bun\.lock$/,
   /^eslint-suppressions\.json$/,
@@ -65,6 +69,10 @@ const SENSITIVE_PATHS = [
   /^apps\/admin\//,
   /^\.github\/workflows\//,
   /^scripts\/check-.*\.ts$/,
+  // Docs are excluded from the size budget, but the contract and decision
+  // records are exactly the prose that deserves a second pair of eyes.
+  /^AGENTS\.md$/,
+  /^docs\/decisions\//,
 ];
 
 function option(name: string): string | undefined {
@@ -129,6 +137,7 @@ function triage(base: string, limit: number): TriageResult {
   const entries = parseNumstat(diff.stdout);
   let total = 0;
   let testLines = 0;
+  let docLines = 0;
   let excludedLines = 0;
 
   for (const entry of entries) {
@@ -137,6 +146,8 @@ function triage(base: string, limit: number): TriageResult {
       testLines += lines;
     } else if (EXCLUDED_PATHS.some((pattern) => pattern.test(entry.path))) {
       excludedLines += lines;
+    } else if (DOC_PATHS.some((pattern) => pattern.test(entry.path))) {
+      docLines += lines;
     } else {
       total += lines;
     }
@@ -152,6 +163,7 @@ function triage(base: string, limit: number): TriageResult {
     limit,
     total,
     testLines,
+    docLines,
     excludedLines,
     changedFiles: entries.length,
     bucket: bucketFor(total, limit),
@@ -190,7 +202,7 @@ function main(): void {
       `PR size vs ${result.base}: ${result.total}/${result.limit} reviewable lines (${result.bucket})`,
     );
     console.log(
-      `  excluded: ${result.testLines} test line(s), ${result.excludedLines} generated/vendored line(s)`,
+      `  excluded: ${result.testLines} test, ${result.docLines} doc, ${result.excludedLines} generated/vendored line(s)`,
     );
     console.log(`  sensitive paths: ${result.sensitive ? 'yes' : 'no'}`);
     console.log(`  deep review: ${result.deepReview ? 'yes' : 'no'}`);

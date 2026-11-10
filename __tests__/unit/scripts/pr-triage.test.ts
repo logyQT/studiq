@@ -26,6 +26,7 @@ const TEST_ENV: NodeJS.ProcessEnv = {
 interface Output {
   total: number;
   testLines: number;
+  docLines: number;
   excludedLines: number;
   bucket: string;
   overLimit: boolean;
@@ -39,6 +40,10 @@ function git(cwd: string, ...args: string[]): string {
 
 function lines(count: number, prefix = 'export const x'): string {
   return Array.from({ length: count }, (_, index) => `${prefix}${index} = ${index};\n`).join('');
+}
+
+function markdownLines(count: number): string {
+  return Array.from({ length: count }, (_, index) => `- rule ${index}\n`).join('');
 }
 
 function write(repo: string, path: string, content: string): void {
@@ -60,6 +65,8 @@ function isOutput(value: unknown): value is Output {
     typeof value.total === 'number' &&
     'testLines' in value &&
     typeof value.testLines === 'number' &&
+    'docLines' in value &&
+    typeof value.docLines === 'number' &&
     'excludedLines' in value &&
     typeof value.excludedLines === 'number' &&
     'bucket' in value &&
@@ -125,12 +132,14 @@ describe('scripts/pr-triage', () => {
     write(repo, 'bun.lock', lines(10));
     write(repo, 'packages/server/src/types/database.ts', lines(30));
     write(repo, '.agents/skills/example/SKILL.md', lines(5));
+    write(repo, 'docs/plans/feature.md', lines(20));
     commit(repo);
 
     const output = run(repo, ['--base', 'HEAD~1', '--json']);
 
     expect(output.total).toBe(20);
     expect(output.testLines).toBe(100);
+    expect(output.docLines).toBe(20);
     expect(output.excludedLines).toBe(45);
     expect(output.bucket).toBe('S');
     expect(output.overLimit).toBe(false);
@@ -155,6 +164,20 @@ describe('scripts/pr-triage', () => {
     const output = run(repo, ['--base', 'HEAD~1', '--json']);
 
     expect(output.total).toBe(1);
+    expect(output.sensitive).toBe(true);
+    expect(output.deepReview).toBe(true);
+  });
+
+  it('still requests a deep review for the contract and decision docs', () => {
+    const repo = makeRepo();
+    write(repo, 'AGENTS.md', markdownLines(5));
+    write(repo, 'docs/decisions/0012-example.md', markdownLines(5));
+    commit(repo);
+
+    const output = run(repo, ['--base', 'HEAD~1', '--json']);
+
+    expect(output.total).toBe(0);
+    expect(output.docLines).toBe(10);
     expect(output.sensitive).toBe(true);
     expect(output.deepReview).toBe(true);
   });

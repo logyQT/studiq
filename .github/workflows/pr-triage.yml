@@ -51,7 +51,7 @@ jobs:
           {
             echo "### PR size"
             echo
-            jq -r '"`\(.total)` / `\(.limit)` reviewable lines — **size/\(.bucket)** (tests excluded: `\(.testLines)`, generated/vendored: `\(.excludedLines)`)"' pr-size.json
+            jq -r '"`\(.total)` / `\(.limit)` reviewable lines — **size/\(.bucket)** (tests: `\(.testLines)`, docs: `\(.docLines)`, generated/vendored: `\(.excludedLines)`)"' pr-size.json
             echo
             jq -r 'if .overLimit then "Over the review budget. Split the PR or add the `size:exception` label." else "Within the review budget." end' pr-size.json
             echo

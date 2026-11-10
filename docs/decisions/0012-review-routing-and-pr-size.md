@@ -30,8 +30,8 @@ pass is most valuable on large or risky PRs, not on every 40-line change.
    `@coderabbitai review`. `path_instructions` and the `assertive` profile stay
    — they are what make a deep review worth paying for.
 2. **`scripts/pr-triage.ts` owns the measurement.** It counts added + deleted
-   lines with Git rename detection, excluding tests, generated files, the
-   lockfile and vendored skills. `bun run pr:size` runs it locally;
+   lines with Git rename detection, excluding tests, Markdown docs, generated
+   files, the lockfile and vendored skills. `bun run pr:size` runs it locally;
    `.github/workflows/pr-triage.yml` runs it on every PR.
 3. **The workflow labels every PR** with `size/XS|S|M|L|XL` and adds
    `review:deep` when the PR is over budget **or** touches a sensitive path
@@ -50,13 +50,18 @@ pass is most valuable on large or risky PRs, not on every 40-line change.
 
 - **Budget:** all changed lines except the exclusions below.
 - **Excluded from the budget, still reported:** `__tests__/**`, `*.test.*`,
-  `*.spec.*`, `bun.lock`, `packages/server/src/types/database.ts` (generated),
+  `*.spec.*`, `*.md`, `*.mdx`, `bun.lock`,
+  `packages/server/src/types/database.ts` (generated),
   `eslint-suppressions.json`, `skills-lock.json`, `.agents/skills/**`.
 - **Renames** use Git's rename detection, so a move is not counted as churn.
-- **Tests are excluded on purpose:** a large test suite is still reviewable and
-  still reported, but it should not consume the production-code budget.
-- **Still counted:** docs and i18n message JSON. Both are review surface; if
-  they turn out to dominate, add them to the exclusion list with a measurement.
+- **Tests and docs are excluded on purpose:** a large test suite or design doc is
+  still reviewable and still reported, but it should not consume the
+  production-code budget.
+- **Still counted:** code and i18n message JSON. i18n is data, but key symmetry
+  is review surface; add it to the exclusions only with a measurement.
+- **Contract and decision docs stay sensitive:** `AGENTS.md` and
+  `docs/decisions/**` are in the deep-review path even though Markdown is outside
+  the size budget.
 
 ## Consequences
 
@@ -66,8 +71,9 @@ pass is most valuable on large or risky PRs, not on every 40-line change.
 - CodeRabbit's pre-merge checks (title, description, linked issue, English-only)
   now run only on deep-reviewed PRs. They were warnings, not gates; the hard
   gates remain in `verify.yml`.
-- A huge test-only PR passes the budget. That is accepted: the budget targets
-  production-code risk, and tests have their own review value.
+- A huge test-only or docs-only PR passes the budget. That is accepted: the
+  budget targets production-code risk, and both are still review surface.
+  Contract and decision docs still trigger a deep review by path.
 - The budget can be gamed by splitting a feature into artificial PRs. That is
   the intended behaviour — stacked PRs are easier to review than one large one.
 - `size:exception` is the explicit operator bypass. It should carry a reason in
