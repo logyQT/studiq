@@ -24,7 +24,7 @@
  *   bun scripts/check-lockfile-age.ts            # compares against origin/main
  *   bun scripts/check-lockfile-age.ts <base-ref>  # or BASE_REF=… ; CI passes FETCH_HEAD
  */
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const LOCKFILE = 'bun.lock';
@@ -56,44 +56,85 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function git(args: string[]): string | null {
-  try {
-    return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch {
-    return null;
-  }
+interface GitResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+}
+
+function git(args: string[]): GitResult {
+  // `show` returns the whole lockfile: keep well clear of the 1 MiB default.
+  const result = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return { ok: result.status === 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
 /**
  * `bun.lock` is JSONC: Bun writes trailing commas, so the text has to be
  * normalised before `JSON.parse`. Comments are not written by Bun, and
  * stripping them generically would corrupt string values (URLs, base64).
+ *
+ * Returns the `name@version` specs themselves rather than a name -> version
+ * map: one lockfile can hold several versions of the same package (when peer
+ * ranges disagree), and keying by name silently drops all but one of them —
+ * potentially the very entry a new resolution added.
  */
-function parseLockfile(text: string): Map<string, string> {
+function parseLockfile(text: string): Set<string> {
   const parsed: unknown = JSON.parse(text.replace(/,(\s*[}\]])/g, '$1'));
-  const versions = new Map<string, string>();
-  if (!isRecord(parsed) || !isRecord(parsed.packages)) return versions;
+  const specs = new Set<string>();
+  if (!isRecord(parsed) || !isRecord(parsed.packages)) return specs;
   for (const entry of Object.values(parsed.packages)) {
-    if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
-    const spec = entry[0];
-    // Scoped names start with `@`, so the version separator is the *last* `@`.
-    const separator = spec.lastIndexOf('@');
-    if (separator <= 0) continue;
-    versions.set(spec.slice(0, separator), spec.slice(separator + 1));
+    if (Array.isArray(entry) && typeof entry[0] === 'string') specs.add(entry[0]);
   }
-  return versions;
+  return specs;
 }
 
-/** The minimum age in seconds, read from the same `bunfig.toml` Bun obeys. */
+/** Split a spec into package name and version; `@scope/pkg@1.0.0` -> (`@scope/pkg`, `1.0.0`). */
+function splitSpec(spec: string): { name: string; version: string } | null {
+  // Scoped names start with `@`, so the version separator is the *last* `@`.
+  const separator = spec.lastIndexOf('@');
+  if (separator <= 0) return null;
+  return { name: spec.slice(0, separator), version: spec.slice(separator + 1) };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingFile(error: unknown): boolean {
+  return isRecord(error) && error.code === 'ENOENT';
+}
+
+/**
+ * The minimum age in seconds, read from the same `bunfig.toml` Bun obeys. Only
+ * a missing file, an absent `[install]` table or an absent key falls back to
+ * the default: an unreadable file or a malformed value means this gate and Bun
+ * disagree about the window, which is worse than failing loudly.
+ */
 function minimumAgeSeconds(): number {
+  let text: string;
   try {
-    const config: unknown = Bun.TOML.parse(readFileSync('bunfig.toml', 'utf8'));
-    if (!isRecord(config) || !isRecord(config.install)) return DEFAULT_MIN_AGE_SECONDS;
-    const value = config.install.minimumReleaseAge;
-    return typeof value === 'number' && value > 0 ? value : DEFAULT_MIN_AGE_SECONDS;
-  } catch {
-    return DEFAULT_MIN_AGE_SECONDS;
+    text = readFileSync('bunfig.toml', 'utf8');
+  } catch (error) {
+    if (isMissingFile(error)) return DEFAULT_MIN_AGE_SECONDS;
+    throw new Error(`cannot read bunfig.toml: ${errorMessage(error)}`);
   }
+
+  let config: unknown;
+  try {
+    config = Bun.TOML.parse(text);
+  } catch (error) {
+    throw new Error(`cannot parse bunfig.toml: ${errorMessage(error)}`);
+  }
+
+  if (!isRecord(config) || !isRecord(config.install)) return DEFAULT_MIN_AGE_SECONDS;
+  const value = config.install.minimumReleaseAge;
+  if (value === undefined) return DEFAULT_MIN_AGE_SECONDS;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      `[install] minimumReleaseAge in bunfig.toml must be a positive number of seconds, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
 }
 
 /** Publish time from the npm packument, or null when it cannot be established. */
@@ -157,7 +198,7 @@ function isAllowlisted(name: string, version: string): boolean {
 async function main(): Promise<number> {
   const requested = process.argv[2] ?? process.env.BASE_REF ?? 'main';
   const baseRef = [requested, `origin/${requested}`].find(
-    (ref) => git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) !== null,
+    (ref) => git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).ok,
   );
   if (!baseRef) {
     console.error(`x cannot resolve base ref "${requested}" — nothing to compare against.`);
@@ -167,34 +208,66 @@ async function main(): Promise<number> {
   // CI passes FETCH_HEAD; name the thing the operator can recognise.
   const baseLabel = baseRef === 'FETCH_HEAD' ? 'the PR base (FETCH_HEAD)' : baseRef;
 
-  const baseText = git(['show', `${baseRef}:${LOCKFILE}`]);
-  if (baseText === null) {
+  // `ls-tree` answers "is the path in this tree" separately from "can I read
+  // it", so a genuinely absent path is the only case that may skip the gate.
+  const tree = git(['ls-tree', '--name-only', baseRef, '--', LOCKFILE]);
+  if (!tree.ok) {
+    console.error(`x cannot list ${LOCKFILE} at ${baseLabel}: ${tree.stderr.trim()}`);
+    return 1;
+  }
+  const baseHasLockfile = tree.stdout.split('\n').some((line) => line.trim() === LOCKFILE);
+
+  const headFile = Bun.file(LOCKFILE);
+  const headExists = await headFile.exists();
+
+  if (!baseHasLockfile) {
     console.log(
-      `- no ${LOCKFILE} at ${baseLabel}: treating this as the first lockfile, nothing to diff.`,
+      headExists
+        ? `- ${LOCKFILE} is new relative to ${baseLabel} (no lockfile at the base): nothing to diff against, skipping.`
+        : `- no ${LOCKFILE} at ${baseLabel} or in the working tree, nothing to check.`,
     );
     return 0;
   }
 
-  const headFile = Bun.file(LOCKFILE);
-  if (!(await headFile.exists())) {
-    console.log(`- no ${LOCKFILE} in the working tree, nothing to check.`);
-    return 0;
+  // A deleted lockfile is not a no-op: `bun install --frozen-lockfile` would
+  // resolve from package.json instead, which is exactly the unchecked path this
+  // gate exists to close.
+  if (!headExists) {
+    console.error(
+      `x ${LOCKFILE} exists at ${baseLabel} but is missing from the working tree — a deleted lockfile cannot be checked.`,
+    );
+    return 1;
   }
 
-  const base = parseLockfile(baseText);
+  const baseText = git(['show', `${baseRef}:${LOCKFILE}`]);
+  if (!baseText.ok) {
+    console.error(`x cannot read ${LOCKFILE} at ${baseLabel}: ${baseText.stderr.trim()}`);
+    return 1;
+  }
+
+  const base = parseLockfile(baseText.stdout);
   const head = parseLockfile(await headFile.text());
 
-  const changed = [...head.entries()]
-    .filter(([name, version]) => REGISTRY_VERSION.test(version) && base.get(name) !== version)
-    .filter(([name, version]) => !isAllowlisted(name, version))
-    .map(([name, version]): FreshVersion => ({ name, version, published: null }));
+  const changed = [...head]
+    .filter((spec) => !base.has(spec))
+    .map(splitSpec)
+    .filter((pkg): pkg is { name: string; version: string } => pkg !== null)
+    .filter((pkg) => REGISTRY_VERSION.test(pkg.version) && !isAllowlisted(pkg.name, pkg.version))
+    .map((pkg): FreshVersion => ({ ...pkg, published: null }));
 
   if (changed.length === 0) {
     console.log(`✓ lockfile release age: no new package versions relative to ${baseLabel}.`);
     return 0;
   }
 
-  const minAgeMs = minimumAgeSeconds() * 1000;
+  let minAgeSeconds: number;
+  try {
+    minAgeSeconds = minimumAgeSeconds();
+  } catch (error) {
+    console.error(`x ${errorMessage(error)}`);
+    return 1;
+  }
+  const minAgeMs = minAgeSeconds * 1000;
   const now = Date.now();
   const tooFresh: FreshVersion[] = [];
   let unverified = 0;
