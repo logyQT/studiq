@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
@@ -116,41 +117,110 @@ async function flockMutex(path: string, waitSeconds: number): Promise<Mutex | nu
   });
 }
 
+/** The 5 s a directory lock with no owner record is trusted before takeover. */
+const DIR_LOCK_NO_OWNER_GRACE_MS = 5_000;
+
+interface DirLockIdentity {
+  dev: number;
+  ino: number;
+  mtimeMs: number;
+}
+
+/** The directory's identity: a released or replaced lock changes it. */
+function dirLockIdentity(path: string): DirLockIdentity | null {
+  try {
+    const stat = lstatSync(path);
+    return { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs };
+  } catch {
+    return null;
+  }
+}
+
+function readOwnerField(path: string, name: string): string | null {
+  try {
+    return readFileSync(join(path, name), 'utf8').trim();
+  } catch {
+    return null;
+  }
+}
+
+interface DirLockOwner {
+  pid: number;
+  /** Holder identity written with the pid; '' when the holder left no token. */
+  token: string;
+}
+
+function readDirLockOwner(path: string): DirLockOwner {
+  return {
+    pid: Number(readOwnerField(path, 'pid') ?? '') || 0,
+    token: readOwnerField(path, 'token') ?? '',
+  };
+}
+
+/**
+ * Remove a held directory only while it still belongs to this holder.
+ *
+ * A stale takeover replaces the directory with its own (new inode, new token),
+ * so the previous holder's release must compare the token *and* the inode and
+ * leave a successor's lock alone. `force` keeps a dir that a takeover already
+ * removed from becoming an error.
+ */
+function releaseDirMutex(path: string, token: string): void {
+  const observed = dirLockIdentity(path);
+  if (!observed) return;
+  if (readDirLockOwner(path).token !== token) return;
+  const current = dirLockIdentity(path);
+  if (!current || current.dev !== observed.dev || current.ino !== observed.ino) return;
+  rmSync(path, { recursive: true, force: true });
+}
+
+/**
+ * The fallback for hosts without `flock`: `mkdir` is the acquisition primitive
+ * and the directory holds the holder's pid and a random token. The token makes
+ * release and stale takeover identity-checked, so a holder that was presumed
+ * stale can never delete the lock a successor now owns.
+ */
 async function dirMutex(path: string, waitSeconds: number): Promise<Mutex> {
   const deadline = Date.now() + waitSeconds * 1000;
+  const token = randomBytes(12).toString('hex');
   for (;;) {
     try {
       mkdirSync(path, { mode: 0o700 });
-      writeFileSync(join(path, 'pid'), `${process.pid}\n`, { mode: 0o600 });
+      try {
+        writeFileSync(join(path, 'pid'), `${process.pid}\n`, { mode: 0o600 });
+        writeFileSync(join(path, 'token'), `${token}\n`, { mode: 0o600 });
+      } catch (error) {
+        // A lock that cannot name its owner would never be taken over.
+        rmSync(path, { recursive: true, force: true });
+        throw error;
+      }
       return {
         async release() {
-          rmSync(path, { recursive: true, force: true });
+          releaseDirMutex(path, token);
         },
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      let observed;
-      try {
-        observed = lstatSync(path);
-      } catch {
-        continue;
-      }
-      let owner = 0;
-      try {
-        owner = Number(readFileSync(join(path, 'pid'), 'utf8').trim());
-      } catch {
-        /* missing pid: grace period below */
-      }
+      const observed = dirLockIdentity(path);
+      if (!observed) continue;
+      const owner = readDirLockOwner(path);
       const stale =
-        (owner && !pidAlive(owner)) || (!owner && Date.now() - observed.mtimeMs > 5_000);
+        (owner.pid > 0 && !pidAlive(owner.pid)) ||
+        (owner.pid === 0 && Date.now() - observed.mtimeMs > DIR_LOCK_NO_OWNER_GRACE_MS);
       if (stale) {
-        try {
-          const current = lstatSync(path);
-          if (current.dev === observed.dev && current.ino === observed.ino) {
-            rmSync(path, { recursive: true, force: true });
-          }
-        } catch {
-          /* gone */
+        // Remove only the exact directory observed above: a successor rewrites
+        // the inode, pid and token, so its lock is never deleted. Anything that
+        // changed since the first look means another process got here first.
+        const current = dirLockIdentity(path);
+        const latest = readDirLockOwner(path);
+        if (
+          current !== null &&
+          current.dev === observed.dev &&
+          current.ino === observed.ino &&
+          latest.pid === owner.pid &&
+          latest.token === owner.token
+        ) {
+          rmSync(path, { recursive: true, force: true });
         }
         continue;
       }

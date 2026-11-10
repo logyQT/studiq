@@ -555,8 +555,9 @@ describe('exclusive stale-claim recovery', () => {
       script,
       [
         `const { chooseAppPort } = await import(${JSON.stringify(pathToFileURL(join(REPO_ROOT, 'scripts/env/lib/app-port.ts')).href)});`,
+        `const lease = await import(${JSON.stringify(pathToFileURL(join(REPO_ROOT, 'scripts/env/lib/lease.ts')).href)});`,
         `const fs = await import('node:fs');`,
-        `const [projectId, go] = process.argv.slice(2);`,
+        `const [projectId, worktree, go] = process.argv.slice(2);`,
         `while (!fs.existsSync(go)) await new Promise((done) => setTimeout(done, 5));`,
         `const port = await chooseAppPort({`,
         `  dir: process.env.STUDIQ_DEV_REGISTRY,`,
@@ -567,6 +568,11 @@ describe('exclusive stale-claim recovery', () => {
         `  isPortFree: () => Promise.resolve(true),`,
         `  reclaimForeign: () => Promise.resolve(false),`,
         `});`,
+        // A winning recoverer holds its port through a lease, exactly like
+        // `resolveLease`. A claim with no lease is deliberately reclaimable once
+        // its owner exits, so without the lease the loser (which may only check
+        // after the winner has already exited) would recover the same port.
+        `lease.writeLease(lease.newLease({ projectId, projectRoot: worktree, branch: 'refs/heads/test', stackName: projectId, appPort: port, shared: false, sharedOwner: null, mode: 'dev' }));`,
         `console.log(JSON.stringify({ projectId, appPort: port }));`,
         '',
       ].join('\n'),
@@ -580,7 +586,7 @@ describe('exclusive stale-claim recovery', () => {
     const projectIds = ['env-first', 'env-second'];
     const script = recoveryScript(dir);
     const pending = projectIds.map((projectId) =>
-      runChild(script, [projectId, go], {
+      runChild(script, [projectId, `/checkout/${projectId}`, go], {
         ...process.env,
         ...env,
         STUDIQ_DEV_REGISTRY: dir,
@@ -598,18 +604,21 @@ describe('exclusive stale-claim recovery', () => {
   });
 
   it('serializes stale recovery through the directory-mutex fallback', async () => {
-    const dir = registry();
     // A `flock` that refuses to run forces the portable directory mutex (stock
     // macOS has no flock); the rest of PATH still provides `ps` and `sh`.
-    const binDir = join(dir, 'bin');
-    mkdirSync(binDir, { recursive: true });
-    const fakeFlock = join(binDir, 'flock');
-    writeFileSync(fakeFlock, '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
-    chmodSync(fakeFlock, 0o755);
+    // Repeated so the fallback's create/release/takeover path runs more than once.
+    for (let round = 0; round < 3; round += 1) {
+      const dir = registry();
+      const binDir = join(dir, 'bin');
+      mkdirSync(binDir, { recursive: true });
+      const fakeFlock = join(binDir, 'flock');
+      writeFileSync(fakeFlock, '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
+      chmodSync(fakeFlock, 0o755);
 
-    assertOneReplacement(
-      dir,
-      await raceRecoverers(dir, { PATH: `${binDir}:${process.env.PATH ?? ''}` }),
-    );
+      assertOneReplacement(
+        dir,
+        await raceRecoverers(dir, { PATH: `${binDir}:${process.env.PATH ?? ''}` }),
+      );
+    }
   });
 });

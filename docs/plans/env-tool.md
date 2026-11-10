@@ -160,10 +160,12 @@ plain `down`; `down --all` and `reset-db` exit 6, while `status`/`ports`/`verify
 - **Build lock:** one `next build` across all worktrees, held only across the build.
 - **One server per checkout.** A live web PID with a different stack/profile → exit 6, naming the server and the
   remedy (`env:down` or a separate worktree). Same stack = normal handover.
-- **Handover:** under `checkout.lock`, stop the tool's own server; release `checkout.lock`, build under the build
-  lock alone, re-take `checkout.lock`, start and health-check. On failure leave the environment stopped (no
-  rollback). `env:serve` takes `checkout.lock`; a stale fingerprint points at `env:build`; `next start` keeps
-  `--keepAliveTimeout 55000` via the workspace script.
+- **Handover:** under `checkout.lock`, claim the checkout's handover record (`.dev/handover.json`, owned by the
+  ensure PID) **before** stopping the tool's own server; release `checkout.lock`, build under the build lock alone,
+  re-take `checkout.lock`, start and health-check — the record is released only when the handover settles. A second
+  `ensure`/`env:build` that finds a live owner refuses (exit 6) instead of stopping that server or moving `.next`.
+  On failure leave the environment stopped (no rollback). `env:serve` takes `checkout.lock`; a stale fingerprint
+  points at `env:build`; `next start` keeps `--keepAliveTimeout 55000` via the workspace script.
 
 ## 8. Seeding
 

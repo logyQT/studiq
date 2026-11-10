@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -11,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  BUN,
   createHarness,
   stackStatusFixture,
   startHttpServer,
@@ -55,6 +57,8 @@ interface HandoverRecord {
   artifactDir: string;
   backupPath: string;
   previousPid: number | null;
+  /** The process that owns the in-flight rebuild, when another one is running. */
+  ownerPid?: number | null;
   phase: 'backed-up' | 'committed';
   at: string;
 }
@@ -220,5 +224,53 @@ describe('env:build settles a pending handover before building', () => {
     expect(existsSync(handoverPath)).toBe(true);
     expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
     expect(stateModule.readBuildState()).toBeNull();
+  });
+
+  it('refuses while another process owns the in-flight rebuild', async () => {
+    const harness = newHarness();
+    await runningStack(harness);
+    applyHarnessEnv(harness);
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'served-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-owner-busy');
+    const owner = spawn(BUN, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+    const ownerPid = owner.pid;
+    if (ownerPid === undefined) throw new Error('the handover owner did not start');
+    try {
+      writeRecord({
+        artifactDir,
+        backupPath,
+        previousPid: null,
+        ownerPid,
+        phase: 'backed-up',
+        at: '2026-01-01T00:00:00.000Z',
+      });
+
+      let builds = 0;
+      let failure: unknown;
+      try {
+        await buildModule.runBuild(parsedBuild(), {
+          build() {
+            builds += 1;
+            return Promise.resolve(buildResult());
+          },
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      // The live owner keeps its record, backup and artifact: this build neither
+      // builds over nor restores them.
+      expect(builds).toBe(0);
+      expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+      if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+      expect(failure.message).toContain(`pid ${ownerPid}`);
+      expect(existsSync(handoverPath)).toBe(true);
+      expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
+      expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('served-build');
+    } finally {
+      owner.kill('SIGKILL');
+    }
   });
 });

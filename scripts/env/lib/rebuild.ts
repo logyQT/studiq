@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { logBuildOutput, runProductionBuild, type BuildResult } from './build';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from './exit';
@@ -140,13 +149,21 @@ interface HandoverRecord {
   at: string;
 }
 
-/** Persist the handover atomically (mode 600) before the artifact is moved aside. */
-function writeHandover(record: HandoverRecord): void {
+/**
+ * Persist the handover atomically (mode 600).
+ *
+ * `create` links a complete temp file into place, which *fails* when a record
+ * already exists: exactly one rebuild can own the in-flight handover, even
+ * though `checkout.lock` is free while it builds. The default replaces the
+ * record (commit).
+ */
+function writeHandover(record: HandoverRecord, create = false): void {
   mkdirSync(DEV_DIR, { recursive: true, mode: 0o700 });
-  const temp = `${HANDOVER_FILE}.${process.pid}.${Date.now()}.tmp`;
+  const temp = `${HANDOVER_FILE}.${process.pid}.${Date.now()}.${randomBytes(4).toString('hex')}.tmp`;
   try {
     writeFileSync(temp, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
-    renameSync(temp, HANDOVER_FILE);
+    if (create) linkSync(temp, HANDOVER_FILE);
+    else renameSync(temp, HANDOVER_FILE);
   } finally {
     rmSync(temp, { force: true });
   }
@@ -222,19 +239,39 @@ const defaultHandoverDeps: HandoverRecoveryDeps = {
 };
 
 /**
+ * What `recoverHandover` found and did.
+ *
+ * - `none`: there was no record.
+ * - `settled`: the record was recovered, cleaned up or is gone.
+ * - `in-flight`: another live process owns the rebuild, so the artifact must not
+ *   be touched; with `checkout.lock` free for that build, only this record names
+ *   the owner.
+ * - `serving`: the unverified replacement server still owns the artifact.
+ * - `kept`: a cleanup step failed, so the record stays for the next attempt; the
+ *   artifact itself is intact.
+ */
+export type HandoverRecovery =
+  | { status: 'none' }
+  | { status: 'settled' }
+  | { status: 'in-flight'; ownerPid: number }
+  | { status: 'serving'; pid: number }
+  | { status: 'kept' };
+
+/**
  * Settle a handover left by an interrupted rebuild.
  *
  * Runs inside the checkout lock, before the lease/build, so the artifact is
  * consistent before `ensure` decides whether it needs to build.
  *
+ * - a record owned by another live process is never touched: its owner is the
+ *   in-flight build, which owns `.next` even though `checkout.lock` is
+ *   deliberately free, so recovery reports `in-flight` and the caller refuses
+ *   instead of stopping the server or backing up the artifact.
  * - `committed` with an artifact present: the replacement completed and was
  *   verified, so the spent backup and the record are removed.
  * - `backed-up` while the replacement is still alive: the process serving the
  *   unverified artifact still owns `.next`, so recovery is deferred (record and
  *   backup untouched) and a later `ensure` retries once it stops.
- * - a record owned by another live process: its owner is the in-flight build,
- *   which owns `.next` even though `checkout.lock` is deliberately free, so
- *   recovery defers (record and backup untouched) until that process exits.
  * - anything else with a backup: the previous build was never verified as
  *   replaced, so it is restored over `.next` — even when an unverified
  *   artifact is present — and the record is removed afterwards. The build state
@@ -246,24 +283,28 @@ const defaultHandoverDeps: HandoverRecoveryDeps = {
  * next attempt, and the record is only ever removed after the backup is gone.
  * A build-state invalidation that fails aborts before `.next` is touched.
  *
- * @public Used by `env:ensure` and exercised by the unit tests.
+ * @public Used by `env:ensure`/`env:build` and exercised by the unit tests.
  */
-export function recoverHandover(deps: HandoverRecoveryDeps = defaultHandoverDeps): void {
+export function recoverHandover(
+  deps: HandoverRecoveryDeps = defaultHandoverDeps,
+): HandoverRecovery {
   const record = readHandover();
-  if (!record) return;
-  if (!existsSync(record.backupPath)) {
-    // The backup is gone, so there is nothing left to restore or clean up.
-    removeHandover();
-    return;
-  }
+  if (!record) return { status: 'none' };
   const owner = record.ownerPid;
   if (owner !== null && owner !== process.pid && (deps.pidAlive?.(owner) ?? pidAlive(owner))) {
     // `checkout.lock` is deliberately free while the owner builds, so a live
     // owner — not the lock — is what keeps `.next` and the backup untouched.
+    // The owner check comes before the backup check: a build that claimed the
+    // record and has not moved the artifact yet is still in flight.
     writeStderrLine(
       `warning: the build that owns the handover record (pid ${owner}) is still running; deferring recovery of the interrupted build until it exits (kept the handover record and backup at ${record.backupPath})`,
     );
-    return;
+    return { status: 'in-flight', ownerPid: owner };
+  }
+  if (!existsSync(record.backupPath)) {
+    // The backup is gone, so there is nothing left to restore or clean up.
+    removeHandover();
+    return { status: 'settled' };
   }
   if (record.phase === 'committed' && existsSync(join(record.artifactDir, 'BUILD_ID'))) {
     // Only a committed handover may drop the previous build; a removal that
@@ -275,10 +316,10 @@ export function recoverHandover(deps: HandoverRecoveryDeps = defaultHandoverDeps
       writeStderrLine(
         `warning: could not remove the stale handover backup at ${record.backupPath} (${reason}); keeping the handover record`,
       );
-      return;
+      return { status: 'kept' };
     }
     removeHandover();
-    return;
+    return { status: 'settled' };
   }
   if (record.phase !== 'committed') {
     // The replacement server was started with this checkout's worktree marker,
@@ -291,7 +332,7 @@ export function recoverHandover(deps: HandoverRecoveryDeps = defaultHandoverDeps
       writeStderrLine(
         `warning: the replacement web server (pid ${replacement}) is still running; deferring recovery of the interrupted build until it stops (kept the handover record and backup at ${record.backupPath})`,
       );
-      return;
+      return { status: 'serving', pid: replacement };
     }
   }
   try {
@@ -311,23 +352,104 @@ export function recoverHandover(deps: HandoverRecoveryDeps = defaultHandoverDeps
     );
   }
   removeHandover();
+  return { status: 'settled' };
 }
 
-function backupArtifact(deps: RebuildRecoveryDeps, previousPid: number | null): string | null {
-  if (!existsSync(join(deps.artifactDir, 'BUILD_ID'))) return null;
-  mkdirSync(deps.backupDir, { recursive: true, mode: 0o700 });
+/** A fresh, unique backup path for the artifact a rebuild moves aside. */
+function nextBackupPath(deps: RebuildRecoveryDeps): string {
   const stamp = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const backup = join(deps.backupDir, `next-backup-${stamp}`);
-  // The record must exist before the rename: a process that dies between the
-  // two must leave proof of where the previous build went.
-  writeHandover({
+  return join(deps.backupDir, `next-backup-${stamp}`);
+}
+
+function handoverRecord(
+  deps: RebuildRecoveryDeps,
+  backupPath: string,
+  previousPid: number | null,
+): HandoverRecord {
+  return {
     artifactDir: deps.artifactDir,
-    backupPath: backup,
+    backupPath,
     previousPid,
     ownerPid: process.pid,
     phase: 'backed-up',
     at: new Date().toISOString(),
-  });
+  };
+}
+
+/**
+ * Resolve a record whose owner is gone so this rebuild can take the artifact.
+ *
+ * Recovery already ran under the checkout lock, so a record still here belongs
+ * to a process that died inside this prelude or to a live replacement server
+ * this rebuild is about to replace. Its artifact is therefore superseded: keep
+ * the previous build only when `.next` is missing, otherwise the backup is
+ * spent (the unverified `.next` is moved aside and restored on failure).
+ */
+function settleAbandonedHandover(deps: RebuildRecoveryDeps, record: HandoverRecord): void {
+  if (existsSync(record.backupPath)) {
+    if (existsSync(join(record.artifactDir, 'BUILD_ID'))) {
+      discardBackup(deps, record.backupPath);
+    } else {
+      try {
+        restoreArtifact({ ...deps, artifactDir: record.artifactDir }, record.backupPath);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new EnvFailure(
+          EXIT_START_FAILED,
+          `could not restore the interrupted build from ${record.backupPath} (${reason}); kept the handover record`,
+          { cause: error },
+        );
+      }
+    }
+  }
+  removeHandover();
+}
+
+/**
+ * Take ownership of the artifact before the server is stopped or `.next` is
+ * moved aside.
+ *
+ * `checkout.lock` is deliberately released for the build, so the handover
+ * record — not the lock — is what keeps a second ensure from stopping the same
+ * server and backing up the same `.next` while this rebuild runs. Creating the
+ * record is the exclusion primitive (a whole file is linked into place, so
+ * exactly one rebuild wins), and a live foreign owner is refused before any
+ * mutation. Ownership is held until `settleCommitted`/`failWithRecovery`
+ * resolves the record.
+ */
+function claimHandover(deps: RebuildRecoveryDeps, previousPid: number | null): string {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const backupPath = nextBackupPath(deps);
+    try {
+      writeHandover(handoverRecord(deps, backupPath, previousPid), true);
+      return backupPath;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    const existing = readHandover();
+    if (!existing) continue;
+    const owner = existing.ownerPid;
+    // A record this process left behind is spent (a rebuild that failed to
+    // discard its backup, or a test-level re-run): rebuilds are not re-entrant,
+    // so it is never an *in-flight* build of ours.
+    if (owner !== null && owner !== process.pid && (deps.pidAlive?.(owner) ?? pidAlive(owner))) {
+      throw new EnvFailure(
+        EXIT_CONFLICT,
+        `another env process (pid ${owner}) is rebuilding apps/web/.next; retry once its build handover settles (kept the handover record and backup at ${existing.backupPath})`,
+      );
+    }
+    settleAbandonedHandover(deps, existing);
+  }
+  throw new EnvFailure(
+    EXIT_CONFLICT,
+    'could not take ownership of the build handover; re-run env:ensure',
+  );
+}
+
+/** Move the previous build aside; the handover record already names where. */
+function moveArtifactAside(deps: RebuildRecoveryDeps, backup: string): string | null {
+  if (!existsSync(join(deps.artifactDir, 'BUILD_ID'))) return null;
+  mkdirSync(deps.backupDir, { recursive: true, mode: 0o700 });
   try {
     // A rename is atomic and stays on the same filesystem (`.dev/` is inside the
     // checkout). The web server was stopped before this runs.
@@ -516,10 +638,13 @@ async function failWithRecovery(input: {
 /**
  * Rebuild `apps/web/.next` with a recoverable transaction.
  *
- * The running server is stopped first, the previous build is moved aside, and
- * the build runs under the existing build lock. Any failure restores that build
- * (and restarts the previous server when it was serving); only a fully
- * successful build/start discards the backup.
+ * The rebuild owns the handover record before it stops the running server, so a
+ * second ensure in this checkout refuses instead of stopping the same server or
+ * backing up the same artifact (the checkout lock is free for the build). The
+ * previous build is then moved aside and the build runs under the existing
+ * build lock. Any failure restores that build (and restarts the previous server
+ * when it was serving); only a fully successful build/start discards the backup
+ * and releases the record.
  *
  * @public Used by `env:ensure` and exercised by the unit tests, which load this
  * module by computed URL.
@@ -529,11 +654,14 @@ export async function rebuildWithRecovery(
   deps: RebuildRecoveryDeps = defaultDeps,
 ): Promise<RebuildRecoveryResult> {
   const previousPid = deps.readPid();
+  // Claim before the stop: nothing is mutated until this rebuild owns the
+  // handover, and a rebuild that already owns it makes this one refuse.
+  const claimed = claimHandover(deps, previousPid);
   if (previousPid !== null) deps.stopForReplacement();
 
   let backup: string | null;
   try {
-    backup = backupArtifact(deps, previousPid);
+    backup = moveArtifactAside(deps, claimed);
   } catch (error) {
     // The previous server was already stopped, so a backup that cannot be
     // created must restore service (not build) and keep the original cause.
