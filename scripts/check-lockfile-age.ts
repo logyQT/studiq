@@ -65,7 +65,10 @@ interface GitResult {
 function git(args: string[]): GitResult {
   // `show` returns the whole lockfile: keep well clear of the 1 MiB default.
   const result = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  return { ok: result.status === 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  // A spawn failure (no `git` on PATH) sets `error` and leaves stderr empty;
+  // surface it, or the caller reports a failure with no reason attached.
+  const stderr = result.error ? errorMessage(result.error) : (result.stderr ?? '');
+  return { ok: result.status === 0, stdout: result.stdout ?? '', stderr };
 }
 
 /**
