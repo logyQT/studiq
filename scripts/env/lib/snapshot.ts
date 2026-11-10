@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { readContractLenient, type Contract } from './contract';
 import { contractWithLease } from './contract-lease';
+import { envPort } from './env-port';
 import { probeHttp } from './health';
 import { shapeStatus, type DiscoveredPorts, type StatusSnapshot } from './json';
 import { readRegistry, findEntry, registryPathExists } from './registry';
@@ -39,10 +40,6 @@ const EMPTY_PORTS: DiscoveredPorts = {
   pgmeta: 0,
 };
 
-function envPort(value: string | undefined): number {
-  const port = Number(value ?? '0');
-  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : 0;
-}
 function envUrl(value: string | undefined): string | null {
   return value ? normalizeLocalhost(trimTrailingSlash(value)) : null;
 }

@@ -72,7 +72,7 @@ export const USAGE = [
   '  env:ports  [--json]',
   '  env:supa   <args…>',
   '',
-  'Atoms: --db --rest --auth --storage --studio --mail --realtime --analytics --seed --no-seed',
+  'Atoms: --db --rest --auth --storage --studio --mail --realtime --functions --analytics --seed --no-seed',
   '       --build --force-build --web --prod --runtime native|docker',
   '       --app-port <n> --wait <s> --json --yes',
 ].join('\n');

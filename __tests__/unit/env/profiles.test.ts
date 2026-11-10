@@ -80,6 +80,18 @@ describe('env profiles (phase 2)', () => {
     expect(profiles.excludesFor(caps)).toEqual(['studio', 'mail', 'functions', 'pooler']);
   });
 
+  it('accepts the functions atom and removes functions from -x', () => {
+    const caps = profiles.buildCapabilities('api', ['functions']);
+    expect(caps.has('functions')).toBe(true);
+    expect(profiles.excludesFor(caps)).toEqual([
+      'studio',
+      'mail',
+      'realtime',
+      'analytics',
+      'pooler',
+    ]);
+  });
+
   it('reports requested capabilities the stack is missing', () => {
     expect(profiles.missingCapabilities(['database', 'auth'], ['mail'])).toEqual(['mail']);
   });
