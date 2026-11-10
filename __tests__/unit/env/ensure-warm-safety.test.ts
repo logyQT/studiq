@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  allocateAppPorts,
   createHarness,
-  firstFreePort,
   objectField,
   parseJsonObject,
   REPO_ROOT,
@@ -164,19 +164,13 @@ function newHarness(): Harness {
  * Without a lease yet, `resolveLease` treats the contract port as the running
  * stack's port, so an `ensure` that has to fall back to the shared 3000-3999
  * scan trips its own port-conflict guard as soon as another unit file holds
- * 3000. Every run here therefore pins `--app-port`, and the base is derived from
- * the worker pid outside both that scan range and the ephemeral range, so the
- * ports are per-worker and only a genuine foreign holder can take one (which
- * `firstFreePort` checks by binding).
+ * 3000. Every run here therefore pins `--app-port`, allocated on this worker's
+ * per-file base (see `appPortBase`) outside both that scan range and the
+ * ephemeral range, so only a genuine foreign holder can take one (which the
+ * shared helper checks by binding).
  */
-const APP_PORT_BASE = 10_000 + (process.pid % 400) * 20;
-
-async function explicitAppPorts(count: number): Promise<number[]> {
-  const ports: number[] = [];
-  for (let index = 0; index < count; index += 1) {
-    ports.push(await firstFreePort(APP_PORT_BASE, new Set(ports)));
-  }
-  return ports;
+function explicitAppPorts(count: number): Promise<number[]> {
+  return allocateAppPorts(count);
 }
 
 function parse(args: string[]): ParsedCommand {

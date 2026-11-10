@@ -374,8 +374,11 @@ export async function startTcpListener(port = 0, host?: string): Promise<TcpList
   };
 }
 
-/** First port this checkout can bind on the wildcard address (doctor parity). */
-export async function firstBindablePort(from = 3900): Promise<number> {
+/**
+ * First port this checkout can bind on the wildcard address (doctor parity).
+ * Defaults to this worker's per-file base, never the shared 3000-3999 scan.
+ */
+export async function firstBindablePort(from = appPortBase()): Promise<number> {
   return firstFreePort(from, new Set(), '0.0.0.0');
 }
 
@@ -395,6 +398,35 @@ export async function firstFreePort(
   throw new Error(`no free port found from ${from}`);
 }
 
+/**
+ * Per-worker base port for tests that need a real, bind-checked app port.
+ *
+ * Unit files run in parallel in separate workers, so a fixed low base — the
+ * product's 3000-3999 suggestion range — makes files race for the same handful
+ * of ports, and a host may permanently own one of them (e.g. a docker proxy on
+ * :3001). The worker pid picks a 20-port slice, so files in different workers
+ * never overlap (a same-slice pair needs pids exactly 1000 apart, unlike the
+ * 400-wide version two workers a few hundred pids apart would share). The whole
+ * slice range stays below the ephemeral range, so an allocation cannot collide
+ * with an outgoing connection's source port. This is still only a *candidate*:
+ * every port is bind-checked by {@link firstFreePort} before a test uses it.
+ */
+export function appPortBase(): number {
+  return 10_000 + (process.pid % 1000) * 20;
+}
+
+/**
+ * `count` distinct bind-checked ports at or above `from` (default: this
+ * worker's base). Nothing is reserved: callers still bind/probe before use.
+ */
+export async function allocateAppPorts(count = 1, from = appPortBase()): Promise<number[]> {
+  const ports: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    ports.push(await firstFreePort(from, new Set(ports)));
+  }
+  return ports;
+}
+
 /** The first non-loopback IPv4 address, or null when the host has none. */
 export function nonLoopbackIPv4(): string | null {
   for (const entries of Object.values(networkInterfaces())) {
@@ -405,9 +437,13 @@ export function nonLoopbackIPv4(): string | null {
   return null;
 }
 
-/** A port free both on `address` and on loopback (so the conflict is provable). */
-export async function findConflictPort(address: string): Promise<number> {
-  for (let port = 3000; port <= 3999; port += 1) {
+/**
+ * A port free both on `address` and on loopback (so the conflict is provable).
+ * Defaults to the product's 3000-3999 app range; callers that only need *a*
+ * wildcard-conflicting port pass their per-file base instead.
+ */
+export async function findConflictPort(address: string, from = 3000, to = 3999): Promise<number> {
+  for (let port = from; port <= to; port += 1) {
     if (port === 3010) continue;
     const onAddress = await startTcpListener(port, address).catch(() => null);
     if (!onAddress) continue;

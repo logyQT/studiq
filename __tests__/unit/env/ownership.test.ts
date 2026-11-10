@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  appPortBase,
   createHarness,
   firstFreePort,
   REPO_ROOT,
@@ -220,7 +221,9 @@ describe('env:serve refuses another checkout’s stack and keys', () => {
       stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
     );
     applyHarnessEnv(harness);
-    process.env.APP_PORT = String(await firstFreePort(3900));
+    // A per-file port: `serve` treats the contract port as a candidate, so
+    // sharing the 3000-3999 scan with parallel files made this flaky.
+    process.env.APP_PORT = String(await firstFreePort(appPortBase()));
     // A current build is recorded for the served environment; the listener
     // facts are injected so no real `next start` runs here.
     vi.spyOn(fingerprintModule, 'computeBuildFingerprint').mockReturnValue('built');

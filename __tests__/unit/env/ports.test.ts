@@ -11,6 +11,16 @@ import {
   type Harness,
 } from '#test/unit/env/support';
 
+/**
+ * This file deliberately exercises the product's 3000-3999 `env:ports`
+ * auto-scan, so — unlike every other env unit file, which works from a
+ * per-worker `appPortBase()` — the ports under test must live in that range.
+ * The scan is the subject, not a convenience: the command under test and the
+ * `nextFreePort` oracle must both see the same free low ports, so no other file
+ * in this suite binds one any more (and a port the host permanently holds, like
+ * :3001's docker proxy here, is skipped by both, exactly as in production).
+ */
+
 const harnesses: Harness[] = [];
 
 // CI-safe: the other-interface case is skipped when the host has no
