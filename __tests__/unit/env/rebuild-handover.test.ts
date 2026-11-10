@@ -38,8 +38,17 @@ interface RebuildDeps {
   backupDir: string;
 }
 
+interface HandoverRecovery {
+  status: 'none' | 'settled' | 'in-flight' | 'serving' | 'kept';
+  ownerPid?: number;
+  pid?: number;
+}
+
 interface RebuildModule {
-  recoverHandover(deps?: { readPid(): number | null; pidAlive?(pid: number): boolean }): void;
+  recoverHandover(deps?: {
+    readPid(): number | null;
+    pidAlive?(pid: number): boolean;
+  }): HandoverRecovery;
   rebuildWithRecovery(
     input: {
       envHash: string;
@@ -397,6 +406,136 @@ describe('env rebuild handover recovery', () => {
     expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('old-build');
     expect(readdirSync(backupDir)).toEqual([]);
     expect(existsSync(handoverPath)).toBe(false);
+  });
+
+  it('reports an in-flight rebuild instead of touching the artifact it owns', () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'in-flight-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-in-flight');
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: 4242,
+      ownerPid: 91002,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+
+    const recovery = rebuildModule.recoverHandover({
+      readPid: () => null,
+      pidAlive: (pid) => pid === 91002,
+    });
+
+    // The caller must refuse: the live owner still owns `.next` even though the
+    // record was written before the artifact was moved (no backup yet).
+    expect(recovery).toEqual({ status: 'in-flight', ownerPid: 91002 });
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('in-flight-build');
+    expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(existsSync(handoverPath)).toBe(true);
+  });
+
+  it('takes ownership of the handover before stopping the server and moving the artifact', async () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'old-build');
+    let claimAtStop = '';
+    const deps: RebuildDeps = {
+      build: () => {
+        mkdirSync(artifactDir, { recursive: true });
+        writeFileSync(join(artifactDir, 'BUILD_ID'), 'new-build');
+        return Promise.resolve({ ok: true, timedOut: false, output: '', fingerprintAfter: 'new' });
+      },
+      startWeb: () => {
+        throw new Error('a --no-serve rebuild must not start the web server');
+      },
+      waitWeb: () => Promise.reject(new Error('a --no-serve rebuild must not wait for web')),
+      stopWeb: () => ({ pid: null, stopped: true }),
+      stopForReplacement: () => {
+        // A second ensure can only be kept away from this server if the record
+        // already names this rebuild before the stop.
+        claimAtStop = existsSync(handoverPath)
+          ? `${readRecord().ownerPid}:${readRecord().phase}`
+          : 'missing';
+        return { pid: 7001, stopped: true };
+      },
+      readPid: () => 7001,
+      pidAlive: () => false,
+      artifactDir,
+      backupDir,
+    };
+
+    const result = await rebuildModule.rebuildWithRecovery(
+      {
+        envHash: 'env-hash',
+        appPort: 3999,
+        appUrl: 'http://localhost:3999',
+        env: process.env,
+        serve: false,
+      },
+      deps,
+    );
+
+    expect(result.build.ok).toBe(true);
+    expect(claimAtStop).toBe(`${process.pid}:backed-up`);
+    expect(existsSync(handoverPath)).toBe(false);
+  });
+
+  it('refuses a handover owned by another live rebuild before stopping or backing up', async () => {
+    const { artifactDir, backupDir } = newCase();
+    mkdirSync(artifactDir, { recursive: true });
+    writeFileSync(join(artifactDir, 'BUILD_ID'), 'served-build');
+    const backupPath = makeBackup(backupDir, 'next-backup-owner-busy');
+    writeRecord({
+      artifactDir,
+      backupPath,
+      previousPid: 7001,
+      ownerPid: 91003,
+      phase: 'backed-up',
+      at: '2026-01-01T00:00:00.000Z',
+    });
+    let stops = 0;
+    let builds = 0;
+    const deps: RebuildDeps = {
+      build: () => {
+        builds += 1;
+        return Promise.resolve({ ok: true, timedOut: false, output: '', fingerprintAfter: 'new' });
+      },
+      startWeb: () => {
+        throw new Error('a refused rebuild must not start the web server');
+      },
+      waitWeb: () => Promise.reject(new Error('a refused rebuild must not wait for web')),
+      stopWeb: () => ({ pid: null, stopped: true }),
+      stopForReplacement: () => {
+        stops += 1;
+        return { pid: 7001, stopped: true };
+      },
+      readPid: () => 7001,
+      pidAlive: (pid) => pid === 91003,
+      artifactDir,
+      backupDir,
+    };
+
+    await expect(
+      rebuildModule.rebuildWithRecovery(
+        {
+          envHash: 'env-hash',
+          appPort: 3999,
+          appUrl: 'http://localhost:3999',
+          env: process.env,
+          serve: false,
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+
+    // The refusal precedes every mutation: the server still runs and the
+    // in-flight rebuild keeps its record, backup and artifact.
+    expect(stops).toBe(0);
+    expect(builds).toBe(0);
+    expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('served-build');
+    expect(readFileSync(join(backupPath, 'BUILD_ID'), 'utf8')).toBe('old-build');
+    expect(existsSync(handoverPath)).toBe(true);
   });
 
   it('defers a handover whose owning build process is still alive', () => {

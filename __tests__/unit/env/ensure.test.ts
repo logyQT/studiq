@@ -1266,7 +1266,7 @@ describe('env:ensure restarts an unresponsive stack only when its stop is provab
     expect(leaseModule.readAppPortClaim(harness.registryDir, appPort)?.projectId).toBe(projectId);
   });
 
-  it('cleans up and retries the cold start when the list proves the stack is gone', async () => {
+  it('cleans up and fails the cold start when the list proves the stack is gone', async () => {
     const harness = newHarness();
     await unresponsiveStack(harness);
     const appPort = await firstFreePort(3900);
@@ -1278,7 +1278,8 @@ describe('env:ensure restarts an unresponsive stack only when its stop is provab
 
     expect(result.status, result.stderr).toBe(4);
     expect(result.stderr).toContain('failed to start stack');
-    expect(result.stderr).not.toContain('kept the app-port lease');
+    // The proven-absent stack releases the port instead of retaining it.
+    expect(result.stderr).not.toContain('keeping app port');
     const calls = harness.bunxCalls();
     expect(calls).toContain('stack stop');
     expect(calls).toContain('stack start');

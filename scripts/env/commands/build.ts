@@ -48,8 +48,15 @@ export async function runBuild(
   return withCheckoutLock(async () => {
     // Settle an artifact left behind by an interrupted rebuild before `.next`
     // or the build state is read. An unresolved recovery aborts the build
-    // instead of building over (or reporting) an unproven artifact.
-    recoverHandover();
+    // instead of building over (or reporting) an unproven artifact; a record
+    // owned by a live process is an in-flight rebuild of the same artifact.
+    const recovery = recoverHandover();
+    if (recovery.status === 'in-flight') {
+      throw new EnvFailure(
+        EXIT_CONFLICT,
+        `another env process (pid ${recovery.ownerPid}) is rebuilding apps/web/.next; retry once its build handover settles`,
+      );
+    }
 
     const appEnv = resolveLocalAppEnv();
     // Select the requested stack before resolving its lease, so lease-derived

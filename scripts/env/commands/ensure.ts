@@ -579,7 +579,16 @@ export async function runEnsure(
   try {
     // Settle an artifact left behind by an interrupted rebuild before the lease
     // or the build looks at `.next`; the record lives in this checkout's `.dev/`.
-    recoverHandover();
+    // A record owned by a live process is the in-flight build: the checkout lock
+    // is free for it, so an ensure that would build or serve `.next` refuses
+    // before it can stop that rebuild's server or move the artifact it owns.
+    const recovery = recoverHandover();
+    if (recovery.status === 'in-flight' && (options.build || options.serve)) {
+      throw new EnvFailure(
+        EXIT_CONFLICT,
+        `another env process (pid ${recovery.ownerPid}) is rebuilding apps/web/.next; retry once its build handover settles`,
+      );
+    }
 
     // Refuse a second environment before claiming a port or writing state.
     if (options.build || options.serve) {

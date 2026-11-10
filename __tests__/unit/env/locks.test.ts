@@ -1,8 +1,10 @@
+import { spawn } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   statSync,
   utimesSync,
@@ -10,8 +12,12 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { BUN } from '#test/unit/env/support';
 import { loadEnvModule } from '#test/unit/env/load';
+
+const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 interface LocksModule {
   pidAlive(pid: number): boolean;
@@ -161,5 +167,116 @@ describe('lock primitives', () => {
     });
     expect(ran).toBe(true);
     expect(existsSync(lockDir)).toBe(false);
+  });
+
+  it('never removes a successor directory when a presumed-stale holder releases', async () => {
+    const dir = registry();
+    const lockDir = join(dir, 'build.lock.d');
+
+    await withoutPath(async () => {
+      await locks.withBuildLock(() => {
+        // A successor took the lock over: the directory it now owns has a new
+        // inode and its own token. The previous holder's release must not
+        // delete it.
+        rmSync(lockDir, { recursive: true, force: true });
+        mkdirSync(lockDir, { mode: 0o700 });
+        writeFileSync(join(lockDir, 'pid'), `${process.pid}\n`);
+        writeFileSync(join(lockDir, 'token'), 'successor-token\n');
+      });
+    });
+
+    expect(existsSync(lockDir)).toBe(true);
+    expect(readFileSync(join(lockDir, 'token'), 'utf8').trim()).toBe('successor-token');
+  });
+
+  it('keeps several concurrent processes mutually exclusive through the fallback', async () => {
+    // The portable fallback is the only mutex on hosts without `flock`; the
+    // whole point is that no two processes are ever inside at once, so run the
+    // real acquisition in separate processes, with `flock` forced to fail.
+    const dir = registry();
+    const binDir = join(dir, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, 'flock'), '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
+    chmodSync(join(binDir, 'flock'), 0o755);
+    const markers = join(dir, 'markers');
+    mkdirSync(markers);
+    const done = join(dir, 'done');
+    mkdirSync(done);
+
+    const childScript = join(dir, 'hold.ts');
+    writeFileSync(
+      childScript,
+      [
+        `const { withBuildLock } = await import(${JSON.stringify(pathToFileURL(join(REPO_ROOT, 'scripts/env/lib/locks.ts')).href)});`,
+        `const fs = await import('node:fs');`,
+        `const [dir, id, go, rounds, log] = process.argv.slice(2);`,
+        `const markers = ${JSON.stringify(markers)};`,
+        `while (!fs.existsSync(go)) await new Promise((done) => setTimeout(done, 2));`,
+        `const violations = [];`,
+        `for (let round = 0; round < Number(rounds); round += 1) {`,
+        `  await withBuildLock(async () => {`,
+        `    const marker = markers + '/' + id + '-' + round + '.busy';`,
+        `    fs.writeFileSync(marker, '');`,
+        // Hold long enough that an overlapping holder is provably observed.
+        `    await new Promise((done) => setTimeout(done, 15));`,
+        `    const live = fs.readdirSync(markers);`,
+        `    if (live.length !== 1) violations.push(id + '-' + round + ': ' + live.join(','));`,
+        `    fs.rmSync(marker, { force: true });`,
+        `    fs.appendFileSync(log, id + '-' + round + '\\n');`,
+        `  });`,
+        `}`,
+        `fs.writeFileSync(${JSON.stringify(done)} + '/' + id + '.json', JSON.stringify(violations));`,
+        '',
+      ].join('\n'),
+    );
+
+    const ids = ['a', 'b', 'c', 'd'];
+    const rounds = 3;
+    const go = join(dir, 'go');
+    const sectionLog = join(dir, 'sections.log');
+    const children = ids.map((id) => {
+      const child = spawn(BUN, [childScript, dir, id, go, String(rounds), sectionLog], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH ?? ''}`,
+          STUDIQ_DEV_REGISTRY: dir,
+        },
+        detached: true,
+      });
+      let stderr = '';
+      child.stderr?.on('data', (chunk: Buffer | string) => {
+        stderr += String(chunk);
+      });
+      const closed = new Promise<{ code: number | null; stderr: string }>((resolve) => {
+        child.on('error', () => resolve({ code: null, stderr }));
+        child.on('close', (code) => resolve({ code, stderr }));
+      });
+      return { child, closed };
+    });
+    writeFileSync(go, 'go\n');
+    try {
+      const results = await Promise.all(children.map((entry) => entry.closed));
+      for (const result of results) expect(result.code, result.stderr).toBe(0);
+    } finally {
+      for (const entry of children) {
+        if (entry.child.exitCode !== null) continue;
+        try {
+          if (entry.child.pid !== undefined) process.kill(-entry.child.pid, 'SIGKILL');
+          else entry.child.kill('SIGKILL');
+        } catch {
+          /* already gone */
+        }
+      }
+    }
+
+    for (const id of ids) {
+      const parsed: unknown = JSON.parse(readFileSync(join(done, `${id}.json`), 'utf8'));
+      expect(parsed).toEqual([]);
+    }
+    // Every critical section ran exactly once, and none was lost.
+    const sections = readFileSync(sectionLog, 'utf8').split('\n').filter(Boolean);
+    expect(sections).toHaveLength(ids.length * rounds);
+    expect(new Set(sections).size).toBe(ids.length * rounds);
+    expect(existsSync(join(dir, 'build.lock.d'))).toBe(false);
   });
 });

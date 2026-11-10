@@ -1,8 +1,18 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  BUN,
   createHarness,
   firstFreePort,
   objectField,
@@ -355,3 +365,68 @@ describe('env:ensure releases the checkout lock for the build', () => {
 function firstAppPort(): Promise<number> {
   return firstFreePort(3600);
 }
+
+describe('env:ensure refuses a concurrent rebuild of the same artifact', () => {
+  it('refuses before stopping the server or backing up .next', async () => {
+    const harness = newHarness();
+    await healthyStack(harness);
+    applyHarnessEnv(harness);
+    const appPort = await firstAppPort();
+    writeLease(harness, appPort);
+
+    // Another process owns an in-flight rebuild: `checkout.lock` is free for it,
+    // so only its handover record can keep a second ensure off the artifact.
+    const owner = spawn(BUN, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+    const ownerPid = owner.pid;
+    if (ownerPid === undefined) throw new Error('the handover owner did not start');
+    try {
+      const backup = join(stateDir, 'next-backup-in-flight');
+      mkdirSync(backup, { recursive: true });
+      writeFileSync(join(backup, 'BUILD_ID'), 'previous-build');
+      writeFileSync(
+        join(stateDir, 'handover.json'),
+        `${JSON.stringify({
+          artifactDir: join(REPO_ROOT, 'apps', 'web', '.next'),
+          backupPath: backup,
+          previousPid: 7001,
+          ownerPid,
+          phase: 'backed-up',
+          at: new Date().toISOString(),
+        })}\n`,
+      );
+
+      let rebuilds = 0;
+      const failure = await failureOf(
+        ensureModule.runEnsure(
+          parse([
+            'ensure',
+            '--profile',
+            'web',
+            '--no-seed',
+            '--force-build',
+            '--app-port',
+            String(appPort),
+          ]),
+          {
+            rebuild() {
+              rebuilds += 1;
+              return Promise.resolve(buildOutcome());
+            },
+          },
+        ),
+      );
+
+      // No rebuild ran, so this ensure never stopped the owner's server or moved
+      // the artifact it is responsible for.
+      expect(rebuilds).toBe(0);
+      expect(failure).toMatchObject({ name: 'EnvFailure', exitCode: 6 });
+      if (!(failure instanceof Error)) throw new Error('expected an EnvFailure');
+      expect(failure.message).toContain(`pid ${ownerPid}`);
+      expect(failure.message).toContain('rebuilding apps/web/.next');
+      expect(existsSync(join(stateDir, 'handover.json'))).toBe(true);
+      expect(readFileSync(join(backup, 'BUILD_ID'), 'utf8')).toBe('previous-build');
+    } finally {
+      owner.kill('SIGKILL');
+    }
+  });
+});
