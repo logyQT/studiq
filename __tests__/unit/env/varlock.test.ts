@@ -28,7 +28,7 @@ const varlock = await loadEnvModule<VarlockModule>('lib/varlock.ts');
 describe('varlock failure classification', () => {
   it.each([
     'varlock: the vault is locked',
-    'varlock: lock the credential proxy first',
+    'varlock: the credential proxy is locked',
     'varlock: locking provider access',
     'run `varlock unlock` before loading',
     'biometric authentication failed',
@@ -47,6 +47,10 @@ describe('varlock failure classification', () => {
     'Blocked by the varlock credential proxy: provider unavailable',
     'clock skew detected',
     'the vault is unlocked',
+    // A generic file-lock message is not a credential refusal (the bare word
+    // `lock` must not classify it as one).
+    'failed to acquire lock on file',
+    'waiting for the lock on .env.vault to be released',
     'invalid value for APP_PORT',
     'no such file or directory: .env.schema',
     '',

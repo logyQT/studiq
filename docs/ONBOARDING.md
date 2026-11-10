@@ -467,6 +467,13 @@ Edit files in `supabase/seeds/` to manage test data. These files are committed t
 STACK=${SUPABASE_STACK:-$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?SUPABASE_STACK=//p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"" | cut -d'#' -f1 | tr -d '[:space:]')}
 if [ -n "$STACK" ]; then
   DB_URL=$(bun run env:supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  # The local Postgres is plaintext, so `--remote` needs sslmode=disable; keep
+  # the URL's existing query params.
+  case "$DB_URL" in
+    *sslmode=*) ;;
+    *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
+    *) DB_URL="$DB_URL?sslmode=disable" ;;
+  esac
   bun run env:supa db diff -f migration_name --remote="$DB_URL"
 else
   bun run env:supa db diff -f migration_name
@@ -487,6 +494,13 @@ bun run env:ensure --profile web                      # this branch's Supabase s
 STACK=${SUPABASE_STACK:-$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?SUPABASE_STACK=//p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"" | cut -d'#' -f1 | tr -d '[:space:]')}
 if [ -n "$STACK" ]; then
   DB_URL=$(bun run env:supa status --stack "$STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+  # The local Postgres is plaintext, so `--remote` needs sslmode=disable; keep
+  # the URL's existing query params.
+  case "$DB_URL" in
+    *sslmode=*) ;;
+    *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
+    *) DB_URL="$DB_URL?sslmode=disable" ;;
+  esac
   bun run env:supa db push --remote="$DB_URL" --yes
 else
   bun run env:supa db push
@@ -562,10 +576,16 @@ exit codes) so a full pass reports all error-handling issues together.
 > For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`)
 > and add `--stack "$SUPABASE_STACK"` to `status`/`list`/`logs`, or to a
 > `start`/`stop` of a stack this checkout owns; database commands do not take
-> `--stack` — read the URL and pass it as a remote target:
+> `--stack` — read the URL, append `sslmode=disable` (the same rule as the
+> Team member workflow above), and pass it as a remote target:
 >
 > ```bash
 > DB_URL=$(bun run env:supa status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\\(.*\\)'$/\\1/p")
+> case "$DB_URL" in
+>   *sslmode=*) ;;
+>   *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
+>   *) DB_URL="$DB_URL?sslmode=disable" ;;
+> esac
 > bun run env:supa db push --remote="$DB_URL" --yes
 > ```
 >

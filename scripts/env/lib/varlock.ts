@@ -34,14 +34,16 @@ interface RawItem {
 /**
  * `locked` is a credential-provider refusal. The leading word boundary keeps
  * ordinary words that merely contain the letters (`blocked`, `clock`, `varlock`)
- * out of it; `unlocked` is not a refusal either.
+ * out of it; `unlocked` is not a refusal either. The bare word `lock` is also
+ * excluded: a generic file-lock message ("failed to acquire lock on file") is
+ * not a credential refusal, so only `locked`/`locking`/`unlock` count.
  *
  * @public Exercised by the unit tests, which load this module by computed URL.
  */
 export function classify(stderr: string): 'locked' | 'missing' {
   const text = stderr.toLowerCase();
   if (
-    /\b(?:lock(?:ed|ing)?|unlock|biometric|keychain|denied|unauthorized|forbidden|auth(?:entication)? required)\b/.test(
+    /\b(?:lock(?:ed|ing)|unlock|biometric|keychain|denied|unauthorized|forbidden|auth(?:entication)? required)\b/.test(
       text,
     )
   ) {
