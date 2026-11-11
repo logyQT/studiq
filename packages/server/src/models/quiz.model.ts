@@ -44,8 +44,6 @@ export const BulkSaveQuizQuestionSchema = z.object({
   order_index: z.number().int().min(0, { error: ValidationErrorCode.INVALID_INPUT }),
   points: z.number().int().min(0, { error: ValidationErrorCode.INVALID_INPUT }),
 });
-export type BulkSaveQuizQuestion = z.infer<typeof BulkSaveQuizQuestionSchema>;
-
 export const BulkSaveQuizSchema = registry.register(
   'BulkSaveQuizRequest',
   z.object({

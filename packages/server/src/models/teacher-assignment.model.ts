@@ -58,8 +58,6 @@ export const RemoveQuestionSchema = registry.register(
     questionId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
 );
-export type RemoveQuestionInput = z.infer<typeof RemoveQuestionSchema>;
-
 export const RandomizeSchema = registry.register(
   'RandomizeRequest',
   z.object({
@@ -117,4 +115,3 @@ export const PublishAssignmentSchema = registry.register(
     startTime: z.string().datetime().optional(),
   }),
 );
-export type PublishAssignmentInput = z.infer<typeof PublishAssignmentSchema>;

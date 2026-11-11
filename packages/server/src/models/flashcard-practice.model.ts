@@ -2,44 +2,6 @@ import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 import type { IntervalUnit } from './flashcard-spaced-repetition.model';
 
-export const ReviewStateSchema = registry.register(
-  'ReviewState',
-  z.object({
-    easinessFactor: z.number(),
-    intervalValue: z.number(),
-    intervalUnit: z.enum(['minutes', 'days']),
-    repetitions: z.number(),
-    nextReviewAt: z.string(),
-    lastReviewedAt: z.string().nullable(),
-    lastQuality: z.number().nullable(),
-    learningState: z.enum(['new', 'learning', 'review', 'relearning']),
-    learningStep: z.number().int(),
-    sm2LapseCount: z.number().int(),
-    isLeech: z.boolean(),
-  }),
-);
-
-export const PracticeCardSchema = registry.register(
-  'PracticeCard',
-  z.object({
-    id: z.string().uuid(),
-    front: z.string(),
-    back: z.string(),
-    createdAt: z.string().nullable(),
-    deckName: z.string().nullable(),
-    topicNames: z.array(z.string()),
-    reviewState: ReviewStateSchema.nullable(),
-  }),
-);
-
-export const PreparePracticeSchema = registry.register(
-  'PreparePracticeRequest',
-  z.object({
-    deckIds: z.array(z.string().uuid()).optional(),
-    topicIds: z.array(z.string().uuid()).optional(),
-  }),
-);
-
 /**
  * Request-level study mode (#617). Cram is side-effect-free, so the service has
  * to be told the mode instead of inferring it from the client's UI state.
@@ -121,24 +83,9 @@ export const CompleteSessionSchema = registry.register(
   }),
 );
 
-export type LogPracticeInput = z.infer<typeof LogPracticeSchema>;
 export type PracticeMode = z.infer<typeof PracticeModeSchema>;
-export type BatchPracticeItemInput = z.infer<typeof BatchPracticeItemSchema>;
 export type BatchPracticeInput = z.infer<typeof BatchPracticeSchema>;
 export type CompleteSessionInput = z.infer<typeof CompleteSessionSchema>;
-export type PracticeCardData = z.infer<typeof PracticeCardSchema>;
-export type PreparePracticeInput = z.infer<typeof PreparePracticeSchema>;
-
-export interface DueBreakdownTopic {
-  topic_id: string;
-  count: number;
-}
-
-export interface DueBreakdownDeck {
-  deck_id: string;
-  count: number;
-}
-
 /**
  * Payload of `get_due_breakdown` (a `json` column from PostgREST's point of view).
  * `byTopic`/`byDeck` default to `[]` so a partial payload still parses.
@@ -151,10 +98,6 @@ export const DueBreakdownSchema = z.object({
 });
 
 export type DueBreakdownResponse = z.infer<typeof DueBreakdownSchema>;
-
-export interface DueCountResponse {
-  total: number;
-}
 
 export interface PracticeSummary {
   total: number;
