@@ -14,7 +14,7 @@ export const ReviewStateSchema = registry.register(
     lastQuality: z.number().nullable(),
     learningState: z.enum(['new', 'learning', 'review', 'relearning']),
     learningStep: z.number().int(),
-    lapseCount: z.number().int(),
+    sm2LapseCount: z.number().int(),
     isLeech: z.boolean(),
   }),
 );
@@ -159,6 +159,7 @@ export interface DueCountResponse {
 export interface PracticeSummary {
   total: number;
   correct: number;
+  wrong: number;
   lastPracticedAt: string | null;
 }
 
@@ -181,7 +182,8 @@ export interface CardStatsItem {
   repetitions: number | null;
   isLeech: boolean;
   learningStep: number | null;
-  lapseCount: number | null;
+  /** Every `was_correct = false` answer in the practice log („Pomyłki”). */
+  mistakeCount: number;
 }
 
 export interface FlashcardRow {
