@@ -159,6 +159,8 @@ bun run env:ensure --profile web  # stack + build + serve for the QA run
 bun run env:status --json         # APP_URL, stackId, health — the agent contract
 ```
 
+- `bun run review:static -- --changed origin/main` → exit ≠ 0 is a finding; cite the rule id.
+
 Never run `env:dev`/`next dev` (human-only) or bare `bun test`. A green suite on a
 broken app is a `FAIL` whose finding names the gap (a service test mocking the
 permission check the claim rests on).
