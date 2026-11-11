@@ -139,8 +139,11 @@ build is needed, release `checkout.lock`, build under the build lock alone, then
 never reused; (6) serve/handover; (7) heartbeat and JSON while still holding the lock.
 
 **Warm path:** one probe per requested capability + one schema read, **p95 < 1000 ms**; no `stack status` when the
-heartbeat is fresh. A down requested service means `ready: false`; a capability **superset** satisfies a narrower
-profile. **Missing capability:** exit **6**, then `env:down --all` and re-ensure — no in-place restart.
+heartbeat is fresh. The cached observation is bound to the branch it was made on (and so to the full
+`projectRoot + branch + stackName` identity, §5): a record written on another branch is rejected and the run takes
+the authoritative `stack status` path. A down requested service means `ready: false`; a capability **superset**
+satisfies a narrower profile. **Missing capability:** exit **6**, then `env:down --all` and re-ensure — no in-place
+restart.
 
 `down` takes `checkout.lock`, stops this checkout's web server and **keeps** the app-port lease while the stack
 runs; `down --all` stops the stack and then releases the lease under the same lock. Never `supabase stop --all`,

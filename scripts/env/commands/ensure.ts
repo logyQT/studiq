@@ -720,7 +720,7 @@ export async function runEnsure(
     // `stack status` (~650 ms) only when the capability probes, the recorded
     // build and the owned server all still prove the same facts (see
     // `warmFromCache`). Everything else takes the authoritative read below.
-    const cached = baseContract.shared ? null : readCachedStack(cliStackName);
+    const cached = baseContract.shared ? null : readCachedStack(cliStackName, branch);
     const warmContract = contractWithLease(baseContract);
     let warm = cached
       ? await warmFromCache({
@@ -1080,6 +1080,8 @@ export async function runEnsure(
     // alive past the cache TTL.
     if (!warm) {
       writeCachedStack({
+        // The identity the record is bound to; a read on another branch rejects it.
+        branchRef: branch,
         stackName: cliStackName ?? '',
         status: stack.status,
         services: stack.services,

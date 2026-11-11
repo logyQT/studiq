@@ -225,7 +225,9 @@ function buildOutcome(): RebuildOutcome {
 }
 
 /** A stack answering every probe; `api` keeps the probe rounds at three requests. */
-async function apiStack(harness: Harness): Promise<void> {
+async function apiStack(
+  harness: Harness,
+): Promise<{ http: HttpServer; db: TcpListener; fixture: Record<string, unknown> }> {
   const http: HttpServer = await startHttpServer(200);
   const db: TcpListener = await startTcpListener(0, '127.0.0.1');
   closers.push(http, db);
@@ -246,6 +248,7 @@ async function apiStack(harness: Harness): Promise<void> {
     'mail.http': { port: 20503 },
   };
   harness.setStatusFixture(fixture);
+  return { http, db, fixture };
 }
 
 /**
@@ -633,5 +636,92 @@ describe('env:ensure re-anchors the warm record only on an authoritative read', 
     expect(
       numberField(parseJsonObject(readFileSync(cachePath, 'utf8')), 'heartbeatAt'),
     ).toBeGreaterThan(heartbeatAt);
+  });
+});
+
+describe('env:ensure binds the warm cache to the branch identity', () => {
+  it('rejects a fresh record written for another branch and re-reads the stack', async () => {
+    const harness = newHarness();
+    const { http, fixture } = await apiStack(harness);
+    const [appPort] = await explicitAppPorts(1);
+    const args = [
+      'ensure',
+      '--profile',
+      'api',
+      '--no-seed',
+      '--app-port',
+      String(appPort),
+      '--json',
+    ];
+    // An authoritative run leaves a fresh, same-branch record behind.
+    const first = await harness.run(args, { APP_PORT: String(appPort) });
+    expect(first.status, first.stderr).toBe(0);
+    expect(statusCalls(harness)).toBe(1);
+
+    // Another branch's observation: still fresh, and its endpoints answer every
+    // probe, so only the branch identity can reject it.
+    const other = await probeServer();
+    closers.push(other);
+    const cachePath = join(harness.stateDir, 'stack-cache.json');
+    const record = parseJsonObject(readFileSync(cachePath, 'utf8'));
+    const status = objectField(record, 'status');
+    const ownBranch = textField(record, 'branchRef');
+    const otherBranch =
+      ownBranch === 'refs/heads/env-warm-safety-other'
+        ? 'refs/heads/env-warm-safety-other-2'
+        : 'refs/heads/env-warm-safety-other';
+    writeFileSync(
+      cachePath,
+      `${JSON.stringify(
+        {
+          ...record,
+          branchRef: otherBranch,
+          status: {
+            ...status,
+            id: 'other-branch-stack-id',
+            apiUrl: other.url,
+            ports: { ...objectField(status, 'ports'), api: other.port },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const second = await harness.run(args);
+
+    expect(second.status, second.stderr).toBe(0);
+    // The foreign record was not used: this run paid for an authoritative read.
+    expect(statusCalls(harness)).toBe(2);
+    const summary = parseJsonObject(second.stdout);
+    expect(summary.stackId).toBe(textField(objectField(fixture, 'identity'), 'id'));
+    expect(objectField(summary, 'ports').api).toBe(http.port);
+    expect(summary.stackId).not.toBe('other-branch-stack-id');
+  });
+
+  it('still takes the fast path for a record written on the same branch', async () => {
+    const harness = newHarness();
+    await apiStack(harness);
+    const [appPort] = await explicitAppPorts(1);
+    const args = [
+      'ensure',
+      '--profile',
+      'api',
+      '--no-seed',
+      '--app-port',
+      String(appPort),
+      '--json',
+    ];
+    const first = await harness.run(args, { APP_PORT: String(appPort) });
+    expect(first.status, first.stderr).toBe(0);
+    const calls = harness.bunxCalls();
+    expect(statusCalls(harness)).toBe(1);
+
+    const warm = await harness.run(args);
+
+    expect(warm.status, warm.stderr).toBe(0);
+    expect(statusCalls(harness)).toBe(1);
+    expect(harness.bunxCalls()).toBe(calls);
+    expect(parseJsonObject(warm.stdout).cold).toBe(false);
   });
 });

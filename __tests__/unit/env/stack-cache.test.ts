@@ -5,6 +5,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface CachedStack {
+  branchRef: string;
   stackName: string;
   status: {
     id: string;
@@ -27,7 +28,12 @@ interface CachedStack {
 }
 
 interface StackCacheModule {
-  readCachedStack(stackName: string | null, now?: number, ttlMs?: number): CachedStack | null;
+  readCachedStack(
+    stackName: string | null,
+    branchRef: string,
+    now?: number,
+    ttlMs?: number,
+  ): CachedStack | null;
   writeCachedStack(entry: Omit<CachedStack, 'heartbeatAt'>, now?: number): void;
   removeCachedStack(): void;
 }
@@ -54,8 +60,16 @@ const PORTS = {
   pgmeta: 0,
 };
 
-function entry(overrides: { stackName?: string; projectRoot?: string; id?: string } = {}) {
+function entry(
+  overrides: {
+    branchRef?: string;
+    stackName?: string;
+    projectRoot?: string;
+    id?: string;
+  } = {},
+) {
   return {
+    branchRef: overrides.branchRef ?? 'refs/heads/a',
     stackName: overrides.stackName ?? '',
     status: {
       id: overrides.id ?? 'abc123',
@@ -90,30 +104,56 @@ afterAll(() => {
 });
 
 describe('warm-path stack cache (spec §6)', () => {
-  it('returns the record it wrote, for the same stack name', () => {
+  it('returns the record it wrote, for the same stack name and branch', () => {
     cache.writeCachedStack(entry(), 1_000);
-    const read = cache.readCachedStack(null, 1_500);
+    const read = cache.readCachedStack(null, 'refs/heads/a', 1_500);
     expect(read?.status.id).toBe('abc123');
+    expect(read?.branchRef).toBe('refs/heads/a');
     expect(read?.services).toContain('rest');
     expect(read?.envHash).toBe('hash');
     expect(read?.heartbeatAt).toBe(1_000);
-    expect(cache.readCachedStack('named', 1_500)).toBeNull();
+    expect(cache.readCachedStack('named', 'refs/heads/a', 1_500)).toBeNull();
+  });
+
+  it('rejects a record written for another branch, even when it is fresh', () => {
+    cache.writeCachedStack(entry({ branchRef: 'refs/heads/a' }), 1_000);
+
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_500)?.status.id).toBe('abc123');
+    // The record is otherwise trustworthy; the identity is projectRoot + branch + stackName.
+    expect(cache.readCachedStack(null, 'refs/heads/b', 1_500)).toBeNull();
+  });
+
+  it('rejects a record without a branch (there is no compatibility shim)', () => {
+    const legacy: Record<string, unknown> = { ...entry() };
+    delete legacy.branchRef;
+    writeFileSync(cacheFile, JSON.stringify({ ...legacy, heartbeatAt: 1_000 }));
+
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_500)).toBeNull();
+  });
+
+  it('matches a detached HEAD literally and rejects a branch/detached crossing', () => {
+    cache.writeCachedStack(entry({ branchRef: 'detached' }), 1_000);
+    expect(cache.readCachedStack(null, 'detached', 1_500)?.status.id).toBe('abc123');
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_500)).toBeNull();
+
+    cache.writeCachedStack(entry({ branchRef: 'refs/heads/a' }), 1_000);
+    expect(cache.readCachedStack(null, 'detached', 1_500)).toBeNull();
   });
 
   it('expires after the TTL (default 120 s) and never trusts a future heartbeat', () => {
     cache.writeCachedStack(entry(), 1_000);
-    expect(cache.readCachedStack(null, 1_000 + 119_000)).not.toBeNull();
-    expect(cache.readCachedStack(null, 1_000 + 120_001)).toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_000 + 119_000)).not.toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_000 + 120_001)).toBeNull();
     // An explicit ttl overrides the default.
-    expect(cache.readCachedStack(null, 1_200, 500)).not.toBeNull();
-    expect(cache.readCachedStack(null, 1_501, 500)).toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_200, 500)).not.toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_501, 500)).toBeNull();
     // A clock that jumped backwards must not extend the record's life.
-    expect(cache.readCachedStack(null, 999_000)).toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 999_000)).toBeNull();
   });
 
   it('ignores a record made for another checkout', () => {
     cache.writeCachedStack(entry({ projectRoot: '/somewhere/else' }), 1_000);
-    expect(cache.readCachedStack(null, 1_500)).toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_500)).toBeNull();
   });
 
   it('refuses a symlinked record', () => {
@@ -121,7 +161,7 @@ describe('warm-path stack cache (spec §6)', () => {
     writeFileSync(target, JSON.stringify({ ...entry(), heartbeatAt: 1_000 }));
     symlinkSync(target, cacheFile);
 
-    expect(cache.readCachedStack(null, 1_500)).toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_500)).toBeNull();
   });
 
   it.each(['{not json', '[]', 'null', '"text"'])(
@@ -129,7 +169,7 @@ describe('warm-path stack cache (spec §6)', () => {
     (raw) => {
       writeFileSync(cacheFile, raw);
 
-      expect(cache.readCachedStack(null, 1_500)).toBeNull();
+      expect(cache.readCachedStack(null, 'refs/heads/a', 1_500)).toBeNull();
     },
   );
 
@@ -142,6 +182,7 @@ describe('warm-path stack cache (spec §6)', () => {
       { status: { ...entry().status, ports: { ...PORTS, api: '21001' } } },
     ],
     ['envHash is not a string', { envHash: 42 }],
+    ['branchRef is not a string', { branchRef: 42 }],
     ['appUrl is not a string', { appUrl: null }],
     ['heartbeatAt is not a number', { heartbeatAt: '1000' }],
     ['services is not an array', { services: { rest: true } }],
@@ -151,14 +192,14 @@ describe('warm-path stack cache (spec §6)', () => {
       JSON.stringify({ ...entry(), heartbeatAt: 1_000, ...(overrides as Record<string, unknown>) }),
     );
 
-    expect(cache.readCachedStack(null, 1_500)).toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_500)).toBeNull();
   });
 
   it('is removable and tolerates a missing file', () => {
     cache.removeCachedStack();
-    expect(cache.readCachedStack(null)).toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a')).toBeNull();
     cache.writeCachedStack(entry(), 1_000);
     cache.removeCachedStack();
-    expect(cache.readCachedStack(null, 1_100)).toBeNull();
+    expect(cache.readCachedStack(null, 'refs/heads/a', 1_100)).toBeNull();
   });
 });

@@ -42,6 +42,8 @@ const CACHE_FILE = join(DEV_DIR, 'stack-cache.json');
 const STACK_CACHE_TTL_MS = 120_000;
 
 export interface CachedStack {
+  /** The branch ref (`refs/heads/…`, or `detached`) the observation was made on. */
+  branchRef: string;
   /** The stack name the observation was made for (`''` = branch default). */
   stackName: string;
   status: StackStatus;
@@ -86,12 +88,18 @@ function isStatus(value: unknown): value is StackStatus {
 }
 
 /**
- * The recorded status for `stackName`, or null when it cannot be trusted:
- * missing/unreadable, written for another stack, older than the TTL, or made
- * for another checkout. Callers must still probe; this only saves the lookup.
+ * The recorded status for `stackName` on `branchRef`, or null when it cannot be
+ * trusted: missing/unreadable, written for another checkout, branch or stack,
+ * older than the TTL, or in a shape this version does not write. Callers must
+ * still probe; this only saves the lookup.
+ *
+ * `branchRef` is the branch captured once by the caller, never re-read here: a
+ * checkout that switches branch must not have the switch race the cache read,
+ * and the environment identity is `projectRoot + branch + stackName` (§5).
  */
 export function readCachedStack(
   stackName: string | null,
+  branchRef: string,
   now = Date.now(),
   ttlMs = STACK_CACHE_TTL_MS,
 ): CachedStack | null {
@@ -102,12 +110,14 @@ export function readCachedStack(
     const record = parsed as Record<string, unknown>;
     if (!isStatus(record.status)) return null;
     if (record.status.projectRoot !== REPO_ROOT) return null;
+    if (typeof record.branchRef !== 'string' || record.branchRef !== branchRef) return null;
     if (record.stackName !== (stackName ?? '')) return null;
     if (typeof record.envHash !== 'string' || typeof record.appUrl !== 'string') return null;
     if (typeof record.heartbeatAt !== 'number') return null;
     if (!Array.isArray(record.services)) return null;
     if (now - record.heartbeatAt > ttlMs || record.heartbeatAt > now + ttlMs) return null;
     return {
+      branchRef: record.branchRef,
       stackName: record.stackName as string,
       status: record.status,
       services: record.services.filter((name): name is string => typeof name === 'string'),
