@@ -193,6 +193,102 @@ describe('env:supa', () => {
     expect(harness.bunxCalls().trim()).toBe('start --stack stop');
   });
 
+  it('forwards a db start outside shared mode', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'db', 'start']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('db start');
+  });
+
+  it('forwards a start without --stack-id without reading the stack list', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'start', '--stack', 'test']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('start --stack test');
+  });
+
+  it('forwards a start for a --stack-id this checkout owns', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'start', '--stack-id', 'aaaa']);
+
+    expect(result.status).toBe(0);
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack list --output-format json');
+    expect(calls).toContain('start --stack-id aaaa');
+  });
+
+  it('refuses to start a --stack-id owned by another checkout (exit 6, no spawn)', async () => {
+    const variants = [
+      ['start', '--stack-id', 'bbbb'],
+      ['stack', 'start', '--stack-id=bbbb'],
+    ];
+    for (const args of variants) {
+      const harness = newHarness();
+      harness.setListFixture(listFixture());
+
+      const result = await harness.run(['supa', ...args]);
+
+      expect(result.status, args.join(' ')).toBe(6);
+      expect(result.stdout, args.join(' ')).toBe('');
+      expect(result.stderr, args.join(' ')).toContain('owned by /tmp/foreign-checkout');
+      const calls = harness.bunxCalls();
+      expect(calls, args.join(' ')).toContain('stack list --output-format json');
+      expect(calls, args.join(' ')).not.toContain('start --stack-id');
+    }
+  });
+
+  it('refuses to start a --stack-id it cannot resolve (exit 6, no spawn)', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'start', '--stack-id', 'ffff']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain("not found in 'supabase stack list'");
+    expect(harness.bunxCalls()).not.toContain('start --stack-id');
+  });
+
+  it('refuses a start whose --workdir is another checkout (exit 6, no spawn)', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'start', '--workdir', '/tmp/foreign-checkout']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--workdir');
+    expect(result.stderr).toContain(REPO_ROOT);
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('refuses a start when SUPABASE_WORKDIR is another checkout (exit 6)', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'db', 'start'], {
+      SUPABASE_WORKDIR: '/tmp/foreign-checkout',
+    });
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--workdir');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('allows a start workdir that resolves to this checkout', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'start', '--workdir', REPO_ROOT]);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls()).toContain(`start --workdir ${REPO_ROOT}`);
+  });
+
   it('still guards stop --stack stop', async () => {
     const harness = newHarness();
     harness.setListFixture({
@@ -506,6 +602,7 @@ describe('env:supa under SUPABASE_SHARED=1', () => {
     ['destroy'],
     ['stack', 'destroy'],
     ['db', 'reset'],
+    ['db', 'start'],
     ['migration', 'down'],
     ['storage', 'rm'],
   ];

@@ -12,14 +12,17 @@ import type { StackRead } from './stack';
  * `runSupabase` inherits `SUPABASE_WORKDIR`, and the CLI resolves the stack
  * against it. Reject a foreign workdir before the first status/start/stop so
  * this checkout can never discover, start, stop — or reset — another
- * checkout's stack.
+ * checkout's stack. Callers may pass an explicit CLI `--workdir` value and the
+ * flag name to report instead of the environment variable.
  */
-export function assertOwnWorkdir(): void {
-  const workdir = process.env.SUPABASE_WORKDIR || null;
+export function assertOwnWorkdir(
+  workdir: string | null = process.env.SUPABASE_WORKDIR || null,
+  label = 'SUPABASE_WORKDIR',
+): void {
   if (workdir !== null && !isThisCheckoutWorkdir(workdir)) {
     throw new EnvFailure(
       EXIT_CONFLICT,
-      `refusing to run with SUPABASE_WORKDIR '${workdir}': it is not this checkout (${REPO_ROOT}).`,
+      `refusing to run with ${label} '${workdir}': it is not this checkout (${REPO_ROOT}).`,
     );
   }
 }
