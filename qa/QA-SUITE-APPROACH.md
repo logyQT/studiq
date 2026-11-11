@@ -258,6 +258,7 @@ the integration branch until the suite is stable. WebKit remains blocked.
 - App: `http://localhost:3010`
 - Supabase: `http://localhost:54421`
 - Browser tiles: `9221–9228` (one per worker)
+- Observability: one machine-wide stack started from the primary checkout; no worker starts a per-worker copy.
 - Every worker uses the same app/DB; no worker runs its own Supabase stack.
 - Discord/manager sessions are not started.
 

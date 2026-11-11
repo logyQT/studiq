@@ -1,3 +1,8 @@
+# ONE machine-wide observability stack, not one per checkout/worktree.
+# The fixed project name is deliberate: `docker compose` from a worktree must
+# target the same stack, never create a second copy under the directory name.
+name: studiq-observability
+
 services:
   # Single OTLP intake — the app only ever talks to this service.
   # Fans out to Tempo (traces), Prometheus (metrics) and Loki (logs).

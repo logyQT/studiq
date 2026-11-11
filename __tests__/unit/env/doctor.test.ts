@@ -68,6 +68,20 @@ describe('env:doctor', () => {
     expect(stringList(report.warnings).join('\n')).not.toContain('supabase stack status');
   });
 
+  it('reports the machine-wide observability stack and its primary start command', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.project', 'studiq-observability');
+    expect(report).toHaveProperty('observability.primary');
+    expect(report).toHaveProperty('observability.up');
+    expect(JSON.stringify(report.observability)).toContain('docker compose up -d');
+  });
+
   it('does not warn about a missing registry directory', async () => {
     const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();

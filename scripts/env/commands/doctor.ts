@@ -5,17 +5,33 @@ import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
-import { REPO_ROOT, canon, currentBranchName } from '../lib/repo';
+import { REPO_ROOT, canon, currentBranchName, primaryCheckoutPath } from '../lib/repo';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
 import { readWebPid } from '../lib/web';
+
+export interface ObservabilityStatus {
+  up: boolean;
+  project: string;
+  primary: string;
+  start: string;
+  grafana: number;
+  tempo: number;
+  loki: number;
+  prometheus: number;
+  otlp: number;
+}
 
 export interface DoctorReport {
   ok: boolean;
   problems: string[];
   warnings: string[];
+  observability: ObservabilityStatus;
   lines: string[];
 }
+
+const OBSERVABILITY_PROJECT = 'studiq-observability';
+const OBSERVABILITY_PROBE_MS = 750;
 
 function orDash(value: string | number | null): string {
   return value === null || value === '' ? '-' : String(value);
@@ -87,6 +103,29 @@ async function buildReport(): Promise<DoctorReport> {
   const sharedDbUrl = contract.shared
     ? stripDbCredentials(process.env.SUPABASE_DB_URL ?? '')
     : null;
+
+  // Observability is machine-wide and owned by the primary checkout. Probe it
+  // read-only so an agent in a worktree gets the start command that cannot
+  // create a second stack.
+  const primary = primaryCheckoutPath();
+  const [grafana, tempo, loki, prometheus, otlp] = await Promise.all([
+    probeHttp('http://localhost:3001/api/health', OBSERVABILITY_PROBE_MS),
+    probeHttp('http://localhost:3200/ready', OBSERVABILITY_PROBE_MS),
+    probeHttp('http://localhost:3100/ready', OBSERVABILITY_PROBE_MS),
+    probeHttp('http://localhost:9090/-/ready', OBSERVABILITY_PROBE_MS),
+    probeHttp('http://localhost:4318/', OBSERVABILITY_PROBE_MS),
+  ]);
+  const observability: ObservabilityStatus = {
+    up: [grafana, tempo, loki, prometheus, otlp].every((code) => code > 0),
+    project: OBSERVABILITY_PROJECT,
+    primary,
+    start: `cd "${primary}" && docker compose up -d`,
+    grafana,
+    tempo,
+    loki,
+    prometheus,
+    otlp,
+  };
 
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -170,6 +209,34 @@ async function buildReport(): Promise<DoctorReport> {
     '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
   );
 
+  const observabilityStatus = observability.up
+    ? 'up'
+    : observability.grafana > 0
+      ? 'partial (Grafana only)'
+      : 'down';
+
+  lines.push(
+    '',
+    '▸ Observability (machine-wide)',
+    `  status     ${observabilityStatus}`,
+    `  project    ${observability.project}`,
+    `  primary    ${observability.primary}`,
+    `  grafana    http=${orDash(observability.grafana)}`,
+    `  tempo      http=${orDash(observability.tempo)}`,
+    `  loki       http=${orDash(observability.loki)}`,
+    `  prometheus http=${orDash(observability.prometheus)}`,
+    `  otlp       http=${orDash(observability.otlp)}`,
+    `  start      ${observability.start}`,
+  );
+  if (!observability.up) {
+    lines.push('  note       start it once from the primary checkout, never from a worktree');
+    if (observability.grafana > 0) {
+      lines.push(
+        '  note       a partial/legacy stack is holding :3001; identify it with `docker compose ls` and stop that project from its own directory',
+      );
+    }
+  }
+
   lines.push('', '▸ Ports');
   if (appPortProbe.state === 'unavailable') {
     lines.push(
@@ -228,13 +295,18 @@ async function buildReport(): Promise<DoctorReport> {
     lines.push('', '✔ No ownership or port conflicts for this checkout.');
   }
 
-  return { ok: problems.length === 0, problems, warnings, lines };
+  return { ok: problems.length === 0, problems, warnings, observability, lines };
 }
 
 export async function runDoctor(parsed: ParsedCommand): Promise<number> {
   const report = await buildReport();
   if (parsed.json) {
-    printJson({ ok: report.ok, problems: report.problems, warnings: report.warnings });
+    printJson({
+      ok: report.ok,
+      problems: report.problems,
+      warnings: report.warnings,
+      observability: report.observability,
+    });
   } else {
     for (const line of report.lines) writeLine(line);
   }

@@ -27,6 +27,7 @@ Two callers:
 - If a caller handed you an `APP_URL`/`stackId` (review flow), verify it with `env:status --json` and use it. Do not start a second environment in that checkout — `env:ensure` refuses with exit 6 when another environment owns it.
 - Stop only what this session started: `bun run env:down` (web) / `--all` (also the stack). Never `env:reset-db`, `supabase start/stop`, `db reset`, or stop/reset a stack you did not start.
 - The shared QA environment — app `:3010`, Supabase `:54421`, browser tiles `9221–9228` — is protected. Never start, stop, reset or seed it, and never point a run at it unless the operator handed it to you (`SUPABASE_SHARED=1`, `QA_APP_URL`).
+- Observability is **one stack per machine**, owned by the primary checkout (`git worktree list` first entry; `/workspaces/studiq` on this VM). Never start or stop `docker compose` from your worktree. If Grafana/Tempo/Loki are down, `bun run env:doctor` prints the primary path and the exact start command; start it there once. `env:ensure` sets `OTEL_SERVICE_NAME=studiq-<branch>` (explicit `.env.local` wins), so filter by that name, not a hard-coded `studiq`.
 - Once the app is serving, treat the environment as read-only. If it is broken (unreachable, every route 500s, no telemetry), gather `env:status`, `env:doctor`, `env:logs --no-follow`, then report `BLOCKED/env` and stop. Do not rebuild, reset or restart to paper over a failure. A broken environment is never a `bug`.
 - `apps/admin` is out of QA scope: do not start it, sign requests for it, or file findings against it.
 - Use the session's browser (the one the operator watches), one fresh context/page per scenario, and leave it open. Do not drive a second browser.
@@ -100,7 +101,7 @@ On every failure, capture in this order:
    - Export is batched (~15 s): re-query once before concluding "no data".
    - No `x-trace-id`, or empty telemetry while the app answers → stale environment/telemetry, report `env`.
    - Unhealthy datasource → fall back to browser + DB evidence and say observability was unavailable.
-   - In a parallel environment filter by **your** service name or you will read another worker's telemetry.
+   - In a parallel environment filter by **your** service name (`studiq-<branch>` from `OTEL_SERVICE_NAME`) or you will read another worker's telemetry.
 
 "The API returned 500" is a symptom; the failing span, Postgres code or log line is the cause. State the cause you actually observed.
 

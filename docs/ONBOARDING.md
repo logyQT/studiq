@@ -334,7 +334,9 @@ delivery path.
 
 OpenTelemetry: telemetry is **on** by default. Add `OTEL_SDK_DISABLED=true` to
 `.env.local` to keep traces/metrics/logs off (tests and CI set it); remove the
-line to ship to the local collector (`docker compose up -d`).
+line to ship to the machine-wide collector. Start that stack once from the
+primary checkout (see step 9), never from a worktree. `env:ensure` sets
+`OTEL_SERVICE_NAME=studiq-<branch>` for the app it starts.
 
 ### 5. (Optional) Set up LLM / AI Provider
 
@@ -395,16 +397,32 @@ The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it (`dev:
 `dev:admin` never called it: they stay as human-only conveniences (`dev:admin` is the `apps/admin` HMR on
 `127.0.0.1:4000`; `env` has no admin equivalent).
 
-### 9. Start the local observability stack (recommended)
+### 9. Start the machine-wide observability stack (recommended)
+
+There is **one observability stack per machine**, shared by every checkout,
+worktree and agent. It belongs to the **primary checkout** — on this VM
+`/workspaces/studiq` (find it with `git worktree list`; it is the first entry).
+
+Start it once from the primary checkout, never from a worktree:
 
 ```bash
+cd /workspaces/studiq
 docker compose up -d
 ```
+
+The Compose project name is fixed (`studiq-observability`) and the host ports
+are fixed, so a second `docker compose up` from a worktree would conflict with
+or mutate the same stack rather than create an isolated one. `bun run env:doctor`
+prints the current health, the primary path and this exact start command.
 
 This runs the **OTel Collector + Tempo (traces) + Loki (logs) + Prometheus
 (metrics) + Grafana** and is what `apps/web/src/instrumentation.ts` ships to by
 default (OTLP on `:4318`). No app env changes are needed — just don't set
-`OTEL_SDK_DISABLED=true`.
+`OTEL_SDK_DISABLED=true`. `env:ensure` sets
+`OTEL_SERVICE_NAME=studiq-<branch>` and
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` for the app it starts, so
+traces from different worktrees are distinguishable in one collector; set
+either key in `.env.local` to override it.
 
 | UI                          | URL                   |
 | --------------------------- | --------------------- |
@@ -416,11 +434,30 @@ default (OTLP on `:4318`). No app env changes are needed — just don't set
 
 To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace →
 Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).
-Stop the stack with `docker compose down`.
+Stop the stack with `docker compose down` **from the primary checkout**, only
+when you mean to take telemetry down for the whole machine.
 
 > The services use `restart: unless-stopped`, so they come back **automatically**
 > after a container/VM restart (unless you explicitly `docker compose stop`/`down`
 > them).
+>
+> If an older checkout created a different Compose project (for example
+> `qa-testing`) and holds the host ports, identify it first, then stop it from
+> the directory that owns it before starting the canonical stack:
+>
+> ```bash
+> docker compose ls
+> # the container publishing :3001 is the one to inspect:
+> docker ps --filter publish=3001
+> docker inspect <container> --format \
+>   '{{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "com.docker.compose.project.working_dir"}}'
+> # stop the legacy project from its owning directory BEFORE starting the canonical one:
+> cd <owning-directory>
+> docker compose -p <old-project> down
+> ```
+>
+> `compose down` removes the legacy containers/networks but keeps named volumes
+> unless you pass `-v`; do not pass `-v` unless you mean to delete its data.
 
 ---
 
@@ -596,9 +633,11 @@ Supabase stack endpoints (API, DB, Studio, Mailpit) are assigned per project
 | Loki (logs API)         | http://localhost:3100                         |
 | OTLP intake (collector) | http://localhost:4318                         |
 
-A second worktree/branch gets its own stack automatically; only `APP_PORT` needs
-a distinct value. The shared QA stack keeps its fixed ports (`:54421` API,
-`:54424` Mailpit) until the dashboard can discover stack ports.
+A second worktree/branch gets its own **Supabase** stack automatically; only
+`APP_PORT` needs a distinct value. Observability is different: it is **one stack
+per machine**, owned by the primary checkout, with fixed ports. The shared QA
+stack keeps its fixed ports (`:54421` API, `:54424` Mailpit) until the dashboard
+can discover stack ports.
 
 ---
 
@@ -618,6 +657,7 @@ bun test:coverage     # Run with coverage report
 
 - `.env.local` is gitignored — **never commit it**
 - Each team member must complete these steps independently
-- Native is the default stack runtime; Docker is needed only for the optional
-  observability stack (`docker compose up -d`) or an explicit `--runtime docker`
+- Native is the default stack runtime; Docker is needed only for the machine-wide
+  observability stack (start `docker compose up -d` from the primary checkout, not
+  a worktree) or an explicit `--runtime docker`
 - No per-app env file is generated: the `env` tool exports this checkout's resolved values to the processes it starts, and `varlock` injects `.env.local` into the `bun run …` scripts

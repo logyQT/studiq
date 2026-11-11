@@ -8,11 +8,30 @@ guessing. It is driven end-to-end by the OpenCode agent through the
 **Tempo is the only trace backend.** Jaeger is gone; all trace queries use
 Tempo / TraceQL.
 
-## Start the stack
+## Start the stack (once per machine)
+
+The observability stack is **machine-wide**, owned by the **primary checkout** —
+not per checkout or worktree. On this VM the primary is `/workspaces/studiq`;
+find it with `git worktree list` (first entry). Start it from there, never from a
+worktree:
 
 ```bash
+cd /workspaces/studiq
 docker compose up -d
 ```
+
+The Compose project name is fixed (`studiq-observability`) and the host ports are
+fixed, so starting it from a worktree conflicts with or mutates the same stack.
+Check health and get the exact start command with `bun run env:doctor`.
+
+If `env:doctor` reports a partial stack (Grafana answers, Tempo/Loki/Prometheus
+do not), an older checkout's Compose project is probably holding the ports.
+Identify it with `docker compose ls`; if the name is ambiguous, inspect the
+container publishing the port (`docker ps --filter publish=3001`) and read its
+`com.docker.compose.project` / `...project.working_dir` labels. Stop that
+project **from its own directory**, before starting the canonical stack from the
+primary checkout. `compose down` keeps named volumes unless you pass `-v`; do
+not pass `-v` unless you mean to delete its data.
 
 | UI         | URL                                       |
 | ---------- | ----------------------------------------- |
@@ -20,10 +39,14 @@ docker compose up -d
 | Prometheus | http://localhost:9090                     |
 | Tempo API  | http://localhost:3200                     |
 | Loki       | http://localhost:3100                     |
+| OTLP       | http://localhost:4318                     |
 
-The Next.js app sends OTLP (traces + metrics + logs) to the OTel Collector on
-`http://localhost:4318` (SDK default). Make sure `OTEL_SDK_DISABLED` is **not**
-`true` when you want telemetry. See the [plan doc](./plans/prometheus-metrics-monitoring.md).
+The Next.js app sends OTLP (traces + metrics + logs) to the collector on
+`http://localhost:4318`. `env:ensure` sets that endpoint and a per-checkout
+`OTEL_SERVICE_NAME` (`studiq-<branch>`) so one collector can tell worktrees apart;
+an explicit value in `.env.local` wins. Make sure `OTEL_SDK_DISABLED` is **not**
+`true` when you want telemetry. See the
+[plan doc](./plans/prometheus-metrics-monitoring.md).
 
 ## Configure the Grafana MCP
 
@@ -104,8 +127,9 @@ id). You get the full span tree for that request:
 ### 4. Pull the correlated Loki logs
 
 From the trace, jump to its logs (Grafana's Tempo→Loki `tracesToLogsV2` uses
-`trace_id`). Through the MCP, query Loki for `{service_name="studiq"} |
-trace_id="<id>"` (or use the derived field `TraceID`). You get the
+`trace_id`). Through the MCP, query Loki for
+`{service_name="studiq-<branch>"} | trace_id="<id>"` (or use the derived field
+`TraceID`; `service_name=~"studiq-.*"` searches every checkout). You get the
 `log()` / `warn()` / `error()` records emitted while the span was active —
 including a WARN/ERROR line for **every 4xx/5xx response** (`API error 400 BAD_REQUEST`,
 with `http.method`, `http.url`, `error.code`), so a failed request is visible in

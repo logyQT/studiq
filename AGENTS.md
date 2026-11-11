@@ -416,6 +416,17 @@ Telemetry is OpenTelemetry-only. Traces/metrics/logs all ship via OTLP to the
 OTel Collector (`docker compose up`), which fans out to Tempo (traces),
 Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
 
+> **One observability stack per machine, owned by the primary checkout.** It is
+> not per checkout or worktree. Never start `docker compose` from a worktree:
+> the fixed Compose project (`studiq-observability`) and fixed host ports mean a
+> second start conflicts or mutates the same stack. If Grafana/Tempo/Loki are
+> down, start it once from the primary checkout (`git worktree list` first entry;
+> `/workspaces/studiq` on this VM): `cd <primary> && docker compose up -d`.
+> `bun run env:doctor` prints the health and the exact start command.
+> `env:ensure` exports `OTEL_SERVICE_NAME=studiq-<branch>` and
+> `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, so one collector can tell
+> worktrees apart; an explicit value in `.env.local` still wins.
+
 - SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
   exporter + `PeriodicExportingMetricReader` + `BatchLogRecordProcessor` over a
   `LoggerProvider`); everything is disabled when `OTEL_SDK_DISABLED=true` (unit
