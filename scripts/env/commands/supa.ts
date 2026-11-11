@@ -203,16 +203,17 @@ function hasAllFlag(args: string[]): boolean {
  *
  * Guards (the command position is parsed apart from flag values, so
  * `start --stack stop` is not mistaken for a stop): under `SUPABASE_SHARED=1`
- * every stop-capable or destructive form is refused outright (this checkout
- * does not own the stack); otherwise `stop --all` / `restart --all` and a
- * `destroy` command are refused, `db reset` is refused, a `stop`/`restart`
- * must name a stack this checkout owns, and a `--workdir`/`SUPABASE_WORKDIR`
- * must resolve to this checkout's root (otherwise the CLI could operate on
- * another checkout's stack). Usage errors exit 2, ownership conflicts 6, and
- * nothing is ever written to stdout.
+ * every start-capable, stop-capable or destructive form is refused outright
+ * (this checkout does not own the stack); otherwise `stop --all` /
+ * `restart --all` and a `destroy` command are refused, `db reset` is refused,
+ * a `stop`/`restart` must name a stack this checkout owns, and a
+ * `--workdir`/`SUPABASE_WORKDIR` must resolve to this checkout's root
+ * (otherwise the CLI could operate on another checkout's stack). Usage errors
+ * exit 2, ownership conflicts 6, and nothing is ever written to stdout.
  */
 export function runSupa(args: string[]): number {
   const [first, second] = commandWords(args);
+  const startCapable = first === 'start' || (first === 'stack' && second === 'start');
   const stopCapable =
     first === 'stop' ||
     first === 'restart' ||
@@ -221,7 +222,8 @@ export function runSupa(args: string[]): number {
   const dbReset = first === 'db' && second === 'reset';
   const migrationDown = first === 'migration' && second === 'down';
   const storageRm = first === 'storage' && second === 'rm';
-  const mutating = stopCapable || destroyCommand || dbReset || migrationDown || storageRm;
+  const mutating =
+    startCapable || stopCapable || destroyCommand || dbReset || migrationDown || storageRm;
 
   // Shared mode disables every stack mutation: refuse before any ownership
   // check or spawn, naming the checkout that actually owns the stack. The flag

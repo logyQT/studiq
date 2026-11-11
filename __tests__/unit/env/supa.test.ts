@@ -497,6 +497,8 @@ describe('env:supa under SUPABASE_SHARED=1', () => {
   const sharedEnv = { SUPABASE_SHARED: '1', SUPABASE_SHARED_OWNER: 'qa-crew' };
 
   const rejected = [
+    ['start'],
+    ['stack', 'start'],
     ['stop'],
     ['stack', 'stop'],
     ['restart'],
@@ -520,6 +522,34 @@ describe('env:supa under SUPABASE_SHARED=1', () => {
       expect(result.stderr, label).toContain('qa-crew');
       expect(harness.bunxCalls(), label).toBe('');
     }
+  });
+
+  it('refuses stack start (exit 6, no spawn) even behind global flags', async () => {
+    const variants = [
+      ['stack', 'start', '--stack', 'test'],
+      ['stack', 'start'],
+      ['start'],
+      ['--output-format', 'json', 'stack', 'start', '--stack', 'test'],
+    ];
+    for (const args of variants) {
+      const harness = newHarness();
+      const result = await harness.run(['supa', ...args], sharedEnv);
+      const label = args.join(' ');
+
+      expect(result.status, label).toBe(6);
+      expect(result.stdout, label).toBe('');
+      expect(result.stderr, label).toContain('SUPABASE_SHARED');
+      expect(result.stderr, label).toContain('qa-crew');
+      expect(harness.bunxCalls(), label).toBe('');
+    }
+  });
+
+  it('forwards stack start outside shared mode', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'stack', 'start', '--stack', 'test']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('stack start --stack test');
   });
 
   it('still forwards read-only forms', async () => {
