@@ -20,7 +20,7 @@ Playwright test. You do not provision an app or a database.
 - Supabase: `{{SUPABASE_URL}}`
 - Branch base: `qa-suite`
 - Never commit directly to `qa-suite`; open a PR from `qa/{{CASE_ID}}`
-- PR title: `[QA-SUITE] {{CASE_ID}} <short description>` (CodeRabbit ignores the tag)
+- PR title: `[QA-SUITE] {{CASE_ID}} <short description>`
 
 Read `qa/QA-SUITE-APPROACH.md`, `qa/cases/{{CASE_ID}}.md`, `qa/context.md`, and
 `AGENTS.md` before writing anything.

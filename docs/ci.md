@@ -102,8 +102,8 @@ commit before checking — uncommitted work is invisible to it.
 
 `pr-triage` labels every PR `size/*` from its budgeted line count. `size/XL`
 always means over budget; the `XS`/`S`/`M` boundaries are absolute (10/50/200),
-so `size/L` only appears when the limit is above 200. No label triggers a
-review. CodeRabbit does not auto-review: neither a push nor a label starts one.
-A maintainer requests a review by commenting `@coderabbitai review`. The retired
-`review:deep` label has been deleted. Details:
+so `size/L` only appears when the limit is above 200. No label starts a review,
+and there is no automated reviewer: reviews use the repo-owned
+`studiq-review` skill (`.agents/skills/studiq-review/SKILL.md`), which verifies
+claims in the code, docs and running app. Details:
 [ADR-0012](decisions/0012-pr-size-budget.md).

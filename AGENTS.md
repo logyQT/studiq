@@ -59,6 +59,7 @@ studiq/
 - **Delete after merge**: Always delete the feature branch after the PR is merged.
 - **Naming**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/` prefixes.
 - **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch. The target budget is **400 reviewable lines** — tests, Markdown docs, generated files, the lockfile and vendored skills are excluded (see `scripts/pr-triage.ts`). `bun run pr:size` reports it locally; `pr-triage.yml` labels every PR `size/*`. Over-budget PRs need the `size:exception` label once `PR_SIZE_ENFORCE=true`.
+- **Review**: when asked to review a PR, load `.agents/skills/studiq-review/SKILL.md`. It verifies the PR's claims in code, docs and the running app, and delegates the click-through to `.agents/skills/studiq-qa/SKILL.md`.
 
 ```
 main ← feat/quiz-bank-ui (PR, merge, delete)
@@ -227,7 +228,9 @@ bun run env:down                           # stop this checkout's web; `--all` a
 
 ### Formatting scope & blame
 
-`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Three patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject), `.agents/skills/**` (vendored skill content, checksummed in `skills-lock.json`) and `eslint-suppressions.json` (the ledger `bun lint` generates).
+`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Three patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject), `.agents/skills/**` (skill content; third-party skills are checksummed in `skills-lock.json`, repo-owned `studiq-*` skills are not) and `eslint-suppressions.json` (the ledger `bun lint` generates).
+
+**Skills:** repo-owned skills (`.agents/skills/studiq-*`) are edited like normal repo files and are **not** listed in `skills-lock.json`. Third-party vendored skills are checksummed there; do not hand-edit them — update them through their installer.
 
 Repo-wide formatting passes are listed in **`.git-blame-ignore-revs`** so `git blame` blames the last real change instead of the reformat. Enable it once per clone (git does not read the file automatically — GitHub does):
 
@@ -570,7 +573,6 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## Key Gotchas
 
-- **CodeRabbit is manual only** — `.coderabbit.yaml` has `auto_review.enabled: false` and no label trigger. Nothing reviews a PR automatically; request one with `@coderabbitai review`. The deterministic gates are `bun run lint`, `knip`, `typecheck:all` and `verify.yml`.
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
 - **`next start` keep-alive**: `apps/web`'s `start` script passes `--keepAliveTimeout 55000` (and every runner that calls `next start` directly must too). Node's 5 s default closes an idle keep-alive socket while Playwright's `APIRequestContext` — a raw `http.Agent({ keepAlive: true })` with no `ECONNRESET` retry — is still pooling it, so the next `page.request.*` after a UI phase dies with `read ECONNRESET`. Keep the value below Node's 60 s `headersTimeout`; Next exposes no flag to raise that one.
 - **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need a typecheck.
@@ -585,52 +587,3 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **Supabase `eq(col, null)` is not `IS NULL`** — `.eq('organization_id', ctx.activeOrgId)` with `activeOrgId === null` serialises to `organization_id=eq.null`, which Postgres rejects on a `uuid` column (`22P02`, surfacing as a 500 — #148). For NOT NULL org columns guard first (`if (!ctx.activeOrgId) return failure('FORBIDDEN')`); for nullable-org personal content apply the org filter only when set (`if (ctx.activeOrgId) query = query.eq(...)`), matching `accessibleFilter`'s `own` scope.
 - **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun lint's `oxc/no-barrel-file` rule enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `oxc/no-barrel-file` is disabled for those two files.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — a hand-run root `bun check` must stay at zero errors; use the per-workspace scripts for app code.
-
----
-
-## Code Review Checklist
-
-When reviewing PRs (especially stacked PRs), follow this process to avoid false positives:
-
-### PR size and review routing
-
-- **Budget:** 400 reviewable lines (added + deleted). Tests, Markdown docs,
-  generated files, `bun.lock` and vendored skills are excluded but still
-  reported. Run `bun run pr:size` before opening — it measures committed changes
-  only (`HEAD` vs the base ref), so commit first. `--limit 300` tests a tighter
-  budget.
-- **Labels:** `pr-triage.yml` labels every PR `size/*` from its budgeted line
-  count. The label is informational; it never triggers a review.
-- **CodeRabbit is manual only:** no push and no label starts a review. Request
-  one with `@coderabbitai review` when a PR actually needs an LLM pass.
-- **Over budget:** prefer stacked PRs. Once `PR_SIZE_ENFORCE=true`, the check
-  fails unless the PR carries `size:exception`, and the PR body should explain
-  why. Repo variables and required checks: [docs/ci.md](docs/ci.md#repository-variables).
-
-### Setup
-
-1. **Check out the top PR's branch** (not `main`) to see the full cumulative state:
-   ```bash
-   gh pr checkout <top-pr-number> --repo logyQT/studiq
-   ```
-2. **For stacked PRs**, identify the stack order from the `stack` field in the GitHub API response, or from each PR's base branch.
-
-### For each PR in the stack
-
-1. **Fetch the diff** — `gh pr diff <number> --repo logyQT/studiq`
-2. **Verify against the actual file on the PR's head branch** — `git show <head-sha>:<path>` or just `cat` the file. Diffs show _changes relative to the PR's base_, not relative to `main`. A line can appear as "added" in the diff while already existing on `main`.
-3. **Check what the PR claims to change** against what the diff actually changes. If a PR says "adds X" but the diff only shows X being modified (not added), the feature likely already existed.
-4. **Run the test suite** if touching business logic — `bun run test:unit`
-5. **Run the linter** — `bun run lint`
-
-### Common false-positive patterns in stacked PR diffs
-
-| Diff shows                                               | Looks like           | Actually is                                             |
-| -------------------------------------------------------- | -------------------- | ------------------------------------------------------- |
-| `+` line that also appears in an earlier PR in the stack | "PR adds this"       | Earlier PR added it; this PR just touched the same area |
-| No diff for a file the PR description mentions           | "PR forgot the file" | Change is in a different file (e.g. model vs service)   |
-| `+/-` on the same line                                   | "PR broke something" | Formatting-only change (formatter)                      |
-
-### Rule of thumb
-
-> **Diffs tell you what changed. Files tell you what exists. Always check both.**

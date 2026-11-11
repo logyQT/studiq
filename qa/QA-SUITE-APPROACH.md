@@ -266,14 +266,14 @@ the integration branch until the suite is stable. WebKit remains blocked.
 Pick one small suite (PUB is the safest) and run 2–3 cases through this loop manually.
 Only add specs after 5/5 green runs. Then wire the QA Playwright project and the CI matrix.
 
-## Branch protection and CodeRabbit
+## Branch protection
 
 - `qa-suite` is the integration branch. **Agents never commit to it directly.**
 - Every case gets its own branch: `qa/<CASEID>`.
 - Every change reaches `qa-suite` through a PR.
 - PR title format: `[QA-SUITE] <CASEID> <short description>`.
-- `.coderabbit.yaml` ignores the `[QA-SUITE]` title keyword, so the QA-suite noise
-  does not consume a review; normal product PRs continue to be reviewed.
+- Reviews use the repo-owned `studiq-review` skill; the title tag is only for
+  filtering the QA-suite PRs, not for review routing.
 
 ## Dispatching a worker
 

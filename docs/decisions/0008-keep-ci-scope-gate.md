@@ -115,8 +115,8 @@ and the e2e matrix still expands because the job has no `if:`.
   `app=false` and skips its suite) is tracked separately in #1027; this PR keeps
   the behaviour unchanged.
 - The measured rationale is recorded in the `scope` job comment and in the
-  `.coderabbit.yaml` workflow instructions so the gate is not re-litigated from
-  intuition.
+  review configuration that existed at the time (`.coderabbit.yaml`, since
+  retired) so the gate is not re-litigated from intuition.
 - Revisit if `scope` grows beyond ~15 s consistently, if GitHub adds job-level
   path filters (or conditionally-present required checks), or if the runner
   queue drops low enough that the ~9 s becomes material.

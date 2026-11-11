@@ -115,7 +115,7 @@ a suite test; it stays a repro/issue until the fix lands and the test is green.
 - Base and PR target: **`qa-suite`**, never `main`
 - Agents never commit directly to `qa-suite`; every case is a PR from `qa/<CASEID>`
 - One case per PR, one spec per PR
-- PR title: `[QA-SUITE] <CASEID> <short description>` (CodeRabbit ignores this keyword)
+- PR title: `[QA-SUITE] <CASEID> <short description>`
 - Manager merges into `qa-suite` only after the gate; main is a later, separate step
 
 ## Reporting

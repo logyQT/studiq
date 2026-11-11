@@ -514,31 +514,16 @@ developer/agent already runs the app on the same `APP_PORT`, change it in this
 checkout's `.env.local` (`bun run env:ports` prints a free port). Never run
 `supabase stop --all`; `bun run env:down --all` only stops this branch's stack.
 
-### Code review (CodeRabbit)
+### Code review
 
-`.coderabbit.yaml` runs `reviews.profile: 'assertive'` and reviews incrementally
-by default (`auto_incremental_review`), so each push only re-checks the changed
-hunks and deeper findings can arrive one at a time. Request a full pass over the
-whole PR with:
+There is no automated reviewer. When asked to review a PR, load the repo-owned
+`studiq-review` skill (`.agents/skills/studiq-review/SKILL.md`): it turns the PR
+into claims, checks them in the code and docs, and spawns a `studiq-qa` worker
+to verify the user-visible behaviour in the running app. The 400-line PR budget
+and the `size/*` labels are described in `docs/ci.md` and ADR-0012.
 
-```text
-@coderabbitai full review
-```
-
-`@coderabbitai review` is incremental; `@coderabbitai full review` ignores
-earlier comments and reviews the entire diff.
-
-To catch findings before pushing, run a local CLI review (requires the
-[CodeRabbit CLI](https://docs.coderabbit.ai/cli) and `coderabbit auth login`):
-
-```bash
-coderabbit review --agent                  # tracked changes
-coderabbit review --agent --base main      # whole branch against main
-```
-
-Guard scripts under `scripts/check-*.ts` have a dedicated checklist in
-`.coderabbit.yaml` (errno handling, tracked-but-absent inputs, `--staged` parity,
-exit codes) so a full pass reports all error-handling issues together.
+Run the deterministic gates locally before pushing: `bun run lint`,
+`bun run typecheck:all`, `bun run test:unit` and `bun run pr:size`.
 
 ---
 
