@@ -15,6 +15,20 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const SCRIPT = fileURLToPath(new URL('../../../scripts/check-adr-numbering.ts', import.meta.url));
 
+// Never inherit the harness git context. Lefthook exports GIT_DIR/GIT_WORK_TREE
+// (and friends), so a `git init` or `git add` in a temp fixture would act on the
+// real checkout instead — including rewriting its index. An allowlisted
+// environment keeps every child hermetic.
+const GIT_ENV: NodeJS.ProcessEnv = {
+  PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+  HOME: process.env.HOME ?? tmpdir(),
+  LANG: process.env.LANG,
+  LC_ALL: process.env.LC_ALL,
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_TERMINAL_PROMPT: '0',
+};
+
 const dirs: string[] = [];
 
 afterEach(() => {
@@ -44,8 +58,8 @@ function fixture(files: [string, string][], references: [string, string][] = [])
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content);
   }
-  execFileSync('git', ['init', '-q'], { cwd: root, stdio: 'pipe' });
-  execFileSync('git', ['add', '-A'], { cwd: root, stdio: 'pipe' });
+  execFileSync('git', ['init', '-q'], { cwd: root, env: GIT_ENV, stdio: 'pipe' });
+  execFileSync('git', ['add', '-A'], { cwd: root, env: GIT_ENV, stdio: 'pipe' });
   return root;
 }
 
@@ -53,7 +67,11 @@ function run(dir: string): { status: number; output: string } {
   try {
     return {
       status: 0,
-      output: execFileSync('bun', [SCRIPT, dir], { encoding: 'utf8', stdio: 'pipe' }),
+      output: execFileSync('bun', [SCRIPT, dir], {
+        encoding: 'utf8',
+        env: GIT_ENV,
+        stdio: 'pipe',
+      }),
     };
   } catch (error) {
     // A non-zero exit is the expected failure signal here; anything else (e.g.

@@ -257,6 +257,9 @@ function trackedFiles(): string[] {
   try {
     return execFileSync('git', ['ls-files', '-z'], {
       cwd: root,
+      // Git hooks export these; they would override `cwd` and scan the hook's
+      // checkout when a different root is passed.
+      env: gitEnvironment(),
       encoding: 'utf8',
       maxBuffer: 256 * 1024 * 1024,
     })
@@ -267,6 +270,21 @@ function trackedFiles(): string[] {
     errors.push(`cannot list git-tracked files for the ADR reference scan (${reason}).`);
     return [];
   }
+}
+
+/** The process env with hook-injected git redirection removed. */
+function gitEnvironment(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of [
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_INDEX_FILE',
+    'GIT_COMMON_DIR',
+    'GIT_PREFIX',
+  ]) {
+    delete env[key];
+  }
+  return env;
 }
 
 /** Whether `target` resolves inside the ADR directory. */
