@@ -3,8 +3,10 @@
 ## Status
 
 Accepted (2026-11-06). Interim posture: `apps/admin` stays in the repo, is
-**not deployed**, and has **no app-level auth**. Supersedes
-[ADR-0007](0007-admin-api-auth.md) (admin API PEM auth).
+**not deployed**, and has **no app-level auth**. Supersedes the earlier admin
+API PEM-auth record: the PEM keyring, the `apps/admin/src/proxy.ts` gate and
+`scripts/admin-sign.ts` were removed, so that record was deleted and this ADR
+now holds the decision (it remains in git history).
 
 This ADR records the gap and the ordered blockers, not a target date.
 
