@@ -1,4 +1,4 @@
-# ADR-0013: Seed `.next/cache` into worktrees, and cap concurrent builds
+# ADR-0013: Seed the Turbopack cache root into worktrees, and cap concurrent builds
 
 ## Status
 
@@ -22,62 +22,484 @@ happens when an agent wants to verify a change. Two costs follow:
 2. Several agents can verify at the same time. `env build` already takes a
    cross-worktree, exclusive lock (`withBuildLock` → `<registry>/build.lock`,
    1800 s wait) in `scripts/env/lib/locks.ts`, but the lock is per _entrypoint_:
-   any agent that runs `bun run --filter @studiq/web build` (or `next build`)
-   directly bypasses it. Sixteen raw builds at once is enough to exhaust RAM and
-   swap and take the agent server down with it.
+   it serializes `env build` and nothing else. A raw `next build` never takes it,
+   and `bun run build` reaches `next build` through Bun's `prebuild` hook — which
+   is where decision 6 attaches enforcement. Sixteen raw builds at once is enough
+   to exhaust RAM and swap and take the agent server down with it.
 
 The build fingerprint (`scripts/env/lib/fingerprint.ts`) keys a build by tree
-content + inlined `NEXT_PUBLIC_*` + build mode, so a seeded cache can never make
-a stale build look current. This ADR is about _input_ caching, never serving a
-stale `.next` output.
+content + inlined `NEXT_PUBLIC_*` + build mode, so it decides whether **this**
+worktree's build must re-run. It says nothing about what a build that reuses a
+foreign cache emits, and it covers neither build-time HTTP responses nor
+typecheck state. This ADR is about _input_ caching, never serving a stale `.next`
+output: the seed therefore copies an allowlist (decision 3), and whether a seeded
+build emits the same bytes as a cold one is an experiment in Evidence, not an
+assumption.
 
 ## Decision
 
-1. **Seed `.next/cache` only, never the `.next` output.** A worktree created by
-   `spin` (or any worktree with no `.next/cache`) may copy the local `main`
-   snapshot into `.next/cache`. The built output, `BUILD_ID` and the fingerprint
-   stay per-worktree; the fingerprint remains authoritative.
-2. **The snapshot is produced locally by a successful `env build` on `main`,
-   retention 0.** One snapshot, atomically swapped under the registry lock
-   (temp dir + rename), old one deleted. No CI artifact, no upload/download, no
-   signing surface. Location is the cache root already decided in #1078:
-   `$STUDIQ_CACHE_DIR` = `${XDG_CACHE_HOME:-$HOME/.cache}/studiq`, mode 700,
-   never inside the checkout.
-3. **Seed rules.** Seed only when `.next/cache` is absent; never overwrite a
-   worktree's own cache. Skip the seed entirely when the snapshot's cache key
-   (`turbopack/v<next-version>-<hash>`) does not match the installed Next
-   version. Use a plain copy where reflink is unavailable (`cp -a`); use
+1. **Seed the allowlisted Turbopack cache root only, never the `.next` output.**
+   A worktree created by `spin` (or any worktree with no `.next/cache`) may copy
+   the `turbopack/` root of the local `main` snapshot into `.next/cache`
+   (decision 3). The built output, `BUILD_ID` and the fingerprint stay
+   per-worktree; the fingerprint is authoritative for whether **this** worktree's
+   build is current, not for what a build that reuses a foreign cache emits, and
+   it covers neither build-time HTTP responses nor typecheck state. That is why
+   decision 3 seeds by allowlist instead of copying a directory.
+2. **One locally produced snapshot per match key, published only from a clean
+   `origin/main` build of the primary checkout.** A snapshot is a staging copy of
+   the allowlisted cache directories taken at the end of that build — never a
+   read of `.next/cache` at some later time, when `next dev` or another build may
+   have changed it. Publishing requires all of:
+
+   - the **primary checkout** (the git dir is the common dir — not a linked
+     worktree), attached to a branch, `HEAD` equal to the last fetched
+     `origin/main`;
+   - a **clean tree** (`git status --porcelain` empty, untracked included); a
+     build in a dirty tree never publishes, though existing snapshots still seed
+     worktrees;
+   - a **successful production build** (`BUILD_ID` present, exit 0) and no
+     `env serve`/`next dev` running for this checkout at staging time;
+   - a complete manifest (decision 3). Anything else: no snapshot, and
+     `env build` says which gate failed.
+
+   Refresh is opportunistic on **every** producer-eligible `env build`,
+   including a no-op build that finds the fingerprint current — that build
+   re-snapshots the existing cache, so an idle `main` still refreshes. There is
+   no separate `env cache snapshot` command: a second entrypoint would need its
+   own guard and docs, and the no-op build already covers it. Staleness is a
+   warning, not a refusal: a snapshot older than 7 days or more than 100 commits
+   behind `origin/main` is reported by decision 8 and still seeds, because a
+   snapshot 20 commits behind still measured a 52 % saving (Evidence §2).
+
+   Publishing runs **after** the build lock is released, under a separate
+   `snapshot.lock` (decision 3, locks). Snapshot work is best-effort: a failed or
+   interrupted snapshot leaves the previous one in place and never fails the
+   build.
+
+   **Storage and swap.** Snapshots are immutable directories
+   `<cacheRoot>/snapshots/<id>/`, where `<id>` is a UTC timestamp plus a short
+   hash of the match key. `snapshots/current` is a pointer file holding the id,
+   replaced atomically (write-then-rename). A seed reads the pointer once and
+   copies from that id; a pointer change mid-copy cannot affect it, and the
+   retired id is not deleted while a copy that started before the swap can still
+   be walking it. Retention is **`current` plus one retired predecessor**: the
+   previous id is deleted by a _later_ snapshot write once it has been retired for
+   longer than a 10-minute grace period (a target, not a measurement), and no
+   read lock is taken on the seed path (16 concurrent seeds must not serialize).
+   The cache root therefore holds at most two published snapshots — `current`
+   and the retired predecessor — plus the staging copy of a write in progress, so
+   its steady-state seed footprint is at most twice one snapshot, and each
+   snapshot is bounded by decision 4's cap.
+
+   **Location.** `$STUDIQ_CACHE_DIR` = `${XDG_CACHE_HOME:-$HOME/.cache}/studiq`.
+   The value is user-overridable from `.env.local`, so the constraint is enforced
+   rather than documented: before any write or delete under it — snapshot,
+   staging directory, seed destination — the cache root passes the **same trust
+   guard as the runtime registry**. It resolves without a symlink, is owned by
+   the caller, is mode 700, and is neither inside the repository nor an ancestor
+   of it. A refused path fails an explicit cache operation with a non-zero exit
+   and nothing written or deleted; an implicit seed skips and the build runs
+   cold. No CI artifact, no upload/download, no signing surface.
+
+3. **Seed rules: exact identity, an allowlist, a verified atomic landing.** A
+   snapshot publishes a manifest; the seed copies from it only when every match
+   component below is identical. Any mismatch skips the seed and the build runs
+   cold — never partially match, never match on a version prefix.
+
+   | Component     | Source                                            | Role   |
+   | ------------- | ------------------------------------------------- | ------ |
+   | turbopack dir | full dir name(s) under `turbopack/` that the      | match  |
+   |               | installed Next writes (`v16.4.4-b175f52b`), never |        |
+   |               | just the version prefix                           |        |
+   | `next`        | resolved version, not the manifest range          | match  |
+   | `bun`         | the runtime that ran the build                    | match  |
+   | `node`        | the runtime that ran the build, if Node           | match  |
+   | `typescript`  | resolved from `bun.lock` (range is `^7.0.2`)      | match  |
+   | `bun.lock`    | sha256 of the root lockfile                       | match  |
+   | mode          | `production` only; no other mode publishes        | match  |
+   | seed scope    | the allowlisted cache directories copied          | match  |
+   | inlined env   | `buildEnvHash` over the three `NEXT_PUBLIC_*`     | match  |
+   |               | values — hash, no values                          |        |
+   | `commit`,     | `HEAD` and tree state at publish time (dirty must | record |
+   | `dirty`       | be false to publish)                              |        |
+   | size, files   | measured on the staging copy                      | verify |
+   | `complete`    | written last inside the staging directory         | verify |
+   | `createdAt`   | publish time                                      | record |
+
+   The asymmetry is deliberate: a component that does not affect the cache costs
+   one cold build when it changes; a component that does affect it and is
+   missing costs correctness. `commit` is recorded rather than matched because a
+   snapshot 20 commits behind `main` still measured a 52 % saving; it is reported
+   as staleness instead. The lockfile is matched because it is the repo's
+   strongest existing invalidation signal — CI's own cache is keyed on it. The
+   env hash is matched because `NEXT_PUBLIC_*` is inlined at build time and no
+   measurement exists for reusing a cache across a different inlined value.
+
+   **Consequence, stated plainly.** With the env hash in the key, a seed applies
+   only when the inlined environment is identical. A fresh worktree leases its
+   own app port, so its `NEXT_PUBLIC_SITE_URL` usually differs and the seed
+   usually misses. The measured −48 % (Evidence §1) was taken with identical env
+   and an unchanged lockfile and is therefore a **ceiling**, not the expected
+   saving; the practical hit rate is unmeasured (Evidence, Not measured). Until
+   the env-independence experiment passes, the seed's realised value is expected
+   in same-contract rebuilds (`--force`, restored worktrees, stack restarts at
+   the same port) rather than in the first build of a new port.
+
+   **What is seeded.** The snapshot body, and therefore the seed, is exactly one
+   entry: `turbopack/`. Every other entry under `.next/cache` is skipped by name
+   by the snapshot writer, and the list is closed — an entry that is neither
+   allowlisted nor named below is treated as unrecognised:
+
+   - `fetch-cache/` — build-time HTTP responses (in this repo, the
+     `next/font/google` response from the root layout). The fingerprint covers
+     tree content, inlined `NEXT_PUBLIC_*` and build mode; it does not cover an
+     HTTP response, so a reused response could be silently stale.
+   - `config.json` — Next's telemetry identity (`anonymousId`, `salt`), not a
+     build input. Copying it would spread one machine's identity into every
+     worktree.
+   - `.tsbuildinfo` — TypeScript incremental state.
+     `typescript.ignoreBuildErrors` is `false`, so diagnostics are part of a
+     correct build; typecheck state is not a Turbopack artifact and the
+     `turbopack/v*` prune never touches it. Keeping it would need a
+     cold-vs-seeded diagnostics comparison that has not been run, so it is
+     excluded until one exists.
+
+   An **unrecognised cache root** — an entry under `.next/cache` that is neither
+   the allowlist nor one of those three, or no `turbopack/` at all — is a reason
+   to build cold, never a reason to copy: that snapshot is skipped and
+   `env doctor` reports the layout, so a Next layout change cannot silently
+   degrade every worktree. The three entries above are known exclusions, not
+   unrecognised roots, and never trigger a skip.
+
+   **Seeding is additive and lands atomically.** Seed only when `.next/cache` is
+   absent; never overwrite or merge into a worktree's own cache. Run decision 4's
+   free-space preflight first. Copy into
+   `<worktree>/.next/cache.seed-<pid>-<nonce>` on the same filesystem, verify the
+   manifest's `fileCount` and `sizeBytes` against the copy, then `rename` into
+   `.next/cache` — the rename is the publication step, so an interrupted, failed
+   or ENOSPC copy is never observed as a cache. If the rename loses a race,
+   delete the temp directory and keep the worktree's cache. Leftover
+   `cache.seed-*` directories are removed by the next seed once their owner is
+   gone; nothing about a failed seed is sticky, and the next build seeds again.
+
+   **Verification and corruption.** Before copying, the seed requires
+   `manifest.json` with `complete: true` and a matching identity. A snapshot that
+   fails verification is retired — the build runs cold and the next publish
+   replaces it — and a copy that fails verification is deleted and the build runs
+   cold. A corrupt or incomplete snapshot never fails a build and never blocks a
+   worktree.
+
+   **Locks.** The seed path takes no lock: it reads the pointer once and copies
+   from one immutable id, so concurrent seeds never serialize. Snapshot writing
+   is strictly outside `build.lock` (held for the whole of `runProductionBuild`)
+   and is serialized by the registry `snapshot.lock` (decision 2). Ordering is
+   fixed: checkout lock → build lock → **release** → `snapshot.lock`;
+   `snapshot.lock` is never taken while `build.lock` is held. A snapshot that
+   cannot take `snapshot.lock` within its short wait is skipped with a warning.
+
+   Use a plain copy where reflink is unavailable (`cp -a`); use
    `cp --reflink=auto` / `cp -c` on APFS and CoW filesystems.
+
 4. **Never clear the cache on rebuild.** Same-version churn self-compacts
    (measured); clearing throws away the worktree's warm state and turns every
-   rebuild cold. The only pruning is **foreign version dirs**: after a successful
-   build (or at seed time), delete `turbopack/v*` directories whose version
-   prefix differs from the installed `next` version.
-5. **Cap concurrent builds with a registry semaphore: 3 slots maximum, memory
-   gated.** Reuse the existing registry primitives (`dirMutex`, `pidAlive`,
-   `takeoverStaleDirLock`) as `<registry>/build-slots/1..3` with `pid`, `token`,
-   `worktree`, `startedAt`. Before spawning, require `MemAvailable >= 4.5 GB`
-   (`STUDIQ_BUILD_MIN_FREE_MB`); if not, release the slot and retry (the existing
-   30-minute timeout still applies). Default 3; 2 when a Supabase stack is
-   running.
-6. **Enforce at the build entrypoint, not in docs.** Add a `prebuild` guard to
-   `apps/web/package.json` that refuses to build unless the caller holds a live
-   slot (`STUDIQ_BUILD_SLOT` + token written by `env build`). `STUDIQ_BUILD_LOCK=0`
-   is the explicit benchmark escape hatch. Without this, agents bypass the lock
-   with the exact command the benchmark used.
-7. **Blast-radius guard, not a watchdog.** Set `oom_score_adj=1000` on the build
+   rebuild cold. The only pruning **within a cache tree** is **foreign version
+   dirs**: after a successful build, and on the snapshot writer's staging copy
+   before it is published, delete `turbopack/v*` directories whose version prefix
+   differs from the installed `next` version. The cap below deletes nothing, so
+   this remains the only pruning.
+
+   Pruning runs on the snapshot **source** before the snapshot is written —
+   concretely, the writer prunes the staging copy it has just taken — because the
+   snapshot is what every seed copies. The destination prune stays only as a
+   defensive no-op: it can fire when a seed carries a foreign version directory
+   out of an older snapshot. Neither ordering changes a build's output — the
+   cache key already rejects the foreign directory — the difference is cost: the
+   current order copies a 561 MB foreign directory (measured) and then deletes
+   it, paying that size twice per seed.
+
+   **Size cap: 1024 MB per snapshot, prune-only below it.** The cap applies to
+   the allowlisted root after the source prune, so it bounds what one seed can
+   write, not what a worktree may grow to. Measured sizes are 435–440 MB for the
+   pruned steady state and 982 MB only with an un-pruned foreign version
+   directory (561 MB of it); 1024 MB is above every measured value and about
+   twice the pruned steady state. `STUDIQ_CACHE_MAX_MB` overrides it. Over the
+   cap: no snapshot is written, the previous snapshot is kept, and a worktree
+   with no snapshot builds cold. The cap never deletes cache content, never
+   evicts LRU and never triggers a rebuild — that would contradict the rule
+   above, and the data says prune-only is enough for worktree growth. If a
+   pruned `main` cache exceeds the cap on consecutive builds, `env doctor`
+   reports the breach and the cap is revisited with a measurement, never raised
+   silently.
+
+   **Free-space preflight.** Both writes check the filesystem that holds the
+   target first:
+
+   - seed: `free >= snapshot size + STUDIQ_CACHE_RESERVE_MB`, with the size taken
+     from the snapshot's manifest (decision 2). No recorded size means no seed.
+   - snapshot: `free >= staged copy + previous snapshot + reserve`, because the
+     staging copy is written while the old snapshot is still on disk.
+
+   `STUDIQ_CACHE_RESERVE_MB` defaults to 500. The reserve is a policy constant,
+   not a measurement: it covers the build's own writes beside the cache (a cold
+   build writes ~275 MB of cache; the rest of `.next` and the runtime state
+   directory were not measured — experiment: total size of `apps/web/.next` and
+   the checkout's `.dev` directory after one cold build). A failed preflight is
+   not a build failure: the seed is skipped and the build runs cold, or the
+   snapshot is refused and the previous one is kept. Either way the reason is
+   printed once and repeatable with `env doctor`.
+
+5. **Cap concurrent builds by measured memory, and allow one build per
+   worktree.** Admission is a function of memory, not a fixed count. A build
+   holds a global slot and a per-worktree mutex; a worktree may hold at most one
+   slot, so two builds never write the same `.next`.
+
+   - **Slots are directories.** `<registry>/build-slots/<n>/` holds `pid`,
+     process start time, `pgid`, single-use `token`, `worktree`, `startedAt` and
+     `heartbeat`; the admitted pool's capacity is written once beside the slots
+     when it is derived. Only the directory form can carry this metadata; slots
+     do not use `flock`, so they have no kernel wait queue (see the queue
+     contract). Acquisition order is worktree mutex first, then slot; release is
+     the reverse.
+   - **One build per worktree.** The mutex is
+     `<registry>/build-slots/worktrees/<repo-root-key>`. A second `env build` in
+     the same worktree waits on the mutex inside the same deadline and prints the
+     holder's slot; it never runs concurrently with the first. If the holder's
+     identity is dead, the mutex is reclaimed under the liveness rule below.
+   - **Both Next apps draw on one pool.** `apps/admin` is a second Next app and a
+     second full build; its `build` script takes the same guard and the same slot
+     as `apps/web`. A pool of `n` admits `n` Next builds in total, never `n` per
+     app, so web and admin cannot each fill the pool. Admin's peak RSS is
+     unmeasured; it reserves one web-sized slot until it is measured, which errs
+     conservative and needs no new number here.
+   - **Effective limit.** `free = min(MemAvailable, cgroup max − cgroup current)`;
+     cgroup v2 is `memory.max`/`memory.current`, v1 is
+     `memory.limit_in_bytes`/`memory.usage_in_bytes`; a cgroup value of `max`
+     means no limit. Capacity is `min(MemTotal, cgroup max)`. Fall back to the
+     host reading only when no cgroup limit exists, and log
+     `build: no cgroup limit; using host MemAvailable` on every admission — a
+     host reading inside a limited sandbox is the failure this decision exists to
+     prevent.
+   - **Reservation.** Admit only when both
+     `capacity − ((activeSlots + 1) × SLOT_RSS + stackReserve) >= MIN_FREE` and
+     `free >= MIN_FREE`, with `SLOT_RSS = 3.9 GB` (measured: one warm build peaks
+     at 3.93 GB RSS across 18 processes) and `MIN_FREE = 4.5 GB` (a target, not a
+     measurement). The candidate build counts as one slot. On the 19.9 GB
+     benchmark box the first test admits 3 (3 × 3.9 + 4.5 = 16.2 GB) and refuses
+     a fourth (4 × 3.9 + 4.5 = 20.1 GB), which is what the concurrency
+     measurement in Evidence §4 observed. The second test catches non-build
+     consumers that the capacity test does not model (a dev server, an
+     unrecorded stack process). **The ceiling is 3 until Open Question 1 is
+     measured; memory is the only input that lowers it.**
+   - **Stack reserve.** Detect stacks from the registry's stack records across
+     all checkouts plus this checkout's `.dev/stack.json`, de-duplicated by stack
+     id — never by a `supabase status` call in the admission path. A native stack
+     reserves one `SLOT_RSS`; a Docker stack reserves two, because the VM and
+     daemon sit outside the container's memory reading. Both are policy reserves
+     (unmeasured — experiment: RSS of a native stack vs `docker stats` for a
+     Docker stack on the benchmark box). The reserve is re-read on every backoff
+     tick and immediately before spawn: a stack that appears mid-wait forbids the
+     next admission, a stack that stops frees its reserve at the next tick, and a
+     running build is never pre-empted.
+   - **Backoff.** Re-check on a jittered exponential backoff, 2 s doubling to a
+     10 s cap; never a tight retry loop.
+   - **Always one slot.** If no build is active and the admission test fails,
+     admit exactly one build with a warning naming `free`, `MIN_FREE` and the
+     reserve. A box under pressure can therefore always run the one build needed
+     to fix it. `STUDIQ_BUILD_MIN_FREE_MB=0` disables the memory test entirely
+     (slot and worktree mutex still apply) and prints
+     `build: memory gate disabled by STUDIQ_BUILD_MIN_FREE_MB=0`; it is not the
+     benchmark escape hatch.
+   - **Liveness.** Identity is pid + process start time (`/proc/<pid>/stat` field
+     22 on Linux, `ps -o lstart=` elsewhere) with a heartbeat file as the
+     fallback when neither is readable. A slot is stale when its `pgid` is gone,
+     or when a live process with the recorded pid has a different start time; a
+     slot whose identity still matches is never reclaimed on heartbeat age alone.
+   - **Kill and reclaim.** The build is spawned as its own process group and its
+     `pgid` is recorded in the slot. On timeout, launcher exit or any exit path,
+     send `SIGTERM` to the group, wait a 10 s grace, then `SIGKILL`, and only
+     then release the slot. A slot whose launcher died but whose group survives
+     is reclaimed only after the group is killed, so a new build is never
+     admitted over an orphan writing `.next`.
+   - **Deadlines.** One 60-minute deadline from invocation: at most 30 minutes
+     waiting for a slot and at most 30 minutes building, each enforced
+     separately, so a long queue can never consume the build's budget. The build
+     cap starts when the slot is held and the process spawns. Progress prints
+     every 30 s with state, active and waiting counts, elapsed and remaining.
+     Wait-cap expiry exits 7 (`queued too long`) and names the holders;
+     build-cap expiry kills the group, invalidates `.next` (decision 7) and
+     exits nonzero.
+   - **Queue contract.** There is no FIFO guarantee: directory slots have no
+     ordering, so no position is promised. Waiters register a directory under
+     `<registry>/build-slots/waiters/` (same identity, reclaimed by the same
+     rule, removed in `finally`), which makes a waiter **count** truthful; the
+     wait is bounded by the deadline, which is the fairness guarantee.
+
+   **Scope of the cap.** The cap counts `env build` and the `apps/admin` build
+   and nothing else. `next dev` is outside it: `dev:web`, `dev:admin` and any raw
+   dev server take no slot, are not counted and are not guarded. `env serve`
+   serves an existing artifact and is not a build.
+
+   **Consequence for agents.** A running dev server is invisible to the cap but
+   not to the memory gate: it can consume the headroom an admission check
+   expects, so a build may wait at the gate while a dev server runs. The gate
+   still protects the box at admission; the cap simply does not count the dev
+   server, and memory the dev server takes after admission is not reserved for.
+   On a small-RAM box, stop the dev server before building. Counting a dev server
+   as one slot is deferred (Open Question 3).
+
+6. **Enforce at the build entrypoint, not in docs.** One guard runs from the
+   `prebuild` hook in **both** Next apps, `apps/web` and `apps/admin`. A build
+   with no single-use grant fails before `next build` starts.
+
+   - **Holding a slot is a file fact, not an environment fact.** A build holds a
+     slot when all of these hold: `.dev/build-grant.json` exists in this checkout
+     and names this app; the grant's `token` is unconsumed and equals the `token`
+     of a slot directory `<registry>/build-slots/<n>/` whose `worktree` resolves
+     to this checkout's root; and that slot's `pid` names a live process whose
+     recorded start identity still matches (Linux: `/proc/<pid>/stat` field 22,
+     never pid alone). A `--no-slot` or `--no-lock` grant skips the slot directory
+     but must still name a live launcher by the same pid-plus-start-identity
+     test, and a grant older than the total build deadline is refused. The guard
+     renames the grant away and unlinks it on first read, so one grant authorises
+     exactly one build: a long-lived shell that once ran `env build` cannot
+     replay an exported `STUDIQ_BUILD_SLOT`, and that variable is a log label,
+     never consulted for admission.
+   - **Enforced entrypoints.** `bun run build` at the root, `bun run build:web`,
+     `bun run build:admin`, `bun run --filter <app> build`, and `bun run build`
+     inside either app all reach `next build` through Bun's `prebuild` hook, so
+     all of them fail without a grant. `env build --app <web|admin>` (including
+     its `--no-slot` form) is the only command family that mints one.
+   - **Two explicit no-admission modes, both flags, neither in a file.**
+     `env build --no-slot` is for an environment with no shared budget: CI and
+     Playwright, where the build is the only one on the machine. It mints a
+     grant that names no slot and prints one line saying so.
+     `env build --no-lock` is the escape hatch for a benchmark or an incident:
+     it bypasses admission on a machine that does arbitrate and prints a
+     `warning:` line on every such build. `STUDIQ_BUILD_LOCK` is not an env key
+     and is not read; no value in `.env.local` can widen what a build may do.
+   - **Raw `next build` is unsupported.** `next build`, `bunx next build` and
+     `bun x next build` never run `prebuild`, so this ADR does not claim to admit
+     them. What catches the automation is a repo guard wired into `bun run lint`:
+     it fails any file under `.github/workflows/`, any Playwright file or
+     `playwright.config.ts`, that invokes `next build` or a bare `bun run build`,
+     so CI and E2E cannot drift back to the unguarded path. It cannot catch a
+     person typing the command; the residual risk is stated in Consequences.
+   - **CI and Playwright use the no-slot path.** The two build steps in
+     `verify.yml` (the `qa-suite` job and the `e2e` job) and Playwright's
+     `webServer` command call `env build --no-slot` instead of `bun run build`.
+     In that mode no slot and no lease is claimed; the contract comes from the
+     environment CI already provides, and the build is still fingerprinted and
+     recorded. Nothing else about those jobs changes.
+   - **Only a successful `env build` records a build.** Every path reachable
+     through a wrapper that may overwrite `.next` deletes `.dev/build.json`
+     before it starts — `env build` with a slot, `--no-slot` and `--no-lock`
+     alike — so an interrupted or failed build can never inherit the previous
+     run's "current" claim. Only a successful, fingerprinted `env build` (slot or
+     `--no-slot`) writes the record back; `--no-lock` never does. A direct
+     `next build` cannot delete the file, so decision 8 makes its artifact read
+     as unrecorded instead of current.
+
+7. **Blast-radius guard on Linux, not a watchdog anywhere.** Where the platform
+   has an OOM killer and a score knob, set `oom_score_adj=1000` on the build
    process tree so a mis-estimated admission lets the kernel kill a build rather
-   than the agent server or the stack. Do not add a memory watchdog that kills
-   builds: a mid-write SIGKILL leaves a half-written `.next` and a possibly
-   inconsistent cache, and it reacts after the damage is done.
-8. **Report state, don't add a daemon.** `env status`/`env doctor` print
-   `build: 2/3 busy, 1 queued` and the cache size/foreign-version dirs.
+   than the agent server or the stack. Set it in the spawned process before it
+   execs, so `next build` and every worker inherit it; raising it after spawn
+   races worker forking. This is a Linux mechanism: macOS has no OOM score, WSL2
+   follows Linux inside the VM, and a cgroup with `memory.oom.group=1` kills the
+   whole group regardless of score. The score is a preference, not a guarantee;
+   admission (decision 5) is the primary control. Do not add a memory watchdog
+   that polls and kills builds — not because a kill is uniquely corrupting, but
+   because every kill path that does exist (kernel OOM, build timeout, launcher
+   death) is followed by the invalidation rule below, so a watchdog buys nothing
+   the admission gate does not already provide.
+
+   - **A failed build is never current.** On any nonzero or timed-out exit,
+     before the wrapper returns (and before the slot is released, when one is
+     held), move the built app's `.next` aside (rename to
+     `.next.failed-<timestamp>`, or delete it when it cannot be moved cheaply)
+     and remove `.dev/build.json`, so no serve path can report a half-written
+     tree as current. This covers every kill — kernel OOM, build timeout,
+     launcher death — and is not limited to the rebuild handover path, which is
+     the only path with a recovery record today.
+
+**Platform behaviour (decisions 5 and 7).** The native matrix is ADR-0011 §12's
+and is not changed here: Linux x86_64/arm64 and macOS arm64 are native, Windows is
+WSL2-only, and anything else is not a native platform. The platform is probed,
+never inferred from `process.platform` alone — WSL2 reports `linux`, and a cgroup
+can exist on any Linux.
+
+| Platform               | Memory measurement                                                                                                              | OOM score                                                                    | `flock`                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Linux x86_64/arm64, CI | `min(/proc/meminfo MemAvailable, cgroup max − current)`; cgroup v2 and v1; host-only when neither exists, and the log says so   | `oom_score_adj=1000` on the tree; `memory.oom.group=1` still kills the group | yes (`flock(2)`)                                                      |
+| macOS arm64            | free + inactive pages from `vm_stat` × page size; total from `sysctl hw.memsize`; an approximation, never called `MemAvailable` | none — no OOM killer, no knob, no blast-radius claim                         | yes                                                                   |
+| WSL2                   | as Linux, scoped to the VM: `/proc` and the cgroup describe the WSL2 VM (ceiling from `.wslconfig`), not the Windows host       | as Linux inside the VM; Windows-side kill behaviour is out of scope          | yes on the Linux filesystem; treat `/mnt/<drive>` (9p) as unavailable |
+| Windows-native         | not a build platform (ADR-0011 §12: WSL2 only)                                                                                  | none                                                                         | none                                                                  |
+
+**Fail open, never fail closed.** Memory is probed before each admission attempt.
+The probe counts as failed when `/proc/meminfo` or the cgroup files are absent,
+unreadable or unparseable, when `vm_stat`/`sysctl` fail on macOS, and when a
+reading is zero or negative. On a failed probe the build proceeds with a
+capacity of exactly one concurrent build — not decision 5's slot count — and
+prints one warning naming the platform and the missing input. It never waits for
+a measurement that will not appear, and never refuses every build.
+
+- A cgroup v1 "no limit" sentinel (a value above physical RAM) means unlimited,
+  not headroom; the same goes for `memory.max` = `max` on v2.
+- Where `flock` is unavailable or returns `ENOTSUP` (9p mounts, Windows
+  filesystems, some network mounts), the remaining locks fall back to
+  `dirMutex`; slot acquisition is already directory-based and unaffected. The two
+  primitives are never mixed for the same lock.
+- `oom_score_adj` is set where it exists and skipped where it does not; the skip
+  is recorded in the build log, not warned about per build.
+
+8. **Report state, don't add a daemon — and report only what is countable.**
+   `env status` and `env doctor` stay read-only (ADR-0011 §1) and inside
+   ADR-0011's < 1 s read-only budget: a shallow `readdir` per registry entry, one
+   manifest read, no `du`, no child process. Reclamation belongs to the admission
+   path (decision 5); status observes staleness and never cleans it.
+
+   - **Slots.** `build: <busy>/<capacity> busy` — `build: 2/3 busy` when two of
+     three slot records carry a live identity. `<capacity>` is the cap decision 5
+     records for the pool, never a number recomputed from memory or stack state
+     at read time. A record whose process is gone is reported as stale
+     (`2/3 busy, 1 stale`), not dropped and not reclaimed.
+   - **Queue depth.** Decision 5 has every waiter register a directory under
+     `<registry>/build-slots/waiters/`, so status prints a waiter **count**
+     (`build: 2/3 busy, 1 waiting`) from that directory. It never prints a queue
+     _position_: directory slots have no ordering guarantee. A waiting build also
+     reports its own state in its progress line.
+   - **Snapshot.** Size, file count, commit and age come from the snapshot
+     manifest (decisions 2 and 3), plus the `turbopack/v*` names from one shallow
+     `readdir` of the snapshot root. A size shown is the snapshot's and is
+     labelled as such; it is never presented as this worktree's `.next/cache`
+     size, which is not measured and would need `du`. When the snapshot is older
+     than 7 days or more than 100 commits behind `origin/main`, the line becomes
+     a warning that names the staleness and asks for an `env build` in the
+     primary checkout; staleness warns, it never refuses a seed.
+   - **Unknown is null.** A missing manifest, an unreadable record or a failed
+     probe prints `null` in `--json` and `unknown` in text — never `0`.
+   - **Degraded memory.** After a failed platform probe, print the clamped
+     capacity and the reason: `build: 1/1 busy (memory gate degraded)`.
+   - **`current` needs a record, not just a fingerprint.** `env status` and
+     `env serve` report an artifact as current only when the fingerprint matches,
+     `.dev/build.json` exists, **and** `.next/BUILD_ID` is not newer than that
+     record. A raw `next build` moves `BUILD_ID` past it; the artifact then reads
+     as `unrecorded` and is rebuilt rather than served as current. A `--no-lock`
+     build never restores the record, so a bypassed artifact stays unrecorded by
+     construction.
 
 ## Evidence
 
 All runs are sequential builds in isolated worktrees, identical env, with only
 **one** variable changed: the presence of a seeded `.next/cache`. Wall time is
 the whole `next build` process.
+
+Env was held identical across arms, so every number below measures the ceiling
+for the seed: it is the saving when the snapshot identity (decision 3) matches
+exactly. A worktree that differs in `NEXT_PUBLIC_*` or in `bun.lock` skips the
+seed. The benchmark builds invoked `next build` directly, so none of these
+artifacts carried a build record and none was ever reported as current.
 
 ### 1. Seed pays for itself (5 runs each, PR #1083: 14 files, 3 commits behind `main`)
 
@@ -91,6 +513,11 @@ Copy cost: **272 MB in 80–101 ms** (`cp -a`; reflink unsupported on this FS).
 A cold build writes the same ~275 MB of cache anyway, so the seed replaces work
 rather than duplicating it.
 
+The 272 MB / 80–101 ms copy is an **upper bound** for the seed: it measures a
+whole `.next/cache`, and that directory also holds `fetch-cache/`, `.tsbuildinfo`
+and `config.json`, which decision 3 excludes. The Turbopack-only size was not
+measured separately (see Not measured).
+
 ### 2. Snapshot staleness (3 runs each, target = `main` `ea790b3e`)
 
 | Seed                                   | Age | Median wall | Saving        |
@@ -100,10 +527,13 @@ rather than duplicating it.
 | `main` − 20 commits (same Next 16.4.4) | 20  | **7.90 s**  | 8.51 s (52 %) |
 | `main` − 40 commits (Next 16.4.3)      | 40  | 17.22 s     | 0 s           |
 
-Ordinary main movement costs ~0.4 s of the benefit per 20 commits. A **tool
-version change is the only hard invalidation** — the cache key changes, the old
-directory is kept, and the build is simply cold. Next does not prune it:
-`v16.4.3` + `v16.4.4` together measured 523 MB.
+Ordinary main movement costs ~0.4 s of the benefit per 20 commits. A tool
+version change is the only _measured_ hard invalidation — the cache key changes,
+the old directory is kept, and the build is simply cold. Under the snapshot
+identity in decision 3 it is not the only one: a changed `bun.lock`, a different
+inlined env, a changed seed scope or a changed Turbopack directory name also
+skips the seed. Only the version-change case is measured here. Next does not
+prune it: `v16.4.3` + `v16.4.4` together measured 523 MB.
 
 ### 3. Cache growth over 20 real commits (Oct 27–31, replaying main history)
 
@@ -137,56 +567,184 @@ A single warm build peaks at **3.93 GB RSS across 18 processes** (15 page-gen
 workers + compiler). RAM, not cores, is the limit; one build already saturates
 16 cores, which is why 3 slots buy only ~25–35 % throughput.
 
+### Not measured
+
+Everything above times builds; none of it compares what a seeded build _emits_,
+or measures the cases the decisions now depend on. Each item below is an
+experiment, not a number.
+
+- **Cold vs seeded output equality.** The seed's central safety claim is
+  unproven. Experiment: same tree, two isolated worktrees, one cold and one
+  seeded from the matching snapshot; compare every file under `.next` except
+  `BUILD_ID` (static and server chunks, prerender HTML, manifests) byte-for-byte,
+  plus the TypeScript diagnostics; repeat with a different
+  `NEXT_PUBLIC_SITE_URL` in the seeded arm. A negative result withdraws the seed
+  (decisions 1–3 do not ship in this form).
+- **Env-independence hit rate.** The decision-3 match includes the inlined env
+  hash, so a fresh worktree often misses. Experiment: record seed hit/miss and
+  wall time for a changed `NEXT_PUBLIC_SITE_URL` and for a changed `bun.lock`,
+  then decide whether the env hash can be demoted to a recorded field. Until
+  then, the §1 saving stays a ceiling.
+- **Admin peak RSS.** `apps/admin` reserves one web-sized slot because its own
+  peak is unmeasured. Experiment: peak RSS of an `apps/admin` build under the
+  same fan-out as §4.
+- **Native vs Docker stack footprint.** The one-slot/two-slot reserve is policy.
+  Experiment: RSS of a native Supabase stack vs `docker stats` for a Docker stack
+  on the benchmark box.
+- **Turbopack-only seed size.** The allowlist means the seed is smaller than the
+  copied tree. Experiment: `du -sb` the `turbopack/` root of a real
+  `apps/web/.next/cache`.
+
 ## Consequences
 
-- **~8 s saved per build, for ~0.1 s of setup and ~272 MB of disk**, and ~45 % of
-  the build's CPU under contention. Sixteen queued, seeded builds ≈ 2.5 minutes.
-- **The seed is best-effort.** Missing snapshot, foreign version, failed copy or
-  oversized cache never blocks a worktree — the build just runs cold.
+- **The seed is a best-case ~8 s saving.** The −48 % in Evidence §1 was measured
+  with identical env and an unchanged lockfile, so it is an **upper bound**, not
+  the expected saving. Under the exact identity in decision 3 a fresh worktree
+  normally differs in `NEXT_PUBLIC_*` (its own port → `NEXT_PUBLIC_SITE_URL`) and
+  often in `bun.lock`, so its first build frequently misses and runs cold; the
+  realised hit rate is unmeasured (Evidence, Not measured). Setup cost is ~0.1 s
+  and at most ~272 MB of disk — the measurement copied a whole `.next/cache`, and
+  the allowlisted Turbopack root is smaller (unmeasured).
+- **The seed is best-effort and verified.** Missing or unverifiable snapshot,
+  identity mismatch, foreign version, unrecognised cache layout, failed
+  free-space preflight, untrusted cache root, failed copy, incomplete manifest or
+  an over-cap snapshot never blocks a worktree — the build runs cold, the reason
+  is reported once and in `env doctor`, and a failed snapshot is retired instead
+  of retried forever.
+- **Snapshot correctness is not proven yet.** Whether a seeded build emits the
+  same bytes as a cold one is unmeasured (Evidence, Not measured); this ADR is
+  Proposed partly on that experiment, and a negative result withdraws the seed.
 - **Disk:** ~270 MB per fresh worktree (replaces what the cold build writes),
-  ~440 MB after 20 changes, ~1 GB if a Next bump happens mid-branch. A prune on
-  build/seed keeps the common case near 440 MB.
-- **Concurrency:** 3 slots + memory gate keeps the box out of swap; 2 is the
-  default when a stack is up. Serialized builds (the current exclusive lock) are
-  already safe; slots only recover ~25 % throughput during coincidences.
-- **The bypass is the bug.** The lock only protects entrypoints that use it;
-  `prebuild` enforcement is the load-bearing part of this decision.
-- **No daemon.** All state is files in the existing runtime registry; stale
-  slots are reclaimed with the primitives already in `locks.ts`.
+  ~440 MB after 20 changes, and up to decision 4's 1024 MB cap in the
+  pathological un-pruned case. Two snapshots may coexist in the cache root at any
+  time — `current` plus one retired predecessor awaiting its grace period — so
+  the cache root's total footprint is at most twice the per-snapshot cap, and a
+  worktree's own cache is separate from both. Pruning the snapshot source keeps
+  the common case near 440 MB; a worktree that outgrows the cap keeps its cache
+  and simply stops being a snapshot source.
+- **The cache root is trusted like the registry.** The only paths the seed writes
+  or deletes are under a root that passed the ownership, mode, symlink and
+  repo-containment guard; a bad override costs a cold build, not a repository.
+- **Concurrency:** a memory-derived cap with a measured per-slot reservation
+  keeps the benchmark configuration out of swap — three builds peak at ~11.7 GB
+  (Evidence §4), a smaller cgroup admits fewer, and a native stack reserves one
+  slot and a Docker stack two. Where memory cannot be measured the cap fails open
+  to one. Serialized builds (the current exclusive lock) are already safe; slots
+  only recover ~25 % throughput during coincidences.
+- **`next dev` is uncounted.** A dev server takes no slot and is not guarded; the
+  memory gate sees only what it uses at the moment of admission, so a build may
+  wait at the gate while a dev server runs. On a small-RAM box, stop the dev
+  server before building. Counting it is Open Question 3.
+- **The bypass is bounded, not closed.** Every automated entrypoint — root and
+  workspace `bun run build`, both apps, CI, Playwright — goes through the guard.
+  A person typing `next build` still does not, and the repo guard on workflow and
+  Playwright files only stops automation from drifting back. That residual is
+  accepted because one unadmitted build cannot reproduce the burst this cap
+  exists for, its artifact is never reported current, and CI cannot regress
+  unnoticed. Enforcement is load-bearing for automation; it is not a claim that
+  raw builds are impossible.
+- **CI is touched, in one step per job.** The two build steps in `verify.yml` and
+  Playwright's `webServer` command switch to `env build --no-slot`; cache keys,
+  stack lifecycle and shard layout are unchanged. ADR-0011 §11 carries the
+  corrected line.
+- **Admin is counted, not exempt.** `apps/admin` builds take the same guard and
+  the same pool as `apps/web`; the pool is a total, never a per-app quota.
+  Admin's peak RSS is unmeasured, so it reserves one web-sized slot.
+- **No daemon.** All state is files: slot directories and the waiter directory in
+  the runtime registry, the grant and the build record in `.dev/`, the snapshot
+  directories and manifest under the cache root. Stale slots are reclaimed by pid
+  plus start time and by process-group death, not by a liveness check on pid
+  alone. Grants are per-build and ephemeral; nothing watches in the background.
+- **Status is truthful, not complete.** `env status` reports busy/total, stale
+  entries and the snapshot's manifest size; it can report a waiter count because
+  decision 5 registers waiters, but never a queue _position_ or a live
+  per-worktree cache size (`du` is out of the read path). A waiting build learns
+  its state from its own progress line.
+- **Platforms degrade to one.** Where memory cannot be measured, one build runs
+  with a warning instead of no build running. macOS keeps the admission gate but
+  has no OOM-score blast-radius guard; Windows-native is not a build platform.
+- **Out of scope / follow-ups.** The repository work this decision implies —
+  declaring the new environment keys in the schema, making worktree creation's
+  optional seed ergonomic, and updating AGENTS/README and the ADR-0011 notes — is
+  implementation and lands with #1078 after acceptance, not in this record.
+- **Turbopack's cache layout is private API.** The allowlist and the key are
+  stated at directory-name level; if a Next release renames or restructures the
+  root, the seed skips (decision 3) and `env doctor` reports it rather than
+  copying something unknown. Keeping the list current is a follow-up.
 
 ## Open questions
 
-1. **Worker cap for more slots.** `experimental.cpus: 4` per build should cut
-   peak RSS to ~1.5 GB and make 5–6 slots feasible; unmeasured, do not ship
-   without the same with/without comparison.
-2. **Snapshot refresh policy.** Opportunistic on the first successful `env build`
-   on `main` (recommended) vs. a separate `env cache snapshot` command.
-3. **Size cap.** 1 GB LRU/rebuild trigger, or prune-only. Current data says
-   prune-only is enough; a cap covers pathologically long-lived worktrees.
-4. **Queue fairness.** `flock` waiters are approximately ordered; a ticket dir
-   is only worth it if starvation is observed in practice.
-5. **Re-measure on APFS.** Reflink makes the seed ~free there; this FS is the
-   pessimistic case.
+1. **Worker cap for more slots.** `experimental.cpus: 4` per build is the only
+   path to a ceiling above three, because one build already saturates 16 cores and
+   RAM is the limit at the current worker count. Unmeasured — experiment: same
+   tree, `experimental.cpus: 4`, peak RSS and throughput at 4–6 concurrent builds,
+   including a cgroup-limited run. The ceiling stays 3 until that run exists;
+   memory may lower it, never raise it.
+2. **Re-measure on APFS.** Reflink makes the seed close to free there; this
+   filesystem is the pessimistic case. Experiment: repeat the seed copy cost and
+   the §1 wall-time comparison on an APFS checkout with `cp -c`.
+3. **Counting `next dev` as a slot.** A dev server is outside the cap and outside
+   the snapshot logic, and its memory is visible to the gate only at admission
+   (decision 5). Counting it — from a declared pid file or the app-port lease —
+   would make the cap cover the real consumer, but it needs a detector that is
+   cheap and cannot be spoofed. Trigger: an observed OOM or a measured p95 build
+   slowdown with a dev server up; owner: the #1078 implementation follow-up. Not
+   built until then.
 
 ## Implementation sketch
 
 - `scripts/env/lib/locks.ts` — `withBuildLock` → `withBuildSlots(n, minFreeMb, fn)`
-  (reuse `dirMutex`/`flockMutex`, `pidAlive`, `takeoverStaleDirLock`).
-- `scripts/env/lib/build.ts` — acquire the slot around `runProductionBuild`, export
-  `STUDIQ_BUILD_SLOT`/token to the child, set `oom_score_adj`, check
-  `MemAvailable` before spawn.
-- `apps/web/package.json` — `"prebuild": "bun ../../scripts/env/build-guard.ts"`
-  (fails fast with slot/queue state; `STUDIQ_BUILD_LOCK=0` opts out).
-- New `scripts/env/lib/build-cache.ts` — snapshot write (atomic), seed on
-  `spin`/worktree creation, foreign-version prune.
-- `scripts/env/commands/status.ts` / `doctor.ts` — slots/queue and cache size.
+  built on `dirMutex` slots (no `flockMutex` for slots), identity = pid + process
+  start time, reclaim by process-group death; the per-worktree mutex and the
+  `waiters/` directory live beside the slots. Add `withSnapshotLock()`
+  (`snapshot.lock`, short wait, non-fatal on timeout), entered only after
+  `build.lock` is released.
+- `scripts/env/lib/admission.ts` (or the same module) — cgroup-aware reading
+  (`min(MemAvailable, cgroup max − current)`, v2 and v1, host fallback logged),
+  capacity-based reservation with the measured per-slot RSS, and stack reserves
+  from registry records plus this checkout's `.dev/stack.json`.
+- New `scripts/env/lib/build-cache.ts` — snapshot identity + manifest, staging
+  copy, foreign-version prune on the staging copy before publish, atomic pointer
+  swap, retired-id cleanup; seed (preflight, temp directory, verify, rename) and
+  the allowlist.
+- `scripts/env/lib/build.ts` / `commands/build.ts` — return the build result from
+  the locked scope and run the snapshot step after it in the command, even when
+  the fingerprint was already current; `--app <web|admin>`, `--no-slot`,
+  `--no-lock`; mint the single-use grant (slot or no-slot), delete
+  `.dev/build.json` first, record only on success, invalidate `.next` on a failed
+  exit.
+- `apps/web/package.json` and `apps/admin/package.json` — a `prebuild` script
+  running `bun ../../scripts/env/build-guard.ts` (consumes a single-use grant;
+  fails fast with slot/queue state; `env build --no-lock` is the only opt-out).
+- `scripts/check-build-entrypoints.ts` — wired into `lint`; fails a workflow or
+  Playwright file that invokes `next build` or a bare `bun run build`.
+- `scripts/env/commands/status.ts` / `doctor.ts` — slots, waiter count, snapshot
+  manifest line and staleness; read-only, no `du`.
 
 ## Rollback
 
-Delete `<registry>/build-slots` and drop the `prebuild` guard to return to the
-single exclusive lock; delete `$STUDIQ_CACHE_DIR` and remove the seed hook to
-return to cold builds. Neither rollback affects a build's correctness — the
-fingerprint never trusts the cache.
+Returning to the previous behaviour is two independent removals, both
+correctness-neutral:
+
+- **Concurrency.** Delete `<registry>/build-slots` — slot directories, the
+  per-worktree mutex and the `waiters/` directory — drop the `prebuild` guard
+  from both apps, stop minting the grant, and remove the entrypoint check from
+  `lint`; point `env build` back at the single exclusive `build.lock`. Every build
+  is then serialized across worktrees, and `--no-slot`/`--no-lock` lose their
+  meaning and are removed with the guard. The build record and the failure
+  invalidation stay: they are what keeps a killed build from reading as current
+  and they do not depend on slots.
+- **Cache.** Delete `$STUDIQ_CACHE_DIR` — the snapshot directories, their
+  manifests and the `current` pointer — and remove the seed hook from worktree
+  creation, the snapshot step from `env build`, and `snapshot.lock` with it.
+  Every worktree then builds cold; nothing reads the cache root, so a later
+  re-enable cannot pick up a stale snapshot.
+
+Neither rollback affects the build fingerprint: with no snapshot a build is
+simply cold, and with one exclusive lock a build is simply serialized. Removing
+the seed also removes this ADR's dependence on the unproven cold-vs-seeded
+equivalence (Evidence, Not measured). Both are reversible in the other direction
+by restoring the files, and neither changes what `next build` emits.
 
 ## Reproduce
 
