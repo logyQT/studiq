@@ -3,9 +3,9 @@ import { join, resolve } from 'node:path';
 import { REPO_ROOT } from './repo';
 
 /**
- * Read-only view of `scripts/dev-registry.ts`'s per-checkout registry.
+ * Read-only view of the cross-checkout registry's per-checkout registry.
  *
- * Phase 1 never writes: the registry is runtime state owned by `scripts/dev`
+ * Phase 1 never writes: the registry is runtime state owned by the legacy dev script
  * (and, later, the lifecycle commands). Entries are only used to explain
  * ownership and to skip app ports other checkouts have claimed.
  */
@@ -35,7 +35,7 @@ export interface Registry {
   entries: RegistryEntry[];
 }
 
-/** Registry fields that may claim a port (`scripts/dev` skips all of them). */
+/** Registry fields that may claim a port (the legacy dev script skips all of them). */
 const REGISTRY_PORT_FIELDS = [
   'appPort',
   'apiPort',
@@ -54,7 +54,7 @@ type RawEntry = Partial<Record<keyof RegistryEntry, unknown>>;
 
 /**
  * `${STUDIQ_DEV_REGISTRY:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-<uid>}`.
- * A relative override is resolved against the checkout, like `scripts/dev`.
+ * A relative override is resolved against the checkout, like the legacy dev script.
  */
 export function resolveRegistryDir(): string {
   const explicit = process.env.STUDIQ_DEV_REGISTRY ?? '';
@@ -67,7 +67,7 @@ export function resolveRegistryDir(): string {
 
 /**
  * The registry directory is only trustworthy when it is a real directory owned
- * by the current user — the same read-side guard `scripts/dev` uses. A symlink
+ * by the current user — the same read-side guard the legacy dev script uses. A symlink
  * or a foreign directory is reported, never followed.
  */
 function registryDirTrusted(dir: string): boolean {

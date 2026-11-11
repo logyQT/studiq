@@ -33,8 +33,9 @@ no silent fallback; composable profiles; agents read `--json`, not files; keep t
 5. **App port leased, stack ports discovered.** There is no port block allocator. `.env.vault` is opt-in (LLM +
    Stripe only, §10); `.env.local` is the only required values file.
 6. **`db` = database + auth + storage** (no skip path).
-7. **No secrets in output**, no `dev:*` aliases or back-compat layers. `scripts/dev` dies in the cutover; phases
-   are serial; caching/CI are out of scope.
+7. **No secrets in output**, no `scripts/dev` aliases or back-compat layers. `scripts/dev` and the `dev:*`
+   wrappers that call it die in the cutover; the standalone `dev:web` (raw web HMR) and `dev:admin` (admin HMR)
+   human shortcuts stay; phases are serial; caching/CI are out of scope.
 
 ## 2. Command surface
 
@@ -138,8 +139,11 @@ build is needed, release `checkout.lock`, build under the build lock alone, then
 never reused; (6) serve/handover; (7) heartbeat and JSON while still holding the lock.
 
 **Warm path:** one probe per requested capability + one schema read, **p95 < 1000 ms**; no `stack status` when the
-heartbeat is fresh. A down requested service means `ready: false`; a capability **superset** satisfies a narrower
-profile. **Missing capability:** exit **6**, then `env:down --all` and re-ensure — no in-place restart.
+heartbeat is fresh. The cached observation is bound to the branch it was made on (and so to the full
+`projectRoot + branch + stackName` identity, §5): a record written on another branch is rejected and the run takes
+the authoritative `stack status` path. A down requested service means `ready: false`; a capability **superset**
+satisfies a narrower profile. **Missing capability:** exit **6**, then `env:down --all` and re-ensure — no in-place
+restart.
 
 `down` takes `checkout.lock`, stops this checkout's web server and **keeps** the app-port lease while the stack
 runs; `down --all` stops the stack and then releases the lease under the same lock. Never `supabase stop --all`,
@@ -245,16 +249,20 @@ Legacy camelCase fields (`stackId`, `branch`, `web`, `supabase`, `dbUrl`, `mailU
 
 ## 12. Phases, budgets and acceptance
 
-| Phase             | Scope                                                                                                                                      | Gate                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
-| **0 — evidence**  | Port create/resume spike, identity, baseline timings, `dev:*` inventory, spec + ADR. No product code.                                      | Evidence in the issue; ADR reviewed |
-| **1 — read-only** | `status`/`doctor`/`ports`/`supa`; stable `--json`. `scripts/dev` untouched.                                                                | Read-only parity, unit tests        |
-| **2 — ensure**    | `ensure --profile api\|web`, `down`, `build`, `serve` (api/web only); varlock-injected; app-port lease; warm path. Keep `scripts/dev`.     | Acceptance 1–6, 8–10 (no `db`)      |
-| **3 — cutover**   | Remaining profiles (`db`, `mail`, `full`, `qa`, `e2e`), `reset-db`, `logs`, `setup`, `verify`; delete `scripts/dev` + `dev:*`; docs sweep. | All acceptance tests; `rg` clean    |
+| Phase             | Scope                                                                                                                                                   | Gate                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **0 — evidence**  | Port create/resume spike, identity, baseline timings, `dev:*` inventory, spec + ADR. No product code.                                                   | Evidence in the issue; ADR reviewed |
+| **1 — read-only** | `status`/`doctor`/`ports`/`supa`; stable `--json`. `scripts/dev` untouched.                                                                             | Read-only parity, unit tests        |
+| **2 — ensure**    | `ensure --profile api\|web`, `down`, `build`, `serve` (api/web only); varlock-injected; app-port lease; warm path. Keep `scripts/dev`.                  | Acceptance 1–6, 8–10 (no `db`)      |
+| **3 — cutover**   | Remaining profiles (`db`, `mail`, `full`, `qa`, `e2e`), `reset-db`, `logs`, `setup`, `verify`; delete `scripts/dev` + its `dev:*` wrappers; docs sweep. | All acceptance tests; `rg` clean    |
 
 Phases are serial (every phase touches `scripts/env/**`).
 
-`scripts/dev` and every `dev:*` script are deprecated/retired and deleted in phase 3; do not add features or fix bugs there.
+`scripts/dev` and the `dev:*` wrappers that call it (`dev:up`, `dev:serve`, `dev:status`, `dev:down`, `dev:reset-db`,
+`dev:build`, `dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`) are deprecated/retired and deleted in phase 3; do not
+add features or fix bugs there. `dev:web` (raw `next dev` for the web app) and `dev:admin` (`apps/admin` HMR) never
+called `scripts/dev` and stay as human-only shortcuts — `env` has no admin equivalent. The acceptance grep names each
+retired wrapper, so `dev:admin`/`dev:web` are not matched.
 
 ### 12.1 Latency budgets (phase-0 baseline)
 
@@ -294,18 +302,20 @@ Pure parts live in `__tests__/unit/env/`; lifecycle tests run via `bun run env:s
 
 ## 13. Command map
 
-| Old                                      | New                                      | Notes                              |
-| ---------------------------------------- | ---------------------------------------- | ---------------------------------- |
-| `bun run dev` / `dev:web`                | `bun run env:dev`                        | human-only HMR; agents build+serve |
-| `bun run dev:up` / `dev:up --prod`       | `bun run env:ensure --profile web`       | behavior change: no `next dev`     |
-| `dev:serve` / `dev:build` / `dev:status` | `env:serve` / `env:build` / `env:status` | `--json` preserved                 |
-| `dev:down [--all]` / `dev:reset-db`      | `env:down [--all]` / `env:reset-db`      | `--yes` when non-interactive       |
-| `dev:logs` / `dev:doctor` / `dev:ports`  | `env:logs` / `env:doctor` / `env:ports`  | exit 1 on a real conflict          |
-| `bash scripts/dev supa …`                | `bun run env:supa …`                     | APP_URL + contract exported        |
-| `scripts/dev` / `dev:*`                  | —                                        | deleted with the cutover           |
+| Old                                      | New                                      | Notes                                      |
+| ---------------------------------------- | ---------------------------------------- | ------------------------------------------ |
+| `bun run dev`                            | `bun run env:dev`                        | human-only HMR; agents build+serve         |
+| `bun run dev:up` / `dev:up --prod`       | `bun run env:ensure --profile web`       | behavior change: no `next dev`             |
+| `dev:serve` / `dev:build` / `dev:status` | `env:serve` / `env:build` / `env:status` | `--json` preserved                         |
+| `dev:down [--all]` / `dev:reset-db`      | `env:down [--all]` / `env:reset-db`      | `--yes` when non-interactive               |
+| `dev:logs` / `dev:doctor` / `dev:ports`  | `env:logs` / `env:doctor` / `env:ports`  | exit 1 on a real conflict                  |
+| `bash scripts/dev supa …`                | `bun run env:supa …`                     | APP_URL + contract exported                |
+| `scripts/dev` / its `dev:*` wrappers     | —                                        | deleted with the cutover                   |
+| `dev:web`                                | — (kept)                                 | raw `next dev` shortcut, next to `env:dev` |
+| `dev:admin`                              | — (kept)                                 | admin HMR; no `env` equivalent             |
 
 New commands with no old equivalent: `env:ensure` (composed from `dev:up`), `env:setup`, `env:verify`. Deferred:
-`apps/admin` HMR/serve — run its own dev command manually until a first-class command is added.
+`apps/admin` HMR/serve as an `env` command — use the existing `bun run dev:admin` shortcut.
 
 The cutover updates every live reference (`AGENTS.md`, `README.md`, `docs/ONBOARDING.md`, ADR-0010, the native
 audit, code comments, `scripts/load-test/README.md`).
@@ -314,7 +324,8 @@ audit, code comments, `scripts/load-test/README.md`).
 
 **Deferred** (one line each, no v1 surface): `prepull` (ensure downloads on demand), `recreate` (manual destroy then
 ensure), the port allocator (phase 0 GO: explicit ports survive create and resume; the operator's minimal-v1 decision defers
-it, so it is not built — ports come from `status`), `apps/admin` HMR/serve, capability reconcile (`env:down --all` then
+it, so it is not built — ports come from `status`), `apps/admin` HMR/serve as an `env` command (the `dev:admin`
+shortcut stays), capability reconcile (`env:down --all` then
 `env:ensure`), seed markers/run ids, multi-lock hierarchies and provider-status ceremony.
 
 Also out of scope: caching (#1078); CI changes; the vault provider implementation; removing the `varlock run`

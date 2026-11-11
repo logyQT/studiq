@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
+import { hermeticGitEnv } from '#test/helpers/hermetic-git';
 import { loadEnvModule } from '#test/unit/env/load';
 
 interface FingerprintModule {
@@ -24,23 +25,13 @@ afterEach(() => {
 });
 
 function git(root: string, args: string[]): string {
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const name of [
-    'GIT_DIR',
-    'GIT_WORK_TREE',
-    'GIT_INDEX_FILE',
-    'GIT_OBJECT_DIRECTORY',
-    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  ]) {
-    delete env[name];
-  }
   const result = spawnSync(
     'git',
     ['-C', root, '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args],
     {
       encoding: 'utf8',
       env: {
-        ...env,
+        ...hermeticGitEnv(),
         GIT_CONFIG_GLOBAL: '/dev/null',
         GIT_CONFIG_SYSTEM: '/dev/null',
         GIT_CONFIG_NOSYSTEM: '1',
@@ -62,7 +53,7 @@ function repo(): string {
   writeFileSync(join(root, 'src', 'app.ts'), 'export const value = 1;\n');
   git(root, ['init', '-q']);
   git(root, ['add', '.']);
-  git(root, ['commit', '-qm', 'init']);
+  git(root, ['commit', '--no-verify', '-qm', 'init']);
   return root;
 }
 

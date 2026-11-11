@@ -1,4 +1,4 @@
-import { runSupabase, type StackEnv } from './stack';
+import { runSupabase, type SpawnResult, type StackEnv } from './stack';
 import { redactSecrets } from './output';
 import type { Capability } from '../profiles';
 import type { RuntimeChoice } from '../atoms';
@@ -54,6 +54,46 @@ export function stopStack(stackName: string | null, timeoutMs = 120_000): StackA
     timedOut: result.timedOut,
     stderr: redactSecrets(result.stderr),
   };
+}
+
+export interface ResetDatabaseResult {
+  ok: boolean;
+  timedOut: boolean;
+  exitCode: number | null;
+}
+
+function withSslModeDisabled(url: string): string {
+  if (url.includes('sslmode=')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}sslmode=disable`;
+}
+
+/**
+ * `supabase db reset` for this checkout's stack. A named stack is addressed by
+ * its remote DB URL (database commands accept no `--stack`), and the port
+ * overrides inherited from the parent shell are cleared so the CLI treats the
+ * URL as remote instead of demanding a local stack.
+ */
+export function resetDatabase(options: {
+  stackName: string | null;
+  dbUrl: string | null;
+  timeoutMs?: number;
+}): ResetDatabaseResult {
+  const args = ['db', 'reset', '--yes'];
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const name of PORT_VARIABLES) delete env[name];
+  if (options.stackName) {
+    if (!options.dbUrl) return { ok: false, timedOut: false, exitCode: null };
+    args.push(`--remote=${withSslModeDisabled(options.dbUrl)}`);
+  }
+  const result = runSupabase(args, { env, timeoutMs: options.timeoutMs ?? 300_000 });
+  return { ok: result.status === 0, timedOut: result.timedOut, exitCode: result.status };
+}
+
+/** `supabase stack logs --tail <n>` for this checkout's stack. */
+export function stackLogs(stackName: string | null, tail = 50): SpawnResult {
+  const args = ['stack', 'logs', '--tail', String(tail)];
+  if (stackName) args.push('--stack', stackName);
+  return runSupabase(args, { timeoutMs: 60_000 });
 }
 
 /** Relay discovered values to build/serve children; never log them. */

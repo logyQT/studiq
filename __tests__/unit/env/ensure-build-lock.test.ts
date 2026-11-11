@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  appPortBase,
   BUN,
   createHarness,
   firstFreePort,
@@ -434,9 +435,9 @@ describe('env:ensure releases the checkout lock for the build', () => {
   });
 });
 
-/** First free app port, claimed by this checkout's lease before `ensure` runs. */
+/** First free app port on this file's own base, claimed by the lease before `ensure`. */
 function firstAppPort(): Promise<number> {
-  return firstFreePort(3600);
+  return firstFreePort(appPortBase());
 }
 
 describe('env:ensure refuses a concurrent rebuild of the same artifact', () => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Lean phase-2 lifecycle gate. Creates one scratch stack, drives the real CLI,
+ * Lean phase-3 lifecycle gate. Creates one scratch stack, drives the real CLI,
  * then stops/destroys only that stack.
  */
 import { spawnSync } from 'node:child_process';
@@ -12,6 +12,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:net';
@@ -34,6 +35,9 @@ const failures: string[] = [];
 let scratchName = '';
 let tempDir = '';
 let traceFile = '';
+// Only a `.env.local` this run created may be removed; an operator-owned file is
+// never touched, even when a later check fails.
+let scaffoldedEnvLocal = false;
 
 function check(ok: boolean, message: string): void {
   if (ok) {
@@ -339,6 +343,9 @@ async function main(): Promise<number> {
     );
     check(!warmColdSeen, 'warm ensure reports cold:false on all 10 runs');
     check(calls('stack start') === 0, 'warm ensure does not restart the stack');
+    // Spec §6: the warm path is probes + a schema read, with no `stack status`
+    // while this checkout's recorded observation is fresh.
+    check(calls('stack status') === 0, 'warm ensure skips stack status (fresh heartbeat)');
 
     clearTrace();
     const conflict = run(['env:ensure', '--profile', 'web', '--json'], childEnv);
@@ -351,6 +358,10 @@ async function main(): Promise<number> {
     check(
       downAll.code === 0 && scratchLeases().length === 0 && scratchClaims().length === 0,
       'down --all releases the lease and its app-port claim',
+    );
+    check(
+      !existsSync(join(DEV_DIR, 'stack-cache.json')),
+      'down --all forgets the warm-path stack observation',
     );
 
     clearTrace();
@@ -391,6 +402,82 @@ async function main(): Promise<number> {
       'plain down is idempotent and keeps the lease',
     );
 
+    // ---- phase-3 surface: serve / reset-db / logs / setup / verify / dev ----
+    const served = run(['env:serve', '--json'], childEnv);
+    check(served.code === 0, `env:serve exits 0 (${served.code}: ${tail(served)})`);
+    check(
+      number(object(json(served).web).http) === 200,
+      'env:serve reports the existing build serving HTTP 200',
+    );
+    scanSecrets('serve JSON', served.stdout);
+
+    const reset = run(['env:reset-db', '--yes', '--json'], childEnv);
+    check(reset.code === 0, `env:reset-db --yes exits 0 (${reset.code}: ${tail(reset)})`);
+    const sharedReset = run(['env:reset-db', '--yes'], { ...childEnv, SUPABASE_SHARED: '1' });
+    check(sharedReset.code === 6, 'shared env:reset-db exits 6');
+
+    const logs = run(['env:logs', '--no-follow'], childEnv);
+    check(
+      logs.code === 0 && /\.dev\/web\.log/.test(`${logs.stderr}${logs.stdout}`),
+      'env:logs --no-follow prints the web log path without following',
+    );
+
+    const verify = run(['env:verify', '--json'], childEnv);
+    check(
+      (verify.code === 0 || verify.code === 1) &&
+        Array.isArray(json(verify).missingKeys) &&
+        typeof object(json(verify).vault).present === 'boolean',
+      'env:verify --json reports key names and the optional vault, never a value',
+    );
+    // Key *names* are the report (that is the contract), so only values are a
+    // leak: a JWT, a publishable/secret key value or a credentialed DB URL.
+    check(
+      !/eyJ[A-Za-z0-9_-]{10,}|sb_(?:secret|publishable)_|postgres(?:ql)?:\/\/[^@\s"]+@/.test(
+        verify.stdout,
+      ),
+      'env:verify JSON carries key names only (no values)',
+    );
+
+    const devHelp = run(['env:dev', '--help'], childEnv);
+    check(
+      devHelp.code === 0 && /env:dev/.test(devHelp.stdout),
+      'env:dev --help documents the human-only HMR command',
+    );
+    const devAdmin = run(['env:dev', '--admin'], childEnv);
+    check(devAdmin.code === 2, 'env:dev --admin is refused (admin HMR is deferred)');
+
+    const envLocal = join(REPO_ROOT, '.env.local');
+    if (existsSync(envLocal)) {
+      console.log('    (env:setup scaffold check skipped: the operator has .env.local)');
+    } else {
+      const setup = run(['env:setup'], childEnv);
+      const created = existsSync(envLocal);
+      scaffoldedEnvLocal = created;
+      const mode = created ? statSync(envLocal).mode & 0o777 : 0;
+      check(
+        setup.code === 0 && created && mode === 0o600,
+        'env:setup scaffolds .env.local (mode 600) when absent',
+      );
+      if (created) {
+        const scaffold = readFileSync(envLocal, 'utf8');
+        check(
+          scaffold.split('\n').every((line) => line.trim() === '' || line.trim().startsWith('#')),
+          'env:setup writes comments only (never a value)',
+        );
+        const second = run(['env:setup'], childEnv);
+        check(
+          second.code === 0 && readFileSync(envLocal, 'utf8') === scaffold,
+          'env:setup is idempotent without --force',
+        );
+      }
+    }
+
+    const serveDown = run(['env:down'], childEnv);
+    check(
+      serveDown.code === 0,
+      `plain down stops the server env:serve started (${tail(serveDown)})`,
+    );
+
     // Two shared-mode web ensures against this run's own stack, with no
     // attribution to start from: the first must record the server it starts and
     // the second must still run — the build below must not be refused either.
@@ -412,10 +499,16 @@ async function main(): Promise<number> {
       console.log('    (shared web ensures skipped: status has no API/mail endpoints)');
     }
 
+    const preBuildDown = run(['env:down'], childEnv);
+    check(preBuildDown.code === 0, `plain down before the explicit build (${tail(preBuildDown)})`);
+
     clearTrace();
     const build = run(['env:build', '--json'], childEnv);
     check(build.code === 0, `explicit build exits 0 (${build.code}: ${tail(build)})`);
   } finally {
+    // A check may throw between scaffolding and the end of the block above; the
+    // scaffold is this run's, so it is cleaned up here either way.
+    if (scaffoldedEnvLocal) rmSync(join(REPO_ROOT, '.env.local'), { force: true });
     stopWebServer();
     destroyScratch();
     rmSync(tempDir, { recursive: true, force: true });

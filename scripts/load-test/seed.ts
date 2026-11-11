@@ -305,7 +305,7 @@ async function main(): Promise<void> {
       if (!ownership.ok) {
         console.error(`  reset: refusing to use ${config.supabaseUrl} — ${ownership.reason}.`);
         console.error(
-          '  Run a bun dev:* command to refresh the generated state, or pass --supabase-url explicitly.',
+          '  Pass --supabase-url explicitly (from `bunx supabase status --output-format json`), or set it in root .env.local.',
         );
         process.exit(1);
       }
@@ -337,7 +337,7 @@ async function main(): Promise<void> {
     if (!ownership.ok) {
       console.error(`  seeding: refusing to use ${config.supabaseUrl} — ${ownership.reason}.`);
       console.error(
-        '  Run a bun dev:* command to refresh the generated state, or pass --supabase-url explicitly.',
+        '  Pass --supabase-url explicitly (from `bunx supabase status --output-format json`), or set it in root .env.local.',
       );
       process.exit(1);
     }

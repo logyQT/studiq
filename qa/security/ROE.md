@@ -29,11 +29,15 @@ as an action.
 
 ## 2. Environment
 
-1. **Own Supabase first.** If this checkout already has a stack running, stop it with
-   `bun dev:down --all` (never `supabase stop --all`, which stops every stack on the
-   machine), then `bunx supabase start` for the run. Before seeding, read the endpoints
+1. **Own Supabase first.** If this checkout already has a stack running, restart it through the
+   stack contract: `bun run env:down --all --yes` (never `supabase stop --all`, which stops every
+   stack on the machine), then `bun run env:ensure --profile api` — database + REST, which the
+   PostgREST probes need (`--profile db` has no REST; add `--profile web` when the step needs a
+   built and served app). Before seeding, read the endpoints
    from `bunx supabase status --output-format json` (`API_URL`, `DB_URL`) rather than
-   assuming the default `:54321` — stack mode assigns ports per checkout.
+   assuming the default `:54321` — stack mode assigns ports per checkout. When
+   `SUPABASE_STACK` names a non-default stack, add `--stack "$SUPABASE_STACK"`: a bare
+   status reports the branch's default stack, so the probes would target the wrong DB.
    `NEXT_PUBLIC_SUPABASE_URL` must be that `API_URL` and `SUPABASE_DB_URL` (when set)
    must be that `DB_URL`; `qa/env.json` overrides the environment, so a QA worktree
    silently points at the shared `:54421`.

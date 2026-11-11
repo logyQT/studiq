@@ -20,9 +20,20 @@ export function assertSeedingAllowed(options: { mode: SeedMode; shared: boolean 
  */
 export const SEED_TARGET_LOCKED = 'STUDIQ_SEED_LOCKED_TARGET';
 
+/**
+ * The repo's own tenant seeder for a profile: `qa`/`web` reuse the QA/e2e
+ * scripts that already exist, `e2e` runs the e2e seeder. There are no run ids
+ * or markers — a seed runs the script once against the checked stack.
+ */
+function seederFor(profile: ProfileName): { script: string; args: string[] } {
+  if (profile === 'e2e' || profile === 'web') {
+    return { script: 'scripts/e2e-seed.ts', args: [] };
+  }
+  return { script: 'scripts/qa-tenant.ts', args: ['--all'] };
+}
+
 export function runSeeder(profile: ProfileName, env: NodeJS.ProcessEnv): void {
-  const script = profile === 'web' ? 'scripts/e2e-seed.ts' : 'scripts/qa-tenant.ts';
-  const args = profile === 'web' ? [] : ['--all'];
+  const { script, args } = seederFor(profile);
   const result = spawnSync('bun', [script, ...args], {
     cwd: REPO_ROOT,
     // The checked-stack endpoint and credentials are the target; a QA seeder

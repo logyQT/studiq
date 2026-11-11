@@ -16,7 +16,9 @@ import type { KnipConfig } from 'knip';
  *      finding.
  *
  * `ignoreIssues` is not covered by the config-hint check, so re-check those
- * entries by hand whenever the matching declaration is removed.
+ * entries by hand whenever the matching declaration is removed. An export that
+ * only the unit tests use (they load `scripts/env` modules through a computed
+ * file URL) carries `@public` in the module instead of an entry here.
  */
 const config: KnipConfig = {
   // Policy: vendored shadcn/ui sources are upstream copies, not this repo's
@@ -31,9 +33,9 @@ const config: KnipConfig = {
   // interfaces and types are covered here.
   ignoreExportsUsedInFile: { interface: true, type: true },
 
-  // Policy: `flock` is an OS binary invoked by the build lock (the same lock
-  // `scripts/dev` uses); it is not an npm dependency.
-  ignoreBinaries: ['flock'],
+  // Policy: `flock` is an OS binary invoked by the build lock and `tail` prints
+  // logs; neither is an npm dependency.
+  ignoreBinaries: ['flock', 'tail'],
 
   ignoreIssues: {
     // Policy: shared integration-test seeding surface. Suites import the
@@ -74,7 +76,6 @@ const config: KnipConfig = {
         'scripts/stripe-bootstrap.ts',
         // Policy: live operator/dev scripts run by hand or spawned by path (the
         // e2e global setup spawns `e2e-seed.ts`), so they are entry points.
-        'scripts/dev-registry.ts',
         'scripts/qa-issue.ts',
         'scripts/storage-orphan-sweep.ts',
         // `scripts/e2e-seed.ts` is also a live entry, but knip already derives

@@ -7,7 +7,7 @@ clear (see Auth below).
 ## Quick Start
 
 ```bash
-# From repo root
+# From repo root (admin HMR is outside the env tool)
 bun run dev:admin
 
 # Or directly

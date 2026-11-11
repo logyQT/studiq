@@ -3,13 +3,13 @@
  * Supabase CLI's status JSON; nothing is written back anywhere.
  */
 
-/** Remove exactly one trailing slash (matches `scripts/dev`'s `env_url`). */
+/** Remove exactly one trailing slash (matches the legacy dev script's `env_url`). */
 export function trimTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
 /**
- * Display normalisation used by `dev:status`: a loopback URL is shown as
+ * Display normalisation used by `env:status`: a loopback URL is shown as
  * `localhost` instead of `127.0.0.1`. Nothing is resolved or probed here.
  */
 export function normalizeLocalhost(url: string): string {

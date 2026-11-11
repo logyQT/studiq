@@ -1,21 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
 
+interface ProfileSpec {
+  capabilities: string[];
+  seed: boolean;
+  build: boolean;
+  serve: boolean;
+}
+
 interface ProfilesModule {
-  PROFILES: Record<string, { capabilities: string[]; build: boolean; serve: boolean }>;
+  PROFILES: Record<string, ProfileSpec>;
   PROFILE_NAMES: string[];
   buildCapabilities(profile: string, atoms: string[]): Set<string>;
   excludesFor(capabilities: Iterable<string>): string[];
   missingCapabilities(observed: Iterable<string>, requested: Iterable<string>): string[];
   profileRequiresServe(profile: string | null | undefined): boolean;
+  profileSeeds(profile: string | null | undefined): boolean;
 }
 
 const profiles = await loadEnvModule<ProfilesModule>('profiles.ts');
 
-describe('env profiles (phase 2)', () => {
-  it('exposes only api and web', () => {
-    expect([...profiles.PROFILE_NAMES]).toEqual(['api', 'web']);
-    expect(Object.keys(profiles.PROFILES).toSorted()).toEqual(['api', 'web']);
+describe('env profiles (phase 3)', () => {
+  it('exposes exactly the documented v1 profile set', () => {
+    expect([...profiles.PROFILE_NAMES]).toEqual(['db', 'api', 'mail', 'full', 'web', 'qa', 'e2e']);
+    expect(Object.keys(profiles.PROFILES).toSorted()).toEqual([
+      'api',
+      'db',
+      'e2e',
+      'full',
+      'mail',
+      'qa',
+      'web',
+    ]);
   });
 
   it('keeps database, auth and storage in every profile', () => {
@@ -26,18 +42,33 @@ describe('env profiles (phase 2)', () => {
     }
   });
 
-  it('maps api to rest without mail, and web to mail', () => {
+  it('layers rest and mail on the db profile', () => {
+    expect(profiles.PROFILES.db?.capabilities).not.toContain('rest');
     expect(profiles.PROFILES.api?.capabilities).toContain('rest');
     expect(profiles.PROFILES.api?.capabilities).not.toContain('mail');
-    expect(profiles.PROFILES.web?.capabilities).toContain('mail');
+    expect(profiles.PROFILES.mail?.capabilities).toContain('mail');
+    expect(profiles.PROFILES.full?.capabilities).toContain('mail');
   });
 
-  it('only web builds and serves', () => {
-    expect(profiles.PROFILES.api).toMatchObject({ build: false, serve: false });
-    expect(profiles.PROFILES.web).toMatchObject({ build: true, serve: true });
+  it('builds and serves only web/qa/e2e, and seeds only qa/e2e', () => {
+    for (const name of profiles.PROFILE_NAMES) {
+      const spec = profiles.PROFILES[name];
+      expect(spec.build).toBe(name === 'web' || name === 'qa' || name === 'e2e');
+      expect(spec.serve).toBe(name === 'web' || name === 'qa' || name === 'e2e');
+      expect(spec.seed).toBe(name === 'qa' || name === 'e2e');
+    }
   });
 
   it('derives the exact -x exclude list from capabilities', () => {
+    expect(profiles.excludesFor(profiles.PROFILES.db?.capabilities ?? [])).toEqual([
+      'rest',
+      'studio',
+      'mail',
+      'realtime',
+      'functions',
+      'analytics',
+      'pooler',
+    ]);
     expect(profiles.excludesFor(profiles.PROFILES.api?.capabilities ?? [])).toEqual([
       'studio',
       'mail',
@@ -46,7 +77,7 @@ describe('env profiles (phase 2)', () => {
       'analytics',
       'pooler',
     ]);
-    expect(profiles.excludesFor(profiles.PROFILES.web?.capabilities ?? [])).toEqual([
+    expect(profiles.excludesFor(profiles.PROFILES.full?.capabilities ?? [])).toEqual([
       'studio',
       'realtime',
       'functions',
@@ -69,7 +100,8 @@ describe('env profiles (phase 2)', () => {
     ]);
   });
 
-  it('adds studio without requiring a second atom (every profile has rest)', () => {
+  it('rejects studio on a profile without rest', () => {
+    expect(() => profiles.buildCapabilities('db', ['studio'])).toThrow(/requires '--rest'/);
     expect(() => profiles.buildCapabilities('api', ['studio'])).not.toThrow();
   });
 
@@ -96,12 +128,14 @@ describe('env profiles (phase 2)', () => {
     expect(profiles.missingCapabilities(['database', 'auth'], ['mail'])).toEqual(['mail']);
   });
 
-  it('derives serve from the profile table', () => {
+  it('derives serve and seed from the profile table', () => {
     for (const name of profiles.PROFILE_NAMES) {
       expect(profiles.profileRequiresServe(name)).toBe(profiles.PROFILES[name]?.serve);
+      expect(profiles.profileSeeds(name)).toBe(profiles.PROFILES[name]?.seed);
     }
-    expect(profiles.profileRequiresServe(null)).toBe(false);
-    expect(profiles.profileRequiresServe(undefined)).toBe(false);
-    expect(profiles.profileRequiresServe('unknown')).toBe(false);
+    for (const value of [null, undefined, 'unknown']) {
+      expect(profiles.profileRequiresServe(value)).toBe(false);
+      expect(profiles.profileSeeds(value)).toBe(false);
+    }
   });
 });

@@ -20,7 +20,21 @@ interface ParsedCommand {
   ensure: EnsureOptions | null;
   down: { all: boolean; stack: string | null } | null;
   build: { force: boolean; stack: string | null } | null;
+  serve: { stack: string | null } | null;
+  dev: {
+    capabilityAtoms: string[];
+    runtime: string | null;
+    stack: string | null;
+    waitSeconds: number | null;
+  } | null;
+  resetDb: { stack: string | null } | null;
+  logs: { follow: boolean; stack: string | null } | null;
+  setup: { force: boolean; vault: boolean } | null;
+  verify: { full: boolean } | null;
+  passthrough: string[];
   yes: boolean;
+  quiet: boolean;
+  verbose: boolean;
 }
 
 interface AtomsModule {
@@ -128,12 +142,11 @@ describe('env atom grammar', () => {
   it('rejects conflicting, unsupported and unknown atoms', () => {
     throwsUsage(['ensure', '--profile', 'api', '--seed', '--no-seed'], /conflicts/);
     throwsUsage(['ensure', '--profile', 'api', '--reconcile'], /unknown option/);
-    throwsUsage(['ensure', '--profile', 'api', '--verbose'], /unknown option/);
-    throwsUsage(['ensure', '--profile', 'api', '--runtime', 'podman'], /unknown runtime/);
-    throwsUsage(['ensure', '--profile', 'api', '--runtime', 'auto'], /unknown runtime/);
+    throwsUsage(['ensure', '--profile', 'api', '--runtime', 'podman'], /not supported/);
+    throwsUsage(['ensure', '--profile', 'api', '--runtime', 'auto'], /not allowed/);
     throwsUsage(['ensure', '--profile', 'api', '--port-block', '3'], /unknown option/);
     throwsUsage(['ensure', '--profile', 'api', '--admin'], /unknown option/);
-    throwsUsage(['ensure', '--profile', 'db'], /unknown profile/);
+    throwsUsage(['ensure', '--profile', 'admin'], /unknown profile/);
     throwsUsage(['ensure', '--profile', 'nope'], /unknown profile/);
     throwsUsage(['ensure', '--json'], /--profile/);
     throwsUsage(['ensure', '--profile', 'api', '--build'], /does not build or serve/);
@@ -141,6 +154,50 @@ describe('env atom grammar', () => {
     throwsUsage(['ensure', '--profile', 'api', '--app-port', '0'], /1-65535/);
     throwsUsage(['ensure', '--profile', 'api', '--wait', '0'], /1-3600|range/);
     throwsUsage(['ensure', '--profile', 'api', '--stack', 'bad name'], /valid stack name/);
+    throwsUsage(['ensure', '--profile', 'db', '--studio'], /requires '--rest'/);
+  });
+
+  it('accepts the db/mail/full/qa/e2e profiles and the quiet/verbose flags', () => {
+    for (const profile of ['db', 'mail', 'full', 'qa', 'e2e']) {
+      const parsed = atoms.parseCommand(['ensure', '--profile', profile]);
+      expect(parsed.ensure).toMatchObject({ profile });
+    }
+    const quiet = atoms.parseCommand(['ensure', '--profile', 'web', '--quiet', '--verbose']);
+    expect(quiet).toMatchObject({ quiet: true, verbose: true });
+    expect(atoms.parseCommand(['ensure', '--profile', 'db']).ensure).toMatchObject({
+      build: false,
+      serve: false,
+    });
+  });
+
+  it('parses the phase-3 lifecycle commands', () => {
+    expect(atoms.parseCommand(['serve', '--stack', 'named', '--json'])).toMatchObject({
+      command: 'serve',
+      serve: { stack: 'named' },
+      json: true,
+    });
+    expect(atoms.parseCommand(['dev', '--mail', '--runtime', 'docker'])).toMatchObject({
+      command: 'dev',
+      dev: { capabilityAtoms: ['mail'], runtime: 'docker' },
+    });
+    throwsUsage(['dev', '--admin'], /deferred/);
+    expect(atoms.parseCommand(['reset-db', '--yes'])).toMatchObject({
+      command: 'reset-db',
+      resetDb: { stack: null },
+      yes: true,
+    });
+    expect(atoms.parseCommand(['logs', '--no-follow']).logs).toMatchObject({ follow: false });
+    expect(atoms.parseCommand(['logs']).logs).toMatchObject({ follow: true });
+    expect(atoms.parseCommand(['setup', '--vault', '--force']).setup).toMatchObject({
+      vault: true,
+      force: true,
+    });
+    throwsUsage(['setup', '--stack', 'named'], /unknown option/);
+    expect(atoms.parseCommand(['verify', '--full', '--json'])).toMatchObject({
+      verify: { full: true },
+      json: true,
+    });
+    expect(atoms.parseCommand(['verify', '--verbose'])).toMatchObject({ verbose: true });
   });
 
   it('parses down and build flags and their usage errors', () => {

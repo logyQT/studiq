@@ -113,7 +113,7 @@ function parseJsonObject(raw: string): JsonObject | null {
 
 /**
  * Run the CLI from the checkout root. `supabase/config.toml` resolves APP_URL
- * through `env()`; an explicit APP_URL still wins, exactly like `scripts/dev`.
+ * through `env()`; an explicit APP_URL still wins, exactly like the legacy dev script.
  *
  * Lifecycle commands pass their own child environment (cleared/pinned port
  * variables) and a longer timeout; read-only commands use the defaults.
@@ -274,7 +274,7 @@ export function probeStackStatus(stackName: string | null): StackStatusProbe {
 
 /**
  * The running stack plus the values needed by a child process. A status
- * response without an API URL describes a stopped/unusable stack (`scripts/dev`
+ * response without an API URL describes a stopped/unusable stack (the legacy dev script
  * treats it the same way), so it also yields null.
  */
 export function readStack(stackName: string | null): StackRead | null {
