@@ -145,7 +145,7 @@ CI workflow configuration, repository variables and required checks: **[docs/ci.
 ### Local dev (one command)
 
 ```bash
-bun install                                # once per worktree — env:ensure never installs
+bun install                                # once per worktree — scripts/spin does it; env:ensure never installs
 bun run env:ensure --profile web           # this branch's stack + build + serve (idempotent)
 bun run env:status --json                  # health/stack id/endpoints; stable agent contract
 bun run env:down                           # stop this checkout's web; `--all` also stops the stack
@@ -573,7 +573,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## Key Gotchas
 
-- **Fresh worktree = `bun install` first** — dependencies are per checkout, not shared. Without them, `bun run lint` reports missing-module noise and `typecheck:all` fails with `Cannot find type definition file for 'bun'`. `bun install --frozen-lockfile` once after `scripts/spin`.
+- **Fresh worktree = `bun install` first** — dependencies are per checkout, not shared. Without them, `bun run lint` reports missing-module noise and `typecheck:all` fails with `Cannot find type definition file for 'bun'`. `scripts/spin` runs `bun install --frozen-lockfile` for you (`--no-install` opts out); a manual `git worktree add` still needs the command.
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
 - **`next start` keep-alive**: `apps/web`'s `start` script passes `--keepAliveTimeout 55000` (and every runner that calls `next start` directly must too). Node's 5 s default closes an idle keep-alive socket while Playwright's `APIRequestContext` — a raw `http.Agent({ keepAlive: true })` with no `ECONNRESET` retry — is still pooling it, so the next `page.request.*` after a UI phase dies with `read ECONNRESET`. Keep the value below Node's 60 s `headersTimeout`; Next exposes no flag to raise that one.
 - **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need a typecheck.

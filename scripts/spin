@@ -2,9 +2,10 @@
 # Create a git worktree on a new feature branch for isolated agent work.
 #
 # Usage:
-#   scripts/spin feat/my-feature          # create branch + worktree
-#   scripts/spin feat/my-feature --clean  # remove worktree + branch
-#   scripts/spin --list                   # list all worktrees
+#   scripts/spin feat/my-feature              # create branch + worktree (bun install)
+#   scripts/spin feat/my-feature --no-install # create without installing deps
+#   scripts/spin feat/my-feature --clean      # remove worktree + branch
+#   scripts/spin --list                       # list all worktrees
 #
 # The worktree is created beside the repository, preserving the branch
 # hierarchy so feature/fix/chore groups stay visible:
@@ -96,12 +97,13 @@ case "${1:-}" in
     exit 0
     ;;
   --help|-h)
-    echo "Usage: scripts/spin <branch-name> [--clean]"
+    echo "Usage: scripts/spin <branch-name> [--clean] [--no-install]"
     echo "       scripts/spin --list"
     echo ""
     echo "  <branch-name>   Feature branch name (e.g. feat/my-feature)"
-    echo "  --clean         Remove the worktree and delete the branch"
-    echo "  --list, -l      List all worktrees"
+    echo "  --clean          Remove the worktree and delete the branch"
+    echo "  --no-install     Skip bun install in the new worktree"
+    echo "  --list, -l       List all worktrees"
     echo ""
     echo "Worktrees are created beside the repo, preserving the branch hierarchy:"
     echo "  ../${REPO_NAME}-worktrees/feat/my-feature"
@@ -114,7 +116,15 @@ esac
 
 BRANCH="$1"
 CLEAN=false
-[[ "${2:-}" == "--clean" ]] && CLEAN=true
+NO_INSTALL=false
+shift
+for arg in "$@"; do
+  case "$arg" in
+    --clean) CLEAN=true ;;
+    --no-install) NO_INSTALL=true ;;
+    *) fail "Unknown option: $arg" ;;
+  esac
+done
 
 # ── Validate the branch name ───────────────────────────────────
 if ! ref_error=$(git check-ref-format --branch "$BRANCH" 2>&1); then
@@ -241,6 +251,27 @@ if ! lock_error=$(git -C "$PRIMARY_ROOT" worktree lock --reason "$PROVENANCE_REA
   fail "Could not record worktree provenance at $WORKTREE_PATH: $lock_error (worktree and branch '$BRANCH' were rolled back)"
 fi
 info "Worktree ready at $WORKTREE_PATH"
+
+# ── Install dependencies in the fresh worktree ─────────────────
+# A fresh worktree has no node_modules, and the first pre-commit hook fails
+# without them. Install here so the blessed path is ready to work; a failed
+# install warns instead of rolling the worktree back (offline is not fatal).
+if $NO_INSTALL; then
+  info "Skipping dependency install (--no-install)"
+elif [ ! -f "$WORKTREE_PATH/bun.lock" ]; then
+  info "No bun.lock in the worktree; skipping dependency install"
+elif ! command -v bun >/dev/null 2>&1; then
+  warn "bun not found; run 'bun install --frozen-lockfile' in $WORKTREE_PATH"
+else
+  header "Installing dependencies"
+  if ! install_error=$(cd "$WORKTREE_PATH" && bun install --frozen-lockfile 2>&1); then
+    warn "Dependency install failed in $WORKTREE_PATH"
+    printf '%s\n' "$install_error" >&2
+    warn "Run: cd \"$WORKTREE_PATH\" && bun install --frozen-lockfile"
+  else
+    info "Dependencies installed"
+  fi
+fi
 
 # ── Summary ────────────────────────────────────────────────────
 header "Done"
