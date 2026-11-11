@@ -2,13 +2,7 @@
 
 ## Status
 
-Accepted (2026-11-10), partially superseded (2026-11-11). Process change only; no product code.
-
-> **Update (2026-11-11): CodeRabbit was retired.** `.coderabbit.yaml` and the
-> manual `@coderabbitai review` entry point are gone. The PR size budget,
-> `size/*` labels and `size:exception` bypass in this ADR remain. PR review now
-> uses the repo-owned `studiq-review` skill, with `studiq-qa` for the in-app
-> verification.
+Accepted (2026-11-10). Process change only; no product code.
 
 ## Context
 
@@ -30,12 +24,12 @@ shell, YAML and SQL checks were only in CodeRabbit.
 
 ## Decision
 
-1. **CodeRabbit was made manual-only, then retired (2026-11-11).** At the time,
-   `reviews.auto_review.enabled` was `false` and there was no label trigger: a
-   review started only when a maintainer commented `@coderabbitai review`.
-   `auto_incremental_review` was also `false`, so a later push did not re-run a
-   hand-requested review. No automated reviewer remains; use the repo-owned
-   `studiq-review` skill.
+1. **CodeRabbit is manual only.** `reviews.auto_review.enabled` is `false` and
+   there is no label trigger: a review starts only when a maintainer comments
+   `@coderabbitai review`. `auto_incremental_review` is also `false`, so a later
+   push does not re-run a hand-requested review. `path_instructions` and the
+   `assertive` profile stay — they are what make a requested review worth paying
+   for.
 2. **`scripts/pr-triage.ts` owns the measurement.** It counts added + deleted
    lines with Git rename detection, excluding tests, Markdown docs, generated
    files, the lockfile and vendored skills. `bun run pr:size` runs it locally;
@@ -68,8 +62,8 @@ shell, YAML and SQL checks were only in CodeRabbit.
 
 ## Consequences
 
-- Nothing reviews a PR automatically, and CodeRabbit has since been retired
-  along with its deterministic toolset. The follow-up is to add shellcheck (bash), actionlint
+- Nothing reviews a PR automatically any more, including CodeRabbit's
+  deterministic toolset. The follow-up is to add shellcheck (bash), actionlint
   (workflows) and squawk (migrations) to CI, scoped to changed files; tracking
   issue #1100 covers it.
 - The retired `review:deep` label has been deleted from the repository. No label

@@ -59,7 +59,7 @@ studiq/
 - **Delete after merge**: Always delete the feature branch after the PR is merged.
 - **Naming**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/` prefixes.
 - **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch. The target budget is **400 reviewable lines** — tests, Markdown docs, generated files, the lockfile and vendored skills are excluded (see `scripts/pr-triage.ts`). `bun run pr:size` reports it locally; `pr-triage.yml` labels every PR `size/*`. Over-budget PRs need the `size:exception` label once `PR_SIZE_ENFORCE=true`.
-- **Review**: when asked to review a PR, load `.agents/skills/studiq-review/SKILL.md`. It verifies the PR's claims in code, docs and the running app, and delegates the click-through to `.agents/skills/studiq-qa/SKILL.md`.
+- **Review**: when asked to review a PR, load `.agents/skills/studiq-review/SKILL.md`. It verifies the PR's claims in code, docs and the running app, and delegates the click-through to `.agents/skills/studiq-qa/SKILL.md`. For a `size/XL` or sensitive PR, also request a manual CodeRabbit pass with `@coderabbitai review` (auto-review is off).
 
 ```
 main ← feat/quiz-bank-ui (PR, merge, delete)
@@ -584,6 +584,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## Key Gotchas
 
+- **CodeRabbit is manual only** — `.coderabbit.yaml` keeps `auto_review.enabled: false` and no label trigger, so nothing reviews a PR automatically. Request a pass with `@coderabbitai review` for a `size/XL` or sensitive PR; normal PRs use `.agents/skills/studiq-review/SKILL.md`.
 - **Fresh worktree = `bun install` first** — dependencies are per checkout, not shared. Without them, `bun run lint` reports missing-module noise and `typecheck:all` fails with `Cannot find type definition file for 'bun'`. `scripts/spin` runs `bun install --frozen-lockfile` for you (`--no-install` opts out); a manual `git worktree add` still needs the command.
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
 - **`next start` keep-alive**: `apps/web`'s `start` script passes `--keepAliveTimeout 55000` (and every runner that calls `next start` directly must too). Node's 5 s default closes an idle keep-alive socket while Playwright's `APIRequestContext` — a raw `http.Agent({ keepAlive: true })` with no `ECONNRESET` retry — is still pooling it, so the next `page.request.*` after a UI phase dies with `read ECONNRESET`. Keep the value below Node's 60 s `headersTimeout`; Next exposes no flag to raise that one.

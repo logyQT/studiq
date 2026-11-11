@@ -102,8 +102,12 @@ commit before checking — uncommitted work is invisible to it.
 
 `pr-triage` labels every PR `size/*` from its budgeted line count. `size/XL`
 always means over budget; the `XS`/`S`/`M` boundaries are absolute (10/50/200),
-so `size/L` only appears when the limit is above 200. No label starts a review,
-and there is no automated reviewer: reviews use the repo-owned
+so `size/L` only appears when the limit is above 200.
+
+No push or label starts a review. Normal PRs use the repo-owned
 `studiq-review` skill (`.agents/skills/studiq-review/SKILL.md`), which verifies
-claims in the code, docs and running app. Details:
+claims in the code, docs and running app. For an over-budget (`size/XL`) or
+sensitive PR, request a manual CodeRabbit pass with `@coderabbitai review`;
+`.coderabbit.yaml` keeps its path instructions and repo-specific rules, with
+`auto_review.enabled: false` and no label trigger. Details:
 [ADR-0012](decisions/0012-pr-size-budget.md).

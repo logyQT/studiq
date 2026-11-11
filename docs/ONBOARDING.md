@@ -553,11 +553,21 @@ checkout's `.env.local` (`bun run env:ports` prints a free port). Never run
 
 ### Code review
 
-There is no automated reviewer. When asked to review a PR, load the repo-owned
-`studiq-review` skill (`.agents/skills/studiq-review/SKILL.md`): it turns the PR
-into claims, checks them in the code and docs, and spawns a `studiq-qa` worker
-to verify the user-visible behaviour in the running app. The 400-line PR budget
-and the `size/*` labels are described in `docs/ci.md` and ADR-0012.
+Normal PRs use the repo-owned `studiq-review` skill
+(`.agents/skills/studiq-review/SKILL.md`): it turns the PR into claims, checks
+them in the code and docs, and spawns a `studiq-qa` worker to verify the
+user-visible behaviour in the running app. The 400-line PR budget and the
+`size/*` labels are described in `docs/ci.md` and ADR-0012.
+
+CodeRabbit is **manual-only**. For an over-budget (`size/XL`) or sensitive PR,
+request a pass with:
+
+```text
+@coderabbitai review
+```
+
+Nothing starts it on push or label; `.coderabbit.yaml` keeps the repo-specific
+path instructions and review profile that make a requested pass useful.
 
 Run the deterministic gates locally before pushing: `bun run lint`,
 `bun run typecheck:all`, `bun run test:unit` and `bun run pr:size`.
