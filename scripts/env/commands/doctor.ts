@@ -1,24 +1,63 @@
+import { join } from 'node:path';
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
+import { OBSERVABILITY_PROJECT, OBSERVABILITY_URLS } from '../lib/observability';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
-import { REPO_ROOT, canon, currentBranchName } from '../lib/repo';
+import {
+  REPO_ROOT,
+  canon,
+  composeFileNamesProject,
+  currentBranchName,
+  primaryCheckoutPath,
+} from '../lib/repo';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
 import { readWebPid } from '../lib/web';
+
+export interface ObservabilityStatus {
+  up: boolean;
+  project: string;
+  primary: string;
+  /** The primary checkout's compose file already carries the fixed project name. */
+  primaryReady: boolean;
+  start: string;
+  grafana: number;
+  tempo: number;
+  loki: number;
+  prometheus: number;
+  otlp: number;
+}
 
 export interface DoctorReport {
   ok: boolean;
   problems: string[];
   warnings: string[];
+  observability: ObservabilityStatus;
   lines: string[];
 }
 
+const OBSERVABILITY_PROBE_MS = 750;
+
 function orDash(value: string | number | null): string {
   return value === null || value === '' ? '-' : String(value);
+}
+
+function httpLabel(value: number): string {
+  return value > 0 ? String(value) : '-';
+}
+
+/**
+ * `up`, `partial (n/total)` or `down` for the machine-wide stack.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function observabilityLabel(upCount: number, total: number): string {
+  if (upCount >= total) return 'up';
+  return upCount > 0 ? `partial (${upCount}/${total})` : 'down';
 }
 
 function isWebHealthy(code: number): boolean {
@@ -87,6 +126,35 @@ async function buildReport(): Promise<DoctorReport> {
   const sharedDbUrl = contract.shared
     ? stripDbCredentials(process.env.SUPABASE_DB_URL ?? '')
     : null;
+
+  // Observability is machine-wide and owned by the primary checkout. Probe it
+  // read-only so an agent in a worktree gets the start command that cannot
+  // create a second stack.
+  const primary = primaryCheckoutPath();
+  const [grafana, tempo, loki, prometheus, otlp] = await Promise.all([
+    probeHttp(OBSERVABILITY_URLS.grafanaHealth, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.tempoReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.lokiReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.prometheusReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.otlp, OBSERVABILITY_PROBE_MS),
+  ]);
+  const primaryReady = composeFileNamesProject(
+    join(primary, 'docker-compose.yml'),
+    OBSERVABILITY_PROJECT,
+  );
+  const upCount = [grafana, tempo, loki, prometheus, otlp].filter((code) => code > 0).length;
+  const observability: ObservabilityStatus = {
+    up: upCount === 5,
+    project: OBSERVABILITY_PROJECT,
+    primary,
+    primaryReady,
+    start: `cd "${primary}" && docker compose up -d`,
+    grafana,
+    tempo,
+    loki,
+    prometheus,
+    otlp,
+  };
 
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -170,6 +238,33 @@ async function buildReport(): Promise<DoctorReport> {
     '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
   );
 
+  const observabilityStatus = observabilityLabel(upCount, 5);
+
+  lines.push(
+    '',
+    '▸ Observability (machine-wide)',
+    `  status     ${observabilityStatus}`,
+    `  project    ${observability.project}`,
+    `  primary    ${observability.primary}${observability.primaryReady ? '' : ' (compose file predates the fixed project name; update it first)'}`,
+    `  grafana    http=${httpLabel(observability.grafana)}`,
+    `  tempo      http=${httpLabel(observability.tempo)}`,
+    `  loki       http=${httpLabel(observability.loki)}`,
+    `  prometheus http=${httpLabel(observability.prometheus)}`,
+    `  otlp       http=${httpLabel(observability.otlp)}`,
+    `  start      ${observability.start}`,
+  );
+  if (!observability.up) {
+    lines.push('  note       start it once from the primary checkout, never from a worktree');
+    if (!observability.primaryReady) {
+      lines.push(`  note       update the primary first: git -C "${observability.primary}" pull`);
+    }
+    if (upCount > 0) {
+      lines.push(
+        '  note       a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory',
+      );
+    }
+  }
+
   lines.push('', '▸ Ports');
   if (appPortProbe.state === 'unavailable') {
     lines.push(
@@ -228,13 +323,18 @@ async function buildReport(): Promise<DoctorReport> {
     lines.push('', '✔ No ownership or port conflicts for this checkout.');
   }
 
-  return { ok: problems.length === 0, problems, warnings, lines };
+  return { ok: problems.length === 0, problems, warnings, observability, lines };
 }
 
 export async function runDoctor(parsed: ParsedCommand): Promise<number> {
   const report = await buildReport();
   if (parsed.json) {
-    printJson({ ok: report.ok, problems: report.problems, warnings: report.warnings });
+    printJson({
+      ok: report.ok,
+      problems: report.problems,
+      warnings: report.warnings,
+      observability: report.observability,
+    });
   } else {
     for (const line of report.lines) writeLine(line);
   }

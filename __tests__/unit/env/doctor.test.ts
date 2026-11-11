@@ -22,8 +22,9 @@ const harnesses: Harness[] = [];
 /**
  * Doctor bind-checks a live `APP_PORT`, so this file must own a port that no
  * other [parallel] unit file can bind. The shared 3000-3999 range is exactly
- * where the other env files used to collide (and this host permanently holds
- * :3001), hence a per-file base outside it and below the ephemeral range.
+ * where the other env files used to collide, and a host may permanently hold
+ * one of those ports (a docker proxy, say), hence a per-file base outside it
+ * and below the ephemeral range.
  */
 const APP_PORT_BASE = appPortBase();
 
@@ -66,6 +67,21 @@ describe('env:doctor', () => {
     expect(Array.isArray(report.warnings)).toBe(true);
     // A stopped/absent stack is a clean CLI answer, not a CLI failure.
     expect(stringList(report.warnings).join('\n')).not.toContain('supabase stack status');
+  });
+
+  it('reports the machine-wide observability stack and its primary start command', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['doctor', '--json'], { APP_PORT: String(appPort) });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.project', 'studiq-observability');
+    expect(report).toHaveProperty('observability.primary');
+    expect(report).toHaveProperty('observability.primaryReady');
+    expect(report).toHaveProperty('observability.up');
+    expect(JSON.stringify(report.observability)).toContain('docker compose up -d');
   });
 
   it('does not warn about a missing registry directory', async () => {

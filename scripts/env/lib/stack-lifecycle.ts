@@ -1,5 +1,7 @@
 import { runSupabase, type SpawnResult, type StackEnv } from './stack';
+import { OTEL_ENDPOINT } from './observability';
 import { redactSecrets } from './output';
+import { currentBranchName, sanitizeProjectId } from './repo';
 import type { Capability } from '../profiles';
 import type { RuntimeChoice } from '../atoms';
 
@@ -96,6 +98,20 @@ export function stackLogs(stackName: string | null, tail = 50): SpawnResult {
   return runSupabase(args, { timeoutMs: 60_000 });
 }
 
+/**
+ * The per-checkout `service.name` for the machine-wide collector. A branch is
+ * the natural discriminator (`studiq-feat-x`); a detached HEAD falls back to
+ * the stack id. An explicit `OTEL_SERVICE_NAME` in `.env.local` still wins.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function observabilityServiceName(branch: string, stackId?: string): string {
+  const branchSlug = sanitizeProjectId(branch);
+  if (branchSlug && branchSlug !== 'detached') return `studiq-${branchSlug}`;
+  const stackSlug = sanitizeProjectId(stackId ?? '');
+  return stackSlug ? `studiq-stack-${stackSlug.slice(0, 12)}` : 'studiq';
+}
+
 /** Relay discovered values to build/serve children; never log them. */
 export function applyStackEnv(
   env: StackEnv,
@@ -103,6 +119,11 @@ export function applyStackEnv(
 ): void {
   process.env.APP_URL = extras.appUrl;
   process.env.APP_ENV = extras.appEnv;
+  // One collector per machine: every checkout ships to the same OTLP intake,
+  // but gets its own service name so Tempo/Loki/Prometheus can tell worktrees
+  // apart. Never start a second observability stack from a worktree.
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||= OTEL_ENDPOINT;
+  process.env.OTEL_SERVICE_NAME ||= observabilityServiceName(currentBranchName(), extras.stackId);
   process.env.SUPABASE_URL = env.apiUrl;
   process.env.NEXT_PUBLIC_SUPABASE_URL = env.apiUrl;
   if (env.anonKey) {

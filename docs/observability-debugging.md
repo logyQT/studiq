@@ -8,22 +8,54 @@ guessing. It is driven end-to-end by the OpenCode agent through the
 **Tempo is the only trace backend.** Jaeger is gone; all trace queries use
 Tempo / TraceQL.
 
-## Start the stack
+## Start the stack (once per machine)
+
+The observability stack is **machine-wide**, owned by the **primary checkout** —
+not per checkout or worktree. On this VM the primary is `/workspaces/studiq`;
+find it with `git worktree list` (first entry). Start it from there, never from a
+worktree:
 
 ```bash
+cd /workspaces/studiq
 docker compose up -d
 ```
 
+The Compose project name is fixed (`studiq-observability`) and the host ports are
+fixed, so starting it from a worktree conflicts with or mutates the same stack.
+Check health and get the exact start command with `bun run env:doctor`.
+
+If `env:doctor` reports a partial stack (Grafana answers, Tempo/Loki/Prometheus
+do not), an older observability Compose project is probably holding the 7000-range
+host ports.
+Identify it with `docker compose ls`; if the name is ambiguous, inspect the
+container publishing the port (`docker ps --filter publish=7001`) and read its
+`com.docker.compose.project` / `...project.working_dir` labels. Stop that
+project **from its own directory**, before starting the canonical stack from the
+primary checkout. `compose down` keeps named volumes unless you pass `-v`; do
+not pass `-v` unless you mean to delete its data.
+
+If the owning directory no longer exists, stop only the container holding the
+port (`docker ps --filter publish=7001` → `docker stop <container>`), then start
+the canonical stack. Never use an unscoped `docker rm` or `pkill`.
+
+The primary checkout must contain `name: studiq-observability` in its
+`docker-compose.yml`; if `env:doctor` says it predates the fixed project name,
+update that checkout first.
+
 | UI         | URL                                       |
 | ---------- | ----------------------------------------- |
-| Grafana    | http://localhost:3001 (`admin` / `admin`) |
-| Prometheus | http://localhost:9090                     |
-| Tempo API  | http://localhost:3200                     |
-| Loki       | http://localhost:3100                     |
+| Grafana    | http://localhost:7001 (`admin` / `admin`) |
+| Prometheus | http://localhost:7090                     |
+| Tempo API  | http://localhost:7200                     |
+| Loki       | http://localhost:7100                     |
+| OTLP       | http://localhost:7318                     |
 
-The Next.js app sends OTLP (traces + metrics + logs) to the OTel Collector on
-`http://localhost:4318` (SDK default). Make sure `OTEL_SDK_DISABLED` is **not**
-`true` when you want telemetry. See the [plan doc](./plans/prometheus-metrics-monitoring.md).
+The Next.js app sends OTLP (traces + metrics + logs) to the collector on
+`http://localhost:7318`. `env:ensure` sets that endpoint and a per-checkout
+`OTEL_SERVICE_NAME` (`studiq-<branch>`) so one collector can tell worktrees apart;
+an explicit value in `.env.local` wins. Make sure `OTEL_SDK_DISABLED` is **not**
+`true` when you want telemetry. See the
+[plan doc](./plans/prometheus-metrics-monitoring.md).
 
 ## Configure the Grafana MCP
 
@@ -37,7 +69,7 @@ The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc):
         "type": "local",
         "command": ["mcp-grafana", "-t", "stdio"],
         "environment": {
-          "GRAFANA_URL": "http://localhost:3001",
+          "GRAFANA_URL": "http://localhost:7001",
           "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}",
         },
       },
@@ -62,7 +94,7 @@ container reaches the host's Grafana):
 ```jsonc
 "command": [
   "docker", "run", "-i", "--rm", "--network", "host",
-  "-e", "GRAFANA_URL=http://localhost:3001",
+  "-e", "GRAFANA_URL=http://localhost:7001",
   "-e", "GRAFANA_SERVICE_ACCOUNT_TOKEN",
   "grafana/mcp-grafana", "-t", "stdio"
 ]
@@ -104,8 +136,9 @@ id). You get the full span tree for that request:
 ### 4. Pull the correlated Loki logs
 
 From the trace, jump to its logs (Grafana's Tempo→Loki `tracesToLogsV2` uses
-`trace_id`). Through the MCP, query Loki for `{service_name="studiq"} |
-trace_id="<id>"` (or use the derived field `TraceID`). You get the
+`trace_id`). Through the MCP, query Loki for
+`{service_name="studiq-<branch>"} | trace_id="<id>"` (or use the derived field
+`TraceID`; `service_name=~"studiq-.*"` searches every checkout). You get the
 `log()` / `warn()` / `error()` records emitted while the span was active —
 including a WARN/ERROR line for **every 4xx/5xx response** (`API error 400 BAD_REQUEST`,
 with `http.method`, `http.url`, `error.code`), so a failed request is visible in
@@ -113,7 +146,9 @@ Loki even when the failure is a handled `ServiceResult` rather than a thrown err
 
 ### 5. Read Prometheus metrics for the window
 
-Check the aggregate impact via the MCP (or the Grafana dashboard):
+Check the aggregate impact via the MCP (or the Grafana dashboard; its
+**Service** variable filters every panel by `service_name`, so pick your
+`studiq-<branch>`):
 
 - `studiq_http_server_request_total{http_status_code=~"5.."}` — error rate
 - `histogram_quantile(0.95, sum by (le) (rate(studiq_http_server_duration_milliseconds_bucket[5m])))` — p95 latency

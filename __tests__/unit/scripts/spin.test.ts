@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -244,6 +245,60 @@ describe('scripts/spin', () => {
     runSpin(repo, ['feat/dup', '--clean']);
   });
 
+  it('installs dependencies in the new worktree unless --no-install is passed', () => {
+    const { parent, repo, root } = makeRepo('studiq');
+    const installed = join(root, 'feat', 'installed');
+    const marker = join(parent, 'bun-install-marker');
+
+    // The temp repo has no lockfile by default; commit one so the install path runs.
+    writeFileSync(join(repo, 'bun.lock'), '');
+    git(repo, 'add', 'bun.lock');
+    git(repo, 'commit', '-q', '-m', 'lock');
+
+    const bin = join(parent, 'bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(bin, 'bun'),
+      `#!/usr/bin/env bash
+printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$MARKER"
+`,
+      { mode: 0o755 },
+    );
+    const env = { ...TEST_ENV, PATH: `${bin}:${TEST_ENV.PATH ?? ''}`, MARKER: marker };
+
+    runSpin(repo, ['feat/installed'], env);
+    const invocation = readFileSync(marker, 'utf8');
+    expect(invocation).toContain(`cwd=${installed}`);
+    expect(invocation).toContain('args=install --frozen-lockfile');
+
+    rmSync(marker, { force: true });
+    runSpin(repo, ['feat/skipped', '--no-install'], env);
+    expect(existsSync(marker)).toBe(false);
+
+    runSpin(repo, ['feat/installed', '--clean']);
+    runSpin(repo, ['feat/skipped', '--clean']);
+  });
+
+  it('keeps the worktree when dependency install fails', () => {
+    const { parent, repo, root } = makeRepo('studiq');
+    const worktree = join(root, 'feat', 'install-failed');
+
+    writeFileSync(join(repo, 'bun.lock'), '');
+    git(repo, 'add', 'bun.lock');
+    git(repo, 'commit', '-q', '-m', 'lock');
+
+    const bin = join(parent, 'bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'bun'), '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
+    const env = { ...TEST_ENV, PATH: `${bin}:${TEST_ENV.PATH ?? ''}` };
+
+    runSpin(repo, ['feat/install-failed'], env);
+    expect(existsSync(worktree)).toBe(true);
+    expect(branchExists(repo, 'feat/install-failed')).toBe(true);
+
+    runSpin(repo, ['feat/install-failed', '--clean']);
+  });
+
   it('lists worktrees and describes the layout in --help', () => {
     const { repo, root } = makeRepo('studiq');
     const worktree = join(root, 'feat', 'listed');
@@ -251,6 +306,7 @@ describe('scripts/spin', () => {
     runSpin(repo, ['feat/listed']);
     expect(runSpin(repo, ['--list'])).toContain(worktree);
     expect(runSpin(repo, ['--help'])).toContain('-worktrees/feat/my-feature');
+    expect(runSpin(repo, ['--help'])).toContain('--no-install');
 
     runSpin(repo, ['feat/listed', '--clean']);
   });

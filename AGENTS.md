@@ -59,6 +59,7 @@ studiq/
 - **Delete after merge**: Always delete the feature branch after the PR is merged.
 - **Naming**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/` prefixes.
 - **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch. The target budget is **400 reviewable lines** — tests, Markdown docs, generated files, the lockfile and vendored skills are excluded (see `scripts/pr-triage.ts`). `bun run pr:size` reports it locally; `pr-triage.yml` labels every PR `size/*`. Over-budget PRs need the `size:exception` label once `PR_SIZE_ENFORCE=true`.
+- **Review**: when asked to review a PR, load `.agents/skills/studiq-review/SKILL.md`. It verifies the PR's claims in code, docs and the running app, and delegates the click-through to `.agents/skills/studiq-qa/SKILL.md`. For a `size/XL` or sensitive PR, also request a manual CodeRabbit pass with `@coderabbitai review` (auto-review is off).
 
 ```
 main ← feat/quiz-bank-ui (PR, merge, delete)
@@ -121,6 +122,9 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run knip` | `knip --treat-config-hints-as-errors --no-progress` — dead-code / unused-dependency gate (documented policy suppressions in `knip.ts`, each with a reason). Also runs in both lefthook hooks and the `checks` CI job. **Not** part of `bun run lint`. |
 | `bun run check:lockfile-age` | `bun scripts/check-lockfile-age.ts` — fails a `bun.lock` diff that adds a package version published less than 7 days ago. Runs in the `checks` CI job on PRs, **before** `bun install`; deliberately not part of `lint` (it needs the network and the hooks must work offline). Backstops Dependabot's `cooldown`, which cannot see transitive resolutions. |
 | `bun run knip:report` | `knip --reporter compact` — human-readable report (one line per file); `knip:files` / `knip:deps` / `knip:exports` filter to one issue group |
+| `bun run dup` | `jscpd` over `apps/web/src`, `packages` and `scripts` using `.jscpd.json` (config lives at the repo root; its `path`/`ignore` resolve relative to it). Full-tree console report — the scanning command behind the other two. **Not** part of `bun run lint`. |
+| `bun run dup:changed` | `jscpd --changed` — new clones in the working tree vs `HEAD` (baseline in Git-ignored `.tmp/jscpd-baseline.json`); the pre-commit hook. |
+| `bun run dup:base` | `jscpd --baseline-from-ref origin/main` — new clones vs the base branch; the pre-push hook and the PR gate. Duplication config/policy: [docs/ci.md](docs/ci.md#duplication). |
 | `bun run typecheck` | `bun check` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`) |
 | `bun run typecheck:all` | `bun check` at the repo root (covers `scripts/`, which no workspace does) + `typecheck` + `typecheck:packages` — everything the hooks run. `apps/admin` is checked manually with `typecheck:admin`. |
 | `bun run format` | `bun fmt .` (whole repo — writes formatting for JS/TS/JSON/CSS **and** Markdown/YAML/TOML/HTML) |
@@ -137,14 +141,14 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
-Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run knip` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `knip`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa). `knip` is a hard gate in both hooks (no advisory `|| true`): every suppression in `knip.ts` is policy with a reason, and `--treat-config-hints-as-errors` fails a stale entry — remove it in the same change that removes the finding it covers.
+Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run knip` + `bun run dup:changed` + `bun run typecheck:all`; **pre-push** runs the merge-conflict check, `format:check`, `lint`, `knip`, `dup:base`, `typecheck:all`, `test:unit`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa). `knip` is a hard gate in both hooks (no advisory `|| true`): every suppression in `knip.ts` is policy with a reason, and `--treat-config-hints-as-errors` fails a stale entry — remove it in the same change that removes the finding it covers. `dup:changed` compares the working tree with `HEAD` and `dup:base` compares new clones with `origin/main`; both tolerate the ~6% duplication that already exists, so they never ask you to fix old code. Hooks are local feedback, not the gate: CI runs the same comparison, so a `--no-verify` push is still caught.
 
 CI workflow configuration, repository variables and required checks: **[docs/ci.md](docs/ci.md)**.
 
 ### Local dev (one command)
 
 ```bash
-bun install                                # once per checkout — env:ensure never installs
+bun install                                # once per worktree — scripts/spin does it; env:ensure never installs
 bun run env:ensure --profile web           # this branch's stack + build + serve (idempotent)
 bun run env:status --json                  # health/stack id/endpoints; stable agent contract
 bun run env:down                           # stop this checkout's web; `--all` also stops the stack
@@ -227,7 +231,9 @@ bun run env:down                           # stop this checkout's web; `--all` a
 
 ### Formatting scope & blame
 
-`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Three patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject), `.agents/skills/**` (vendored skill content, checksummed in `skills-lock.json`) and `eslint-suppressions.json` (the ledger `bun lint` generates).
+`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Three patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject), `.agents/skills/**` (skill content; third-party skills are checksummed in `skills-lock.json`, repo-owned `studiq-*` skills are not) and `eslint-suppressions.json` (the ledger `bun lint` generates).
+
+**Skills:** repo-owned skills (`.agents/skills/studiq-*`) are edited like normal repo files and are **not** listed in `skills-lock.json`. Third-party vendored skills are checksummed there; do not hand-edit them — update them through their installer.
 
 Repo-wide formatting passes are listed in **`.git-blame-ignore-revs`** so `git blame` blames the last real change instead of the reformat. Enable it once per clone (git does not read the file automatically — GitHub does):
 
@@ -411,7 +417,18 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 Telemetry is OpenTelemetry-only. Traces/metrics/logs all ship via OTLP to the
 OTel Collector (`docker compose up`), which fans out to Tempo (traces),
-Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
+Prometheus (metrics) and Loki (logs); Grafana runs at `:7001`.
+
+> **One observability stack per machine, owned by the primary checkout.** It is
+> not per checkout or worktree. Never start `docker compose` from a worktree:
+> the fixed Compose project (`studiq-observability`) and fixed host ports mean a
+> second start conflicts or mutates the same stack. If Grafana/Tempo/Loki are
+> down, start it once from the primary checkout (`git worktree list` first entry;
+> `/workspaces/studiq` on this VM): `cd <primary> && docker compose up -d`.
+> `bun run env:doctor` prints the health and the exact start command.
+> `env:ensure` exports `OTEL_SERVICE_NAME=studiq-<branch>` and
+> `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318`, so one collector can tell
+> worktrees apart; an explicit value in `.env.local` still wins.
 
 - SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
   exporter + `PeriodicExportingMetricReader` + `BatchLogRecordProcessor` over a
@@ -570,7 +587,8 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## Key Gotchas
 
-- **CodeRabbit is manual only** — `.coderabbit.yaml` has `auto_review.enabled: false` and no label trigger. Nothing reviews a PR automatically; request one with `@coderabbitai review`. The deterministic gates are `bun run lint`, `knip`, `typecheck:all` and `verify.yml`.
+- **CodeRabbit is manual only** — `.coderabbit.yaml` keeps `auto_review.enabled: false` and no label trigger, so nothing reviews a PR automatically. Request a pass with `@coderabbitai review` for a `size/XL` or sensitive PR; normal PRs use `.agents/skills/studiq-review/SKILL.md`.
+- **Fresh worktree = `bun install` first** — dependencies are per checkout, not shared. Without them, `bun run lint` reports missing-module noise and `typecheck:all` fails with `Cannot find type definition file for 'bun'`. `scripts/spin` runs `bun install --frozen-lockfile` for you (`--no-install` opts out); a manual `git worktree add` still needs the command.
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
 - **`next start` keep-alive**: `apps/web`'s `start` script passes `--keepAliveTimeout 55000` (and every runner that calls `next start` directly must too). Node's 5 s default closes an idle keep-alive socket while Playwright's `APIRequestContext` — a raw `http.Agent({ keepAlive: true })` with no `ECONNRESET` retry — is still pooling it, so the next `page.request.*` after a UI phase dies with `read ECONNRESET`. Keep the value below Node's 60 s `headersTimeout`; Next exposes no flag to raise that one.
 - **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need a typecheck.
@@ -585,52 +603,3 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **Supabase `eq(col, null)` is not `IS NULL`** — `.eq('organization_id', ctx.activeOrgId)` with `activeOrgId === null` serialises to `organization_id=eq.null`, which Postgres rejects on a `uuid` column (`22P02`, surfacing as a 500 — #148). For NOT NULL org columns guard first (`if (!ctx.activeOrgId) return failure('FORBIDDEN')`); for nullable-org personal content apply the org filter only when set (`if (ctx.activeOrgId) query = query.eq(...)`), matching `accessibleFilter`'s `own` scope.
 - **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun lint's `oxc/no-barrel-file` rule enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `oxc/no-barrel-file` is disabled for those two files.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — a hand-run root `bun check` must stay at zero errors; use the per-workspace scripts for app code.
-
----
-
-## Code Review Checklist
-
-When reviewing PRs (especially stacked PRs), follow this process to avoid false positives:
-
-### PR size and review routing
-
-- **Budget:** 400 reviewable lines (added + deleted). Tests, Markdown docs,
-  generated files, `bun.lock` and vendored skills are excluded but still
-  reported. Run `bun run pr:size` before opening — it measures committed changes
-  only (`HEAD` vs the base ref), so commit first. `--limit 300` tests a tighter
-  budget.
-- **Labels:** `pr-triage.yml` labels every PR `size/*` from its budgeted line
-  count. The label is informational; it never triggers a review.
-- **CodeRabbit is manual only:** no push and no label starts a review. Request
-  one with `@coderabbitai review` when a PR actually needs an LLM pass.
-- **Over budget:** prefer stacked PRs. Once `PR_SIZE_ENFORCE=true`, the check
-  fails unless the PR carries `size:exception`, and the PR body should explain
-  why. Repo variables and required checks: [docs/ci.md](docs/ci.md#repository-variables).
-
-### Setup
-
-1. **Check out the top PR's branch** (not `main`) to see the full cumulative state:
-   ```bash
-   gh pr checkout <top-pr-number> --repo logyQT/studiq
-   ```
-2. **For stacked PRs**, identify the stack order from the `stack` field in the GitHub API response, or from each PR's base branch.
-
-### For each PR in the stack
-
-1. **Fetch the diff** — `gh pr diff <number> --repo logyQT/studiq`
-2. **Verify against the actual file on the PR's head branch** — `git show <head-sha>:<path>` or just `cat` the file. Diffs show _changes relative to the PR's base_, not relative to `main`. A line can appear as "added" in the diff while already existing on `main`.
-3. **Check what the PR claims to change** against what the diff actually changes. If a PR says "adds X" but the diff only shows X being modified (not added), the feature likely already existed.
-4. **Run the test suite** if touching business logic — `bun run test:unit`
-5. **Run the linter** — `bun run lint`
-
-### Common false-positive patterns in stacked PR diffs
-
-| Diff shows                                               | Looks like           | Actually is                                             |
-| -------------------------------------------------------- | -------------------- | ------------------------------------------------------- |
-| `+` line that also appears in an earlier PR in the stack | "PR adds this"       | Earlier PR added it; this PR just touched the same area |
-| No diff for a file the PR description mentions           | "PR forgot the file" | Change is in a different file (e.g. model vs service)   |
-| `+/-` on the same line                                   | "PR broke something" | Formatting-only change (formatter)                      |
-
-### Rule of thumb
-
-> **Diffs tell you what changed. Files tell you what exists. Always check both.**

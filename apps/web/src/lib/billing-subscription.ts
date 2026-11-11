@@ -114,7 +114,7 @@ export function invoiceHref(url: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-export interface SeatPoolSummary {
+interface SeatPoolSummary {
   used: number;
   total: number;
   visible: boolean;

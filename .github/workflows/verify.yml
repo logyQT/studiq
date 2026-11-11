@@ -256,6 +256,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The nightly duplication trend (`--history`) walks the last 30
+          # commits, so a non-PR run needs real history; a PR only needs the
+          # merge base and fetches its base ref explicitly in the gate step.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 1 || 0 }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -325,6 +330,66 @@ jobs:
         run: bun run knip
       - name: Typecheck
         run: bun run typecheck:all
+      # Duplication gate. Existing clones are tolerated: a PR compares against
+      # the base branch's tree (`--baseline-from-ref`) and fails only on clones
+      # that are not already there, so there is no committed baseline file to
+      # maintain. The nightly/dispatch run instead recomputes the trend from git
+      # (`--history`), publishes a dashboard and applies a whole-tree threshold
+      # ratchet. Config: .jscpd.json. See docs/ci.md → Duplication.
+      - name: Duplication gate (new clones vs base)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin \
+            "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          if bunx jscpd --baseline-from-ref "origin/$BASE_REF" \
+            --fail-on-new-clones 0 --reporters json --silent \
+            --output "$RUNNER_TEMP/jscpd"; then
+            jq -r '.statistics.total | "Duplication: \(.percentage * 100 | round / 100)% of lines, \(.newClones) new clone(s)"' \
+              "$RUNNER_TEMP/jscpd/jscpd-report.json"
+          else
+            echo "::error::jscpd found duplicate blocks that are not in $BASE_REF"
+            report="$RUNNER_TEMP/jscpd/jscpd-report.json"
+            if [ -f "$report" ]; then
+              jq -r '.duplicates[] | select(.isNew) |
+                "  NEW \(.firstFile.name):\(.firstFile.start) <-> \(.secondFile.name):\(.secondFile.start) (\(.lines) lines, \(.tokens) tokens)"' \
+                "$report"
+            fi
+            echo 'Extract the shared code, or make the copy deliberately different.'
+            exit 1
+          fi
+
+      # Nightly/dispatch only: the dashboard prints health, size, duplication,
+      # complexity and dead code; `--history` adds the last 30 commits' trend,
+      # recomputed from git rather than stored, so it needs no committed state.
+      # Reports are written before the threshold is checked, so a red run still
+      # publishes the numbers that explain it.
+      - name: Duplication dashboard + trend
+        if: github.event_name != 'pull_request'
+        run: |
+          bunx jscpd --dashboard --history --threshold 6.5 \
+            --reporters console,json,markdown --output "$RUNNER_TEMP/jscpd"
+      - name: Publish duplication report
+        if: github.event_name != 'pull_request' && !cancelled()
+        run: |
+          report="$RUNNER_TEMP/jscpd/jscpd-dashboard.md"
+          if [ -f "$report" ]; then
+            {
+              echo '## Duplication dashboard'
+              echo
+              cat "$report"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload duplication report
+        if: github.event_name != 'pull_request' && !cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jscpd-dashboard
+          path: ${{ runner.temp }}/jscpd
+          retention-days: 90
+          if-no-files-found: ignore
 
   unit:
     needs: [scope]

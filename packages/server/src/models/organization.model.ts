@@ -68,7 +68,7 @@ export const AdminOrgListItemSchema = registry.register(
   }),
 );
 
-export const OrgMemberSchema = registry.register(
+const OrgMemberSchema = registry.register(
   'OrgMember',
   z.object({
     id: z.string().uuid(),
@@ -79,7 +79,7 @@ export const OrgMemberSchema = registry.register(
   }),
 );
 
-export const OrgGroupSchema = registry.register(
+const OrgGroupSchema = registry.register(
   'OrgGroup',
   z.object({
     id: z.string().uuid(),
@@ -89,7 +89,7 @@ export const OrgGroupSchema = registry.register(
   }),
 );
 
-export const OrgRoleDetailSchema = registry.register(
+const OrgRoleDetailSchema = registry.register(
   'OrgRoleDetail',
   z.object({
     id: z.string().uuid(),

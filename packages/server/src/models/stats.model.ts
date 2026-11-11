@@ -141,8 +141,6 @@ export const TeacherGroupPerformanceItemSchema = z.object({
   flashcardAccuracy: z.number().nullable(),
 });
 
-export type TeacherGroupPerformanceItem = z.infer<typeof TeacherGroupPerformanceItemSchema>;
-
 /** Payload of `get_teacher_group_performance` (a `json` column). */
 export const TeacherGroupPerformanceSchema = z.object({
   groups: z.array(TeacherGroupPerformanceItemSchema).default([]),
@@ -158,8 +156,6 @@ export const TeacherGroupPerformanceSchema = z.object({
  * groups is one learner, so the totals are never the sum of the rows.
  */
 export type TeacherGroupPerformance = z.infer<typeof TeacherGroupPerformanceSchema>;
-
-export type TeacherFeedKind = 'quiz_completed' | 'assignment_submitted' | 'report_opened';
 
 /** One line of the teacher dashboard's activity feed (a row of `get_teacher_activity_feed`). */
 export const TeacherFeedItemSchema = z.object({

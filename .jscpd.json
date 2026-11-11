@@ -1,0 +1,16 @@
+{
+  "path": ["apps/web/src", "packages", "scripts"],
+  "minTokens": 50,
+  "minLines": 5,
+  "format": ["typescript", "tsx", "javascript", "jsx", "css", "bash"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/coverage/**",
+    "**/*.d.ts",
+    "packages/server/src/types/database.ts",
+    "packages/ui/src/components/ui/**",
+    "apps/web/src/i18n/messages/**",
+    ".agents/**"
+  ]
+}

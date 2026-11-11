@@ -41,26 +41,3 @@ export const UpdatePoolSchema = registry.register(
   }),
 );
 export type UpdatePoolInput = z.infer<typeof UpdatePoolSchema>;
-
-export const PoolResponseSchema = registry.register(
-  'PoolResponse',
-  z.object({
-    id: z.string().uuid(),
-    planKey: z.string(),
-    total: z.number(),
-    assigned: z.number(),
-  }),
-);
-
-export const AssignmentResponseSchema = registry.register(
-  'AssignmentResponse',
-  z.object({
-    id: z.string().uuid(),
-    userId: z.string().uuid(),
-    poolId: z.string().uuid(),
-    planKey: z.string(),
-    userEmail: z.string(),
-    userFullName: z.string().nullable(),
-    assignedAt: z.string(),
-  }),
-);
