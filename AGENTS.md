@@ -417,7 +417,7 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 Telemetry is OpenTelemetry-only. Traces/metrics/logs all ship via OTLP to the
 OTel Collector (`docker compose up`), which fans out to Tempo (traces),
-Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
+Prometheus (metrics) and Loki (logs); Grafana runs at `:7001`.
 
 > **One observability stack per machine, owned by the primary checkout.** It is
 > not per checkout or worktree. Never start `docker compose` from a worktree:
@@ -427,7 +427,7 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
 > `/workspaces/studiq` on this VM): `cd <primary> && docker compose up -d`.
 > `bun run env:doctor` prints the health and the exact start command.
 > `env:ensure` exports `OTEL_SERVICE_NAME=studiq-<branch>` and
-> `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, so one collector can tell
+> `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318`, so one collector can tell
 > worktrees apart; an explicit value in `.env.local` still wins.
 
 - SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
