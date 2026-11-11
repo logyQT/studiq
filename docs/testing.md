@@ -88,6 +88,7 @@ E2E and QA set `APP_ENV=qa` + `PAYMENT_DRIVER=mock` in the workflow env files.
   print. Each developer uses their own Stripe sandbox and a restricted
   `rk_test_` key (not the `rkcs_test_` value printed by `stripe sandbox
 create`). See `docs/deployment.md` → "Team access and secrets".
+- CI workflow configuration and repository variables: [CI](ci.md).
 
 ## Stripe sandbox (opt-in)
 

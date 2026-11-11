@@ -54,8 +54,9 @@ jobs:
   # skipped. `checks` (lint/typecheck, which does cover qa specs) and the
   # `qa-suite` job still run. An `apps/admin`-only change is not a product
   # change either: the admin panel is an internal tool outside the product
-  # gates and outside QA (docs/decisions/0009-admin-is-internal-edge-protected.md),
-  # so it runs `checks` and nothing else. Everything else under __tests__/
+  # gates and outside QA
+  # ([ADR-0009](../../docs/decisions/0009-admin-is-internal-not-deployed.md)), so
+  # it runs `checks` and nothing else. Everything else under __tests__/
   # (unit, integration, e2e, helpers, setup) is app code: a test-only change
   # there must run the suite it edits, so `app` stays true. A Markdown-only docs
   # PR (every changed file is `*.md`, none under qa/cases/) is treated the same
