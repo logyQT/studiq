@@ -7,44 +7,39 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "10s",
-  "time": {
-    "from": "now-30m",
-    "to": "now"
-  },
+  "time": { "from": "now-30m", "to": "now" },
   "editable": true,
   "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(studiq_http_server_request_total, service_name)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "refresh": 1,
+        "sort": 1
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
       "type": "stat",
       "title": "Request rate",
       "description": "Total inbound API requests per second.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 0,
-        "y": 0
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
       "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "decimals": 2,
-          "color": {
-            "mode": "thresholds"
-          }
-        },
+        "defaults": { "unit": "reqps", "decimals": 2, "color": { "mode": "thresholds" } },
         "overrides": []
       },
-      "options": {
-        "reduceOptions": {
-          "calcs": ["lastNotNull"]
-        },
-        "colorMode": "value"
-      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
       "targets": [
         {
           "refId": "A",
@@ -58,49 +53,25 @@
       "type": "stat",
       "title": "Error rate (5xx)",
       "description": "Share of requests returning a 5xx status.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 6,
-        "y": 0
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
           "decimals": 2,
-          "color": {
-            "mode": "thresholds"
-          },
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 5
-              }
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
             ]
           }
         },
         "overrides": []
       },
-      "options": {
-        "reduceOptions": {
-          "calcs": ["lastNotNull"]
-        },
-        "colorMode": "background"
-      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
       "targets": [
         {
           "refId": "A",
@@ -114,29 +85,10 @@
       "type": "stat",
       "title": "Active requests",
       "description": "In-flight requests currently being handled.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 12,
-        "y": 0
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "decimals": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": ["lastNotNull"]
-        },
-        "colorMode": "value"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
       "targets": [
         {
           "refId": "A",
@@ -150,32 +102,13 @@
       "type": "stat",
       "title": "p99 latency",
       "description": "99th percentile inbound request latency.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 18,
-        "y": 0
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
       "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "decimals": 0,
-          "color": {
-            "mode": "thresholds"
-          }
-        },
+        "defaults": { "unit": "ms", "decimals": 0, "color": { "mode": "thresholds" } },
         "overrides": []
       },
-      "options": {
-        "reduceOptions": {
-          "calcs": ["lastNotNull"]
-        },
-        "colorMode": "value"
-      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
       "targets": [
         {
           "refId": "A",
@@ -188,31 +121,13 @@
       "id": 5,
       "type": "timeseries",
       "title": "Request rate by status code",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 6
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 6 },
       "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "custom": {
-            "fillOpacity": 20
-          }
-        },
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20 } },
         "overrides": []
       },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
           "refId": "A",
@@ -225,31 +140,13 @@
       "id": 6,
       "type": "timeseries",
       "title": "Latency p50 / p95 / p99",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 6
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 6 },
       "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": {
-            "fillOpacity": 0
-          }
-        },
+        "defaults": { "unit": "ms", "custom": { "fillOpacity": 0 } },
         "overrides": []
       },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
           "refId": "A",
@@ -272,31 +169,14 @@
       "id": 7,
       "type": "timeseries",
       "title": "Controller / service method duration (p95)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 15
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 15 },
       "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": {
-            "fillOpacity": 0
-          }
-        },
+        "defaults": { "unit": "ms", "custom": { "fillOpacity": 0 } },
         "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": ["lastNotNull"]
-        }
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }
       },
       "targets": [
         {
@@ -310,31 +190,13 @@
       "id": 8,
       "type": "timeseries",
       "title": "Node.js V8 heap",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 15
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 15 },
       "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "custom": {
-            "fillOpacity": 10
-          }
-        },
+        "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } },
         "overrides": []
       },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
           "refId": "A",
@@ -352,30 +214,10 @@
       "id": 9,
       "type": "timeseries",
       "title": "Event loop delay p99 + utilization",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 24
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "fillOpacity": 0
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
           "refId": "A",
@@ -389,29 +231,5 @@
         }
       ]
     }
-  ],
-  "templating": {
-    "list": [
-      {
-        "name": "service",
-        "label": "Service",
-        "type": "query",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "query": "label_values(studiq_http_server_request_total, service_name)",
-        "includeAll": true,
-        "allValue": ".*",
-        "multi": true,
-        "current": {
-          "selected": true,
-          "text": ["All"],
-          "value": ["$__all"]
-        },
-        "refresh": 1,
-        "sort": 1
-      }
-    ]
-  }
+  ]
 }
