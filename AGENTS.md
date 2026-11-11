@@ -620,4 +620,4 @@ Enforced where it is decidable, not by reviewer memory:
 
 - `bun run review:static` — oxlint (`no-self-compare`, `vitest/expect-expect`) plus the ast-grep rules in `sgconfig.yml` (self-asserting `expect`, label == placeholder, comment narrates a diff). Runs in `verify.yml`; `studiq-review` runs it with `-- --changed origin/main` and cites the rule id.
 - `bun run lint` — the rest of the shape-level redundancies (`no-dupe-else-if`, `no-unnecessary-boolean-literal-compare`, `jsx-a11y/no-redundant-roles`).
-- Still human/agent judgement: comments that restate code in different words, redundant labels that differ by a word, single-use wrapper components. `bun run knip` catches the unused ones; the rest is a review finding, not a style nit.
+- Still human/agent judgement: comments that restate code in different words, redundant labels that differ by a word, single-use wrapper components. Two existing gates cover the mechanical part: `bun run knip` finds unused components, and jscpd (`.jscpd.json`, `docs/ci.md → Duplication`) fails a PR that adds a copy-pasted block. The rest is a review finding, not a style nit.

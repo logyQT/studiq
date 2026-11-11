@@ -9,8 +9,9 @@
  * gate that is always on.
  *
  * Usage:
- *   bun scripts/review-static.ts                  # whole repo (CI)
+ *   bun scripts/review-static.ts                  # oxlint + rules (local)
  *   bun scripts/review-static.ts --changed origin/main   # review scope
+ *   bun scripts/review-static.ts --rules-only     # CI: oxlint already ran
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,6 +19,7 @@ import { join } from 'node:path';
 const argv = process.argv.slice(2);
 const changedIndex = argv.indexOf('--changed');
 const changed = changedIndex >= 0 ? argv[changedIndex + 1] : undefined;
+const rulesOnly = argv.includes('--rules-only');
 
 const LINT_SCOPE = ['apps/web/src', 'packages', '__tests__'];
 
@@ -46,7 +48,8 @@ const lintCmd = ['bun', 'lint', '--no-script', ...LINT_SCOPE];
 if (changed) lintCmd.push(`--changed=${changed}`);
 
 const results = [
-  run(changed ? `oxlint (changed since ${changed})` : 'oxlint', lintCmd),
+  // CI runs `bun run lint` first, so the oxlint half would be a second pass.
+  ...(rulesOnly ? [] : [run(changed ? `oxlint (changed since ${changed})` : 'oxlint', lintCmd)]),
   run('ast-grep (tautology rules)', [astGrep, 'scan', '--config', 'sgconfig.yml']),
 ];
 
