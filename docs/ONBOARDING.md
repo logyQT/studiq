@@ -420,13 +420,15 @@ prints the current health, the primary path and this exact start command.
 > (`git -C /workspaces/studiq pull`) before starting the stack.
 
 This runs the **OTel Collector + Tempo (traces) + Loki (logs) + Prometheus
-(metrics) + Grafana** and is what `apps/web/src/instrumentation.ts` ships to by
-default (OTLP on `:7318`). No app env changes are needed — just don't set
+(metrics) + Grafana** and is where `apps/web/src/instrumentation.ts` ships when
+the app is started through the env tool (OTLP on `:7318`; the SDK default is
+`:4318`). No app env changes are needed — just don't set
 `OTEL_SDK_DISABLED=true`. `env:ensure` sets
 `OTEL_SERVICE_NAME=studiq-<branch>` and
 `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318` for the app it starts, so
 traces from different worktrees are distinguishable in one collector; set
-either key in `.env.local` to override it.
+either key in `.env.local` to override it. If you previously pinned the old
+`http://localhost:4318` there, update or remove it — an explicit value wins.
 
 | UI                          | URL                   |
 | --------------------------- | --------------------- |

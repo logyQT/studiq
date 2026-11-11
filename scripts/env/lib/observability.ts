@@ -4,28 +4,34 @@
  * or Loki port in that range would collide with a normal checkout.
  *
  * Container-internal ports stay at their upstream defaults (Tempo 3200, Loki
- * 3100, Prometheus 9090, OTLP 4317/4318); only the host mappings move.
+ * 3100, Prometheus 9090, OTLP 4317/4318, collector exporter 8889); only the
+ * host mappings move.
  */
 export const OBSERVABILITY_PROJECT = 'studiq-observability';
 
 const OBSERVABILITY_HOST = 'localhost';
-const OBSERVABILITY_PORTS = {
+
+/**
+ * The host port each service publishes to. `docker-compose.yml` carries the
+ * matching `host:container` mapping, and the unit tests assert the two stay in
+ * sync, so a port cannot move in one place only.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export const OBSERVABILITY_PORTS = {
   grafana: 7001,
   prometheus: 7090,
   loki: 7100,
   tempo: 7200,
   otlpGrpc: 7317,
   otlpHttp: 7318,
+  prometheusExporter: 7889,
 } as const;
 
 export const OBSERVABILITY_URLS = {
-  grafana: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.grafana}`,
   grafanaHealth: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.grafana}/api/health`,
-  prometheus: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.prometheus}`,
   prometheusReady: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.prometheus}/-/ready`,
-  loki: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.loki}`,
   lokiReady: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.loki}/ready`,
-  tempo: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.tempo}`,
   tempoReady: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.tempo}/ready`,
   otlp: `http://${OBSERVABILITY_HOST}:${OBSERVABILITY_PORTS.otlpHttp}`,
 } as const;

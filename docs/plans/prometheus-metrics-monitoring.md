@@ -88,7 +88,8 @@ const sdk = new NodeSDK({
 ```
 
 All three exporters send to the same OTLP endpoint
-(`OTEL_EXPORTER_OTLP_ENDPOINT`, default `localhost:7318`). The
+(`OTEL_EXPORTER_OTLP_ENDPOINT`; the SDK default is `localhost:4318`, and the env
+tool sets `localhost:7318`). The
 `OTEL_SDK_DISABLED=true` early-return is preserved — unit tests set it.
 
 ### 3. Custom metrics in `packages/server/src/lib/observability.ts`

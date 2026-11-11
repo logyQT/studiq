@@ -39,7 +39,9 @@ LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o-mini
 
 # OpenTelemetry (optional) — OTLP trace/metric/log export.
-# Exports to OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:7318).
+# Exports to OTEL_EXPORTER_OTLP_ENDPOINT. The SDK default is
+# http://localhost:4318; the local env tool sets http://localhost:7318, which
+# is where docker-compose.yml publishes the machine-wide collector.
 # Leave OTEL_SDK_DISABLED unset to keep telemetry on; set it to "true" to disable.
 # OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com:4318
 # OTEL_SDK_DISABLED=true
@@ -486,7 +488,8 @@ deployment still needs a shared counter for a hard quota.
 ## Observability
 
 The app exports OTLP (traces + metrics + logs) from `apps/web/src/instrumentation.ts`
-to `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:7318`). The local
+to `OTEL_EXPORTER_OTLP_ENDPOINT` (SDK default `http://localhost:4318`; the local
+env tool sets `http://localhost:7318`). The local
 Collector/Tempo/Loki/Prometheus/Grafana stack in `docker-compose.yml` is for
 development only — in production point the endpoint at your own collector or a
 managed backend (e.g. Grafana Cloud), or leave it unset and telemetry is simply

@@ -1,6 +1,6 @@
 import { runSupabase, type SpawnResult, type StackEnv } from './stack';
-import { redactSecrets } from './output';
 import { OTEL_ENDPOINT } from './observability';
+import { redactSecrets } from './output';
 import { currentBranchName, sanitizeProjectId } from './repo';
 import type { Capability } from '../profiles';
 import type { RuntimeChoice } from '../atoms';

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -28,6 +28,34 @@ const repo = await loadEnvModule<{
 const doctor = await loadEnvModule<{
   observabilityLabel(upCount: number, total: number): string;
 }>('commands/doctor.ts');
+
+const OBSERVABILITY_PORT_KEYS = [
+  'grafana',
+  'prometheus',
+  'loki',
+  'tempo',
+  'otlpGrpc',
+  'otlpHttp',
+  'prometheusExporter',
+] as const;
+
+type ObservabilityPort = (typeof OBSERVABILITY_PORT_KEYS)[number];
+
+const observability = await loadEnvModule<{
+  OBSERVABILITY_PORTS: Record<ObservabilityPort, number>;
+}>('lib/observability.ts');
+
+/** The container-side port each service listens on; only the host side moves. */
+const CONTAINER_PORTS: Record<ObservabilityPort, number> = {
+  grafana: 3000,
+  prometheus: 9090,
+  loki: 3100,
+  tempo: 3200,
+  otlpGrpc: 4317,
+  otlpHttp: 4318,
+  prometheusExporter: 8889,
+};
+
 const baseline = { ...process.env };
 const tempDirs: string[] = [];
 
@@ -115,6 +143,20 @@ describe('observabilityLabel', () => {
     expect(doctor.observabilityLabel(5, 5)).toBe('up');
     expect(doctor.observabilityLabel(1, 5)).toBe('partial (1/5)');
     expect(doctor.observabilityLabel(0, 5)).toBe('down');
+  });
+});
+
+describe('docker-compose host ports', () => {
+  it('publishes exactly the host → container pairs in OBSERVABILITY_PORTS', () => {
+    const compose = readFileSync(join(process.cwd(), 'docker-compose.yml'), 'utf8');
+    const published = [...compose.matchAll(/'(\d+):(\d+)'/g)]
+      .map((match) => [Number(match[1]), Number(match[2])] as const)
+      .toSorted(([a], [b]) => a - b);
+    const expected = OBSERVABILITY_PORT_KEYS.map(
+      (service) => [observability.OBSERVABILITY_PORTS[service], CONTAINER_PORTS[service]] as const,
+    ).toSorted(([a], [b]) => a - b);
+
+    expect(published).toEqual(expected);
   });
 });
 
