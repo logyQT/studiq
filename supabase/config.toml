@@ -8,20 +8,20 @@
 #
 # The remaining `env()` values are `APP_URL` (auth site/redirect URLs),
 # `project_id` (used by non-stack runs: CI sets SUPABASE_EXPERIMENTAL_STACK=0
-# and SUPABASE_PROJECT_ID), and optional provider secrets. `scripts/dev` reads
+# and SUPABASE_PROJECT_ID), and optional provider secrets. The `env` tool reads
 # one root values file, `.env.local` (keys are documented in `.env.schema`), and
-# exports the resolved contract to every Supabase/Next child process; it no
-# longer writes a per-app env file.
+# exports the resolved contract to every Supabase/Next child process; it never
+# writes a per-app env file.
 #
 # How direct CLI commands see these values (pinned CLI 3.0.0):
-#   * use `bash scripts/dev supa <args…>`; it exports `APP_URL` (so
+#   * use `bun run env:supa <args…>`; it exports `APP_URL` (so
 #     `env(APP_URL)` resolves) and runs `bunx supabase` from the repo root.
 #   * the process environment wins. There is no generated values file for the
 #     CLI to load.
 #   * an unset numeric variable makes the whole config fail to parse
 #     (`CliConfigParseError`); an unset string is left as the literal
 #     `env(NAME)`.
-# Prefer `bun dev:*` (or `.env.local` / CI) over a bare CLI call.
+# Prefer `bun run env:*` (or `.env.local` / CI) over a bare CLI call.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # A string used to distinguish different Supabase projects on the same host.
@@ -173,7 +173,7 @@ max_indexes = 5
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
-# in emails. Set APP_URL before `supabase start` — `bun dev:up` and the verify workflow both do.
+# in emails. Set APP_URL before `supabase start` — `bun run env:ensure --profile web` and the verify workflow both do.
 site_url = "env(APP_URL)"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = ["env(APP_URL)"]

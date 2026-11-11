@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -212,6 +212,55 @@ describe('env:status --json', () => {
     const calls = harness.bunxCalls();
     expect(calls).toContain('stack status --output-format json');
     expect(calls).not.toMatch(/stack (start|stop|destroy|install|logs)/);
+  });
+
+  it('asks the CLI for the default stack when SUPABASE_STACK is unset', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['status', '--json'], { SUPABASE_STACK: '' });
+
+    expect(result.status).toBe(0);
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack status --output-format json');
+    expect(calls).not.toContain('--stack');
+  });
+
+  it('passes --stack for a named stack', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['status', '--json']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls()).toContain('--stack env-unit-');
+  });
+
+  it('reports a broken APP_PORT instead of crashing', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const result = await harness.run(['status', '--json'], { APP_PORT: 'abc' });
+
+    expect(result.status).toBe(0);
+    const status = parseJsonObject(result.stdout);
+    expect(objectField(status, 'ports').app).toBe(3000);
+  });
+
+  it('reads an exact fingerprint from isolated build state', async () => {
+    const harness = newHarness();
+    const fingerprint = '0123456789abcdef0123456789abcdef';
+    writeFileSync(
+      join(harness.stateDir, 'build.json'),
+      JSON.stringify({
+        fingerprint,
+        envHash: 'fixture-env-hash',
+        mode: 'production',
+        builtAt: '2026-11-08T00:00:00.000Z',
+      }),
+    );
+
+    const result = await harness.run(['status', '--json']);
+    expect(result.status).toBe(0);
+    const build = objectField(parseJsonObject(result.stdout), 'build');
+    expect(build.fingerprint).toBe(fingerprint);
   });
 
   it('reads ownership and mode from the registry in shared mode', async () => {

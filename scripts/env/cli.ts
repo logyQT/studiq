@@ -1,21 +1,36 @@
 #!/usr/bin/env bun
 /**
- * `env` CLI — phase 1 (read-only): status / doctor / ports / supa.
+ * `env` CLI — one command surface for the local environment.
  *
- * `status`, `doctor` and `ports` are deliberately unwrapped: they read only the
- * process environment, the cross-checkout registry and `supabase stack status`,
- * so a locked vault never blocks them. `supa` is a passthrough and runs under
- * `varlock run --inject vars --` (see root `package.json`), which is where its
- * values come from. No dotenv file is ever parsed here.
+ * `status`, `doctor` and `ports` are deliberately unwrapped *and* read-only:
+ * they read only the process environment, the cross-checkout registry and
+ * `supabase stack status`, so a locked vault never blocks them. `setup` and
+ * `verify` are unwrapped too, but they do touch the root `.env.local` — `setup`
+ * scaffolds it, `verify` loads it through `varlock` (names/presence only). The
+ * value-consuming commands (`ensure`, `serve`, `build`, `dev`, `down`,
+ * `reset-db`, `logs`, `supa`) run under `varlock run --inject vars --` (see
+ * `scripts/env/varlock-run.sh` and root `package.json`), which is where their
+ * values come from. The CLI itself never parses a dotenv file.
  *
- * Exit codes: 0 success, 2 bad usage; `doctor` also uses 1 when it finds a real
- * problem. Lifecycle codes (3-6) belong to later phases.
+ * Exit codes: 0 success/ready, 1 doctor found a problem (and verify cannot read
+ * the schema), 2 bad usage, 3 native unavailable, 4 start or build failed, 5
+ * timeout, 6 conflict.
  */
 import { parseCommand, USAGE, UsageError, type ParsedCommand } from './atoms';
+import { runBuild } from './commands/build';
+import { runDev } from './commands/dev';
 import { runDoctor } from './commands/doctor';
+import { runDown } from './commands/down';
+import { runEnsure } from './commands/ensure';
+import { runLogs } from './commands/logs';
 import { runPorts } from './commands/ports';
+import { runResetDb } from './commands/reset-db';
+import { runServe } from './commands/serve';
+import { runSetup } from './commands/setup';
 import { runStatus } from './commands/status';
 import { runSupa } from './commands/supa';
+import { runVerify } from './commands/verify';
+import { EnvFailure } from './lib/exit';
 import { writeLine, writeStderrLine } from './lib/output';
 
 async function dispatch(parsed: ParsedCommand): Promise<number> {
@@ -31,6 +46,24 @@ async function dispatch(parsed: ParsedCommand): Promise<number> {
       return runPorts(parsed);
     case 'supa':
       return runSupa(parsed.passthrough);
+    case 'ensure':
+      return runEnsure(parsed);
+    case 'down':
+      return runDown(parsed);
+    case 'build':
+      return runBuild(parsed);
+    case 'serve':
+      return runServe(parsed);
+    case 'dev':
+      return runDev(parsed);
+    case 'reset-db':
+      return runResetDb(parsed);
+    case 'logs':
+      return runLogs(parsed);
+    case 'setup':
+      return runSetup(parsed);
+    case 'verify':
+      return runVerify(parsed);
   }
 }
 
@@ -42,7 +75,11 @@ async function main(argv: string[]): Promise<number> {
       writeStderrLine(`env: ${error.message}`);
       writeStderrLine();
       writeStderrLine(USAGE);
-      return 2;
+      return error.exitCode;
+    }
+    if (error instanceof EnvFailure) {
+      writeStderrLine(`env: ${error.message}`);
+      return error.exitCode;
     }
     throw error;
   }

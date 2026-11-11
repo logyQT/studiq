@@ -193,6 +193,228 @@ describe('env:supa', () => {
     expect(harness.bunxCalls().trim()).toBe('start --stack stop');
   });
 
+  it('forwards a db start outside shared mode', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'db', 'start']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('db start');
+  });
+
+  it('forwards a start without --stack-id without reading the stack list', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'start', '--stack', 'test']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('start --stack test');
+  });
+
+  it('forwards a start for a --stack-id this checkout owns', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'start', '--stack-id', 'aaaa']);
+
+    expect(result.status).toBe(0);
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack list --output-format json');
+    expect(calls).toContain('start --stack-id aaaa');
+  });
+
+  it('refuses to start a --stack-id owned by another checkout (exit 6, no spawn)', async () => {
+    const variants = [
+      ['start', '--stack-id', 'bbbb'],
+      ['stack', 'start', '--stack-id=bbbb'],
+    ];
+    for (const args of variants) {
+      const harness = newHarness();
+      harness.setListFixture(listFixture());
+
+      const result = await harness.run(['supa', ...args]);
+
+      expect(result.status, args.join(' ')).toBe(6);
+      expect(result.stdout, args.join(' ')).toBe('');
+      expect(result.stderr, args.join(' ')).toContain('owned by /tmp/foreign-checkout');
+      const calls = harness.bunxCalls();
+      expect(calls, args.join(' ')).toContain('stack list --output-format json');
+      expect(calls, args.join(' ')).not.toContain('start --stack-id');
+    }
+  });
+
+  it('refuses to start a --stack-id it cannot resolve (exit 6, no spawn)', async () => {
+    const harness = newHarness();
+    harness.setListFixture(listFixture());
+
+    const result = await harness.run(['supa', 'start', '--stack-id', 'ffff']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain("not found in 'supabase stack list'");
+    expect(harness.bunxCalls()).not.toContain('start --stack-id');
+  });
+
+  it('refuses a start --stack-id without a usable value (exit 6, no spawn)', async () => {
+    const variants = [
+      ['start', '--stack-id'],
+      ['start', '--stack-id='],
+      ['start', '--stack-id', '--stack', 'default'],
+      ['stack', 'start', '--stack-id='],
+    ];
+    for (const args of variants) {
+      const harness = newHarness();
+      const result = await harness.run(['supa', ...args]);
+      const label = args.join(' ');
+
+      expect(result.status, label).toBe(6);
+      expect(result.stdout, label).toBe('');
+      expect(result.stderr, label).toContain(
+        "'--stack-id' requires a stack id owned by this checkout",
+      );
+      // The refusal happens before the stack list is read, so nothing spawns.
+      expect(harness.bunxCalls(), label).toBe('');
+    }
+  });
+
+  it('refuses a start --stack-id when stack list cannot be read (exit 6, no spawn)', async () => {
+    const variants = [
+      ['start', '--stack-id', 'aaaa'],
+      ['stack', 'start', '--stack-id=aaaa'],
+    ];
+    for (const args of variants) {
+      const harness = newHarness();
+      harness.setListFixture('not-json');
+      const result = await harness.run(['supa', ...args]);
+      const label = args.join(' ');
+
+      expect(result.status, label).toBe(6);
+      expect(result.stdout, label).toBe('');
+      expect(result.stderr, label).toContain(
+        "cannot read 'supabase stack list' to verify ownership",
+      );
+      expect(result.stderr, label).toContain('aaaa');
+      const calls = harness.bunxCalls();
+      expect(calls, label).toContain('stack list --output-format json');
+      expect(calls, label).not.toContain('start --stack-id');
+    }
+  });
+
+  it('refuses an ambiguous start --stack-id prefix (exit 6, no spawn)', async () => {
+    const harness = newHarness();
+    harness.setListFixture({
+      stacks: [
+        {
+          id: `${'a'.repeat(63)}1`,
+          name: 'one',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+        {
+          id: `${'a'.repeat(63)}2`,
+          name: 'two',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+      ],
+    });
+
+    const result = await harness.run(['supa', 'start', '--stack-id', 'a']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('prefix matches more than one stack');
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack list --output-format json');
+    expect(calls).not.toContain('start --stack-id');
+  });
+
+  it('refuses a start whose --stack-id flags name different stacks (exit 6, no spawn)', async () => {
+    const harness = newHarness();
+    harness.setListFixture({
+      stacks: [
+        {
+          id: 'c'.repeat(64),
+          name: 'one',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+        {
+          id: 'd'.repeat(64),
+          name: 'two',
+          project_root: REPO_ROOT,
+          branch_context: 'refs/heads/feat/env',
+          runtime: 'native',
+        },
+      ],
+    });
+
+    const result = await harness.run(['supa', 'start', '--stack-id', 'cccc', '--stack-id', 'dddd']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain("'--stack-id' names different stacks");
+    const calls = harness.bunxCalls();
+    expect(calls).toContain('stack list --output-format json');
+    expect(calls).not.toContain('start --stack-id');
+  });
+
+  it('refuses an empty start --workdir (exit 6, no spawn)', async () => {
+    const variants = [
+      ['start', '--workdir', ''],
+      ['start', '--workdir='],
+      ['stack', 'start', '--workdir='],
+      ['db', 'start', '--workdir', ''],
+    ];
+    for (const args of variants) {
+      const harness = newHarness();
+      const result = await harness.run(['supa', ...args]);
+      const label = args.join(' ');
+
+      expect(result.status, label).toBe(6);
+      expect(result.stdout, label).toBe('');
+      expect(result.stderr, label).toContain("--workdir '(empty)'");
+      expect(harness.bunxCalls(), label).toBe('');
+    }
+  });
+
+  it('refuses a start whose --workdir is another checkout (exit 6, no spawn)', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'start', '--workdir', '/tmp/foreign-checkout']);
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--workdir');
+    expect(result.stderr).toContain(REPO_ROOT);
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('refuses a start when SUPABASE_WORKDIR is another checkout (exit 6)', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'db', 'start'], {
+      SUPABASE_WORKDIR: '/tmp/foreign-checkout',
+    });
+
+    expect(result.status).toBe(6);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--workdir');
+    expect(harness.bunxCalls()).toBe('');
+  });
+
+  it('allows a start workdir that resolves to this checkout', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['supa', 'start', '--workdir', REPO_ROOT]);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls()).toContain(`start --workdir ${REPO_ROOT}`);
+  });
+
   it('still guards stop --stack stop', async () => {
     const harness = newHarness();
     harness.setListFixture({
@@ -287,7 +509,7 @@ describe('env:supa', () => {
 
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('env:reset-db --yes');
+    expect(result.stderr).toContain('env:down --all');
     expect(harness.bunxCalls()).toBe('');
   });
 
@@ -471,7 +693,7 @@ describe('env:supa', () => {
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('destroy');
-    expect(result.stderr).toContain('env:recreate --yes');
+    expect(result.stderr).toContain('env:down --all --yes');
     expect(harness.bunxCalls()).toBe('');
   });
 
@@ -497,6 +719,8 @@ describe('env:supa under SUPABASE_SHARED=1', () => {
   const sharedEnv = { SUPABASE_SHARED: '1', SUPABASE_SHARED_OWNER: 'qa-crew' };
 
   const rejected = [
+    ['start'],
+    ['stack', 'start'],
     ['stop'],
     ['stack', 'stop'],
     ['restart'],
@@ -504,6 +728,7 @@ describe('env:supa under SUPABASE_SHARED=1', () => {
     ['destroy'],
     ['stack', 'destroy'],
     ['db', 'reset'],
+    ['db', 'start'],
     ['migration', 'down'],
     ['storage', 'rm'],
   ];
@@ -520,6 +745,34 @@ describe('env:supa under SUPABASE_SHARED=1', () => {
       expect(result.stderr, label).toContain('qa-crew');
       expect(harness.bunxCalls(), label).toBe('');
     }
+  });
+
+  it('refuses stack start (exit 6, no spawn) even behind global flags', async () => {
+    const variants = [
+      ['stack', 'start', '--stack', 'test'],
+      ['stack', 'start'],
+      ['start'],
+      ['--output-format', 'json', 'stack', 'start', '--stack', 'test'],
+    ];
+    for (const args of variants) {
+      const harness = newHarness();
+      const result = await harness.run(['supa', ...args], sharedEnv);
+      const label = args.join(' ');
+
+      expect(result.status, label).toBe(6);
+      expect(result.stdout, label).toBe('');
+      expect(result.stderr, label).toContain('SUPABASE_SHARED');
+      expect(result.stderr, label).toContain('qa-crew');
+      expect(harness.bunxCalls(), label).toBe('');
+    }
+  });
+
+  it('forwards stack start outside shared mode', async () => {
+    const harness = newHarness();
+    const result = await harness.run(['supa', 'stack', 'start', '--stack', 'test']);
+
+    expect(result.status).toBe(0);
+    expect(harness.bunxCalls().trim()).toBe('stack start --stack test');
   });
 
   it('still forwards read-only forms', async () => {

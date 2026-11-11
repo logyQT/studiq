@@ -396,7 +396,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
         last_quality: 4,
         learning_state: 'review',
         learning_step: 0,
-        lapse_count: 0,
+        sm2_lapse_count: 0,
         is_leech: false,
       });
       if (reviewStateError) {
@@ -511,7 +511,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
         last_quality: 4,
         learning_state: 'review',
         learning_step: 0,
-        lapse_count: 0,
+        sm2_lapse_count: 0,
         is_leech: false,
       });
       if (error) throw new Error(`[setup] review state insert failed: ${error.message}`);

@@ -127,9 +127,9 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
               </div>
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase mb-1">
-                  {t('lapse_count')}
+                  {t('mistakes')}
                 </p>
-                <p className="text-sm font-medium">{item.lapseCount ?? 0}</p>
+                <p className="text-sm font-medium">{item.mistakeCount}</p>
               </div>
             </div>
             {item.lastPracticedAt && (

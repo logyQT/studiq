@@ -25,38 +25,52 @@ Quiz, flashcard and course-management platform for students, teachers and univer
 ## Quick Start
 
 ```bash
-bun install            # once per checkout
-bun dev:up             # Supabase (if needed) + web app on :3000
+bun install                          # once per checkout
+bun run env:ensure --profile web     # stack (if needed) + build + serve on :3000
 ```
 
-`bun dev:up` is idempotent: it reads root `.env.local` (optional; see
-[`.env.schema`](.env.schema)), resolves this checkout's stack contract and
-**exports** the values to the web process — no per-app env file is generated.
-It starts Supabase only if it isn't running, and starts the web server. It never
-installs, builds or resets anything — those are explicit. Agents should run
-`bun dev:down` first, then `bun dev:up --prod` (`next start`) instead of the dev
-server.
+`env:ensure` is the blessed, idempotent path: it reads root `.env.local`
+(optional; see [`.env.schema`](.env.schema)), resolves this checkout's stack
+contract and **exports** the values to the web process — no per-app env file is
+generated. It starts Supabase only if needed, reuses a current build, and serves
+the production server. It never installs or resets anything, and it seeds only
+for the `qa`/`e2e` profiles (`--no-seed` skips); everything else is explicit.
+Agents use `env:ensure`/`env:build` + `env:serve`; `env:dev` is human-only HMR.
+`bun run dev:web` is a raw workspace `next dev`: it runs no varlock and exports no
+stack values, so it is not a substitute for `env:dev` or `env:ensure`.
+
+The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it
+(`dev:up`, `dev:serve`, `dev:status`, `dev:down`, `dev:reset-db`, `dev:build`,
+`dev:logs`, `dev:doctor`, `dev:ports`, `dev:prepull`). `dev:web` and `dev:admin`
+never called it and remain as human-only shortcuts.
 
 ```bash
-bun dev:status     # health, ports, URLs (--json for agents)
-bun dev:down       # stop the web server (--all also stops Supabase, data kept)
-bun dev:reset-db   # destructive: reset and re-seed this branch's database
-bun dev:build      # production build (stop the server first)
-bun dev:logs       # follow the web log; show recent Supabase logs
+bun run env:status --json   # health, ports, URLs (stable agent contract)
+bun run env:down            # stop the web server (--all also stops Supabase, data kept)
+bun run env:reset-db --yes  # destructive: reset and re-seed this branch's database
+bun run env:build           # production build (stop the server first)
+bun run env:logs            # follow the web log; show recent Supabase logs
 ```
 
 Each git worktree and branch gets its own Supabase stack with CLI-assigned
-ports. For `dev:up` itself, only `APP_PORT` (default `3000`) can collide —
-`bun dev:ports` suggests a free one, and `bun dev:doctor` explains anything it
-doesn't like. The optional admin panel (`:4000`) and Grafana (`:3001`) use fixed
-host ports and can collide across worktrees.
+ports. For `env:ensure`, only `APP_PORT` (default `3000`) can collide —
+`bun run env:ports` suggests a free one, and `bun run env:doctor` explains
+anything it doesn't like. One environment per checkout: a second stack or
+server in the same checkout is refused — use another worktree. The optional
+admin panel (`:4000`, loopback) and Grafana (`:3001`) use fixed host ports and
+can collide across worktrees.
 
-The admin panel and observability stack are opt-in:
+The admin panel and observability stack are opt-in and outside the `env` tool:
 
 ```bash
-bun dev:admin          # apps/admin on :4000 (reads root .env.local via varlock)
-docker compose up -d   # Grafana on :3001
+bun run dev:admin                    # apps/admin HMR on 127.0.0.1:4000 (human-only)
+bun run build:admin && bun run start:admin  # production build + serve
+docker compose up -d                 # Grafana on :3001
 ```
+
+`.env.vault` is **opt-in**: a fresh checkout runs from `.env.local` alone. Only
+provider refs that cannot come from the local stack (LLM, Stripe) belong there;
+a human creates it with `bun run env:setup --vault` and it is never auto-created.
 
 Full setup (Docker, env vars, seeding, Playwright) is in the
 [onboarding guide](docs/ONBOARDING.md); the trace → log → metric workflow is in
@@ -80,18 +94,20 @@ Full setup (Docker, env vars, seeding, Playwright) is in the
 
 ## Scripts
 
-| Command                                          | Description                                                           |
-| ------------------------------------------------ | --------------------------------------------------------------------- |
-| `bun dev:up` / `bun dev:up --prod`               | Local stack (Supabase + web); `--prod` builds (if missing) and serves |
-| `bun dev:serve`                                  | `next start` for this checkout on `APP_PORT`                          |
-| `bun dev:admin`                                  | Admin dev server on :4000                                             |
-| `bun lint`                                       | Lint + repo guards (no typecheck)                                     |
-| `bun lint:all`                                   | Typecheck + lint (admin typechecked via `typecheck:admin`)            |
-| `bun format` / `bun format:check`                | Format the repo / check formatting                                    |
-| `bun run test`                                   | Product unit + integration tests (admin: `bun run test:admin`)        |
-| `bun run test:unit` / `bun run test:integration` | Run one Vitest suite only (integration needs local Supabase)          |
-| `bun run test:e2e`                               | Playwright E2E                                                        |
-| `scripts/spin <branch>` / `scripts/pr`           | Create an isolated worktree / open a PR                               |
+| Command                                          | Description                                                     |
+| ------------------------------------------------ | --------------------------------------------------------------- |
+| `bun run env:ensure --profile web`               | Local stack + build + serve (idempotent; `--json` contract)     |
+| `bun run env:serve`                              | Serve an existing production build on `APP_PORT`                |
+| `bun run env:dev`                                | Human-only web HMR (`next dev`); agents build + serve           |
+| `bun run dev:web`                                | Raw web dev server (human-only; same server as `env:dev`)       |
+| `bun run dev:admin`                              | Admin HMR on `127.0.0.1:4000` (human-only; no `env` equivalent) |
+| `bun lint`                                       | Lint + repo guards (no typecheck)                               |
+| `bun lint:all`                                   | Typecheck + lint (admin typechecked via `typecheck:admin`)      |
+| `bun format` / `bun format:check`                | Format the repo / check formatting                              |
+| `bun run test`                                   | Product unit + integration tests (admin: `bun run test:admin`)  |
+| `bun run test:unit` / `bun run test:integration` | Run one Vitest suite only (integration needs local Supabase)    |
+| `bun run test:e2e`                               | Playwright E2E                                                  |
+| `scripts/spin <branch>` / `scripts/pr`           | Create an isolated worktree / open a PR                         |
 
 Every script is defined in [`package.json`](package.json); the full annotated
 list is in [`AGENTS.md`](AGENTS.md).
@@ -105,11 +121,24 @@ reads; it is documentation, not an access control list, and `varlock` uses it to
 validate/inject env for the `bun run …` scripts (`bun run env:check`,
 `bun run env:scan`).
 
-`bun dev:up` reads `.env.local`, asks `supabase status --output-format json` for
-this checkout's stack URLs/keys, and **exports** the resolved values to the
-Supabase and web child processes. No `apps/web/.env`, `apps/admin/.env` or
-`supabase/.env` is generated or read. Change `.env.local` (or use
-`bash scripts/dev supa …` for a direct CLI command) — never a generated file.
+The value-consuming `env:*` commands run under `varlock run --inject vars --`,
+ask `supabase stack status --output-format json` for this checkout's stack
+URLs/keys, and **export** the resolved values to the Supabase and web child
+processes; `status`/`ports`/`doctor`/`setup`/`verify` are unwrapped by design.
+No `apps/web/.env`, `apps/admin/.env` or `supabase/.env` is generated
+or read. Change `.env.local` (or use `bun run env:supa …` for a direct CLI
+command) — never a generated file.
+
+`.env.local` is the only required hand-edited **values** file; a fresh checkout
+runs without a vault. `.env.vault` is an **optional** provider-ref file that a
+human creates with `bun run env:setup --vault` (mode 600, comments/empty refs)
+only for things the local stack cannot provide: LLM inference
+(`LLM_API_KEY`, optionally `LLM_BASE_URL`/`LLM_PROVIDER`) and Stripe
+(`STRIPE_SECRET_KEY`, plus `STRIPE_WEBHOOK_SECRET` for webhook testing). It
+lives in the primary checkout, is Git-ignored, and is resolved through
+`STUDIQ_ENV_VAULT` (default `<primary>/.env.vault`); `varlock run --path` is used
+only when the file exists. `env:verify --full` reports provider status without
+printing a value.
 The admin app is an internal tool with no app-level auth, and it is **not
 deployed**; see [ADR-0009](docs/decisions/0009-admin-is-internal-not-deployed.md)
 for the ordered deployment blockers.
