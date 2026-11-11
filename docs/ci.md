@@ -66,6 +66,14 @@ maintain:
   stored. The Markdown report goes to the run summary and the whole report
   directory is uploaded as the `jscpd-dashboard` artifact (90 days). Lower the
   threshold as the number drops.
+- **Dead-code entry points** — the dashboard builds its import graph from
+  `deadCode.entry` in `.jscpd.json`. Next.js file conventions
+  (`app/**/page.tsx`, `layout.tsx`, `route.ts`, …), `proxy.ts`,
+  `i18n/request.ts` and the operator scripts (`check-*.ts`, `qa-*.ts`,
+  `load-test/*.ts`, …) are entry points by definition, not dead code. The globs
+  are matched relative to each scan root (`proxy.ts`, not
+  `apps/web/src/proxy.ts`). Without them 19 live files read as dead — 3.4%
+  instead of 0.2% — and the health score shows C 64 instead of B 70.
 - **Hooks** — `pre-commit` runs `bun run dup:changed` (working tree vs `HEAD`,
   baseline kept in Git-ignored `.tmp/`); `pre-push` runs `bun run dup:base`
   (the same comparison as CI). Hooks are local feedback; the CI step is the
