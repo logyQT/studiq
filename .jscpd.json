@@ -12,5 +12,31 @@
     "packages/ui/src/components/ui/**",
     "apps/web/src/i18n/messages/**",
     ".agents/**"
-  ]
+  ],
+  "deadCode": {
+    "entry": [
+      "proxy.ts",
+      "i18n/request.ts",
+      "app/manifest.ts",
+      "app/robots.ts",
+      "app/sitemap.ts",
+      "app/opengraph-image.tsx",
+      "app/icon.tsx",
+      "app/apple-icon.tsx",
+      "app/**/page.tsx",
+      "app/**/layout.tsx",
+      "app/**/route.ts",
+      "app/**/template.tsx",
+      "app/**/default.tsx",
+      "app/**/error.tsx",
+      "app/**/loading.tsx",
+      "app/**/not-found.tsx",
+      "check-*.ts",
+      "e2e-seed.ts",
+      "qa-issue.ts",
+      "qa-tenant.ts",
+      "storage-orphan-sweep.ts",
+      "load-test/*.ts"
+    ]
+  }
 }
