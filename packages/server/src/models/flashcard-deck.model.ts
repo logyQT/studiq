@@ -95,7 +95,6 @@ export const BatchToggleSuspendSchema = registry.register(
   }),
 );
 
-export type BatchToggleSuspendInput = z.infer<typeof BatchToggleSuspendSchema>;
 export type DeckListQuery = z.infer<typeof DeckListQuerySchema>;
 
 export interface Deck {

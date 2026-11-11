@@ -1,7 +1,5 @@
 export type MailLocale = 'pl' | 'en';
 
-export const MAIL_LOCALES: readonly MailLocale[] = ['pl', 'en'];
-
 export interface InvitationMail {
   to: string;
   orgName: string;

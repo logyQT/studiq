@@ -8,8 +8,6 @@ export const SearchQuerySchema = registry.register(
   }),
 );
 
-export type SearchQueryInput = z.infer<typeof SearchQuerySchema>;
-
 export type SearchResult = {
   type: 'flashcard';
   id: string;
@@ -18,5 +16,3 @@ export type SearchResult = {
   decks: { id: string; name: string; href: string }[];
   rank: number;
 };
-
-export type SearchResults = SearchResult[];

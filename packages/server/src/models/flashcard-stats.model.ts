@@ -20,8 +20,6 @@ export const DeckStatsSchema = z.object({
   avgEasinessFactor: z.number(),
 });
 
-export type DeckStats = z.infer<typeof DeckStatsSchema>;
-
 export const TopicStatsSchema = z.object({
   topicId: z.string(),
   topicName: z.string(),
@@ -29,8 +27,6 @@ export const TopicStatsSchema = z.object({
   practiceCount: z.number(),
   accuracy: z.number(),
 });
-
-export type TopicStats = z.infer<typeof TopicStatsSchema>;
 
 export const DifficultyBreakdownSchema = z.object({
   easy: z.number(),
