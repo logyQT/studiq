@@ -1,0 +1,9 @@
+id: comment-narrates-diff-tsx
+valid:
+  - |
+    // Removed by #595: forwarded so the schema rejects it
+invalid:
+  - |
+    // removed the old path
+  - |
+    // now uses the new API

@@ -31,7 +31,8 @@ id; the workflow is also named `pr-triage`, so the two match on purpose.
 - `scope` — diff router. Publishes `app` and `qa_shards`; docs-only,
   `apps/admin`-only and QA-only PRs skip the jobs they cannot affect. `checks`
   is deliberately ungated (ADR-0008).
-- `checks` — `format:check`, `lint`, `env:check`, `env:scan`, `knip`,
+- `checks` — `format:check`, `lint`, `review:static --rules-only` (the ast-grep
+  tautology rules and their tests), `env:check`, `env:scan`, `knip`,
   `typecheck:all`, then the duplication gate (PR: new clones vs the base
   branch; nightly: dashboard + trend report, see [Duplication](#duplication)).
 - `unit` / `integration` — gated on `scope.app`.
@@ -122,6 +123,7 @@ The `checks` job is:
 ```bash
 bun run format:check
 bun run lint
+bun run review:static -- --rules-only
 bun run env:check
 bun run env:scan
 bun run knip

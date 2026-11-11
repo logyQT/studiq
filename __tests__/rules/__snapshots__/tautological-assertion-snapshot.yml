@@ -1,0 +1,26 @@
+id: tautological-assertion
+snapshots:
+  "expect(1).toBe(1);\n":
+    labels:
+      - source: expect(1).toBe(1)
+        style: primary
+        start: 0
+        end: 17
+  "expect(a.b).toEqual(a.b);\n":
+    labels:
+      - source: expect(a.b).toEqual(a.b)
+        style: primary
+        start: 0
+        end: 24
+  "expect(a.b).toStrictEqual(a.b);\n":
+    labels:
+      - source: expect(a.b).toStrictEqual(a.b)
+        style: primary
+        start: 0
+        end: 30
+  "expect(f(x)).toBe(f(x));\n":
+    labels:
+      - source: expect(f(x)).toBe(f(x))
+        style: primary
+        start: 0
+        end: 23

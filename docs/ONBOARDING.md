@@ -586,7 +586,8 @@ Nothing starts it on push or label; `.coderabbit.yaml` keeps the repo-specific
 path instructions and review profile that make a requested pass useful.
 
 Run the deterministic gates locally before pushing: `bun run lint`,
-`bun run typecheck:all`, `bun run test:unit` and `bun run pr:size`.
+`bun run typecheck:all`, `bun run test:unit`, `bun run review:static` and
+`bun run pr:size`.
 
 ---
 
@@ -615,6 +616,7 @@ Run the deterministic gates locally before pushing: `bun run lint`,
 | `bun test:integration`                  | Run integration tests only                                                       |
 | `bun lint`                              | Lint + import/migration/URL guards (does **not** type-check)                     |
 | `bun lint:all`                          | Type-check + lint                                                                |
+| `bun run review:static`                 | Ast-grep tautology rules + rule tests (+ oxlint unless `--rules-only`)           |
 | `gh auth status`                        | Check GitHub CLI authentication                                                  |
 | `scripts/pr`                            | Create a PR from current branch via `gh`                                         |
 | `scripts/spin <branch>`                 | Create worktree + branch for isolated work                                       |
