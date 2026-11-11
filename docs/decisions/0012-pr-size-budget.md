@@ -26,14 +26,19 @@ shell, YAML and SQL checks were only in CodeRabbit.
 
 1. **CodeRabbit is manual only.** `reviews.auto_review.enabled` is `false` and
    there is no label trigger: a review starts only when a maintainer comments
-   `@coderabbitai review`. `path_instructions` and the `assertive` profile stay
-   — they are what make a requested review worth paying for.
+   `@coderabbitai review`. `auto_incremental_review` is also `false`, so a later
+   push does not re-run a hand-requested review. `path_instructions` and the
+   `assertive` profile stay — they are what make a requested review worth paying
+   for.
 2. **`scripts/pr-triage.ts` owns the measurement.** It counts added + deleted
    lines with Git rename detection, excluding tests, Markdown docs, generated
    files, the lockfile and vendored skills. `bun run pr:size` runs it locally;
    `.github/workflows/pr-triage.yml` runs it on every PR.
 3. **The workflow labels every PR** with `size/XS|S|M|L|XL` from the measured
    budgeted line count. The label is informational; it never triggers a review.
+   The buckets hold one invariant: over budget is always `size/XL`. The
+   `XS`/`S`/`M` boundaries are absolute (10/50/200), so `L` only appears when
+   the limit is above 200.
 4. **`scripts/pr` applies the same size label at creation.**
 5. **Advisory first.** Over-budget labels are informational until the repository
    variable `PR_SIZE_ENFORCE=true` is set; then the job fails unless the PR
@@ -59,7 +64,10 @@ shell, YAML and SQL checks were only in CodeRabbit.
 
 - Nothing reviews a PR automatically any more, including CodeRabbit's
   deterministic toolset. The follow-up is to add shellcheck (bash), actionlint
-  (workflows) and squawk (migrations) to CI, scoped to changed files.
+  (workflows) and squawk (migrations) to CI, scoped to changed files; tracking
+  issue #1100 covers it.
+- The retired `review:deep` label has been deleted from the repository. No label
+  gates or starts a review now.
 - CodeRabbit's pre-merge checks (title, description, linked issue, English-only)
   now run only on reviews requested by hand. They were warnings, not gates; the
   hard gates remain in `verify.yml`.
@@ -73,7 +81,7 @@ shell, YAML and SQL checks were only in CodeRabbit.
 ## Follow-ups
 
 - Add shellcheck, actionlint and squawk to the `checks` job (changed-file
-  scoped) or to a local `bun run review` command.
+  scoped) or to a local `bun run review` command — tracked in #1100.
 - Collect ~20 recent CodeRabbit findings and encode the recurring deterministic
   ones as `scripts/check-*.ts` rules; do not add semgrep/ast-grep wholesale.
 - Revisit the limit after a few weeks of data: 400 reviewable lines is the

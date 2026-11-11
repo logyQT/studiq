@@ -25,7 +25,7 @@ env:
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
 jobs:
-  size:
+  pr-triage:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -45,6 +45,12 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
+          # Repository variable, so it is untrusted text: fall back to the
+          # default instead of letting a typo fail the job.
+          if ! [[ "$LIMIT" =~ ^[0-9]+$ ]] || [[ "$LIMIT" =~ ^0+$ ]] || [ "${#LIMIT}" -gt 7 ]; then
+            echo "::warning::PR_SIZE_LIMIT must be a positive integer; using 400."
+            LIMIT=400
+          fi
           git fetch --no-tags origin "$BASE_REF"
           bun scripts/pr-triage.ts --base "origin/$BASE_REF" --limit "$LIMIT" --json > pr-size.json
           cat pr-size.json
@@ -61,28 +67,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          bucket=$(jq -r .bucket pr-size.json)
-          case "$bucket" in
-            XS) color=0e8a16 ;;
-            S)  color=1d76db ;;
-            M)  color=fbca04 ;;
-            L)  color=d93f0b ;;
-            XL) color=b60205 ;;
-          esac
+          label_name=$(jq -r .label.name pr-size.json)
+          label_color=$(jq -r .label.color pr-size.json)
+          label_description=$(jq -r .label.description pr-size.json)
 
-          gh label create "size/$bucket" --color "$color" --force >/dev/null
+          gh label create "$label_name" --color "$label_color" \
+            --description "$label_description" --force >/dev/null
           gh label create 'size:exception' --color e4e669 \
             --description 'Allows an over-budget PR' --force >/dev/null
 
           # A shrinking PR must not accumulate size/* labels.
           for old in $(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' | grep '^size/' || true); do
-            [ "$old" = "size/$bucket" ] || gh pr edit "$PR_NUMBER" --remove-label "$old"
+            [ "$old" = "$label_name" ] || gh pr edit "$PR_NUMBER" --remove-label "$old"
           done
-          gh pr edit "$PR_NUMBER" --add-label "size/$bucket"
+          gh pr edit "$PR_NUMBER" --add-label "$label_name"
 
       - name: Enforce the budget (optional)
         # `size:exception` is the operator's bypass for a deliberately large PR.
         if: vars.PR_SIZE_ENFORCE == 'true' && !contains(github.event.pull_request.labels.*.name, 'size:exception')
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: bun scripts/pr-triage.ts --base "origin/$BASE_REF" --limit "$LIMIT" --enforce
+        run: |
+          set -euo pipefail
+          if [ "$(jq -r .overLimit pr-size.json)" = 'true' ]; then
+            total=$(jq -r .total pr-size.json)
+            limit=$(jq -r .limit pr-size.json)
+            echo "::error::PR is over the review budget (${total}/${limit} reviewable lines); split it or add the \`size:exception\` label."
+            exit 1
+          fi

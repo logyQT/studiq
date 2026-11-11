@@ -114,16 +114,17 @@ fi
 # Same script as .github/workflows/pr-triage.yml so the label matches what the
 # workflow would apply.
 SIZE_LABEL=""
-LABEL_FLAGS=""
-LIMIT_LINES=400
+LIMIT_LINES="${PR_SIZE_LIMIT:-400}"
 
 git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
 TRIAGE_BASE="origin/$BASE_BRANCH"
 git rev-parse --verify --quiet "$TRIAGE_BASE" >/dev/null || TRIAGE_BASE="$BASE_BRANCH"
 
 if command -v jq >/dev/null 2>&1 \
-  && TRIAGE_JSON=$(bun scripts/pr-triage.ts --base "$TRIAGE_BASE" --json 2>/dev/null); then
-  SIZE_LABEL="size/$(jq -r '.bucket' <<<"$TRIAGE_JSON")"
+  && TRIAGE_JSON=$(bun scripts/pr-triage.ts --base "$TRIAGE_BASE" --limit "$LIMIT_LINES" --json 2>/dev/null); then
+  SIZE_LABEL=$(jq -r '.label.name' <<<"$TRIAGE_JSON")
+  SIZE_COLOR=$(jq -r '.label.color' <<<"$TRIAGE_JSON")
+  SIZE_DESCRIPTION=$(jq -r '.label.description' <<<"$TRIAGE_JSON")
   TOTAL_LINES=$(jq -r '.total' <<<"$TRIAGE_JSON")
   LIMIT_LINES=$(jq -r '.limit' <<<"$TRIAGE_JSON")
   printf "  ${CYAN}Size:${NC}   %s/%s reviewable lines (%s)\n" \
@@ -137,14 +138,7 @@ ensure_label() {
 }
 
 if [ -n "$SIZE_LABEL" ]; then
-  case "$SIZE_LABEL" in
-    size/XS) ensure_label 'size/XS' '0e8a16' 'Under 10 reviewable lines' ;;
-    size/S)  ensure_label 'size/S'  '1d76db' 'Within the review budget' ;;
-    size/M)  ensure_label 'size/M'  'fbca04' 'Within the review budget' ;;
-    size/L)  ensure_label 'size/L'  'd93f0b' "At the ${LIMIT_LINES}-line review budget" ;;
-    size/XL) ensure_label 'size/XL' 'b60205' "Over the ${LIMIT_LINES}-line review budget" ;;
-  esac
-  LABEL_FLAGS="$LABEL_FLAGS --label $SIZE_LABEL"
+  ensure_label "$SIZE_LABEL" "$SIZE_COLOR" "$SIZE_DESCRIPTION"
 fi
 
 # ── Create PR ──────────────────────────────────────────────────
@@ -163,8 +157,14 @@ PR_URL=$(gh pr create \
   --title "$TITLE" \
   --body "$BODY" \
   $DRAFT_FLAG \
-  $LABEL_FLAGS \
   2>&1) || fail "Failed to create PR: $PR_URL"
 
 info "PR created: $PR_URL"
+
+# Best-effort: the label is informational, so a permission failure must not
+# make a successfully created PR look like a failed command.
+if [ -n "$SIZE_LABEL" ]; then
+  gh pr edit "$PR_URL" --add-label "$SIZE_LABEL" \
+    || warn "Could not add $SIZE_LABEL to the PR"
+fi
 echo ""

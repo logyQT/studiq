@@ -15,7 +15,8 @@ The `main` ruleset requires five contexts:
 
 `pr-triage` is separate and currently advisory. It becomes a gate only when the
 `PR_SIZE_ENFORCE` repository variable is `true` **and** the `pr-triage` check is
-added to the ruleset.
+added to the ruleset. The check-run name is `pr-triage` because that is the job
+id; the workflow is also named `pr-triage`, so the two match on purpose.
 
 ## Workflows
 
@@ -53,7 +54,8 @@ Variables are plaintext and **not masked**. Never put a secret in this tab.
 | `PR_SIZE_LIMIT`   | `400`           | Reviewable-line budget passed to `scripts/pr-triage.ts` as `--limit`. Positive integer; set `300` to tighten. |
 
 `PR_SIZE_ENFORCE` only blocks a merge when the `pr-triage` check is also
-required in the `main` ruleset.
+required in the `main` ruleset. A non-numeric `PR_SIZE_LIMIT` is ignored with a
+workflow warning and the default `400` is used.
 
 ## Secrets
 
@@ -65,8 +67,10 @@ with reviewers), and should be documented here. Never echo it.
 
 ## Pinned versions
 
-- Bun: `BUN_VERSION` in `verify.yml`, `cache-warm.yml` and `pr-triage.yml`;
-  keep in step with `scripts/check-bun-version.ts`.
+- Bun: `BUN_VERSION` in `verify.yml`, `cache-warm.yml` and `pr-triage.yml`.
+  Keeping these in step with the version pinned in `scripts/check-bun-version.ts`
+  is **manual**: that script only enforces the local minimum and does not read
+  workflow files.
 - Actions: pinned major versions (`actions/checkout@v7`, ...). A new
   third-party action needs a pinned version and a note explaining why.
 
@@ -91,9 +95,15 @@ bun run typecheck:all
 | `qa-suite`    | `bun run test:qa`                           |
 | `pr-triage`   | `bun run pr:size`                           |
 
+`bun run pr:size` measures committed changes only (`git diff <base>...HEAD`), so
+commit before checking — uncommitted work is invisible to it.
+
 ## Review labels
 
-`pr-triage` labels every PR `size/*` from its budgeted line count. CodeRabbit
-does not auto-review: neither a push nor a label starts one. A maintainer
-requests a review by commenting `@coderabbitai review`.
-Details: [ADR-0012](decisions/0012-pr-size-budget.md).
+`pr-triage` labels every PR `size/*` from its budgeted line count. `size/XL`
+always means over budget; the `XS`/`S`/`M` boundaries are absolute (10/50/200),
+so `size/L` only appears when the limit is above 200. No label triggers a
+review. CodeRabbit does not auto-review: neither a push nor a label starts one.
+A maintainer requests a review by commenting `@coderabbitai review`. The retired
+`review:deep` label has been deleted. Details:
+[ADR-0012](decisions/0012-pr-size-budget.md).

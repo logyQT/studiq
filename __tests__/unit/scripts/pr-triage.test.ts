@@ -29,6 +29,11 @@ interface Output {
   docLines: number;
   excludedLines: number;
   bucket: string;
+  label: {
+    name: string;
+    color: string;
+    description: string;
+  };
   overLimit: boolean;
 }
 
@@ -51,6 +56,19 @@ function commit(repo: string, message = 'change'): void {
   git(repo, 'commit', '-qm', message);
 }
 
+function isLabel(value: unknown): value is Output['label'] {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'name' in value &&
+    typeof value.name === 'string' &&
+    'color' in value &&
+    typeof value.color === 'string' &&
+    'description' in value &&
+    typeof value.description === 'string'
+  );
+}
+
 function isOutput(value: unknown): value is Output {
   return (
     typeof value === 'object' &&
@@ -65,6 +83,8 @@ function isOutput(value: unknown): value is Output {
     typeof value.excludedLines === 'number' &&
     'bucket' in value &&
     typeof value.bucket === 'string' &&
+    'label' in value &&
+    isLabel(value.label) &&
     'overLimit' in value &&
     typeof value.overLimit === 'boolean'
   );
@@ -158,5 +178,81 @@ describe('scripts/pr-triage', () => {
   it('exits 2 when the base ref does not exist', () => {
     const repo = makeRepo();
     expect(runStatus(repo, ['--base', 'does-not-exist'])).toBe(2);
+  });
+
+  it('labels an over-budget PR XL even below the M boundary', () => {
+    const repo = makeRepo();
+    write(repo, 'apps/web/src/feature.ts', lines(101));
+    commit(repo);
+
+    // 101 > 100, and 200 > 100: both are over budget, never M or L.
+    expect(run(repo, ['--base', 'HEAD~1', '--limit', '100', '--json']).bucket).toBe('XL');
+    expect(run(repo, ['--base', 'HEAD~1', '--limit', '100', '--json']).overLimit).toBe(true);
+
+    write(repo, 'apps/web/src/more.ts', lines(99));
+    commit(repo);
+    const output = run(repo, ['--base', 'HEAD~2', '--limit', '100', '--json']);
+    expect(output.total).toBe(200);
+    expect(output.bucket).toBe('XL');
+    expect(output.overLimit).toBe(true);
+  });
+
+  it('uses the default 400-line budget boundaries', () => {
+    const repo = makeRepo();
+    write(repo, 'apps/web/src/feature.ts', lines(400));
+    commit(repo);
+
+    const atLimit = run(repo, ['--base', 'HEAD~1', '--json']);
+    expect(atLimit.total).toBe(400);
+    expect(atLimit.bucket).toBe('L');
+    expect(atLimit.overLimit).toBe(false);
+
+    write(repo, 'apps/web/src/more.ts', 'export const y1 = 1;\n');
+    commit(repo);
+    const overLimit = run(repo, ['--base', 'HEAD~2', '--json']);
+    expect(overLimit.total).toBe(401);
+    expect(overLimit.bucket).toBe('XL');
+    expect(overLimit.overLimit).toBe(true);
+  });
+
+  it('reports label metadata for the bucket', () => {
+    const repo = makeRepo();
+    write(repo, 'apps/web/src/tiny.ts', lines(5));
+    commit(repo);
+
+    const output = run(repo, ['--base', 'HEAD~1', '--json']);
+    expect(output.bucket).toBe('XS');
+    expect(output.label).toEqual({
+      name: 'size/XS',
+      color: '0e8a16',
+      description: '10 or fewer reviewable lines',
+    });
+
+    write(repo, 'apps/web/src/big.ts', lines(200));
+    commit(repo);
+    const xl = run(repo, ['--base', 'HEAD~2', '--limit', '100', '--json']);
+    expect(xl.label).toEqual({
+      name: 'size/XL',
+      color: 'b60205',
+      description: 'Over the 100-line review budget',
+    });
+  });
+
+  it('exits 2 when a flag is present without a value', () => {
+    const repo = makeRepo();
+    write(repo, 'apps/web/src/feature.ts', lines(3));
+    commit(repo);
+
+    expect(runStatus(repo, ['--base'])).toBe(2);
+    expect(runStatus(repo, ['--base', 'HEAD~1', '--limit'])).toBe(2);
+    expect(runStatus(repo, ['--base', 'HEAD~1', '--limit', '--json'])).toBe(2);
+  });
+
+  it.each(['abc', '10abc', '1.5', '0', '-1'])('exits 2 for --limit %s', (limit) => {
+    const repo = makeRepo();
+    write(repo, 'apps/web/src/feature.ts', lines(3));
+    commit(repo);
+
+    expect(runStatus(repo, ['--base', 'HEAD~1', '--limit', limit])).toBe(2);
   });
 });

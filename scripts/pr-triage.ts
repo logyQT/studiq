@@ -17,11 +17,20 @@
  *   bun scripts/pr-triage.ts --base main     # explicit base ref
  *   bun scripts/pr-triage.ts --limit 300     # override the 400-line budget
  *   bun scripts/pr-triage.ts --enforce       # exit 1 when over the budget
+ *
+ * `--base` and `--limit` require a value (`--base VALUE`, `--limit VALUE`);
+ * a missing value exits 2 instead of silently falling back to a default.
  */
 
 import { spawnSync } from 'node:child_process';
 
 type SizeBucket = 'XS' | 'S' | 'M' | 'L' | 'XL';
+
+interface TriageLabel {
+  name: string;
+  color: string;
+  description: string;
+}
 
 interface DiffEntry {
   path: string;
@@ -38,11 +47,20 @@ interface TriageResult {
   excludedLines: number;
   changedFiles: number;
   bucket: SizeBucket;
+  label: TriageLabel;
   overLimit: boolean;
 }
 
 const DEFAULT_BASE = 'origin/main';
 const DEFAULT_LIMIT = 400;
+
+const LABEL_COLORS: Record<SizeBucket, string> = {
+  XS: '0e8a16',
+  S: '1d76db',
+  M: 'fbca04',
+  L: 'd93f0b',
+  XL: 'b60205',
+};
 
 // Excluded from the budget, but their lines are reported separately. Markdown
 // is prose, not production code.
@@ -56,9 +74,33 @@ const EXCLUDED_PATHS = [
   /^\.agents\/skills\//,
 ];
 
+class OptionError extends Error {}
+
+// A flag without a value is an error, not an implicit default: `--limit`
+// followed by another flag or nothing at all is almost always a scripting bug.
 function option(name: string): string | undefined {
   const index = process.argv.indexOf(name);
-  return index === -1 ? undefined : process.argv[index + 1];
+  if (index === -1) return undefined;
+
+  const value = process.argv[index + 1];
+  if (value === undefined || value.startsWith('--')) {
+    throw new OptionError(`${name} requires a value`);
+  }
+
+  return value;
+}
+
+function parseLimit(raw: string): number {
+  if (!/^\d+$/.test(raw)) {
+    throw new OptionError('--limit must be a positive integer');
+  }
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new OptionError('--limit must be a positive integer');
+  }
+
+  return value;
 }
 
 function parseNumstat(output: string): DiffEntry[] {
@@ -92,11 +134,29 @@ function parseNumstat(output: string): DiffEntry[] {
 }
 
 function bucketFor(total: number, limit: number): SizeBucket {
+  // Check the budget first so an over-budget PR is never labelled below XL,
+  // even when the limit is tighter than the absolute S/M boundary.
+  if (total > limit) return 'XL';
   if (total <= 10) return 'XS';
   if (total <= 50) return 'S';
   if (total <= 200) return 'M';
-  if (total <= limit) return 'L';
-  return 'XL';
+  return 'L';
+}
+
+function labelFor(bucket: SizeBucket, limit: number): TriageLabel {
+  const descriptions: Record<SizeBucket, string> = {
+    XS: '10 or fewer reviewable lines',
+    S: 'Within the review budget',
+    M: 'Within the review budget',
+    L: `At the ${limit}-line review budget`,
+    XL: `Over the ${limit}-line review budget`,
+  };
+
+  return {
+    name: `size/${bucket}`,
+    color: LABEL_COLORS[bucket],
+    description: descriptions[bucket],
+  };
 }
 
 function triage(base: string, limit: number): TriageResult {
@@ -135,6 +195,7 @@ function triage(base: string, limit: number): TriageResult {
   }
 
   const overLimit = total > limit;
+  const bucket = bucketFor(total, limit);
 
   return {
     base,
@@ -144,7 +205,8 @@ function triage(base: string, limit: number): TriageResult {
     docLines,
     excludedLines,
     changedFiles: entries.length,
-    bucket: bucketFor(total, limit),
+    bucket,
+    label: labelFor(bucket, limit),
     overLimit,
   };
 }
@@ -152,12 +214,15 @@ function triage(base: string, limit: number): TriageResult {
 function main(): void {
   const json = process.argv.includes('--json');
   const enforce = process.argv.includes('--enforce');
-  const base = option('--base') ?? DEFAULT_BASE;
-  const rawLimit = option('--limit');
-  const limit = rawLimit === undefined ? DEFAULT_LIMIT : Number.parseInt(rawLimit, 10);
 
-  if (!Number.isInteger(limit) || limit <= 0) {
-    console.error('pr-triage: --limit must be a positive integer');
+  let base: string;
+  let limit: number;
+  try {
+    base = option('--base') ?? DEFAULT_BASE;
+    const rawLimit = option('--limit');
+    limit = rawLimit === undefined ? DEFAULT_LIMIT : parseLimit(rawLimit);
+  } catch (error) {
+    console.error(`pr-triage: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 2;
     return;
   }

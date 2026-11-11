@@ -96,7 +96,10 @@ reviews:
       # QA-suite integration branch. PRs are normally tagged [QA-SUITE] below
       # and skipped; keeping the branch listed makes the intent explicit.
       - 'qa-suite'
-    auto_incremental_review: true
+    # Manual reviews only: a later push must not silently start another review.
+    # `enabled: false` above disables automatic reviews; this disables
+    # re-reviews of a PR whose review was requested by hand.
+    auto_incremental_review: false
     # Substring, case-insensitive: a bare 'WIP' would also skip 'swipe' and
     # 'wipe' titles, so bracket it. Drafts are excluded already by `drafts`.
     ignore_title_keywords:

@@ -133,7 +133,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run test:watch` | `vitest` (watch mode) |
 | `bun run test:coverage` | `vitest run --coverage` |
 | `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
-| `bun run pr:size` | `scripts/pr-triage.ts` — reviewable line count vs `origin/main`, with tests, Markdown docs, generated files, the lockfile and vendored files excluded; `--json` for machines, `--limit` overrides the 400-line budget, `--enforce` exits 1 over it |
+| `bun run pr:size` | `scripts/pr-triage.ts` — reviewable line count (committed changes only) vs `origin/main`, with tests, Markdown docs, generated files, the lockfile and vendored files excluded; `--json` for machines, `--limit` overrides the 400-line budget, `--enforce` exits 1 over it |
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
@@ -596,7 +596,8 @@ When reviewing PRs (especially stacked PRs), follow this process to avoid false 
 
 - **Budget:** 400 reviewable lines (added + deleted). Tests, Markdown docs,
   generated files, `bun.lock` and vendored skills are excluded but still
-  reported. Run `bun run pr:size` before opening; `--limit 300` tests a tighter
+  reported. Run `bun run pr:size` before opening — it measures committed changes
+  only (`HEAD` vs the base ref), so commit first. `--limit 300` tests a tighter
   budget.
 - **Labels:** `pr-triage.yml` labels every PR `size/*` from its budgeted line
   count. The label is informational; it never triggers a review.
