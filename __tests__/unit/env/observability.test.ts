@@ -126,17 +126,17 @@ describe('applyStackEnv observability defaults', () => {
       stackId: 'stack-123',
     });
 
-    expect(process.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://localhost:4318');
+    expect(process.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://localhost:7318');
     expect(process.env.OTEL_SERVICE_NAME).toMatch(/^studiq-[a-z0-9-]+$/);
   });
 
   it('preserves an explicit service name and endpoint from .env.local', () => {
     process.env.OTEL_SERVICE_NAME = 'custom-service';
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://otel.example:4318';
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://otel.example:7318';
 
     lifecycle.applyStackEnv(stackEnv, { appUrl: 'http://localhost:3000', appEnv: 'test' });
 
     expect(process.env.OTEL_SERVICE_NAME).toBe('custom-service');
-    expect(process.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://otel.example:4318');
+    expect(process.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://otel.example:7318');
   });
 });

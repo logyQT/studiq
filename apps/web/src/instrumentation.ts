@@ -45,7 +45,7 @@ async function startTelemetry(logReady: () => Promise<void>): Promise<void> {
     await import('@opentelemetry/semantic-conventions');
 
   // Traces, metrics and logs all ship to the OTel Collector via OTLP/HTTP.
-  // The exporters read OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318).
+  // The exporters read OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:7318).
   const sdk = new NodeSDK({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? 'studiq',

@@ -25,16 +25,17 @@ fixed, so starting it from a worktree conflicts with or mutates the same stack.
 Check health and get the exact start command with `bun run env:doctor`.
 
 If `env:doctor` reports a partial stack (Grafana answers, Tempo/Loki/Prometheus
-do not), an older checkout's Compose project is probably holding the ports.
+do not), an older observability Compose project is probably holding the 7000-range
+host ports.
 Identify it with `docker compose ls`; if the name is ambiguous, inspect the
-container publishing the port (`docker ps --filter publish=3001`) and read its
+container publishing the port (`docker ps --filter publish=7001`) and read its
 `com.docker.compose.project` / `...project.working_dir` labels. Stop that
 project **from its own directory**, before starting the canonical stack from the
 primary checkout. `compose down` keeps named volumes unless you pass `-v`; do
 not pass `-v` unless you mean to delete its data.
 
 If the owning directory no longer exists, stop only the container holding the
-port (`docker ps --filter publish=3001` → `docker stop <container>`), then start
+port (`docker ps --filter publish=7001` → `docker stop <container>`), then start
 the canonical stack. Never use an unscoped `docker rm` or `pkill`.
 
 The primary checkout must contain `name: studiq-observability` in its
@@ -43,14 +44,14 @@ update that checkout first.
 
 | UI         | URL                                       |
 | ---------- | ----------------------------------------- |
-| Grafana    | http://localhost:3001 (`admin` / `admin`) |
-| Prometheus | http://localhost:9090                     |
-| Tempo API  | http://localhost:3200                     |
-| Loki       | http://localhost:3100                     |
-| OTLP       | http://localhost:4318                     |
+| Grafana    | http://localhost:7001 (`admin` / `admin`) |
+| Prometheus | http://localhost:7090                     |
+| Tempo API  | http://localhost:7200                     |
+| Loki       | http://localhost:7100                     |
+| OTLP       | http://localhost:7318                     |
 
 The Next.js app sends OTLP (traces + metrics + logs) to the collector on
-`http://localhost:4318`. `env:ensure` sets that endpoint and a per-checkout
+`http://localhost:7318`. `env:ensure` sets that endpoint and a per-checkout
 `OTEL_SERVICE_NAME` (`studiq-<branch>`) so one collector can tell worktrees apart;
 an explicit value in `.env.local` wins. Make sure `OTEL_SDK_DISABLED` is **not**
 `true` when you want telemetry. See the
@@ -68,7 +69,7 @@ The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc):
         "type": "local",
         "command": ["mcp-grafana", "-t", "stdio"],
         "environment": {
-          "GRAFANA_URL": "http://localhost:3001",
+          "GRAFANA_URL": "http://localhost:7001",
           "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}",
         },
       },
@@ -93,7 +94,7 @@ container reaches the host's Grafana):
 ```jsonc
 "command": [
   "docker", "run", "-i", "--rm", "--network", "host",
-  "-e", "GRAFANA_URL=http://localhost:3001",
+  "-e", "GRAFANA_URL=http://localhost:7001",
   "-e", "GRAFANA_SERVICE_ACCOUNT_TOKEN",
   "grafana/mcp-grafana", "-t", "stdio"
 ]

@@ -421,20 +421,20 @@ prints the current health, the primary path and this exact start command.
 
 This runs the **OTel Collector + Tempo (traces) + Loki (logs) + Prometheus
 (metrics) + Grafana** and is what `apps/web/src/instrumentation.ts` ships to by
-default (OTLP on `:4318`). No app env changes are needed — just don't set
+default (OTLP on `:7318`). No app env changes are needed — just don't set
 `OTEL_SDK_DISABLED=true`. `env:ensure` sets
 `OTEL_SERVICE_NAME=studiq-<branch>` and
-`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` for the app it starts, so
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318` for the app it starts, so
 traces from different worktrees are distinguishable in one collector; set
 either key in `.env.local` to override it.
 
 | UI                          | URL                   |
 | --------------------------- | --------------------- |
-| Grafana (`admin` / `admin`) | http://localhost:3001 |
-| Prometheus                  | http://localhost:9090 |
-| Loki                        | http://localhost:3100 |
-| Tempo                       | http://localhost:3200 |
-| OTLP intake                 | http://localhost:4318 |
+| Grafana (`admin` / `admin`) | http://localhost:7001 |
+| Prometheus                  | http://localhost:7090 |
+| Loki                        | http://localhost:7100 |
+| Tempo                       | http://localhost:7200 |
+| OTLP intake                 | http://localhost:7318 |
 
 To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace →
 Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).
@@ -445,14 +445,14 @@ when you mean to take telemetry down for the whole machine.
 > after a container/VM restart (unless you explicitly `docker compose stop`/`down`
 > them).
 >
-> If an older checkout created a different Compose project (for example
-> `qa-testing`) and holds the host ports, identify it first, then stop it from
-> the directory that owns it before starting the canonical stack:
+> If an older observability stack holds the new 7000-range host ports, identify
+> it first, then stop it from the directory that owns it before starting the
+> canonical stack:
 >
 > ```bash
 > docker compose ls
-> # the container publishing :3001 is the one to inspect:
-> docker ps --filter publish=3001
+> # the container publishing :7001 is the one to inspect:
+> docker ps --filter publish=7001
 > docker inspect <container> --format \
 >   '{{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "com.docker.compose.project.working_dir"}}'
 > # stop the legacy project from its owning directory BEFORE starting the canonical one:
@@ -467,7 +467,7 @@ when you mean to take telemetry down for the whole machine.
 > port — never reach for an unscoped `docker rm` or `pkill`:
 >
 > ```bash
-> docker ps --filter publish=3001
+> docker ps --filter publish=7001
 > docker stop <container>
 > # optional, scoped cleanup:
 > docker rm <container>
@@ -651,11 +651,11 @@ Supabase stack endpoints (API, DB, Studio, Mailpit) are assigned per project
 | Service                 | URL                                           |
 | ----------------------- | --------------------------------------------- |
 | App                     | `http://localhost:$APP_PORT` (default `3000`) |
-| Grafana (observability) | http://localhost:3001                         |
-| Prometheus              | http://localhost:9090                         |
-| Tempo (traces API)      | http://localhost:3200                         |
-| Loki (logs API)         | http://localhost:3100                         |
-| OTLP intake (collector) | http://localhost:4318                         |
+| Grafana (observability) | http://localhost:7001                         |
+| Prometheus              | http://localhost:7090                         |
+| Tempo (traces API)      | http://localhost:7200                         |
+| Loki (logs API)         | http://localhost:7100                         |
+| OTLP intake (collector) | http://localhost:7318                         |
 
 A second worktree/branch gets its own **Supabase** stack automatically; only
 `APP_PORT` needs a distinct value. Observability is different: it is **one stack

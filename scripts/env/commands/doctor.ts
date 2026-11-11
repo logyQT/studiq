@@ -4,6 +4,7 @@ import { readContract } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
+import { OBSERVABILITY_PROJECT, OBSERVABILITY_URLS } from '../lib/observability';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
 import {
@@ -39,7 +40,6 @@ export interface DoctorReport {
   lines: string[];
 }
 
-const OBSERVABILITY_PROJECT = 'studiq-observability';
 const OBSERVABILITY_PROBE_MS = 750;
 
 function orDash(value: string | number | null): string {
@@ -132,11 +132,11 @@ async function buildReport(): Promise<DoctorReport> {
   // create a second stack.
   const primary = primaryCheckoutPath();
   const [grafana, tempo, loki, prometheus, otlp] = await Promise.all([
-    probeHttp('http://localhost:3001/api/health', OBSERVABILITY_PROBE_MS),
-    probeHttp('http://localhost:3200/ready', OBSERVABILITY_PROBE_MS),
-    probeHttp('http://localhost:3100/ready', OBSERVABILITY_PROBE_MS),
-    probeHttp('http://localhost:9090/-/ready', OBSERVABILITY_PROBE_MS),
-    probeHttp('http://localhost:4318/', OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.grafanaHealth, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.tempoReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.lokiReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.prometheusReady, OBSERVABILITY_PROBE_MS),
+    probeHttp(OBSERVABILITY_URLS.otlp, OBSERVABILITY_PROBE_MS),
   ]);
   const primaryReady = composeFileNamesProject(
     join(primary, 'docker-compose.yml'),

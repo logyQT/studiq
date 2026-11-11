@@ -23,13 +23,13 @@ live dashboards, and correlated logs.
 ## Architecture
 
 ```
-StudiQ (Next.js)  ──OTLP/HTTP :4318──►  OTel Collector
+StudiQ (Next.js)  ──OTLP/HTTP :7318──►  OTel Collector
   traces + metrics + logs                 ├─ traces  → Tempo
                                           ├─ metrics → Prometheus (:8889 scrape)
                                           └─ logs    → Loki
                                                    │
                                                    ▼
-                                                 Grafana (:3001)
+                                                 Grafana (:7001)
                                                    ├─ datasources: Prometheus, Loki, Tempo
                                                    ├─ OTel dashboard + trace↔log correlation by trace_id
                                                    └─ mcp-grafana  ◄── OpenCode agent (traces+logs+metrics)
@@ -88,7 +88,7 @@ const sdk = new NodeSDK({
 ```
 
 All three exporters send to the same OTLP endpoint
-(`OTEL_EXPORTER_OTLP_ENDPOINT`, default `localhost:4318`). The
+(`OTEL_EXPORTER_OTLP_ENDPOINT`, default `localhost:7318`). The
 `OTEL_SDK_DISABLED=true` early-return is preserved — unit tests set it.
 
 ### 3. Custom metrics in `packages/server/src/lib/observability.ts`
@@ -153,16 +153,16 @@ in `withSupervision`'s `finally` (labels: `service.name`, `code.function`).
 
 | Service          | Image                                  | Ports                                                      |
 | ---------------- | -------------------------------------- | ---------------------------------------------------------- |
-| `otel-collector` | `otel/opentelemetry-collector-contrib` | `4317` (gRPC), `4318` (HTTP), `8889` (Prometheus exporter) |
-| `tempo`          | `grafana/tempo`                        | `3200` (HTTP API)                                          |
-| `loki`           | `grafana/loki`                         | `3100`                                                     |
-| `prometheus`     | `prom/prometheus`                      | `9090`                                                     |
-| `grafana`        | `grafana/grafana`                      | `3001`                                                     |
+| `otel-collector` | `otel/opentelemetry-collector-contrib` | `7317` (gRPC), `7318` (HTTP), `7889` (Prometheus exporter) |
+| `tempo`          | `grafana/tempo`                        | `7200` (HTTP API)                                          |
+| `loki`           | `grafana/loki`                         | `7100`                                                     |
+| `prometheus`     | `prom/prometheus`                      | `7090`                                                     |
+| `grafana`        | `grafana/grafana`                      | `7001`                                                     |
 
 Config files: `otel-collector-config.yml`, `tempo.yml`, `loki-config.yml`,
 `prometheus.yml`, `grafana/provisioning/{datasources,dashboards}/`.
 
-**Breaking change:** Port 4318 is now owned by the Collector instead of the
+**Breaking change:** Port 7318 is now owned by the Collector instead of the
 trace backend directly. Update `OTEL_EXPORTER_OTLP_ENDPOINT` if pointing at a
 non-localhost collector (e.g. `http://otel-collector:4318` in Docker networks).
 
@@ -231,9 +231,9 @@ appear automatically once the `MetricReader` is configured.
 | --------------------- | ---------------------------- | ----------------------------------------------------------------- |
 | **Collector**         | Docker Compose (local)       | Deploy separately (Docker/K8s) or use Grafana Cloud OTLP endpoint |
 | **Prometheus**        | Docker Compose (local)       | Managed (Grafana Cloud, AWS Managed Prometheus) or self-hosted    |
-| **Grafana**           | Docker Compose at :3001      | Managed or self-hosted                                            |
-| **Tempo**             | Docker Compose at :3200      | Same pattern, or Tempo on Grafana Cloud                           |
-| **Loki**              | Docker Compose at :3100      | Same pattern, or Loki on Grafana Cloud                            |
+| **Grafana**           | Docker Compose at :7001      | Managed or self-hosted                                            |
+| **Tempo**             | Docker Compose at :7200      | Same pattern, or Tempo on Grafana Cloud                           |
+| **Loki**              | Docker Compose at :7100      | Same pattern, or Loki on Grafana Cloud                            |
 | **OTEL_SDK_DISABLED** | Can disable to skip overhead | Always enabled                                                    |
 | **Alerting**          | Not needed                   | Prometheus Alertmanager or Grafana alerts                         |
 
@@ -248,7 +248,7 @@ the endpoint URL changes.
 
 ### Live dev monitoring
 
-`docker compose up` → open Grafana at `:3001` → see real-time request rate,
+`docker compose up` → open Grafana at `:7001` → see real-time request rate,
 latency, error rate while developing. Catches regressions before they ship.
 
 ### Debugging workflow (also the agent loop)
