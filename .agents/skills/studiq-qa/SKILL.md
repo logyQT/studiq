@@ -20,6 +20,7 @@ Two callers:
 
 ## Environment
 
+- In a fresh worktree, run `bun install --frozen-lockfile` once before anything else; dependencies are per checkout.
 - Bring up your own checkout with `bun run env:ensure --profile web` — idempotent: this checkout's Supabase stack + production build + serve. Agents never run `next dev`, `env:dev` or `dev:web`.
 - Confirm with `bun run env:status --json` (`stackId`, branch, endpoints, app health). `bun run env:ports --json` prints a free `APP_PORT`.
 - Logs: `bun run env:logs` (follow) or `--no-follow` for the last 100 lines.

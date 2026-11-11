@@ -44,6 +44,7 @@ Read title, body, linked issue, commit messages and labels. Review in a
 ```bash
 scripts/spin review/pr-<n>
 cd ../studiq-worktrees/review/pr-<n>
+bun install --frozen-lockfile   # fresh worktree: hooks/typecheck need deps
 git fetch origin pull/<n>/head
 git checkout -B review/pr-<n> FETCH_HEAD
 git log --oneline origin/main..HEAD
