@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
@@ -7,7 +6,13 @@ import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
 import { printJson, writeLine } from '../lib/output';
 import { readRegistry, registryPathExists } from '../lib/registry';
-import { REPO_ROOT, canon, currentBranchName, primaryCheckoutPath } from '../lib/repo';
+import {
+  REPO_ROOT,
+  canon,
+  composeFileNamesProject,
+  currentBranchName,
+  primaryCheckoutPath,
+} from '../lib/repo';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from '../lib/stack';
 import { normalizeLocalhost, stripDbCredentials, trimTrailingSlash } from '../lib/urls';
 import { readWebPid } from '../lib/web';
@@ -43,6 +48,16 @@ function orDash(value: string | number | null): string {
 
 function httpLabel(value: number): string {
   return value > 0 ? String(value) : '-';
+}
+
+/**
+ * `up`, `partial (n/total)` or `down` for the machine-wide stack.
+ *
+ * @public Used by the env unit tests, which load this module by a computed URL.
+ */
+export function observabilityLabel(upCount: number, total: number): string {
+  if (upCount >= total) return 'up';
+  return upCount > 0 ? `partial (${upCount}/${total})` : 'down';
 }
 
 function isWebHealthy(code: number): boolean {
@@ -123,10 +138,10 @@ async function buildReport(): Promise<DoctorReport> {
     probeHttp('http://localhost:9090/-/ready', OBSERVABILITY_PROBE_MS),
     probeHttp('http://localhost:4318/', OBSERVABILITY_PROBE_MS),
   ]);
-  const primaryCompose = join(primary, 'docker-compose.yml');
-  const primaryReady =
-    existsSync(primaryCompose) &&
-    readFileSync(primaryCompose, 'utf8').includes(`name: ${OBSERVABILITY_PROJECT}`);
+  const primaryReady = composeFileNamesProject(
+    join(primary, 'docker-compose.yml'),
+    OBSERVABILITY_PROJECT,
+  );
   const upCount = [grafana, tempo, loki, prometheus, otlp].filter((code) => code > 0).length;
   const observability: ObservabilityStatus = {
     up: upCount === 5,
@@ -223,11 +238,7 @@ async function buildReport(): Promise<DoctorReport> {
     '  selection  read-only commands never choose a runtime (env:ensure, phase 2)',
   );
 
-  const observabilityStatus = observability.up
-    ? 'up'
-    : upCount > 0
-      ? `partial (${upCount}/5)`
-      : 'down';
+  const observabilityStatus = observabilityLabel(upCount, 5);
 
   lines.push(
     '',

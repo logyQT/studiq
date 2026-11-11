@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
 
@@ -19,7 +22,14 @@ interface StackLifecycleModule {
 }
 
 const lifecycle = await loadEnvModule<StackLifecycleModule>('lib/stack-lifecycle.ts');
+const repo = await loadEnvModule<{
+  composeFileNamesProject(path: string, project: string): boolean;
+}>('lib/repo.ts');
+const doctor = await loadEnvModule<{
+  observabilityLabel(upCount: number, total: number): string;
+}>('commands/doctor.ts');
 const baseline = { ...process.env };
+const tempDirs: string[] = [];
 
 const stackEnv: StackEnv = {
   apiUrl: 'http://localhost:54321',
@@ -43,6 +53,7 @@ afterEach(() => {
     if (!(key in baseline)) delete process.env[key];
   }
   Object.assign(process.env, baseline);
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe('observability service name', () => {
@@ -58,6 +69,52 @@ describe('observability service name', () => {
       'studiq-stack-abcdef12-345',
     );
     expect(lifecycle.observabilityServiceName('', '')).toBe('studiq');
+  });
+});
+
+function composeFile(contents: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'studiq-compose-'));
+  tempDirs.push(dir);
+  const path = join(dir, 'docker-compose.yml');
+  writeFileSync(path, contents);
+  return path;
+}
+
+describe('composeFileNamesProject', () => {
+  it('accepts a real name line, quoted or not', () => {
+    expect(
+      repo.composeFileNamesProject(
+        composeFile('name: studiq-observability\n'),
+        'studiq-observability',
+      ),
+    ).toBe(true);
+    expect(
+      repo.composeFileNamesProject(
+        composeFile("name: 'studiq-observability'\n"),
+        'studiq-observability',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects comments, other projects and unreadable paths', () => {
+    expect(
+      repo.composeFileNamesProject(
+        composeFile('# name: studiq-observability\nname: studiq\n'),
+        'studiq-observability',
+      ),
+    ).toBe(false);
+    expect(
+      repo.composeFileNamesProject(composeFile('name: something-else\n'), 'studiq-observability'),
+    ).toBe(false);
+    expect(repo.composeFileNamesProject('/does/not/exist', 'studiq-observability')).toBe(false);
+  });
+});
+
+describe('observabilityLabel', () => {
+  it('distinguishes up, partial and down', () => {
+    expect(doctor.observabilityLabel(5, 5)).toBe('up');
+    expect(doctor.observabilityLabel(1, 5)).toBe('partial (1/5)');
+    expect(doctor.observabilityLabel(0, 5)).toBe('down');
   });
 });
 

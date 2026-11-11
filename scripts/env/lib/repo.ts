@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -64,16 +64,29 @@ export function currentBranchName(): string {
 export function primaryCheckoutPath(): string {
   const output = runGit(['worktree', 'list', '--porcelain', '-z']);
   if (!output) return REPO_ROOT;
-
-  // A genuinely bare primary checkout has no working tree (and no compose
-  // file). Prefer the first entry that can actually own the stack; fall back to
-  // this checkout so the printed command is at least runnable.
   for (const record of output.split('\0')) {
-    if (!record.startsWith('worktree ')) continue;
-    const path = canon(record.slice('worktree '.length));
-    if (existsSync(join(path, 'docker-compose.yml'))) return path;
+    if (record.startsWith('worktree ')) return canon(record.slice('worktree '.length));
   }
   return REPO_ROOT;
+}
+
+/**
+ * True when a compose file declares the project name on a non-comment line.
+ * Read errors (missing file, EACCES, a directory) are "not ready", never a
+ * diagnostic crash.
+ */
+export function composeFileNamesProject(path: string, project: string): boolean {
+  try {
+    const names = new Set([`name: ${project}`, `name: '${project}'`, `name: "${project}"`]);
+    return readFileSync(path, 'utf8')
+      .split(/\r?\n/)
+      .some((line) => {
+        const trimmed = line.trim();
+        return !trimmed.startsWith('#') && names.has(trimmed);
+      });
+  } catch {
+    return false;
+  }
 }
 
 /** Same normalisation as the legacy dev script's `sanitize_project_id`. */
