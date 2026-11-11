@@ -1,4 +1,4 @@
-# ADR-0012: Seed `.next/cache` into worktrees, and cap concurrent builds
+# ADR-0013: Seed `.next/cache` into worktrees, and cap concurrent builds
 
 ## Status
 
