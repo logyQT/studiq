@@ -32,7 +32,8 @@ id; the workflow is also named `pr-triage`, so the two match on purpose.
   `apps/admin`-only and QA-only PRs skip the jobs they cannot affect. `checks`
   is deliberately ungated (ADR-0008).
 - `checks` — `format:check`, `lint`, `env:check`, `env:scan`, `knip`,
-  `typecheck:all`.
+  `typecheck:all`, then the duplication gate (PR: new clones vs the base
+  branch; nightly: dashboard + trend report, see [Duplication](#duplication)).
 - `unit` / `integration` — gated on `scope.app`.
 - `qa-suite` — one runner per shard from `scope.qa_shards`.
 - `e2e` — always runs the chromium and firefox legs so the required names exist;
@@ -41,6 +42,46 @@ id; the workflow is also named `pr-triage`, so the two match on purpose.
 CI runs its own Supabase instance per job with the native runtime; see the
 `env:` block and the Supabase steps in `verify.yml`. It is not the local
 `bun dev:up` stack.
+
+## Duplication
+
+[jscpd](https://jscpd.dev) (pinned in `devDependencies`, configured by
+`.jscpd.json`) guards against copy/pasted code in `apps/web/src`, `packages` and
+`scripts`. `__tests__` and `apps/admin` are deliberately out of scope for now:
+their setup code repeats on purpose, and every other gate already treats admin
+as outside the product. Vendored shadcn components, the generated database
+types and the i18n message JSON are ignored in the config.
+
+The gate is **new clones only**, so it works on a codebase that already has
+duplication (measured at ~6% when this landed) without a baseline file to
+maintain:
+
+- **Pull request** — `--baseline-from-ref origin/<base> --fail-on-new-clones 0`.
+  jscpd scans the base branch's tree with the same config and fails only on
+  clones whose fingerprint is absent there. At most one duplicated block is
+  reported per new clone, with file, line range and token count.
+- **Nightly / manual dispatch** — `--dashboard --history --threshold 6.5`. The
+  dashboard prints health, size, duplication, complexity and dead code;
+  `--history` recomputes the last 30 commits' trend from git, so nothing is
+  stored. The Markdown report goes to the run summary and the whole report
+  directory is uploaded as the `jscpd-dashboard` artifact (90 days). Lower the
+  threshold as the number drops.
+- **Hooks** — `pre-commit` runs `bun run dup:changed` (working tree vs `HEAD`,
+  baseline kept in Git-ignored `.tmp/`); `pre-push` runs `bun run dup:base`
+  (the same comparison as CI). Hooks are local feedback; the CI step is the
+  actual gate, so `git push --no-verify` still gets caught.
+
+Locally, `bun run dup` scans the whole configured scope (console report),
+`bun run dup:changed` lists clones that touch uncommitted files, and
+`bun run dup:base` lists new clones vs `origin/main`. `--threshold` is
+deliberately **not** in `.jscpd.json`: it is whole-tree and would fail the
+changed/new-clone runs on the duplication that already exists.
+
+**SARIF / GitHub code scanning is deferred.** jscpd can emit SARIF
+(`--reporters sarif`) for the Security tab, but it reports _every_ clone: 467
+results today (3 `error`, 464 `warning`), which would open a large warning
+backlog. Revisit when there is appetite to triage it, most likely on the nightly
+run only.
 
 ## Repository variables
 
@@ -85,6 +126,7 @@ bun run env:check
 bun run env:scan
 bun run knip
 bun run typecheck:all
+bun run dup:base
 ```
 
 | CI job        | Local                                       |

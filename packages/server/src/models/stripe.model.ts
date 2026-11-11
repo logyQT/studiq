@@ -1,4 +1,5 @@
 import { registry, z } from '@studiq/server/lib/zod';
+import { OptionalLocaleSchema } from './locale.model';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 
 /**
@@ -13,11 +14,9 @@ export const CreateCheckoutSessionSchema = registry.register(
   z.object({
     planKey: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }),
     orgId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
-    locale: z.enum(['pl', 'en'], { error: ValidationErrorCode.INVALID_INPUT }).optional(),
+    locale: OptionalLocaleSchema,
   }),
 );
-
-export type CreateCheckoutSessionBody = z.infer<typeof CreateCheckoutSessionSchema>;
 
 /**
  * Body of the (mock) Stripe webhook: the fields of a
@@ -34,4 +33,3 @@ export const MockWebhookEventSchema = registry.register(
     org_id: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
   }),
 );
-export type MockWebhookEventInput = z.infer<typeof MockWebhookEventSchema>;
