@@ -27,17 +27,49 @@ fact lives in a fixture file or the spec that asserts the outcome.
 
 Two contracts stay separate on purpose:
 
-| Layer       | Lives in                                        | May contain                                                        | Must never contain                            |
-| ----------- | ----------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------- |
-| **Engine**  | `qa/fake-llm/{server,engine,stream,journal}.ts` | HTTP, SSE, schema, matcher, faults, journal                        | tool names, "flashcard", "deck", expectations |
-| **Fixture** | `qa/fake-llm/cases/<CASE>.json`                 | product tool names, argument payloads, prompt markers, card counts | assertions about the app                      |
-| **Spec**    | `__tests__/qa/AI/<CASE>.spec.ts`                | navigation, expected DOM, DB/usage assertions                      | model-side detail it does not need            |
+| Layer       | Lives in                                             | May contain                                                        | Must never contain                            |
+| ----------- | ---------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------- |
+| **Engine**  | `scripts/fake-llm/{server,engine,stream,journal}.ts` | HTTP, SSE, schema, matcher, faults, journal                        | tool names, "flashcard", "deck", expectations |
+| **Fixture** | `scripts/fake-llm/cases/<CASE>.json`                 | product tool names, argument payloads, prompt markers, card counts | assertions about the app                      |
+| **Spec**    | `__tests__/qa/AI/<CASE>.spec.ts`                     | navigation, expected DOM, DB/usage assertions                      | model-side detail it does not need            |
 
 ## 2. Engine contract
 
+### Stack
+
+Bun only, zero new dependencies. The repo already runs Bun as package manager, script runner and
+task runner, and `scripts/load-test/` is the precedent: a multi-file Bun program with its own
+README, npm scripts and a standalone process.
+
+| Piece              | Choice                                                                         |
+| ------------------ | ------------------------------------------------------------------------------ |
+| Server             | `Bun.serve` + a manual `ReadableStream`; `Bun.sleep(ms)` between chunks        |
+| Runtime            | `bun scripts/fake-llm/server.ts` — TypeScript executed directly, no build step |
+| Fixtures           | JSON via `Bun.file()` at boot, typed interfaces plus a boot-time assert        |
+| Conversation key   | `node:crypto` `createHash('sha256')`                                           |
+| Faults             | `controller.error()` for resets, early `close()` for EOF cases                 |
+| Spec client        | plain `fetch` — no SDK, so Playwright (Node) can import it                     |
+| Dependencies added | none                                                                           |
+| Env                | none: port comes from `--port` (default 4321), not `process.env`               |
+
+Three repo gates shaped this:
+
+- `scripts/check-env-inventory.ts` requires every static `process.env.*` read under `scripts/`
+  to be declared in `.env.schema`, so the server takes a CLI flag and declares nothing.
+- The root `tsconfig.json` includes `**/*.ts` and `bun run typecheck:all` runs `bun check` at the
+  root precisely because "it covers `scripts/`, which no workspace does" — so the engine is
+  type-checked with no extra config.
+- `knip` is a hard gate in both hooks and in the `checks` job, and it derives entries from
+  `package.json` scripts and from `verify.yml` command lines. Starting the server through a
+  `mock:llm` script (and referencing it in the workflow) keeps it an entry instead of an
+  unused-file finding — the same reason `scripts/e2e-seed.ts` needs no knip entry.
+
+It lives in `scripts/` rather than `qa/` because `qa/` is now the markdown case corpus — the
+TypeScript fixtures moved to `__tests__/qa/` in #948.
+
 |             |                                                                                    |
 | ----------- | ---------------------------------------------------------------------------------- |
-| Runtime     | `Bun.serve`, bound to `127.0.0.1` only, `FAKE_LLM_PORT` (default 4321)             |
+| Runtime     | `Bun.serve`, bound to `127.0.0.1` only, `--port` (default 4321)                    |
 | Inference   | `POST /v1/chat/completions` — streaming **and** non-streaming                      |
 | Ops         | `GET /v1/models`, `GET /healthz`                                                   |
 | Control     | `POST /__admin/reset`, `GET /__admin/journal`, `GET /__admin/journal/:id`          |
@@ -177,19 +209,24 @@ live beside the engine. Engine files use relative imports (like `packages/*`); s
 
 ## 7. Test and CI wiring
 
-|                  |                                                                                                                     |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Fixtures         | `qa/fake-llm/cases/*.json`, loaded at boot via `--fixtures`                                                         |
-| Specs            | `__tests__/qa/AI/{STU-47,STU-48}.spec.ts`, typed client `@qa/fake-llm/client`                                       |
-| Reset            | `POST /__admin/reset` in `beforeEach` — fixtures must be stateless across retries                                   |
-| CI               | dedicated **`ai-suite`** job, not a QA shard: its app process needs `LLM_BASE_URL`                                  |
-| App env          | `LLM_BASE_URL=http://127.0.0.1:4321/v1`, `LLM_API_KEY=qa-fake-key`, `LLM_MODEL_NAME=qa-fake`                        |
-| Order            | `/healthz` check **before** the app starts — otherwise the app retries 3× per call and fails with a generic message |
-| Workers          | `QA_WORKERS=2` (one Bun process serves the job)                                                                     |
-| Outside the gate | nightly, `continue-on-error`, key-gated real-provider smoke asserting the happy path only                           |
+|                  |                                                                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Fixtures         | `scripts/fake-llm/cases/*.json`, loaded at boot via `--fixtures`                                                            |
+| Specs            | `__tests__/qa/AI/{STU-47,STU-48}.spec.ts`, typed client `@qa/fake-llm/client` (thin `fetch` wrapper)                        |
+| Reset            | `POST /__admin/reset` in `beforeEach` — fixtures must be stateless across retries                                           |
+| CI               | dedicated **`ai-suite`** job, not a QA shard: its app process needs `LLM_BASE_URL`                                          |
+| Job env          | exported to `$GITHUB_ENV` like the other legs — there is no `apps/web/.env` any more; root `.env.local` is local-only       |
+| `LLM_*`          | `LLM_BASE_URL=http://127.0.0.1:4321/v1`, `LLM_API_KEY=qa-fake-key`, `LLM_MODEL_NAME=qa-fake` — all already in `.env.schema` |
+| App posture      | `APP_ENV=qa`, `PAYMENT_DRIVER=mock`, matching the QA shards                                                                 |
+| App start        | `next start -p 3010 --keepAliveTimeout 55000` — the flag every runner must pass when it skips `apps/web`'s `start` script   |
+| Order            | `/healthz` check **before** the app starts — otherwise the app retries 3× per call and fails with a generic message         |
+| Workers          | `QA_WORKERS=2` (one Bun process serves the job)                                                                             |
+| Outside the gate | nightly, `continue-on-error`, key-gated real-provider smoke asserting the happy path only                                   |
 
-`model.ts` reads `LLM_*` at import time, so the env must be set before `next start` — the same
-constraint the QA job already follows for Supabase.
+`model.ts` reads `LLM_*` at import time, so the env must be set before the build and before
+`next start` — the same constraint the QA job already follows for Supabase. Locally the four
+values go in root `.env.local`, and the app runs through `bun dev:up --prod` (`dev:build` +
+`dev:serve`), never `next dev`.
 
 ## 8. Decisions
 
@@ -213,10 +250,11 @@ constraint the QA job already follows for Supabase.
 ## 9. Scope
 
 ```
-qa/fake-llm/           server, engine, stream, journal, client  ≈ 400 LOC
-                       cases/*.json                            ~15 fixtures
-__tests__/qa/AI/       STU-47.spec.ts, STU-48.spec.ts           ≈ 150 LOC each
-.github/workflows/     ai-suite job
+scripts/fake-llm/     server, engine, stream, journal, client   ≈ 400 LOC
+                      cases/*.json                             ~15 fixtures
+__tests__/qa/AI/      STU-47.spec.ts, STU-48.spec.ts            ≈ 150 LOC each
+package.json          "mock:llm": "bun scripts/fake-llm/server.ts"
+.github/workflows/    ai-suite job
 ```
 
 **Phase 0 (½ day):** engine skeleton + one hard-coded fixture + the purity test.
