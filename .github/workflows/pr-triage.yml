@@ -1,0 +1,95 @@
+name: pr-triage
+
+# Advisory by default: labels every PR with its reviewable size.
+# Set the repository variable PR_SIZE_ENFORCE=true to turn an over-budget PR
+# into a failing check; `size:exception` bypasses it.
+#
+# The budget counts production/reviewable lines only. Tests, generated files,
+# the lockfile and vendored skills are excluded — see scripts/pr-triage.ts.
+# This workflow does not involve CodeRabbit: reviews are requested by hand.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-triage-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # Keep in step with verify.yml (the linter is canary-only).
+  BUN_VERSION: 1.4.4-canary.20261027.1
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+
+jobs:
+  pr-triage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      # Repository variable; 400 is the default budget.
+      LIMIT: ${{ vars.PR_SIZE_LIMIT || 400 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A shallow clone has no merge base for the three-dot diff.
+          fetch-depth: 0
+
+      - name: Install Bun (pinned canary)
+        run: npm install -g bun@${{ env.BUN_VERSION }}
+
+      - name: Measure reviewable size
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Repository variable, so it is untrusted text: fall back to the
+          # default instead of letting a typo fail the job.
+          if ! [[ "$LIMIT" =~ ^[0-9]+$ ]] || [[ "$LIMIT" =~ ^0+$ ]] || [ "${#LIMIT}" -gt 7 ]; then
+            echo "::warning::PR_SIZE_LIMIT must be a positive integer; using 400."
+            LIMIT=400
+          fi
+          git fetch --no-tags origin "$BASE_REF"
+          bun scripts/pr-triage.ts --base "origin/$BASE_REF" --limit "$LIMIT" --json > pr-size.json
+          cat pr-size.json
+          {
+            echo "### PR size"
+            echo
+            jq -r '"`\(.total)` / `\(.limit)` reviewable lines — **size/\(.bucket)** (tests: `\(.testLines)`, docs: `\(.docLines)`, generated/vendored: `\(.excludedLines)`)"' pr-size.json
+            echo
+            jq -r 'if .overLimit then "Over the review budget. Split the PR or add the `size:exception` label." else "Within the review budget." end' pr-size.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Label the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          label_name=$(jq -r .label.name pr-size.json)
+          label_color=$(jq -r .label.color pr-size.json)
+          label_description=$(jq -r .label.description pr-size.json)
+
+          gh label create "$label_name" --color "$label_color" \
+            --description "$label_description" --force >/dev/null
+          gh label create 'size:exception' --color e4e669 \
+            --description 'Allows an over-budget PR' --force >/dev/null
+
+          # A shrinking PR must not accumulate size/* labels.
+          for old in $(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' | grep '^size/' || true); do
+            [ "$old" = "$label_name" ] || gh pr edit "$PR_NUMBER" --remove-label "$old"
+          done
+          gh pr edit "$PR_NUMBER" --add-label "$label_name"
+
+      - name: Enforce the budget (optional)
+        # `size:exception` is the operator's bypass for a deliberately large PR.
+        if: vars.PR_SIZE_ENFORCE == 'true' && !contains(github.event.pull_request.labels.*.name, 'size:exception')
+        run: |
+          set -euo pipefail
+          if [ "$(jq -r .overLimit pr-size.json)" = 'true' ]; then
+            total=$(jq -r .total pr-size.json)
+            limit=$(jq -r .limit pr-size.json)
+            echo "::error::PR is over the review budget (${total}/${limit} reviewable lines); split it or add the \`size:exception\` label."
+            exit 1
+          fi

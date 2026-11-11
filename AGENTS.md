@@ -58,7 +58,7 @@ studiq/
 - **PR to main**: Open a PR from `feat/<short-name>` → `main`. Merge via GitHub (squash or merge commit — your call per PR).
 - **Delete after merge**: Always delete the feature branch after the PR is merged.
 - **Naming**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/` prefixes.
-- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch.
+- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch. The target budget is **400 reviewable lines** — tests, Markdown docs, generated files, the lockfile and vendored skills are excluded (see `scripts/pr-triage.ts`). `bun run pr:size` reports it locally; `pr-triage.yml` labels every PR `size/*`. Over-budget PRs need the `size:exception` label once `PR_SIZE_ENFORCE=true`.
 
 ```
 main ← feat/quiz-bank-ui (PR, merge, delete)
@@ -133,10 +133,13 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run test:watch` | `vitest` (watch mode) |
 | `bun run test:coverage` | `vitest run --coverage` |
 | `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
+| `bun run pr:size` | `scripts/pr-triage.ts` — reviewable line count (committed changes only) vs `origin/main`, with tests, Markdown docs, generated files, the lockfile and vendored files excluded; `--json` for machines, `--limit` overrides the 400-line budget, `--enforce` exits 1 over it |
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
 Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run knip` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `knip`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa). `knip` is a hard gate in both hooks (no advisory `|| true`): every suppression in `knip.ts` is policy with a reason, and `--treat-config-hints-as-errors` fails a stale entry — remove it in the same change that removes the finding it covers.
+
+CI workflow configuration, repository variables and required checks: **[docs/ci.md](docs/ci.md)**.
 
 ### Local dev (one command)
 
@@ -567,6 +570,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## Key Gotchas
 
+- **CodeRabbit is manual only** — `.coderabbit.yaml` has `auto_review.enabled: false` and no label trigger. Nothing reviews a PR automatically; request one with `@coderabbitai review`. The deterministic gates are `bun run lint`, `knip`, `typecheck:all` and `verify.yml`.
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
 - **`next start` keep-alive**: `apps/web`'s `start` script passes `--keepAliveTimeout 55000` (and every runner that calls `next start` directly must too). Node's 5 s default closes an idle keep-alive socket while Playwright's `APIRequestContext` — a raw `http.Agent({ keepAlive: true })` with no `ECONNRESET` retry — is still pooling it, so the next `page.request.*` after a UI phase dies with `read ECONNRESET`. Keep the value below Node's 60 s `headersTimeout`; Next exposes no flag to raise that one.
 - **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need a typecheck.
@@ -587,6 +591,21 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 ## Code Review Checklist
 
 When reviewing PRs (especially stacked PRs), follow this process to avoid false positives:
+
+### PR size and review routing
+
+- **Budget:** 400 reviewable lines (added + deleted). Tests, Markdown docs,
+  generated files, `bun.lock` and vendored skills are excluded but still
+  reported. Run `bun run pr:size` before opening — it measures committed changes
+  only (`HEAD` vs the base ref), so commit first. `--limit 300` tests a tighter
+  budget.
+- **Labels:** `pr-triage.yml` labels every PR `size/*` from its budgeted line
+  count. The label is informational; it never triggers a review.
+- **CodeRabbit is manual only:** no push and no label starts a review. Request
+  one with `@coderabbitai review` when a PR actually needs an LLM pass.
+- **Over budget:** prefer stacked PRs. Once `PR_SIZE_ENFORCE=true`, the check
+  fails unless the PR carries `size:exception`, and the PR body should explain
+  why. Repo variables and required checks: [docs/ci.md](docs/ci.md#repository-variables).
 
 ### Setup
 

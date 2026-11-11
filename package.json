@@ -62,6 +62,7 @@
     "lint:web": "bun run --filter @studiq/web lint",
     "typecheck:web": "bun run --filter @studiq/web typecheck",
     "test:qa": "varlock run --inject vars -- playwright test -c __tests__/qa/playwright.qa.config.ts",
+    "pr:size": "bun scripts/pr-triage.ts",
     "stripe:preflight": "varlock run --inject vars -- bun scripts/stripe-preflight.ts"
   },
   "dependencies": {
