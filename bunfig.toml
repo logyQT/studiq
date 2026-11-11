@@ -76,6 +76,25 @@ suspicious = "warn"
 "react/no-danger" = "error"
 "oxc/no-barrel-file" = ["error", { threshold = 0 }]
 
+# --- Tautology gates (AGENTS.md → Tautology Is Harmful) ---------------
+# Both ship off in Bun's defaults. A self-comparison is always true, and a test
+# with no assertion passes whether or not the code works; neither is a matter of
+# taste. `assert*` covers the test helpers that assert internally
+# (`assertSameRule`, `assertOneReplacement`, …) and `throwsUsage` is the one
+# helper that is not named `assert*`; without them the rule flags correct tests.
+"no-self-compare" = "error"
+"vitest/expect-expect" = [
+  "error",
+  { assertFunctionNames = [
+    "expect",
+    "expectTypeOf",
+    "assert",
+    "assertType",
+    "assert*",
+    "throwsUsage",
+  ] },
+]
+
 # --- Biome parity rules kept off for now ------------------------------
 "no-shadow-restricted-names" = "off"
 "no-empty" = "off"

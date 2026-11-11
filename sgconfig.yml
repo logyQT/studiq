@@ -1,0 +1,11 @@
+# ast-grep rules for the tautology gates (AGENTS.md → Tautology Is Harmful).
+#
+# CodeRabbit is manual-only, so these rules — not a reviewer prompt — are the
+# deterministic gate. `bun run review:static` runs this config; the rules are
+# also visible to `studiq-review` as findings it must cite, never re-derive.
+#
+# Rules live in `rules/`, one YAML file per shape. Add a rule only when the
+# finding is a tautology by construction (the same AST node compared with
+# itself), not when it is a style preference.
+ruleDirs:
+  - rules

@@ -1,0 +1,12 @@
+id: tautological-label
+language: Tsx
+severity: error
+message: >-
+  Label repeats the value it is labelling (often the placeholder), so it adds no
+  information. Keep one (AGENTS.md → Tautology Is Harmful).
+files:
+  - '**/*.tsx'
+rule:
+  any:
+    - pattern: <$COMPONENT label="$TEXT" placeholder="$TEXT" />
+    - pattern: <$COMPONENT placeholder="$TEXT" label="$TEXT" />

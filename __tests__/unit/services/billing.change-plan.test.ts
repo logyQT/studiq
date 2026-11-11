@@ -436,9 +436,8 @@ describe('BillingService.changePlan', () => {
 
 describe('changePlanIdempotencyKey', () => {
   it('is derived from the exact mutation identity, not the clock', () => {
-    expect(changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01')).toBe(
-      changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01'),
-    );
+    const key = changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01');
+    expect(changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01')).toBe(key);
     expect(changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01')).not.toBe(
       changePlanIdempotencyKey('sub_1', 'hub', 'price_hub', '2026-12-01'),
     );
