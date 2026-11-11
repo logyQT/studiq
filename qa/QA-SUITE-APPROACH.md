@@ -258,6 +258,7 @@ the integration branch until the suite is stable. WebKit remains blocked.
 - App: `http://localhost:3010`
 - Supabase: `http://localhost:54421`
 - Browser tiles: `9221–9228` (one per worker)
+- Observability: one machine-wide stack started from the primary checkout; no worker starts a per-worker copy.
 - Every worker uses the same app/DB; no worker runs its own Supabase stack.
 - Discord/manager sessions are not started.
 
@@ -272,8 +273,9 @@ Only add specs after 5/5 green runs. Then wire the QA Playwright project and the
 - Every case gets its own branch: `qa/<CASEID>`.
 - Every change reaches `qa-suite` through a PR.
 - PR title format: `[QA-SUITE] <CASEID> <short description>`.
-- `.coderabbit.yaml` ignores the `[QA-SUITE]` title keyword, so the QA-suite noise
-  does not consume a review; normal product PRs continue to be reviewed.
+- Normal PRs use the repo-owned `studiq-review` skill. CodeRabbit is
+  manual-only; `.coderabbit.yaml` ignores the `[QA-SUITE]` title keyword, so a
+  requested review does not spend attention on QA-suite noise.
 
 ## Dispatching a worker
 

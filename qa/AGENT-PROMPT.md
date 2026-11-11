@@ -106,7 +106,9 @@ TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs a
 
 A `grafana` MCP server is connected. Call it from Code Mode as `tools["grafana"].<name>(...)`, e.g. `tools["grafana"].search_tempo_traces({...})`. Backends: **Tempo** (traces, TraceQL), **Loki** (logs, LogQL), **Prometheus** (metrics, PromQL). It is read-only during QA — do not create/update dashboards, alerts, annotations, incidents or snapshots.
 
-**`<service>` below is the telemetry service name assigned to your session** (default `studiq`). In a parallel environment every filter must use **your** service name or you will read another agent's telemetry.
+**`<service>` below is the telemetry service name assigned to your session.** `env:ensure` sets it to `studiq-<branch>` for the app it starts; read `OTEL_SERVICE_NAME` from that process (or derive it from the branch) rather than assuming `studiq`. In a parallel environment every filter must use **your** service name or you will read another agent's telemetry.
+
+The observability backend is **one stack per machine**, not per worktree. Never start or stop `docker compose` from your worktree. If it is down, run `bun run env:doctor` and start it from the primary checkout it prints (on this VM `/workspaces/studiq`).
 
 Pinpoint workflow (run after a failing request appears in the browser):
 

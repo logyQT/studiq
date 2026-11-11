@@ -6,7 +6,7 @@ name: pr-triage
 #
 # The budget counts production/reviewable lines only. Tests, generated files,
 # the lockfile and vendored skills are excluded — see scripts/pr-triage.ts.
-# This workflow does not involve CodeRabbit: reviews are requested by hand.
+# This workflow does not start a review: it only labels (and optionally enforces) size.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
