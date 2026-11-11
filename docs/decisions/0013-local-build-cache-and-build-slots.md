@@ -97,7 +97,8 @@ assumption.
    be walking it. Retention is **`current` plus one retired predecessor**: the
    previous id is deleted by a _later_ snapshot write once it has been retired for
    longer than a 10-minute grace period (a target, not a measurement), and no
-   read lock is taken on the seed path (16 concurrent seeds must not serialize).
+   read lock is taken on the seed path (a burst of concurrent seeds must not
+   serialize).
    The cache root therefore holds at most two published snapshots — `current`
    and the retired predecessor — plus the staging copy of a write in progress: a
    worst case of three snapshot-sized trees, each bounded by decision 4's cap.
@@ -329,7 +330,7 @@ assumption.
      stack that appears mid-wait forbids the next admission, a stack that stops
      frees its reserve at the next tick, and a running build is never pre-empted.
    - **Backoff.** Re-check on a jittered exponential backoff, 2 s doubling to a
-     10 s cap; never a tight retry loop.
+     10 s cap; never a tight retry loop. Both figures are policy constants.
    - **Always one slot.** If no build is active and the admission test fails,
      admit exactly one build with a warning naming `free`, `MIN_FREE` and the
      reserve. A box under pressure can therefore always run the one build needed
@@ -358,7 +359,8 @@ assumption.
      every 30 s with state, active and waiting counts, elapsed and remaining.
      Wait-cap expiry exits 7 (`queued too long`) and names the holders;
      build-cap expiry kills the group, invalidates `.next` (decision 7) and
-     exits nonzero.
+     exits nonzero. The 60-minute, 30-minute wait, 30-minute build and 30-second
+     progress figures are policy constants, not measurements.
    - **Queue contract.** There is no FIFO guarantee: directory slots have no
      ordering, so no position is promised. Waiters register a directory under
      `<registry>/build-slots/waiters/` (same identity, reclaimed by the same
@@ -537,8 +539,9 @@ measurement that will not appear, and never refuses every build.
 ## Evidence
 
 All runs are sequential builds in isolated worktrees, identical env, with only
-**one** variable changed: the presence of a seeded `.next/cache`. Wall time is
-the whole `next build` process.
+**one** variable changed: the presence of a seeded `.next/cache` (§4 is the
+concurrency table; every other table is sequential). Wall time is the whole
+`next build` process.
 
 Env was held identical across arms, so every number below measures the ceiling
 for the seed: it is the saving when the snapshot identity (decision 3) matches
@@ -659,10 +662,11 @@ experiment, not a number.
 - **Snapshot correctness is not proven yet.** Whether a seeded build emits the
   same bytes as a cold one is unmeasured (Evidence, Not measured); this ADR is
   Proposed partly on that experiment, and a negative result withdraws the seed.
-- **Disk:** ~270 MB per fresh worktree (replaces what the cold build writes),
-  ~440 MB after 20 changes, and the 1024 MB cap binds only long same-version
-  growth past the measured 20-commit range (unmeasured); a published snapshot is
-  always pruned and cannot reach the cap through the un-pruned case. Two
+- **Disk:** ~270 MB of cache per fresh worktree (the whole-cache figure; it
+  replaces what the cold build writes), ~440 MB after 20 changes, and the 1024 MB
+  cap binds only long same-version growth past the measured 20-commit range
+  (unmeasured); a published snapshot is always pruned and cannot reach the cap
+  through the un-pruned case. Two
   published snapshots may coexist in the cache root — `current` plus one retired
   predecessor awaiting its grace period — plus the staging copy of a write in
   progress: at most three snapshot-sized trees, each bounded by the cap. A
@@ -767,7 +771,8 @@ experiment, not a number.
   invalidate `.next` on a failed exit.
 - `apps/web/package.json` and `apps/admin/package.json` — a `prebuild` script
   running `bun ../../scripts/env/build-guard.ts` (consumes a single-use grant;
-  fails fast with slot/queue state; `env build --no-lock` is the only opt-out).
+  fails fast with slot/queue state; `env build --no-lock` is the only admission
+  opt-out).
 - `scripts/check-build-entrypoints.ts` — wired into `lint`; fails a workflow or
   Playwright file that invokes `next build` or a bare `bun run build`.
 - `scripts/env/commands/status.ts` / `doctor.ts` — slots, waiter count, snapshot
@@ -800,8 +805,9 @@ required for CI to stay green. Neither rollback affects the build fingerprint:
 with no snapshot a build is simply cold, and with one exclusive lock a build is
 simply serialized. Removing the seed also removes this ADR's dependence on the
 unproven cold-vs-seeded equivalence (Evidence, Not measured). Both are reversible
-in the other direction by restoring the files, and neither changes what
-`next build` emits.
+in the other direction by restoring the files. Neither rollback changes the
+fingerprint or the `next build` invocation; removing the seed restores cold
+builds.
 
 ## Reproduce
 
