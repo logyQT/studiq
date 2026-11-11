@@ -30,8 +30,6 @@ interface Output {
   excludedLines: number;
   bucket: string;
   overLimit: boolean;
-  sensitive: boolean;
-  deepReview: boolean;
 }
 
 function git(cwd: string, ...args: string[]): string {
@@ -40,10 +38,6 @@ function git(cwd: string, ...args: string[]): string {
 
 function lines(count: number, prefix = 'export const x'): string {
   return Array.from({ length: count }, (_, index) => `${prefix}${index} = ${index};\n`).join('');
-}
-
-function markdownLines(count: number): string {
-  return Array.from({ length: count }, (_, index) => `- rule ${index}\n`).join('');
 }
 
 function write(repo: string, path: string, content: string): void {
@@ -72,11 +66,7 @@ function isOutput(value: unknown): value is Output {
     'bucket' in value &&
     typeof value.bucket === 'string' &&
     'overLimit' in value &&
-    typeof value.overLimit === 'boolean' &&
-    'sensitive' in value &&
-    typeof value.sensitive === 'boolean' &&
-    'deepReview' in value &&
-    typeof value.deepReview === 'boolean'
+    typeof value.overLimit === 'boolean'
   );
 }
 
@@ -143,7 +133,6 @@ describe('scripts/pr-triage', () => {
     expect(output.excludedLines).toBe(45);
     expect(output.bucket).toBe('S');
     expect(output.overLimit).toBe(false);
-    expect(output.deepReview).toBe(false);
   });
 
   it('does not count a pure rename as churn', () => {
@@ -154,32 +143,6 @@ describe('scripts/pr-triage', () => {
     commit(repo, 'rename');
 
     expect(run(repo, ['--base', 'HEAD~1', '--json']).total).toBe(0);
-  });
-
-  it('requests a deep review for a small PR touching a sensitive path', () => {
-    const repo = makeRepo();
-    write(repo, 'supabase/migrations/20260101000000_t.sql', 'create table x (id int);\n');
-    commit(repo);
-
-    const output = run(repo, ['--base', 'HEAD~1', '--json']);
-
-    expect(output.total).toBe(1);
-    expect(output.sensitive).toBe(true);
-    expect(output.deepReview).toBe(true);
-  });
-
-  it('still requests a deep review for the contract and decision docs', () => {
-    const repo = makeRepo();
-    write(repo, 'AGENTS.md', markdownLines(5));
-    write(repo, 'docs/decisions/0012-example.md', markdownLines(5));
-    commit(repo);
-
-    const output = run(repo, ['--base', 'HEAD~1', '--json']);
-
-    expect(output.total).toBe(0);
-    expect(output.docLines).toBe(10);
-    expect(output.sensitive).toBe(true);
-    expect(output.deepReview).toBe(true);
   });
 
   it('only fails an over-budget PR when --enforce is passed', () => {

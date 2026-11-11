@@ -37,21 +37,18 @@ BASE_BRANCH="main"
 
 # ── Parse flags ────────────────────────────────────────────────
 DRAFT=false
-FORCE_DEEP=false
 ACTION="create"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --draft|-d) DRAFT=true; shift ;;
-    --deep)     FORCE_DEEP=true; shift ;;
     --list|-l)  ACTION="list"; shift ;;
     --view|-v)  ACTION="view"; shift ;;
     --help|-h)
-      echo "Usage: scripts/pr [title] [--draft] [--deep] [--list] [--view]"
+      echo "Usage: scripts/pr [title] [--draft] [--list] [--view]"
       echo ""
       echo "  [title]      PR title (auto-generated from commits if omitted)"
       echo "  --draft, -d  Create as draft PR"
-      echo "  --deep       Force a CodeRabbit deep review (review:deep label)"
       echo "  --list, -l   List open PRs for this repo"
       echo "  --view, -v   Open PR page in browser"
       echo ""
@@ -113,12 +110,10 @@ else
   BODY=$(git log --pretty=format:"- %s (%h)" -5)
 fi
 
-# ── Triage: size + deep-review routing ─────────────────────────
-# Same script as .github/workflows/pr-triage.yml so the labels match what the
-# workflow would apply. `--deep` forces review:deep for a risky PR the size
-# heuristic would miss.
+# ── Triage: size label ─────────────────────────────────────────
+# Same script as .github/workflows/pr-triage.yml so the label matches what the
+# workflow would apply.
 SIZE_LABEL=""
-DEEP_LABEL=""
 LABEL_FLAGS=""
 LIMIT_LINES=400
 
@@ -133,11 +128,9 @@ if command -v jq >/dev/null 2>&1 \
   LIMIT_LINES=$(jq -r '.limit' <<<"$TRIAGE_JSON")
   printf "  ${CYAN}Size:${NC}   %s/%s reviewable lines (%s)\n" \
     "$TOTAL_LINES" "$LIMIT_LINES" "$SIZE_LABEL"
-  [ "$(jq -r '.deepReview' <<<"$TRIAGE_JSON")" = "true" ] && DEEP_LABEL="review:deep"
 else
-  warn "Could not compute PR size; skipping size/deep-review labels"
+  warn "Could not compute PR size; skipping the size label"
 fi
-$FORCE_DEEP && DEEP_LABEL="review:deep"
 
 ensure_label() {
   gh label create "$1" --color "$2" --description "$3" --force >/dev/null 2>&1 || true
@@ -152,10 +145,6 @@ if [ -n "$SIZE_LABEL" ]; then
     size/XL) ensure_label 'size/XL' 'b60205' "Over the ${LIMIT_LINES}-line review budget" ;;
   esac
   LABEL_FLAGS="$LABEL_FLAGS --label $SIZE_LABEL"
-fi
-if [ -n "$DEEP_LABEL" ]; then
-  ensure_label 'review:deep' '5319e7' 'Triggers an on-demand CodeRabbit review'
-  LABEL_FLAGS="$LABEL_FLAGS --label $DEEP_LABEL"
 fi
 
 # ── Create PR ──────────────────────────────────────────────────

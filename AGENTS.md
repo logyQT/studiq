@@ -58,7 +58,7 @@ studiq/
 - **PR to main**: Open a PR from `feat/<short-name>` → `main`. Merge via GitHub (squash or merge commit — your call per PR).
 - **Delete after merge**: Always delete the feature branch after the PR is merged.
 - **Naming**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/` prefixes.
-- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch. The target budget is **400 reviewable lines** — tests, Markdown docs, generated files, the lockfile and vendored skills are excluded (see `scripts/pr-triage.ts`). `bun run pr:size` reports it locally; `pr-triage.yml` labels every PR and adds `review:deep` when the PR is over budget or touches a sensitive path. Over-budget PRs need the `size:exception` label once `PR_SIZE_ENFORCE=true`.
+- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch. The target budget is **400 reviewable lines** — tests, Markdown docs, generated files, the lockfile and vendored skills are excluded (see `scripts/pr-triage.ts`). `bun run pr:size` reports it locally; `pr-triage.yml` labels every PR `size/*`. Over-budget PRs need the `size:exception` label once `PR_SIZE_ENFORCE=true`.
 
 ```
 main ← feat/quiz-bank-ui (PR, merge, delete)
@@ -237,7 +237,6 @@ These scripts help devs (and agents) work with feature branches and isolated wor
 | `scripts/spin <branch> --clean`   | Remove worktree and delete branch                                   |
 | `scripts/pr [title]`              | Create a PR from current branch via `gh` CLI                        |
 | `scripts/pr --draft`              | Create a draft PR                                                   |
-| `scripts/pr --deep`               | Create a PR and force a CodeRabbit deep review (`review:deep`)      |
 | `scripts/pr --list`               | List open PRs for this repo                                         |
 
 #### Multi-worktree workflow
@@ -552,7 +551,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## Key Gotchas
 
-- **CodeRabbit is on demand** — `.coderabbit.yaml` has `auto_review.enabled: false`. Do not wait for an automatic review: add `review:deep` (`scripts/pr --deep`) or comment `@coderabbitai review`. The deterministic gates are `bun run lint`, `knip`, `typecheck:all` and `verify.yml`.
+- **CodeRabbit is manual only** — `.coderabbit.yaml` has `auto_review.enabled: false` and no label trigger. Nothing reviews a PR automatically; request one with `@coderabbitai review`. The deterministic gates are `bun run lint`, `knip`, `typecheck:all` and `verify.yml`.
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
 - **`next start` keep-alive**: `apps/web`'s `start` script passes `--keepAliveTimeout 55000` (and every runner that calls `next start` directly must too). Node's 5 s default closes an idle keep-alive socket while Playwright's `APIRequestContext` — a raw `http.Agent({ keepAlive: true })` with no `ECONNRESET` retry — is still pooling it, so the next `page.request.*` after a UI phase dies with `read ECONNRESET`. Keep the value below Node's 60 s `headersTimeout`; Next exposes no flag to raise that one.
 - **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need a typecheck.
@@ -580,14 +579,10 @@ When reviewing PRs (especially stacked PRs), follow this process to avoid false 
   generated files, `bun.lock` and vendored skills are excluded but still
   reported. Run `bun run pr:size` before opening; `--limit 300` tests a tighter
   budget.
-- **Labels:** `pr-triage.yml` labels every PR `size/*` and adds `review:deep`
-  when it is over budget or touches a sensitive path (auth, tenancy, Supabase
-  clients, migrations/schemas, billing/Stripe, `apps/admin`, workflows, guard
-  scripts, `AGENTS.md`, decision records).
-- **CodeRabbit is on demand:** there is no automatic review on every push.
-  `review:deep` triggers it; `scripts/pr --deep` forces the label; a one-off
-  review is `@coderabbitai review`. A draft PR waits until it is marked ready
-  (`drafts: false`).
+- **Labels:** `pr-triage.yml` labels every PR `size/*` from its budgeted line
+  count. The label is informational; it never triggers a review.
+- **CodeRabbit is manual only:** no push and no label starts a review. Request
+  one with `@coderabbitai review` when a PR actually needs an LLM pass.
 - **Over budget:** prefer stacked PRs. Once `PR_SIZE_ENFORCE=true`, the check
   fails unless the PR carries `size:exception`, and the PR body should explain
   why. Repo variables and required checks: [docs/ci.md](docs/ci.md#repository-variables).

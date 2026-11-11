@@ -22,7 +22,7 @@ added to the ruleset.
 | File                               | Trigger                                                | Role                                                          |
 | ---------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- |
 | `.github/workflows/verify.yml`     | every PR, nightly 03:00 UTC, manual                    | The gate: `scope` router → `checks` + unit/integration/QA/e2e |
-| `.github/workflows/pr-triage.yml`  | PR opened/synchronize/reopened/ready/labeled/unlabeled | Size label + `review:deep`; optional budget gate              |
+| `.github/workflows/pr-triage.yml`  | PR opened/synchronize/reopened/ready/labeled/unlabeled | Size label; optional budget gate                              |
 | `.github/workflows/cache-warm.yml` | push to `main`, manual                                 | Refreshes bun/Playwright/Next caches; not a gate              |
 
 ### `verify.yml` jobs
@@ -91,9 +91,9 @@ bun run typecheck:all
 | `qa-suite`    | `bun run test:qa`                           |
 | `pr-triage`   | `bun run pr:size`                           |
 
-## Review routing
+## Review labels
 
-`pr-triage` labels every PR `size/*` and adds `review:deep` when it is over
-budget or touches a sensitive path. CodeRabbit does not auto-review; it runs
-when `review:deep` is present or a maintainer comments `@coderabbitai review`.
-Details: [ADR-0012](decisions/0012-review-routing-and-pr-size.md).
+`pr-triage` labels every PR `size/*` from its budgeted line count. CodeRabbit
+does not auto-review: neither a push nor a label starts one. A maintainer
+requests a review by commenting `@coderabbitai review`.
+Details: [ADR-0012](decisions/0012-pr-size-budget.md).

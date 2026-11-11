@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * PR triage: reviewable size, size bucket and deep-review routing.
+ * PR triage: reviewable size and size bucket.
  *
  * The size budget counts production/reviewable lines only. Test files, Markdown
  * docs, generated files, the lockfile and vendored agent skills are excluded —
@@ -39,15 +39,13 @@ interface TriageResult {
   changedFiles: number;
   bucket: SizeBucket;
   overLimit: boolean;
-  sensitive: boolean;
-  deepReview: boolean;
 }
 
 const DEFAULT_BASE = 'origin/main';
 const DEFAULT_LIMIT = 400;
 
 // Excluded from the budget, but their lines are reported separately. Markdown
-// is prose, not production code; contract and decision docs stay sensitive below.
+// is prose, not production code.
 const TEST_PATHS = [/^__tests__\//, /\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs|cjs)$/];
 const DOC_PATHS = [/\.mdx?$/];
 const EXCLUDED_PATHS = [
@@ -56,23 +54,6 @@ const EXCLUDED_PATHS = [
   /^skills-lock\.json$/,
   /^packages\/server\/src\/types\/database\.ts$/,
   /^\.agents\/skills\//,
-];
-
-// Small-but-risky PRs get a deep review even under the budget. These are the
-// places where an LLM reviewer earns its keep: auth, tenancy, money, CI.
-const SENSITIVE_PATHS = [
-  /^packages\/server\/src\/lib\/(?:authz|with-auth|supabase)/,
-  /^packages\/server\/src\/config\/routes\.config\.ts$/,
-  /^apps\/web\/src\/proxy\.ts$/,
-  /^supabase\/(?:migrations|schemas)\//,
-  /^packages\/server\/src\/services\/.*(?:stripe|billing|subscription)/,
-  /^apps\/admin\//,
-  /^\.github\/workflows\//,
-  /^scripts\/check-.*\.ts$/,
-  // Docs are excluded from the size budget, but the contract and decision
-  // records are exactly the prose that deserves a second pair of eyes.
-  /^AGENTS\.md$/,
-  /^docs\/decisions\//,
 ];
 
 function option(name: string): string | undefined {
@@ -154,9 +135,6 @@ function triage(base: string, limit: number): TriageResult {
   }
 
   const overLimit = total > limit;
-  const sensitive = entries.some((entry) =>
-    SENSITIVE_PATHS.some((pattern) => pattern.test(entry.path)),
-  );
 
   return {
     base,
@@ -168,8 +146,6 @@ function triage(base: string, limit: number): TriageResult {
     changedFiles: entries.length,
     bucket: bucketFor(total, limit),
     overLimit,
-    sensitive,
-    deepReview: overLimit || sensitive,
   };
 }
 
@@ -204,8 +180,6 @@ function main(): void {
     console.log(
       `  excluded: ${result.testLines} test, ${result.docLines} doc, ${result.excludedLines} generated/vendored line(s)`,
     );
-    console.log(`  sensitive paths: ${result.sensitive ? 'yes' : 'no'}`);
-    console.log(`  deep review: ${result.deepReview ? 'yes' : 'no'}`);
   }
 
   if (enforce && result.overLimit) {

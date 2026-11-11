@@ -1,12 +1,12 @@
 name: pr-triage
 
-# Advisory by default: labels every PR with its reviewable size and routes
-# large or risky PRs to an on-demand CodeRabbit review (`review:deep`).
+# Advisory by default: labels every PR with its reviewable size.
 # Set the repository variable PR_SIZE_ENFORCE=true to turn an over-budget PR
 # into a failing check; `size:exception` bypasses it.
 #
 # The budget counts production/reviewable lines only. Tests, generated files,
 # the lockfile and vendored skills are excluded — see scripts/pr-triage.ts.
+# This workflow does not involve CodeRabbit: reviews are requested by hand.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
@@ -54,8 +54,6 @@ jobs:
             jq -r '"`\(.total)` / `\(.limit)` reviewable lines — **size/\(.bucket)** (tests: `\(.testLines)`, docs: `\(.docLines)`, generated/vendored: `\(.excludedLines)`)"' pr-size.json
             echo
             jq -r 'if .overLimit then "Over the review budget. Split the PR or add the `size:exception` label." else "Within the review budget." end' pr-size.json
-            echo
-            jq -r 'if .sensitive then "Touches a sensitive path - deep review requested." else empty end' pr-size.json
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Label the PR
@@ -75,18 +73,12 @@ jobs:
           gh label create "size/$bucket" --color "$color" --force >/dev/null
           gh label create 'size:exception' --color e4e669 \
             --description 'Allows an over-budget PR' --force >/dev/null
-          gh label create 'review:deep' --color 5319e7 \
-            --description 'Triggers an on-demand CodeRabbit review' --force >/dev/null
 
           # A shrinking PR must not accumulate size/* labels.
           for old in $(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' | grep '^size/' || true); do
             [ "$old" = "size/$bucket" ] || gh pr edit "$PR_NUMBER" --remove-label "$old"
           done
           gh pr edit "$PR_NUMBER" --add-label "size/$bucket"
-
-          if [ "$(jq -r .deepReview pr-size.json)" = "true" ]; then
-            gh pr edit "$PR_NUMBER" --add-label 'review:deep'
-          fi
 
       - name: Enforce the budget (optional)
         # `size:exception` is the operator's bypass for a deliberately large PR.
