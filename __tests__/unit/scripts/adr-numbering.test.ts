@@ -1,13 +1,15 @@
 /**
- * The ADR numbering guard is a merge gate (`bun run lint` → `checks`), so it
- * must fail on the cases that actually happen (a duplicate, a skipped number, a
- * copied title) and stay quiet on the ones that do not (README, dotfiles,
- * anchors in links). Each test drives the real script against a temp directory.
+ * The ADR guard is a merge gate (`bun run lint` → `checks`), so it must fail on
+ * the cases that actually happen (a duplicate, a skipped number, a copied
+ * title, a renamed record that leaves links or `ADR-NNNN` citations dangling)
+ * and stay quiet on the ones that do not (README, dotfiles, anchors in links,
+ * untracked scratch files). Each test drives the real script against a temp
+ * git checkout.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -25,11 +27,26 @@ function adr(file: string, options: { title?: string; body?: string } = {}): [st
   return [file, `# ${options.title ?? `ADR-${number}: Record ${number}`}\n\n${options.body ?? ''}`];
 }
 
-function fixture(files: [string, string][]): string {
-  const dir = mkdtempSync(join(tmpdir(), 'studiq-adr-'));
-  dirs.push(dir);
-  for (const [name, content] of files) writeFileSync(join(dir, name), content);
-  return dir;
+/**
+ * A temp checkout: ADRs under `docs/decisions/`, plus optional reference files
+ * (`README.md`, `docs/**.md`, code) relative to the root. Everything is
+ * git-added, because the reference scan only looks at tracked files.
+ */
+function fixture(files: [string, string][], references: [string, string][] = []): string {
+  const root = mkdtempSync(join(tmpdir(), 'studiq-adr-'));
+  dirs.push(root);
+  mkdirSync(join(root, 'docs', 'decisions'), { recursive: true });
+  for (const [name, content] of files) {
+    writeFileSync(join(root, 'docs', 'decisions', name), content);
+  }
+  for (const [name, content] of references) {
+    const path = join(root, name);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content);
+  }
+  execFileSync('git', ['init', '-q'], { cwd: root, stdio: 'pipe' });
+  execFileSync('git', ['add', '-A'], { cwd: root, stdio: 'pipe' });
+  return root;
 }
 
 function run(dir: string): { status: number; output: string } {
@@ -79,6 +96,13 @@ describe('check-adr-numbering', () => {
     expect(result.output).toContain('gap: 0002 is missing');
   });
 
+  it('explains that a deleted mid-sequence record is restored or reused, not renumbered', () => {
+    const dir = fixture([adr('0001-a.md'), adr('0003-c.md')]);
+    const result = run(dir);
+    expect(result.output).toContain('restore it (or a tombstone) at that number');
+    expect(result.output).not.toContain('renumber the records after it to fill');
+  });
+
   it('collapses a longer gap into a range', () => {
     const dir = fixture([adr('0001-a.md'), adr('0005-e.md')]);
     expect(run(dir).output).toContain('0002–0004 are missing');
@@ -121,7 +145,7 @@ describe('check-adr-numbering', () => {
     expect(result.output).toContain(name);
   });
 
-  it('fails ADR-0000', () => {
+  it('fails a 0000 record', () => {
     const dir = fixture([adr('0000-zero.md'), adr('0001-a.md')]);
     expect(run(dir).output).toContain('numbering starts at 0001');
   });
@@ -145,6 +169,24 @@ describe('check-adr-numbering', () => {
     expect(result.output).toContain('links to 0009-old-name.md');
   });
 
+  it('fails a cross-directory link to a renamed ADR', () => {
+    const dir = fixture(
+      [adr('0001-a.md')],
+      [['README.md', 'See [ADR-0001](docs/decisions/0001-old-name.md).\n']],
+    );
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('README.md:1 links to docs/decisions/0001-old-name.md');
+  });
+
+  it('fails a relative cross-directory link from a plan', () => {
+    const dir = fixture(
+      [adr('0001-a.md')],
+      [['docs/plans/plan.md', 'See [ADR-0001](../decisions/0001-old-name.md).\n']],
+    );
+    expect(run(dir).output).toContain('links to ../decisions/0001-old-name.md');
+  });
+
   it('accepts links with anchors, ./ and valid targets', () => {
     const dir = fixture([
       adr('0001-a.md', { body: 'See [two](./0002-b.md#status) and [three](0003-c.md).\n' }),
@@ -154,15 +196,59 @@ describe('check-adr-numbering', () => {
     expect(run(dir).status).toBe(0);
   });
 
+  it('accepts cross-directory links that resolve', () => {
+    const dir = fixture(
+      [adr('0001-a.md')],
+      [
+        ['README.md', 'See [ADR-0001](docs/decisions/0001-a.md#status).\n'],
+        ['docs/plans/plan.md', 'See [ADR-0001](../decisions/0001-a.md).\n'],
+      ],
+    );
+    expect(run(dir).status).toBe(0);
+  });
+
+  it('fails an ADR-NNNN citation with no matching record', () => {
+    const dir = fixture([adr('0001-a.md')], [['README.md', 'The plan model lives in ADR-0007.\n']]);
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('README.md:1 cites ADR-0007, but no docs/decisions/0007-*.md');
+  });
+
+  it('fails a citation in a code comment, not just in Markdown', () => {
+    const dir = fixture(
+      [adr('0001-a.md')],
+      [['packages/server/src/thing.ts', '// Plans are defined by ADR-0007.\n']],
+    );
+    expect(run(dir).output).toContain('cites ADR-0007');
+  });
+
+  it('accepts citations of records that exist', () => {
+    const dir = fixture(
+      [adr('0001-a.md', { body: 'Superseded context: ADR-0001.\n' })],
+      [
+        ['README.md', 'See ADR-0001.\n'],
+        ['packages/server/src/thing.ts', '// See ADR-0001.\n'],
+      ],
+    );
+    expect(run(dir).status).toBe(0);
+  });
+
+  it('ignores untracked files in the reference scan', () => {
+    const dir = fixture([adr('0001-a.md')]);
+    writeFileSync(join(dir, 'scratch.md'), 'See ADR-0007 and [x](docs/decisions/0007-gone.md).\n');
+    expect(run(dir).status).toBe(0);
+  });
+
   it('fails a subdirectory', () => {
     const dir = fixture([adr('0001-a.md')]);
-    mkdirSync(join(dir, 'archive'));
+    mkdirSync(join(dir, 'docs', 'decisions', 'archive'));
     expect(run(dir).output).toContain('archive/');
   });
 
   it('fails loudly when the ADR directory is missing', () => {
-    const dir = join(mkdtempSync(join(tmpdir(), 'studiq-adr-')), 'absent');
-    const result = run(dir);
+    const root = mkdtempSync(join(tmpdir(), 'studiq-adr-'));
+    dirs.push(root);
+    const result = run(root);
     expect(result.status).toBe(1);
     expect(result.output).toContain('does not exist');
   });

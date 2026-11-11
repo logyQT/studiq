@@ -1,12 +1,14 @@
 #!/usr/bin/env bun
 /**
- * ADR numbering guard, wired into `bun run lint` (see package.json), which the
+ * ADR integrity guard, wired into `bun run lint` (see package.json), which the
  * `checks` job in `.github/workflows/verify.yml` runs on every PR. It costs one
- * `readdirSync` plus a `readFileSync` per ADR — no install, no Supabase.
+ * `readdirSync` per ADR directory plus one `readFileSync` per record and per
+ * git-tracked file — no install, no Supabase.
  *
- * An ADR number is a permanent identifier: docs, code comments and PRs link
- * records by filename (`0009-admin-is-internal-not-deployed.md`) and by number
- * (`ADR-0009`). So the directory has to stay a gapless, duplicate-free sequence:
+ * An ADR number is a permanent identifier: docs, code comments, tests and PRs
+ * cite records by filename (`0009-admin-is-internal-not-deployed.md`) and by
+ * number (`ADR-0009`). So the directory has to stay a gapless, duplicate-free
+ * sequence, and every reference has to keep resolving:
  *
  *   - `NNNN-kebab-case-slug.md`, exactly four digits, lowercase kebab-case slug.
  *     `7-foo.md`, `00007-foo.md`, `0007_Foo.md` and `0007.md` all fail.
@@ -15,24 +17,33 @@
  *   - Numbers are consecutive from `0001` — `0001, 0002, 0004` fails (`0003` is
  *     missing), and so does `0000`. Gaps are not "reserved for later": taking the
  *     next free number at the end is what keeps two concurrent PRs from both
- *     claiming the same one.
+ *     claiming the same one. Deleting a mid-sequence record is not a renumber:
+ *     restore it (or a tombstone) or reuse its number.
  *   - The title's number is the filename's number — a copied ADR that still says
  *     the old `# ADR-NNNN:` after being saved under a different number fails.
- *   - Intra-directory links resolve — a renumber/rename that forgets
- *     `[ADR-0009](0009-old-name.md)` leaves a dead link, so it fails too.
+ *   - Every link that resolves into this directory exists — a rename that only
+ *     updates the record itself leaves `[ADR-0009](0009-old-name.md)` dead in
+ *     another ADR, a `README.md` (`docs/decisions/0009-old-name.md`) or a plan
+ *     (`../decisions/0009-old-name.md`).
+ *   - Every `ADR-NNNN` citation in a git-tracked file matches a record. A
+ *     renamed file is not always linked; prose and code comments name the
+ *     record by number too, and deleting the highest number leaves no gap to
+ *     catch those.
  *
  * Not checked on purpose: the slug's wording (rename/reword freely, the number
- * is the identifier) and supersession semantics (`Status: Superseded by …` is a
- * judgement call, not a numbering fact).
+ * is the identifier), supersession semantics (`Status: Superseded by …` is a
+ * judgement call, not a numbering fact), and PR bodies (not in the checkout).
  *
  * Usage:
- *   bun scripts/check-adr-numbering.ts              # check docs/decisions
- *   bun scripts/check-adr-numbering.ts <directory>  # check another directory
+ *   bun scripts/check-adr-numbering.ts              # check this checkout
+ *   bun scripts/check-adr-numbering.ts <repo-root>  # check another checkout
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
-const DEFAULT_ADR_DIR = 'docs/decisions';
+const root = resolve(process.argv[2] ?? '.');
+const adrDir = join(root, 'docs', 'decisions');
 // Four digits, a dash, a lowercase kebab-case slug, `.md`. Lowercase-only also
 // keeps the set portable: `0003-Foo.md` and `0003-foo.md` cannot coexist on a
 // case-insensitive filesystem, so allowing either would make the guard depend
@@ -40,18 +51,28 @@ const DEFAULT_ADR_DIR = 'docs/decisions';
 const ADR_FILE_RE = /^(\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/;
 // The H1 convention is `# ADR-0009: Title`; the number must match the filename.
 const ADR_HEADING_RE = /^#\s+ADR-(\d{4})\b/;
-// ADR cross-links are relative targets in the same directory.
-const ADR_LINK_RE = /\]\(\s*<?(?:\.\/)?(\d{4}-[a-z0-9-]+\.md)(?:#[^)\s>]*)?>?\s*\)/g;
+// Any Markdown link target, e.g. `[x](0009-a.md#status)` or `[x](<a b.md>)`.
+const MARKDOWN_LINK_RE = /\]\(\s*<?([^)\s>]+)>?\s*\)/g;
+// A target that names an ADR file. It still has to resolve into `adrDir`.
+const ADR_TARGET_RE = /^\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+// A prose/code citation, e.g. `ADR-0009`.
+const ADR_CITATION_RE = /\bADR-(\d{4})\b/g;
 // Non-ADR files allowed alongside the records. Deliberately tiny: an index or
 // template belongs in a slug-suffixed ADR or outside this directory.
 const ALLOWED_NON_ADR_FILES = new Set(['README.md']);
+// Extensions that are never UTF-8 text; decoding them would only hide matches.
+const BINARY_EXT_RE =
+  /\.(?:png|jpe?g|gif|webp|avif|bmp|tiff|ico|woff2?|ttf|otf|eot|pdf|zip|gz|tgz|bz2|xz|tar|mp[34]|webm|ogg|wav|wasm|so|dylib|dll|exe|class|jar|lockb|sqlite3?)$/i;
 
-const adrDir = resolve(process.argv[2] ?? DEFAULT_ADR_DIR);
 const errors: string[] = [];
+const numbers = new Set<string>();
+let highest = 0;
+let adrDirReadable = false;
 
 let entries: { name: string; isDirectory: () => boolean }[];
 try {
   entries = readdirSync(adrDir, { withFileTypes: true });
+  adrDirReadable = true;
 } catch (error) {
   // A missing directory would silently disable the guard, so it fails loudly.
   const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
@@ -66,7 +87,6 @@ try {
 type Adr = { file: string; number: string };
 
 const adrs: Adr[] = [];
-const present = new Set<string>();
 
 for (const entry of entries) {
   const { name } = entry;
@@ -77,7 +97,6 @@ for (const entry of entries) {
     errors.push(`${name}/ — ADRs are flat files in this directory, not folders.`);
     continue;
   }
-  present.add(name);
 
   if (ALLOWED_NON_ADR_FILES.has(name)) continue;
 
@@ -92,6 +111,7 @@ for (const entry of entries) {
 // Duplicate numbers: two records claiming the same ADR-NNNN.
 const byNumber = new Map<string, Adr[]>();
 for (const adr of adrs) {
+  numbers.add(adr.number);
   const siblings = byNumber.get(adr.number);
   if (siblings) siblings.push(adr);
   else byNumber.set(adr.number, [adr]);
@@ -107,19 +127,21 @@ for (const [number, siblings] of [...byNumber].sort()) {
 }
 
 // Gaps: numbering is a sequence from 0001 with no holes and no 0000.
-const numbers = [...byNumber.keys()].map(Number).sort((a, b) => a - b);
-if (numbers.includes(0)) {
-  errors.push('ADR-0000 — numbering starts at 0001.');
+const sorted = [...byNumber.keys()].map(Number).sort((a, b) => a - b);
+if (sorted.includes(0)) {
+  errors.push('number 0000 is not an ADR number — numbering starts at 0001.');
 }
-const highest = numbers[numbers.length - 1] ?? 0;
-const used = new Set(numbers);
+highest = sorted[sorted.length - 1] ?? 0;
+const used = new Set(sorted);
 const missing: number[] = [];
 for (let n = 1; n <= highest; n += 1) {
   if (!used.has(n)) missing.push(n);
 }
 for (const range of toRanges(missing)) {
   errors.push(
-    `ADR numbering has a gap: ${range} ${range.includes('–') ? 'are' : 'is'} missing — numbers are consecutive, never reserved or skipped.`,
+    `ADR numbering has a gap: ${range} ${range.includes('–') ? 'are' : 'is'} missing — numbers are consecutive. ` +
+      'Deleted a record? restore it (or a tombstone) at that number, or reuse the number for the next ADR; ' +
+      'do not renumber the records after it.',
   );
 }
 
@@ -151,27 +173,107 @@ for (const adr of adrs) {
       `${adr.file} — title says ADR-${heading[1]} but the filename says ADR-${adr.number}.`,
     );
   }
+}
 
-  for (const link of content.matchAll(ADR_LINK_RE)) {
-    const target = link[1] as string;
-    if (!present.has(target)) {
-      errors.push(`${adr.file} — links to ${target}, which does not exist in this directory.`);
+// Links and numeric citations live outside the directory too: `README.md`,
+// `docs/**`, code comments and tests all name records. Scan the git index so an
+// untracked scratch file cannot trip the gate but a plain `git add` is enough
+// for a candidate to be seen before it is committed.
+if (adrDirReadable) {
+  for (const file of trackedFiles()) {
+    if (BINARY_EXT_RE.test(file)) continue;
+
+    const filePath = join(root, file);
+    let content: string;
+    try {
+      content = readFileSync(filePath, 'utf8');
+    } catch {
+      errors.push(`${file} — cannot be read for the ADR reference scan.`);
+      continue;
+    }
+
+    const lines = content.split('\n');
+    const inAdrDir = isInsideAdrDir(filePath);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index] ?? '';
+      // An ADR's H1 is validated above; it is a heading, not a citation.
+      if (!(inAdrDir && ADR_HEADING_RE.test(line.trim()))) {
+        for (const citation of line.matchAll(ADR_CITATION_RE)) {
+          const number = citation[1] as string;
+          if (!numbers.has(number)) {
+            errors.push(
+              `${file}:${index + 1} cites ADR-${number}, but no docs/decisions/${number}-*.md exists.`,
+            );
+          }
+        }
+      }
+
+      for (const link of line.matchAll(MARKDOWN_LINK_RE)) {
+        const href = link[1] as string;
+        // External URLs and in-page anchors are not records.
+        if (href.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
+        const path = href.split('#')[0]?.split('?')[0] ?? '';
+        if (!ADR_TARGET_RE.test(basename(path))) continue;
+
+        const target = path.startsWith('/')
+          ? resolve(root, `.${path}`)
+          : resolve(dirname(filePath), path);
+        // Only links that land in the ADR directory are this guard's business;
+        // a same-named file elsewhere in the repo is just a link.
+        if (!isInsideAdrDir(target)) continue;
+        if (!statSync(target, { throwIfNoEntry: false })?.isFile()) {
+          errors.push(
+            `${file}:${index + 1} links to ${href}, which does not exist in docs/decisions/.`,
+          );
+        }
+      }
     }
   }
 }
 
 if (errors.length > 0) {
-  console.error(`✖ ADR numbering check failed (${errors.length} problem(s) in ${adrDir}):\n`);
+  console.error(`✖ ADR numbering check failed (${errors.length} problem(s)):\n`);
   for (const error of errors) console.error(`  ${error}`);
   console.error('\nFixes:');
-  console.error('  - add the next number (highest + 1) and rename the file to NNNN-kebab-slug.md');
-  console.error('  - never reuse, renumber or skip a number; fix links to a renamed file');
+  console.error(
+    '  - new record? use the next number (highest + 1) and rename it NNNN-kebab-slug.md',
+  );
+  console.error(
+    '  - deleted a record mid-sequence? restore it (or a tombstone) at its number, or reuse that number',
+  );
+  console.error(
+    '  - renamed a record? update its links and every ADR-NNNN citation; do not renumber',
+  );
   console.error('  - keep the H1 in step: "# ADR-NNNN: <title>"');
   process.exit(1);
 }
 
-const span = numbers.length > 0 ? `0001–${String(highest).padStart(4, '0')}` : 'empty';
-console.log(`✓ ADR numbering is sequential and unique (${adrs.length} record(s), ${span}).`);
+const span = sorted.length > 0 ? `0001–${String(highest).padStart(4, '0')}` : 'empty';
+console.log(`✓ ADR numbering is sequential and unique (${adrs.length} record(s), ${span});`);
+console.log('  links and ADR-NNNN citations resolve.');
+
+/** Git-tracked files, relative to the repository root. */
+function trackedFiles(): string[] {
+  try {
+    return execFileSync('git', ['ls-files', '-z'], {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+    })
+      .split('\0')
+      .filter((file) => file.length > 0);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    errors.push(`cannot list git-tracked files for the ADR reference scan (${reason}).`);
+    return [];
+  }
+}
+
+/** Whether `target` resolves inside the ADR directory. */
+function isInsideAdrDir(target: string): boolean {
+  const rel = relative(adrDir, target);
+  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
+}
 
 /** Collapse numbers into human-readable ranges, e.g. [3,4,5,9] → 0003–0005, 0009. */
 function toRanges(values: number[]): string[] {
