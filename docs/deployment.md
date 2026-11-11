@@ -177,6 +177,9 @@ Put the returned `bpc_…` in `STRIPE_PORTAL_CONFIGURATION_ID`.
 
 #### Team access and secrets
 
+GitHub Actions repository variables, required checks and CI secrets are
+documented in [CI](ci.md).
+
 **Environment model**
 
 - **Development:** each developer runs `stripe login`, creates their own sandbox

@@ -133,6 +133,8 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 
 Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run knip` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `knip`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa). `knip` is a hard gate in both hooks (no advisory `|| true`): every suppression in `knip.ts` is policy with a reason, and `--treat-config-hints-as-errors` fails a stale entry — remove it in the same change that removes the finding it covers.
 
+CI workflow configuration, repository variables and required checks: **[docs/ci.md](docs/ci.md)**.
+
 ### Local dev (one command)
 
 ```bash
@@ -177,7 +179,7 @@ bun dev:down           # stop this checkout's web; `--all` also stops this branc
 - **Stack identity is the CLI's**: project root + current git branch + `SUPABASE_STACK` name (blank = the branch's default stack). `scratch`/test stacks can run side by side with `SUPABASE_STACK=test bun dev:up`.
 - **`bun run dev:status --json`** reports `stackId`, `branch`, endpoints and the app/web health. Bare `bunx supabase ...` targets the branch's **default** stack. For a named stack, set `SUPABASE_STACK` (e.g. `export SUPABASE_STACK=test`) and pass `--stack "$SUPABASE_STACK"` to `status`/`start`/`stop`/`logs`. Database commands do not accept `--stack`; read the URL first: `DB_URL=$(bunx supabase status --stack "$SUPABASE_STACK" --env | sed -n "s/^DB_URL='\(.*\)'$/\1/p")`, then use `--remote="$DB_URL" --yes`.
 - **Direct CLI commands** use the passthrough `bash scripts/dev supa <args…>`: it exports `APP_URL` (so `supabase/config.toml`'s `env(APP_URL)` resolves) and `exec`s `bunx supabase "$@"` from the repo root. Values come from the process environment or root `.env.local`; the CLI reads no directory-level values file.
-- **CI is deliberately non-stack**: `verify.yml` sets `SUPABASE_EXPERIMENTAL_STACK=0` and supplies the fixed `SUPABASE_*_PORT` variables. Runners are already isolated, so the experimental surface stays out of the gate. The shared QA stack likewise keeps its fixed ports until the dashboard can discover stack ports.
+- **CI uses the native runtime**: `verify.yml` sets `SUPABASE_RUNTIME=native` and `SUPABASE_EXPERIMENTAL_STACK=1`; the CLI assigns ports per runner and no Docker daemon is used. The shared QA stack keeps its fixed ports until the dashboard can discover stack ports.
 - **⚠️ TEMPORARY — auth e-mail template workaround (do not build on this)**: stack projects in CLI 3.x cannot serve `content_path` templates. `supabase/config.toml` therefore keeps `content_path = ""` (stack boots and uses Supabase defaults), and the non-stack CI QA job injects the branded files through `SUPABASE_AUTH_EMAIL_TEMPLATE_RECOVERY_CONTENT_PATH` / `...CONFIRMATION_CONTENT_PATH`. This keeps **one config gated by env**; it is a workaround, not a design. Remove it when stack can serve templates. If the stack backend is deprecated first, restore the literal `content_path` values and go back to manual local provisioning. `AUT-01/02/06/12` depend on the branded `/auth/callback?token_hash=…` links; locally run those against the non-stack/shared stack, not a stack-mode project.
 - **Ownership/build lock**: the runtime registry outside the repo (`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/studiq-dev-$(id -u)`, override `STUDIQ_DEV_REGISTRY`) now holds the cross-checkout build lock (and shared-mode ownership only). The directory must be private and owned by you: `scripts/dev` refuses a symlink or an existing directory it does not own, forces mode `700`, and ignores untrusted entries on read. `supabase stop --all`, `pkill` and unscoped `docker rm` are never used.
 - **`SUPABASE_SHARED=1`** runs the app/tests against a stack another checkout owns (shared QA). `dev:up` never starts Supabase, and `dev:down --all` / `dev:reset-db` / `supabase stop` are refused. `.env.local` (or the process environment) must provide `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`.
@@ -588,7 +590,7 @@ When reviewing PRs (especially stacked PRs), follow this process to avoid false 
   (`drafts: false`).
 - **Over budget:** prefer stacked PRs. Once `PR_SIZE_ENFORCE=true`, the check
   fails unless the PR carries `size:exception`, and the PR body should explain
-  why.
+  why. Repo variables and required checks: [docs/ci.md](docs/ci.md#repository-variables).
 
 ### Setup
 

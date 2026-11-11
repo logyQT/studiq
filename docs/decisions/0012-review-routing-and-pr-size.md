@@ -44,7 +44,7 @@ pass is most valuable on large or risky PRs, not on every 40-line change.
    variable `PR_SIZE_ENFORCE=true` is set; then the job fails unless the PR
    carries `size:exception`. The budget is the `PR_SIZE_LIMIT` repository
    variable (default 400, passed to the script as `--limit`; set it to 300 to
-   tighten without a code change).
+   tighten without a code change). Setup: [docs/ci.md](../ci.md#repository-variables).
 
 ### What counts
 
