@@ -33,6 +33,14 @@ project **from its own directory**, before starting the canonical stack from the
 primary checkout. `compose down` keeps named volumes unless you pass `-v`; do
 not pass `-v` unless you mean to delete its data.
 
+If the owning directory no longer exists, stop only the container holding the
+port (`docker ps --filter publish=3001` → `docker stop <container>`), then start
+the canonical stack. Never use an unscoped `docker rm` or `pkill`.
+
+The primary checkout must contain `name: studiq-observability` in its
+`docker-compose.yml`; if `env:doctor` says it predates the fixed project name,
+update that checkout first.
+
 | UI         | URL                                       |
 | ---------- | ----------------------------------------- |
 | Grafana    | http://localhost:3001 (`admin` / `admin`) |
@@ -137,7 +145,9 @@ Loki even when the failure is a handled `ServiceResult` rather than a thrown err
 
 ### 5. Read Prometheus metrics for the window
 
-Check the aggregate impact via the MCP (or the Grafana dashboard):
+Check the aggregate impact via the MCP (or the Grafana dashboard; its
+**Service** variable filters every panel by `service_name`, so pick your
+`studiq-<branch>`):
 
 - `studiq_http_server_request_total{http_status_code=~"5.."}` — error rate
 - `histogram_quantile(0.95, sum by (le) (rate(studiq_http_server_duration_milliseconds_bucket[5m])))` — p95 latency

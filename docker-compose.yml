@@ -1,6 +1,8 @@
 # ONE machine-wide observability stack, not one per checkout/worktree.
-# The fixed project name is deliberate: `docker compose` from a worktree must
-# target the same stack, never create a second copy under the directory name.
+# Start this file ONLY from the primary checkout so every worktree shares one
+# stack. Running it from a worktree would mutate/conflict with the same project
+# rather than create an isolated one; the fixed name prevents a second copy
+# under the directory name.
 name: studiq-observability
 
 services:

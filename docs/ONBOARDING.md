@@ -415,6 +415,10 @@ are fixed, so a second `docker compose up` from a worktree would conflict with
 or mutate the same stack rather than create an isolated one. `bun run env:doctor`
 prints the current health, the primary path and this exact start command.
 
+> The primary checkout must contain the fixed project name. If `env:doctor` says
+> its compose file predates it, update that checkout first
+> (`git -C /workspaces/studiq pull`) before starting the stack.
+
 This runs the **OTel Collector + Tempo (traces) + Loki (logs) + Prometheus
 (metrics) + Grafana** and is what `apps/web/src/instrumentation.ts` ships to by
 default (OTLP on `:4318`). No app env changes are needed — just don't set
@@ -458,6 +462,16 @@ when you mean to take telemetry down for the whole machine.
 >
 > `compose down` removes the legacy containers/networks but keeps named volumes
 > unless you pass `-v`; do not pass `-v` unless you mean to delete its data.
+>
+> If the owning directory no longer exists, stop only the container holding the
+> port — never reach for an unscoped `docker rm` or `pkill`:
+>
+> ```bash
+> docker ps --filter publish=3001
+> docker stop <container>
+> # optional, scoped cleanup:
+> docker rm <container>
+> ```
 
 ---
 

@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ParsedCommand } from '../atoms';
 import { readContract } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
@@ -14,6 +16,8 @@ export interface ObservabilityStatus {
   up: boolean;
   project: string;
   primary: string;
+  /** The primary checkout's compose file already carries the fixed project name. */
+  primaryReady: boolean;
   start: string;
   grafana: number;
   tempo: number;
@@ -35,6 +39,10 @@ const OBSERVABILITY_PROBE_MS = 750;
 
 function orDash(value: string | number | null): string {
   return value === null || value === '' ? '-' : String(value);
+}
+
+function httpLabel(value: number): string {
+  return value > 0 ? String(value) : '-';
 }
 
 function isWebHealthy(code: number): boolean {
@@ -115,10 +123,16 @@ async function buildReport(): Promise<DoctorReport> {
     probeHttp('http://localhost:9090/-/ready', OBSERVABILITY_PROBE_MS),
     probeHttp('http://localhost:4318/', OBSERVABILITY_PROBE_MS),
   ]);
+  const primaryCompose = join(primary, 'docker-compose.yml');
+  const primaryReady =
+    existsSync(primaryCompose) &&
+    readFileSync(primaryCompose, 'utf8').includes(`name: ${OBSERVABILITY_PROJECT}`);
+  const upCount = [grafana, tempo, loki, prometheus, otlp].filter((code) => code > 0).length;
   const observability: ObservabilityStatus = {
-    up: [grafana, tempo, loki, prometheus, otlp].every((code) => code > 0),
+    up: upCount === 5,
     project: OBSERVABILITY_PROJECT,
     primary,
+    primaryReady,
     start: `cd "${primary}" && docker compose up -d`,
     grafana,
     tempo,
@@ -211,8 +225,8 @@ async function buildReport(): Promise<DoctorReport> {
 
   const observabilityStatus = observability.up
     ? 'up'
-    : observability.grafana > 0
-      ? 'partial (Grafana only)'
+    : upCount > 0
+      ? `partial (${upCount}/5)`
       : 'down';
 
   lines.push(
@@ -220,19 +234,22 @@ async function buildReport(): Promise<DoctorReport> {
     '▸ Observability (machine-wide)',
     `  status     ${observabilityStatus}`,
     `  project    ${observability.project}`,
-    `  primary    ${observability.primary}`,
-    `  grafana    http=${orDash(observability.grafana)}`,
-    `  tempo      http=${orDash(observability.tempo)}`,
-    `  loki       http=${orDash(observability.loki)}`,
-    `  prometheus http=${orDash(observability.prometheus)}`,
-    `  otlp       http=${orDash(observability.otlp)}`,
+    `  primary    ${observability.primary}${observability.primaryReady ? '' : ' (compose file predates the fixed project name; update it first)'}`,
+    `  grafana    http=${httpLabel(observability.grafana)}`,
+    `  tempo      http=${httpLabel(observability.tempo)}`,
+    `  loki       http=${httpLabel(observability.loki)}`,
+    `  prometheus http=${httpLabel(observability.prometheus)}`,
+    `  otlp       http=${httpLabel(observability.otlp)}`,
     `  start      ${observability.start}`,
   );
   if (!observability.up) {
     lines.push('  note       start it once from the primary checkout, never from a worktree');
-    if (observability.grafana > 0) {
+    if (!observability.primaryReady) {
+      lines.push(`  note       update the primary first: git -C "${observability.primary}" pull`);
+    }
+    if (upCount > 0) {
       lines.push(
-        '  note       a partial/legacy stack is holding :3001; identify it with `docker compose ls` and stop that project from its own directory',
+        '  note       a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory',
       );
     }
   }

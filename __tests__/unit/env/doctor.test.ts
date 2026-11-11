@@ -78,6 +78,7 @@ describe('env:doctor', () => {
     const report = parseJsonObject(result.stdout);
     expect(report).toHaveProperty('observability.project', 'studiq-observability');
     expect(report).toHaveProperty('observability.primary');
+    expect(report).toHaveProperty('observability.primaryReady');
     expect(report).toHaveProperty('observability.up');
     expect(JSON.stringify(report.observability)).toContain('docker compose up -d');
   });
