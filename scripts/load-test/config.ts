@@ -92,7 +92,8 @@ function valuesValue(name: string): string | null {
 
 /**
  * `STUDIQ_STACK_MODE=1` marks the target as this checkout's own stack. It comes
- * from the process environment (exported by `scripts/dev`) or root `.env.local`.
+ * from the process environment (CI exports it in `verify.yml`) or root
+ * `.env.local`; the `env` tool does not persist it into the checkout.
  */
 function isStackMarked(): boolean {
   if (process.env.STUDIQ_STACK_MODE?.trim() === '1') return true;

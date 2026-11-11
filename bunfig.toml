@@ -4,6 +4,25 @@
 # Requires Bun >= 1.4.4 — see `engines.bun` in package.json and
 # `scripts/check-bun-version.ts`.
 
+# Supply-chain gate, half one of two: Bun refuses to *resolve* a package
+# version published less than this many seconds ago, for direct and transitive
+# dependencies alike. 604800 = 7 days.
+#
+# This is what covers `bun add`, `bun update` and a human running `bun install`
+# against an edited package.json — the paths where a malicious publish is most
+# likely to be picked up. Dependabot's `cooldown` (.github/dependabot.yml) only
+# filters the dependency it proposes and cannot see transitives, so it is not a
+# substitute. Half two is `scripts/check-lockfile-age.ts`, which checks the
+# lockfile diff on every PR (CI) and therefore also covers whatever the hosted
+# updater resolves.
+#
+# Only *new* resolution is gated: versions already in bun.lock are left alone,
+# and `bun install --frozen-lockfile` (CI) never resolves at all. Exempt a
+# package with `minimumReleaseAgeExcludes = ["pkg", "pkg@1.2.3"]` if a
+# deliberate early pin is ever needed.
+[install]
+minimumReleaseAge = 604800
+
 [fmt]
 printWidth = 100
 singleQuote = true

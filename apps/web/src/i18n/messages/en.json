@@ -1890,7 +1890,7 @@
     "answer": "Answer",
     "repetitions": "Repetitions",
     "learning_step": "Learning Step",
-    "lapse_count": "Lapses",
+    "mistakes": "Mistakes",
     "last_practiced": "Last Practiced",
     "next_review_line": "Next review: {date} · {interval}",
     "range_7d": "7 days",

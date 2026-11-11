@@ -14,6 +14,7 @@
 import { SQL } from 'bun';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SEED_TARGET_LOCKED } from '../env/lib/seed';
 import { createSqlAccountWriter, type AccountWriter } from '#test/helpers/tenant-seed';
 
 export { concurrencyFromEnv, createSeedDb, runBounded } from '#test/helpers/tenant-seed';
@@ -102,7 +103,10 @@ function sameEndpoint(a: string | undefined, b: string | undefined): boolean {
  *
  * The process environment wins over both; `.env.local` only fills keys it does
  * not already set. `qa/env.json` names the shared stack QA workers run against,
- * so it overrides the checkout's own `NEXT_PUBLIC_SUPABASE_URL`.
+ * so it overrides the checkout's own `NEXT_PUBLIC_SUPABASE_URL` — unless the
+ * child was started by `env:ensure` with a checked-stack target
+ * (`STUDIQ_SEED_LOCKED_TARGET=1`), in which case that endpoint is authoritative
+ * and must not be swapped for the shared stack.
  */
 export function loadEnv(root: string): void {
   const path = join(root, '.env.local');
@@ -114,6 +118,7 @@ export function loadEnv(root: string): void {
       if (!process.env[name]) process.env[name] = line.slice(i + 1).trim();
     }
   }
+  if (process.env[SEED_TARGET_LOCKED] === '1') return;
   // QA workers share one app and one Supabase even though each worktree keeps
   // its own `.env.local`; `qa/env.json` names the shared stack the spec runs
   // against.

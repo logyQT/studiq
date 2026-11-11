@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
 import { UsageError } from '../atoms';
 import { isSharedMode } from '../lib/contract';
+import { EnvFailure } from '../lib/exit';
 import { writeStderrLine } from '../lib/output';
-import { REPO_ROOT, canon } from '../lib/repo';
+import { assertOwnWorkdir } from '../lib/ownership';
+import { REPO_ROOT, isThisCheckout } from '../lib/repo';
 import { readStackList, type ListedStack } from '../lib/stack';
 
 const ALL_MESSAGE =
@@ -11,18 +12,23 @@ const ALL_MESSAGE =
   "on the machine. Stop only this checkout's stack with 'stack stop --stack <name>'.";
 
 const DESTROY_MESSAGE =
-  "env:supa: refusing 'destroy' — stack deletion is owned by 'env:recreate --yes' / " +
+  "env:supa: refusing 'destroy' — stack deletion is owned by " +
   "'env:down --all --yes' (with ownership checks).";
 
 const DB_RESET_MESSAGE =
-  "env:supa: refusing 'db reset' — database reset is owned by 'env:reset-db --yes' " +
-  "(this checkout's stack only).";
+  "env:supa: refusing 'db reset' — stop this checkout's stack with 'env:down --all' " +
+  'and reset it explicitly.';
 
 const NO_SCOPE_MESSAGE =
   "env:supa: 'stop'/'restart' requires --stack <name> or --stack-id <id>; " +
   'refusing an unscoped stack operation.';
 
-interface StopScope {
+const NO_START_ID_MESSAGE =
+  "env:supa: refusing to start: '--stack-id' requires a stack id owned by this checkout.";
+
+type GuardAction = 'start' | 'stop/restart';
+
+interface StackScope {
   kind: 'name' | 'id';
   value: string;
 }
@@ -107,8 +113,8 @@ function commandWords(args: string[]): string[] {
 }
 
 /** `--stack <name>`, `--stack=<name>`, `--stack-id <id>`, `--stack-id=<id>`. */
-function stopScopes(args: string[]): StopScope[] {
-  const scopes: StopScope[] = [];
+function stackScopes(args: string[]): StackScope[] {
+  const scopes: StackScope[] = [];
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     if (token === '--stack' || token === '--stack-id') {
@@ -128,42 +134,52 @@ function stopScopes(args: string[]): StopScope[] {
   return scopes.filter((scope) => scope.value.length > 0);
 }
 
-function ownedByProblem(scope: StopScope, stack: ListedStack): string {
-  const owner = stack.projectRoot || 'another checkout';
-  return `env:supa: refusing to stop/restart stack '${scope.value}': it is owned by ${owner}, not this checkout (${REPO_ROOT}).`;
+/** `--stack-id` was supplied, even without a usable value. */
+function hasStackIdFlag(args: string[]): boolean {
+  return args.some((token) => token === '--stack-id' || token.startsWith('--stack-id='));
 }
 
-function notFoundProblem(scope: StopScope): string {
+function ownedByProblem(action: GuardAction, scope: StackScope, stack: ListedStack): string {
+  const owner = stack.projectRoot || 'another checkout';
+  return `env:supa: refusing to ${action} stack '${scope.value}': it is owned by ${owner}, not this checkout (${REPO_ROOT}).`;
+}
+
+function notFoundProblem(action: GuardAction, scope: StackScope): string {
   const label = scope.kind === 'id' ? 'stack-id' : 'stack';
-  return `env:supa: refusing to stop/restart ${label} '${scope.value}': not found in 'supabase stack list'.`;
+  return `env:supa: refusing to ${action} ${label} '${scope.value}': not found in 'supabase stack list'.`;
 }
 
 /**
  * Resolve the requested scope against `stack list`, accepting a name or a
  * unique id prefix (matching what `supabase stack` accepts). Ownership is
- * checked here, before anything is spawned to stop.
+ * checked here, before anything is spawned to start or stop.
  */
-function resolveScope(stacks: ListedStack[], scope: StopScope): ScopeResolution {
+function resolveScope(
+  stacks: ListedStack[],
+  scope: StackScope,
+  action: GuardAction,
+): ScopeResolution {
   if (scope.kind === 'id') {
     const matches = stacks.filter(
       (stack) => stack.id === scope.value || stack.id.startsWith(scope.value),
     );
-    if (matches.length === 0) return { problem: notFoundProblem(scope) };
+    if (matches.length === 0) return { problem: notFoundProblem(action, scope) };
     if (matches.length > 1) {
       return {
-        problem: `env:supa: refusing to stop stack-id '${scope.value}': the prefix matches more than one stack.`,
+        problem: `env:supa: refusing to ${action} stack-id '${scope.value}': the prefix matches more than one stack.`,
       };
     }
     const stack = matches[0] as ListedStack;
-    if (canon(stack.projectRoot) !== REPO_ROOT) return { problem: ownedByProblem(scope, stack) };
+    if (!isThisCheckout(stack.projectRoot))
+      return { problem: ownedByProblem(action, scope, stack) };
     return { stack };
   }
 
   const matches = stacks.filter((stack) => stack.name === scope.value);
-  if (matches.length === 0) return { problem: notFoundProblem(scope) };
-  const ours = matches.filter((stack) => canon(stack.projectRoot) === REPO_ROOT);
+  if (matches.length === 0) return { problem: notFoundProblem(action, scope) };
+  const ours = matches.filter((stack) => isThisCheckout(stack.projectRoot));
   if (ours.length === 0) {
-    return { problem: ownedByProblem(scope, matches[0] as ListedStack) };
+    return { problem: ownedByProblem(action, scope, matches[0] as ListedStack) };
   }
   return { stack: ours[0] as ListedStack };
 }
@@ -189,9 +205,25 @@ function cliWorkdir(args: string[]): string | null {
   return workdir;
 }
 
-/** The CLI resolves `--workdir` relative to our cwd, which is the repo root. */
-function isThisCheckout(workdir: string): boolean {
-  return canon(workdir.startsWith('/') ? workdir : resolve(REPO_ROOT, workdir)) === REPO_ROOT;
+/**
+ * The CLI resolves a stack against `--workdir`/`SUPABASE_WORKDIR`, so approving
+ * a local stack name or id is not enough: a foreign workdir could make a start,
+ * stop or restart operate on another checkout's stack. Only this checkout's
+ * root is accepted, through the shared ownership guard.
+ */
+function foreignWorkdirProblem(args: string[]): string | null {
+  const workdir = cliWorkdir(args);
+  if (workdir === null) return null;
+  if (workdir === '') {
+    return `env:supa: refusing to run: --workdir '(empty)' is not this checkout (${REPO_ROOT}).`;
+  }
+  try {
+    assertOwnWorkdir(workdir, '--workdir');
+  } catch (error) {
+    if (error instanceof EnvFailure) return `env:supa: ${error.message}`;
+    throw error;
+  }
+  return null;
 }
 
 /** `--all` and pflag's `--all=true|false` all mean "every stack". */
@@ -205,20 +237,25 @@ function hasAllFlag(args: string[]): boolean {
  * `supabase/config.toml` resolves `APP_URL` through `env()`, and the CLI reads
  * no values file, so the resolved APP_URL is exported around the child. Values
  * come from the process environment (varlock injects them for this command);
- * an explicit APP_URL wins, exactly like `scripts/dev supa`.
+ * an explicit APP_URL wins, exactly like `env:supa`.
  *
  * Guards (the command position is parsed apart from flag values, so
  * `start --stack stop` is not mistaken for a stop): under `SUPABASE_SHARED=1`
- * every stop-capable or destructive form is refused outright (this checkout
- * does not own the stack); otherwise `stop --all` / `restart --all` and a
- * `destroy` command are refused, `db reset` is refused, a `stop`/`restart`
- * must name a stack this checkout owns, and a `--workdir`/`SUPABASE_WORKDIR`
- * must resolve to this checkout's root (otherwise the CLI could operate on
- * another checkout's stack). Usage errors exit 2, ownership conflicts 6, and
- * nothing is ever written to stdout.
+ * every start-capable, stop-capable or destructive form is refused outright
+ * (this checkout does not own the stack); otherwise `stop --all` /
+ * `restart --all` and a `destroy` command are refused, `db reset` is refused,
+ * a start or `stop`/`restart` that selects a stack by `--stack-id` must name a
+ * stack this checkout owns, `stop`/`restart` must be scoped at all, and a
+ * `--workdir`/`SUPABASE_WORKDIR` must resolve to this checkout's root
+ * (otherwise the CLI could operate on another checkout's stack). Usage errors
+ * exit 2, ownership conflicts 6, and nothing is ever written to stdout.
  */
 export function runSupa(args: string[]): number {
   const [first, second] = commandWords(args);
+  // `db start` starts the stack's database (a mutation of the same stack), so
+  // it shares the start classification for both shared mode and workdir checks.
+  const dbStart = first === 'db' && second === 'start';
+  const startCapable = first === 'start' || (first === 'stack' && second === 'start') || dbStart;
   const stopCapable =
     first === 'stop' ||
     first === 'restart' ||
@@ -227,7 +264,8 @@ export function runSupa(args: string[]): number {
   const dbReset = first === 'db' && second === 'reset';
   const migrationDown = first === 'migration' && second === 'down';
   const storageRm = first === 'storage' && second === 'rm';
-  const mutating = stopCapable || destroyCommand || dbReset || migrationDown || storageRm;
+  const mutating =
+    startCapable || stopCapable || destroyCommand || dbReset || migrationDown || storageRm;
 
   // Shared mode disables every stack mutation: refuse before any ownership
   // check or spawn, naming the checkout that actually owns the stack. The flag
@@ -256,19 +294,42 @@ export function runSupa(args: string[]): number {
   if (destroyCommand) return reject(DESTROY_MESSAGE, 2);
   if (dbReset) return reject(DB_RESET_MESSAGE, 2);
 
-  if (stopCapable) {
-    // The CLI resolves a stack against `--workdir`, so approving a local stack
-    // name is not enough: a foreign workdir could make it stop another
-    // checkout's stack. Only this checkout's root is accepted.
-    const workdir = cliWorkdir(args);
-    if (workdir !== null && (workdir === '' || !isThisCheckout(workdir))) {
+  // A foreign workdir can redirect a start as easily as a stop, so the
+  // ownership check runs before the stack scope is resolved for either.
+  if (startCapable || stopCapable) {
+    const workdirProblem = foreignWorkdirProblem(args);
+    if (workdirProblem) return reject(workdirProblem, 6);
+  }
+
+  if (startCapable && hasStackIdFlag(args)) {
+    // Unlike `--stack <name>` (whose identity includes this checkout's project
+    // root), `--stack-id` can select any stack on the machine, including one
+    // whose service-version lock start would rewrite. A supplied id must
+    // therefore resolve to a stack this checkout owns before anything spawns.
+    const scopes = stackScopes(args).filter((scope) => scope.kind === 'id');
+    if (scopes.length === 0) return reject(NO_START_ID_MESSAGE, 6);
+
+    const stacks = readStackList();
+    if (!stacks) {
       return reject(
-        `env:supa: refusing to stop/restart: --workdir '${workdir || '(empty)'}' is not this checkout (${REPO_ROOT}).`,
+        `env:supa: refusing to start stack-id '${scopes[0]?.value ?? ''}': cannot read 'supabase stack list' to verify ownership.`,
         6,
       );
     }
 
-    const scopes = stopScopes(args);
+    const targets = new Set<string>();
+    for (const scope of scopes) {
+      const resolution = resolveScope(stacks, scope, 'start');
+      if ('problem' in resolution) return reject(resolution.problem, 6);
+      targets.add(resolution.stack.id);
+    }
+    if (targets.size > 1) {
+      return reject("env:supa: refusing to start: '--stack-id' names different stacks.", 6);
+    }
+  }
+
+  if (stopCapable) {
+    const scopes = stackScopes(args);
     if (scopes.length === 0) return reject(NO_SCOPE_MESSAGE, 2);
 
     const stacks = readStackList();
@@ -281,7 +342,7 @@ export function runSupa(args: string[]): number {
 
     const targets = new Set<string>();
     for (const scope of scopes) {
-      const resolution = resolveScope(stacks, scope);
+      const resolution = resolveScope(stacks, scope, 'stop/restart');
       if ('problem' in resolution) return reject(resolution.problem, 6);
       targets.add(resolution.stack.id);
     }

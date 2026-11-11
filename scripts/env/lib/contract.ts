@@ -37,7 +37,14 @@ export function isSharedMode(): boolean {
   throw new UsageError(`SUPABASE_SHARED must be 0 or 1 (got '${raw}').`);
 }
 
-function readStackName(): string | null {
+/**
+ * A validated `SUPABASE_STACK`, or null when it is unset.
+ *
+ * Exported for callers that act on a stack (`down --all`): the lenient reader
+ * below folds a malformed value to null so reporting and plain teardown keep
+ * working, and acting on that null would silently target the default stack.
+ */
+export function readStackName(): string | null {
   const raw = process.env.SUPABASE_STACK ?? '';
   if (!raw) return null;
   if (!/^[A-Za-z0-9_-]+$/.test(raw)) {
@@ -48,64 +55,9 @@ function readStackName(): string | null {
   return raw;
 }
 
-/** Ports a scheme implies when the URL omits an explicit one. */
-const DEFAULT_PORTS: Record<string, number> = { 'http:': 80, 'https:': 443 };
-
-/** Four decimal octets, first one 127 — the whole IPv4 loopback block. */
-const LOOPBACK_IPV4 = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-
-/** True for 127.0.0.0/8 only: a strict 127. prefix plus valid octets. */
-function isLoopbackIPv4(hostname: string): boolean {
-  const octets = LOOPBACK_IPV4.exec(hostname);
-  if (!octets) return false;
-  return octets.slice(1).every((octet) => Number(octet) <= 255);
-}
-
-/**
- * A URL this checkout serves itself: `APP_PORT` and `APP_URL` then describe the
- * same listener, so the two must agree. Hosted/proxied URLs are exempt.
- */
-function isLoopbackUrl(url: string): boolean {
-  let hostname: string;
-  try {
-    hostname = new URL(url).hostname;
-  } catch {
-    return false;
-  }
-  return (
-    hostname === 'localhost' ||
-    isLoopbackIPv4(hostname) ||
-    hostname === '::1' ||
-    hostname === '[::1]'
-  );
-}
-
-/** The URL's effective port (explicit, else the scheme default), or null. */
-function effectivePort(url: string): number | null {
-  const fromUrl = urlPort(url);
-  if (fromUrl) return parsePort(fromUrl, 'APP_URL');
-  try {
-    return DEFAULT_PORTS[new URL(url).protocol] ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function readAppPort(appUrl: string): number {
   const explicit = process.env.APP_PORT ?? '';
-  if (!appUrl) return explicit ? parsePort(explicit, 'APP_PORT') : 3000;
-
-  const effective = isLoopbackUrl(appUrl) ? effectivePort(appUrl) : null;
-  if (explicit) {
-    const port = parsePort(explicit, 'APP_PORT');
-    if (effective !== null && port !== effective) {
-      throw new UsageError(
-        `APP_PORT=${port} does not match loopback APP_URL ${appUrl} (port ${effective}); set one or align them`,
-      );
-    }
-    return port;
-  }
-  if (effective !== null) return effective;
+  if (explicit) return parsePort(explicit, 'APP_PORT');
   const fromUrl = urlPort(appUrl);
   if (fromUrl) return parsePort(fromUrl, 'APP_URL');
   return 3000;
@@ -124,4 +76,85 @@ export function readContract(): Contract {
     appPort,
     appUrl,
   };
+}
+
+/**
+ * `down` and the read-only `status` snapshot must remain usable even with an
+ * invalid contract: teardown/reporting must not be blocked by a bad `APP_PORT`
+ * or `APP_URL`. The fallback is the same documented default, never a value file.
+ */
+export function readContractLenient(): Contract {
+  // Each field falls back independently: a bad APP_PORT/APP_URL must not throw
+  // away a valid SUPABASE_STACK, or `down --all` could target the wrong stack.
+  let shared = false;
+  try {
+    shared = isSharedMode();
+  } catch {
+    shared = false;
+  }
+
+  let stackName: string | null = null;
+  try {
+    stackName = readStackName();
+  } catch {
+    stackName = null;
+  }
+
+  const rawAppUrl = process.env.APP_URL ?? '';
+  let appPort = 3000;
+  let explicitValid = false;
+  const explicitPort = process.env.APP_PORT ?? '';
+  if (explicitPort) {
+    try {
+      appPort = parsePort(explicitPort, 'APP_PORT');
+      explicitValid = true;
+    } catch {
+      appPort = 3000;
+    }
+  }
+  if (!explicitValid) {
+    const fromUrl = urlPort(rawAppUrl);
+    if (fromUrl) {
+      try {
+        appPort = parsePort(fromUrl, 'APP_URL');
+      } catch {
+        appPort = 3000;
+      }
+    }
+  }
+
+  let appUrl = `http://localhost:${appPort}`;
+  if (rawAppUrl) {
+    try {
+      appUrl = trimTrailingSlash(new URL(rawAppUrl).toString());
+    } catch {
+      /* invalid APP_URL: keep the derived default */
+    }
+  }
+
+  return {
+    shared,
+    sharedOwner: process.env.SUPABASE_SHARED_OWNER || null,
+    stackName,
+    appPort,
+    appUrl,
+  };
+}
+
+/**
+ * Apply an app-port lease to the contract. Only a **derived** URL follows the
+ * port: an explicit `APP_URL` — loopback included — names the operator's
+ * listener and is preserved, exactly like the `env:supa` APP_URL precedence.
+ */
+export function contractWithPort(contract: Contract, appPort: number): Contract {
+  if (process.env.APP_URL) return { ...contract, appPort };
+  let appUrl: string;
+  try {
+    const parsed = new URL(contract.appUrl);
+    parsed.port = String(appPort);
+    appUrl = parsed.toString().replace(/\/$/, '');
+  } catch {
+    appUrl = `http://localhost:${appPort}`;
+  }
+  return { ...contract, appPort, appUrl };
 }

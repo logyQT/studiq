@@ -1871,7 +1871,7 @@
     "answer": "Odpowiedź",
     "repetitions": "Powtórzenia",
     "learning_step": "Krok nauki",
-    "lapse_count": "Pomyłki",
+    "mistakes": "Pomyłki",
     "last_practiced": "Ostatnia powtórka",
     "next_review_line": "Następna powtórka: {date} · {interval}",
     "range_7d": "7 dni",

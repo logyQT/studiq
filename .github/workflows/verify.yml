@@ -285,6 +285,21 @@ jobs:
           key: bun-ubuntu-24.04-${{ hashFiles('bun.lock') }}
           restore-keys: |
             bun-ubuntu-24.04-
+      # Supply-chain gate, run before anything is installed: refuse a lockfile
+      # change that adds a package version published less than 7 days ago — the
+      # same window `[install] minimumReleaseAge` in bunfig.toml applies to local
+      # resolution. Dependabot's `cooldown` only filters the dependency it
+      # proposes, and a re-resolution can still drag a fresh transitive in, so the
+      # lockfile diff is checked here instead. `--depth=1` is enough: only the
+      # base commit's tree is needed, not its history (contrast the `scope` job).
+      - name: Lockfile release age
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          bun run check:lockfile-age FETCH_HEAD
       - run: bun install --frozen-lockfile
       - name: Save bun install cache
         # A cache write is an optimisation: never let it fail the gate.
@@ -597,7 +612,7 @@ jobs:
 
       - name: Upload report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qa-suite-report-${{ matrix.shard.name }}
           path: |

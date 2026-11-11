@@ -333,7 +333,7 @@ function assertLocalEndpoint(name: string, raw: string | undefined): URL {
  * exists**: the REST client (`NEXT_PUBLIC_SUPABASE_URL`, which `qa/env.json`
  * may have overridden) and the optional SQL writer (`SUPABASE_DB_URL`) that
  * creates auth users directly. Both endpoints must be loopback and off the
- * shared QA ports; `scripts/dev` exports the pair from one `supabase status`
+ * shared QA ports; `env:ensure` exports the pair from one `supabase status`
  * call, so a passing pair normally belongs to this checkout's own stack (and a
  * `qa/env.json` target drops a DB URL that points elsewhere, see `loadEnv`).
  */
