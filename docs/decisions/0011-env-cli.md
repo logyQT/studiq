@@ -48,8 +48,8 @@ decision and is not built. The tool leases only the app port and discovers stack
    a local app-port lease are allowed; `down --all` and `reset-db` exit 6; `supa` forwards only read-only forms.
 10. **Profile changes are not reconciled.** `env:down --all` then `env:ensure`; a capability superset satisfies a narrower
     profile. `apps/admin` HMR/serve is deferred (spec §14, §13).
-11. **Caching is out of scope** (#1078, now settled by [ADR-0013](0013-local-build-cache-and-build-slots.md));
-    CI keeps calling `supabase stack` directly; its build steps use `env build --no-slot` (ADR-0013, decision 6).
+11. **Caching is out of scope** (#1078, now settled by [ADR-0014](0014-local-build-cache-and-build-slots.md));
+    CI keeps calling `supabase stack` directly; its build steps use `env build --no-slot` (ADR-0014, decision 6).
 12. **Native platform matrix:** Linux x86_64/arm64 and macOS arm64 only; elsewhere exit 3 with the Docker opt-in; Windows is WSL2-only; CI stays Linux native.
 
 ## Evidence
