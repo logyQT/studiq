@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { sidebarLink, t } from '#test/e2e/utils';
 import { expect, test } from '#test/e2e/fixtures/tenant';
+import { json } from '#test/helpers/json';
 
 const newBankButton = t('QuestionBankManagement.new_bank');
 const editBankTitle = t('QuestionBankManagement.edit_bank');
@@ -60,6 +61,19 @@ async function createBank(page: Page, name: string) {
 
   await expect(dialog).not.toBeVisible();
   await expect(visibleBankName(page, name)).toBeVisible({ timeout: 10_000 });
+}
+
+/**
+ * The id of a bank the list is showing, read from the endpoint the screen itself calls —
+ * so a menu item can be asserted to open *that* card rather than any uuid-shaped detail.
+ */
+async function bankIdByName(page: Page, name: string): Promise<string> {
+  const res = await page.request.get(`/api/v1/questions/banks?q=${encodeURIComponent(name)}`);
+  expect(res.status(), await res.text()).toBe(200);
+  const body = await json<{ data: { items: Array<{ id: string; name: string }> } }>(res);
+  const bank = body.data.items.find((item) => item.name === name);
+  expect(bank, `bank "${name}" missing from the list response`).toBeTruthy();
+  return bank!.id;
 }
 
 async function deleteBankFromMenu(page: Page, name: string) {
@@ -138,12 +152,15 @@ test.describe('Question bank card menu', () => {
   test('Manage from the card menu opens the bank detail, not bulk selection', async ({ page }) => {
     const name = uniqueBankName('Manage');
     await createBank(page, name);
+    const bankId = await bankIdByName(page, name);
 
     await openCardMenu(page, name);
     await page.getByRole('menuitem', { name: manageItem }).click();
 
     // Regression #1127: „Zarządzaj” used to enter selection mode and stay on the list.
-    await expect(page).toHaveURL(/\/edu\/questions\/[0-9a-f-]{36}/);
+    // Pin the clicked card — a uuid-shaped URL alone would pass for any other bank.
+    await expect(page).toHaveURL(new RegExp(`/edu/questions/${bankId}$`));
+    await expect(page.getByRole('heading', { level: 2, name, exact: true })).toBeVisible();
     await page.goBack();
     await expect(visibleBankName(page, name)).toBeVisible({ timeout: 10_000 });
 
@@ -153,6 +170,7 @@ test.describe('Question bank card menu', () => {
   test('Manage from the mobile card menu opens the bank detail', async ({ page }) => {
     const name = uniqueBankName('ManageMobile');
     await createBank(page, name);
+    const bankId = await bankIdByName(page, name);
 
     // The toolbar is hidden below `sm`, so create on desktop and switch to the mobile card row.
     await page.setViewportSize({ width: 480, height: 900 });
@@ -161,7 +179,8 @@ test.describe('Question bank card menu', () => {
     await cardMenuTrigger(page, name).click();
     await page.getByRole('menuitem', { name: manageItem }).click();
 
-    await expect(page).toHaveURL(/\/edu\/questions\/[0-9a-f-]{36}/);
+    await expect(page).toHaveURL(new RegExp(`/edu/questions/${bankId}$`));
+    await expect(page.getByRole('heading', { level: 2, name, exact: true })).toBeVisible();
     await page.goBack();
     await expect(visibleBankName(page, name)).toBeVisible({ timeout: 10_000 });
 

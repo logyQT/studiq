@@ -169,7 +169,7 @@ export const QuestionBankCard = memo(
                   <DropdownMenuItem onSelect={onEdit}>{t('common_edit')}</DropdownMenuItem>
                 )}
                 <DropdownMenuItem onSelect={() => router.push(bankHref)}>
-                  {t('common_manage')}
+                  {canUpdate ? t('common_manage') : t('view_bank')}
                 </DropdownMenuItem>
                 {canDelete && (
                   <DropdownMenuItem onSelect={onDelete} className="text-destructive">
@@ -269,7 +269,7 @@ export const QuestionBankCard = memo(
                       <DropdownMenuItem onSelect={onEdit}>{t('common_edit')}</DropdownMenuItem>
                     )}
                     <DropdownMenuItem onSelect={() => router.push(bankHref)}>
-                      {t('common_manage')}
+                      {canUpdate ? t('common_manage') : t('view_bank')}
                     </DropdownMenuItem>
                     {canDelete && (
                       <DropdownMenuItem onSelect={onDelete} className="text-destructive">
