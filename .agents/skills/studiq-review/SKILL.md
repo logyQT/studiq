@@ -25,10 +25,14 @@ ready to merge". Do **not** use it for read-only exploration of `main` with no d
 3. **A QA subagent is mandatory for every user-visible claim.** No QA run → no
    approval. If the environment cannot run, say `BLOCKED` and stop.
 4. **Do not fix code, push commits, or open PRs during review** unless the user
-   explicitly asks for fixes. This skill is report-only.
+   explicitly asks for fixes. This skill is report-only; the one write it makes to
+   GitHub is uploading evidence (`gh pr comment --attach`) for the review body.
 5. **Every finding carries evidence**: `file:line`, a repro command/step, and a
-   screenshot, network entry (`x-trace-id`) or Grafana trace. Conventions live in
-   `AGENTS.md`; link to them, do not restate them.
+   screenshot, network entry (`x-trace-id`) or Grafana trace. Screenshots must be
+   **uploaded, not named**: attach them to the review with
+   `gh pr comment <n> --attach "<path>#<alt text>"` and cite the resulting URL — a
+   filename or local path is not evidence. Conventions live in `AGENTS.md`; link
+   to them, do not restate them.
 
 ## Step 1 — Collect the change
 
@@ -129,8 +133,10 @@ happy path, one alternate path and one negative.
 
 ## Evidence (required per claim)
 
-- Screenshot(s) named by exact filename; state which step each proves and how the
-  environment was reached (`env:status --json`, commit).
+- Screenshot(s) **uploaded** (URL from `gh pr comment --attach`); state which step
+  each proves and how the environment was reached (`env:status --json`, commit).
+  Return the local paths to the reviewer so it can attach them; never report only
+  a filename.
 - Failed request plus console errors: method, URL, status, body, `x-trace-id`.
 - Failure root cause from Grafana: span name, `error.code`, `db.error.*`, log line.
 
@@ -233,11 +239,14 @@ What this review did not cover and why (feature area, browser, data volume, load
 Explicit list: claim/element · reason (`BLOCKED: env would not start`, `no LLM key`).
 
 ### Evidence index
-Screenshots, `x-trace-id`s, spans, commands run.
+Uploaded screenshot URLs (not local filenames), `x-trace-id`s, spans, commands run.
 ```
 
 Post with `gh pr review <n> --comment|--request-changes --body-file <file>` (write
-the body to `/tmp/opencode/review-<n>.md` first). Approve only when every
+the body to `/tmp/opencode/review-<n>.md` first), then attach the screenshots that
+prove each finding with `gh pr comment <n> --attach "<path>#<alt text>"` and list
+the uploaded URLs in the evidence index. An image that appears only as a filename
+is not evidence. Approve only when every
 user-visible claim is `PASS` with real-world evidence, no `critical`/`high`
 finding is open, and nothing that matters is `BLOCKED`. "CI is green" is not a
 reason; an approval without a QA run is never allowed.

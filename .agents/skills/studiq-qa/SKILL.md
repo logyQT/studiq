@@ -111,9 +111,9 @@ Verdicts: **PASS** / **FAIL** / **BLOCKED** (environment, missing fixture, unrun
 
 Before filing, search duplicates: `gh issue list --repo logyQT/studiq --state all --limit 200 --search "<keywords>"`. One bug = one issue; several distinct defects → several issues.
 
-Issue body: scenario ID + step; severity; exact numbered repro from a clean state; expected (quoted from the case) vs actual; evidence filenames + network/console/trace summary; environment (`<branch> @ <commit>`, `APP_URL`, account, active org, `stackId`).
+Issue body: scenario ID + step; severity; exact numbered repro from a clean state; expected (quoted from the case) vs actual; network/console/trace summary; environment (`<branch> @ <commit>`, `APP_URL`, account, active org, `stackId`).
 Labels: `bug` + exactly one severity (`critical|high|medium|low`) + 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`) + `manual-testing` for manual runs. English. Design ambiguity is still filed, with `needs-design` and the options.
-Attach screenshots: `gh issue create ... --attach "<path>#<alt text>"`.
+**Attach the screenshots themselves** — `gh issue create ... --attach "<path>#<alt text>"` (repeatable), or `gh issue comment <n> --attach ...` to add them afterwards. A filename, a path or a list of `qa-*.png` is **not evidence**: the image must be uploaded onto the issue, and the finding must cite the issue/comment rather than a local file.
 
 Report-only: no code edits, commits, branches or PRs during QA. Only when explicitly asked to turn a confirmed case into a durable test, follow `qa/QA-SUITE-APPROACH.md` — branch `qa/<CASEID>` off `qa-suite` (never `main`, never commit to `qa-suite`), and only after 5/5 green independent runs.
 
@@ -133,6 +133,7 @@ The review skill owns the prose. Do the work, then return a short table plus exa
 - One verdict per supplied claim ID, in the supplied order. `PASS` requires reproduced, observed behaviour with evidence. A claim you only read in code or only exercised through the API is `BLOCKED` with reason `not-executed` / `api-only`.
 - State which edge-case rows you exercised and which you skipped.
 - Every `FAIL` names its filed issue, or says why it could not be filed (duplicate number, no `gh` auth).
+- **Upload the evidence in this mode too.** Attach the screenshots that prove each `FAIL` (and any `PASS` evidence the review cites) with `gh pr comment <n> --attach "<path>#<alt text>"` — one verdict-neutral comment per worker — then put the uploaded URL (or the comment link) in the JSON `evidence` array. This is the only GitHub write allowed in review mode; a local path alone is not evidence and the review must not approve on it.
 - No fixes, commits, PR edits or review comments.
 
 ```json
@@ -143,7 +144,10 @@ The review skill owns the prose. Do the work, then return a short table plus exa
     {
       "id": "C1",
       "verdict": "PASS",
-      "evidence": ["qa-C1-03-deck-visibility.png", "PATCH /api/v1/decks/<id> 200 x-trace-id=<id>"],
+      "evidence": [
+        "https://github.com/logyQT/studiq/pull/1234#issuecomment-<id> (qa-C1-03-deck-visibility.png)",
+        "PATCH /api/v1/decks/<id> 200 x-trace-id=<id>"
+      ],
       "notes": "Group visibility hides the deck from S2 after reload; S1 keeps read-only view."
     }
   ],
