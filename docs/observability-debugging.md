@@ -93,7 +93,8 @@ A session started after the mint needs neither step.
 different Grafana also needs `opencode.jsonc` changed (the MCP keeps calling
 `localhost:7001`) and a re-mint with
 `bun run env:observability ensure --force` — otherwise the MCP gets 401 while
-the CLI looks healthy.
+the CLI looks healthy. `ensure` also refuses to overwrite the shared token when
+it was minted for a different URL unless you pass `--force`.
 
 The admin credential used **only** for minting comes from
 `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` (default `admin` / `admin`).

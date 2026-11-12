@@ -251,6 +251,14 @@ export async function ensureGrafanaToken(
   if (current.state === 'ok' && options.force !== true) return current;
   if (current.state === 'unreachable') return current;
 
+  // The token file is machine-wide, so a checkout-local GRAFANA_URL must not
+  // silently rebind the token every other checkout's MCP reads.
+  const meta = readGrafanaMeta(grafanaMetaFile(current.tokenFile));
+  if (options.force !== true && meta?.url && meta.url !== current.url) {
+    const message = `the shared token was minted for ${meta.url}; align GRAFANA_URL with opencode.jsonc or re-run with --force`;
+    return { ...current, minted: false, mintError: message, detail: message };
+  }
+
   const timeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   try {
     const account = await findOrCreateServiceAccount(current.url, timeoutMs);

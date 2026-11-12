@@ -163,6 +163,28 @@ describe('Grafana MCP token', () => {
     expect(readFileSync(tokenFile(), 'utf8')).not.toBe(first);
   });
 
+  it('refuses to rebind the shared token to another GRAFANA_URL without --force', async () => {
+    const fixtureA = await startFixture();
+    await grafana.ensureGrafanaToken();
+    const before = readFileSync(tokenFile(), 'utf8');
+
+    const fixtureB = await startGrafanaServer();
+    fixtures.push(fixtureB);
+    process.env.GRAFANA_URL = fixtureB.url;
+
+    const blocked = await grafana.ensureGrafanaToken();
+
+    expect(blocked.minted).toBe(false);
+    expect(blocked.mintError).toContain(fixtureA.url);
+    expect(fixtureB.mintCount).toBe(0);
+    expect(readFileSync(tokenFile(), 'utf8')).toBe(before);
+
+    const forced = await grafana.ensureGrafanaToken({ force: true });
+
+    expect(forced.minted).toBe(true);
+    expect(fixtureB.mintCount).toBe(1);
+  });
+
   it('does not write a token when the admin credential is rejected', async () => {
     const fixture = await startFixture({ adminPassword: 'not-admin' });
     process.env.GRAFANA_ADMIN_PASSWORD = 'admin';
