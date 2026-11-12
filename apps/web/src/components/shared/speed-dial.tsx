@@ -68,7 +68,7 @@ export function SpeedDial({ items }: SpeedDialProps) {
                       type: 'spring',
                       stiffness: 300,
                       damping: 22,
-                      delay: open ? i * 0.05 : (items.length - i) * 0.03,
+                      delay: i * 0.05,
                     }}
                     onClick={() => {
                       item.onClick();

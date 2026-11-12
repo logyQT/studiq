@@ -31,7 +31,7 @@ const NEW_DECK_VALUE = '__new__';
 
 function deriveBack(question: Question): string {
   const correct = question.question_answers?.filter((a) => a.is_correct).map((a) => a.content);
-  if (correct && correct.length > 0) return correct.join(', ');
+  if (correct.length > 0) return correct.join(', ');
   return question.explanation ?? '';
 }
 

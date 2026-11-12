@@ -714,7 +714,7 @@ export class TeacherAssignmentService {
         teacherPoints: null,
         isCorrect: false,
       };
-      if (answer.teacher_points !== null && answer.teacher_points !== undefined) {
+      if (answer.teacher_points !== null) {
         entry.teacherPoints =
           entry.teacherPoints === null
             ? answer.teacher_points
@@ -990,9 +990,7 @@ export class TeacherAssignmentService {
 
     if (assignment.shuffle_answers) {
       for (const q of fullQuestions ?? []) {
-        if (q.question_answers) {
-          q.question_answers = q.question_answers.toSorted(() => Math.random() - 0.5);
-        }
+        q.question_answers = q.question_answers.toSorted(() => Math.random() - 0.5);
       }
     }
 

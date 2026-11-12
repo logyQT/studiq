@@ -37,7 +37,7 @@ export class ActivityService {
       .eq('org_roles.name', 'member');
 
     if (memberError) return toDbFailure(memberError);
-    const studentIds = (studentMembers || []).map((m: { user_id: string }) => m.user_id);
+    const studentIds = studentMembers.map((m: { user_id: string }) => m.user_id);
     if (studentIds.length === 0) {
       return success({
         summary: this.emptySummary(),

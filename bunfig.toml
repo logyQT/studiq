@@ -97,6 +97,12 @@ suspicious = "warn"
   ] },
 ]
 
+# `typescript/no-unnecessary-condition` stays off for now (890 findings, 905 before the
+# dead-arithmetic fixes above). They are not tautologies: `noUncheckedIndexedAccess` is off, and PostgREST types every embed and
+# aggregate as present, so the compiler calls the fallbacks at those boundaries dead
+# while the unit tests depend on them. Classification, counts and the hardening that
+# has to land first: docs/audits/1113-no-unnecessary-condition-boundary.md
+
 # --- Biome parity rules kept off for now ------------------------------
 "no-shadow-restricted-names" = "off"
 "no-empty" = "off"

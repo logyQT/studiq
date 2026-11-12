@@ -102,11 +102,11 @@ export class QuestionService {
     if (!question) return failure('NOT_FOUND');
 
     if (data.answers.length > 0) {
-      const answersToInsert = data.answers.map((a, i) => ({
+      const answersToInsert = data.answers.map((a) => ({
         question_id: question.id,
         content: a.content,
         is_correct: a.isCorrect,
-        order_index: a.orderIndex ?? i,
+        order_index: a.orderIndex,
       }));
 
       const { error: aError } = await supabase.from('question_options').insert(answersToInsert);
@@ -278,11 +278,11 @@ export class QuestionService {
     if (data.answers) {
       await supabase.from('question_options').delete().eq('question_id', id);
       if (data.answers.length > 0) {
-        const answersToInsert = data.answers.map((a, i) => ({
+        const answersToInsert = data.answers.map((a) => ({
           question_id: id,
           content: a.content,
           is_correct: a.isCorrect,
-          order_index: a.orderIndex ?? i,
+          order_index: a.orderIndex,
         }));
         await supabase.from('question_options').insert(answersToInsert);
       }
