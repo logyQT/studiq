@@ -14,14 +14,12 @@ rule:
     # Match the attributes structurally, not with a full-element pattern: a
     # pattern pins the exact attribute list and the literal value form, so
     # `label="X" placeholder="X" id="x"` and `label={t('x')} placeholder={t('x')}`
-    # both slipped through the previous version. `stopBy` keeps the search on
-    # this tag, so a wrapper is not reported for a child's matching pair.
+    # both slipped through the previous version. Each `has` is scoped to this
+    # tag — for a JSX element the match target is its opening tag — so a child's
+    # attributes are never candidates and a wrapper is not reported for the pair
+    # inside it (pinned by the wrapper cases in the rule test).
     - has:
         kind: jsx_attribute
-        stopBy:
-          any:
-            - kind: jsx_element
-            - kind: jsx_self_closing_element
         all:
           - has: { kind: property_identifier, regex: '^label$' }
           - any:
@@ -29,10 +27,6 @@ rule:
               - has: { kind: jsx_expression, pattern: $TEXT }
     - has:
         kind: jsx_attribute
-        stopBy:
-          any:
-            - kind: jsx_element
-            - kind: jsx_self_closing_element
         all:
           - has: { kind: property_identifier, regex: '^placeholder$' }
           - any:

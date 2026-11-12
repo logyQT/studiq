@@ -14,12 +14,19 @@ valid:
   # Different translated keys.
   - |
     <Input label={t('email')} placeholder={t('email_placeholder')} />
-  # A wrapper legitimately has no label of its own; the child does not match.
+  # A wrapper has no label of its own; a split pair across wrapper and child is
+  # not a match. Pins the scoping in the rule, which has no `stopBy` to lean on.
+  - |
+    <Field label="Email">
+      <Input placeholder="Email" />
+    </Field>
+invalid:
+  # The child that owns both attributes is reported; the wrapper around it is
+  # not. The snapshot pins exactly one match, starting at `<Input`.
   - |
     <Wrapper>
-      <Input label="Email" placeholder="Enter your email" />
+      <Input label="Email" placeholder="Email" />
     </Wrapper>
-invalid:
   # Two attributes, string values.
   - |
     <Input label="Email" placeholder="Email" />

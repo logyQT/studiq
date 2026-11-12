@@ -1,5 +1,17 @@
 id: comment-narrates-diff
 snapshots:
+  "/* now uses the new API */\n":
+    labels:
+      - source: /* now uses the new API */
+        style: primary
+        start: 0
+        end: 26
+  "/* removed the old path */\n":
+    labels:
+      - source: /* removed the old path */
+        style: primary
+        start: 0
+        end: 26
   "// deleted the legacy helper\n":
     labels:
       - source: // deleted the legacy helper

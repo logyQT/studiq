@@ -12,3 +12,15 @@ snapshots:
         style: primary
         start: 0
         end: 23
+  "const a = <div>{/* now uses the new API */}</div>;\n":
+    labels:
+      - source: /* now uses the new API */
+        style: primary
+        start: 16
+        end: 42
+  "const b = <div>{/* removed the old path */}</div>;\n":
+    labels:
+      - source: /* removed the old path */
+        style: primary
+        start: 16
+        end: 42
