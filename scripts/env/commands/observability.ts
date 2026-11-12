@@ -1,0 +1,46 @@
+import type { ParsedCommand } from '../atoms';
+import { EXIT_START_FAILED } from '../lib/exit';
+import {
+  ensureGrafanaToken,
+  grafanaAuthLabel,
+  grafanaTokenAge,
+  inspectGrafana,
+  type GrafanaStatus,
+} from '../lib/grafana';
+import { printJson, writeLine } from '../lib/output';
+
+function printStatus(status: GrafanaStatus, mode: 'status' | 'ensure'): void {
+  writeLine('▸ Grafana MCP');
+  writeLine(`  url        ${status.url}`);
+  writeLine(`  auth       ${grafanaAuthLabel(status)}`);
+  if (status.state === 'ok') {
+    const age = grafanaTokenAge(status.mintedAt);
+    writeLine(`  token      ${status.tokenFile}${age ? ` (minted ${age})` : ''}`);
+  } else {
+    writeLine(`  token      ${status.tokenFile}`);
+  }
+  writeLine(`  mcp        ${status.mcpBinary ? 'mcp-grafana on PATH' : 'mcp-grafana NOT on PATH'}`);
+  if (status.detail && !status.ok) writeLine(`  detail     ${status.detail}`);
+  if (mode === 'ensure' && status.minted) {
+    writeLine(
+      "  note       run 'opencode service restart' (or start a new session) to pick up the new token",
+    );
+  }
+}
+
+export async function runObservability(parsed: ParsedCommand): Promise<number> {
+  const options = parsed.observability ?? { mode: 'status', force: false };
+  const status =
+    options.mode === 'ensure'
+      ? await ensureGrafanaToken({ force: options.force })
+      : await inspectGrafana();
+
+  if (parsed.json) {
+    printJson(status);
+  } else {
+    printStatus(status, options.mode);
+  }
+
+  if (options.mode === 'ensure' && !status.ok) return EXIT_START_FAILED;
+  return 0;
+}

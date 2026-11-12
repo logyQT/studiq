@@ -433,6 +433,12 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:7001`.
 > `env:ensure` exports `OTEL_SERVICE_NAME=studiq-<branch>` and
 > `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318`, so one collector can tell
 > worktrees apart; an explicit value in `.env.local` still wins.
+> The agent MCP token is provisioned, not pasted: `bun run env:observability`
+> mints a Viewer service-account token into
+> `~/.config/studiq/observability/grafana-mcp-token` (0600), `env:ensure` does it
+> best-effort, and `opencode.jsonc` reads it with `{file:...}`. `env:doctor`
+> reports `observability.auth`; after a re-mint, run `opencode service restart`
+> (a config reload does not respawn an already-running MCP server).
 
 - SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
   exporter + `PeriodicExportingMetricReader` + `BatchLogRecordProcessor` over a

@@ -57,33 +57,43 @@ an explicit value in `.env.local` wins. Make sure `OTEL_SDK_DISABLED` is **not**
 `true` when you want telemetry. See the
 [plan doc](./plans/archive/prometheus-metrics-monitoring.md).
 
-## Configure the Grafana MCP
+## The Grafana MCP is ready to use
 
-The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc):
+The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc). Its
+service-account token is **not** copied into a shell variable or an OpenCode
+setting: `bun run env:observability` mints a Viewer token into
 
-```jsonc
-{
-  "mcp": {
-    "servers": {
-      "grafana": {
-        "type": "local",
-        "command": ["mcp-grafana", "-t", "stdio"],
-        "environment": {
-          "GRAFANA_URL": "http://localhost:7001",
-          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}",
-        },
-      },
-    },
-  },
-}
+```text
+~/.config/studiq/observability/grafana-mcp-token   (mode 0600)
 ```
 
-Create a Grafana service account token (Grafana → **Administration → Users and
-access → Service accounts**), then export it as `GRAFANA_SERVICE_ACCOUNT_TOKEN`
-**in the environment of the OpenCode server** (the process that spawns MCP
-servers) and restart it with `opencode service restart`. The `mcp-grafana` binary
-must be on that same process's `PATH`. Verify with `opencode mcp list` →
-`✓ grafana connected`, then call `list_datasources`.
+and the config reads it with `{file:...}`. `env:ensure` runs the same
+idempotent step, so a fresh checkout needs no per-worktree setup. There is no
+rotation or TTL: a token that fails validation is replaced on the next
+`env:ensure` / `env:observability ensure`.
+
+```bash
+bun run env:observability          # read-only: URL, auth state, token age, mcp binary
+bun run env:observability ensure   # mint only when missing or stale
+bun run env:doctor                 # includes the same auth line in JSON and text
+```
+
+After a re-mint, restart the OpenCode service so the MCP process re-reads the file
+(a config reload does not respawn an already-running MCP server):
+
+```bash
+opencode service restart
+```
+
+A session started after the mint needs neither step.
+
+`GRAFANA_URL` defaults to `http://localhost:7001`. The admin credential used
+**only** for minting comes from `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`
+(default `admin` / `admin`; set them in `.env.local` for a non-default stack).
+The `mcp-grafana` binary must be on the OpenCode server's PATH.
+
+The MCP starts with `--disable-admin --disable-write`: the debugging loop below
+is read-only, and a Viewer token is enough for it.
 
 > `GRAFANA_API_KEY` still works but is deprecated in favour of
 > `GRAFANA_SERVICE_ACCOUNT_TOKEN`.
@@ -99,6 +109,9 @@ container reaches the host's Grafana):
   "grafana/mcp-grafana", "-t", "stdio"
 ]
 ```
+
+with the token supplied by the same file, e.g.
+`-e GRAFANA_SERVICE_ACCOUNT_TOKEN="$(cat ~/.config/studiq/observability/grafana-mcp-token)"`.
 
 ## The loop
 

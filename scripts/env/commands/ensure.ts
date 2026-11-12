@@ -6,6 +6,7 @@ import { contractWithLease } from '../lib/contract-lease';
 import { assertNativeAvailable, selectRuntime } from '../lib/platform';
 import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
+import { ensureGrafanaToken } from '../lib/grafana';
 import { readRegistry } from '../lib/registry';
 import { REPO_ROOT, canon, currentBranchRef } from '../lib/repo';
 import {
@@ -88,6 +89,30 @@ import { printJson, writeStderrLine } from '../lib/output';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const healthy = (code: number) => code >= 200 && code < 400;
+
+/**
+ * The observability stack is optional and machine-wide, so minting its MCP token
+ * must never fail an `ensure` for this checkout. A down stack is silent; a real
+ * failure is a warning, and a fresh token only needs an OpenCode reload.
+ */
+async function ensureGrafanaBestEffort(): Promise<void> {
+  try {
+    const status = await ensureGrafanaToken({ healthTimeoutMs: 300 });
+    if (status.minted) {
+      writeStderrLine(
+        "env: Grafana MCP token minted — run 'opencode service restart' (or start a new session) to pick it up",
+      );
+    } else if (!status.ok && status.state !== 'unreachable') {
+      writeStderrLine(
+        `env: Grafana MCP auth ${status.state}; run 'bun run env:observability'${status.detail ? ` (${status.detail})` : ''}`,
+      );
+    }
+  } catch (error) {
+    writeStderrLine(
+      `env: Grafana MCP token not configured (${error instanceof Error ? error.message : String(error)}); run 'bun run env:observability'`,
+    );
+  }
+}
 
 function withPort(contract: Contract, appPort: number): Contract {
   const next = contractWithPort(contract, appPort);
@@ -862,6 +887,7 @@ export async function runEnsure(
         cold: false,
         warnings: ['shared stack (no mutation)'],
       });
+      await ensureGrafanaBestEffort();
       emit(parsed, snapshot, options.profile, false, contract.appUrl);
       return 0;
     }
@@ -1100,6 +1126,7 @@ export async function runEnsure(
       profile: options.profile,
       cold,
     });
+    await ensureGrafanaBestEffort();
     emit(parsed, snapshot, options.profile, cold, contract.appUrl);
     return 0;
   } finally {

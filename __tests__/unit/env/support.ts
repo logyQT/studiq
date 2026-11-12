@@ -211,6 +211,9 @@ export function createHarness(): Harness {
     LC_ALL: process.env.LC_ALL,
     STUDIQ_DEV_REGISTRY: registryDir,
     STUDIQ_ENV_STATE_DIR: stateDir,
+    // Hermetic by default: the ensure hook must never mint against a real stack
+    // that happens to be running on the host. Tests that need Grafana override it.
+    GRAFANA_URL: 'http://127.0.0.1:1',
     // Isolate the per-stack `.dev` state: every harness gets its own identity.
     SUPABASE_STACK: `env-unit-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
     FAKE_BUNX_LOG: bunxLog,
@@ -354,6 +357,99 @@ export async function startHttpServer(status = 200): Promise<HttpServer> {
         server.close(() => done());
       }),
   };
+}
+
+export interface GrafanaFixtureOptions {
+  /** A pre-existing valid token, for the "already minted" path. */
+  token?: string;
+  /** Override the admin password the fixture accepts. */
+  adminPassword?: string;
+  /** Make token minting fail (a reachable stack that refuses the call). */
+  failMint?: boolean;
+}
+
+export interface GrafanaFixture {
+  url: string;
+  port: number;
+  validTokens: Set<string>;
+  serviceAccounts: Array<{ id: number; name: string; role: string }>;
+  mintCount: number;
+  close(): Promise<void>;
+}
+
+/**
+ * A minimal Grafana 11 service-account API. Only the endpoints `lib/grafana.ts`
+ * uses are implemented; datasource reads accept a bearer token, admin calls
+ * require basic auth, and everything else is a 404.
+ */
+export async function startGrafanaServer(
+  options: GrafanaFixtureOptions = {},
+): Promise<GrafanaFixture> {
+  const admin = `Basic ${Buffer.from(`admin:${options.adminPassword ?? 'admin'}`).toString('base64')}`;
+  const validTokens = new Set<string>(options.token ? [options.token] : []);
+  const serviceAccounts: GrafanaFixture['serviceAccounts'] = [];
+  let nextAccountId = 1;
+  let nextTokenId = 1;
+  const fixture: GrafanaFixture = {
+    url: '',
+    port: 0,
+    validTokens,
+    serviceAccounts,
+    mintCount: 0,
+    close: async () => {
+      await new Promise<void>((done) => {
+        server.close(() => done());
+      });
+    },
+  };
+
+  const server = createHttpServer((request, response) => {
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    const send = (status: number, body?: unknown): void => {
+      response.statusCode = status;
+      response.setHeader('content-type', 'application/json');
+      response.end(body === undefined ? '' : JSON.stringify(body));
+    };
+    const bearer = request.headers.authorization?.replace(/^Bearer /, '');
+    const isAdmin = request.headers.authorization === admin;
+
+    if (url.pathname === '/api/health') return send(200, { database: 'ok', version: '11.2.0' });
+    if (url.pathname === '/api/datasources' && request.method === 'GET') {
+      return bearer && validTokens.has(bearer)
+        ? send(200, [])
+        : send(401, { message: 'Unauthorized' });
+    }
+    if (url.pathname === '/api/user' && request.method === 'GET') {
+      return bearer && validTokens.has(bearer)
+        ? send(200, { id: 1, login: 'studiq-mcp' })
+        : send(401, { message: 'Unauthorized' });
+    }
+    if (url.pathname === '/api/serviceaccounts/search' && request.method === 'GET') {
+      if (!isAdmin) return send(401, { message: 'Unauthorized' });
+      return send(200, { serviceAccounts, totalCount: serviceAccounts.length });
+    }
+    if (url.pathname === '/api/serviceaccounts' && request.method === 'POST') {
+      if (!isAdmin) return send(401, { message: 'Unauthorized' });
+      const account = { id: nextAccountId++, name: 'studiq-mcp', role: 'Viewer' };
+      serviceAccounts.push(account);
+      return send(201, account);
+    }
+    if (/^\/api\/serviceaccounts\/\d+\/tokens$/.test(url.pathname) && request.method === 'POST') {
+      if (!isAdmin) return send(401, { message: 'Unauthorized' });
+      if (options.failMint) return send(500, { message: 'mint failed' });
+      const id = nextTokenId++;
+      const key = `glsa_test_${id}`;
+      validTokens.add(key);
+      fixture.mintCount += 1;
+      return send(201, { id, name: `mcp-test-${id}`, key });
+    }
+    return send(404, { message: 'not found' });
+  });
+
+  const port = await listen(server, 0, '127.0.0.1');
+  fixture.port = port;
+  fixture.url = `http://127.0.0.1:${port}`;
+  return fixture;
 }
 
 export interface TcpListener {
