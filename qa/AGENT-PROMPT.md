@@ -125,7 +125,7 @@ Gotchas:
 - Times: no offset = UTC. Use RFC3339 (`2026-10-19T14:00:00Z`) or relative (`now-15m`); pass the wall-clock window of the step you just ran.
 - Export is batched (~15s): if a trace isn't there yet, re-query once before concluding "no data".
 - **No `x-trace-id` on an authenticated response, or empty Tempo/Loki while the app responds → the environment is stale, telemetry is off, or you filtered the wrong `<service>`.** Re-check the session environment and **stop**: report `BLOCKED/env` with `env:doctor`/`env:observability`; never invent an id or report it as a bug.
-- If a datasource is unhealthy (`check_datasources_health()`, or the MCP itself is unavailable), **do not** fabricate a trace id or downgrade to a vague "server error". Mark the finding `BLOCKED/env`, include the doctor output, and escalate. A browser-only fallback is acceptable only for a purely visual/front-end issue; say explicitly that no server telemetry was needed.
+- If a datasource is unhealthy (`check_datasources_health()`, or the MCP itself is unavailable), **do not** fabricate a trace id or downgrade to a vague "server error". A datasource health error is not proof the store is unusable: in this stack `check_datasources_health` reports Tempo unhealthy (HTTP 404 "Method not implemented") while Tempo queries work, so confirm with a real `search_tempo_traces` / `query_loki_logs` and proceed if it returns data, stating that the health probe was a false negative. If the query itself is empty or failing, mark the finding `BLOCKED/env`, include the doctor output, and escalate. A browser-only fallback is acceptable only for a purely visual/front-end issue; say explicitly that no server telemetry was needed.
 
 ## How to report
 
