@@ -8,7 +8,8 @@ body:
       value: |
         One bug per issue. Search open **and closed** issues for the same behaviour first.
 
-        Do not file security problems here — email support@studiq.pl instead.
+        Do not file security problems here — use
+        [private vulnerability reporting](https://github.com/logyQT/studiq/security/advisories/new).
   - type: textarea
     id: what-happened
     attributes:

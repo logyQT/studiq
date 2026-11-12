@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security issue (private)
-    url: mailto:support@studiq.pl
-    about: Do not file security problems as public issues — email us instead.
+    url: https://github.com/logyQT/studiq/security/advisories/new
+    about: Do not file security problems as public issues — use private vulnerability reporting.
   - name: Setup and documentation
     url: https://github.com/logyQT/studiq/blob/main/docs/ONBOARDING.md
     about: Local setup, environment, and the rest of the docs.

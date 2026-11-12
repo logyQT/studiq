@@ -3,7 +3,7 @@
 ## Commits
 
 This repository uses [Conventional Commits](https://www.conventionalcommits.org).
-Every commit subject takes the form `type(scope): summary`.
+Every commit subject takes the form `type(scope?): summary`.
 
 - **Types:** `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `ci`, `build`,
   `chore`, `qa`.
