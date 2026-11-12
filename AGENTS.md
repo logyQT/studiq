@@ -38,11 +38,13 @@ studiq/
 │   └── tsconfig/  # Shared tsconfig base (`base.json`)
 ├── __tests__/     # Root-level tests: unit/, integration/, e2e/, helpers/, mocks/, setup.ts
 ├── supabase/      # migrations/, schemas/, seeds/, templates/, config.toml
+├── rules/         # ast-grep tautology rules for `bun run review:static` (sgconfig.yml)
 ├── scripts/       # Dev workflow scripts (spin, pr, import + migration guards)
 └── docs/          # Project documentation
 ```
 
 - Main app code: `apps/web/src/…` — shared backend code: `packages/server/src/…`
+- Review rules live in `rules/` (one YAML per shape), configured by `sgconfig.yml`, with `valid`/`invalid` samples in `__tests__/rules/`; `bun run review:static` runs both.
 - Each workspace has its **own** `tsconfig.json` and `package.json` scripts; typecheck each workspace with its own script (see Commands).
 - Cross-package imports always go through workspace names (`@studiq/server`, `@studiq/authz`, `@studiq/ui`) or the `@admin/*` alias — never deep relative paths.
 
@@ -119,7 +121,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
 | `bun run lint` | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts && bun scripts/check-adr-numbering.ts && bun scripts/check-hardcoded-urls.ts && bun scripts/check-suppressions-empty.ts && bun scripts/check-env-inventory.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard + ADR-numbering guard (four-digit `NNNN-slug.md`, unique, gapless, title matches number, intra-directory links resolve) + hardcoded-local-URL guard + suppression-ledger guard + env-inventory guard (`.env.schema` vs `process.env.*`, no stray values files). **Contains no typecheck step.** Does not include `apps/admin/src` (use `lint:admin`). |
 | `bun run lint:all` | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command |
-| `bun run review:static` | `bun scripts/review-static.ts` — the deterministic review gate: oxlint over app/package/test scopes plus the ast-grep tautology rules in `sgconfig.yml` and their `__tests__/rules/` tests. `-- --changed origin/main` scopes oxlint to the diff (what `studiq-review` runs). |
+| `bun run review:static` | `bun scripts/review-static.ts` — the deterministic review gate: oxlint over app/package/test scopes plus the ast-grep tautology rules in `sgconfig.yml` and their `__tests__/rules/` tests. `-- --changed origin/main` scopes **oxlint** to the diff (what `studiq-review` runs); the ast-grep rules always scan the whole tree. A bare `--changed` is a usage error. |
 | `bun run knip` | `knip --treat-config-hints-as-errors --no-progress` — dead-code / unused-dependency gate (documented policy suppressions in `knip.ts`, each with a reason). Also runs in both lefthook hooks and the `checks` CI job. **Not** part of `bun run lint`. |
 | `bun run check:lockfile-age` | `bun scripts/check-lockfile-age.ts` — fails a `bun.lock` diff that adds a package version published less than 7 days ago. Runs in the `checks` CI job on PRs, **before** `bun install`; deliberately not part of `lint` (it needs the network and the hooks must work offline). Backstops Dependabot's `cooldown`, which cannot see transitive resolutions. |
 | `bun run knip:report` | `knip --reporter compact` — human-readable report (one line per file); `knip:files` / `knip:deps` / `knip:exports` filter to one issue group |
@@ -618,6 +620,6 @@ A tautology is anything that restates something already true instead of adding i
 
 Enforced where it is decidable, not by reviewer memory:
 
-- `bun run review:static` — oxlint (`no-self-compare`, `vitest/expect-expect`) plus the ast-grep rules in `sgconfig.yml` (self-asserting `expect`, label == placeholder, comment narrates a diff). Runs in `verify.yml`; `studiq-review` runs it with `-- --changed origin/main` and cites the rule id.
+- `bun run review:static` — oxlint (`no-self-compare`, `vitest/expect-expect`) plus the ast-grep rules in `sgconfig.yml` (self-asserting `expect`, label == placeholder, comment narrates a diff with `//` or a single-line `/* */`). Runs in `verify.yml`; `studiq-review` runs it with `-- --changed origin/main` and cites the rule id.
 - `bun run lint` — the rest of the shape-level redundancies (`no-dupe-else-if`, `no-unnecessary-boolean-literal-compare`, `jsx-a11y/no-redundant-roles`).
 - Still human/agent judgement: comments that restate code in different words, redundant labels that differ by a word, single-use wrapper components. Two existing gates cover the mechanical part: `bun run knip` finds unused components, and jscpd (`.jscpd.json`, `docs/ci.md → Duplication`) fails a PR that adds a copy-pasted block. The rest is a review finding, not a style nit.

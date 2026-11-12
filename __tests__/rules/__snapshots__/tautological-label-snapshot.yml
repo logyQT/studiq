@@ -215,3 +215,33 @@ snapshots:
         style: secondary
         start: 26
         end: 50
+  "<Wrapper>\n  <Input label=\"Email\" placeholder=\"Email\" />\n</Wrapper>\n":
+    labels:
+      - source: <Input label="Email" placeholder="Email" />
+        style: primary
+        start: 12
+        end: 55
+      - source: label
+        style: secondary
+        start: 19
+        end: 24
+      - source: '"Email"'
+        style: secondary
+        start: 25
+        end: 32
+      - source: label="Email"
+        style: secondary
+        start: 19
+        end: 32
+      - source: placeholder
+        style: secondary
+        start: 33
+        end: 44
+      - source: '"Email"'
+        style: secondary
+        start: 45
+        end: 52
+      - source: placeholder="Email"
+        style: secondary
+        start: 33
+        end: 52

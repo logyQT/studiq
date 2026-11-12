@@ -7,9 +7,11 @@ valid:
     // removed from the list only after validation
   - |
     // This was handled in 2023 by the legacy importer
-  # A block comment is not the line-comment shape this rule targets.
+  # A multi-line block comment is not the single-line shape this rule targets.
   - |
-    /* now uses the new API */
+    /**
+     * now uses the new API
+     */
 invalid:
   - |
     // removed the old path
@@ -23,3 +25,8 @@ invalid:
     // now uses the new API
   - |
     // no longer reads the cookie
+  # Single-line block comments carry the same shape.
+  - |
+    /* now uses the new API */
+  - |
+    /* removed the old path */

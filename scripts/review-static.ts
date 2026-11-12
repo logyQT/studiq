@@ -12,20 +12,52 @@
  *
  * Usage:
  *   bun scripts/review-static.ts                  # oxlint + rule tests + rules
- *   bun scripts/review-static.ts --changed origin/main   # review scope
+ *   bun scripts/review-static.ts --changed origin/main   # review scope (oxlint)
  *   bun scripts/review-static.ts --rules-only     # CI: oxlint already ran
+ *
+ * `--changed` scopes oxlint only: the ast-grep rules always scan the whole
+ * tree, so a hit outside the diff is the repo's ratchet, not necessarily the
+ * change under review.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const argv = process.argv.slice(2);
 const changedIndex = argv.indexOf('--changed');
-const changed = changedIndex >= 0 ? argv[changedIndex + 1] : undefined;
+const changedValue = changedIndex >= 0 ? argv[changedIndex + 1] : undefined;
 const rulesOnly = argv.includes('--rules-only');
 
-const LINT_SCOPE = ['apps/web/src', 'packages', '__tests__'];
+if (changedIndex >= 0 && (!changedValue || changedValue.startsWith('-'))) {
+  process.stderr.write('review:static: --changed needs a git ref, e.g. --changed origin/main\n');
+  process.exit(2);
+}
+const changed = changedValue;
+
 const RULE_DIR = join(process.cwd(), 'rules');
 const RULE_TEST_DIR = join(process.cwd(), '__tests__', 'rules');
+
+/**
+ * The oxlint scope is `package.json` → `scripts.lint`, the command the hooks and
+ * CI already run. Read it rather than keeping a second copy that can drift.
+ */
+function lintScope(): string[] {
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+    scripts?: Record<string, string>;
+  };
+  const prefix = 'bun lint --no-script ';
+  const segment = (pkg.scripts?.lint ?? '')
+    .split('&&')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  const scope = segment ? segment.slice(prefix.length).trim().split(/\s+/) : [];
+  if (scope.length === 0 || scope.includes('')) {
+    process.stderr.write(
+      'review:static: could not read the oxlint scope from package.json scripts.lint\n',
+    );
+    process.exit(2);
+  }
+  return scope;
+}
 
 function run(label: string, cmd: string[]): boolean {
   process.stdout.write(`\n=== ${label}\n`);
@@ -72,15 +104,18 @@ function everyRuleHasATest(): boolean {
 const localAstGrep = join(process.cwd(), 'node_modules', '.bin', 'ast-grep');
 const astGrep = existsSync(localAstGrep) ? localAstGrep : 'ast-grep';
 
-const lintCmd = ['bun', 'lint', '--no-script', ...LINT_SCOPE];
-if (changed) lintCmd.push(`--changed=${changed}`);
+function runOxlint(): boolean {
+  const cmd = ['bun', 'lint', '--no-script', ...lintScope()];
+  if (changed) cmd.push(`--changed=${changed}`);
+  return run(changed ? `oxlint (changed since ${changed})` : 'oxlint', cmd);
+}
 
 const results = [
   // CI runs `bun run lint` first, so the oxlint half would be a second pass.
-  ...(rulesOnly ? [] : [run(changed ? `oxlint (changed since ${changed})` : 'oxlint', lintCmd)]),
+  ...(rulesOnly ? [] : [runOxlint()]),
   everyRuleHasATest(),
   run('ast-grep rule tests', [astGrep, 'test', '--config', 'sgconfig.yml']),
-  run('ast-grep (tautology rules)', [astGrep, 'scan', '--config', 'sgconfig.yml']),
+  run('ast-grep (tautology rules, whole repo)', [astGrep, 'scan', '--config', 'sgconfig.yml']),
 ];
 
 if (results.some((ok) => !ok)) {

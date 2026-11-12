@@ -9,10 +9,13 @@ files:
 rule:
   all:
     - kind: comment
+    # Line comments and single-line block comments, including the JSX form
+    # (`{/* now uses the new API */}`), which is a `comment` node too. Multi-line
+    # JSDoc blocks are out of scope: the shape is only decidable on one line.
     - any:
-        # "// removed the old path", "// deleted the legacy helper"
-        - regex: '(?i)^//\s*(removed|deleted)\s+(the\s+)?(old|previous|legacy|unused|former)\b'
-        # "// was handled upstream", "// previously named Foo"
-        - regex: '(?i)^//\s*(was|previously)\s+(handled|done|used|named|called|returned|stored|kept)\b'
-        # "// now uses the new API", "// no longer reads the cookie"
-        - regex: '(?i)^//\s*(now|no longer)\s+(uses?|returns?|calls?|reads?|writes?|stores?|keeps?)\b'
+        # "// removed the old path", "{/* deleted the legacy helper */}"
+        - regex: '(?i)^(?://|/\*)\s*(removed|deleted)\s+(the\s+)?(old|previous|legacy|unused|former)\b'
+        # "// was handled upstream", "{/* previously named Foo */}"
+        - regex: '(?i)^(?://|/\*)\s*(was|previously)\s+(handled|done|used|named|called|returned|stored|kept)\b'
+        # "// now uses the new API", "{/* no longer reads the cookie */}"
+        - regex: '(?i)^(?://|/\*)\s*(now|no longer)\s+(uses?|returns?|calls?|reads?|writes?|stores?|keeps?)\b'
