@@ -50,12 +50,13 @@ import {
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost, apiPut } from '@/lib/api';
+import { createPendingSave, publishWithPendingTargets } from '@/lib/assignment-publish';
 import { dbToDatetimeLocal } from '@/lib/datetime';
 import { assignmentKeys, groupKeys, questionKeys, topicKeys } from '@/lib/query-keys';
 
@@ -288,21 +289,18 @@ export default function AssignmentDetailClient() {
     invalidateKeys: [assignmentKeys.detail(id)],
   });
 
-  // `mutate` is stable across renders; the mutation object itself is not.
-  const saveTargets = setTargetsMutation.mutate;
+  // `mutateAsync` is stable across renders; the mutation object itself is not.
+  const saveTargets = setTargetsMutation.mutateAsync;
+  const [pendingTargetSave] = useState(() => createPendingSave());
 
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      if (targetGroupIds.length > 0 || targetStudentIds.length > 0) {
-        saveTargets();
-      }
-    }, 500);
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, [targetGroupIds, targetStudentIds, saveTargets]);
+    if (targetGroupIds.length === 0 && targetStudentIds.length === 0) {
+      pendingTargetSave.cancel();
+    } else {
+      pendingTargetSave.schedule(() => saveTargets(undefined));
+    }
+    return () => pendingTargetSave.cancel();
+  }, [targetGroupIds, targetStudentIds, saveTargets, pendingTargetSave]);
 
   const handleDelete = async () => {
     try {
@@ -317,8 +315,9 @@ export default function AssignmentDetailClient() {
   };
 
   const handlePublish = async () => {
-    await publishMutation.mutateAsync(undefined);
-    await setTargetsMutation.mutateAsync(undefined);
+    await publishWithPendingTargets(pendingTargetSave, () =>
+      publishMutation.mutateAsync(undefined),
+    );
   };
 
   const handleUnpublish = async () => {
