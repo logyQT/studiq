@@ -323,12 +323,19 @@ describe('GroupService', () => {
     it('returns NOT_FOUND when the group belongs to another org', async () => {
       // The org filter matches zero rows: PostgREST reports no error, so an
       // un-projected delete looks identical to a successful one (#1124).
-      mock.from.mockReturnValueOnce(qb([]));
+      const deleteBuilder = qb([]);
+      mock.from.mockReturnValueOnce(deleteBuilder);
 
-      const result = await service.deleteGroup(ctx, 'group-of-another-org');
+      // A manager belongs to both orgs, so RLS alone permits deleting the
+      // foreign row: the active-org filter is the only cross-org guard.
+      const result = await service.deleteGroup(
+        { ...ctx, activeOrgId: 'org-2' },
+        'group-of-another-org',
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+      expect(deleteBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-2');
     });
 
     it('returns error on DB failure', async () => {
