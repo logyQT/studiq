@@ -2577,6 +2577,7 @@
     "sort_recent": "Ostatnio zmienione",
     "n_questions": "{count, plural, one {# pytanie} few {# pytania} other {# pytań}}",
     "manage_bank": "Zarządzaj bankiem",
+    "select_banks": "Wybierz banki",
     "view_bank": "Podgląd banku",
     "visibility_label": "Widoczność",
     "visibility_personal": "Tylko ja",
