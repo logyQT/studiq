@@ -35,6 +35,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { useFeature } from '@/hooks/use-feature';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { isArrayOf } from '@/lib/unknown-value';
 import {
@@ -88,9 +89,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useOrgScopedLoad(load);
 
   async function handleSave(group: { name: string; description?: string | null }, id?: string) {
     try {
