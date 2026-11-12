@@ -8,6 +8,7 @@ import {
   summarizeWeeklyActivity,
   weeklyWindowStart,
 } from '@/lib/stats';
+import { firstRecorded, recordedAt } from '#test/mocks/recorded';
 
 // Fixed clock so the window arithmetic is deterministic (2026-10-23 12:00 UTC).
 const NOW = Date.parse('2026-10-23T12:00:00Z');
@@ -177,17 +178,17 @@ describe('hasTeacherActivity (#209)', () => {
   it('ignores activeStudents: AI-token-only rows in user_daily_activity are not learning activity', () => {
     const data = empty();
     data.summary.activeStudents.current = 3;
-    data.dailyActivity[0].activeStudents = 3;
-    data.dailyActivity[1].activeStudents = 2;
+    firstRecorded(data.dailyActivity).activeStudents = 3;
+    recordedAt(data.dailyActivity, 1, 'the second day').activeStudents = 2;
     expect(hasTeacherActivity(data)).toBe(false);
   });
 
   it.each([
     ['summary.totalPractices', (d: Data) => (d.summary.totalPractices.current = 1)],
     ['summary.totalQuizzes', (d: Data) => (d.summary.totalQuizzes.current = 1)],
-    ['chart reviews', (d: Data) => (d.dailyActivity[1].reviews = 1)],
-    ['student practices', (d: Data) => (d.students[0].practices7d = 1)],
-    ['student quizzes', (d: Data) => (d.students[0].quizzes7d = 1)],
+    ['chart reviews', (d: Data) => (recordedAt(d.dailyActivity, 1, 'the second day').reviews = 1)],
+    ['student practices', (d: Data) => (firstRecorded(d.students).practices7d = 1)],
+    ['student quizzes', (d: Data) => (firstRecorded(d.students).quizzes7d = 1)],
   ])('is true when only %s is non-zero', (_name, mutate) => {
     const data = empty();
     mutate(data);

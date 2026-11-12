@@ -34,7 +34,7 @@ describe('NameSchema', () => {
       const result = NameSchema.safeParse(name);
       expect(result.success, name).toBe(false);
       if (!result.success) {
-        expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_INVALID_FORMAT);
+        expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_INVALID_FORMAT);
       }
     }
   });
@@ -43,7 +43,7 @@ describe('NameSchema', () => {
     const result = NameSchema.safeParse('');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_REQUIRED);
     }
   });
 
@@ -51,7 +51,7 @@ describe('NameSchema', () => {
     const result = NameSchema.safeParse('A');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_TOO_SHORT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_TOO_SHORT);
     }
   });
 
@@ -59,7 +59,7 @@ describe('NameSchema', () => {
     const result = NameSchema.safeParse('John123');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_INVALID_FORMAT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_INVALID_FORMAT);
     }
   });
 
@@ -69,7 +69,7 @@ describe('NameSchema', () => {
     const result = NameSchema.safeParse('   ');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_REQUIRED);
     }
   });
 
@@ -78,7 +78,7 @@ describe('NameSchema', () => {
       const result = NameSchema.safeParse(value);
       expect(result.success, JSON.stringify(value)).toBe(false);
       if (!result.success) {
-        expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
+        expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_REQUIRED);
       }
     }
   });
@@ -91,7 +91,7 @@ describe('NameSchema', () => {
     const result = NameSchema.safeParse(' A ');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_TOO_SHORT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_TOO_SHORT);
     }
   });
 
@@ -102,7 +102,7 @@ describe('NameSchema', () => {
       const result = NameSchema.safeParse(value);
       expect(result.success, JSON.stringify(value)).toBe(false);
       if (!result.success) {
-        expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_INVALID_FORMAT);
+        expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_INVALID_FORMAT);
       }
     }
   });
@@ -118,7 +118,7 @@ describe('passwordSchema', () => {
     const result = passwordSchema.safeParse('Ab1');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.PASSWORD_TOO_SHORT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.PASSWORD_TOO_SHORT);
     }
   });
 
@@ -126,7 +126,7 @@ describe('passwordSchema', () => {
     const result = passwordSchema.safeParse('securepass1');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.PASSWORD_MISSING_UPPERCASE);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.PASSWORD_MISSING_UPPERCASE);
     }
   });
 
@@ -134,7 +134,7 @@ describe('passwordSchema', () => {
     const result = passwordSchema.safeParse('SecurePass');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.PASSWORD_MISSING_NUMBER);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.PASSWORD_MISSING_NUMBER);
     }
   });
 
@@ -142,7 +142,7 @@ describe('passwordSchema', () => {
     const result = passwordSchema.safeParse(`${'A'.repeat(129)}1`);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.PASSWORD_TOO_LONG);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.PASSWORD_TOO_LONG);
     }
   });
 });
@@ -249,7 +249,7 @@ describe('RegisterSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
     }
   });
 
@@ -273,7 +273,7 @@ describe('UpdateProfileSchema', () => {
     const result = UpdateProfileSchema.safeParse({ name: '  ' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.NAME_REQUIRED);
     }
   });
 

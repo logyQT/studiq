@@ -2,7 +2,7 @@ import { expect, test, type Page, type Response } from '@playwright/test';
 import { shortHash } from '#test/e2e/fixtures/ids';
 import { json } from '#test/helpers/json';
 import { waitForMailLinkMatch } from '#test/helpers/mailpit';
-import { loadTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, tenantUser } from '#test/qa/fixtures/tenant';
 import { skipBrandedAuthTemplateTest } from '#test/helpers/stack-mode';
 
 /**
@@ -235,8 +235,7 @@ test.describe('AUT-13 — set a new password from the recovery link', () => {
       'seed with --fresh: the account password must still be the seeded one',
     ).toBeTruthy();
 
-    const student = tenant.users.student;
-    expect(student, `${CASE} must seed the bare student`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
     expect(student.password, 'the seeded password under test').toBe(SEEDED_PASSWORD);
 
     const email = student.email;

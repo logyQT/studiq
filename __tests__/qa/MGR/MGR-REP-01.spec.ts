@@ -540,7 +540,9 @@ test.describe('@case:MGR-REP-01 @area:MGR @prio:P2 reports in the organization',
       QUESTION_REPORT_MESSAGE,
       REPLY_MESSAGE,
     ]);
-    expect(body.data.messages[1].sender_id).toBe(tenant.manager.id);
+    const [, reply] = body.data.messages;
+    if (!reply) throw new Error(`${CASE} the thread stored no reply`);
+    expect(reply.sender_id).toBe(tenant.manager.id);
     expect(body.data.report.status).toBe('open');
 
     // A reload proves the thread is server state, not the last client render.

@@ -13,7 +13,11 @@ import {
   cleanupOrganizationDeep,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { POST as createCard } from '@/app/(backend)/api/v1/flashcards/route';
 import { GET as getCardById } from '@/app/(backend)/api/v1/flashcards/[id]/route';
 import {
@@ -136,7 +140,7 @@ describe(`Flashcard Deck Visibility`, () => {
       groups: 1,
     });
     orgId = teacher.orgId!;
-    groupA = teacher.groups[1];
+    groupA = requiredAt(teacher.groups, 1, 'seeded group');
 
     // The API creates groups without enrolling their creator; deck group-sharing is
     // only allowed to groups the caller actually teaches (#140).

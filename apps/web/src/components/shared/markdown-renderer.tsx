@@ -16,15 +16,14 @@ import 'katex/dist/katex.min.css';
 const sanitizeSchema = structuredClone(defaultSchema);
 sanitizeSchema.tagNames!.push('audio');
 sanitizeSchema.attributes!.audio = ['src', 'controls'];
+// `defaultSchema` leaves `span` undeclared at runtime, so both lists need their
+// own empty fallback — the index signature is optional either way.
 sanitizeSchema.attributes!.span = [
-  // `defaultSchema` leaves `span` undeclared at runtime even though the type says
-  // every attribute list exists, so the empty fallback is load-bearing here.
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- absent from defaultSchema
   ...(sanitizeSchema.attributes!.span ?? []),
   ['className', 'math', 'math-inline', 'math-display', /^hljs-/],
 ];
 sanitizeSchema.attributes!.div = [
-  ...sanitizeSchema.attributes!.div,
+  ...(sanitizeSchema.attributes!.div ?? []),
   ['className', 'math', 'math-display'],
 ];
 

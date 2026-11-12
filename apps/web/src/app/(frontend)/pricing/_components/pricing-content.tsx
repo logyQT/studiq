@@ -11,7 +11,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
 import { getFeatureLabel, type PricingTranslator } from '@/lib/pricing-features';
-import { getVisibleLimitKeys } from '@/lib/pricing-limits';
+import { getLimitLabel, getVisibleLimitKeys } from '@/lib/pricing-limits';
 
 const PLAN_ID_MAP: Record<string, string | null> = {
   base: null,
@@ -258,13 +258,16 @@ export function PricingContent({ accountType }: { accountType: string }) {
                 {visibleLimitKeys.map((lk) => (
                   <tr key={lk} className="border-b border-border/50 even:bg-muted/20">
                     <td className="py-3 px-4 text-muted-foreground font-medium">
-                      {t(`limit_${lk}`)}
+                      {getLimitLabel(lk, t)}
                     </td>
-                    {plans.map((p) => (
-                      <td key={p.key} className="text-center py-3 px-4 text-sm tabular-nums">
-                        {lk in p.limits ? formatLimitValue(lk, p.limits[lk], t) : '—'}
-                      </td>
-                    ))}
+                    {plans.map((p) => {
+                      const limit = p.limits[lk];
+                      return (
+                        <td key={p.key} className="text-center py-3 px-4 text-sm tabular-nums">
+                          {limit === undefined ? '—' : formatLimitValue(lk, limit, t)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

@@ -325,13 +325,15 @@ test.describe('@case:EDU-ST-04 @area:EDU @prio:P2 teacher quiz statistics', () =
       'GET /api/v1/stats/teacher/quizzes',
     );
     expect(rows, 'exactly the tenant’s one test').toHaveLength(1);
-    expect(rows[0]).toMatchObject({
+    const [stats] = rows;
+    if (!stats) throw new Error(`${CASE} the stats endpoint lists no quiz`);
+    expect(stats).toMatchObject({
       title: QUIZ_NAME,
       totalAttempts: 2,
       avgScore: 50,
       avgCompletionRate: 50,
     });
-    expect(rows[0].id, 'the row is keyed by the test name').toBe(QUIZ_NAME);
+    expect(stats.id, 'the row is keyed by the test name').toBe(QUIZ_NAME);
 
     // The page never renders the empty state once it has rows.
     await expect(page.getByText(COPY.empty, { exact: true })).toHaveCount(0);

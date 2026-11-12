@@ -20,7 +20,7 @@ function created<T>(data: T): ControllerResponse<T> {
 }
 
 function error(code: AppErrorCode, details?: ZodIssue[]): ControllerResponse<never> {
-  const statusCode = APP_ERRORS[code]?.status ?? 500;
+  const statusCode = APP_ERRORS[code].status;
   return { success: false, statusCode, error: code, ...(details ? { details } : {}) };
 }
 

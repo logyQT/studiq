@@ -546,6 +546,23 @@ interface CaseOptions {
   jsonOnly: boolean;
 }
 
+/**
+ * Puts the tenant's own organization on a plan through the same `apply_org_plan`
+ * RPC the billing webhook calls. A paid entitlement is part of the case's
+ * prerequisite, not a global plan change: the RPC only touches this tenant's
+ * organization (plan, role-feature snapshot, limits).
+ */
+async function applyPlan(
+  db: ReturnType<typeof createSeedDb>,
+  caseId: string,
+  orgId: string,
+  plan: string | null | undefined,
+): Promise<void> {
+  if (!plan) return;
+  const { error } = await db.rpc('apply_org_plan', { p_org_id: orgId, p_plan: plan });
+  if (error) throw new Error(`seed ${caseId}: apply_org_plan(${plan}) ${error.message}`);
+}
+
 async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opts: CaseOptions) {
   const entry = manifestEntry(caseId);
   const profile = (opts.profile ?? declaredProfile(entry)) as Profile;
@@ -602,6 +619,21 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
   const orgName = `qa-${caseId.toLowerCase()}-${runSuffix || key.slice(-6)}`;
 
   const fileSuffix = opts.fileSuffix ?? '';
+
+  /**
+   * The seeder returns one account per spec, in the order it was given them, so
+   * the caller pairs them positionally. A hole would write a tenant file with an
+   * undefined id, which the spec then fails on much later; fail here instead.
+   */
+  function seededAccount(
+    seeded: readonly SeedAccount[],
+    position: number,
+    who: string,
+  ): SeedAccount {
+    const account = seeded[position];
+    if (!account) throw new Error(`seed ${key}: no seeded ${who} account`);
+    return account;
+  }
 
   function writeTenant(tenant: Record<string, unknown>): void {
     mkdirSync(OUT, { recursive: true });
@@ -723,7 +755,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       // rows) unique while staying deterministic.
       const orgKey = index === 0 ? key : `${key}:org${index + 1}`;
       const suffix = index === 0 ? '' : `-${index + 1}`;
-      const groupNames = shape.groups?.length ? shape.groups : ['G1'];
+      const [defaultGroupName = 'G1', ...extraGroupNames] = shape.groups ?? [];
       const toAccount = (member: MemberSpec) =>
         buildAccount(orgKey, member.key, member.accountType, {
           name: member.name ?? `QA ${member.key}`,
@@ -737,10 +769,10 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
           org: { id: tenantId(orgKey, 'org'), name: `${orgName}${suffix}` },
           defaultGroup: {
             id: tenantId(orgKey, 'group:default'),
-            name: groupNames[0],
+            name: defaultGroupName,
             isDefault: true,
           },
-          extraGroups: groupNames.slice(1).map((name, extraIndex) => ({
+          extraGroups: extraGroupNames.map((name, extraIndex) => ({
             id: tenantId(orgKey, `group:${extraIndex + 2}`),
             name,
             isDefault: false,
@@ -761,7 +793,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
         password: seededOrg.owner.password,
       };
       (orgSpec.members ?? []).forEach((member, memberIndex) => {
-        const account = seededOrg.members[memberIndex];
+        const account = seededAccount(seededOrg.members, memberIndex, member.key);
         orgUsers[member.key] = {
           id: account.id,
           email: account.email,
@@ -772,17 +804,20 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
         id: tenantId(orgKey, 'org'),
         name: `${orgName}${suffix}`,
         groupId: tenantId(orgKey, 'group:default'),
-        groupName: groupNames[0],
+        groupName: defaultGroupName,
       });
     }
+
+    const [primaryOrg] = seededOrgs;
+    if (!primaryOrg) throw new Error(`seed ${key}: the orgs profile seeded no organization`);
 
     writeTenant({
       case: caseId,
       profile,
       runSuffix: runSuffix || null,
       key,
-      org: { id: seededOrgs[0].id, name: seededOrgs[0].name },
-      group: { id: seededOrgs[0].groupId, name: seededOrgs[0].groupName },
+      org: { id: primaryOrg.id, name: primaryOrg.name },
+      group: { id: primaryOrg.groupId, name: primaryOrg.groupName },
       orgs: seededOrgs.map((org, index) => ({
         key: index === 0 ? 'a' : `org${index + 1}`,
         ...org,
@@ -799,22 +834,24 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
   // collide with the app and the other workers on the CI runner.
   if (shape.members?.length) {
     const specs = shape.members;
-    const ownerSpec = specs.find((member) => member.orgRole === 'admin') ?? specs[0];
+    const [firstSpec] = specs;
+    const ownerSpec = specs.find((member) => member.orgRole === 'admin') ?? firstSpec;
+    if (!ownerSpec) throw new Error(`seed ${key}: the members profile names no account`);
     const memberSpecs = specs.filter((member) => member !== ownerSpec);
     const toAccount = (member: MemberSpec) =>
       buildAccount(key, member.key, member.accountType, {
         name: member.name ?? `QA ${member.key}`,
         ...(member.orgRole ? { orgRole: member.orgRole } : {}),
       });
-    const groupNames = shape.groups?.length ? shape.groups : ['G1'];
+    const [defaultGroupName = 'G1', ...extraGroupNames] = shape.groups ?? [];
 
     const seededShape = await seedTenantGraph(
       db,
       {
         key,
         org: { id: orgId, name: orgName },
-        defaultGroup: { id: groupId, name: groupNames[0], isDefault: true },
-        extraGroups: groupNames.slice(1).map((name, index) => ({
+        defaultGroup: { id: groupId, name: defaultGroupName, isDefault: true },
+        extraGroups: extraGroupNames.map((name, index) => ({
           id: tenantId(key, `group:${index + 2}`),
           name,
           // `groups.is_default` is NOT NULL — every extra group must say `false`.
@@ -830,10 +867,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       opts.write,
     );
 
-    if (plan) {
-      const { error } = await db.rpc('apply_org_plan', { p_org_id: orgId, p_plan: plan });
-      if (error) throw new Error(`seed ${caseId}: apply_org_plan(${plan}) ${error.message}`);
-    }
+    await applyPlan(db, caseId, orgId, plan);
 
     const shapeUsers: Record<string, { id: string; email: string; password: string }> = {
       [ownerSpec.key]: {
@@ -843,7 +877,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       },
     };
     memberSpecs.forEach((member, index) => {
-      const account = seededShape.members[index];
+      const account = seededAccount(seededShape.members, index, member.key);
       shapeUsers[member.key] = {
         id: account.id,
         email: account.email,
@@ -851,14 +885,18 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       };
     });
     if (shape.solo) {
-      const [solo] = await ensureAccounts(
-        db,
-        [
-          buildAccount(key, shape.solo.key, shape.solo.accountType, {
-            name: shape.solo.name ?? `QA ${shape.solo.key}`,
-          }),
-        ],
-        opts.write,
+      const solo = seededAccount(
+        await ensureAccounts(
+          db,
+          [
+            buildAccount(key, shape.solo.key, shape.solo.accountType, {
+              name: shape.solo.name ?? `QA ${shape.solo.key}`,
+            }),
+          ],
+          opts.write,
+        ),
+        0,
+        shape.solo.key,
       );
       shapeUsers[shape.solo.key] = { id: solo.id, email: solo.email, password: solo.password };
     }
@@ -870,7 +908,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       key,
       plan: plan ?? null,
       org: { id: orgId, name: orgName },
-      group: { id: groupId, name: groupNames[0] },
+      group: { id: groupId, name: defaultGroupName },
       users: shapeUsers,
     });
     return;
@@ -911,33 +949,18 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
     opts.write,
   );
 
-  // A paid entitlement is part of the case's prerequisite, not a global plan
-  // change: the RPC only touches this tenant's own organization (plan, role-feature
-  // snapshot, limits) and is the same one `MockStripeService` calls after purchase.
-  if (plan) {
-    const { error } = await db.rpc('apply_org_plan', { p_org_id: orgId, p_plan: plan });
-    if (error) throw new Error(`seed ${caseId}: apply_org_plan(${plan}) ${error.message}`);
-  }
+  await applyPlan(db, caseId, orgId, plan);
 
+  const teacher = seededAccount(seeded.members, 0, 'teacher');
+  const student = seededAccount(seeded.members, profile === 'org-limit' ? 2 : 1, 'student');
   const users: Record<string, { id: string; email: string; password: string }> = {
     manager: { id: seeded.owner.id, email: seeded.owner.email, password: seeded.owner.password },
-    teacher: {
-      id: seeded.members[0].id,
-      email: seeded.members[0].email,
-      password: seeded.members[0].password,
-    },
-    student: {
-      id: seeded.members[profile === 'org-limit' ? 2 : 1].id,
-      email: seeded.members[profile === 'org-limit' ? 2 : 1].email,
-      password: seeded.members[profile === 'org-limit' ? 2 : 1].password,
-    },
+    teacher: { id: teacher.id, email: teacher.email, password: teacher.password },
+    student: { id: student.id, email: student.email, password: student.password },
   };
   if (profile === 'org-limit') {
-    users.teacher2 = {
-      id: seeded.members[1].id,
-      email: seeded.members[1].email,
-      password: seeded.members[1].password,
-    };
+    const teacher2 = seededAccount(seeded.members, 1, 'teacher2');
+    users.teacher2 = { id: teacher2.id, email: teacher2.email, password: teacher2.password };
     for (const inviteeRole of ['invitee1', 'invitee2'] as const) {
       const account = ensured[inviteeRole]!;
       users[inviteeRole] = { id: account.id, email: account.email, password: account.password };

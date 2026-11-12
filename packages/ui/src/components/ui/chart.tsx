@@ -212,7 +212,7 @@ function ChartTooltipContent({
                 indicator === 'dot' && 'items-center',
               )}
             >
-              {formatter && item?.value !== undefined && item.name ? (
+              {formatter && item.value !== undefined && item.name ? (
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- recharts types the tooltip `payload` as `any`; forwarded untouched
                 formatter(item.value, item.name, item, index, item.payload)
               ) : (

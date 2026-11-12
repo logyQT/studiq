@@ -489,10 +489,9 @@ describe('InvitationService', () => {
       return { membershipQb, rolesQb, insertQb };
     }
 
-    const invitations = [
-      { email: 'john@example.com', targetOrgRoleId: memberRole },
-      { email: 'jane@example.com', targetOrgRoleId: adminRole },
-    ];
+    const johnInvitation = { email: 'john@example.com', targetOrgRoleId: memberRole };
+    const janeInvitation = { email: 'jane@example.com', targetOrgRoleId: adminRole };
+    const invitations = [johnInvitation, janeInvitation];
 
     it('inserts every row in one statement and returns the results in input order', async () => {
       const { rolesQb, insertQb } = bulkBuilders();
@@ -512,11 +511,11 @@ describe('InvitationService', () => {
       // request order, not the insert response order.
       expect(results.map((r) => r.data.invitationId)).toEqual(['inv-1', 'inv-2']);
       // Per-row attribution: each address gets the link for its own token.
-      expect(results[0].data.inviteLink).toBe('http://localhost:3000/join?token=token-1');
-      expect(results[1].data.inviteLink).toBe('http://localhost:3000/join?token=token-2');
+      expect(results[0]?.data.inviteLink).toBe('http://localhost:3000/join?token=token-1');
+      expect(results[1]?.data.inviteLink).toBe('http://localhost:3000/join?token=token-2');
       // The bare code is returned alongside the link, so it can be copied too.
-      expect(results[0].data.inviteCode).toBe('token-1');
-      expect(results[1].data.inviteCode).toBe('token-2');
+      expect(results[0]?.data.inviteCode).toBe('token-1');
+      expect(results[1]?.data.inviteCode).toBe('token-2');
       // MGR-INV-02: every result names the address it belongs to, in input order.
       expect(results.map((r) => r.email)).toEqual(['john@example.com', 'jane@example.com']);
 
@@ -534,7 +533,7 @@ describe('InvitationService', () => {
         organization_id: 'uni-1',
         inviter_id: 'test-user-id',
       });
-      expect(rows[0].expires_at).toBe(rows[1].expires_at);
+      expect(rows[0]?.expires_at).toBe(rows[1]?.expires_at);
 
       vi.unstubAllEnvs();
     });
@@ -551,9 +550,9 @@ describe('InvitationService', () => {
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
 
       const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
-        invitations[0],
-        invitations[1],
-        invitations[0],
+        johnInvitation,
+        janeInvitation,
+        johnInvitation,
       ]);
 
       expect(result.success).toBe(true);
@@ -637,9 +636,9 @@ describe('InvitationService', () => {
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
 
       const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
-        invitations[0],
-        invitations[1],
-        invitations[0],
+        johnInvitation,
+        janeInvitation,
+        johnInvitation,
       ]);
 
       expect(result.success).toBe(true);
@@ -654,8 +653,8 @@ describe('InvitationService', () => {
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
 
       const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
-        { ...invitations[0], organizationId: 'uni-1' },
-        { ...invitations[1], organizationId: 'uni-2' },
+        { ...johnInvitation, organizationId: 'uni-1' },
+        { ...janeInvitation, organizationId: 'uni-2' },
       ]);
 
       expect(result.success).toBe(false);

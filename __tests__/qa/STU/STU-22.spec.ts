@@ -163,7 +163,7 @@ async function upload(
   }
   const response = await pending;
   const body = await json<ApiEnvelope<{ url: string }>>(response).catch(() => null);
-  return { status: response.status(), url: body?.data?.url };
+  return { status: response.status(), url: body?.data.url };
 }
 
 // PAUSED (operator, 2026-10-29): the spec is green 5/5 + same-tenant, but it takes ~3.3 min
@@ -255,8 +255,10 @@ test.describe.skip('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
     expect(listResponse.status(), `GET ${CARDS_URL}?deckIds=…`).toBe(200);
     const cards = (await json<ApiEnvelope<ListResponse<CardResponse>>>(listResponse)).data.items;
     expect(cards, 'the deck holds exactly the card created here').toHaveLength(1);
-    expect(cards[0].front, 'stored question keeps the image').toContain(`![komorka](${imageUrl})`);
-    expect(cards[0].back, 'stored answer keeps the audio').toContain(
+    const [savedCard] = cards;
+    if (!savedCard) throw new Error(`${CASE} the deck holds no card`);
+    expect(savedCard.front, 'stored question keeps the image').toContain(`![komorka](${imageUrl})`);
+    expect(savedCard.back, 'stored answer keeps the audio').toContain(
       `<audio controls src="${audioUrl}"></audio>`,
     );
 
@@ -354,7 +356,9 @@ test.describe.skip('@case:STU-22 @area:STU @prio:P2 flashcard media', () => {
     const afterCards = (await json<ApiEnvelope<ListResponse<CardResponse>>>(afterResponse)).data
       .items;
     expect(afterCards, 'the cancelled editor wrote no card').toHaveLength(1);
-    expect(afterCards[0].id, 'the saved card is untouched').toBe(cards[0].id);
+    const [afterCard] = afterCards;
+    if (!afterCard) throw new Error(`${CASE} the deck lost its card`);
+    expect(afterCard.id, 'the saved card is untouched').toBe(savedCard.id);
 
     expect(pageErrors, 'uncaught page errors during the media flow').toEqual([]);
   });

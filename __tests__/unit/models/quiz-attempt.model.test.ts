@@ -75,7 +75,7 @@ describe('SubmitQuizAttemptSchema', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.answers[0].textAnswer).toBe(
+      expect(result.data.answers[0]?.textAnswer).toBe(
         'Rozbiory, słaba władza centralna, liberum veto.',
       );
     }
@@ -88,7 +88,7 @@ describe('SubmitQuizAttemptSchema', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.answers[0].textAnswer).toBe('answer');
+      expect(result.data.answers[0]?.textAnswer).toBe('answer');
     }
   });
 
@@ -151,7 +151,7 @@ describe('SaveQuizAnswersSchema (#349)', () => {
     });
 
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.answers[0].textAnswer).toBe('Wisła');
+    if (result.success) expect(result.data.answers[0]?.textAnswer).toBe('Wisła');
   });
 
   it('rejects textAnswer longer than 10 000 characters', () => {

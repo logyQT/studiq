@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-34 — Lista kartkówek (`/app/assignments`).
@@ -328,10 +328,11 @@ async function submitAttempt(
   page: Page,
   attempt: StartedAttempt,
 ): Promise<{ score: number; totalQuestions: number }> {
-  const answers = attempt.questions.map((question) => ({
-    questionId: question.id,
-    selectedAnswerId: question.question_answers[0].id,
-  }));
+  const answers = attempt.questions.map((question) => {
+    const [firstOption] = question.question_answers;
+    if (!firstOption) throw new Error(`${CASE} question ${question.id} serves no answer`);
+    return { questionId: question.id, selectedAnswerId: firstOption.id };
+  });
   return call<{ score: number; totalQuestions: number }>(
     page,
     'POST',
@@ -355,7 +356,7 @@ test.describe('@case:STU-34 @area:STU @prio:P2 student quiz list', () => {
     expect(tenant.users.teacher, 'the tenant seeds the teacher').toBeTruthy();
     expect(tenant.users.manager, 'the tenant seeds the manager').toBeTruthy();
     expect(tenant.users.student, 'the tenant seeds the student').toBeTruthy();
-    const studentId = tenant.users.student.id;
+    const studentId = tenantUser(tenant, 'student').id;
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));

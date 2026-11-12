@@ -105,7 +105,6 @@ function isTwoOrgTenant(value: QaTenant): value is TwoOrgTenant {
     'manager' in value &&
     'orgA' in value &&
     'orgB' in value &&
-    !!value.users &&
     'manager' in value.users &&
     'studentA' in value.users &&
     'teacherA' in value.users &&
@@ -126,9 +125,14 @@ let SECOND_GROUP_NAME: string;
 let OTHER_ORG_GROUP_NAME: string;
 
 function resolveTenant(): void {
-  GROUP_NAME = TENANT.orgA.groups[0];
-  SECOND_GROUP_NAME = TENANT.orgA.groups[1];
-  OTHER_ORG_GROUP_NAME = TENANT.orgB.groups[0];
+  const [firstGroup, secondGroup] = TENANT.orgA.groups;
+  const [otherOrgGroup] = TENANT.orgB.groups;
+  if (!firstGroup || !secondGroup || !otherOrgGroup) {
+    throw new Error(`${CASE} needs two groups in org A and one in org B`);
+  }
+  GROUP_NAME = firstGroup;
+  SECOND_GROUP_NAME = secondGroup;
+  OTHER_ORG_GROUP_NAME = otherOrgGroup;
 }
 
 interface CaseGroups {

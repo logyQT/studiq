@@ -194,7 +194,12 @@ function browseRows(dialog: Locator): Locator {
 /** Question contents currently listed in the browse dialog. */
 async function browseContents(dialog: Locator): Promise<string[]> {
   const rows = await browseRows(dialog).allInnerTexts();
-  return rows.map((row) => row.split('\n')[0].trim()).toSorted();
+  return rows
+    .map((row) => {
+      const [content] = row.split('\n');
+      return (content ?? '').trim();
+    })
+    .toSorted();
 }
 
 /** The source-specific bank/topic select (rendered before the always-present type select). */

@@ -337,7 +337,8 @@ test.describe('@case:STU-21 @area:STU @prio:P1 flashcard Markdown editor', () =>
     // The card is stored as typed (the client normalises the Markdown on save).
     const cards = await listCards(page, deck.id);
     expect(cards, 'the deck holds exactly the card this attempt created').toHaveLength(1);
-    const card = cards[0];
+    const [card] = cards;
+    if (!card) throw new Error(`${CASE} the deck holds no card`);
     expect(card.deck_id, 'the card belongs to this deck').toBe(deck.id);
     expect(card.created_by, 'the card belongs to the signed-in student').toBe(studentOf(tenant).id);
     expect(card.front, 'stored front').toBe(CONTENT.front);

@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -62,13 +63,70 @@ export class SubscriptionPlanService {
       description: plan.description ?? null,
       priceMonthly: plan.price_monthly ?? 0,
       priceYearly: plan.price_yearly ?? 0,
-      currency: plan.currency ?? 'PLN',
+      currency: plan.currency,
       sortOrder: plan.sort_order ?? 0,
       isActive: plan.is_active ?? true,
       forAccountType: plan.for_account_type ?? null,
       features,
       limits,
     };
+  }
+
+  /**
+   * Features and limits are keyed by plan, so every single-plan read performs the
+   * same two lookups before it can render `PlanInfo`.
+   */
+  private async planView(
+    supabase: SupabaseClient<Database>,
+    plan: SubscriptionPlanRow,
+  ): Promise<ServiceResult<PlanInfo>> {
+    const { data: planFeatures, error: pfError } = await supabase
+      .from('plan_features')
+      .select('feature_key')
+      .eq('plan_key', plan.key);
+
+    if (pfError) return toDbFailure(pfError);
+
+    const limitsByPlan = await this.fetchLimitsByPlan([plan.key]);
+
+    return success(
+      this.toPlanInfo(
+        plan,
+        dbRows(planFeatures).map((pf) => pf.feature_key),
+        limitsByPlan.get(plan.key) ?? {},
+      ),
+    );
+  }
+
+  /** Catalog variant: one features read covers every plan in the listing. */
+  private async planViews(
+    supabase: SupabaseClient<Database>,
+    plans: SubscriptionPlanRow[],
+  ): Promise<ServiceResult<PlanInfo[]>> {
+    const planKeys = plans.map((p) => p.key);
+
+    const { data: planFeatures, error: pfError } = await supabase
+      .from('plan_features')
+      .select('plan_key, feature_key')
+      .in('plan_key', planKeys);
+
+    if (pfError) return toDbFailure(pfError);
+
+    const featuresByPlan = new Map<string, string[]>();
+    for (const pf of dbRows(planFeatures)) {
+      if (!featuresByPlan.has(pf.plan_key)) {
+        featuresByPlan.set(pf.plan_key, []);
+      }
+      featuresByPlan.get(pf.plan_key)!.push(pf.feature_key);
+    }
+
+    const limitsByPlan = await this.fetchLimitsByPlan(planKeys);
+
+    return success(
+      plans.map((p) =>
+        this.toPlanInfo(p, featuresByPlan.get(p.key) ?? [], limitsByPlan.get(p.key) ?? {}),
+      ),
+    );
   }
 
   async listActive(forAccountType?: string): Promise<ServiceResult<PlanInfo[]>> {
@@ -84,30 +142,7 @@ export class SubscriptionPlanService {
 
     if (error) return toDbFailure(error);
 
-    const planKeys = plans.map((p) => p.key);
-
-    const { data: planFeatures, error: pfError } = await supabase
-      .from('plan_features')
-      .select('plan_key, feature_key')
-      .in('plan_key', planKeys);
-
-    if (pfError) return toDbFailure(pfError);
-
-    const featuresByPlan = new Map<string, string[]>();
-    for (const pf of planFeatures ?? []) {
-      if (!featuresByPlan.has(pf.plan_key)) {
-        featuresByPlan.set(pf.plan_key, []);
-      }
-      featuresByPlan.get(pf.plan_key)!.push(pf.feature_key);
-    }
-
-    const limitsByPlan = await this.fetchLimitsByPlan(planKeys);
-
-    return success(
-      plans.map((p) =>
-        this.toPlanInfo(p, featuresByPlan.get(p.key) ?? [], limitsByPlan.get(p.key) ?? {}),
-      ),
-    );
+    return this.planViews(supabase, plans);
   }
 
   /**
@@ -175,22 +210,7 @@ export class SubscriptionPlanService {
     if (planError) return toDbFailure(planError);
     if (!plan) return failure('NOT_FOUND');
 
-    const { data: planFeatures, error: pfError } = await supabase
-      .from('plan_features')
-      .select('feature_key')
-      .eq('plan_key', plan.key);
-
-    if (pfError) return toDbFailure(pfError);
-
-    const limitsByPlan = await this.fetchLimitsByPlan([plan.key]);
-
-    return success(
-      this.toPlanInfo(
-        plan,
-        planFeatures?.map((pf) => pf.feature_key) ?? [],
-        limitsByPlan.get(plan.key) ?? {},
-      ),
-    );
+    return this.planView(supabase, plan);
   }
 
   /**
@@ -249,22 +269,7 @@ export class SubscriptionPlanService {
       plan = freeManagerPlan;
     }
 
-    const { data: planFeatures, error: pfError } = await supabase
-      .from('plan_features')
-      .select('feature_key')
-      .eq('plan_key', plan.key);
-
-    if (pfError) return toDbFailure(pfError);
-
-    const limitsByPlan = await this.fetchLimitsByPlan([plan.key]);
-
-    return success(
-      this.toPlanInfo(
-        plan,
-        planFeatures?.map((pf) => pf.feature_key) ?? [],
-        limitsByPlan.get(plan.key) ?? {},
-      ),
-    );
+    return this.planView(supabase, plan);
   }
 
   async getAllAdmin(): Promise<ServiceResult<PlanInfo[]>> {
@@ -277,30 +282,7 @@ export class SubscriptionPlanService {
 
     if (error) return toDbFailure(error);
 
-    const planKeys = plans.map((p) => p.key);
-
-    const { data: planFeatures, error: pfError } = await supabase
-      .from('plan_features')
-      .select('plan_key, feature_key')
-      .in('plan_key', planKeys);
-
-    if (pfError) return toDbFailure(pfError);
-
-    const featuresByPlan = new Map<string, string[]>();
-    for (const pf of planFeatures ?? []) {
-      if (!featuresByPlan.has(pf.plan_key)) {
-        featuresByPlan.set(pf.plan_key, []);
-      }
-      featuresByPlan.get(pf.plan_key)!.push(pf.feature_key);
-    }
-
-    const limitsByPlan = await this.fetchLimitsByPlan(planKeys);
-
-    return success(
-      plans.map((p) =>
-        this.toPlanInfo(p, featuresByPlan.get(p.key) ?? [], limitsByPlan.get(p.key) ?? {}),
-      ),
-    );
+    return this.planViews(supabase, plans);
   }
 
   async getByKey(key: string): Promise<ServiceResult<PlanInfo>> {
@@ -315,18 +297,7 @@ export class SubscriptionPlanService {
     if (error) return toDbFailure(error);
     if (!plan) return failure('NOT_FOUND');
 
-    const { data: features, error: pfError } = await supabase
-      .from('plan_features')
-      .select('feature_key')
-      .eq('plan_key', key);
-
-    if (pfError) return toDbFailure(pfError);
-
-    const limitsByPlan = await this.fetchLimitsByPlan([key]);
-
-    return success(
-      this.toPlanInfo(plan, features?.map((f) => f.feature_key) ?? [], limitsByPlan.get(key) ?? {}),
-    );
+    return this.planView(supabase, plan);
   }
 
   async getById(id: string) {
@@ -353,11 +324,11 @@ export class SubscriptionPlanService {
         key: input.key,
         name: input.name,
         description: input.description ?? null,
-        price_monthly: input.priceMonthly ?? 0,
-        price_yearly: input.priceYearly ?? 0,
-        sort_order: input.sortOrder ?? 0,
-        is_active: input.isActive ?? true,
-        currency: input.currency ?? 'PLN',
+        price_monthly: input.priceMonthly,
+        price_yearly: input.priceYearly,
+        sort_order: input.sortOrder,
+        is_active: input.isActive,
+        currency: input.currency,
         for_account_type: input.forAccountType ?? null,
       })
       .select()

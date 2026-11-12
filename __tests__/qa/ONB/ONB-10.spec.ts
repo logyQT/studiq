@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { qaDbNow } from '#test/helpers/db-admin';
 import { resetInviteeState } from '#test/qa/fixtures/invitees';
-import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * ONB-10 — the organization member limit is enforced when an invitation is
@@ -88,8 +88,8 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
       );
     }
     const org = tenant.org;
-    const invitee1 = tenant.users.invitee1;
-    const invitee2 = tenant.users.invitee2;
+    const invitee1 = tenantUser(tenant, 'invitee1');
+    const invitee2 = tenantUser(tenant, 'invitee2');
 
     // --- Step 1: the manager invites two new addresses (member role) --------
     await loginAs(page, tenant, 'manager', { waitFor: /\/manage/ });
@@ -109,6 +109,7 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
       '/api/v1/me/plan',
     );
     const capacity = plan.data.limits.max_students;
+    if (capacity === undefined) throw new Error(`${CASE} the plan carries no max_students limit`);
     expect(capacity, 'ONB-10 needs a finite organization capacity').toBeGreaterThan(0);
 
     const membersBefore = await getJson<Array<{ email: string; orgRoleName: string }>>(
@@ -175,8 +176,10 @@ test.describe('ONB-10 — organization member limit at invitation acceptance', (
       '/api/v1/me/orgs',
     );
     expect(orgs1.data, 'the first invitee is now a member of the tenant org').toHaveLength(1);
-    expect(orgs1.data[0].id).toBe(org.id);
-    expect(orgs1.data[0].orgRoleName).toBe('member');
+    const [joinedOrg] = orgs1.data;
+    if (!joinedOrg) throw new Error(`${CASE} the first invitee joined no organization`);
+    expect(joinedOrg.id).toBe(org.id);
+    expect(joinedOrg.orgRoleName).toBe('member');
 
     // --- Step 3: the second invitee is refused — the org is at capacity -----
     await context.clearCookies();

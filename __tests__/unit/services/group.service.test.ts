@@ -3,6 +3,7 @@ import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { GroupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 /** Narrows a service result to its data, failing the test when the call failed. */
 function expectSuccess<T>(result: ServiceResult<T>): T {
@@ -103,8 +104,8 @@ describe('GroupService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].memberCount).toBe(5);
-      expect(expectSuccess(result)[0].teacherCount).toBe(2);
+      expect(expectSuccess(result)[0]?.memberCount).toBe(5);
+      expect(expectSuccess(result)[0]?.teacherCount).toBe(2);
     });
 
     it('returns error on DB failure', async () => {
@@ -280,7 +281,7 @@ describe('GroupService', () => {
       await service.updateGroup(ctx, 'g-1', { name: 'New' });
 
       expect(builder.update).toHaveBeenCalledWith({ name: 'New' });
-      expect(builder.update.mock.calls[0][0]).not.toHaveProperty('description');
+      expect(firstCall(builder.update)[0]).not.toHaveProperty('description');
     });
 
     it('returns NOT_FOUND when group not found', async () => {
@@ -734,7 +735,7 @@ describe('GroupService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].id).toBe('g-1');
+      expect(expectSuccess(result)[0]?.id).toBe('g-1');
     });
 
     it('returns [] when the caller has no org memberships (#249)', async () => {

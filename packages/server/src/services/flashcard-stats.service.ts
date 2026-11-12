@@ -1,7 +1,9 @@
 import type { RequestContext } from '@studiq/authz';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { warn } from '@studiq/server/lib/log';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { applyAccessFilter } from '@studiq/server/lib/query-list';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { isRecord } from '@studiq/server/lib/record';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -45,21 +47,13 @@ export class FlashcardStatsService {
       return success(emptyResponse);
     }
 
-    let flashcardQuery = supabase.from('flashcards').select('id');
-    if (filter.or) {
-      flashcardQuery = flashcardQuery.or(filter.or);
-    }
-    if (filter.organization_id) {
-      flashcardQuery = flashcardQuery.eq('organization_id', filter.organization_id);
-    }
-    if (filter.created_by) {
-      flashcardQuery = flashcardQuery.eq('created_by', filter.created_by);
-    }
-
-    const { data: flashcards, error: fcError } = await flashcardQuery;
+    const { data: flashcards, error: fcError } = await applyAccessFilter(
+      supabase.from('flashcards').select('id'),
+      filter,
+    );
     if (fcError) return toDbFailure(fcError);
 
-    const flashcardIds = (flashcards ?? []).map((f) => f.id);
+    const flashcardIds = dbRows(flashcards).map((f) => f.id);
 
     // #460: always call the RPC — a brand-new organization has no flashcards
     // yet, but the class roster (`rosterStudents`) must still be returned.
@@ -90,23 +84,16 @@ export class FlashcardStatsService {
     const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (isImpossibleFilter(filter)) return success([]);
 
-    let flashcardQuery = supabase.from('flashcards').select('id, front, back');
-    if (filter.or) {
-      flashcardQuery = flashcardQuery.or(filter.or);
-    }
-    if (filter.organization_id) {
-      flashcardQuery = flashcardQuery.eq('organization_id', filter.organization_id);
-    }
-    if (filter.created_by) {
-      flashcardQuery = flashcardQuery.eq('created_by', filter.created_by);
-    }
-
-    const { data: flashcards, error: fcError } = await flashcardQuery;
+    const { data: flashcards, error: fcError } = await applyAccessFilter(
+      supabase.from('flashcards').select('id, front, back'),
+      filter,
+    );
     if (fcError) return toDbFailure(fcError);
-    if (!flashcards || flashcards.length === 0) return success([]);
+    const cards = dbRows(flashcards);
+    if (cards.length === 0) return success([]);
 
-    const flashcardIds = flashcards.map((f) => f.id);
-    const flashcardMap = new Map(flashcards.map((f) => [f.id, f]));
+    const flashcardIds = cards.map((f) => f.id);
+    const flashcardMap = new Map(cards.map((f) => [f.id, f]));
 
     const { data: flashcardsWithDecks } = await supabase
       .from('flashcards')

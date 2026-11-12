@@ -101,7 +101,7 @@ export class AuthService {
   async claimInvitation(
     user: Pick<User, 'id' | 'user_metadata'>,
   ): Promise<{ orgId: string } | null> {
-    const token: unknown = user.user_metadata?.invite_token;
+    const token: unknown = user.user_metadata.invite_token;
     if (typeof token !== 'string' || token.trim() === '') return null;
 
     try {
@@ -133,14 +133,19 @@ export class AuthService {
   ): Promise<ServiceResult<{ user: User; session: Session }, 'UNAUTHORIZED' | 'INTERNAL_SERVER'>> {
     const supabase = await this.clientFactory();
 
-    const { data: authData, error } = await supabase.auth.signInWithPassword({
+    const response = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password,
     });
 
-    if (error) {
+    if (response.error) {
       return failure('UNAUTHORIZED');
     }
+
+    // The SDK declares a non-null user/session pair whenever `error` is null,
+    // but GoTrue has answered 200 with an empty body; a null user must never
+    // reach the session layer, so the pair is widened to what can arrive.
+    const authData: { user: User | null; session: Session | null } = response.data;
 
     if (!authData.user || !authData.session) {
       return failure('INTERNAL_SERVER');
@@ -268,7 +273,7 @@ export class AuthService {
     const now = Date.now() / 1000;
 
     return amr.some((entry) => {
-      if (typeof entry === 'string' || entry?.method !== 'otp') {
+      if (typeof entry === 'string' || entry.method !== 'otp') {
         return false;
       }
 

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { requiredValue } from '#test/mocks/recorded';
 
 // #656 review: the card must be fresh when the student comes back from studying, must not turn
 // a failed load into "no goal" (one click would overwrite a real goal with 0), and has to be
@@ -67,7 +68,9 @@ describe('StudyGoal messages', () => {
   for (const locale of ['pl', 'en']) {
     it(`${locale} has every key the card uses`, () => {
       const messages = messageNamespace(locale, 'StudyGoal');
-      const keys = [...card.matchAll(/\bt\('([a-z_]+)'/g)].map((m) => m[1]);
+      const keys = [...card.matchAll(/\bt\('([a-z_]+)'/g)].map((m) =>
+        requiredValue(m[1], 'the translation key'),
+      );
       for (const key of new Set(keys)) expect(messages[key], key).toBeTruthy();
     });
   }

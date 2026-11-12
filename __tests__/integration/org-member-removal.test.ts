@@ -48,7 +48,7 @@ describe('Org member removal cleans group membership (#249)', () => {
       .insert({ organization_id: orgId, name: `O1G1-249-${Date.now()}` })
       .select('id')
       .single();
-    if (groupError || !group) throw new Error(`[setup] group: ${groupError?.message}`);
+    if (groupError) throw new Error(`[setup] group: ${groupError.message}`);
     groupId = group.id;
     await seedGroupMembership({ groupId, userId: student.id, role: 'member' });
 
@@ -62,8 +62,8 @@ describe('Org member removal cleans group membership (#249)', () => {
       })
       .select('id')
       .single();
-    if (assignmentError || !assignment) {
-      throw new Error(`[setup] assignment: ${assignmentError?.message}`);
+    if (assignmentError) {
+      throw new Error(`[setup] assignment: ${assignmentError.message}`);
     }
     assignmentId = assignment.id;
 

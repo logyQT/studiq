@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-10 — Logowanie: `?next=` nie może przekierować na obcą domenę.
@@ -94,8 +94,7 @@ test('an absolute external ?next is ignored and the user lands on their dashboar
   test.setTimeout(60_000);
 
   const tenant = loadTenant(CASE);
-  const student = tenant.users.student;
-  expect(student, `${CASE} needs the tenant's student account`).toBeTruthy();
+  const student = tenantUser(tenant, 'student');
 
   const foreign = trackForeignRequests(page);
 
@@ -119,8 +118,7 @@ test('a protocol-relative ?next is ignored and the user lands on their dashboard
   test.setTimeout(60_000);
 
   const tenant = loadTenant(CASE);
-  const student = tenant.users.student;
-  expect(student, `${CASE} needs the tenant's student account`).toBeTruthy();
+  const student = tenantUser(tenant, 'student');
 
   const foreign = trackForeignRequests(page);
 
@@ -139,8 +137,6 @@ test('a local ?next is still honoured after login, and the proxy rejects an exte
   test.setTimeout(60_000);
 
   const tenant = loadTenant(CASE);
-  const student = tenant.users.student;
-  expect(student, `${CASE} needs the tenant's student account`).toBeTruthy();
 
   await loginAs(page, tenant, 'student');
 

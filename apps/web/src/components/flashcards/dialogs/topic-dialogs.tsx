@@ -175,21 +175,21 @@ export function TopicDialogs({
             </DialogTitle>
             <DialogDescription>
               {t('view_flashcards_for_topic', {
-                count: (flashcards ?? []).filter((fc) =>
+                count: flashcards.filter((fc) =>
                   fc.flashcard_topic_assignments?.some((a) => a.topic_id === viewTopicId),
                 ).length,
               })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-4">
-            {(flashcards ?? []).filter((fc) =>
+            {flashcards.filter((fc) =>
               fc.flashcard_topic_assignments?.some((a) => a.topic_id === viewTopicId),
             ).length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
                 {t('no_flashcards_for_topic')}
               </p>
             ) : (
-              (flashcards ?? [])
+              flashcards
                 .filter((fc) =>
                   fc.flashcard_topic_assignments?.some((a) => a.topic_id === viewTopicId),
                 )

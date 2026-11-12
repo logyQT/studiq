@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-GRP-03 — a teacher edits and deletes their own group, and cannot touch a
@@ -138,10 +138,7 @@ test.describe('@case:EDU-GRP-03 @area:EDU @prio:P2 teacher edits and deletes own
     expect(tenant.profile, `${CASE} needs the org-limit tenant profile`).toBe('org-limit');
     expect(tenant.org, `${CASE} needs the seeded organization`).toBeTruthy();
 
-    const teacher = tenant.users.teacher;
-    const colleague = tenant.users.teacher2;
-    expect(teacher, `${CASE} needs the seeded T1 account`).toBeTruthy();
-    expect(colleague, `${CASE} needs the seeded T2 account`).toBeTruthy();
+    const colleague = tenantUser(tenant, 'teacher2');
 
     // Deterministic per tenant, so a re-run against the same seeded tenant finds
     // (and removes) its own leftovers instead of being blocked by the group limit.

@@ -19,8 +19,8 @@ describe.each(schemas)('%s name', (_label, schema, wrap) => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path.slice(-1)).toEqual(['name']);
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.path.slice(-1)).toEqual(['name']);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
       expect(result.error.issues.map((issue) => issue.message)).toContain(
         ValidationErrorCode.TOO_SHORT,
       );
@@ -32,7 +32,7 @@ describe.each(schemas)('%s name', (_label, schema, wrap) => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
       expect(result.error.issues.map((issue) => issue.message)).toContain(
         ValidationErrorCode.TOO_SHORT,
       );
@@ -45,7 +45,7 @@ describe.each(schemas)('%s name', (_label, schema, wrap) => {
     expect(result.success).toBe(true);
     if (result.success) {
       const data = result.data as { name?: string; decks?: { name: string }[] };
-      expect(data.name ?? data.decks?.[0].name).toBe('Deck');
+      expect(data.name ?? data.decks?.[0]?.name).toBe('Deck');
     }
   });
 
@@ -55,7 +55,7 @@ describe.each(schemas)('%s name', (_label, schema, wrap) => {
     expect(result.success).toBe(true);
     if (result.success) {
       const data = result.data as { name?: string; decks?: { name: string }[] };
-      expect(data.name ?? data.decks?.[0].name).toBe('a'.repeat(128));
+      expect(data.name ?? data.decks?.[0]?.name).toBe('a'.repeat(128));
     }
   });
 
@@ -68,7 +68,7 @@ describe.each(schemas)('%s name', (_label, schema, wrap) => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.TOO_LONG);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.TOO_LONG);
     }
   });
 });
@@ -92,7 +92,7 @@ describe('CreateDeckSchema', () => {
     const result = CreateDeckSchema.safeParse({ name: '' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
     }
   });
 
@@ -110,8 +110,8 @@ describe('CreateDeckSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path).toEqual(['groupIds']);
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.path).toEqual(['groupIds']);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
     }
   });
 
@@ -124,8 +124,8 @@ describe('CreateDeckSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path).toEqual(['groupIds']);
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.path).toEqual(['groupIds']);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
     }
   });
 
@@ -167,8 +167,8 @@ describe('UpdateDeckSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path).toEqual(['groupIds']);
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.path).toEqual(['groupIds']);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
     }
   });
 

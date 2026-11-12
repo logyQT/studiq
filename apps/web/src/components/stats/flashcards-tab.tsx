@@ -28,17 +28,18 @@ const STATE_FILTERS = ['all', 'new', 'learning', 'review', 'relearning', 'leech'
 
 function StateBadge({ state }: { state: CardStatsItem['state'] }) {
   const t = useTranslations('AppStatsPage');
-  const variants: Record<
-    CardStatsItem['state'],
-    { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
-  > = {
-    new: { label: t('state_new'), variant: 'secondary' },
+  const fallback: {
+    label: string;
+    variant: 'default' | 'secondary' | 'outline' | 'destructive';
+  } = { label: t('state_new'), variant: 'secondary' };
+  const variants: Record<string, typeof fallback> = {
+    new: fallback,
     learning: { label: t('state_learning'), variant: 'default' },
     review: { label: t('state_review'), variant: 'outline' },
     relearning: { label: t('state_relearning'), variant: 'default' },
     leech: { label: t('state_leech'), variant: 'destructive' },
   };
-  const v = variants[state] ?? variants.new;
+  const v = variants[state] ?? fallback;
   return <Badge variant={v.variant}>{v.label}</Badge>;
 }
 

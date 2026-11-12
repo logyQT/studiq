@@ -387,10 +387,10 @@ describe('cross-checkout app-port claims (spec §5)', () => {
         children.push(child);
         let stdout = '';
         let stderr = '';
-        child.stdout?.on('data', (chunk: Buffer | string) => {
+        child.stdout.on('data', (chunk: Buffer | string) => {
           stdout += String(chunk);
         });
-        child.stderr?.on('data', (chunk: Buffer | string) => {
+        child.stderr.on('data', (chunk: Buffer | string) => {
           stderr += String(chunk);
         });
         child.on('error', (error) => resolve({ code: null, stdout, stderr: error.message }));
@@ -517,10 +517,10 @@ function runChild(
     children.push(child);
     let stdout = '';
     let stderr = '';
-    child.stdout?.on('data', (chunk: Buffer | string) => {
+    child.stdout.on('data', (chunk: Buffer | string) => {
       stdout += String(chunk);
     });
-    child.stderr?.on('data', (chunk: Buffer | string) => {
+    child.stderr.on('data', (chunk: Buffer | string) => {
       stderr += String(chunk);
     });
     child.on('error', (error) => resolve({ code: null, stdout, stderr: error.message }));

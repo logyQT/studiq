@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { partialList, partialObject, partialText } from '@studiq/server/lib/partial-result';
 import { systemPrompt } from '@studiq/server/agents/system';
 import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
 import { createPlanTool } from '@studiq/server/agents/tools/generic/create-plan.tool';
@@ -114,14 +115,16 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
             stepNumber,
             messageCount: stepMessages.length,
             lastRole: lastMsg?.role,
-            promptPreview: (preview ?? '').slice(-300),
+            promptPreview: preview.slice(-300),
           },
         });
       },
 
       onStepFinish: (step) => {
-        if (step.toolCalls?.length) {
-          for (const tc of step.toolCalls) {
+        const usage = partialObject(step.usage);
+        const toolCalls = partialList(step.toolCalls);
+        if (toolCalls.length) {
+          for (const tc of toolCalls) {
             enqueueTrace({
               conversationId,
               agentName: 'general',
@@ -131,9 +134,9 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
                 stepNumber: step.stepNumber,
                 toolName: tc.toolName,
                 toolInput: JSON.stringify(tc.input).slice(0, 500),
-                inputTokens: step.usage?.inputTokens,
-                outputTokens: step.usage?.outputTokens,
-                totalTokens: step.usage?.totalTokens,
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                totalTokens: usage.totalTokens,
                 finishReason: step.finishReason,
               },
             });
@@ -146,11 +149,11 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
             label: `step ${step.stepNumber} response`,
             data: {
               stepNumber: step.stepNumber,
-              textLength: step.text?.length ?? 0,
+              textLength: partialText(step.text).length,
               reasoningLength: step.reasoningText?.length ?? 0,
-              inputTokens: step.usage?.inputTokens,
-              outputTokens: step.usage?.outputTokens,
-              totalTokens: step.usage?.totalTokens,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens,
               finishReason: step.finishReason,
             },
           });
@@ -158,18 +161,19 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
       },
 
       onFinish: async (finish) => {
+        const totalUsage = partialObject(finish.totalUsage);
         enqueueTrace({
           conversationId,
           agentName: 'general',
           eventType: 'step',
           label: 'streamText finish',
           data: {
-            totalSteps: finish.steps?.length ?? 0,
-            totalInputTokens: finish.totalUsage?.inputTokens,
-            totalOutputTokens: finish.totalUsage?.outputTokens,
-            totalTokens: finish.totalUsage?.totalTokens,
+            totalSteps: partialList(finish.steps).length,
+            totalInputTokens: totalUsage.inputTokens,
+            totalOutputTokens: totalUsage.outputTokens,
+            totalTokens: totalUsage.totalTokens,
             finishReason: finish.finishReason,
-            finalTextLength: finish.text?.length ?? 0,
+            finalTextLength: partialText(finish.text).length,
           },
         });
         // Awaited: `streamText` awaits `onFinish` before the stream closes, so
@@ -179,8 +183,8 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
         try {
           await limitsResolver.trackTokenUsage(
             ctx,
-            finish.totalUsage?.inputTokens ?? 0,
-            finish.totalUsage?.outputTokens ?? 0,
+            totalUsage.inputTokens ?? 0,
+            totalUsage.outputTokens ?? 0,
           );
         } catch (error) {
           enqueueTrace({

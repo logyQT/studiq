@@ -3,6 +3,7 @@ import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { FlashcardPracticeService } from '@studiq/server/services/flashcard-practice.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   buildQueryFilter: vi.fn().mockReturnValue({}),
@@ -434,7 +435,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx, undefined, 3);
 
       expect(result.success).toBe(true);
-      const payload = upsertMock.mock.calls[0][0];
+      const payload = firstCall(upsertMock)[0];
       expect(payload.learning_state).toBe('learning');
       expect(payload.learning_step).toBe(1);
       expect(payload.interval_days).toBe(10);
@@ -458,7 +459,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', false, ctx, undefined, 1);
 
       expect(result.success).toBe(true);
-      const payload = upsertMock.mock.calls[0][0];
+      const payload = firstCall(upsertMock)[0];
       expect(payload.learning_state).toBe('learning');
       expect(payload.learning_step).toBe(0);
       expect(payload.interval_days).toBe(1);
@@ -532,7 +533,7 @@ describe('FlashcardPracticeService', () => {
       const result = await service.log('fc-1', true, ctx, undefined, 4);
 
       expect(result.success).toBe(true);
-      const payload = upsertMock.mock.calls[0][0];
+      const payload = firstCall(upsertMock)[0];
       expect(payload.learning_state).toBe('review');
       expect(payload.interval_unit).toBe('days');
       expect(payload.interval_days).toBeGreaterThanOrEqual(6);

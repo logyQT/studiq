@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-07 — every account type signs in and lands on its own dashboard.
@@ -174,8 +174,7 @@ test.describe('AUT-07 — login for every account type', () => {
       .addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: HOST, path: '/' }]);
 
     for (const role of ROLES) {
-      const user = tenant.users[role.role];
-      expect(user, `${CASE} seeds a ${role.role}`).toBeTruthy();
+      const user = tenantUser(tenant, role.role);
 
       // --- Step 1/2/3: sign in through the login form ---------------------
       await signIn(page, tenant, role.role);

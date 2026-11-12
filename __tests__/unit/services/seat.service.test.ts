@@ -332,7 +332,7 @@ describe('SeatService', () => {
 
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.data[0].userFullName).toBeNull();
+      expect(result.data[0]?.userFullName).toBeNull();
     });
 
     it('keeps an assignment whose profile is hidden by RLS (orphaned seat)', async () => {
@@ -480,7 +480,7 @@ describe('SeatService', () => {
       expect(result.error).toBe('USAGE_LIMIT_EXCEEDED');
     });
 
-    it('returns USAGE_LIMIT_EXCEEDED when pool full (code 23514 without message)', async () => {
+    it('returns USAGE_LIMIT_EXCEEDED when pool full (code 23514 with an unrelated message)', async () => {
       mock.from.mockReturnValue(chain(null));
       mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'guide' }));
       mock.from.mockReturnValueOnce(chain({ email: 'user@test.com' }));
@@ -491,7 +491,7 @@ describe('SeatService', () => {
           select: vi.fn().mockReturnValue({
             maybeSingle: vi.fn().mockResolvedValue({
               data: null,
-              error: { code: '23514' },
+              error: { code: '23514', message: 'new row violates check constraint' },
             }),
           }),
         }),

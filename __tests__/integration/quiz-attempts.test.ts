@@ -1,4 +1,5 @@
 import type { Database } from '@studiq/server/types/database';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
 import {
@@ -14,7 +15,12 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+  requiredEntry,
+} from '#test/integration/test-utils';
 import { PUT as attemptAnswersPut } from '@/app/(backend)/api/v1/quiz/[attemptId]/answers/route';
 import {
   GET as attemptGet,
@@ -318,7 +324,7 @@ describe(`Quiz Attempts Integration`, () => {
       expect(submitRes.status).toBe(200);
 
       // A teacher grades one answer after submission.
-      const gradedQuestionId = questionIds[0];
+      const gradedQuestionId = requiredAt(questionIds, 0, 'attempt question id');
       const { error: gradeError } = await supabase
         .from('student_answers')
         .update({ teacher_points: 2, teacher_feedback: 'Dobrze, ale brakuje liberum veto.' })
@@ -337,10 +343,9 @@ describe(`Quiz Attempts Integration`, () => {
       expect(body.data.completed_at).not.toBeNull();
       expect(body.data.questions).toHaveLength(questionIds.length);
       expect(Object.keys(body.data.answers).toSorted()).toEqual([...questionIds].toSorted());
-      expect(body.data.answers[gradedQuestionId].teacher_points).toBe(2);
-      expect(body.data.answers[gradedQuestionId].teacher_feedback).toBe(
-        'Dobrze, ale brakuje liberum veto.',
-      );
+      const gradedAnswer = requiredEntry(body.data.answers, gradedQuestionId, 'graded answer');
+      expect(gradedAnswer.teacher_points).toBe(2);
+      expect(gradedAnswer.teacher_feedback).toBe('Dobrze, ale brakuje liberum veto.');
       for (const question of body.data.questions) {
         expect(question).toHaveProperty('question_answers');
         expect(question).toHaveProperty('explanation');
@@ -421,8 +426,8 @@ describe(`Quiz Attempts Integration`, () => {
         .select('id')
         .single()
         .overrideTypes<OpenQuestionRow, { merge: false }>();
-      if (openQuestionError || !openQuestion) {
-        throw new Error(`Failed to seed open question: ${openQuestionError?.message}`);
+      if (openQuestionError) {
+        throw new Error(`Failed to seed open question: ${openQuestionError.message}`);
       }
 
       await supabase.from('quiz_attempt_questions').insert({
@@ -460,7 +465,7 @@ describe(`Quiz Attempts Integration`, () => {
         >();
       if (typesError) throw new Error(`Failed to load question types: ${typesError.message}`);
 
-      const typeById = new Map((attemptQuestionRows ?? []).map((q) => [q.id, q.type] as const));
+      const typeById = new Map(dbRows(attemptQuestionRows).map((q) => [q.id, q.type] as const));
 
       const textAnswer = 'Rozbiory, słaba władza centralna, liberum veto.';
       // Go through the same client helper the take pages use, so a regression
@@ -680,7 +685,7 @@ describe(`Quiz Attempts Integration`, () => {
     it('saves a draft and serves it back on resume without grading it', async () => {
       mockUser(student.user);
       const { options } = await loadAttemptAnswers();
-      const first = options[0];
+      const first = requiredAt(options, 0, 'attempt option');
 
       const { request, params } = draftRequest([
         { questionId: first.question_id, selectedAnswerId: first.id },
@@ -764,7 +769,7 @@ describe(`Quiz Attempts Integration`, () => {
     it('still never exposes the answer key after a draft save (#331)', async () => {
       mockUser(student.user);
       const { options } = await loadAttemptAnswers();
-      const first = options[0];
+      const first = requiredAt(options, 0, 'attempt option');
 
       const { request, params } = draftRequest([
         { questionId: first.question_id, selectedAnswerId: first.id },
@@ -773,7 +778,9 @@ describe(`Quiz Attempts Integration`, () => {
 
       const { body } = await getAttempt();
 
-      expect(body.data.answers[first.question_id]).not.toHaveProperty('is_correct');
+      expect(
+        requiredEntry(body.data.answers, first.question_id, 'draft answer'),
+      ).not.toHaveProperty('is_correct');
       for (const question of body.data.questions) {
         expect(question).not.toHaveProperty('explanation');
         expect(question).not.toHaveProperty('search_vector');
@@ -807,7 +814,8 @@ describe(`Quiz Attempts Integration`, () => {
       // The review/submit payload is built from the resumed answers.
       const submitAnswers = questionIds.map((questionId) => ({
         questionId,
-        selectedAnswerId: getBody.data.answers[questionId].selected_answer_id,
+        selectedAnswerId: requiredEntry(getBody.data.answers, questionId, 'resumed answer')
+          .selected_answer_id,
       }));
 
       const submitReq = createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
@@ -834,9 +842,9 @@ describe(`Quiz Attempts Integration`, () => {
 
       const { body: reviewBody } = await getAttempt();
       for (const questionId of questionIds) {
-        expect(reviewBody.data.answers[questionId].selected_answer_id).toBe(
-          perQuestion.get(questionId),
-        );
+        expect(
+          requiredEntry(reviewBody.data.answers, questionId, 'review answer').selected_answer_id,
+        ).toBe(perQuestion.get(questionId));
       }
     });
   });

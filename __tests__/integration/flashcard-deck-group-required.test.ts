@@ -7,7 +7,11 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import {
   GET as getDeckById,
   PUT as updateDeck,
@@ -119,7 +123,7 @@ describe(`Flashcard Deck Group Required`, () => {
       groups: 1,
     });
     orgId = teacher.orgId!;
-    groupId = teacher.groups[1];
+    groupId = requiredAt(teacher.groups, 1, 'seeded group');
 
     // The API creates groups without enrolling their creator; deck group-sharing is
     // only allowed to groups the caller actually teaches (#140).

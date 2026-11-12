@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-37 — student summary of a completed, graded quiz (`/app/assignments`).
@@ -281,7 +281,7 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
       ).toBeNull();
 
       // ── Teacher grades the open answer of the visible quiz ─────────────────
-      const student = tenant.users.student;
+      const student = tenantUser(tenant, 'student');
       await api<unknown>(
         page,
         'PUT',
@@ -417,11 +417,10 @@ test.describe('@case:STU-37 @area:STU @prio:P2 student summary of a graded quiz'
       }>(studentPage, 'GET', `/api/v1/quiz/${visibleAttempt.attemptId}`);
       expect(visibleStored.score, 'the stored score includes the graded answer').toBe(2);
       expect(visibleStored.total_points, 'the total is the assignment points').toBe(3);
-      expect(
-        visibleStored.answers[open.id].teacher_points,
-        'the stored open answer is graded',
-      ).toBe(1);
-      expect(visibleStored.answers[open.id].teacher_feedback, 'the stored feedback').toBe(feedback);
+      const storedOpenAnswer = visibleStored.answers[open.id];
+      if (!storedOpenAnswer) throw new Error(`${CASE} the attempt stores no answer for ${open.id}`);
+      expect(storedOpenAnswer.teacher_points, 'the stored open answer is graded').toBe(1);
+      expect(storedOpenAnswer.teacher_feedback, 'the stored feedback').toBe(feedback);
 
       const visibleAssignment = await api<StudentAssignment>(
         studentPage,

@@ -167,7 +167,7 @@ export default function TakeAssignmentPage() {
     setSubmitting(true);
     try {
       // `open` questions carry free text; only mcq/true_false carry an option id.
-      const typeById = new Map((attempt.questions ?? []).map((q) => [q.id, q.type]));
+      const typeById = new Map(attempt.questions.map((q) => [q.id, q.type]));
       const formattedAnswers: SubmitAnswer[] = Object.entries(answers).flatMap(
         ([questionId, value]): SubmitAnswer[] => {
           if (!value.trim()) return [];
@@ -212,12 +212,12 @@ export default function TakeAssignmentPage() {
     );
   }
 
-  const question = attempt.questions?.[currentIndex];
+  const question = attempt.questions[currentIndex];
   if (!question) return null;
 
   const isMcq = question.type === 'mcq' || question.type === 'true_false';
   const isOpen = question.type === 'open';
-  const progress = `${currentIndex + 1} / ${attempt.questions?.length ?? 0}`;
+  const progress = `${currentIndex + 1} / ${attempt.questions.length}`;
 
   const remainingSeconds = remainingMs !== null ? Math.floor(remainingMs / 1000) : null;
   const minutesLeft = remainingSeconds !== null ? Math.floor(remainingSeconds / 60) : null;
@@ -250,7 +250,7 @@ export default function TakeAssignmentPage() {
       <div className="w-full bg-muted rounded-full h-1.5">
         <div
           className="bg-primary h-1.5 rounded-full transition-all"
-          style={{ width: `${((currentIndex + 1) / (attempt.questions?.length ?? 1)) * 100}%` }}
+          style={{ width: `${((currentIndex + 1) / attempt.questions.length) * 100}%` }}
         />
       </div>
 
@@ -352,7 +352,7 @@ export default function TakeAssignmentPage() {
           {t('previous')}
         </Button>
 
-        {currentIndex < (attempt.questions?.length ?? 1) - 1 ? (
+        {currentIndex < attempt.questions.length - 1 ? (
           <Button onClick={() => setCurrentIndex((i) => i + 1)}>{t('next')}</Button>
         ) : (
           <Button onClick={handleSubmit} disabled={submitting}>

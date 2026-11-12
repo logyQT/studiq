@@ -9,6 +9,7 @@ import {
 } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   SaveQuizAnswersInput,
@@ -84,7 +85,7 @@ export class QuizAttemptService {
 
     if (error) return toDbFailure(error);
 
-    const attempts = data ?? [];
+    const attempts = dbRows(data);
     if (attempts.length === 0) return success([]);
 
     // `total_questions` includes `open` questions, which are never auto-graded
@@ -133,7 +134,7 @@ export class QuizAttemptService {
       .select('*')
       .eq('id', attemptId)
       .eq('user_id', ctx.userId)
-      .single();
+      .maybeSingle();
 
     if (attemptError || !attempt) return failure('NOT_FOUND');
 
@@ -172,7 +173,7 @@ export class QuizAttemptService {
 
     if (answersError) return toDbFailure(answersError);
 
-    const questions = (attemptQuestions ?? [])
+    const questions = dbRows(attemptQuestions)
       .toSorted((a, b) => a.order_index - b.order_index)
       .map((aq) => aq.questions);
 
@@ -187,7 +188,7 @@ export class QuizAttemptService {
       }
     > = {};
     if (isCompleted) {
-      (answers ?? []).forEach((a) => {
+      dbRows(answers).forEach((a) => {
         // `student_answers.question_id` is nullable (`ON DELETE SET NULL`); a row
         // whose question is gone cannot be keyed, and `question_id = NULL`
         // never reached a client answer before either.
@@ -228,7 +229,7 @@ export class QuizAttemptService {
       .select('id, completed_at')
       .eq('id', data.attemptId)
       .eq('user_id', ctx.userId)
-      .single();
+      .maybeSingle();
 
     if (attemptError || !attempt) return failure('NOT_FOUND');
     if (attempt.completed_at) return failure('BAD_REQUEST');
@@ -242,7 +243,7 @@ export class QuizAttemptService {
 
     if (questionsError) return toDbFailure(questionsError);
 
-    const allowedIds = new Set((attemptQuestions ?? []).map((q) => q.question_id));
+    const allowedIds = new Set(dbRows(attemptQuestions).map((q) => q.question_id));
     if (data.answers.some((a) => !allowedIds.has(a.questionId))) {
       return failure('UNPROCESSABLE_ENTITY');
     }
@@ -279,7 +280,7 @@ export class QuizAttemptService {
       .select('*')
       .eq('id', data.attemptId)
       .eq('user_id', ctx.userId)
-      .single();
+      .maybeSingle();
 
     if (attemptCheckError || !attempt) return failure('NOT_FOUND');
     if (attempt.completed_at) return failure('BAD_REQUEST');
@@ -315,11 +316,11 @@ export class QuizAttemptService {
         .eq('assignment_id', attempt.assignment_id);
 
       if (pointsError) return toDbFailure(pointsError);
-      for (const row of rows ?? []) {
+      for (const row of dbRows(rows)) {
         // `question_id` is nullable (`ON DELETE SET NULL`); a row without a
         // question cannot award points to any answer.
         if (!row.question_id) continue;
-        assignmentPoints.set(row.question_id, row.points ?? 0);
+        assignmentPoints.set(row.question_id, row.points);
       }
     }
 
@@ -339,7 +340,7 @@ export class QuizAttemptService {
 
       if (questionsError) return toDbFailure(questionsError);
 
-      questionTypeById = new Map((questionRows ?? []).map((q) => [q.id, q.type]));
+      questionTypeById = new Map(dbRows(questionRows).map((q) => [q.id, q.type]));
     }
 
     for (const ans of data.answers) {

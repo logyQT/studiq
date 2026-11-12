@@ -145,7 +145,7 @@ async function messagesFor(base: string, email: string): Promise<MailMessage[]> 
   }
 
   // Classic Inbucket: one mailbox per address, messages under it.
-  const mailboxName = email.split('@')[0];
+  const mailboxName = email.split('@')[0] ?? email;
   const mailbox = await fetch(`${base}/api/v1/mailbox/${encodeURIComponent(mailboxName)}`, {
     signal: AbortSignal.timeout(5_000),
   });

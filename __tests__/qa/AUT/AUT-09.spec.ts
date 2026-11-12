@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-09 — login honours `?next=` and returns to the requested page.
@@ -83,8 +83,7 @@ test.describe('AUT-09 — login next parameter', () => {
   }) => {
     const tenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
-    const student = tenant.users.student;
-    expect(student, `${CASE} tenant must seed a student`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
 
     await openAnonymous(page, DEEP_LINK);
 
@@ -124,8 +123,7 @@ test.describe('AUT-09 — login next parameter', () => {
     page,
   }) => {
     const tenant = loadTenant(CASE);
-    const student = tenant.users.student;
-    expect(student, `${CASE} tenant must seed a student`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
 
     const external = 'https://evil.example/app';
     await openAnonymous(page, `/login?next=${encodeURIComponent(external)}`);

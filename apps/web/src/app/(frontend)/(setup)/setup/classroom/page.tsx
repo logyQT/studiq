@@ -65,7 +65,7 @@ export default function ClassroomPage() {
 
   const watchedName = form.watch('name');
   const watchedInvites = form.watch('invites');
-  const validInvites = (watchedInvites ?? []).filter((i) => i.email.trim());
+  const validInvites = watchedInvites.filter((i) => i.email.trim());
 
   async function handleCreate() {
     const values = form.getValues();

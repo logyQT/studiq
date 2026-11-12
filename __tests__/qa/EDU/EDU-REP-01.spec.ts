@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-REP-01 — the educator's report inbox (`/edu/reports`).
@@ -123,8 +123,8 @@ async function getData<T>(page: Page, url: string): Promise<T> {
  */
 async function ensureEducatorLeadsGroup(page: Page, tenant: QaTenant): Promise<void> {
   const groupId = tenant.group?.id;
-  const educator = tenant.users.teacher;
-  if (!groupId || !educator) {
+  const educator = tenantUser(tenant, 'teacher');
+  if (!groupId) {
     throw new Error(`${CASE} needs the content tenant profile (org, group and educator)`);
   }
 
@@ -231,8 +231,8 @@ async function ensureReport(page: Page, tenant: QaTenant, questionId: string): P
 /** Everything the case needs, built through the product API inside this tenant only. */
 async function prepareTenant(page: Page, tenant: QaTenant): Promise<QuestionRow> {
   const group = tenant.group;
-  const teacher = tenant.users.teacher;
-  if (!group || !teacher) {
+  const teacher = tenantUser(tenant, 'teacher');
+  if (!group) {
     throw new Error(`${CASE} needs the content tenant profile (org, group, educator, student)`);
   }
 
@@ -266,13 +266,14 @@ test.describe('@case:EDU-REP-01 @area:EDU @prio:P2 educator report inbox', () =>
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     const question = await prepareTenant(page, tenant);
-    const teacher = tenant.users.teacher;
-    const student = tenant.users.student;
+    const teacher = tenantUser(tenant, 'teacher');
+    const student = tenantUser(tenant, 'student');
 
     // --- The data behind the screen -----------------------------------------
     const reports = await getData<ReportListResult>(page, `${REPORTS_URL}?limit=100`);
     expect(reports.items, 'reports addressed to this educator').toHaveLength(1);
     const [report] = reports.items;
+    if (!report) throw new Error(`${CASE} the educator received no report`);
     expect(report.question?.id, 'the report targets the case question').toBe(question.id);
     expect(report.question?.content, 'the report shows the reported question').toBe(
       QUESTION_CONTENT,
@@ -298,12 +299,12 @@ test.describe('@case:EDU-REP-01 @area:EDU @prio:P2 educator report inbox', () =>
     // The single row carries the reported question, its author, the date and the
     // status, and is marked unread (the case's "status przeczytania").
     const author = report.reporter?.full_name ?? report.reporter?.email;
-    expect(author, 'the report carries its author').toBeTruthy();
+    if (!author) throw new Error(`${CASE} the report carries no author`);
 
     const row = page.locator('main [data-slot="card"]').filter({ hasText: QUESTION_CONTENT });
     await expect(row, 'the report row').toHaveCount(1);
     await expect(row.getByText(QUESTION_CONTENT, { exact: true })).toBeVisible();
-    await expect(row.getByText(author!, { exact: true })).toBeVisible();
+    await expect(row.getByText(author, { exact: true })).toBeVisible();
     await expect(row.getByText(COPY.statusOpen, { exact: true })).toBeVisible();
     await expect(row.getByText(COPY.unread, { exact: true })).toHaveCount(1);
     await expect(row.locator('span[aria-hidden="true"].bg-red-500')).toBeVisible();

@@ -14,7 +14,11 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
@@ -323,7 +327,9 @@ describe(`Questions Integration`, () => {
 
       expect(listRes.status).toBe(200);
       expect(listBody.data).toHaveLength(1);
-      expect(listBody.data[0].topics).toEqual([{ id: topicId, name: topicName }]);
+      expect(requiredAt(listBody.data, 0, 'question').topics).toEqual([
+        { id: topicId, name: topicName },
+      ]);
 
       // A content edit that resubmits the hydrated topicIds must keep the
       // assignment — the pre-fix dialog always sent [] here and silently cleared it.
@@ -462,7 +468,7 @@ describe(`Questions Integration`, () => {
 
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(1);
-      expect(body.data[0].type).toBe('true_false');
+      expect(requiredAt(body.data, 0, 'question').type).toBe('true_false');
     });
 
     it('filters by topicIds', async () => {

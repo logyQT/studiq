@@ -181,7 +181,7 @@ describe('extractConceptsTool', () => {
     const result: unknown = await extractConceptsTool.execute({ terms }, ctx);
     if (!isTermsToolResult(result) || !result.terms) throw new Error('expected tool terms');
     expect(result.terms).toHaveLength(1);
-    expect(result.terms[0].term).toBe('T1');
+    expect(result.terms[0]?.term).toBe('T1');
   });
 
   it('returns empty array when terms is empty', async () => {

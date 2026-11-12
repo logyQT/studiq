@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { warn } from '@studiq/server/lib/log';
 import { accessibleFilter, buildQueryFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -255,7 +256,7 @@ export class FlashcardPracticeService {
     if (!settingsResult.success) return settingsResult;
     const settings = settingsResult.data;
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().slice(0, 10);
     if (settings.daily_reset_date < today) {
       const { data: updated, error } = await supabase
         .from('user_study_settings')
@@ -284,7 +285,7 @@ export class FlashcardPracticeService {
       .from('user_daily_activity')
       .select('reviews_count')
       .eq('user_id', ctx.userId)
-      .eq('date', new Date().toISOString().split('T')[0])
+      .eq('date', new Date().toISOString().slice(0, 10))
       .maybeSingle();
 
     return success({
@@ -295,7 +296,7 @@ export class FlashcardPracticeService {
       dailyResetDate: settings.daily_reset_date,
       remainingNewCards: Math.min(budget, actualNew),
       totalNewCards: actualNew,
-      dailyReviewGoal: settings.daily_review_goal ?? 0,
+      dailyReviewGoal: settings.daily_review_goal,
       reviewedToday: daily?.reviews_count ?? 0,
     });
   }
@@ -333,7 +334,7 @@ export class FlashcardPracticeService {
     });
 
     if (error) return 0;
-    return data ?? 0;
+    return data;
   }
 
   private async upsertReviewState(
@@ -523,10 +524,10 @@ export class FlashcardPracticeService {
     const rpcResult = parseRpcJson(DueBreakdownSchema, data, EMPTY_DUE_BREAKDOWN);
 
     const byTopic: Record<string, number> = {};
-    for (const t of rpcResult.byTopic ?? []) byTopic[t.topic_id] = t.count;
+    for (const t of rpcResult.byTopic) byTopic[t.topic_id] = t.count;
 
     const byDeck: Record<string, number> = {};
-    for (const d of rpcResult.byDeck ?? []) byDeck[d.deck_id] = d.count;
+    for (const d of rpcResult.byDeck) byDeck[d.deck_id] = d.count;
 
     return success({
       total: rpcResult.total,
@@ -642,11 +643,11 @@ export class FlashcardPracticeService {
     const reviewStateResult = await this.getReviewState(flashcardId, ctx);
     if (!reviewStateResult.success) return reviewStateResult;
 
-    const totalAttempts = attempts?.length ?? 0;
-    const correctAttempts = (attempts ?? []).filter((a) => a.was_correct).length;
+    const practice = dbRows(attempts);
+    const totalAttempts = practice.length;
+    const correctAttempts = practice.filter((a) => a.was_correct).length;
     const avgResponseTime =
-      (attempts ?? []).reduce((sum, a) => sum + (a.response_time_ms ?? 0), 0) /
-      (totalAttempts || 1);
+      practice.reduce((sum, a) => sum + (a.response_time_ms ?? 0), 0) / (totalAttempts || 1);
 
     return success({
       totalAttempts,
@@ -705,7 +706,7 @@ export class FlashcardPracticeService {
     const { data: flashcards, error } = await query;
     if (error) return toDbFailure(error);
 
-    const rows = flashcards ?? [];
+    const rows = dbRows(flashcards);
     const hasMore = rows.length > pageSize;
     const page = hasMore ? rows.slice(0, pageSize) : rows;
 
@@ -794,7 +795,8 @@ export class FlashcardPracticeService {
       return sortText(av).localeCompare(sortText(bv)) * sortOrder;
     });
 
-    const nextCursor = hasMore ? page[page.length - 1].id : null;
+    const lastItem = page.at(-1);
+    const nextCursor = hasMore && lastItem ? lastItem.id : null;
 
     return success({ items, nextCursor, hasMore });
   }
@@ -836,7 +838,7 @@ export class FlashcardPracticeService {
 
     const { data, error } = await query;
     if (error) return [];
-    return (data ?? []).map((r) => r.id);
+    return dbRows(data).map((r) => r.id);
   }
 
   private async getSuspendedCardIds(ctx: RequestContext): Promise<string[]> {
@@ -913,7 +915,7 @@ export class FlashcardPracticeService {
     if (error) return toDbFailure(error);
 
     return success(
-      (flashcards ?? []).map((fc) => {
+      dbRows(flashcards).map((fc) => {
         const state = stateByCard.get(fc.id);
         return {
           id: fc.id,
@@ -922,13 +924,12 @@ export class FlashcardPracticeService {
           createdAt: fc.created_at ?? null,
           // The query only joins topic assignments, so no deck name is available.
           deckName: null,
-          topicNames:
-            fc.flashcard_topic_assignments?.flatMap((a) => {
-              // The generated types model `topics(name)` as a to-one embed
-              // (object); tolerate the array shape too, as before.
-              const name = topicName(a.topics);
-              return name ? [name] : [];
-            }) ?? [],
+          topicNames: dbRows(fc.flashcard_topic_assignments).flatMap((a) => {
+            // The generated types model `topics(name)` as a to-one embed
+            // (object); tolerate the array shape too, as before.
+            const name = topicName(a.topics);
+            return name ? [name] : [];
+          }),
           reviewState: state
             ? {
                 easinessFactor: state.easiness_factor,

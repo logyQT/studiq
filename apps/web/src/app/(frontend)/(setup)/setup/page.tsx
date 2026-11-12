@@ -15,7 +15,7 @@ export default function SetupLandingPage() {
   const { orgs, isPending, isFetching } = useOrgs();
   const gate = resolveSetupGate({ orgsCount: orgs.length, isPending, isFetching });
   // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const rawAccountType: unknown = user?.app_metadata.account_type;
   const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
 
   useEffect(() => {

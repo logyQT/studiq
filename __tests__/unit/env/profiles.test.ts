@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
+import { requiredValue } from '#test/mocks/recorded';
 
 interface ProfileSpec {
   capabilities: string[];
@@ -52,7 +53,7 @@ describe('env profiles (phase 3)', () => {
 
   it('builds and serves only web/qa/e2e, and seeds only qa/e2e', () => {
     for (const name of profiles.PROFILE_NAMES) {
-      const spec = profiles.PROFILES[name];
+      const spec = requiredValue(profiles.PROFILES[name], name);
       expect(spec.build).toBe(name === 'web' || name === 'qa' || name === 'e2e');
       expect(spec.serve).toBe(name === 'web' || name === 'qa' || name === 'e2e');
       expect(spec.seed).toBe(name === 'qa' || name === 'e2e');

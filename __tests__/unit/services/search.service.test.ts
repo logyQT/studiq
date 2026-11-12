@@ -75,7 +75,7 @@ describe('SearchService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].title).toBe('Hello');
+      expect(expectSuccess(result)[0]?.title).toBe('Hello');
     });
 
     it('groups results by flashcard id', async () => {
@@ -103,8 +103,8 @@ describe('SearchService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].decks).toHaveLength(2);
-      expect(expectSuccess(result)[0].rank).toBe(0.9); // max rank
+      expect(expectSuccess(result)[0]?.decks).toHaveLength(2);
+      expect(expectSuccess(result)[0]?.rank).toBe(0.9); // max rank
     });
 
     it('returns empty when no results', async () => {
@@ -143,7 +143,7 @@ describe('SearchService', () => {
       const result = await service.search('hello', educatorCtx);
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result)[0].decks[0].href).toContain('/edu/');
+      expect(expectSuccess(result)[0]?.decks[0]?.href).toContain('/edu/');
     });
   });
 });

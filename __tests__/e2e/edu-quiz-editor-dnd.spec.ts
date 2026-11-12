@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
+import { recordedAt } from '#test/mocks/recorded';
 
 const email = 'teacher-classroom@dev.local';
 const password = 'pass';
@@ -113,7 +114,13 @@ test.describe('EDU quiz editor drag & drop (#160)', () => {
         data: {
           name: `QA160 non-empty ${Date.now()}`,
           description: null,
-          questions: [{ question_id: bank[1].id, order_index: 0, points: 1 }],
+          questions: [
+            {
+              question_id: recordedAt(bank, 1, 'the second bank question').id,
+              order_index: 0,
+              points: 1,
+            },
+          ],
         },
       });
       expect(seeded.status()).toBe(200);

@@ -1010,7 +1010,7 @@ describe('StatsService', () => {
           avgCompletionRate: 0,
         },
       ]);
-      expect(Number.isNaN(expectSuccess(result)?.[0]?.avgScore)).toBe(false);
+      expect(Number.isNaN(expectSuccess(result)[0]?.avgScore)).toBe(false);
     });
 
     it('returns a failure when the org members query fails', async () => {

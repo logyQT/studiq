@@ -20,7 +20,7 @@ describe('CreateOrganizationSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.TOO_SHORT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.TOO_SHORT);
     }
   });
 
@@ -28,7 +28,7 @@ describe('CreateOrganizationSchema', () => {
     const result = CreateOrganizationSchema.safeParse({});
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.REQUIRED);
     }
   });
 });
@@ -70,7 +70,7 @@ describe('UpdateOrganizationSchema', () => {
     const result = UpdateOrganizationSchema.safeParse({ name: 'AB' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.TOO_SHORT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.TOO_SHORT);
     }
   });
 });

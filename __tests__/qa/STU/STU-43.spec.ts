@@ -289,8 +289,7 @@ test.describe('@case:STU-43 @area:STU @prio:P2 quiz results history', () => {
     const tenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the org-limit tenant profile`).toBe('org-limit');
     const student = studentOf(tenant);
-    const noQuizAccount = tenant.users.invitee1;
-    if (!tenant.org || !noQuizAccount) {
+    if (!tenant.org) {
       throw new Error(`${CASE} needs the org-limit tenant profile (org, student and invitee1)`);
     }
 
@@ -306,8 +305,12 @@ test.describe('@case:STU-43 @area:STU @prio:P2 quiz results history', () => {
       await ensureQuestion(page.request, bankId, QUESTIONS[0]),
       await ensureQuestion(page.request, bankId, QUESTIONS[1]),
     ];
-    expect(bank[0].type, 'the bank holds a multiple-choice question').toBe('mcq');
-    expect(bank[1].question_answers, 'both questions carry their two options').toHaveLength(2);
+    const [firstQuestion, secondQuestion] = bank;
+    if (!firstQuestion || !secondQuestion) throw new Error(`${CASE} the bank holds two questions`);
+    expect(firstQuestion.type, 'the bank holds a multiple-choice question').toBe('mcq');
+    expect(secondQuestion.question_answers, 'both questions carry their two options').toHaveLength(
+      2,
+    );
 
     // --- Prerequisite: „kilka quizów” — one 100 % and one 50 % attempt --------
     const perfect = await generateAttempt(page.request, bankId);
@@ -373,9 +376,13 @@ test.describe('@case:STU-43 @area:STU @prio:P2 quiz results history', () => {
 
     // The two attempts this run created are the two newest rows, with their %.
     // The half-correct quiz was submitted last, so it is „Podejście #1”.
+    const [halfCorrectAttempt, perfectAttempt] = completed;
+    if (!halfCorrectAttempt || !perfectAttempt) {
+      throw new Error(`${CASE} both attempts are submitted`);
+    }
     for (const [index, attempt, percentage] of [
-      [0, completed[0], '50%'],
-      [1, completed[1], '100%'],
+      [0, halfCorrectAttempt, '50%'],
+      [1, perfectAttempt, '100%'],
     ] as const) {
       const row = rows.nth(index);
       await expect(row.locator('[data-slot="badge"]'), `row #${index + 1} score`).toHaveText(

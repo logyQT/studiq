@@ -175,6 +175,7 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
     const planBefore = await personalPlan(page);
     expect(planBefore.key, 'the case starts on the free Base plan').toBe('base');
     const baseCap = planBefore.limits.max_decks;
+    if (baseCap === undefined) throw new Error(`${CASE} the Base plan carries no max_decks limit`);
     expect(baseCap, 'Base caps decks at the documented Base value').toBe(10);
     expect((await decks(page)).items, 'the student starts with no decks').toHaveLength(0);
 
@@ -320,8 +321,10 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
     };
     for (const [key, value] of Object.entries(sparkLimits)) {
       expect(planAfter.limits[key], `Spark limit ${key}`).toBe(value);
-      const row = limitRow(planCard, limitLabels[key]);
-      await expect(row, `limit row ${limitLabels[key]}`).toHaveCount(1);
+      const label = limitLabels[key];
+      if (!label) throw new Error(`${CASE} has no copy for ${key}`);
+      const row = limitRow(planCard, label);
+      await expect(row, `limit row ${label}`).toHaveCount(1);
       await expect(row.locator('span').last(), `${key} on the billing card`).toHaveText(
         value.toLocaleString('pl'),
       );

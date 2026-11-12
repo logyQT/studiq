@@ -97,12 +97,14 @@ suspicious = "warn"
   ] },
 ]
 
-# `typescript/no-unnecessary-condition` stays off for now (889 findings, 905 before #1122
-# dropped the dead conditions). They are not tautologies: `noUncheckedIndexedAccess` is
-# off, and PostgREST types every embed and aggregate as present, so the compiler calls the
-# fallbacks at those boundaries dead while the unit tests depend on them. Classification,
-# counts and the hardening that has to land first:
+# A condition on a value the type calls non-nullable is either dead or a lie about the
+# value's runtime shape. The type has to be honest at the boundary first, or this rule
+# deletes working fallbacks: `noUncheckedIndexedAccess` is on, PostgREST reads go through
+# `lib/supabase/rows` (`dbRows`/`dbCount`) and third-party result objects through
+# `lib/partial-result`, so every remaining condition is required by its own type.
+# Background and the classification this replaced:
 # docs/audits/1113-no-unnecessary-condition-boundary.md
+"typescript/no-unnecessary-condition" = "error"
 
 # --- Biome parity rules kept off for now ------------------------------
 "no-shadow-restricted-names" = "off"

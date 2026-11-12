@@ -21,7 +21,7 @@ const { DELETE, GET, PUT } =
 
 const PLAN_ID = '5b1d6f6e-3f8e-4a1c-9b1e-2d6a4c7f8e90';
 
-function context(params: Record<string, string>) {
+function context(params: { id: string }) {
   return { params: Promise.resolve(params) };
 }
 

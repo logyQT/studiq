@@ -100,8 +100,8 @@ export function OrgSwitcher() {
     );
   }
 
-  const displayName = activeOrg?.name || 'StudiQ';
-  const roleLabel = displayRole(activeOrg?.orgRoleName, t('role_student'));
+  const displayName = activeOrg.name || 'StudiQ';
+  const roleLabel = displayRole(activeOrg.orgRoleName, t('role_student'));
 
   return (
     <SidebarMenu>

@@ -5,6 +5,7 @@ import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isRecord } from '@studiq/server/lib/record';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import {
@@ -65,14 +66,14 @@ export class QuestionTransferService {
     if (rows.length < total) return failure('INTERNAL_SERVER');
 
     const questions = rows.map((row): RawTransferQuestion => {
-      const answers = [...(row.question_answers ?? [])].toSorted(
-        (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
+      const answers = dbRows(row.question_answers).toSorted(
+        (a, b) => a.order_index - b.order_index,
       );
       return {
         type: row.type,
         content: row.content,
         ...(row.explanation ? { explanation: row.explanation } : {}),
-        topics: (row.topics ?? []).map((topic) => topic.name),
+        topics: row.topics.map((topic) => topic.name),
         answers: answers.map((a) => ({ content: a.content, isCorrect: a.is_correct })),
       };
     });
@@ -140,34 +141,34 @@ export class QuestionTransferService {
 
     // Ids are chosen here, so options and topic links never depend on the order a
     // multi-row INSERT returns its rows in.
-    const ids = questions.map(() => crypto.randomUUID());
+    const prepared = questions.map((question) => ({ id: crypto.randomUUID(), question }));
 
     const { error: questionError } = await supabase.from('questions').insert(
-      questions.map((q, i) => ({
-        id: ids[i],
-        type: q.type,
-        content: q.content,
-        explanation: q.explanation ?? null,
+      prepared.map(({ id, question }) => ({
+        id,
+        type: question.type,
+        content: question.content,
+        explanation: question.explanation ?? null,
         created_by: ctx.userId,
         organization_id: organizationId,
-        visibility: bank.visibility ?? 'personal',
+        visibility: bank.visibility,
         bank_id: bankId,
       })),
     );
     if (questionError) return toDbFailure(questionError);
 
-    const options = questions.flatMap((q, i) =>
-      q.answers.map((a, order) => ({
-        question_id: ids[i],
+    const options = prepared.flatMap(({ id, question }) =>
+      question.answers.map((a, order) => ({
+        question_id: id,
         content: a.content,
         is_correct: a.isCorrect,
         order_index: order,
       })),
     );
-    const links = questions.flatMap((q, i) =>
-      [...new Set(q.topics.map((name) => topicIds.data.get(name.toLowerCase())))]
-        .filter((id): id is string => !!id)
-        .map((topic_id) => ({ question_id: ids[i], topic_id })),
+    const links = prepared.flatMap(({ id, question }) =>
+      [...new Set(question.topics.map((name) => topicIds.data.get(name.toLowerCase())))]
+        .filter((topicId): topicId is string => !!topicId)
+        .map((topic_id) => ({ question_id: id, topic_id })),
     );
 
     const writes = [
@@ -178,7 +179,10 @@ export class QuestionTransferService {
       const failed = write ? (await write).error : null;
       if (failed) {
         // Cascades remove the options and topic links of the questions created above.
-        const cleanup = await this.removeCreated(supabase, ids);
+        const cleanup = await this.removeCreated(
+          supabase,
+          prepared.map((entry) => entry.id),
+        );
         if (cleanup.error) {
           // The leftovers are recorded here, but the response still describes the failure the
           // caller hit: a cleanup error is not an authorization verdict (`42501` would turn a
@@ -186,7 +190,7 @@ export class QuestionTransferService {
           // cause, not the rollback.
           logError('question-transfer.rollback_failed', {
             bankId,
-            total: ids.length,
+            total: prepared.length,
             remaining: cleanup.remaining,
             originalError: `${failed.code}: ${failed.message}`,
             cleanupError: `${cleanup.error.code}: ${cleanup.error.message}`,
@@ -240,7 +244,7 @@ export class QuestionTransferService {
       : existing.is('organization_id', null);
     const { data: own, error } = await existing;
     if (error) return toDbFailure(error);
-    for (const topic of own ?? []) byName.set(topic.name.toLowerCase(), topic.id);
+    for (const topic of dbRows(own)) byName.set(topic.name.toLowerCase(), topic.id);
 
     const missing = [...wanted].filter(([key]) => !byName.has(key)).map(([, name]) => name);
     if (missing.length > 0) {
@@ -256,7 +260,7 @@ export class QuestionTransferService {
         )
         .select('id, name');
       if (createError) return toDbFailure(createError);
-      for (const topic of created ?? []) byName.set(topic.name.toLowerCase(), topic.id);
+      for (const topic of dbRows(created)) byName.set(topic.name.toLowerCase(), topic.id);
     }
 
     return success(byName);

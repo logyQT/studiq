@@ -275,11 +275,13 @@ test.describe('@case:EDU-Q-02 @area:EDU @prio:P1 multiple-choice question', () =
     await expect(answerInputs(page), 'the form starts with one answer row').toHaveCount(1);
     await answerInputs(page).nth(0).fill(ANSWERS[0]);
     for (let index = 1; index < ANSWERS.length; index += 1) {
+      const answer = ANSWERS[index];
+      if (!answer) throw new Error(`${CASE} the case has no answer at index ${index}`);
       await form.getByRole('button', { name: COPY.addAnswer, exact: true }).click();
       await expect(answerInputs(page), `answer rows after ${index} additions`).toHaveCount(
         index + 1,
       );
-      await answerInputs(page).nth(index).fill(ANSWERS[index]);
+      await answerInputs(page).nth(index).fill(answer);
     }
 
     await expect(answerRadios(page), 'one radio per answer').toHaveCount(ANSWERS.length);
@@ -319,7 +321,8 @@ test.describe('@case:EDU-Q-02 @area:EDU @prio:P1 multiple-choice question', () =
     );
     const created = stored.filter((row) => row.content === QUESTION_CONTENT);
     expect(created, 'the bank stores exactly this question').toHaveLength(1);
-    const question = created[0];
+    const [question] = created;
+    if (!question) throw new Error(`${CASE} the bank stores no case question`);
     expect(question.type, 'question type').toBe('mcq');
     expect(question.organization_id, 'question organization').toBe(tenant.org?.id);
     expect(question.explanation, 'the explanation is stored').toBe(EXPLANATION);
@@ -334,8 +337,10 @@ test.describe('@case:EDU-Q-02 @area:EDU @prio:P1 multiple-choice question', () =
 
     const correct = question.question_answers.filter((answer) => answer.is_correct);
     expect(correct, 'exactly one answer is marked correct').toHaveLength(1);
-    expect(correct[0].content, 'the radio marked the first answer').toBe(ANSWERS[CORRECT_INDEX]);
-    expect(correct[0].order_index, 'the correct answer keeps its position').toBe(CORRECT_INDEX);
+    const [correctAnswer] = correct;
+    if (!correctAnswer) throw new Error(`${CASE} no answer is marked correct`);
+    expect(correctAnswer.content, 'the radio marked the first answer').toBe(ANSWERS[CORRECT_INDEX]);
+    expect(correctAnswer.order_index, 'the correct answer keeps its position').toBe(CORRECT_INDEX);
     expect(topic.id, 'the attached topic is the tenant topic').toBeTruthy();
 
     // --- Adjacent path: the edit dialog round-trips the stored state -----------

@@ -111,15 +111,11 @@ describe('manager plan model (#228)', () => {
   });
 
   afterAll(async () => {
-    if (manager?.id) {
-      await service.from('payments').delete().eq('user_id', manager.id);
-    }
+    await service.from('payments').delete().eq('user_id', manager.id);
     for (const orgId of createdOrgIds) {
       await cleanupOrganizationDeep(orgId).catch(() => {});
     }
-    if (manager?.id) {
-      await service.auth.admin.deleteUser(manager.id).catch(() => {});
-    }
+    await service.auth.admin.deleteUser(manager.id).catch(() => {});
   });
 
   it('changes only the organization on an org purchase (#228)', async () => {

@@ -150,7 +150,7 @@ export default function StatsDataPage() {
     return <div className="flex justify-center py-12 text-muted-foreground">Loading...</div>;
   }
 
-  const typeEntries = orderedQuestionTypeEntries(stats?.subject?.byType ?? {});
+  const typeEntries = orderedQuestionTypeEntries(stats?.subject.byType ?? {});
   const bySubject = stats?.bySubject ?? [];
   const flashSummary = flashStats?.summary;
   const deckRows = flashStats?.byDeck ?? [];

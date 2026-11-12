@@ -72,16 +72,16 @@ export function UserMenu({ className }: UserMenuProps) {
   }
 
   // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
-  const rawName: unknown = user?.user_metadata?.name;
+  const rawName: unknown = user.user_metadata.name;
   const storedName = typeof rawName === 'string' ? rawName : '';
-  const userName = storedName || user?.email?.split('@')[0] || 'User';
+  const userName = storedName || user.email?.split('@')[0] || 'User';
 
   const triggerContent = (
     <>
-      <UserAvatar name={userName} email={user?.email} size={20} className="size-8 rounded-lg" />
+      <UserAvatar name={userName} email={user.email} size={20} className="size-8 rounded-lg" />
       <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
         <span className="truncate font-medium">{userName}</span>
-        <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
+        <span className="truncate text-xs text-muted-foreground">{user.email}</span>
       </div>
       <ChevronsUpDown className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
     </>

@@ -65,7 +65,7 @@ export function AppSearch() {
         )}
         {results?.map((result) => (
           <CommandGroup key={result.id} heading={result.title}>
-            {result.decks?.map((deck) => (
+            {result.decks.map((deck) => (
               <CommandItem key={deck.id} onSelect={() => handleSelect(deck.href)}>
                 <BookOpen className="h-4 w-4" />
                 <span>{deck.name}</span>

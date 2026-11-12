@@ -1,13 +1,14 @@
 'use client';
 
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@studiq/ui';
-import { Plus } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 import { PageToolbar } from '@/components/shared/page-toolbar';
 import { ScopeGroupFilter } from '@/components/shared/scope-group-filter';
+import { SortSelect } from '@/components/shared/sort-select';
 import type { GroupOption } from '@/hooks/use-group-options';
+import type { SortOption } from '@/lib/content-sort-options';
 
-interface QuestionBankFiltersProps {
+interface ContentListToolbarProps {
   searchInput: string;
   onSearchChange: (value: string) => void;
   owner: string;
@@ -19,11 +20,18 @@ interface QuestionBankFiltersProps {
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
-  onCreateNew: () => void;
+  sortOptions: SortOption[];
+  actions?: ReactNode;
+  /** List-specific controls rendered after the sort select, e.g. the deck suspend toggle. */
+  children?: ReactNode;
   t: ReturnType<typeof useTranslations>;
 }
 
-export function QuestionBankFilters({
+/**
+ * Search, scope/group filter and sort in one toolbar, shared by the deck and
+ * question-bank lists so their controls cannot drift apart.
+ */
+export function ContentListToolbar({
   searchInput,
   onSearchChange,
   owner,
@@ -35,9 +43,11 @@ export function QuestionBankFilters({
   sortBy,
   sortOrder,
   onSortChange,
-  onCreateNew,
+  sortOptions,
+  actions,
+  children,
   t,
-}: QuestionBankFiltersProps) {
+}: ContentListToolbarProps) {
   return (
     <PageToolbar
       search={{
@@ -45,11 +55,7 @@ export function QuestionBankFilters({
         onChange: onSearchChange,
         placeholder: t('search_placeholder'),
       }}
-      actions={
-        <Button className="justify-start" onClick={onCreateNew}>
-          <Plus className="h-4 w-4" /> {t('new_bank')}
-        </Button>
-      }
+      actions={actions}
     >
       <ScopeGroupFilter
         owner={owner}
@@ -60,24 +66,13 @@ export function QuestionBankFilters({
         myGroupIds={myGroupIds}
         t={t}
       />
-      <Select
-        value={`${sortBy}:${sortOrder}`}
-        onValueChange={(v) => {
-          const [sb, so] = v.split(':');
-          onSortChange(sb, so);
-        }}
-      >
-        <SelectTrigger className="w-37.5 truncate">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
-          <SelectItem value="updated_at:desc">{t('sort_recent')}</SelectItem>
-          <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
-          <SelectItem value="name:asc">{t('sort_name_asc')}</SelectItem>
-          <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>
-        </SelectContent>
-      </Select>
+      <SortSelect
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onChange={onSortChange}
+        options={sortOptions}
+      />
+      {children}
     </PageToolbar>
   );
 }

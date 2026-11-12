@@ -225,8 +225,6 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
       'seed with --fresh: every independent run owns a new tenant',
     ).toBeTruthy();
     expect(tenant.org, `${CASE} needs an organization`).not.toBeNull();
-    const student = tenant.users.student;
-    expect(student, `${CASE} seeds the student under test`).toBeTruthy();
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -242,9 +240,11 @@ test.describe('@case:STU-17 @area:STU @prio:P2 suspend and restore a deck', () =
 
     const tenantDecks = await listDecks(page);
     expect(tenantDecks.total, 'the tenant holds exactly the deck this case creates').toBe(1);
-    expect(tenantDecks.items[0].id).toBe(deck.id);
-    expect(tenantDecks.items[0].flashcard_count).toBe(CARD_FRONTS.length);
-    expect(tenantDecks.items[0].suspended, 'the fresh deck is not suspended').toBe(false);
+    const [tenantDeck] = tenantDecks.items;
+    if (!tenantDeck) throw new Error(`${CASE} the API lists no deck`);
+    expect(tenantDeck.id).toBe(deck.id);
+    expect(tenantDeck.flashcard_count).toBe(CARD_FRONTS.length);
+    expect(tenantDeck.suspended, 'the fresh deck is not suspended').toBe(false);
 
     // Baseline: the deck's cards are the whole „Ucz się” queue and are counted
     // by the statistics breakdown.

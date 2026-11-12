@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-39 — the student reports a wrong flashcard (`/app/reports`).
@@ -160,8 +160,8 @@ async function getData<T>(page: Page, url: string): Promise<T> {
  */
 async function ensureEducatorLeadsGroup(page: Page, tenant: QaTenant): Promise<void> {
   const groupId = tenant.group?.id;
-  const educator = tenant.users.teacher;
-  if (!groupId || !educator) {
+  const educator = tenantUser(tenant, 'teacher');
+  if (!groupId) {
     throw new Error(`${CASE} needs the content tenant profile (org, group and educator)`);
   }
 
@@ -282,8 +282,8 @@ async function unreadCount(page: Page): Promise<number> {
 /** Everything the case needs, built inside this tenant only. */
 async function prepareTenant(page: Page, tenant: QaTenant): Promise<QuestionRow> {
   const group = tenant.group;
-  const teacher = tenant.users.teacher;
-  if (!group || !teacher) {
+  const teacher = tenantUser(tenant, 'teacher');
+  if (!group) {
     throw new Error(`${CASE} needs the content tenant profile (org, group, educator, student)`);
   }
 
@@ -317,8 +317,8 @@ test.describe('@case:STU-39 @area:STU @prio:P2 report a wrong flashcard', () => 
       tenant.runSuffix,
       'seed with --fresh: every independent run owns a new tenant',
     ).toBeTruthy();
-    const student = tenant.users.student;
-    const teacher = tenant.users.teacher;
+    const student = tenantUser(tenant, 'student');
+    const teacher = tenantUser(tenant, 'teacher');
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -392,8 +392,10 @@ test.describe('@case:STU-39 @area:STU @prio:P2 report a wrong flashcard', () => 
     expect(thread.report.teacher_id, 'the recipient is the question’s author').toBe(teacher.id);
     expect(thread.report.status, 'a new report is open').toBe('open');
     expect(thread.messages, 'the report holds its first message').toHaveLength(1);
-    expect(thread.messages[0].body, 'the report keeps the case’s message').toBe(REPORT_MESSAGE);
-    expect(thread.messages[0].sender_id, 'the message is the student’s').toBe(student.id);
+    const [firstMessage] = thread.messages;
+    if (!firstMessage) throw new Error(`${CASE} the report holds no message`);
+    expect(firstMessage.body, 'the report keeps the case’s message').toBe(REPORT_MESSAGE);
+    expect(firstMessage.sender_id, 'the message is the student’s').toBe(student.id);
 
     // ── Step 3: the report on /app/reports ──────────────────────────────────
     await page.goto('/app/reports');

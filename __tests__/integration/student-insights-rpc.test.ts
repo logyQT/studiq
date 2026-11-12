@@ -150,7 +150,7 @@ describe('get_student_insights rules (#657 review)', () => {
       email_confirm: true,
       user_metadata: { name: MARK, account_type: 'student' },
     });
-    if (userError || !created.user) throw new Error(`createUser failed: ${userError?.message}`);
+    if (userError) throw new Error(`createUser failed: ${userError.message}`);
     studentId = created.user.id;
 
     student = createClient<Database>(url, anonKey, {
@@ -338,8 +338,8 @@ describe('get_student_insights rules (#657 review)', () => {
   it('buckets the weekdays ISO style, Monday first', async () => {
     const data = await insights();
     const expected = [0, 0, 0, 0, 0, 0, 0];
-    expected[weekday(now)] += 14_510_000;
-    expected[weekday(monday)] += 600_000;
+    expected[weekday(now)] = (expected[weekday(now)] ?? 0) + 14_510_000;
+    expected[weekday(monday)] = (expected[weekday(monday)] ?? 0) + 600_000;
 
     expect(data.studyTime.byWeekday).toEqual(expected);
   });

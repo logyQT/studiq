@@ -97,7 +97,7 @@ export default function AppOverviewPage() {
   );
 
   // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
-  const rawName: unknown = user?.user_metadata?.name;
+  const rawName: unknown = user?.user_metadata.name;
   const fullName = typeof rawName === 'string' ? rawName : '';
   const userName = fullName.split(' ')[0] || fullName;
 

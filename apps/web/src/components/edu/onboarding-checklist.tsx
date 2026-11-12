@@ -61,7 +61,7 @@ export function OnboardingChecklist() {
     // a different concept from account_type ('educator'/'manager') — only
     // account_type is meaningful to compare against those two literals.
     // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-    const rawAccountType: unknown = user?.app_metadata?.account_type;
+    const rawAccountType: unknown = user?.app_metadata.account_type;
     const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
     if (accountType !== 'educator' && accountType !== 'manager') return undefined;
 

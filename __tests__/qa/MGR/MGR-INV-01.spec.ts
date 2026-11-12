@@ -146,6 +146,7 @@ test.describe('MGR-INV-01 — sending an invitation with a role', () => {
     expect(bulkJson.success).toBe(true);
     expect(bulkJson.data.results).toHaveLength(1);
     const [result] = bulkJson.data.results;
+    if (!result) throw new Error(`${CASE} the bulk invite returned no result`);
     expect(result.email).toBe(INVITEE_EMAIL);
     expect(result.success).toBe(true);
     const inviteCode = result.data.inviteCode;
@@ -185,7 +186,9 @@ test.describe('MGR-INV-01 — sending an invitation with a role', () => {
     // invitation, targeting this org's `member` role.
     const after = await pendingInvitations(page);
     const created = after.find((row) => row.id === result.data.invitationId);
-    expect(created, 'the created invitation is missing from the pending list').toMatchObject({
+    if (!created)
+      throw new Error(`${CASE} the created invitation is missing from the pending list`);
+    expect(created).toMatchObject({
       email: INVITEE_EMAIL,
       targetOrgRoleId: memberRole!.id,
       orgRoleName: 'member',

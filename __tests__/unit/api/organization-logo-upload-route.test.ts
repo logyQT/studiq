@@ -38,6 +38,7 @@ vi.mock('@studiq/server/lib/log', () => ({
 }));
 
 import { POST } from '@/app/(backend)/api/v1/organization/[id]/logo/route';
+import { firstRecorded } from '#test/mocks/recorded';
 
 // Regression tests for the QA-visible contract of #273: a non-image upload
 // (e.g. plain text renamed fake.png) must never reach storage, and a rejected
@@ -179,8 +180,8 @@ describe('POST /api/v1/organization/[id]/logo (#273)', () => {
     );
 
     expect(requireFeatureMock).toHaveBeenCalledWith(mockCtx, 'branding');
-    expect(requireFeatureMock.mock.invocationCallOrder[0]).toBeLessThan(
-      uploadToBucketMock.mock.invocationCallOrder[0],
+    expect(firstRecorded(requireFeatureMock.mock.invocationCallOrder)).toBeLessThan(
+      firstRecorded(uploadToBucketMock.mock.invocationCallOrder),
     );
   });
 });

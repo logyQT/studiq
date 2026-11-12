@@ -1,7 +1,8 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { failure, success } from '@studiq/server/lib/service-result';
+import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -53,7 +54,7 @@ export class OrganizationMemberService {
       .from('profiles')
       .select('id, email, full_name, created_at')
       .eq('id', ctx.userId)
-      .single();
+      .maybeSingle();
 
     if (error || !profile) {
       return failure('NOT_FOUND');
@@ -69,52 +70,21 @@ export class OrganizationMemberService {
       return failure('FORBIDDEN');
     }
 
-    if (ctx.accountType === AccountType.EDUCATOR && ctx.activeOrgId) {
+    let memberUserIds: string[] | undefined;
+
+    if (ctx.accountType === AccountType.EDUCATOR) {
       const { groupService } = await import('@studiq/server/services/group.service');
       const groupResult = await groupService.getUserGroupIds(ctx);
       if (!groupResult.success) return failure(groupResult.error);
       const groupIds = groupResult.data;
       if (groupIds.length === 0) return success([]);
 
-      const groupSupabase = await this.clientFactory();
-      const { data: gmData } = await groupSupabase
+      const { data: gmData } = await supabase
         .from('group_members')
         .select('user_id')
         .in('group_id', groupIds);
-      const userIds = [...new Set((gmData ?? []).map((gm) => gm.user_id))];
-      if (userIds.length === 0) return success([]);
-
-      let query = groupSupabase
-        .from('org_members')
-        .select(
-          'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
-        )
-        .in('user_id', userIds)
-        .eq('organization_id', ctx.activeOrgId);
-
-      if (roleFilter) {
-        query = query.eq('org_roles.name', roleFilter);
-      }
-
-      const { data, error } = await query.order('joined_at', { ascending: false });
-      if (error) return toDbFailure(error);
-
-      const allUserIds = data.map((m) => m.user_id);
-      const { data: groupData, error: groupError } = await groupSupabase
-        .from('group_members')
-        .select('user_id, role, groups!inner(id, name)')
-        .in('user_id', allUserIds)
-        .eq('groups.organization_id', ctx.activeOrgId);
-      if (groupError) return toDbFailure(groupError);
-
-      const groupsByUserId: Record<string, { id: string; name: string; role: string }[]> = {};
-      for (const gm of groupData ?? []) {
-        const group = gm.groups;
-        if (!groupsByUserId[gm.user_id]) groupsByUserId[gm.user_id] = [];
-        groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
-      }
-
-      return success(toMemberRows(data, ctx.activeOrgId, groupsByUserId));
+      memberUserIds = [...new Set((gmData ?? []).map((gm) => gm.user_id))];
+      if (memberUserIds.length === 0) return success([]);
     }
 
     let query = supabase
@@ -124,32 +94,48 @@ export class OrganizationMemberService {
       )
       .eq('organization_id', ctx.activeOrgId);
 
+    if (memberUserIds) {
+      query = query.in('user_id', memberUserIds);
+    }
+
     if (roleFilter) {
       query = query.eq('org_roles.name', roleFilter);
     }
 
     const { data, error } = await query.order('joined_at', { ascending: false });
-
     if (error) return toDbFailure(error);
 
-    const userIds = data.map((m) => m.user_id);
+    const groups = await this.groupMemberships(
+      supabase,
+      data.map((m) => m.user_id),
+      ctx.activeOrgId,
+    );
+    if (!groups.success) return groups;
 
-    const { data: groupData, error: groupError } = await supabase
+    return success(toMemberRows(data, ctx.activeOrgId, groups.data));
+  }
+
+  /** Group chips for a member list: one read covers every member on the page. */
+  private async groupMemberships(
+    supabase: SupabaseClient<Database>,
+    userIds: string[],
+    organizationId: string,
+  ): Promise<ServiceResult<Record<string, GroupMembership[]>>> {
+    const { data, error } = await supabase
       .from('group_members')
       .select('user_id, role, groups!inner(id, name)')
       .in('user_id', userIds)
-      .eq('groups.organization_id', ctx.activeOrgId);
+      .eq('groups.organization_id', organizationId);
 
-    if (groupError) return toDbFailure(groupError);
+    if (error) return toDbFailure(error);
 
-    const groupsByUserId: Record<string, { id: string; name: string; role: string }[]> = {};
-    for (const gm of groupData ?? []) {
+    const groupsByUserId: Record<string, GroupMembership[]> = {};
+    for (const gm of dbRows(data)) {
       const group = gm.groups;
-      if (!groupsByUserId[gm.user_id]) groupsByUserId[gm.user_id] = [];
-      groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
+      const memberships = (groupsByUserId[gm.user_id] ??= []);
+      memberships.push({ id: group.id, name: group.name, role: gm.role });
     }
-
-    return success(toMemberRows(data, ctx.activeOrgId, groupsByUserId));
+    return success(groupsByUserId);
   }
 
   async changeRole(ctx: RequestContext, targetUserId: string, newOrgRoleId: string) {
@@ -183,7 +169,7 @@ export class OrganizationMemberService {
       .select('user_id');
 
     if (error) return toDbFailure(error);
-    if (!updated || updated.length === 0) return failure('NOT_FOUND');
+    if (dbRows(updated).length === 0) return failure('NOT_FOUND');
 
     return success({ success: true });
   }
@@ -216,7 +202,7 @@ export class OrganizationMemberService {
     // a silent no-op 200 (#189). The row is already scoped to the verified
     // active org, so this cannot distinguish "exists elsewhere" from "does not
     // exist". Returning here also keeps seats untouched for a no-op.
-    if (!removed || removed.length === 0) return failure('NOT_FOUND');
+    if (dbRows(removed).length === 0) return failure('NOT_FOUND');
 
     // A removed member keeps no license. Without this the assignment survives
     // (there is no FK cascade), the pool's `assigned` counter stays consumed,

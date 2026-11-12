@@ -5,20 +5,22 @@ import { Button, Card, Skeleton } from '@studiq/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { CheckSquare, Database, Plus, SearchX, SquarePen } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { QuestionBankCard } from '@/components/questions/cards/question-bank-card';
-import { QuestionBankFilters } from '@/components/questions/shared/question-bank-filters';
 import { QuestionBankFormDialog } from '@/components/questions/shared/question-bank-form-dialog';
 import { BulkActionBar } from '@/components/shared/bulk-action-bar';
+import { ContentListToolbar } from '@/components/shared/content-list-toolbar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { SpeedDial } from '@/components/shared/speed-dial';
 import { useApiMutation } from '@/hooks/use-api';
 import { useGroupOptions } from '@/hooks/use-group-options';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { contentSortOptions } from '@/lib/content-sort-options';
 import { resolveQuestionBankEmptyView } from '@/lib/question-bank-empty-state';
 import { questionKeys } from '@/lib/query-keys';
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
@@ -175,24 +177,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     groupIds: effectiveGroupIds,
   });
 
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        void fetchNextPage();
-      }
-    },
-    [hasNextPage, isFetchingNextPage, fetchNextPage],
-  );
-
-  useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el) return undefined;
-    const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handleObserver]);
+  const loadMoreRef = useInfiniteScroll({ hasNextPage, isFetchingNextPage, fetchNextPage });
 
   /**
    * #360 — resets exactly the state the request is built from, including the
@@ -336,7 +321,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
 
   return (
     <div className="space-y-6">
-      <QuestionBankFilters
+      <ContentListToolbar
         searchInput={searchInput}
         onSearchChange={setSearchInput}
         owner={owner}
@@ -359,7 +344,12 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
           setSortOrder(so);
           persistFilters(owner, groupIds, sb, so);
         }}
-        onCreateNew={openCreate}
+        sortOptions={contentSortOptions(t)}
+        actions={
+          <Button className="justify-start" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> {t('new_bank')}
+          </Button>
+        }
         t={t}
       />
 

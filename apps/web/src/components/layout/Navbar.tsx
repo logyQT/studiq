@@ -70,9 +70,9 @@ export function Navbar() {
   const { logoUrl } = useBranding();
 
   // `user_metadata` / `app_metadata` are untyped Supabase maps; narrow before use.
-  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const rawAccountType: unknown = user?.app_metadata.account_type;
   const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
-  const rawName: unknown = user?.user_metadata?.name;
+  const rawName: unknown = user?.user_metadata.name;
   const userName = typeof rawName === 'string' ? rawName : undefined;
 
   const navLinks: NavLink[] = (() => {

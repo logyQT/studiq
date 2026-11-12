@@ -183,7 +183,7 @@ describe('EntitlementService', () => {
         success: true,
       });
       expect(updates).toHaveLength(1);
-      expect(updates[0].values).toEqual({ personal_plan_key: expected });
+      expect(updates[0]?.values).toEqual({ personal_plan_key: expected });
     });
 
     it('downgrades an organization to launch via apply_org_plan', async () => {
@@ -206,7 +206,7 @@ describe('EntitlementService', () => {
       await expect(service.downgradeToFree(USER, 'retired-plan')).resolves.toMatchObject({
         success: true,
       });
-      expect(updates[0].values).toEqual({ personal_plan_key: 'base' });
+      expect(updates[0]?.values).toEqual({ personal_plan_key: 'base' });
     });
 
     it('fails closed when no free plan exists for the family', async () => {

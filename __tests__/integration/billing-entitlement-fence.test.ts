@@ -117,7 +117,7 @@ afterAll(async () => {
   await service.from('payments').delete().eq('user_id', user.id);
   await service.from('billing_subscriptions').delete().eq('user_id', user.id);
   await service.from('billing_customers').delete().eq('user_id', user.id);
-  if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+  await service.auth.admin.deleteUser(user.id).catch(() => {});
 });
 
 describe('entitlement freshness fence (#662)', () => {

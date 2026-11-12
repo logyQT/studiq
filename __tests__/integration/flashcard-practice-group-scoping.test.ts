@@ -14,7 +14,7 @@ import {
   cleanupOrganizationDeep,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { POST as createDeckPost } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { GET as getCardsStats } from '@/app/(backend)/api/v1/flashcards/practice/cards-stats/route';
 import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
@@ -94,8 +94,8 @@ describe(`Flashcard Practice Group Scoping`, () => {
     });
     const orgId = teacher.orgId;
     if (!orgId) throw new Error('[setup] org not created');
-    groupA = teacher.groups[1];
-    const groupB = teacher.groups[2];
+    groupA = requiredAt(teacher.groups, 1, 'seeded group');
+    const groupB = requiredAt(teacher.groups, 2, 'seeded group');
 
     const service = createSeedDb();
     // The API creates a group without enrolling its creator, so make the
@@ -226,8 +226,8 @@ describe(`Flashcard Practice Group Scoping`, () => {
       })
       .select()
       .single();
-    if (outsiderDeckError || !outsiderDeck) {
-      throw new Error(`[setup] outsider deck failed: ${outsiderDeckError?.message}`);
+    if (outsiderDeckError) {
+      throw new Error(`[setup] outsider deck failed: ${outsiderDeckError.message}`);
     }
     const { data: outsiderCard, error: outsiderCardError } = await service
       .from('flashcards')
@@ -241,8 +241,8 @@ describe(`Flashcard Practice Group Scoping`, () => {
       })
       .select()
       .single();
-    if (outsiderCardError || !outsiderCard) {
-      throw new Error(`[setup] outsider card failed: ${outsiderCardError?.message}`);
+    if (outsiderCardError) {
+      throw new Error(`[setup] outsider card failed: ${outsiderCardError.message}`);
     }
     outsiderFlashcardId = outsiderCard.id;
   });
@@ -387,7 +387,7 @@ describe(`Flashcard Practice Group Scoping`, () => {
       const pastDue = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { error: reviewStateError } = await service.from('flashcard_review_state').insert({
         user_id: studentInGroupA.id,
-        flashcard_id: ownCardIds[0],
+        flashcard_id: requiredAt(ownCardIds, 0, 'seeded flashcard'),
         easiness_factor: 2.5,
         interval_days: 1,
         repetitions: 1,

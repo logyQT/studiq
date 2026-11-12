@@ -62,9 +62,9 @@ function fnv1a(str: string): number {
   return hash >>> 0;
 }
 
-function getGradient(id: string) {
+function getGradient(id: string): string {
   const hash = fnv1a(id);
-  return GRADIENTS[hash % GRADIENTS.length];
+  return GRADIENTS[hash % GRADIENTS.length] ?? DIALOG_GRADIENT;
 }
 
 const TAILWIND_COLORS: Record<string, string> = {
@@ -140,7 +140,7 @@ const TAILWIND_COLORS: Record<string, string> = {
 
 export function getGradientHex(id: string): { from: string; to: string } {
   const gradient = getGradient(id);
-  const [fromClass, toClass] = gradient.split(' ');
+  const [fromClass = '', toClass = ''] = gradient.split(' ');
   return {
     from: TAILWIND_COLORS[fromClass.replace('from-', '')] ?? '#8B5CF6',
     to: TAILWIND_COLORS[toClass.replace('to-', '')] ?? '#7C3AED',

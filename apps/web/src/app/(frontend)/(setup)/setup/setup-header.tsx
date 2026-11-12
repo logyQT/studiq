@@ -27,7 +27,7 @@ export function SetupHeader() {
   const gate = resolveSetupGate({ orgsCount: orgs.length, isPending, isFetching });
   const onChooser = pathname === '/setup';
   // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const rawAccountType: unknown = user?.app_metadata.account_type;
   const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
 
   const back =

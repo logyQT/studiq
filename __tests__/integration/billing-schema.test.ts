@@ -83,7 +83,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const userIds = [owner?.id, other?.id].filter((id): id is string => Boolean(id));
+  const userIds = [owner.id, other.id];
   await service.from('payments').delete().in('user_id', userIds);
   await service.from('billing_subscriptions').delete().in('user_id', userIds);
   await service.from('billing_customers').delete().in('user_id', userIds);
@@ -91,7 +91,7 @@ afterAll(async () => {
   await service.from('stripe_webhook_events').delete().like('id', `evt_${RUN}%`);
 
   for (const user of [owner, other]) {
-    if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+    await service.auth.admin.deleteUser(user.id).catch(() => {});
   }
 });
 

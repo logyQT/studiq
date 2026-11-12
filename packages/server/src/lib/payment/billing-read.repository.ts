@@ -1,6 +1,7 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -79,12 +80,13 @@ export class SupabaseBillingReadRepository implements BillingReadRepository {
     const { data, error } = await scoped.order('updated_at', { ascending: false }).limit(10);
 
     if (error) return toDbFailure(error);
-    if (!data || data.length === 0) return success(null);
 
     // A canceled row is kept as history, so a plain "latest row" could hide the
     // subscription that is still billing. Prefer a live status, then recency.
+    const rows = dbRows(data);
     const row =
-      data.find((candidate) => LIVE_SUBSCRIPTION_STATUSES.includes(candidate.status)) ?? data[0];
+      rows.find((candidate) => LIVE_SUBSCRIPTION_STATUSES.includes(candidate.status)) ?? rows.at(0);
+    if (!row) return success(null);
 
     return success({
       stripeSubscriptionId: row.stripe_subscription_id,

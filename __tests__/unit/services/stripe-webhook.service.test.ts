@@ -12,6 +12,7 @@ import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.ser
 import type Stripe from 'stripe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asJson } from '#test/helpers/json';
+import { firstCall, requiredValue } from '#test/mocks/recorded';
 
 const WEBHOOK_SECRET = 'whsec_test';
 const CLAIM_TOKEN = '2026-11-01T09:00:00.000Z';
@@ -195,7 +196,13 @@ function createClient() {
     subscriptions: { retrieve: vi.fn() },
     customers: { create: vi.fn() },
     checkout: { sessions: { create: vi.fn(), retrieve: vi.fn() } },
-    prices: { retrieve: vi.fn() },
+    // A real Stripe Price always carries a metadata map; tests that care about
+    // a mapped/unmapped price override this with mockResolvedValueOnce.
+    prices: {
+      retrieve: vi
+        .fn()
+        .mockResolvedValue(asJson<Stripe.Price>({ id: 'price_unmapped', metadata: {} })),
+    },
     billingPortal: { sessions: { create: vi.fn() } },
   });
 }
@@ -664,7 +671,7 @@ describe('StripeWebhookService', () => {
         success(makeMirror({ status: 'canceled' })),
       );
       vi.mocked(harness.repository.getPlan).mockResolvedValue(
-        success({ ...CATALOG.spark, isActive: false }),
+        success({ ...requiredValue(CATALOG.spark, 'spark plan'), isActive: false }),
       );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
         makeSubscription({ status: 'canceled', canceled_at: 1_700_000_600 }),
@@ -699,7 +706,7 @@ describe('StripeWebhookService', () => {
         success(makeMirror()),
       );
       vi.mocked(harness.repository.getPlan).mockResolvedValue(
-        success({ ...CATALOG.spark, isActive: false }),
+        success({ ...requiredValue(CATALOG.spark, 'spark plan'), isActive: false }),
       );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
       const event = makeEvent('customer.subscription.updated', makeSubscription(), {
@@ -1121,7 +1128,7 @@ describe('StripeWebhookService', () => {
       // The newer subscription event owns the mirror/entitlement, but the money
       // was still collected, so the history row must exist.
       expect(harness.repository.payments).toHaveLength(1);
-      expect(harness.repository.payments[0].stripeInvoiceId).toBe('in_stale');
+      expect(harness.repository.payments[0]?.stripeInvoiceId).toBe('in_stale');
       expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
     });
 
@@ -1339,7 +1346,7 @@ describe('StripeWebhookService', () => {
         'spark',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
-      const upsert = vi.mocked(harness.repository.upsertSubscription).mock.calls[0][0];
+      const upsert = firstCall(vi.mocked(harness.repository.upsertSubscription))[0];
       expect(upsert.eventCreated).toBe(0);
       expect(upsert.lastEventCreated).toBe(0);
       expect(harness.repository.insertPayment).not.toHaveBeenCalled();
@@ -1354,7 +1361,7 @@ describe('StripeWebhookService', () => {
 
       await harness.service.reconcileCheckout(asJson<Stripe.Checkout.Session>(makeSession()));
 
-      const upsert = vi.mocked(harness.repository.upsertSubscription).mock.calls[0][0];
+      const upsert = firstCall(vi.mocked(harness.repository.upsertSubscription))[0];
       expect(upsert.eventCreated).toBe(1_650_000_000);
       expect(upsert.lastEventCreated).toBe(1_650_000_000);
     });
@@ -1415,7 +1422,7 @@ describe('StripeWebhookService', () => {
 
       await sign(harness, event);
 
-      const upsert = vi.mocked(harness.repository.upsertSubscription).mock.calls[0][0];
+      const upsert = firstCall(vi.mocked(harness.repository.upsertSubscription))[0];
       expect(upsert.eventCreated).toBe(1_700_000_123);
       expect(upsert.lastEventCreated).toBe(1_700_000_123);
     });

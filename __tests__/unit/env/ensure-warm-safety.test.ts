@@ -18,6 +18,7 @@ import {
   type TcpListener,
 } from '#test/unit/env/support';
 import { loadEnvModule } from '#test/unit/env/load';
+import { firstRecorded } from '#test/mocks/recorded';
 
 interface EnsureOptions {
   profile: 'api' | 'web';
@@ -352,7 +353,7 @@ describe('env:dev always relays the stack environment to HMR', () => {
       }),
     );
     applyHarnessEnv(harness);
-    const [appPort] = await explicitAppPorts(1);
+    const appPort = firstRecorded(await explicitAppPorts(1), 'the leased app port');
     process.env.APP_PORT = String(appPort);
     // The lease pins the port and keeps it out of the bind probe's way.
     writeLeaseFor(harness, appPort);
@@ -407,7 +408,7 @@ describe('env:dev always relays the stack environment to HMR', () => {
     closers.push(http, db);
     harness.setStatusFixture(fullStackFixture(http, db.port, { anon: 'anon', service: 'service' }));
     applyHarnessEnv(harness);
-    const [appPort] = await explicitAppPorts(1);
+    const appPort = firstRecorded(await explicitAppPorts(1), 'the leased app port');
     process.env.APP_PORT = String(appPort);
     writeLeaseFor(harness, appPort);
 
@@ -446,7 +447,7 @@ describe('env:ensure drops the warm evidence when it restarts the stack', () => 
       fullStackFixture(http, db.port, { anon: 'stale-anon', service: 'stale-service' }),
     );
     applyHarnessEnv(harness);
-    const [appPort] = await explicitAppPorts(1);
+    const appPort = firstRecorded(await explicitAppPorts(1), 'the leased app port');
     process.env.APP_PORT = String(appPort);
 
     // Authoritative run: writes the warm record used by the next ensure.
@@ -603,7 +604,7 @@ describe('env:ensure re-anchors the warm record only on an authoritative read', 
   it('does not extend the heartbeat on a warm run but does on a cold one', async () => {
     const harness = newHarness();
     await apiStack(harness);
-    const [appPort] = await explicitAppPorts(1);
+    const appPort = firstRecorded(await explicitAppPorts(1), 'the leased app port');
     const portArgs = ['--app-port', String(appPort)];
     const first = await harness.run(['ensure', '--profile', 'api', '--no-seed', ...portArgs], {
       // No lease exists yet, so the running stack's assumed port is the contract
@@ -643,7 +644,7 @@ describe('env:ensure binds the warm cache to the branch identity', () => {
   it('rejects a fresh record written for another branch and re-reads the stack', async () => {
     const harness = newHarness();
     const { http, fixture } = await apiStack(harness);
-    const [appPort] = await explicitAppPorts(1);
+    const appPort = firstRecorded(await explicitAppPorts(1), 'the leased app port');
     const args = [
       'ensure',
       '--profile',
@@ -702,7 +703,7 @@ describe('env:ensure binds the warm cache to the branch identity', () => {
   it('still takes the fast path for a record written on the same branch', async () => {
     const harness = newHarness();
     await apiStack(harness);
-    const [appPort] = await explicitAppPorts(1);
+    const appPort = firstRecorded(await explicitAppPorts(1), 'the leased app port');
     const args = [
       'ensure',
       '--profile',

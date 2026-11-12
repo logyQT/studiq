@@ -173,6 +173,9 @@ export default function QuizTakingPage() {
 
   const questions = attempt.questions;
   const currentQuestion = questions[currentQ];
+  if (!currentQuestion) {
+    return <EntityNotFound titleKey="quiz_not_found" descriptionKey="quiz_not_found_desc" />;
+  }
   const progress = questions.length > 0 ? ((currentQ + 1) / questions.length) * 100 : 0;
 
   function selectAnswer(questionId: string, answerId: string) {

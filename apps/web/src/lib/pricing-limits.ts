@@ -1,3 +1,5 @@
+import type { PricingTranslator } from '@/lib/pricing-features';
+
 export const SORTED_LIMIT_KEYS = [
   'max_flashcards',
   'max_decks',
@@ -26,4 +28,15 @@ export function getVisibleLimitKeys(
       !(accountType === 'student' && ORG_ONLY_LIMIT_KEYS.includes(lk)) &&
       plans?.some((p) => lk in p.limits),
   );
+}
+
+/**
+ * Human readable label for a plan limit key such as `max_flashcards`.
+ * next-intl returns the namespaced message id (`PricingPage.limit_…`) for a
+ * missing message, so presence is checked with `t.has`; an unknown key falls
+ * back to the key itself, never a raw message id.
+ */
+export function getLimitLabel(key: string, t: PricingTranslator): string {
+  const messageKey = `limit_${key}`;
+  return t.has(messageKey) ? t(messageKey) : key;
 }

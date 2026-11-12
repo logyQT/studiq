@@ -324,7 +324,9 @@ test.describe('@case:ONB-06 @area:ONB @prio:P2 student joins a class by code', (
     await expect(orgSwitcher(page)).toContainText(ORG.name);
 
     expect(acceptCalls, 'only the valid submit reached the accept endpoint').toHaveLength(1);
-    expect(JSON.parse(acceptCalls[0])).toEqual({ token: invite.token });
+    const [acceptBody] = acceptCalls;
+    if (!acceptBody) throw new Error(`${CASE} the accept request body`);
+    expect(JSON.parse(acceptBody)).toEqual({ token: invite.token });
 
     // The membership is real: one org, member role, active.
     const orgs = await currentOrgs(page);

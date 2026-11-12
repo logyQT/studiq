@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-52 — „Historia płatności” (`/app/account/payments`).
@@ -138,8 +138,7 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
       tenant.runSuffix,
       'seed with --fresh: every independent run owns its own purchase-free student',
     ).toBeTruthy();
-    const student = tenant.users.student;
-    expect(student, `${CASE} seeds the student under test`).toBeTruthy();
+    const student = tenantUser(tenant, 'student');
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -199,7 +198,8 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
 
     const purchased = await paymentHistory(page);
     expect(purchased, 'the completed purchase is recorded once').toHaveLength(1);
-    const payment = purchased[0];
+    const [payment] = purchased;
+    if (!payment) throw new Error(`${CASE} the completed purchase is not recorded`);
     expect(payment).toMatchObject({
       planKey: PURCHASE.planKey,
       planName: PURCHASE.planName,

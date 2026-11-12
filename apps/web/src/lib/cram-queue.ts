@@ -25,7 +25,7 @@ export function applyCramAction<T>(queue: T[], action: CramAction): T[] {
     case 'stay':
       return queue;
     case 'reset':
-      return queue.length > 1 ? [...queue.slice(1), queue[0]] : queue;
+      return queue.length > 1 ? [...queue.slice(1), ...queue.slice(0, 1)] : queue;
     case 'next':
       return queue.slice(1);
     case 'remove':

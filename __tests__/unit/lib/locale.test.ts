@@ -46,7 +46,8 @@ describe('resolveLocale', () => {
 
   it('falls back to the default locale for anything unsupported', () => {
     for (const value of ['fr', '', '  ', null, undefined, 42, {}, ['en']]) {
-      expect(resolveLocale(value), JSON.stringify(value) ?? 'undefined').toBe(DEFAULT_LOCALE);
+      const label = value === undefined ? 'undefined' : JSON.stringify(value);
+      expect(resolveLocale(value), label).toBe(DEFAULT_LOCALE);
     }
   });
 });
@@ -98,7 +99,7 @@ describe('language metadata', () => {
       expect(option.endonym.trim(), option.code).not.toHaveLength(0);
 
       for (const locale of LOCALES) {
-        expect(option.names[locale]?.trim(), `${option.code}.names.${locale}`).toBeTruthy();
+        expect(option.names[locale].trim(), `${option.code}.names.${locale}`).toBeTruthy();
       }
       expect(option.aliases, `${option.code} aliases`).toContain(option.code);
 
