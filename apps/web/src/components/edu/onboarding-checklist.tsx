@@ -4,8 +4,9 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } fro
 import { Check, ChevronRight, Rocket, X } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { useOrgs } from '@/hooks/use-orgs';
 import { SrLabel } from '@/components/shared/sr-label';
 
@@ -55,32 +56,37 @@ export function OnboardingChecklist() {
   const [groupCount, setGroupCount] = useState(0);
   const [hasContent, setHasContent] = useState(false);
 
+  // orgRoleName is the org_roles row name ('admin'/'teacher'/'member'),
+  // a different concept from account_type ('educator'/'manager') — only
+  // account_type is meaningful to compare against those two literals.
+  // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+  const rawAccountType: unknown = user?.app_metadata.account_type;
+  const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
+  const isStaff = accountType === 'educator' || accountType === 'manager';
+
+  const loadOrgCounts = useCallback(async () => {
+    if (!isStaff) return;
+    try {
+      const [membersResponse, groupsResponse] = await Promise.all([
+        fetch('/api/v1/organization/members'),
+        fetch('/api/v1/organization/groups'),
+      ]);
+      const membersBody: unknown = await membersResponse.json();
+      const groupsBody: unknown = await groupsResponse.json();
+      setMemberCount(countOf(envelopeData(membersBody)));
+      setGroupCount(countOf(envelopeData(groupsBody)));
+    } catch {
+      // An unavailable count must not turn into a false "done" tick.
+    }
+  }, [isStaff]);
+
+  useOrgScopedLoad(loadOrgCounts);
+
   useEffect(() => {
-    if (orgs.length === 0) return undefined;
-    // orgRoleName is the org_roles row name ('admin'/'teacher'/'member'),
-    // a different concept from account_type ('educator'/'manager') — only
-    // account_type is meaningful to compare against those two literals.
-    // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-    const rawAccountType: unknown = user?.app_metadata.account_type;
-    const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
-    if (accountType !== 'educator' && accountType !== 'manager') return undefined;
+    if (!isStaff || orgs.length === 0) return undefined;
 
     const controller = new AbortController();
 
-    fetch('/api/v1/organization/members', { signal: controller.signal })
-      .then(async (r) => {
-        const body: unknown = await r.json();
-        return body;
-      })
-      .then((d) => setMemberCount(countOf(envelopeData(d))))
-      .catch(() => {});
-    fetch('/api/v1/organization/groups', { signal: controller.signal })
-      .then(async (r) => {
-        const body: unknown = await r.json();
-        return body;
-      })
-      .then((d) => setGroupCount(countOf(envelopeData(d))))
-      .catch(() => {});
     fetch('/api/v1/stats/teacher', { signal: controller.signal })
       .then(async (r) => {
         const body: unknown = await r.json();
@@ -90,7 +96,7 @@ export function OnboardingChecklist() {
       .catch(() => {});
 
     return () => controller.abort();
-  }, [orgs, user]);
+  }, [isStaff, orgs]);
 
   if (dismissed || orgs.length === 0) return null;
 

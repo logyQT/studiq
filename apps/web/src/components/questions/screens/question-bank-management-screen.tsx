@@ -488,7 +488,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
               { icon: SquarePen, label: t('new_bank'), onClick: openCreate },
               {
                 icon: CheckSquare,
-                label: t('common_manage'),
+                label: t('select_banks'),
                 onClick: () => setIsSelecting(true),
               },
             ]}

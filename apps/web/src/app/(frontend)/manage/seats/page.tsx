@@ -30,9 +30,10 @@ import {
 } from '@studiq/ui';
 import { Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 
@@ -141,9 +142,7 @@ export default function ManageSeatsPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useOrgScopedLoad(loadData);
 
   const assignedUserIds = new Set(assignments.map((a) => a.userId));
   const unassignedMembers = members.filter((m) => !assignedUserIds.has(m.id));

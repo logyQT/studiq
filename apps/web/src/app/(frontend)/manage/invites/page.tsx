@@ -33,8 +33,9 @@ import {
 } from '@studiq/ui';
 import { Copy, Mail, Plus, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 import { isArrayOf } from '@/lib/unknown-value';
@@ -104,7 +105,7 @@ export default function InvitationsPage() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
+  const loadRoles = useCallback(() => {
     void apiGet<unknown>('/api/v1/organization/roles')
       .then((roles) => setOrgRoles(isArrayOf<OrgRole>(roles) ? roles : []))
       .catch(() => undefined);
@@ -119,9 +120,8 @@ export default function InvitationsPage() {
       .finally(() => setLoading(false));
   }, [showAccepted]);
 
-  useEffect(() => {
-    fetchInvitations();
-  }, [fetchInvitations]);
+  useOrgScopedLoad(loadRoles);
+  useOrgScopedLoad(fetchInvitations);
 
   function updateInvite(index: number, field: keyof InviteRow, value: string) {
     const updated = [...invites];
