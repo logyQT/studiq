@@ -17,7 +17,8 @@ import {
 import { ArrowLeft, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { apiGet } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 
@@ -35,15 +36,15 @@ export default function ClassroomMembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    apiGet<Member[]>('/api/v1/organization/members')
-      .then((data) => {
-        setMembers(data);
-        setLoading(false);
-        return undefined;
-      })
-      .catch(() => setLoading(false));
+  const load = useCallback(() => {
+    setLoading(true);
+    void apiGet<Member[]>('/api/v1/organization/members')
+      .then(setMembers)
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }, []);
+
+  useOrgScopedLoad(load);
 
   return (
     <div className="max-w-3xl mx-auto pt-12">

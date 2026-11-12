@@ -35,9 +35,10 @@ import {
 } from '@studiq/ui';
 import { Search, Shield, UserMinus, Users } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { apiDelete, apiGet, apiPut } from '@/lib/api';
 import { isArrayOf } from '@/lib/unknown-value';
 import { formatDate } from '@/lib/datetime';
@@ -120,9 +121,7 @@ export default function MembersPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useOrgScopedLoad(load);
 
   const filtered = members.filter((m) => {
     const matchesSearch =
