@@ -80,11 +80,7 @@ export class TopicService {
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     // Apply owner filter on top of RBAC
-    if (queryParams?.owner && queryParams.owner !== 'all') {
-      if (queryParams.owner === 'mine') {
-        query = query.eq('created_by', ctx.userId);
-      }
-    }
+    if (queryParams?.owner === 'mine') query = query.eq('created_by', ctx.userId);
 
     // Explicit group filter (#595): an extra AND after RBAC, so an unknown/foreign group id
     // can only narrow the result — never widen it.

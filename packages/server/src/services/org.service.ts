@@ -46,7 +46,7 @@ export class OrgService {
 
     if (oError) return toDbFailure(oError);
 
-    const orgMap = new Map((orgs || []).map((o) => [o.id, o]));
+    const orgMap = new Map(orgs.map((o) => [o.id, o]));
 
     return success(
       memberships.map((m) => {
