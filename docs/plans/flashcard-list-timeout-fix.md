@@ -21,7 +21,8 @@ These let PostgreSQL skip heap lookups and avoid a separate sort step for
 `WHERE created_by = ? ORDER BY created_at DESC, id LIMIT N` queries.
 
 Also increased statistics target on `created_by` and `university_id` columns
-so PostgreSQL correctly estimates row counts for users with few cards:
+(manual production change; no migration in the repo) so PostgreSQL correctly
+estimates row counts for users with few cards:
 
 ```sql
 ALTER TABLE flashcards ALTER COLUMN created_by SET STATISTICS 1000;
@@ -58,17 +59,18 @@ CREATE INDEX CONCURRENTLY idx_flashcards_front_back_trgm
 
 ### Option B — Full-text search (code change, no new index)
 
-Rewrite the `q` filter in `packages/server/src/services/flashcard.service.ts` to use the
-existing `search_vector` column + `plainto_tsquery`:
+Rewrite the `q` filter in `packages/server/src/services/flashcard.service.ts` to call the
+existing `search_flashcards` RPC, which already runs `plainto_tsquery('english'|'polish',
+search_query)` over `search_vector` (`20260615000002_search_flashcards_rpc_ownership.sql`;
+latest signature in `20260710000001_drop_assignment_tables.sql`):
 
 ```typescript
-const term = filters!.q!;
-
-// Instead of ILIKE with leading wildcard:
-query = query.textSearch('search_vector', term);
-
-// For both language configs, use an RPC with a bound parameter rather than
-// interpolating `term` into a PostgREST filter string.
+const { data, error } = await supabase.rpc('search_flashcards', {
+  search_query: filters!.q!,
+  result_limit: limit,
+  p_user_id: ctx.userId,
+  p_organization_id: ctx.activeOrgId,
+});
 ```
 
 - **Pro**: Reuses existing `idx_flashcards_search_vector` GIN index — zero storage

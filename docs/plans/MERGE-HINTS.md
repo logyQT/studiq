@@ -110,17 +110,17 @@ No merge. If a new AI spec is written, point it at `docs/ai.md` and `agent-secur
 
 | File                     | Lines | Status                                                         |
 | ------------------------ | ----- | -------------------------------------------------------------- |
-| `env-tool.md`            | 340   | Phase 0 complete; phases 1–3 unblocked. Active execution plan. |
-| `staging-environment.md` | 408   | Proposed, not started.                                         |
+| `env-tool.md`            | 341   | Phase 0 complete; phases 1–3 unblocked. Active execution plan. |
+| `staging-environment.md` | 410   | Proposed, not started.                                         |
 
-Keep separate: local developer environment vs. hosted staging are different layers. Add a "See also" from `staging-environment.md` to `env-tool.md` / `docs/deployment.md` if useful — but do not merge them.
+Keep separate: local developer environment vs. hosted staging are different layers. The three docs now cross-link; do not merge them.
 
 ---
 
 ## Independent plans — don't merge
 
 - `api-gaps.md` (55) — mostly closed; only the **Subjects** create route remains as a documented gap.
-- `flashcard-list-timeout-fix.md` (81) — awaits a decision (trigram GIN vs. full-text search).
+- `flashcard-list-timeout-fix.md` (82) — awaits a decision (trigram GIN vs. full-text search).
 - `teacher-assignments-prd.md` (180) — independent feature PRD.
 - `SEARCH_SCOPES.md` (97) — independent search vision.
 - `tbd/QUESTION_TYPES_SPEC.md` (836), `tbd/RESOURCES.md` (286), `tbd/AlternativeDashboardUI.md` (115) — backlog, not approved; don't touch.
@@ -137,6 +137,13 @@ Keep separate: local developer environment vs. hosted staging are different laye
 - [x] `662-stripe-integration.md`: point the two deleted-`api.md` references at `docs/deployment.md#billing-endpoints`.
 - [x] `frontend-component-testing.md`: remove the expired Phase-C blocker and update the dependency diagram.
 - [x] `flashcard-list-timeout-fix.md`: repair code fences/encoding and the old `src/server` path.
+
+### Review follow-up 2026-11-12
+
+- [x] `foundation-agentic-testing.md`: mark C15/C16 complete and replace the stale PEM-gate wording with the no-app-auth/ADR-0009 reality.
+- [x] `MERGE-HINTS.md`: correct `env-tool` / `staging-environment` line counts; drop the now-done "See also" suggestion.
+- [x] `frontend-component-testing.md`: refresh the state summary (257 unit + 60 integration test files, 36 E2E specs, `apps/web/src/components/`).
+- [x] `flashcard-list-timeout-fix.md`: point Option B at the existing `search_flashcards` RPC.
 
 ### P2 — archive completed plans
 

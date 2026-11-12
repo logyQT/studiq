@@ -46,7 +46,7 @@ Last updated: 2026-11-12
 - Phase A first (independent, immediate value) ✅
 - Phase B before Phase C (de-tangle before moving code into packages) ✅
 - Phase B.5 (seat cleanup) before Phase C — C2 extracts the post-cleanup FeatureResolver ✅
-- Phase C: monorepo scaffold + admin detach — C1-C14 complete, C8 deferred ✅
+- Phase C: monorepo scaffold + admin detach — C1-C16 complete, C8 deferred ✅
 - Phase E: main app moved to `apps/web/` ✅
 - Phase D: agentic testing — **split and deferred**: mechanical cases become the deterministic
   Playwright suite in [`archive/e2e-campaign.md`](archive/e2e-campaign.md); judgement-heavy cases stay
@@ -195,7 +195,7 @@ member. Cleaning the axis before C2 moved `FeatureResolver` into
 
 > **Prerequisite (met):** legacy AI dead code was removed before C — see `docs/ai.md` → "Dead code to remove"; B.5 landed before C2.
 
-Status: C1-C14 COMPLETE, C8 DEFERRED (see decisions)
+Status: C1-C16 COMPLETE, C8 DEFERRED (see decisions)
 
 ### Tasks — scaffold & detach (COMPLETE)
 
@@ -217,12 +217,11 @@ Status: C1-C14 COMPLETE, C8 DEFERRED (see decisions)
 - [x] C13 Move `src/` → `apps/web/src/`, update workspace config, update root scripts — PR [#80](https://github.com/logyQT/studiq/pull/80)
 - [x] C14 Verify: `bun run build` (main), `bun run build:admin` (admin), both dev servers independent — PR [#80](https://github.com/logyQT/studiq/pull/80)
 
-### Tasks — rebuild admin API & UI (NEXT)
+### Tasks — rebuild admin API & UI (COMPLETE)
 
-Admin pages deleted in C3 need rebuilding in `apps/admin/`. Server-side
-controllers and services are ready in `apps/admin/src/server/`. What's
-missing: API route handlers that wire controllers to HTTP, and frontend
-pages that consume them.
+Admin pages deleted in C3 were rebuilt in `apps/admin/`. Server-side
+controllers and services live in `apps/admin/src/server/`; the API route
+handlers and frontend pages below are in place.
 
 **Architecture:**
 
@@ -231,16 +230,16 @@ pages that consume them.
 - Shared services live in `packages/server/`
 - Admin frontend calls its own `/api/` routes (same origin)
 
-#### C15 — Admin API routes
+#### C15 — Admin API routes (COMPLETE)
 
-Create `apps/admin/src/app/(backend)/api/v1/` route handlers that:
+`apps/admin/src/app/(backend)/api/v1/` route handlers:
 
-1. Accept requests (no auth — PEM gate handles it at proxy level)
+1. Accept requests (no app-level auth — internal-only app, not deployed; see ADR-0009)
 2. Parse input with Zod (reuse existing models)
 3. Call the corresponding controller
 4. Return JSON via `toNextResponse()`
 
-Route handlers needed:
+Route handlers:
 
 | Route                             | Controller                        | Methods                         |
 | --------------------------------- | --------------------------------- | ------------------------------- |
@@ -255,15 +254,16 @@ Route handlers needed:
 | `/api/v1/subscription-plans`      | `subscriptionPlanAdminController` | GET, POST                       |
 | `/api/v1/subscription-plans/[id]` | `subscriptionPlanAdminController` | GET, PUT, DELETE                |
 
-**Auth for admin API routes**: No `withAuth` wrapper — the PEM proxy
-gates all `/api/*` requests. Controllers run with full service-role
-permissions. If fine-grained tokens are added later (see "Side note"
-below), add a lightweight scope check middleware.
+**Auth for admin API routes**: No `withAuth` wrapper — `apps/admin` is
+internal, has no app-level auth and is not deployed (ADR-0009).
+Controllers run with full service-role permissions. Do not expose the app
+until the ADR-0009 blockers clear; if fine-grained tokens are added later
+(see "Side note" below), add a lightweight scope check middleware.
 
-#### C16 — Admin frontend pages
+#### C16 — Admin frontend pages (COMPLETE)
 
-Create `apps/admin/src/app/(frontend)/` pages using `@studiq/ui`
-components + `next-intl` translations:
+`apps/admin/src/app/(frontend)/` pages use `@studiq/ui` components +
+`next-intl` translations:
 
 | Page               | Route                 | Source (old)                                    | Notes                                                     |
 | ------------------ | --------------------- | ----------------------------------------------- | --------------------------------------------------------- |
@@ -280,10 +280,10 @@ Pages should use `useApiQuery`/`useApiMutation` from the shared pattern
 
 ### Side note — GitHub-style fine-grained admin tokens
 
-When the admin panel detaches (this phase), the monolithic PEM header looks
-increasingly blunt. Replace it with GitHub-style fine-grained
-tokens so an operator can grant **partial** access — e.g. "read orgs, write
-feature flags, nothing else" — without handing over the keys to the whole system:
+If admin is ever deployed, a single shared gate would be too blunt. Use
+GitHub-style fine-grained tokens so an operator can grant **partial**
+access — e.g. "read orgs, write feature flags, nothing else" — without
+handing over the keys to the whole system:
 
 - **Token = keyed scopes, least privilege by construction**: every admin API
   request authenticates with a bearer token carrying an explicit scope list
@@ -305,8 +305,8 @@ feature flags, nothing else" — without handing over the keys to the whole syst
 - **Implementation anchor**: the token middleware resolves the scope list into
   `RequestContext.permissionScopes`, reusing the same batched map that B8's
   `@/lib/authz` already consumes — so controllers keep calling
-  `hasPermission`/`checkPermission`/`buildQueryFilter` **unchanged**. The PEM
-  gate stays as bootstrap for the very first token mint.
+  `hasPermission`/`checkPermission`/`buildQueryFilter` **unchanged**. Until
+  token scopes land, admin stays internal-only with no app-level auth.
 
 ---
 
@@ -314,9 +314,9 @@ feature flags, nothing else" — without handing over the keys to the whole syst
 
 Status: **DEFERRED** — see [PR #77](https://github.com/logyQT/studiq/pull/77) for
 the agentic testing infrastructure work. Phase D will pick up from that PR's
-foundation once the admin rebuild and server extraction (C9-C14) are complete.
-The testing framework depends on a stable monorepo structure, so it runs after
-the structural refactors are done.
+foundation now that the admin rebuild and server extraction (C9-C16) are
+complete. The testing framework depends on a stable monorepo structure, so it
+runs after the structural refactors are done.
 
 ### Tasks
 

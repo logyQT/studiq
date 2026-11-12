@@ -51,9 +51,9 @@ await page.getByLabelText(/email/i).fill('user@example.com');
 
 ---
 
-## Why now (and why not yet)
+## Why now
 
-The project has 116 server-side tests (unit + integration) and 10 E2E specs, but **zero** frontend component or hook tests. Every frontend bug found so far (markdown streaming status, flashcard readOnly/skeleton, plan step tracking) was caught in production or manually, then patched without a regression safety net.
+The project has 257 unit test files, 60 integration test files and 36 E2E specs, but **zero** frontend component or hook tests. Every frontend bug found so far (markdown streaming status, flashcard readOnly/skeleton, plan step tracking) was caught in production or manually, then patched without a regression safety net.
 
 The `flashcard-testing-pipeline.md` doc already scoped a focused test effort for the AI chat components — this document zooms out to the full frontend testing story.
 
@@ -63,15 +63,15 @@ The `flashcard-testing-pipeline.md` doc already scoped a focused test effort for
 
 ## Current state summary
 
-| What exists                                              | What's missing                                      |
-| -------------------------------------------------------- | --------------------------------------------------- |
-| Vitest with `node` environment                           | No browser mode config for component tests          |
-| 116 server tests (services, controllers, models, guards) | Zero `.test.tsx` files                              |
-| 100+ app components (`src/components/`)                  | No `vitest-browser-react` or rendering helpers      |
-| 30+ UI primitives (`packages/ui/src/components/ui/`)     | No provider wrappers (QueryClient, next-intl, etc.) |
-| `@/` and `#test/` aliases in Vitest + tsconfig           | No component test setup                             |
-| 10 Playwright E2E specs (`__tests__/e2e/`)               | No component-level interaction tests                |
-| `flashcard-testing-pipeline.md` scoped for AI chat       | Not yet executed                                    |
+| What exists                                          | What's missing                                      |
+| ---------------------------------------------------- | --------------------------------------------------- |
+| Vitest with `node` environment                       | No browser mode config for component tests          |
+| 257 unit + 60 integration test files                 | Zero `.test.tsx` files                              |
+| 100+ app components (`apps/web/src/components/`)     | No `vitest-browser-react` or rendering helpers      |
+| 60+ UI primitives (`packages/ui/src/components/ui/`) | No provider wrappers (QueryClient, next-intl, etc.) |
+| `@/` and `#test/` aliases in Vitest + tsconfig       | No component test setup                             |
+| 36 Playwright E2E specs (`__tests__/e2e/`)           | No component-level interaction tests                |
+| `flashcard-testing-pipeline.md` scoped for AI chat   | Not yet executed                                    |
 
 ---
 
