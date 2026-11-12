@@ -49,7 +49,7 @@ Last updated: 2026-10-24
 - Phase C: monorepo scaffold + admin detach (C1-C7 done) ✅, admin rebuild + server extraction next
 - Phase E: move main app to `apps/web/` (after admin is stable)
 - Phase D: agentic testing — **split and deferred**: mechanical cases become the deterministic
-  Playwright suite in [`docs/e2e-campaign.md`](../e2e-campaign.md); judgement-heavy cases stay
+  Playwright suite in [`docs/e2e-campaign.md`](archive/e2e-campaign.md); judgement-heavy cases stay
   agentic (see [PR #77](https://github.com/logyQT/studiq/pull/77))
 
 ---

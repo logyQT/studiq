@@ -16,7 +16,7 @@ This guide walks new team members through setting up the local development envir
   # Install bun (if not already installed)
   powershell -c "irm bun.sh/install.ps1 | iex"
   ```
-- **Git** — version control ([Git for Noobs](./GIT-FOR-NOOBS.md))
+- **Git** — version control
 - **GitHub CLI (`gh`)** — required for agents to push branches, create PRs, and manage worktrees
   ([Install `gh`](https://cli.github.com/))
 
