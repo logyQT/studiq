@@ -46,7 +46,7 @@ content is still created through the real API routes. There are no shared per-ru
 Playwright tests run against the full application in a real browser.
 
 **Location:** `__tests__/e2e/` — conventions and the target architecture are in
-[`e2e-campaign.md`](e2e-campaign.md).
+[`e2e-campaign.md`](plans/archive/e2e-campaign.md) (archived).
 
 **Target architecture:** one spec per QA case (`__tests__/e2e/cases/<ID>.spec.ts`), each test
 provisioning its own organization and accounts, so specs can run in any order at N workers.

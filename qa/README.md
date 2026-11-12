@@ -9,7 +9,8 @@ linking, is dropped as not planned (#893), and the admin module + 5 admin-depend
 are out of scope, so 188 cases remain).
 
 Automation: the campaign that turns these cases into the Playwright suite is
-[`docs/e2e-campaign.md`](../docs/e2e-campaign.md); current mapping in
+[`docs/plans/archive/e2e-campaign.md`](../docs/plans/archive/e2e-campaign.md) (archived);
+current mapping in
 [`coverage.md`](coverage.md).
 
 ## Layout

@@ -2,10 +2,10 @@
 
 > **Status: parked.** This starts after the open-issue backlog is closed, and it is the
 > second prerequisite for the lint-debt work in #173. Tracking issue: #464. Case triage:
-> [`qa/coverage.md`](../qa/coverage.md).
+> [`qa/coverage.md`](../../../qa/coverage.md).
 
 The goal is a regression net strong enough that paying down the lint debt cannot quietly
-break a product flow: every case in [`qa/cases/`](../qa/cases) gets a test that proves it.
+break a product flow: every case in [`qa/cases/`](../../../qa/cases) gets a test that proves it.
 
 ## Scope
 
@@ -81,7 +81,7 @@ agent-driven QA flow with the corpus prompt, and the coverage map marks them `se
 ## Coverage map
 
 Generated, never hand-edited: `@case:` tags plus the last run produce
-[`qa/coverage.md`](../qa/coverage.md) and a JSON for dashboards. States:
+[`qa/coverage.md`](../../../qa/coverage.md) and a JSON for dashboards. States:
 
 `untriaged` · `drafted` · `red · bug #n` · `red · case` (the case doc is wrong) · `flaky` ·
 `green` · `semantic`.
@@ -101,7 +101,7 @@ Triage today: **170 e2e · 10 API-level · 8 semantic** (of 188 cases).
 One spec per case, in batches of 8, area order: **STU** (51) → **EDU** (41) → **MGR** (28) →
 **AUT** (19) → **SEC** (13) → **ONB** (10) → **PUB** (8) → **BIL** (6) → **LIM** (4) →
 **NFR** (8), P1 cases first inside each area. The counts are the full per-area totals from
-[`qa/coverage.md`](../qa/coverage.md): 170 e2e + 10 API-level + 8 semantic = 188 cases. Each batch: write → run → triage (red opens an issue) → merge what is green.
+[`qa/coverage.md`](../../../qa/coverage.md): 170 e2e + 10 API-level + 8 semantic = 188 cases. Each batch: write → run → triage (red opens an issue) → merge what is green.
 
 ## Done
 
@@ -114,7 +114,7 @@ One spec per case, in batches of 8, area order: **STU** (51) → **EDU** (41) �
 
 ## Relation to the agentic-testing plan
 
-[`docs/plans/foundation-agentic-testing.md`](plans/foundation-agentic-testing.md) deferred
+[`docs/plans/foundation-agentic-testing.md`](../foundation-agentic-testing.md) deferred
 "agentic testing" as a whole. This document splits it: mechanical CRUD and negative paths
 become deterministic Playwright specs (everything above), and judgement-heavy cases stay
 agentic, run through the QA environments with the corpus prompt.

@@ -1,0 +1,34 @@
+name: Question
+description: Ask how something works, or where to find it.
+title: '[Question] '
+labels: ['question']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Setup and usage questions are often answered already: see
+        [onboarding](https://github.com/logyQT/studiq/blob/main/docs/ONBOARDING.md)
+        and the [README](https://github.com/logyQT/studiq/blob/main/README.md).
+
+        Do not report bugs here — open a **bug report** instead.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Commands you ran, docs you read, and the result, including any error text.
+    validations:
+      required: false
+  - type: input
+    id: context
+    attributes:
+      label: Context
+      description: Local or production, account type, and the area of the app.
+      placeholder: Local stack, teacher account, /edu/groups
+    validations:
+      required: false
