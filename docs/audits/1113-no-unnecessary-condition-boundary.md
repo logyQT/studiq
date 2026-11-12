@@ -11,10 +11,10 @@ Related: #1112 (tautology gates), #1113 (this rule), `docs/audits/173-bun-strict
 **The rule cannot be turned on yet, and the blocker is not the code the rule points at — it is the
 types the code is written against.**
 
-905 findings across 278 files reproduce exactly as #1113 describes. Twelve files carried genuinely
-dead code and are fixed in the PR that adds this note (890 findings left). The other ~98 % are not
-tautologies: they are the compiler claiming that a value read across the Supabase/HTTP boundary can
-never be missing, while the runtime — and this repo's own unit tests — depend on it being able to be.
+905 findings across 278 files reproduce exactly as #1113 describes. The genuinely dead findings in
+that set are fixed in the PR that adds this note (889 left). The other ~98 % are not tautologies:
+they are the compiler claiming that a value read across the Supabase/HTTP boundary can never be
+missing, while the runtime — and this repo's own unit tests — depend on it being able to be.
 
 Enabling the rule today therefore has exactly two honest outcomes, and both are wrong for one PR:
 
@@ -37,18 +37,22 @@ bun lint --no-script --rule 'typescript/no-unnecessary-condition: error' --forma
 
 The pretty reporter collapses the findings (`times="…"`); only the JSON format gives real counts.
 
-| scope             | findings | files |
-| ----------------- | -------: | ----: |
-| `packages/server` |      297 |   ~50 |
-| `apps/web/src`    |     ~160 |   ~60 |
-| `packages/ui`     |        1 |     1 |
-| `__tests__`       |      423 |   165 |
+| scope             | findings |   files |
+| ----------------- | -------: | ------: |
+| `packages/server` |      297 |      46 |
+| `apps/web/src`    |      162 |      58 |
+| `packages/ui`     |        7 |       3 |
+| `__tests__`       |      423 |     165 |
+| **total**         |  **889** | **273** |
 
-By message (`main` after the fixes in this PR, 890 total):
+`packages/ui` keeps seven (`chart.tsx` 4, `input-otp.tsx` 2, `carousel.tsx` 1 at L101) on top of the
+`orientation` fallback this PR removed; on `main` that scope had eight.
+
+By message (after the fixes in this PR, 889 total):
 
 | message                        | count |
 | ------------------------------ | ----: |
-| unnecessary optional chain     |   322 |
+| unnecessary optional chain     |   321 |
 | conditional always falsy       |   302 |
 | `??` left-hand side never null |   231 |
 | conditional always truthy      |    33 |
@@ -104,8 +108,8 @@ Every guard written for the missing index (`if (!entry) continue`, `if (!questio
 `photos[id]?.length`, `cols[findIndex(...)] ?? ''`) is therefore reported as unnecessary even though
 `findIndex` returning `-1` and a stale index after a refetch are normal runtime events.
 
-The rest of the tree is small and already clean: `packages/authz` has zero findings, and
-`packages/ui` had one (fixed here).
+The rest of the tree is small: `packages/authz` has zero findings, and `packages/ui` had eight, one
+of which (the `carousel` `orientation` fallback) is fixed here.
 
 ---
 
@@ -119,10 +123,21 @@ Fixed (real dead code the rule found):
 - `teacher-assignment.service.ts` — `teacher_points !== undefined` on a `number | null`; and a
   `question_answers` presence check on a row whose type is always an array.
 - `question.service.ts` — `orderIndex ?? i` behind a Zod `.default(0)` (and the now-unused index).
-- `AuthProvider.tsx` — `context === undefined` on a context created with a real default value.
-- `carousel.tsx`, `markdown-renderer.tsx`, `activity.service.ts`, `org.service.ts`,
-  `create-from-question-dialog.tsx`, `speed-dial.tsx` — fallbacks behind conditions that are
-  always truthy or lists that are always arrays (each verified against the unit suite).
+- `AuthProvider.tsx` — `context === undefined` never matched a context created with a real default.
+  The provider now defaults to `null` and keeps the loud throw (the `CarouselContext` /
+  `useCarousel` shape), so `useAuth()` outside a provider still fails instead of reporting a
+  permanent loading state.
+- `carousel.tsx`, `speed-dial.tsx`, `org.service.ts` — fallbacks behind conditions that are always
+  truthy and a list that is always an array (each verified against the unit suite).
+- `activity.service.ts` — `studentMembers || []` dropped after its error check, and the sibling
+  `profiles` read gained the error check it was missing, so both reads are strict in the same way.
+
+Boundary fallbacks kept, with a short reason where the rule forces one:
+
+- `markdown-renderer.tsx` — `defaultSchema.attributes.span` is `undefined` at runtime (verified),
+  despite the type.
+- `create-from-question-dialog.tsx` — a question can arrive without the `question_answers` embed,
+  so `deriveBack` keeps the empty fallback.
 
 Not changed: the rule stays off in `bunfig.toml`. Turning it on without the hardening below would
 either change runtime behaviour or require a suppression ledger.

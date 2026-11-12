@@ -48,16 +48,15 @@ export class ActivityService {
 
     const studentIdSet = studentIds;
 
-    const { data: profiles } = await supabase
+    const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
       .select('id, email, full_name')
       .in('id', studentIds);
 
+    if (profilesError) return toDbFailure(profilesError);
+
     const profileMap = new Map(
-      (profiles || []).map((p: { id: string; email: string; full_name: string | null }) => [
-        p.id,
-        p,
-      ]),
+      profiles.map((p: { id: string; email: string; full_name: string | null }) => [p.id, p]),
     );
 
     const { data: activity } = await supabase
