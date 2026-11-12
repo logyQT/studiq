@@ -66,9 +66,10 @@ seeded tenant instead:
   contains only the `O1G1 deck`; after the move and a reload it contains only the
   `O1G2 deck`. Card names render twice in the DOM (mobile row + desktop card), so the
   spec only counts visible headings.
-- Same deep-link race as MGR-GRP-01: the first hard load of an org-scoped `/manage`
-  page right after an API login without an active-organization cookie can answer `403`
-  until the org context settles. The spec enters from `/manage` (dashboard) and clicks
-  the sidebar entry, and pins `active_org_id` for its own org, so the walk is stable.
+- The deep-link race (#1125) is fixed: a hard load of an org-scoped `/manage` page
+  right after an API login now waits for the active organization before it sends the
+  list request, so the first load lists the members instead of answering `403` and
+  rendering an empty table. The spec still enters from `/manage` (dashboard) and clicks
+  the sidebar entry, which is the user path this case describes.
 - No product defect found: the toast, the row state, the API state and the student's
   content visibility all match the case's expected result.
