@@ -117,19 +117,19 @@ describe('build fingerprint (spec §8)', () => {
 
   it('is stable when nothing changes', () => {
     const root = repo();
-    expect(fingerprint.workingTreeHash(root)).toBe(fingerprint.workingTreeHash(root));
+    const first = fingerprint.workingTreeHash(root);
+    expect(fingerprint.workingTreeHash(root)).toBe(first);
+    const build = fingerprint.computeBuildFingerprint({
+      root,
+      mode: 'production',
+      envHash: 'env',
+    });
     expect(
       fingerprint.computeBuildFingerprint({
         root,
         mode: 'production',
         envHash: 'env',
       }),
-    ).toBe(
-      fingerprint.computeBuildFingerprint({
-        root,
-        mode: 'production',
-        envHash: 'env',
-      }),
-    );
+    ).toBe(build);
   });
 });

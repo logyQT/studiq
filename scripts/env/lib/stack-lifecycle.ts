@@ -1,4 +1,5 @@
 import { runSupabase, type SpawnResult, type StackEnv } from './stack';
+import { OTEL_ENDPOINT } from './observability';
 import { redactSecrets } from './output';
 import { currentBranchName, sanitizeProjectId } from './repo';
 import type { Capability } from '../profiles';
@@ -121,7 +122,7 @@ export function applyStackEnv(
   // One collector per machine: every checkout ships to the same OTLP intake,
   // but gets its own service name so Tempo/Loki/Prometheus can tell worktrees
   // apart. Never start a second observability stack from a worktree.
-  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||= 'http://localhost:4318';
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||= OTEL_ENDPOINT;
   process.env.OTEL_SERVICE_NAME ||= observabilityServiceName(currentBranchName(), extras.stackId);
   process.env.SUPABASE_URL = env.apiUrl;
   process.env.NEXT_PUBLIC_SUPABASE_URL = env.apiUrl;

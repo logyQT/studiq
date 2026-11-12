@@ -38,11 +38,13 @@ studiq/
 │   └── tsconfig/  # Shared tsconfig base (`base.json`)
 ├── __tests__/     # Root-level tests: unit/, integration/, e2e/, helpers/, mocks/, setup.ts
 ├── supabase/      # migrations/, schemas/, seeds/, templates/, config.toml
+├── rules/         # ast-grep tautology rules for `bun run review:static` (sgconfig.yml)
 ├── scripts/       # Dev workflow scripts (spin, pr, import + migration guards)
 └── docs/          # Project documentation
 ```
 
 - Main app code: `apps/web/src/…` — shared backend code: `packages/server/src/…`
+- Review rules live in `rules/` (one YAML per shape), configured by `sgconfig.yml`, with `valid`/`invalid` samples in `__tests__/rules/`; `bun run review:static` runs both.
 - Each workspace has its **own** `tsconfig.json` and `package.json` scripts; typecheck each workspace with its own script (see Commands).
 - Cross-package imports always go through workspace names (`@studiq/server`, `@studiq/authz`, `@studiq/ui`) or the `@admin/*` alias — never deep relative paths.
 
@@ -119,6 +121,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
 | `bun run lint` | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts && bun scripts/check-adr-numbering.ts && bun scripts/check-hardcoded-urls.ts && bun scripts/check-suppressions-empty.ts && bun scripts/check-env-inventory.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard + ADR-numbering guard (four-digit `NNNN-slug.md`, unique, gapless, title matches number, intra-directory links resolve) + hardcoded-local-URL guard + suppression-ledger guard + env-inventory guard (`.env.schema` vs `process.env.*`, no stray values files). **Contains no typecheck step.** Does not include `apps/admin/src` (use `lint:admin`). |
 | `bun run lint:all` | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command |
+| `bun run review:static` | `bun scripts/review-static.ts` — the deterministic review gate: oxlint over app/package/test scopes plus the ast-grep tautology rules in `sgconfig.yml` and their `__tests__/rules/` tests. `-- --changed origin/main` scopes **oxlint** to the diff (what `studiq-review` runs); the ast-grep rules always scan the whole tree. A bare `--changed` is a usage error. |
 | `bun run knip` | `knip --treat-config-hints-as-errors --no-progress` — dead-code / unused-dependency gate (documented policy suppressions in `knip.ts`, each with a reason). Also runs in both lefthook hooks and the `checks` CI job. **Not** part of `bun run lint`. |
 | `bun run check:lockfile-age` | `bun scripts/check-lockfile-age.ts` — fails a `bun.lock` diff that adds a package version published less than 7 days ago. Runs in the `checks` CI job on PRs, **before** `bun install`; deliberately not part of `lint` (it needs the network and the hooks must work offline). Backstops Dependabot's `cooldown`, which cannot see transitive resolutions. |
 | `bun run knip:report` | `knip --reporter compact` — human-readable report (one line per file); `knip:files` / `knip:deps` / `knip:exports` filter to one issue group |
@@ -417,7 +420,7 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 Telemetry is OpenTelemetry-only. Traces/metrics/logs all ship via OTLP to the
 OTel Collector (`docker compose up`), which fans out to Tempo (traces),
-Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
+Prometheus (metrics) and Loki (logs); Grafana runs at `:7001`.
 
 > **One observability stack per machine, owned by the primary checkout.** It is
 > not per checkout or worktree. Never start `docker compose` from a worktree:
@@ -427,7 +430,7 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
 > `/workspaces/studiq` on this VM): `cd <primary> && docker compose up -d`.
 > `bun run env:doctor` prints the health and the exact start command.
 > `env:ensure` exports `OTEL_SERVICE_NAME=studiq-<branch>` and
-> `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, so one collector can tell
+> `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318`, so one collector can tell
 > worktrees apart; an explicit value in `.env.local` still wins.
 
 - SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
@@ -603,3 +606,20 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **Supabase `eq(col, null)` is not `IS NULL`** — `.eq('organization_id', ctx.activeOrgId)` with `activeOrgId === null` serialises to `organization_id=eq.null`, which Postgres rejects on a `uuid` column (`22P02`, surfacing as a 500 — #148). For NOT NULL org columns guard first (`if (!ctx.activeOrgId) return failure('FORBIDDEN')`); for nullable-org personal content apply the org filter only when set (`if (ctx.activeOrgId) query = query.eq(...)`), matching `accessibleFilter`'s `own` scope.
 - **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun lint's `oxc/no-barrel-file` rule enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `oxc/no-barrel-file` is disabled for those two files.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — a hand-run root `bun check` must stay at zero errors; use the per-workspace scripts for app code.
+
+---
+
+## Tautology Is Harmful
+
+A tautology is anything that restates something already true instead of adding information: a comment that repeats the code, a label that repeats the value, a test that asserts itself, a component that re-wraps a component. **If deleting it loses no information, delete it.** Tautologies are not neutral filler — they inflate diffs, rot into lies, and bury the real signal in review.
+
+- **Comments explain _why_, never _what_.** `// increment counter` above `counter++`, `// fetch the user` above `getUser()`, `// return result` above `return result` — noise. The same goes for diff narration: `// removed the old path`, `// was handled upstream`, `// now uses X` describe a commit, not the code, and go stale the moment someone reads the file without the diff in front of them. Git history is the changelog; the file should read as if it had always been this way. A comment earns its place only by recording a constraint, workaround or trade-off a reader cannot infer from the code.
+- **Tests assert behaviour, not themselves.** `expect(1).toBe(1)`, `expect(v).toBe(v)`, a test whose only assertion is that a mock was called, a test whose only content is its name — none of these can fail for the reason they claim to guard. A test must pin an outcome the _production_ code could plausibly break: an observable result, an error code, a persisted row, a rendered state. Ask "what real change would turn this red?" — if the answer is "nothing", delete it. A purity check is legitimate, but bind the first result (`const first = f(x); expect(f(x)).toBe(first)`), do not compare two identical calls.
+- **Labels and UI copy carry meaning or they go.** A field label identical to its placeholder, a "Status: Active" badge beside text that already says Active, a "Saved" toast on a save with no failure mode, a heading restated in the paragraph under it — redundant chrome, not clarity. Label only when it distinguishes (unit, scope, consequence), and let each fact appear once.
+- **Components compose, they do not re-name.** A wrapper that only forwards props, a `<Card>` that renders another `<Card>`, a "Layout" that adds one matching `<div>`, an "EmptyState" that is just its own title — each adds an indirection layer, a file, an import and a future migration for zero behaviour. Introduce a component when it owns behaviour, layout or accessibility semantics reused in more than one place; otherwise inline it.
+
+Enforced where it is decidable, not by reviewer memory:
+
+- `bun run review:static` — oxlint (`no-self-compare`, `vitest/expect-expect`) plus the ast-grep rules in `sgconfig.yml` (self-asserting `expect`, label == placeholder, comment narrates a diff with `//` or a single-line `/* */`). Runs in `verify.yml`; `studiq-review` runs it with `-- --changed origin/main` and cites the rule id.
+- `bun run lint` — the rest of the shape-level redundancies (`no-dupe-else-if`, `no-unnecessary-boolean-literal-compare`, `jsx-a11y/no-redundant-roles`).
+- Still human/agent judgement: comments that restate code in different words, redundant labels that differ by a word, single-use wrapper components. Two existing gates cover the mechanical part: `bun run knip` finds unused components, and jscpd (`.jscpd.json`, `docs/ci.md → Duplication`) fails a PR that adds a copy-pasted block. The rest is a review finding, not a style nit.

@@ -3,6 +3,9 @@
 # stack. Running it from a worktree would mutate/conflict with the same project
 # rather than create an isolated one; the fixed name prevents a second copy
 # under the directory name.
+#
+# Host ports are in the 7000s so they cannot collide with the env tool's
+# 3000-range app-port leases. Container ports stay at upstream defaults.
 name: studiq-observability
 
 services:
@@ -15,9 +18,9 @@ services:
     volumes:
       - ./otel-collector-config.yml:/etc/otelcol/config.yml
     ports:
-      - '4317:4317' # OTLP gRPC
-      - '4318:4318' # OTLP HTTP (app endpoint)
-      - '8889:8889' # Prometheus exporter scrape endpoint
+      - '7317:4317' # OTLP gRPC (host 7000s to avoid env app-port leases)
+      - '7318:4318' # OTLP HTTP (app endpoint)
+      - '7889:8889' # Prometheus exporter scrape endpoint
     depends_on:
       - tempo
       - loki
@@ -31,7 +34,7 @@ services:
       - ./tempo.yml:/etc/tempo.yml
       - tempo_data:/var/tempo
     ports:
-      - '3200:3200' # Tempo HTTP API (Grafana datasource)
+      - '7200:3200' # Tempo HTTP API (Grafana datasource)
 
   loki:
     image: grafana/loki:3.2.0
@@ -41,13 +44,13 @@ services:
       - ./loki-config.yml:/etc/loki/loki-config.yml
       - loki_data:/loki
     ports:
-      - '3100:3100' # Loki HTTP API (Grafana datasource + OTLP ingestion)
+      - '7100:3100' # Loki HTTP API (Grafana datasource + OTLP ingestion)
 
   prometheus:
     image: prom/prometheus:v2.54.0
     restart: unless-stopped
     ports:
-      - '9090:9090'
+      - '7090:9090'
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -58,7 +61,7 @@ services:
     image: grafana/grafana:11.2.0
     restart: unless-stopped
     ports:
-      - '3001:3000'
+      - '7001:3000'
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning

@@ -37,6 +37,10 @@ const config: KnipConfig = {
   // logs; neither is an npm dependency.
   ignoreBinaries: ['flock', 'tail'],
 
+  // Policy: ast-grep is spawned by path from `scripts/review-static.ts`; knip
+  // cannot follow a runtime-resolved binary, but the dependency is the binary.
+  ignoreDependencies: ['@ast-grep/cli'],
+
   ignoreIssues: {
     // Policy: shared integration-test seeding surface. Suites import the
     // helpers they need; de-exporting the rest would turn them into unused

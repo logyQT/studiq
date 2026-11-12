@@ -26,7 +26,7 @@ Both run directly with Bun (no build step) and are dependency-free.
   `.env.local` — and a working app:
   - app on `http://localhost:$APP_PORT` (default `3000`, or pass `--app-url`), and
   - telemetry pointed at the OTel Collector — i.e. the app was started with
-    `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and `OTEL_SDK_DISABLED`
+    `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318` and `OTEL_SDK_DISABLED`
     **not** `true`.
 - Connection settings are read from the environment (Bun auto-loads `.env` /
   `.env.local`) with local defaults:
@@ -196,9 +196,9 @@ reference real resources.
 With the stack up (`docker compose up -d`) and the app exporting to the
 collector:
 
-- **Grafana → StudiQ — OpenTelemetry Overview** (`http://localhost:3001`): watch
+- **Grafana → StudiQ — OpenTelemetry Overview** (`http://localhost:7001`): watch
   request rate, p95/p99, error rate and active requests move as the bots run.
-- **Prometheus** (`:9090`): `rate(studiq_http_server_request_total[1m])`,
+- **Prometheus** (`:7090`): `rate(studiq_http_server_request_total[1m])`,
   `studiq_controller_method_duration_milliseconds_bucket`.
 - **Tempo** (Grafana → Explore → Tempo): search by the `x-trace-id` from a
   failing request.

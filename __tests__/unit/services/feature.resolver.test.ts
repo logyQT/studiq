@@ -638,7 +638,8 @@ describe('FeatureResolver', () => {
     });
 
     it('is deterministic for the same user and key', () => {
-      expect(rolloutBucket('user-1', 'ai.chat')).toBe(rolloutBucket('user-1', 'ai.chat'));
+      const first = rolloutBucket('user-1', 'ai.chat');
+      expect(rolloutBucket('user-1', 'ai.chat')).toBe(first);
       expect(rolloutBucket('user-1', 'ai.chat')).not.toBe(rolloutBucket('user-1', 'quiz'));
       expect(rolloutBucket('user-1', 'ai.chat')).not.toBe(rolloutBucket('user-2', 'ai.chat'));
       expect(rolloutBucket('x', 'y')).toBeGreaterThanOrEqual(0);

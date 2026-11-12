@@ -403,8 +403,8 @@ export async function firstFreePort(
  *
  * Unit files run in parallel in separate workers, so a fixed low base — the
  * product's 3000-3999 suggestion range — makes files race for the same handful
- * of ports, and a host may permanently own one of them (e.g. a docker proxy on
- * :3001). The worker pid picks a 20-port slice, so files in different workers
+ * of ports, and a host may permanently own one of them (e.g. a docker proxy).
+ * The worker pid picks a 20-port slice, so files in different workers
  * never overlap (a same-slice pair needs pids exactly 1000 apart, unlike the
  * 400-wide version two workers a few hundred pids apart would share). The whole
  * slice range stays below the ephemeral range, so an allocation cannot collide
