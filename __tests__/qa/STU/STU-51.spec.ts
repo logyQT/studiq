@@ -298,9 +298,7 @@ test.describe('@case:STU-51 @area:STU @prio:P2 account password change', () => {
 
       // Start the toast wait before the request settles: sonner keeps it for 4 s
       // and the shared box answers in a couple of seconds.
-      await expect(updated, 'the „Hasło zaktualizowane pomyślnie” toast').toBeVisible({
-        timeout: 30_000,
-      });
+      await expect(updated, 'the „Hasło zaktualizowane pomyślnie” toast').toBeVisible();
       expect(saved.status(), `POST ${UPDATE_PASSWORD_PATH}`).toBe(200);
       expect(saved.headers()['x-error-code'], 'no error code on success').toBeUndefined();
       expect(await saved.json()).toMatchObject({ success: true });
@@ -369,7 +367,7 @@ test.describe('@case:STU-51 @area:STU @prio:P2 account password change', () => {
         .click();
       const signedIn = await loginResponse;
       expect(signedIn.status(), 'log in with the new password').toBe(200);
-      await expect(page).toHaveURL(/\/app$/, { timeout: 30_000 });
+      await expect(page).toHaveURL(/\/app$/);
       await expect(page.getByRole('heading', { level: 1 })).toContainText('Cześć');
 
       // The old password is gone (the case's „PRZYWRÓĆ «pass»” note is about the
@@ -386,9 +384,7 @@ test.describe('@case:STU-51 @area:STU @prio:P2 account password change', () => {
       await fillPasswordChange(page, newPassword, SEEDED_PASSWORD, SEEDED_PASSWORD);
       const restoredToast = toast(page, COPY.updated);
       const restoredResponse = await clickUpdate(page);
-      await expect(restoredToast, 'the restore reports success').toBeVisible({
-        timeout: 30_000,
-      });
+      await expect(restoredToast, 'the restore reports success').toBeVisible();
       expect(restoredResponse.status(), 'restore the seeded password').toBe(200);
       restored = true;
 

@@ -91,7 +91,6 @@ async function openInvites(page: Page, tenant: QaTenant): Promise<void> {
   // selects are unusable (empty) until that response lands.
   const rolesLoaded = page.waitForResponse(
     (res) => new URL(res.url()).pathname === '/api/v1/organization/roles' && res.ok(),
-    { timeout: 30_000 },
   );
 
   await page.goto('/manage/invites');
