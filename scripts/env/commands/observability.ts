@@ -26,6 +26,7 @@ function printStatus(status: GrafanaStatus, mode: 'status' | 'ensure'): void {
     writeLine('  note       fix the stack before diagnosing; never substitute a local trace id');
   }
   if (status.detail && !status.ok) writeLine(`  detail     ${status.detail}`);
+  if (status.mintError) writeLine(`  mint       failed: ${status.mintError}`);
   if (mode === 'ensure' && status.minted) {
     writeLine(
       "  note       run 'opencode service restart' (or start a new session) to pick up the new token",
@@ -46,6 +47,8 @@ export async function runObservability(parsed: ParsedCommand): Promise<number> {
     printStatus(status, options.mode);
   }
 
-  if (options.mode === 'ensure' && !status.ok) return EXIT_START_FAILED;
+  if (options.mode === 'ensure' && (!status.ok || status.mintError !== null)) {
+    return EXIT_START_FAILED;
+  }
   return 0;
 }

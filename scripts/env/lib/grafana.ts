@@ -30,6 +30,12 @@ export interface GrafanaStatus {
   state: GrafanaAuthState;
   ok: boolean;
   minted: boolean;
+  /**
+   * Why the last mint attempt failed, or null. Kept apart from `state`/`ok`,
+   * which stay the auth truth of the token already on disk: a still-valid token
+   * must not be reported as broken just because a forced re-mint failed.
+   */
+  mintError: string | null;
   url: string;
   tokenFile: string;
   serviceAccount: string | null;
@@ -187,6 +193,7 @@ export async function inspectGrafana(
     state: 'unreachable',
     ok: false,
     minted: false,
+    mintError: null,
     url,
     tokenFile,
     serviceAccount: meta?.serviceAccountName ?? null,
@@ -272,11 +279,11 @@ export async function ensureGrafanaToken(
       detail: null,
     };
   } catch (error) {
-    return {
-      ...current,
-      ok: false,
-      detail: error instanceof Error ? error.message : String(error),
-    };
+    const message = error instanceof Error ? error.message : String(error);
+    // `state`/`ok` still describe the token on disk; a failed mint is its own
+    // signal so a machine consumer cannot read `state: 'ok'` as "the command
+    // that just ran succeeded".
+    return { ...current, minted: false, mintError: message, detail: message };
   }
 }
 

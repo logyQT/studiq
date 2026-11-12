@@ -106,6 +106,10 @@ async function ensureGrafanaBestEffort(): Promise<void> {
       writeStderrLine(
         `env: observability stack is down — traces/logs are unavailable; start it from the primary: cd "${primaryCheckoutPath()}" && docker compose up -d`,
       );
+    } else if (status.mintError) {
+      writeStderrLine(
+        `env: Grafana MCP token mint failed (${status.mintError}); run 'bun run env:observability ensure --force'`,
+      );
     } else if (!status.ok) {
       writeStderrLine(
         `env: Grafana MCP auth ${status.state}; run 'bun run env:observability'${status.detail ? ` (${status.detail})` : ''}`,

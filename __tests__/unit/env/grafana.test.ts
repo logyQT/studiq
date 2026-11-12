@@ -23,6 +23,7 @@ interface GrafanaStatus {
   state: string;
   ok: boolean;
   minted: boolean;
+  mintError: string | null;
   url: string;
   tokenFile: string;
   serviceAccount: string | null;
@@ -170,9 +171,26 @@ describe('Grafana MCP token', () => {
 
     expect(status.ok).toBe(false);
     expect(status.minted).toBe(false);
+    expect(status.mintError).toMatch(/401/);
     expect(status.detail).toMatch(/401/);
     expect(fixture.mintCount).toBe(0);
     expect(existsSync(tokenFile())).toBe(false);
+  });
+
+  it('keeps the valid token when a forced re-mint is rejected', async () => {
+    const fixture = await startFixture();
+    await grafana.ensureGrafanaToken();
+    const before = readFileSync(tokenFile(), 'utf8');
+    process.env.GRAFANA_ADMIN_PASSWORD = 'wrong';
+
+    const status = await grafana.ensureGrafanaToken({ force: true });
+
+    expect(status.state).toBe('ok');
+    expect(status.ok).toBe(true);
+    expect(status.minted).toBe(false);
+    expect(status.mintError).toMatch(/401/);
+    expect(readFileSync(tokenFile(), 'utf8')).toBe(before);
+    expect(fixture.mintCount).toBe(1);
   });
 
   it('reports unreachable instead of throwing when the stack is down', async () => {
@@ -240,6 +258,28 @@ describe('env:observability', () => {
 
     expect(result.status).toBe(4);
     expect(parseJsonObject(result.stdout)).toMatchObject({ state: 'unreachable', ok: false });
+  });
+
+  it('exits 4 and reports the mint error when a forced re-mint is rejected', async () => {
+    const harness = newHarness();
+    const fixture = await startGrafanaServer();
+    harness.track(() => fixture.close());
+
+    const minted = await harness.run(['observability', 'ensure', '--json'], {
+      GRAFANA_URL: fixture.url,
+    });
+    expect(minted.status).toBe(0);
+
+    const forced = await harness.run(['observability', 'ensure', '--force', '--json'], {
+      GRAFANA_URL: fixture.url,
+      GRAFANA_ADMIN_PASSWORD: 'wrong',
+    });
+
+    expect(forced.status).toBe(4);
+    const payload = parseJsonObject(forced.stdout);
+    expect(payload).toMatchObject({ state: 'ok', ok: true, minted: false });
+    expect(payload.mintError).toMatch(/401/);
+    expect(fixture.mintCount).toBe(1);
   });
 
   it('exits 2 when --force is used without ensure', async () => {
