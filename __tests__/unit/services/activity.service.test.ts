@@ -133,7 +133,7 @@ describe('ActivityService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result).students).toHaveLength(1);
-      expect(expectSuccess(result).students[0].name).toBe('Student');
+      expect(expectSuccess(result).students[0]?.name).toBe('Student');
       // The dead difficulty breakdown is gone: the endpoint must no longer read
       // quiz_attempts at all (#208).
       expect(mock.from).toHaveBeenCalledTimes(4);

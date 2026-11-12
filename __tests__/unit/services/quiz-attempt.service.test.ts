@@ -3,6 +3,7 @@ import { QuizAttemptService } from '@studiq/server/services/quiz-attempt.service
 import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 type QueryResult = { data: unknown; error: unknown };
 type QueryChain = {
@@ -271,9 +272,9 @@ describe('QuizAttemptService', () => {
       expect(mock.from).toHaveBeenCalledTimes(3);
       const rows = attemptRows(result);
       expect(rows).toHaveLength(101);
-      expect(rows[0].gradable_questions).toBe(1);
-      expect(rows[100].gradable_questions).toBe(1);
-      expect(rows[1].gradable_questions).toBe(0);
+      expect(rows[0]?.gradable_questions).toBe(1);
+      expect(rows[100]?.gradable_questions).toBe(1);
+      expect(rows[1]?.gradable_questions).toBe(0);
     });
 
     it('returns INTERNAL_SERVER when the gradable lookup fails', async () => {
@@ -345,7 +346,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      const projection = stringArg(questionsBuilder.select.mock.calls[0][0]);
+      const projection = stringArg(firstCall(questionsBuilder.select)[0]);
       expect(projection).not.toContain('*');
       expect(projection).not.toContain('is_correct');
       expect(projection).not.toContain('explanation');
@@ -370,7 +371,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      const projection = stringArg(questionsBuilder.select.mock.calls[0][0]);
+      const projection = stringArg(firstCall(questionsBuilder.select)[0]);
       expect(projection).toContain('explanation');
       expect(projection).toContain('is_correct');
     });
@@ -504,7 +505,7 @@ describe('QuizAttemptService', () => {
       const result = await service.getById('a-1', ctx);
 
       expect(result.success).toBe(true);
-      expect(attemptDetail(result).answers['q-1'].is_correct).toBe(true);
+      expect(attemptDetail(result).answers['q-1']?.is_correct).toBe(true);
     });
 
     it('includes teacher grading in the answers map for a completed attempt (#175)', async () => {

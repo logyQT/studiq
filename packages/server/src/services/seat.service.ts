@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
@@ -60,7 +61,7 @@ export class SeatService {
     if (error) return toDbFailure(error);
 
     return success(
-      (data ?? []).map((p) => ({
+      dbRows(data).map((p) => ({
         id: p.id,
         planKey: p.plan_key,
         total: p.total,
@@ -194,19 +195,22 @@ export class SeatService {
     if (error) return toDbFailure(error);
 
     return success(
-      (data ?? []).map((a) => ({
-        id: a.id,
-        userId: a.user_id,
-        poolId: a.pool_id,
-        planKey: a.pool.plan_key,
+      dbRows(data).map((a) => {
         // Left join: `profiles` is RLS-narrowed to the caller's own row and the
         // rows of users who share an organization with them. An assignment that
         // outlived the membership (historical removals) must still be listed so
         // a manager can free the seat, so `profile` may be null here.
-        userEmail: a.profile?.email ?? '',
-        userFullName: a.profile?.full_name ?? null,
-        assignedAt: a.assigned_at,
-      })),
+        const profile = dbNested(a.profile);
+        return {
+          id: a.id,
+          userId: a.user_id,
+          poolId: a.pool_id,
+          planKey: a.pool.plan_key,
+          userEmail: profile?.email ?? '',
+          userFullName: profile?.full_name ?? null,
+          assignedAt: a.assigned_at,
+        };
+      }),
     );
   }
 
@@ -259,7 +263,7 @@ export class SeatService {
         .eq('user_id', input.userId)
         .maybeSingle();
 
-      const roleName = member?.org_roles?.name;
+      const roleName = member?.org_roles.name;
       const userTier = roleName ? ROLE_TIER_MAP[roleName] : undefined;
 
       if (userTier && userTier !== poolTier) {
@@ -292,7 +296,7 @@ export class SeatService {
 
     if (error) {
       // Check for SEAT_POOL_FULL from trigger
-      if (error.message?.includes('SEAT_POOL_FULL') || error.code === '23514') {
+      if (error.message.includes('SEAT_POOL_FULL') || error.code === '23514') {
         return failure('USAGE_LIMIT_EXCEEDED');
       }
       return toDbFailure(error);

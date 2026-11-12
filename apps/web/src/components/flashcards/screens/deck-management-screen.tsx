@@ -7,6 +7,7 @@ import {
   CheckSquare,
   Download,
   EyeOff,
+  FileUp,
   FolderOpen,
   Plus,
   SquarePen,
@@ -15,11 +16,11 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DeckCard } from '@/components/flashcards/cards/deck-card';
-import { DeckFilters } from '@/components/flashcards/shared/deck-filters';
 import { BulkActionBar } from '@/components/shared/bulk-action-bar';
+import { ContentListToolbar } from '@/components/shared/content-list-toolbar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { SpeedDial } from '@/components/shared/speed-dial';
@@ -27,11 +28,13 @@ import { useApiMutation } from '@/hooks/use-api';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useGroupOptions } from '@/hooks/use-group-options';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiPost, apiPut, isNetworkError } from '@/lib/api';
+import { contentSortOptions } from '@/lib/content-sort-options';
 import { resolveListEmptyView } from '@/lib/list-empty-view';
 import { flashcardKeys } from '@/lib/query-keys';
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
@@ -136,24 +139,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     enabled: !orgsPending && !(groupIds.length > 0 && !groupsReady),
   });
 
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [hasNextPage, isFetchingNextPage, fetchNextPage],
-  );
-
-  useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el) return undefined;
-    const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handleObserver]);
+  const loadMoreRef = useInfiniteScroll({ hasNextPage, isFetchingNextPage, fetchNextPage });
 
   const createDeck = useApiMutation({
     mutationFn: (data: {
@@ -196,20 +182,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const selection = useSelection();
-  const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
-  const canCreateDeck = true;
-
-  useEffect(() => {
-    if (!selectionIsActive) return undefined;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        selectionClear();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectionIsActive, selectionClear]);
 
   function openCreate() {
     setEditing(null);
@@ -320,7 +292,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
 
   return (
     <div className="space-y-6">
-      <DeckFilters
+      <ContentListToolbar
         searchInput={searchInput}
         onSearchChange={setSearchInput}
         owner={owner}
@@ -337,12 +309,29 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           setSortBy(sb);
           setSortOrder(so);
         }}
-        includeSuspended={includeSuspended}
-        onIncludeSuspendedChange={setIncludeSuspended}
-        onImport={() => setImportOpen(true)}
-        onCreateNew={openCreate}
+        sortOptions={contentSortOptions(t)}
+        actions={
+          <>
+            <Button variant="outline" className="justify-start" onClick={() => setImportOpen(true)}>
+              <FileUp className="h-4 w-4" /> {t('common_import')}
+            </Button>
+            <Button className="justify-start" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> {t('new_deck')}
+            </Button>
+          </>
+        }
         t={t}
-      />
+      >
+        <Button
+          variant={includeSuspended ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setIncludeSuspended(!includeSuspended)}
+          className="gap-1.5"
+        >
+          <EyeOff className="h-4 w-4" />
+          {includeSuspended && <span>{t('show_suspended')}</span>}
+        </Button>
+      </ContentListToolbar>
 
       {!isLoading && !orgsPending && total !== undefined && (
         <p className="text-sm text-muted-foreground">{t('decks_count', { count: total })}</p>
@@ -399,11 +388,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         emptyIcon={<FolderOpen className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_decks')}
         emptyAction={
-          canCreateDeck && (
-            <Button variant="outline" size="sm" onClick={openCreate}>
-              <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
-            </Button>
-          )
+          <Button variant="outline" size="sm" onClick={openCreate}>
+            <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+          </Button>
         }
       >
         {decks.map((deck) => (
@@ -505,15 +492,11 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              ...(canCreateDeck
-                ? [
-                    {
-                      icon: SquarePen,
-                      label: t('new_deck'),
-                      onClick: openCreate,
-                    },
-                  ]
-                : []),
+              {
+                icon: SquarePen,
+                label: t('new_deck'),
+                onClick: openCreate,
+              },
               { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
               {
                 icon: CheckSquare,

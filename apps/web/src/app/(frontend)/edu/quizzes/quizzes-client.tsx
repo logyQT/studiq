@@ -77,7 +77,7 @@ export function QuizzesClient() {
                     </p>
                   )}
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{t('questions', { count: quiz.quiz_questions?.[0]?.count ?? 0 })}</span>
+                    <span>{t('questions', { count: quiz.quiz_questions[0]?.count ?? 0 })}</span>
                     <span>
                       {t('last_updated', { date: formatDateTime(quiz.created_at, locale) })}
                     </span>

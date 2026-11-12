@@ -278,6 +278,7 @@ async function runStudentActivity(
   assignmentId: string,
 ): Promise<void> {
   const [first, second, third] = content.questions;
+  if (!first || !second || !third) throw new Error(`${CASE} the case quiz needs three questions`);
   const answers = [
     { questionId: first.id, selectedAnswerId: first.correctOptionId },
     { questionId: second.id, selectedAnswerId: second.correctOptionId },
@@ -429,6 +430,7 @@ test.describe('@case:EDU-ST-02 @area:EDU @prio:P2 teacher results statistics', (
     expect(Math.round(quizRow!.avgScore), '2 of 3 answers right').toBe(67);
 
     const [, , belowHalf] = content.questions;
+    if (!belowHalf) throw new Error(`${CASE} the case quiz needs three questions`);
     const problematic = after.teacher.subject.problematicQuestions.find(
       (question) => question.id === belowHalf.id,
     );
@@ -450,8 +452,10 @@ test.describe('@case:EDU-ST-02 @area:EDU @prio:P2 teacher results statistics', (
       'exactly the five result cards',
     ).toHaveCount(titles.length);
     for (const title of titles) {
+      const value = cards[title];
+      if (!value) throw new Error(`${CASE} has no expected value for „${title}”`);
       await expect(statCard(page, title), `„${title}” is on the page`).toHaveCount(1);
-      await expect(statValue(page, title), `„${title}” value`).toHaveText(cards[title]);
+      await expect(statValue(page, title), `„${title}” value`).toHaveText(value);
     }
 
     // 2. The difficulty chart: four buckets, counts from the same stats, adding
@@ -499,7 +503,7 @@ test.describe('@case:EDU-ST-02 @area:EDU @prio:P2 teacher results statistics', (
       belowHalfRow.getByText(`0% ${COPY.correctSuffix}`, { exact: true }),
       'with its correct rate',
     ).toBeVisible();
-    for (const healthy of [content.questions[0], content.questions[1]]) {
+    for (const healthy of content.questions.slice(0, 2)) {
       await expect(
         problematicRows(page).filter({ hasText: healthy.content }),
         'a question answered correctly in every attempt is not listed',

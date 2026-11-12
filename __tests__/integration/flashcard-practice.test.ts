@@ -10,7 +10,11 @@ import {
   cleanupFlashcards,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
 import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
 import { POST as batchPractice } from '@/app/(backend)/api/v1/flashcards/batch/[action]/route';
@@ -102,7 +106,7 @@ describe(`Flashcard Practice Integration`, () => {
   beforeAll(async () => {
     // Fresh educator with a deck + flashcard (created via the real API).
     teacher = await before({ role: 'educator', decks: 1, flashcards: 1 });
-    teacherFlashcardId = teacher.created.flashcards[0];
+    teacherFlashcardId = requiredAt(teacher.created.flashcards, 0, 'seeded flashcard');
     // Fresh student who practices the teacher's card.
     student = await before({ role: 'student' });
   });
@@ -410,7 +414,8 @@ describe(`Flashcard Practice Integration`, () => {
     }
 
     it('reports collection-wide KPIs that a state filter cannot move', async () => {
-      const [cardA, cardB] = kpi.created.flashcards;
+      const cardA = requiredAt(kpi.created.flashcards, 0, 'seeded flashcard');
+      const cardB = requiredAt(kpi.created.flashcards, 1, 'seeded flashcard');
 
       const practice = async (flashcardId: string, wasCorrect: boolean) => {
         mockUser(kpi.user);
@@ -493,7 +498,8 @@ describe(`Flashcard Practice Integration`, () => {
     }
 
     it('persists the unit alongside the magnitude so 1 min and 1 day stay distinct', async () => {
-      const [cardA, cardB] = units.created.flashcards;
+      const cardA = requiredAt(units.created.flashcards, 0, 'seeded flashcard');
+      const cardB = requiredAt(units.created.flashcards, 1, 'seeded flashcard');
 
       // A: „Łatwe” -> review card, one day.
       const stateA = await practice(cardA, 4);
@@ -566,7 +572,8 @@ describe(`Flashcard Practice Integration`, () => {
     }
 
     it('counts a wrong first answer before the card graduates', async () => {
-      const [cardA, cardB] = mistakes.created.flashcards;
+      const cardA = requiredAt(mistakes.created.flashcards, 0, 'seeded flashcard');
+      const cardB = requiredAt(mistakes.created.flashcards, 1, 'seeded flashcard');
 
       // A: „Łatwe” -> review with no wrong answer.
       await practice(cardA, 4);
@@ -668,7 +675,7 @@ describe(`Flashcard Practice Integration`, () => {
     }
 
     it('acceptance 1–3: a cram answer writes no practice row, no review state and burns no budget', async () => {
-      const flashcardId = cram.created.flashcards[0];
+      const flashcardId = requiredAt(cram.created.flashcards, 0, 'seeded flashcard');
 
       // Baseline.
       const baselineSettings = await readSettings();
@@ -744,7 +751,12 @@ describe(`Flashcard Practice Integration`, () => {
     it('rejects an unknown mode with 422', async () => {
       const { status, body } = await postBatch({
         mode: 'bogus',
-        items: [{ flashcardId: cram.created.flashcards[0], wasCorrect: true }],
+        items: [
+          {
+            flashcardId: requiredAt(cram.created.flashcards, 0, 'seeded flashcard'),
+            wasCorrect: true,
+          },
+        ],
       });
 
       expect(status).toBe(422);
@@ -752,7 +764,7 @@ describe(`Flashcard Practice Integration`, () => {
     });
 
     it('review mode is unchanged: the same batch without mode writes practice + review state', async () => {
-      const flashcardId = cram.created.flashcards[0];
+      const flashcardId = requiredAt(cram.created.flashcards, 0, 'seeded flashcard');
       const baselinePractice = await countRows('flashcard_practice');
 
       const { status, body } = await postBatch({
@@ -781,7 +793,7 @@ describe(`Flashcard Practice Integration`, () => {
     });
 
     it('get_due_flashcards reports intervalValue/intervalUnit instead of intervalDays', async () => {
-      const flashcardId = rpcUser.created.flashcards[0];
+      const flashcardId = requiredAt(rpcUser.created.flashcards, 0, 'seeded flashcard');
 
       // Create the review state through the real route, then make it due.
       mockUser(rpcUser.user);

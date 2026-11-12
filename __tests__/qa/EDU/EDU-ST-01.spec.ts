@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { createQaSupabase } from '#test/helpers/db-admin';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-ST-01 — the educator's „Treści” statistics (`/edu/stats/data`).
@@ -335,8 +335,8 @@ async function listNamed(request: APIRequestContext, url: string): Promise<Named
  */
 async function ensureEducatorLeadsGroup(page: Page, tenant: QaTenant): Promise<void> {
   const groupId = tenant.group?.id;
-  const educator = tenant.users.teacher;
-  if (!groupId || !educator) {
+  const educator = tenantUser(tenant, 'teacher');
+  if (!groupId) {
     throw new Error(`${CASE} needs the content tenant profile (org, group and educator)`);
   }
 
@@ -469,7 +469,7 @@ async function prepareContent(page: Page, tenant: QaTenant): Promise<PreparedCon
  * same pattern STU-02 uses.
  */
 async function resetPracticeState(tenant: QaTenant): Promise<void> {
-  const userIds = Object.values(tenant.users).flatMap((user) => (user ? [user.id] : []));
+  const userIds = Object.values(tenant.users).map((user) => user.id);
   expect(userIds.length, `${CASE} tenant users`).toBeGreaterThan(0);
   const db = createQaSupabase();
 
@@ -685,8 +685,8 @@ test.describe('@case:EDU-ST-01 @area:EDU @prio:P2 educator content statistics', 
       page.request,
       `${FLASHCARDS_URL}?deckIds=${content.decks.historia}&limit=100`,
     );
-    const target = cards.items[0];
-    expect(target, 'the „Historia – fiszki” deck has a card to practise').toBeTruthy();
+    const [target] = cards.items;
+    if (!target) throw new Error(`${CASE} the „Historia – fiszki” deck has no card`);
     await practice(page, target.id);
 
     const afterTeacher = await readFlashcardSummary(page);
@@ -736,9 +736,9 @@ test.describe('@case:EDU-ST-01 @area:EDU @prio:P2 educator content statistics', 
   test('reports no roster without an active organization and the class size after switching', async ({
     request,
   }) => {
-    const educator = tenant.users.teacher;
+    const educator = tenantUser(tenant, 'teacher');
     const organization = tenant.org;
-    if (!educator || !organization) {
+    if (!organization) {
       throw new Error(`${CASE} needs the content tenant profile (org + educator)`);
     }
 

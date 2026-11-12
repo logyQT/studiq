@@ -5,6 +5,7 @@ import {
   validatePriceMap,
 } from '@studiq/server/lib/payment/stripe-preflight';
 import { describe, expect, it } from 'vitest';
+import { requiredValue } from '#test/mocks/recorded';
 
 const plans: PreflightPlan[] = [
   { key: 'spark', priceMonthly: 999, currency: 'PLN', isActive: true },
@@ -121,7 +122,7 @@ describe('validatePriceMap', () => {
   it('reports an empty paid catalog', () => {
     expect(
       validatePriceMap({
-        plans: [plans[2]],
+        plans: [requiredValue(plans[2], 'the base plan')],
         rows: [],
         livemode: true,
         production: false,

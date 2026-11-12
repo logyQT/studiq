@@ -1,4 +1,5 @@
 import type { Database } from '@studiq/server/types/database';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
@@ -10,7 +11,7 @@ import {
   cleanupQuizAttempts,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { POST as createQuizPost } from '@/app/(backend)/api/v1/quiz/new/route';
 
@@ -70,7 +71,7 @@ describe(`Plan limit enforcement`, () => {
       .select('personal_plan_key')
       .eq('id', userId)
       .single();
-    if (error || !data?.personal_plan_key) {
+    if (error || !data.personal_plan_key) {
       throw new Error(`[limits] profile plan lookup failed: ${error?.message}`);
     }
     return data.personal_plan_key;
@@ -169,7 +170,10 @@ describe(`Plan limit enforcement`, () => {
         .select('id')
         .eq('created_by', bankStudent.user.id);
       expect(banks).toHaveLength(BANK_LIMIT);
-      await service.from('question_banks').delete().eq('id', banks![0].id);
+      await service
+        .from('question_banks')
+        .delete()
+        .eq('id', requiredAt(dbRows(banks), 0, 'seeded bank').id);
 
       expect((await postBank(`test-bank-c-${suiteId}`)).status).toBe(201);
       expect(await countBanks(bankStudent.user.id)).toBe(BANK_LIMIT);

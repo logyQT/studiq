@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { asJson, json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * SEC-03 — a student without an organization cannot read another organization's
@@ -245,9 +245,8 @@ test.describe('@case:SEC-03 @area:SEC @prio:P2 no-organization student isolation
     const tenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the org-limit tenant profile`).toBe('org-limit');
 
-    const outsider = tenant.users.invitee1;
-    const member = tenant.users.student;
-    if (!tenant.org || !tenant.group || !tenant.users.manager || !outsider || !member) {
+    const outsider = tenantUser(tenant, 'invitee1');
+    if (!tenant.org || !tenant.group || !tenant.users.manager) {
       throw new Error(
         `${CASE} needs the org-limit tenant profile (org, group, manager, member and invitee1)`,
       );
@@ -258,6 +257,8 @@ test.describe('@case:SEC-03 @area:SEC @prio:P2 no-organization student isolation
 
     // --- Step 0: the organization content exists and belongs to G1 ----------
     const { deck, cards, bank } = await prepareOrgContent(page, tenant);
+    const [orgCard] = cards;
+    if (!orgCard) throw new Error(`${CASE} the org deck has no cards`);
 
     // --- Step 1: the no-organization student -------------------------------
     await page.context().clearCookies();
@@ -288,7 +289,7 @@ test.describe('@case:SEC-03 @area:SEC @prio:P2 no-organization student isolation
 
     // --- Step 2a: the org deck is unreachable directly through the API -----
     await expectHidden(page, `${DECKS_URL}/${deck.id}`);
-    await expectHidden(page, `${CARDS_URL}/${cards[0].id}`);
+    await expectHidden(page, `${CARDS_URL}/${orgCard.id}`);
     await expectHidden(page, `${BANKS_URL}/${bank.id}`);
 
     const banks = await listBanks(page);
@@ -348,7 +349,7 @@ test.describe('@case:SEC-03 @area:SEC @prio:P2 no-organization student isolation
     const memberDeck = await getData<Deck>(page, `${DECKS_URL}/${deck.id}`);
     expect(memberDeck.name, 'the outsider’s forced rename did not land').toBe(ORG_DECK);
 
-    const memberCard = await getData<Flashcard>(page, `${CARDS_URL}/${cards[0].id}`);
+    const memberCard = await getData<Flashcard>(page, `${CARDS_URL}/${orgCard.id}`);
     expect(memberCard.deck_id, 'the G1 member still reads the org deck’s cards').toBe(deck.id);
 
     const memberBank = await getData<QuestionBank>(page, `${BANKS_URL}/${bank.id}`);

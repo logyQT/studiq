@@ -249,8 +249,17 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
       });
       cards.push(created.id);
     }
-    const picked = PICKED.map((index) => cards[index - 1]);
+    const picked = PICKED.map((index) => {
+      const pickedId = cards[index - 1];
+      if (!pickedId) throw new Error(`${CASE} card ${index} was not created`);
+      return pickedId;
+    });
     const untouched = cards.filter((id) => !picked.includes(id));
+    const [firstPicked] = picked;
+    const [firstUntouched] = untouched;
+    if (!firstPicked || !firstUntouched) {
+      throw new Error(`${CASE} needs both a picked and an untouched card`);
+    }
 
     await page.goto(`/app/flashcards/${deckA.id}`);
     await expect(page.getByRole('heading', { level: 2, name: DECK_A.name })).toBeVisible();
@@ -260,9 +269,9 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     }
 
     // --- Step 1: „Wybierz Fiszki”, 3 cards, „Zaznacz Wszystkie” ------------
-    await enterSelectionMode(page, picked[0]);
+    await enterSelectionMode(page, firstPicked);
     await expect(
-      card(page, picked[0]).getByRole('checkbox'),
+      card(page, firstPicked).getByRole('checkbox'),
       'the card whose menu entered selection mode starts selected',
     ).toBeChecked();
     await expect(page.getByText(COPY.selected(1), { exact: true })).toBeVisible();
@@ -339,7 +348,7 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     }
 
     // --- Step 2b: Kopiuj to deck B ------------------------------------------
-    await enterSelectionMode(page, picked[0]);
+    await enterSelectionMode(page, firstPicked);
     await pickCards(page, picked.slice(1));
     await bulkBar(page).getByRole('button', { name: COPY.copy, exact: true }).click();
 
@@ -358,7 +367,7 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     expect((await getDeck(page, deckB.id)).flashcard_count, 'deck B received the 3 copies').toBe(3);
 
     // --- Step 2c: Przenieś to deck B ---------------------------------------
-    await enterSelectionMode(page, picked[0]);
+    await enterSelectionMode(page, firstPicked);
     await pickCards(page, picked.slice(1));
     await bulkBar(page).getByRole('button', { name: COPY.move, exact: true }).click();
 
@@ -384,7 +393,7 @@ test.describe('@case:STU-28 @area:STU @prio:P2 flashcard bulk operations', () =>
     expect((await getDeck(page, deckA.id)).flashcard_count, 'deck A holds the 2 left').toBe(2);
 
     // --- Step 2d: Usuń — cancel keeps the cards -----------------------------
-    await enterSelectionMode(page, untouched[0]);
+    await enterSelectionMode(page, firstUntouched);
     await pickCards(page, untouched.slice(1));
     await expect(page.getByText(COPY.selected(2), { exact: true })).toBeVisible();
     await bulkBar(page).getByRole('button', { name: COPY.delete, exact: true }).click();

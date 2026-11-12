@@ -3,6 +3,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -215,7 +216,7 @@ export class EntitlementService {
 
     if (error) return toDbFailure(error);
 
-    const freePlan = (data ?? []).find((row) => row.for_account_type === family);
+    const freePlan = dbRows(data).find((row) => row.for_account_type === family);
     if (!freePlan) {
       logError('billing.free_plan_missing', { family, ownerType: owner.type });
       return failure('NOT_FOUND');

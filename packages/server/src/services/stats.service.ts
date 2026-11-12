@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { warn } from '@studiq/server/lib/log';
 import { hiddenResultAssignmentIds } from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
@@ -36,7 +37,7 @@ function percentageOf(attempt: { score: number | null }, total: number): number 
  * count for practice quizzes. Never 0, so it is always safe as a denominator.
  */
 function attemptTotal(a: { total_questions: number; total_points?: number | null }): number {
-  return Math.max(a.total_points ?? a.total_questions ?? 0, 1);
+  return Math.max(a.total_points ?? a.total_questions, 1);
 }
 
 /**
@@ -104,7 +105,7 @@ export class StatsService {
 
     if (flashcardsError) return toDbFailure(flashcardsError);
 
-    const rows: Array<{ type: string; bank_id: string }> = questions ?? [];
+    const rows: Array<{ type: string; bank_id: string }> = dbRows(questions);
 
     // “Subject” counts are a group-by over the same own-questions row set, so
     // `subjectId` can only ever narrow the type split — it never widens the
@@ -124,7 +125,7 @@ export class StatsService {
 
       if (banksError) return toDbFailure(banksError);
 
-      for (const bank of banks ?? []) bankNames.set(bank.id, bank.name);
+      for (const bank of dbRows(banks)) bankNames.set(bank.id, bank.name);
     }
 
     const bySubject = bankIds
@@ -175,7 +176,7 @@ export class StatsService {
 
     return success({
       totalQuestions: rows.length,
-      totalFlashcards: flashcards?.length ?? 0,
+      totalFlashcards: dbRows(flashcards).length,
       subject: {
         byType,
         problematicQuestions: problematicRows.filter(
@@ -206,11 +207,11 @@ export class StatsService {
     // `totalQuizzes` below: a count is not a result (#374).
     const hidden = await hiddenResultAssignmentIds(
       supabase,
-      (attempts ?? []).map((attempt) => attempt.assignment_id),
+      dbRows(attempts).map((attempt) => attempt.assignment_id),
     );
     if (isFailure(hidden)) return hidden;
 
-    const scoredAttempts = (attempts ?? []).filter(
+    const scoredAttempts = dbRows(attempts).filter(
       (attempt) => !attempt.assignment_id || !hidden.data.has(attempt.assignment_id),
     );
 
@@ -276,16 +277,13 @@ export class StatsService {
 
     if (dueError) return toDbFailure(dueError);
 
-    const totalQuizzes = attempts?.length ?? 0;
+    const totalQuizzes = dbRows(attempts).length;
     // `null` = no attempt had a gradable denominator, so there is no result to
     // report. The UI renders `—` instead of a fabricated 0 % (#619).
     const avgScore =
       gradedAttempts.length > 0
         ? Math.round(
-            (gradedAttempts.reduce(
-              (sum, { attempt, total }) => sum + (attempt.score ?? 0) / total,
-              0,
-            ) /
+            (gradedAttempts.reduce((sum, { attempt, total }) => sum + attempt.score / total, 0) /
               gradedAttempts.length) *
               100,
           )
@@ -301,14 +299,14 @@ export class StatsService {
           )
         : null;
 
-    const flashcardCorrect = practice?.filter((p) => p.was_correct).length ?? 0;
-    const flashcardTotal = practice?.length ?? 0;
+    const flashcardCorrect = dbRows(practice).filter((p) => p.was_correct).length;
+    const flashcardTotal = dbRows(practice).length;
 
     return success({
       totalQuizzes,
       avgScore,
       bestScore,
-      totalQuestionsCreated: questions?.length ?? 0,
+      totalQuestionsCreated: dbRows(questions).length,
       flashcardsPracticed: flashcardTotal,
       flashcardAccuracy:
         flashcardTotal > 0 ? Math.round((flashcardCorrect / flashcardTotal) * 100) : 0,
@@ -367,7 +365,7 @@ export class StatsService {
 
     if (membersError) return toDbFailure(membersError);
 
-    const studentIds = (members ?? []).map((m) => m.user_id);
+    const studentIds = dbRows(members).map((m) => m.user_id);
     if (studentIds.length === 0) return success([]);
 
     const { data, error } = await supabase
@@ -379,7 +377,7 @@ export class StatsService {
 
     if (error) return toDbFailure(error);
 
-    const attempts = data ?? [];
+    const attempts = dbRows(data);
 
     // Assignment attempts never store `config.title` (`startAttempt` writes
     // only user/assignment/score columns), so a config-less row with an
@@ -408,7 +406,7 @@ export class StatsService {
 
       const quizIds = [
         ...new Set(
-          (assignments ?? [])
+          dbRows(assignments)
             .map((assignment) => assignment.quiz_id)
             .filter((id): id is string => typeof id === 'string'),
         ),
@@ -425,10 +423,10 @@ export class StatsService {
           .eq('organization_id', ctx.activeOrgId);
 
         if (quizzesError) return toDbFailure(quizzesError);
-        for (const quiz of quizzes ?? []) quizNames.set(quiz.id, quiz.name);
+        for (const quiz of dbRows(quizzes)) quizNames.set(quiz.id, quiz.name);
       }
 
-      for (const assignment of assignments ?? []) {
+      for (const assignment of dbRows(assignments)) {
         const name =
           (assignment.quiz_id ? quizNames.get(assignment.quiz_id) : undefined) ?? assignment.title;
         if (name) assignmentNames.set(assignment.id, name);
@@ -488,16 +486,16 @@ export class StatsService {
     const supabase = await this.clientFactory();
 
     let start: string;
-    const end: string = endDate ?? new Date().toISOString().split('T')[0];
+    const end: string = endDate ?? new Date().toISOString().slice(0, 10);
 
     if (startDate) {
       start = startDate;
     } else if (range === '1y') {
-      start = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      start = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     } else if (range === '30d') {
-      start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     } else {
-      start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     }
 
     const { data: items, error } = await supabase
@@ -517,7 +515,7 @@ export class StatsService {
       .maybeSingle();
 
     return success({
-      items: items ?? [],
+      items: dbRows(items),
       dailyReviewGoal: settings?.daily_review_goal ?? 0,
     });
   }
@@ -542,7 +540,7 @@ export class StatsService {
     if (daError) return toDbFailure(daError);
 
     const cardToDecks = new Map<string, Array<{ deckId: string; name: string }>>();
-    for (const f of flashcardsWithDecks ?? []) {
+    for (const f of dbRows(flashcardsWithDecks)) {
       const decks = cardToDecks.get(f.id) ?? [];
       const deck = toOne(f.flashcard_decks);
       if (deck && typeof deck.name === 'string') {
@@ -552,7 +550,7 @@ export class StatsService {
     }
 
     const deckMap = new Map<string, { name: string; total: number; correct: number }>();
-    for (const p of practice ?? []) {
+    for (const p of dbRows(practice)) {
       // `flashcard_practice.flashcard_id` is nullable (`ON DELETE SET NULL`); no
       // card means no deck to blame, which is what the missing map entry gave.
       if (!p.flashcard_id) continue;
@@ -588,7 +586,7 @@ export class StatsService {
     if (taError) return toDbFailure(taError);
 
     const cardToTopics = new Map<string, Array<{ topicId: string; name: string }>>();
-    for (const a of topicAssignments ?? []) {
+    for (const a of dbRows(topicAssignments)) {
       const topics = cardToTopics.get(a.flashcard_id) ?? [];
       const topic = toOne(a.topics);
       const topicName = typeof topic?.name === 'string' ? topic.name : 'Unknown';
@@ -597,7 +595,7 @@ export class StatsService {
     }
 
     const topicMap = new Map<string, { name: string; total: number; correct: number }>();
-    for (const p of practice ?? []) {
+    for (const p of dbRows(practice)) {
       // `flashcard_practice.flashcard_id` is nullable (`ON DELETE SET NULL`); no
       // card means no topic to blame, which is what the missing map entry gave.
       if (!p.flashcard_id) continue;

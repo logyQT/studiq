@@ -11,6 +11,7 @@ import { warn as logWarn } from '@studiq/server/lib/log';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { BillingService } from '@studiq/server/services/billing.service';
 import { asJson } from '#test/helpers/json';
+import { firstCall, requiredValue } from '#test/mocks/recorded';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/log', () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }));
@@ -163,7 +164,7 @@ describe('BillingService.changePlan', () => {
         direction: 'upgrade',
       }),
     );
-    const input = vi.mocked(gateway.changePlan).mock.calls[0][0];
+    const input = firstCall(vi.mocked(gateway.changePlan))[0];
     expect(input.idempotencyKey).toBe('change-plan:sub_1:ace:price_ace:2026-12-01T00:00:00.000Z');
     expect(repository.setPendingPlan).toHaveBeenCalledWith('sub_1', null);
   });
@@ -203,7 +204,7 @@ describe('BillingService.changePlan', () => {
     });
 
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success({ ...CATALOG.ace, isActive: false }),
+      success({ ...requiredValue(CATALOG.ace, 'ace plan'), isActive: false }),
     );
     await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
       success: false,
@@ -259,7 +260,7 @@ describe('BillingService.changePlan', () => {
 
   it('fails closed when the target price does not match the catalog', async () => {
     vi.mocked(repository.findListedPrice).mockResolvedValueOnce(
-      success({ ...listedPrice(CATALOG.ace), unitAmount: 1000 }),
+      success({ ...listedPrice(requiredValue(CATALOG.ace, 'ace plan')), unitAmount: 1000 }),
     );
 
     await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
@@ -289,7 +290,7 @@ describe('BillingService.changePlan', () => {
 
   it('rejects a free target plan', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success({ ...CATALOG.ace, priceMonthly: 0 }),
+      success({ ...requiredValue(CATALOG.ace, 'ace plan'), priceMonthly: 0 }),
     );
 
     await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
@@ -321,7 +322,7 @@ describe('BillingService.changePlan', () => {
 
   it('returns NOT_FOUND when the current plan disappeared from the catalog', async () => {
     vi.mocked(repository.getPlan)
-      .mockResolvedValueOnce(success(CATALOG.ace))
+      .mockResolvedValueOnce(success(requiredValue(CATALOG.ace, 'ace plan')))
       .mockResolvedValueOnce(success(null));
 
     await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
@@ -331,7 +332,9 @@ describe('BillingService.changePlan', () => {
   });
 
   it('fails closed when price and sort order disagree on the direction', async () => {
-    vi.mocked(repository.getPlan).mockResolvedValueOnce(success({ ...CATALOG.ace, sortOrder: 0 }));
+    vi.mocked(repository.getPlan).mockResolvedValueOnce(
+      success({ ...requiredValue(CATALOG.ace, 'ace plan'), sortOrder: 0 }),
+    );
 
     await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
       success: false,

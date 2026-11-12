@@ -65,12 +65,16 @@ describe(`Flashcard Move Authorization`, () => {
       throw new Error('[setup] org/group not created');
     }
 
-    [teacherDeckId, secondTeacherDeckId] = teacher.created.decks;
+    const [firstDeck, secondDeck] = teacher.created.decks;
     // seedViaApi distributes cards round-robin: card0 → deck0, card1 → deck1.
-    [foreignCardId, ownCardId] = teacher.created.flashcards;
-    if (!foreignCardId || !ownCardId || !teacherDeckId || !secondTeacherDeckId) {
+    const [foreignCard, ownCard] = teacher.created.flashcards;
+    if (!firstDeck || !secondDeck || !foreignCard || !ownCard) {
       throw new Error('[setup] seeded fixtures missing');
     }
+    teacherDeckId = firstDeck;
+    secondTeacherDeckId = secondDeck;
+    foreignCardId = foreignCard;
+    ownCardId = ownCard;
 
     // A student member of the teacher's org and of its default group — the S1
     // shape from the issue. Added via the service client because an educator
@@ -138,10 +142,8 @@ describe(`Flashcard Move Authorization`, () => {
   afterAll(async () => {
     await cleanupFlashcards(teacher.user.id);
     await cleanupFlashcardDecks(teacher.user.id);
-    if (member) {
-      await cleanupFlashcards(member.id);
-      await cleanupFlashcardDecks(member.id);
-    }
+    await cleanupFlashcards(member.id);
+    await cleanupFlashcardDecks(member.id);
     if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
   });
 

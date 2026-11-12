@@ -2,7 +2,11 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
 import { before, createTestUser } from '#test/helpers/test-user';
 import { useRealSupabase, cleanupOrganizationDeep, mockUser } from '#test/integration/helpers';
-import { createNextRequest, createTypedServiceClient } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createTypedServiceClient,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { POST as acceptPost } from '@/app/(backend)/api/v1/organization/invites/accept/route';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/route';
@@ -17,11 +21,16 @@ async function roleIds(orgId: string) {
     .select('id, name')
     .eq('organization_id', orgId)
     .eq('is_system', true);
-  const byName = Object.fromEntries((roles ?? []).map((r) => [r.name, r.id] as const));
+  const byName = new Map((roles ?? []).map((r) => [r.name, r.id] as const));
+  const roleId = (name: string): string => {
+    const id = byName.get(name);
+    if (!id) throw new Error(`[setup] org role ${name} not found for ${orgId}`);
+    return id;
+  };
   return {
-    adminRoleId: byName.admin,
-    teacherRoleId: byName.teacher,
-    memberRoleId: byName.member,
+    adminRoleId: roleId('admin'),
+    teacherRoleId: roleId('teacher'),
+    memberRoleId: roleId('member'),
   };
 }
 
@@ -490,7 +499,7 @@ describe(`Invite + accept regression (API-first)`, () => {
     // Org filled to max_students = 5 by the fixture itself (manager + 4 members).
     const fixture = await before({ role: 'manager', org: true, members: { count: 4 } });
     createdOrgIds.push(fixture.orgId!);
-    const existing = fixture.memberUsers[0];
+    const existing = requiredAt(fixture.memberUsers, 0, 'seeded member');
     const { memberRoleId } = await roleIds(fixture.orgId!);
 
     mockUser(fixture.user);

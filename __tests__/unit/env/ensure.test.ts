@@ -25,6 +25,7 @@ import {
   type TcpListener,
 } from '#test/unit/env/support';
 import { loadEnvModule } from '#test/unit/env/load';
+import { firstRecorded } from '#test/mocks/recorded';
 
 interface LeaseModule {
   leaseProjectId(identityKey: string): string;
@@ -773,7 +774,7 @@ describe('env:ensure rebuilds recoverably', () => {
     expect(failure.cause).toBe(boom);
     const backups = readdirSync(backupDir);
     expect(backups).toHaveLength(1);
-    const kept = join(backupDir, backups[0]);
+    const kept = join(backupDir, firstRecorded(backups, 'the kept backup'));
     expect(failure.message).toContain(kept);
     expect(readFileSync(join(kept, 'BUILD_ID'), 'utf8')).toBe('old-build');
     expect(starts).toBe(0);
@@ -916,7 +917,7 @@ describe('env:ensure rebuilds recoverably', () => {
     expect(failure.message).toContain('7001');
     const backups = readdirSync(backupDir);
     expect(backups).toHaveLength(1);
-    const kept = join(backupDir, backups[0]);
+    const kept = join(backupDir, firstRecorded(backups, 'the kept backup'));
     expect(failure.message).toContain(kept);
     expect(readFileSync(join(kept, 'BUILD_ID'), 'utf8')).toBe('old-build');
     // No restore over the survivor and no second server.
@@ -1087,7 +1088,7 @@ describe('env:ensure rebuilds recoverably', () => {
     expect(readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8')).toBe('new-build');
     const backups = readdirSync(backupDir);
     expect(backups).toHaveLength(1);
-    const leftover = join(backupDir, backups[0]);
+    const leftover = join(backupDir, firstRecorded(backups, 'the leftover backup'));
     expect(result.warnings).toEqual([expect.stringContaining(leftover)]);
     expect(readFileSync(join(leftover, 'BUILD_ID'), 'utf8')).toBe('old-build');
   });

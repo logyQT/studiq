@@ -2,12 +2,13 @@ import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@studiq/server/types/database';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import { createTestUser, seedViaApi, type TestUserFixture } from '#test/helpers/test-user';
 import { cleanupOrganizationDeep, seedOrgMembership } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
 import { GET as getMyOrgs } from '@/app/(backend)/api/v1/me/orgs/route';
 import { GET as getMyPlan } from '@/app/(backend)/api/v1/me/plan/route';
@@ -86,13 +87,14 @@ describe('active_org_id membership gate (#186)', () => {
     const seeded = await seedViaApi(managerUser, { org: `active-org-186-${tag}` });
     orgId = seeded.orgId!;
 
-    const { data: org, error: orgError } = await service
+    const { data: orgRows, error: orgError } = await service
       .from('organizations')
       .select('plan')
-      .eq('id', orgId)
-      .single();
-    if (orgError || org?.plan !== 'launch') {
-      throw new Error(`[setup] expected a launch-plan org, got ${org?.plan}: ${orgError?.message}`);
+      .eq('id', orgId);
+    if (orgError) throw new Error(`[setup] org plan lookup failed: ${orgError.message}`);
+    const orgPlan = requiredAt(dbRows(orgRows), 0, 'launch-plan org').plan;
+    if (orgPlan !== 'launch') {
+      throw new Error(`[setup] expected a launch-plan org, got ${orgPlan}`);
     }
 
     // Give the org a non-default plan so the manager path cannot be confused with
@@ -109,7 +111,7 @@ describe('active_org_id membership gate (#186)', () => {
       .eq('organization_id', orgId)
       .eq('name', 'member')
       .single();
-    if (roleError || !memberRole) throw new Error('[setup] member org role missing');
+    if (roleError) throw new Error('[setup] member org role missing');
 
     const memberUser = await createTestUser({ role: 'student', password: PASSWORD });
     await seedOrgMembership({
@@ -132,8 +134,8 @@ describe('active_org_id membership gate (#186)', () => {
       .insert({ organization_id: orgId, plan_key: 'ace', total: 1 })
       .select('id')
       .single();
-    if (poolError || !seatPool) {
-      throw new Error(`[setup] failed to create seat pool: ${poolError?.message}`);
+    if (poolError) {
+      throw new Error(`[setup] failed to create seat pool: ${poolError.message}`);
     }
 
     const { error: assignmentError } = await service.from('org_seat_assignments').insert({
@@ -161,7 +163,7 @@ describe('active_org_id membership gate (#186)', () => {
   afterAll(async () => {
     if (orgId) await cleanupOrganizationDeep(orgId);
     for (const user of testUsers) {
-      if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+      await service.auth.admin.deleteUser(user.id).catch(() => {});
     }
   });
 

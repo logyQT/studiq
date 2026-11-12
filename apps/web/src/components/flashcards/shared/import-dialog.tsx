@@ -110,7 +110,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      const file = e.dataTransfer.files?.[0];
+      const file = e.dataTransfer.files[0];
       if (file && (file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv')) {
         void handleFile(file);
       } else if (file) {

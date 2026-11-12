@@ -3,6 +3,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { IN_PROGRESS_QUESTION_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   AddQuestionsInput,
@@ -161,7 +162,7 @@ export class TeacherAssignmentService {
         '*, assignment_questions(*, question:question_id(*, question_answers:question_options(*)))',
       )
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) return toDbFailure(error);
     if (!assignment) return failure('NOT_FOUND');
@@ -193,7 +194,7 @@ export class TeacherAssignmentService {
 
     const { data, error } = await query;
     if (error) return toDbFailure(error);
-    return success(data ?? []);
+    return success(dbRows(data));
   }
 
   async update(
@@ -201,10 +202,8 @@ export class TeacherAssignmentService {
     data: UpdateTeacherAssignmentInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const updateData: Database['public']['Tables']['teacher_assignments']['Update'] = {};
     if (data.title !== undefined) updateData.title = data.title;
@@ -230,10 +229,8 @@ export class TeacherAssignmentService {
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const { error } = await supabase.from('teacher_assignments').delete().eq('id', id);
     if (error) return toDbFailure(error);
@@ -241,16 +238,14 @@ export class TeacherAssignmentService {
   }
 
   async unpublish(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const { data: assignment, error: fetchError } = await supabase
       .from('teacher_assignments')
       .select('status')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (fetchError) return toDbFailure(fetchError);
     if (!assignment) return failure('NOT_FOUND');
@@ -273,10 +268,8 @@ export class TeacherAssignmentService {
     startTime: string | undefined,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const { count } = await supabase
       .from('assignment_targets')
@@ -310,7 +303,7 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    if (!beforeError && before?.status !== 'published') {
+    if (!beforeError && before.status !== 'published') {
       await this.notifier.assignmentPublished({ assignmentId: id, teacherId: ctx.userId });
     }
     return success(updated);
@@ -321,20 +314,13 @@ export class TeacherAssignmentService {
     data: AddQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const existingIds = await this.existingQuestionIds(supabase, id);
+    if (!existingIds.success) return existingIds;
 
-    const existing = await supabase
-      .from('assignment_questions')
-      .select('question_id')
-      .eq('assignment_id', id);
-
-    if (existing.error) return toDbFailure(existing.error);
-
-    const existingIds = new Set(existing.data?.map((q) => q.question_id) ?? []);
-    const newIds = data.questionIds.filter((qid) => !existingIds.has(qid));
+    const newIds = data.questionIds.filter((qid) => !existingIds.data.has(qid));
 
     if (newIds.length === 0) return success({ added: 0 });
 
@@ -364,10 +350,8 @@ export class TeacherAssignmentService {
     questionId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const { error } = await supabase
       .from('assignment_questions')
@@ -384,10 +368,8 @@ export class TeacherAssignmentService {
     data: ReorderQuestionsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const updates = data.questionIds.map((questionId, index) => ({
       assignment_id: id,
@@ -413,10 +395,8 @@ export class TeacherAssignmentService {
     data: RandomizeInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     let query = supabase.from('questions').select('id');
 
@@ -447,18 +427,13 @@ export class TeacherAssignmentService {
       query = query.in('type', data.types);
     }
 
-    const existing = await supabase
-      .from('assignment_questions')
-      .select('question_id')
-      .eq('assignment_id', id);
-
-    if (existing.error) return toDbFailure(existing.error);
-    const existingIds = new Set(existing.data?.map((q) => q.question_id) ?? []);
+    const existingIds = await this.existingQuestionIds(supabase, id);
+    if (!existingIds.success) return existingIds;
 
     const { data: allQuestions, error: fetchError } = await query;
     if (fetchError) return toDbFailure(fetchError);
 
-    const available = (allQuestions ?? []).filter((q) => !existingIds.has(q.id));
+    const available = dbRows(allQuestions).filter((q) => !existingIds.data.has(q.id));
     if (available.length === 0) return success({ added: 0 });
 
     const shuffled = [...available].toSorted(() => Math.random() - 0.5);
@@ -490,10 +465,8 @@ export class TeacherAssignmentService {
     data: SetTargetsInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     // Every target must belong to the assignment's organisation: the ids come from the request,
     // and notifications and results are fanned out from them (#235).
@@ -533,10 +506,8 @@ export class TeacherAssignmentService {
   }
 
   async getResults(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const { data: attempts, error } = await supabase
       .from('quiz_attempts')
@@ -545,7 +516,7 @@ export class TeacherAssignmentService {
       .order('started_at', { ascending: false });
 
     if (error) return toDbFailure(error);
-    return success(attempts ?? []);
+    return success(dbRows(attempts));
   }
 
   async getStudentAnswers(
@@ -553,10 +524,8 @@ export class TeacherAssignmentService {
     studentId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const { data: attempt, error } = await supabase
       .from('quiz_attempts')
@@ -565,7 +534,7 @@ export class TeacherAssignmentService {
       )
       .eq('assignment_id', id)
       .eq('user_id', studentId)
-      .single();
+      .maybeSingle();
 
     if (error) return toDbFailure(error);
     if (!attempt) return failure('NOT_FOUND');
@@ -575,7 +544,7 @@ export class TeacherAssignmentService {
 
     return success({
       ...attempt,
-      quiz_attempt_questions: (attempt.quiz_attempt_questions ?? []).map(
+      quiz_attempt_questions: dbRows(attempt.quiz_attempt_questions).map(
         (q: { question_id: string }) => ({
           ...q,
           max_points: maxPoints.data.get(q.question_id) ?? null,
@@ -590,10 +559,8 @@ export class TeacherAssignmentService {
     data: GradeAnswerInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     const { data: attempt } = await supabase
       .from('quiz_attempts')
@@ -681,7 +648,7 @@ export class TeacherAssignmentService {
       .eq('assignment_id', assignmentId);
 
     if (error) return toDbFailure(error);
-    return success(new Map((data ?? []).map((q) => [q.question_id, q.points ?? 0])));
+    return success(new Map(dbRows(data).map((q) => [q.question_id, q.points])));
   }
 
   /**
@@ -709,7 +676,7 @@ export class TeacherAssignmentService {
       string | null,
       { teacherPoints: number | null; isCorrect: boolean }
     >();
-    for (const answer of answers ?? []) {
+    for (const answer of dbRows(answers)) {
       const entry = perQuestion.get(answer.question_id) ?? {
         teacherPoints: null,
         isCorrect: false,
@@ -788,7 +755,7 @@ export class TeacherAssignmentService {
       .in('group_id', targetGroupIds);
 
     if (error) return toDbFailure(error);
-    return success((memberships ?? []).length > 0);
+    return success(dbRows(memberships).length > 0);
   }
 
   /**
@@ -830,8 +797,8 @@ export class TeacherAssignmentService {
 
     if (groupError) return toDbFailure(groupError);
     if (orgError) return toDbFailure(orgError);
-    const groupIds = groups?.map((g) => g.group_id) ?? [];
-    const orgIds = new Set((orgRows ?? []).map((r) => r.organization_id));
+    const groupIds = dbRows(groups).map((g) => g.group_id);
+    const orgIds = new Set(dbRows(orgRows).map((r) => r.organization_id));
 
     const { data: assignments, error } = await supabase
       .from('teacher_assignments')
@@ -841,13 +808,13 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    const filtered = (assignments ?? []).filter((a) => {
+    const filtered = dbRows(assignments).filter((a) => {
       // Org content is only visible to current members of that org: a stale
       // group_members row must not surface it (#249). Personal assignments
       // (organization_id = null) keep the target-based rule.
       if (a.organization_id && !orgIds.has(a.organization_id)) return false;
       if (a.created_by === ctx.userId) return true;
-      const targets = a.assignment_targets ?? [];
+      const targets = dbRows(a.assignment_targets);
       return targets.some(
         (t) => (t.group_id && groupIds.includes(t.group_id)) || t.student_id === ctx.userId,
       );
@@ -863,7 +830,7 @@ export class TeacherAssignmentService {
     if (attemptsError) return toDbFailure(attemptsError);
 
     const attemptsByAssignment = new Map<string | null, StudentAttemptSummaryRow[]>();
-    for (const row of attempts ?? []) {
+    for (const row of dbRows(attempts)) {
       const rows = attemptsByAssignment.get(row.assignment_id) ?? [];
       rows.push(row);
       attemptsByAssignment.set(row.assignment_id, rows);
@@ -885,7 +852,7 @@ export class TeacherAssignmentService {
       .select('*, assignment_targets(*)')
       .eq('id', id)
       .eq('status', 'published')
-      .single();
+      .maybeSingle();
 
     if (error) return toDbFailure(error);
     if (!assignment) return failure('NOT_FOUND');
@@ -904,7 +871,7 @@ export class TeacherAssignmentService {
 
     return success({
       ...assignment,
-      ...this.summarizeAttempts(attempts ?? [], assignment.show_results),
+      ...this.summarizeAttempts(dbRows(attempts), assignment.show_results),
     });
   }
 
@@ -916,7 +883,7 @@ export class TeacherAssignmentService {
       .select('*, assignment_questions(*), assignment_targets(*)')
       .eq('id', id)
       .eq('status', 'published')
-      .single();
+      .maybeSingle();
 
     if (assignmentError) return toDbFailure(assignmentError);
     if (!assignment) return failure('NOT_FOUND');
@@ -949,7 +916,7 @@ export class TeacherAssignmentService {
     // failed is exactly the duplicate-attempt bug this endpoint had (#369).
     if (attemptsError) return toDbFailure(attemptsError);
 
-    const attempts = existingAttempts ?? [];
+    const attempts = dbRows(existingAttempts);
     const openAttempt = attempts.find((a) => !a.completed_at);
 
     // „Kontynuuj" must reopen the same attempt, never mint a new one —
@@ -964,7 +931,7 @@ export class TeacherAssignmentService {
       return failure('RATE_LIMITED');
     }
 
-    const questions = assignment.assignment_questions ?? [];
+    const questions = dbRows(assignment.assignment_questions);
     if (questions.length === 0) return failure('NOT_FOUND');
 
     let orderedQuestions = [...questions];
@@ -975,7 +942,7 @@ export class TeacherAssignmentService {
     // Snapshot the assignment's scale on the attempt: an assignment is scored
     // in points, and the denominator must stay stable if the assignment's
     // questions change later (same reasoning as total_questions).
-    const totalPoints = orderedQuestions.reduce((sum, q) => sum + (q.points ?? 1), 0);
+    const totalPoints = orderedQuestions.reduce((sum, q) => sum + q.points, 0);
 
     // `assignment_questions.question_id` is nullable (`ON DELETE SET NULL`); a row
     // whose question is gone has nothing to load, so it is left out of the read.
@@ -989,7 +956,7 @@ export class TeacherAssignmentService {
     if (questionsError) return toDbFailure(questionsError);
 
     if (assignment.shuffle_answers) {
-      for (const q of fullQuestions ?? []) {
+      for (const q of dbRows(fullQuestions)) {
         q.question_answers = q.question_answers.toSorted(() => Math.random() - 0.5);
       }
     }
@@ -1039,7 +1006,7 @@ export class TeacherAssignmentService {
 
     return success({
       ...toAttemptPayload(attempt),
-      questions: fullQuestions ?? [],
+      questions: dbRows(fullQuestions),
     });
   }
 
@@ -1063,7 +1030,9 @@ export class TeacherAssignmentService {
 
     if (error) return toDbFailure(error);
 
-    const questions = (rows ?? []).map((row) => row.questions).filter(Boolean);
+    const questions = dbRows(rows)
+      .map((row) => row.questions)
+      .filter(Boolean);
 
     return success({ ...toAttemptPayload(attempt), questions });
   }
@@ -1079,10 +1048,8 @@ export class TeacherAssignmentService {
     studentId: string | undefined,
     ctx: RequestContext,
   ): Promise<ServiceResult<AnswersExportRow[]>> {
-    const supabase = await this.clientFactory();
-
-    const check = await this.verifyOwnership(id, ctx);
-    if (!check) return failure('NOT_FOUND');
+    const supabase = await this.ownedClient(id, ctx);
+    if (!supabase) return failure('NOT_FOUND');
 
     let query = supabase
       .from('quiz_attempts')
@@ -1100,13 +1067,13 @@ export class TeacherAssignmentService {
 
     if (attemptsError) return toDbFailure(attemptsError);
 
-    const rows = (attempts ?? []).map((attempt) => {
+    const rows = dbRows(attempts).map((attempt) => {
       const user = joinOne(attempt.user);
       return {
         studentName: user?.full_name ?? null,
         email: user?.email ?? null,
         score: attempt.completed_at
-          ? `${attempt.score ?? 0}/${attempt.total_points || attempt.total_questions || 0}`
+          ? `${attempt.score}/${attempt.total_points || attempt.total_questions || 0}`
           : '-',
         status: attempt.graded_at
           ? ('graded' as const)
@@ -1173,7 +1140,7 @@ export class TeacherAssignmentService {
       .from('teacher_assignments')
       .select('organization_id')
       .eq('id', assignmentId)
-      .single();
+      .maybeSingle();
     // Fail closed: a failed read must not be mistaken for a personal (no-organisation) row.
     if (assignmentError || !assignment) return true;
     const organizationId = assignment.organization_id;
@@ -1232,6 +1199,30 @@ export class TeacherAssignmentService {
       if (found !== studentIds.length) return true;
     }
     return false;
+  }
+
+  /** Ids already attached, so re-adding a question is a no-op instead of a duplicate row. */
+  private async existingQuestionIds(
+    supabase: SupabaseClient<Database>,
+    assignmentId: string,
+  ): Promise<ServiceResult<Set<string | null>>> {
+    const { data, error } = await supabase
+      .from('assignment_questions')
+      .select('question_id')
+      .eq('assignment_id', assignmentId);
+
+    if (error) return toDbFailure(error);
+    return success(new Set(dbRows(data).map((q) => q.question_id)));
+  }
+
+  /** The client for an assignment the caller may write; `null` when it is missing or foreign. */
+  private async ownedClient(
+    id: string,
+    ctx: RequestContext,
+  ): Promise<SupabaseClient<Database> | null> {
+    const supabase = await this.clientFactory();
+    if (!(await this.verifyOwnership(id, ctx))) return null;
+    return supabase;
   }
 
   private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {

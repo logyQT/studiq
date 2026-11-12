@@ -51,7 +51,7 @@ export async function proxy(request: NextRequest) {
     return supabaseResponse;
   }
 
-  const accountType = resolveAccountType(user?.app_metadata?.account_type);
+  const accountType = resolveAccountType(user?.app_metadata.account_type);
 
   // 2. Handle "Redirect if Authenticated" (e.g., /login -> /dashboard)
   if (user) {

@@ -6,6 +6,7 @@ import type { ServiceResult } from '@studiq/server/lib/service-result';
 import { QuizService } from '@studiq/server/services/quiz.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
@@ -214,7 +215,7 @@ describe('QuizService', () => {
       const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 1 }, ctx);
 
       expect(result.success).toBe(true);
-      const projection = stringArg(questionsBuilder.select.mock.calls[0][0]);
+      const projection = stringArg(firstCall(questionsBuilder.select)[0]);
       expect(projection).not.toContain('*');
       expect(projection).not.toContain('is_correct');
       expect(projection).not.toContain('explanation');

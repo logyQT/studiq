@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { json } from '#test/helpers/json';
+import { firstRecorded } from '#test/mocks/recorded';
 
 const PASSWORD = 'pass';
 const WSB_MERITO = 'WSB Merito';
@@ -62,11 +63,12 @@ test.describe('Org checkout shows the target organization (#225)', () => {
 
     const orgs = await myOrgs(page);
     expect(orgs).toHaveLength(1);
+    const org = firstRecorded(orgs, 'the manager organisation');
 
-    await page.goto(checkoutUrl('hub', orgs[0].id));
+    await page.goto(checkoutUrl('hub', org.id));
 
     await expect(page.getByText(t('CheckoutPage.target_org_hint'))).toBeVisible();
-    await expect(page.getByText(orgs[0].name).first()).toBeVisible();
+    await expect(page.getByText(org.name).first()).toBeVisible();
 
     await fillTestCard(page);
     await expect(page.locator('button[type="submit"]')).toBeEnabled();

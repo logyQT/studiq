@@ -188,17 +188,18 @@ async function completeAssignment(
   );
   expect(attempt.questions.length, 'the assignment serves its one question').toBe(1);
 
-  const question = attempt.questions[0];
+  const [question] = attempt.questions;
+  if (!question) throw new Error(`${CASE} the assignment served no question`);
   expect(question.id, 'the served question is the assignment question').toBe(questionId);
   // `shuffle_answers` is on by default, so the correct option is picked by content.
   const correct = question.question_answers.find((answer) => answer.content === CORRECT_ANSWER);
-  expect(correct, `the served question has the „${CORRECT_ANSWER}” option`).toBeTruthy();
+  if (!correct) throw new Error(`${CASE} the served question has no „${CORRECT_ANSWER}” option`);
 
   const submitted = await expectApi<unknown>(
     await studentPage.request.post(`/api/v1/quiz/${attempt.id}`, {
       data: {
         attemptId: attempt.id,
-        answers: [{ questionId: question.id, selectedAnswerId: correct!.id }],
+        answers: [{ questionId: question.id, selectedAnswerId: correct.id }],
       },
     }),
     'POST /api/v1/quiz/:attemptId',
@@ -284,6 +285,7 @@ test.describe('@case:EDU-ASG-07 @area:EDU @prio:P2 assignment results', () => {
     const rows = await expectApi<ResultRow[]>(resultsResponse, 'GET …/results');
     expect(rows, 'exactly the one completed attempt').toHaveLength(1);
     const [attempt] = rows;
+    if (!attempt) throw new Error(`${CASE} the results table lists no attempt`);
     expect(attempt.user.email, 'the row belongs to the tenant student').toBe(student.email);
     expect(attempt.user.full_name, 'the attempt carries the student name').toBeTruthy();
     expect(attempt.completed_at, 'the attempt is completed').toBeTruthy();

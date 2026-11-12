@@ -13,7 +13,11 @@ import {
   cleanupFlashcardTopics,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import {
   DELETE as deleteFn,
   GET as getById,
@@ -80,8 +84,8 @@ describe(`Flashcards Integration`, () => {
   beforeAll(async () => {
     // Fresh educator + topic/deck/flashcards via the real API (seedViaApi).
     teacher = await before({ role: 'educator', topics: 1, decks: 1, flashcards: 6 });
-    topicId = teacher.created.topics[0];
-    deckId = teacher.created.decks[0];
+    topicId = requiredAt(teacher.created.topics, 0, 'seeded topic');
+    deckId = requiredAt(teacher.created.decks, 0, 'seeded deck');
     // Student visibility check + manager for 403 checks.
     student = await createTestUser({ role: 'student' });
     other = await createTestUser({ role: 'manager' });
@@ -239,8 +243,8 @@ describe(`Flashcards Integration`, () => {
       const body = await json<ListBody>(response);
 
       expect(response.status).toBe(200);
-      expect(body.data.items?.length).toBe(1);
-      expect(body.data.items?.[0]?.front).toBe(`fc-${suiteId}-Filtered Card`);
+      expect(body.data.items.length).toBe(1);
+      expect(body.data.items[0]?.front).toBe(`fc-${suiteId}-Filtered Card`);
     });
 
     it('returns only own flashcards for student', async () => {
@@ -380,8 +384,8 @@ describe(`Flashcards Integration`, () => {
 
       // The cards no longer exist.
       const { request: getRequest, params: getParams } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${ids[0]}`,
-        { id: ids[0] },
+        `http://localhost/api/v1/flashcards/${requiredAt(ids, 0, 'created card id')}`,
+        { id: requiredAt(ids, 0, 'created card id') },
       );
       const getResponse = await getById(getRequest, { params: getParams });
       expect(getResponse.status).toBe(404);
@@ -401,8 +405,8 @@ describe(`Flashcards Integration`, () => {
       // Still present for the owner.
       mockUser(teacher.user);
       const { request: getRequest, params: getParams } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${ids[0]}`,
-        { id: ids[0] },
+        `http://localhost/api/v1/flashcards/${requiredAt(ids, 0, 'created card id')}`,
+        { id: requiredAt(ids, 0, 'created card id') },
       );
       const getResponse = await getById(getRequest, { params: getParams });
       expect(getResponse.status).toBe(200);
@@ -413,7 +417,7 @@ describe(`Flashcards Integration`, () => {
     it('returns flashcard when found', async () => {
       mockUser(teacher.user);
 
-      const flashcardId = teacher.created.flashcards[4];
+      const flashcardId = requiredAt(teacher.created.flashcards, 4, 'seeded flashcard');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}`,
         { id: flashcardId },
@@ -445,7 +449,7 @@ describe(`Flashcards Integration`, () => {
     it('updates own flashcard and returns 200', async () => {
       mockUser(teacher.user);
 
-      const flashcardId = teacher.created.flashcards[0];
+      const flashcardId = requiredAt(teacher.created.flashcards, 0, 'seeded flashcard');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}`,
         { id: flashcardId },
@@ -465,7 +469,7 @@ describe(`Flashcards Integration`, () => {
     it('returns 403 when updating another user flashcard', async () => {
       mockUser(other);
 
-      const flashcardId = teacher.created.flashcards[1];
+      const flashcardId = requiredAt(teacher.created.flashcards, 1, 'seeded flashcard');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}`,
         { id: flashcardId },
@@ -487,7 +491,7 @@ describe(`Flashcards Integration`, () => {
     it('deletes own flashcard and returns 200', async () => {
       mockUser(teacher.user);
 
-      const flashcardId = teacher.created.flashcards[2];
+      const flashcardId = requiredAt(teacher.created.flashcards, 2, 'seeded flashcard');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}`,
         { id: flashcardId },
@@ -503,7 +507,7 @@ describe(`Flashcards Integration`, () => {
     it('returns 403 when deleting another user flashcard', async () => {
       mockUser(other);
 
-      const flashcardId = teacher.created.flashcards[3];
+      const flashcardId = requiredAt(teacher.created.flashcards, 3, 'seeded flashcard');
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}`,
         { id: flashcardId },

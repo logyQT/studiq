@@ -1,6 +1,6 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * AUT-16 — Student → trasy innych ról.
@@ -91,7 +91,7 @@ async function recordForeignPanelChrome(page: Page): Promise<() => Promise<strin
 /** Path a redirect points at, resolved against the app origin. */
 function redirectTarget(response: APIResponse): string {
   const location = response.headers().location;
-  expect(location, 'a redirect must carry a Location header').toBeTruthy();
+  if (!location) throw new Error(`${CASE} redirect carries no Location header`);
   return new URL(location, APP_URL).pathname;
 }
 
@@ -101,8 +101,7 @@ test('a student is redirected from every teacher, manager and onboarding route t
   test.setTimeout(120_000);
 
   const tenant = loadTenant(CASE);
-  const student = tenant.users.student;
-  expect(student, `${CASE} needs the tenant's student account`).toBeTruthy();
+  const student = tenantUser(tenant, 'student');
 
   const panelChrome = await recordForeignPanelChrome(page);
   await loginAs(page, tenant, 'student');
@@ -173,8 +172,7 @@ test('the role gate still lets a teacher into the teacher routes', async ({ page
   test.setTimeout(90_000);
 
   const tenant = loadTenant(CASE);
-  const teacher = tenant.users.teacher;
-  expect(teacher, `${CASE} needs the tenant's teacher account`).toBeTruthy();
+  const teacher = tenantUser(tenant, 'teacher');
 
   await loginAs(page, tenant, 'teacher');
 
@@ -195,12 +193,7 @@ test('the role gate still lets a manager into the manager routes', async ({ page
   test.setTimeout(90_000);
 
   const tenant = loadTenant(CASE);
-  const manager = tenant.users.manager;
-  const teacher = tenant.users.teacher;
-  expect(
-    manager && teacher,
-    `${CASE} needs the tenant's manager and teacher accounts`,
-  ).toBeTruthy();
+  const teacher = tenantUser(tenant, 'teacher');
 
   await loginAs(page, tenant, 'manager');
 

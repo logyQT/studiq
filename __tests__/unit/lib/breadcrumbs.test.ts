@@ -5,6 +5,7 @@ import pl from '@/i18n/messages/pl.json';
 import { readColumn } from '@studiq/server/lib/record';
 import { buildBreadcrumbs, ID_SEGMENT, OMITTED_PREFIXES, PATH_LABELS } from '@/lib/breadcrumbs';
 import { describe, expect, it } from 'vitest';
+import { requiredValue } from '#test/mocks/recorded';
 
 const DECK_ID = 'ccf03248-3167-467e-b4bd-78b3c94457ba';
 const ASSIGNMENT_ID = '5b0d1d6e-8a41-4f4e-9f6a-2d3c4b5a6e7f';
@@ -206,7 +207,7 @@ describe('route coverage', () => {
       if (routeSegments.length !== segments.length) return false;
 
       return segments.every((segment, index) => {
-        const routeSegment = routeSegments[index];
+        const routeSegment = requiredValue(routeSegments[index], 'the route segment');
         if (segment === '*') return /^\[[^.[\]]+\]$/.test(routeSegment);
 
         return routeSegment === segment;

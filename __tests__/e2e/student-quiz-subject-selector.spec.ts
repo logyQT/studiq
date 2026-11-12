@@ -1,6 +1,7 @@
 import { t } from '#test/e2e/utils';
 import { expect, signIn, test } from '#test/e2e/fixtures/tenant';
 import { asJson, json } from '#test/helpers/json';
+import { firstRecorded } from '#test/mocks/recorded';
 
 /**
  * Regression for #323 (STU-09 step 2): the „Nowy quiz” form had no subject
@@ -44,7 +45,7 @@ test.describe('Standalone quiz subject selector (#323)', () => {
     await subjectSelect.click();
     await expect(page.getByRole('option')).toHaveCount(topics.length + 1);
 
-    const chosenTopic = topics[0];
+    const chosenTopic = firstRecorded(topics, 'an accessible topic');
     await page.getByRole('option', { name: chosenTopic.name, exact: true }).click();
     await expect(subjectSelect).toContainText(chosenTopic.name);
 

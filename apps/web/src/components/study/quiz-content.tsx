@@ -272,7 +272,9 @@ export function QuizContent() {
                 <div className="flex items-center gap-4">
                   <Slider
                     value={[quizCount]}
-                    onValueChange={([v]) => setQuizCount(v)}
+                    onValueChange={([v]) => {
+                      if (v !== undefined) setQuizCount(v);
+                    }}
                     min={1}
                     max={50}
                     step={1}

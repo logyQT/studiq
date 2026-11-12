@@ -74,9 +74,7 @@ export default function SettingsPage() {
     queryKey: ['subscription-plans', 'active'],
     url: '/api/v1/subscription-plans',
   });
-  const planName = myPlan
-    ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name ?? myPlan.key)
-    : null;
+  const planName = myPlan ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name) : null;
   const { activeOrg } = useOrgs();
   const fileInputRef = useRef<HTMLInputElement>(null);
 

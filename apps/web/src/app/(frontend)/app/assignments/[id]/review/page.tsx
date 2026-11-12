@@ -106,8 +106,8 @@ export default function ReviewAssignmentPage() {
       </div>
 
       <div className="space-y-4">
-        {(review.questions ?? []).map((q) => {
-          const answer = review.answers?.[q.id];
+        {review.questions.map((q) => {
+          const answer = review.answers[q.id];
           const isOpen = q.type === 'open';
 
           return (

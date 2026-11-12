@@ -393,6 +393,7 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 - Create the Supabase client inside each method: `const supabase = await createClient()` from `@studiq/server/lib/supabase/server`
 - Return a `ServiceResult` — `success(data)` / `failure(code)` from `@studiq/server/lib/service-result` — or `throw new AppError(code)` for hard failures (code only, no message)
 - Map DB errors: `toDbFailure(error)` (→ `ServiceResult`) or `mapSupabaseError(error)` (→ throws `AppError`) from `@studiq/server/lib/supabase-errors`
+- Read PostgREST results through `@studiq/server/lib/supabase/rows`: `dbRows(data)` for a list or embed, `dbCount(row.child)` for a `select('child(count)')` aggregate, `dbNested(value)` for a single-object embed. A raw `data ?? []` is exactly what `typescript/no-unnecessary-condition` reports as dead, so the fallback lives in the helper and not at the call site. Use `.maybeSingle()` whenever "no row" is a domain answer; `.single()` stays for insert/update `.select().single()`, where zero rows is a server fault. Third-party result objects follow the same rule through `@studiq/server/lib/partial-result`
 - Permission checks (all from `@studiq/server/lib/authz`):
   - `await check(ctx, Permission.XXX, resource)` — throws `AppError('FORBIDDEN')` on mismatch
   - `await accessibleFilter(ctx, Permission.XXX, resourceType)` / `buildQueryFilter(ctx, Permission.XXX)` — RLS-safe filters for list queries

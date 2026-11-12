@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateGroupInput,
@@ -64,8 +65,8 @@ export class GroupService {
 
     return success(
       data.map((g) => {
-        const total = g.group_members?.[0]?.count ?? 0;
-        const teachers = g.group_members_teachers?.[0]?.count ?? 0;
+        const total = dbCount(g.group_members);
+        const teachers = dbCount(g.group_members_teachers);
         return {
           id: g.id,
           name: g.name,
@@ -325,7 +326,7 @@ export class GroupService {
       p_org_id: ctx.activeOrgId,
     });
     if (error) return toDbFailure(error);
-    return success(data?.map((r) => r.group_id) ?? []);
+    return success(dbRows(data).map((r) => r.group_id));
   }
 
   async isTeacherInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
@@ -375,7 +376,7 @@ export class GroupService {
 
     if (error) return toDbFailure(error);
 
-    const taught = new Set((data ?? []).map((row) => row.group_id));
+    const taught = new Set(dbRows(data).map((row) => row.group_id));
     return success(unique.every((id) => taught.has(id)));
   }
 
@@ -415,7 +416,7 @@ export class GroupService {
 
     if (orgError) return toDbFailure(orgError);
 
-    const orgIds = (orgRows ?? []).map((r) => r.organization_id);
+    const orgIds = dbRows(orgRows).map((r) => r.organization_id);
     if (orgIds.length === 0) return success([]);
 
     const { data, error } = await supabase

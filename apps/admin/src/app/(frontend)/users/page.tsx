@@ -550,7 +550,7 @@ export default function UsersPage() {
             <p className="text-sm text-muted-foreground">{roleTarget?.email}</p>
             {roleMutation.isError && (
               <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {t('action_failed', { code: roleMutation.error?.message ?? tc('error') })}
+                {t('action_failed', { code: roleMutation.error.message })}
               </p>
             )}
             <Select

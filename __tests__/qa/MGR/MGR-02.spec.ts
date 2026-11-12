@@ -146,7 +146,7 @@ test('the manager sidebar has two sections whose entries all open their pages', 
       `hrefs of "${section.label}"`,
     ).toEqual(section.items.map((item) => item.href));
     expect(
-      await entries.evaluateAll((links) => links.map((link) => (link.textContent ?? '').trim())),
+      await entries.evaluateAll((links) => links.map((link) => link.textContent.trim())),
       `labels of "${section.label}"`,
     ).toEqual(section.items.map((item) => item.label));
   }

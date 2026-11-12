@@ -61,9 +61,7 @@ export default function ManageBillingPage() {
     staleTime: 0,
   });
 
-  const planName = myPlan
-    ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name ?? myPlan.key)
-    : null;
+  const planName = myPlan ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name) : null;
   const seatsTotal = seatPools?.reduce((sum, pool) => sum + pool.total, 0) ?? 0;
   const seatsUsed = seatPools?.reduce((sum, pool) => sum + pool.assigned, 0) ?? 0;
 

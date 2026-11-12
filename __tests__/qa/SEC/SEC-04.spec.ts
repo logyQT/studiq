@@ -205,13 +205,15 @@ test.describe('@case:SEC-04 @area:SEC @prio:P1 cross-organization isolation', ()
     // --- Step 1: GET /api/v1/organization/members -------------------------
     const members = await listMembers(page);
     expect(members, 'org A has exactly one member, its admin').toHaveLength(1);
-    expect(members[0]).toMatchObject({
+    const [admin] = members;
+    if (!admin) throw new Error(`${CASE} org A lists no member`);
+    expect(admin).toMatchObject({
       id: managerA.id,
       email: managerA.email,
       orgRoleName: 'admin',
       organization_id: orgA.id,
     });
-    const managerAName = members[0].full_name;
+    const managerAName = admin.full_name;
     expect(managerAName, 'the seeded manager has a display name').toBeTruthy();
     // The other organization's student appears under no shape: id, e-mail, name.
     expect(

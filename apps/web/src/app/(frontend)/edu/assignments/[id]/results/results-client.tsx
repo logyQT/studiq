@@ -20,8 +20,8 @@ interface Attempt {
   user: {
     id: string;
     email: string;
-    full_name: string;
-  };
+    full_name: string | null;
+  } | null;
 }
 
 export default function ResultsClient() {

@@ -43,7 +43,8 @@ function relativeImports(file: string): string[] {
   RELATIVE_IMPORT_RE.lastIndex = 0;
   const hits: string[] = [];
   for (const match of source.matchAll(RELATIVE_IMPORT_RE)) {
-    hits.push(match[1]);
+    // The pattern's only capture group is mandatory, so every match carries it.
+    hits.push(match[1]!);
   }
   return [...new Set(hits)];
 }

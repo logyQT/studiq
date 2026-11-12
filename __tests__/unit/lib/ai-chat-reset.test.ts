@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { resetChat } from '@/lib/ai-chat-reset';
+import { firstRecorded } from '#test/mocks/recorded';
 
 /**
  * `useAiChat().clearChat` must abort a request that is still in flight before it
@@ -22,11 +23,11 @@ describe('resetChat', () => {
     expect(clearError).toHaveBeenCalledTimes(1);
     // Abort before the list is emptied: `stop()` is what keeps the in-flight
     // answer from landing in the fresh conversation.
-    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(
-      resetMessages.mock.invocationCallOrder[0],
+    expect(firstRecorded(stop.mock.invocationCallOrder)).toBeLessThan(
+      firstRecorded(resetMessages.mock.invocationCallOrder),
     );
-    expect(resetMessages.mock.invocationCallOrder[0]).toBeLessThan(
-      clearError.mock.invocationCallOrder[0],
+    expect(firstRecorded(resetMessages.mock.invocationCallOrder)).toBeLessThan(
+      firstRecorded(clearError.mock.invocationCallOrder),
     );
   });
 
@@ -38,8 +39,8 @@ describe('resetChat', () => {
     resetChat({ status: 'submitted', stop, resetMessages, clearError });
 
     expect(stop).toHaveBeenCalledTimes(1);
-    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(
-      resetMessages.mock.invocationCallOrder[0],
+    expect(firstRecorded(stop.mock.invocationCallOrder)).toBeLessThan(
+      firstRecorded(resetMessages.mock.invocationCallOrder),
     );
     expect(resetMessages).toHaveBeenCalledTimes(1);
     expect(clearError).toHaveBeenCalledTimes(1);
@@ -69,8 +70,8 @@ describe('resetChat', () => {
     // Leaving `hasError` set would keep `ChatErrorAlert` (and its `regenerate()`
     // retry) mounted over the greeting, with an empty message list.
     expect(clearError).toHaveBeenCalledTimes(1);
-    expect(resetMessages.mock.invocationCallOrder[0]).toBeLessThan(
-      clearError.mock.invocationCallOrder[0],
+    expect(firstRecorded(resetMessages.mock.invocationCallOrder)).toBeLessThan(
+      firstRecorded(clearError.mock.invocationCallOrder),
     );
   });
 });

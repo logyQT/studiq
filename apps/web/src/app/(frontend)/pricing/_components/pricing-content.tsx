@@ -260,11 +260,14 @@ export function PricingContent({ accountType }: { accountType: string }) {
                     <td className="py-3 px-4 text-muted-foreground font-medium">
                       {t(`limit_${lk}`)}
                     </td>
-                    {plans.map((p) => (
-                      <td key={p.key} className="text-center py-3 px-4 text-sm tabular-nums">
-                        {lk in p.limits ? formatLimitValue(lk, p.limits[lk], t) : '—'}
-                      </td>
-                    ))}
+                    {plans.map((p) => {
+                      const limit = p.limits[lk];
+                      return (
+                        <td key={p.key} className="text-center py-3 px-4 text-sm tabular-nums">
+                          {limit === undefined ? '—' : formatLimitValue(lk, limit, t)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

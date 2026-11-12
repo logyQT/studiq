@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * EDU-ASG-08 — grading a student's submission, per student (`/edu/assignments/:id/results/:studentId`).
@@ -242,10 +242,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     const tenant: QaTenant = loadTenant(CASE);
-    const teacher = tenant.users.teacher;
-    const student = tenant.users.student;
-    expect(teacher, 'the tenant seeds the teacher').toBeTruthy();
-    expect(student, 'the tenant seeds the student').toBeTruthy();
+    const student = tenantUser(tenant, 'student');
     expect(tenant.group?.id, 'the tenant has the group the case targets').toBeTruthy();
 
     // A per-execution tag keeps repeated runs against the same tenant apart.

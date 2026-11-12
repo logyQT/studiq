@@ -1,4 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database';
+import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   accessibleFilter,
   check,
@@ -6,11 +9,6 @@ import {
   resolveGroupResourceIds,
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
-import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
-import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
-import { createClient } from '@studiq/server/lib/supabase/server';
-import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   BatchDeleteQuestionBankInput,
   BulkCreateQuestionBankInput,
@@ -18,10 +16,19 @@ import type {
   QuestionBankListQuery,
   UpdateQuestionBankInput,
 } from '@studiq/server/models/question-bank.model';
+import {
+  applyAccessFilter,
+  pageParams,
+  pageQuery,
+  pickDefined,
+  readPage,
+} from '@studiq/server/lib/query-list';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
+import { createClient } from '@studiq/server/lib/supabase/server';
+import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../types/database';
 
 export class QuestionBankService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -55,7 +62,6 @@ export class QuestionBankService {
       .single();
 
     if (error) return toDbFailure(error);
-    if (!bank) return failure('NOT_FOUND');
 
     if (groupIds.length > 0) {
       const rows = groupIds.map((gid) => ({
@@ -86,13 +92,12 @@ export class QuestionBankService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
     if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
 
-    let query = supabase
-      .from('question_banks')
-      .select('*, question_count:questions(count), bank_groups(group_id)');
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+    let query = applyAccessFilter(
+      supabase
+        .from('question_banks')
+        .select('*, question_count:questions(count), bank_groups(group_id)'),
+      filter,
+    );
 
     if (queryParams?.owner === 'mine') {
       query = query.eq('created_by', ctx.userId);
@@ -111,41 +116,16 @@ export class QuestionBankService {
       query = query.ilike('name', `%${queryParams.q}%`);
     }
 
-    const sortBy = queryParams?.sortBy ?? 'created_at';
-    const sortOrder = queryParams?.sortOrder ?? 'desc';
-    const sortAsc = sortOrder === 'asc';
-    query = query.order(sortBy, { ascending: sortAsc }).order('id');
+    const paging = pageParams(queryParams, { sortBy: 'created_at', limit: 24 });
+    query = pageQuery(query, paging);
 
-    const pageSize = Math.min(queryParams?.limit ?? 24, 100);
-    query = query.limit(pageSize + 1);
-
-    if (queryParams?.cursor) {
-      const { v: cursorVal, id: cursorId } = decodeCursor(queryParams.cursor);
-      const op = sortAsc ? 'gt' : 'lt';
-      query = query.or(
-        `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
-      );
-    }
-
-    const { data, error } = await query;
-    if (error) return toDbFailure(error);
-
-    const rows = data ?? [];
-    const hasMore = rows.length > pageSize;
-    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
-    const items = sliced.map((item) => ({
-      ...item,
-      question_count: item.question_count?.[0]?.count ?? 0,
-      groupIds: item.bank_groups?.map((g) => g.group_id) ?? [],
-    }));
-    const nextCursor = hasMore
-      ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
-      : null;
-
-    return success({
-      items,
-      nextCursor,
-      hasMore,
+    return readPage(query, {
+      ...paging,
+      map: (item) => ({
+        ...item,
+        question_count: dbCount(item.question_count),
+        groupIds: dbRows(item.bank_groups).map((g) => g.group_id),
+      }),
     });
   }
 
@@ -155,22 +135,19 @@ export class QuestionBankService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
     if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
-    let query = supabase
-      .from('question_banks')
-      .select('*, question_count:questions(count), bank_groups(group_id)')
-      .eq('id', id);
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
-
-    const { data: bank, error } = await query.single();
+    const { data: bank, error } = await applyAccessFilter(
+      supabase
+        .from('question_banks')
+        .select('*, question_count:questions(count), bank_groups(group_id)')
+        .eq('id', id),
+      filter,
+    ).maybeSingle();
     if (error || !bank) return failure('NOT_FOUND');
 
     return success({
       ...bank,
-      question_count: bank.question_count?.[0]?.count ?? 0,
-      groupIds: bank.bank_groups?.map((g) => g.group_id) ?? [],
+      question_count: dbCount(bank.question_count),
+      groupIds: dbRows(bank.bank_groups).map((g) => g.group_id),
     });
   }
 
@@ -181,36 +158,32 @@ export class QuestionBankService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: existing, error: fetchError } = await supabase
-      .from('question_banks')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (fetchError || !existing) return failure('NOT_FOUND');
-    await check(ctx, Permission.QUESTION_BANK_UPDATE, existing);
+    const loaded = await this.loadForWrite(supabase, id, ctx, Permission.QUESTION_BANK_UPDATE);
+    if (isFailure(loaded)) return loaded;
+    const bank = loaded.data;
 
     const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
     if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
       // The link must belong to the CONTENT's org, not the caller's current UI org.
       // NULL-org content (legacy personal rows) falls back to the active org.
-      const contentOrgId = existing.organization_id ?? ctx.activeOrgId ?? null;
-      const shareCheck = await groupService.canShareContentToGroups(
+      const contentOrgId = bank.organization_id ?? ctx.activeOrgId ?? null;
+      const canShare = await groupService.canShareContentToGroups(
         ctx,
         requestedGroupIds,
         contentOrgId,
       );
-      if (isFailure(shareCheck)) return failure(shareCheck.error);
-      if (!shareCheck.data) return failure('FORBIDDEN');
+      if (isFailure(canShare)) return failure(canShare.error);
+      if (!canShare.data) return failure('FORBIDDEN');
     }
 
-    const updateFields: Database['public']['Tables']['question_banks']['Update'] = {};
-    if (data.name !== undefined) updateFields.name = data.name;
-    if (data.description !== undefined) updateFields.description = data.description;
-    if (data.visibility !== undefined) updateFields.visibility = data.visibility;
+    const updateFields = pickDefined({
+      name: data.name,
+      description: data.description,
+      visibility: data.visibility,
+    });
 
     if (Object.keys(updateFields).length > 0) {
-      const { data: bank, error } = await supabase
+      const { error } = await supabase
         .from('question_banks')
         .update(updateFields)
         .eq('id', id)
@@ -218,9 +191,8 @@ export class QuestionBankService {
         .single();
 
       if (error) return toDbFailure(error);
-      if (!bank) return failure('NOT_FOUND');
 
-      if (data.visibility !== undefined && data.visibility !== existing.visibility) {
+      if (data.visibility !== undefined && data.visibility !== bank.visibility) {
         const { data: assignedQuestions } = await supabase
           .from('questions')
           .select('id')
@@ -265,14 +237,8 @@ export class QuestionBankService {
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
     const supabase = await this.clientFactory();
 
-    const { data: existing, error: fetchError } = await supabase
-      .from('question_banks')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (fetchError || !existing) return failure('NOT_FOUND');
-    await check(ctx, Permission.QUESTION_BANK_DELETE, existing);
+    const loaded = await this.loadForWrite(supabase, id, ctx, Permission.QUESTION_BANK_DELETE);
+    if (isFailure(loaded)) return loaded;
 
     const { error } = await supabase.from('question_banks').delete().eq('id', id);
     if (error) return toDbFailure(error);
@@ -318,9 +284,10 @@ export class QuestionBankService {
       .in('id', data.ids);
 
     if (fetchError) return toDbFailure(fetchError);
-    if (!banks || banks.length === 0) return failure('NOT_FOUND');
+    const ownedBanks = dbRows(banks);
+    if (ownedBanks.length === 0) return failure('NOT_FOUND');
 
-    for (const bank of banks) {
+    for (const bank of ownedBanks) {
       await check(ctx, Permission.QUESTION_BANK_DELETE, bank);
     }
 
@@ -328,6 +295,28 @@ export class QuestionBankService {
     if (error) return toDbFailure(error);
 
     return success({ deleted: data.ids.length });
+  }
+
+  /**
+   * Loads the bank a single-row write targets and enforces the caller's
+   * permission on that row. A missing id is `NOT_FOUND` (never `FORBIDDEN`)
+   * so the answer does not confirm that an unreadable bank exists.
+   */
+  private async loadForWrite(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    ctx: RequestContext,
+    permission: string,
+  ): Promise<ServiceResult<Database['public']['Tables']['question_banks']['Row']>> {
+    const { data: existing, error } = await supabase
+      .from('question_banks')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error || !existing) return failure('NOT_FOUND');
+    await check(ctx, permission, existing);
+    return success(existing);
   }
 
   /**

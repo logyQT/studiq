@@ -344,7 +344,9 @@ test.describe('@case:EDU-Q-05 @area:EDU @prio:P2 edit and delete a question', ()
     ).toEqual([...INITIAL.answers].toSorted());
     const correct = stored.question_answers.filter((answer) => answer.is_correct);
     expect(correct, 'exactly one answer is correct after the edit').toHaveLength(1);
-    expect(correct[0].content, 'the newly selected answer is the correct one').toBe(
+    const [correctAnswer] = correct;
+    if (!correctAnswer) throw new Error(`${CASE} the edit left no correct answer`);
+    expect(correctAnswer.content, 'the newly selected answer is the correct one').toBe(
       INITIAL.answers[EDITED.correctIndex],
     );
     expect(

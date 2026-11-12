@@ -125,7 +125,9 @@ export default function InvitationsPage() {
 
   function updateInvite(index: number, field: keyof InviteRow, value: string) {
     const updated = [...invites];
-    updated[index] = { ...updated[index], [field]: value };
+    const current = updated[index];
+    if (!current) return;
+    updated[index] = { ...current, [field]: value };
     setInvites(updated);
   }
 

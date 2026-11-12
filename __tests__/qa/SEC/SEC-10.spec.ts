@@ -111,7 +111,7 @@ async function expectData<T>(
 async function expectNoInjection(page: Page): Promise<void> {
   const dom = await page.evaluate(() => ({
     scripts: Array.from(document.querySelectorAll('script')).filter((script) =>
-      (script.textContent ?? '').includes('alert(1)'),
+      script.textContent.includes('alert(1)'),
     ).length,
     onerrorAttributes: document.querySelectorAll('[onerror]').length,
     imgSrcX: document.querySelectorAll('img[src="x"]').length,
@@ -310,7 +310,8 @@ test.describe('@case:SEC-10 @area:SEC @prio:P1 text fields resist XSS', () => {
       'POST /api/v1/assignments/:id/start',
       200,
     );
-    const servedQuestion = attempt.questions[0];
+    const [servedQuestion] = attempt.questions;
+    if (!servedQuestion) throw new Error(`${CASE} the assignment served no question`);
     expect(servedQuestion.id, 'the assignment serves its open question').toBe(question.id);
     await expectData<unknown>(
       await page.request.post(`/api/v1/quiz/${attempt.id}`, {

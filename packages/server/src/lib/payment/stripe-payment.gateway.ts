@@ -277,23 +277,14 @@ export class StripePaymentGateway implements PaymentGateway {
 
   async changePlan(input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
     try {
-      // Re-fetch so the item id, customer and period boundaries are the current
-      // ones; the mirror may lag a webhook by a few seconds.
-      const subscription = await this.client.subscriptions.retrieve(input.subscriptionId);
-
-      // Defence in depth: the subscription must belong to the customer the
-      // service resolved from the authenticated owner.
-      const customerId = customerIdOf(subscription.customer);
-      if (!customerId || customerId !== input.customerId) {
-        logError('billing.subscription_owner_mismatch', {
-          subscriptionId: input.subscriptionId,
-        });
-        return failure('FORBIDDEN');
-      }
+      const owned = await this.subscriptionOwnedBy(input.subscriptionId, input.customerId);
+      if (isFailure(owned)) return owned;
+      const subscription = owned.data;
 
       // The MVP bills one plan item per subscription (D4). A second item means
       // the local model cannot represent the subscription, so fail closed.
-      if (subscription.items.data.length !== 1) {
+      const item = subscription.items.data.at(0);
+      if (!item || subscription.items.data.length !== 1) {
         logError('billing.change_plan_multi_item', {
           subscriptionId: input.subscriptionId,
           itemCount: subscription.items.data.length,
@@ -301,7 +292,6 @@ export class StripePaymentGateway implements PaymentGateway {
         return failure('SERVICE_UNAVAILABLE');
       }
 
-      const item = subscription.items.data[0];
       const livePriceId = item.price.id;
 
       // A retry after the webhook already applied the target (or a stale
@@ -372,7 +362,7 @@ export class StripePaymentGateway implements PaymentGateway {
 
       // Phases replace the whole phase object, so carry our owner metadata into
       // both phases instead of letting Stripe unset it on the active one.
-      const metadata = subscription.metadata ?? undefined;
+      const metadata = subscription.metadata;
 
       await this.client.subscriptionSchedules.update(
         schedule.id,
@@ -425,22 +415,35 @@ export class StripePaymentGateway implements PaymentGateway {
     }
   }
 
+  /**
+   * Re-fetch the live subscription and assert it belongs to the customer the
+   * service resolved from the authenticated owner. The item ids, customer and
+   * period boundaries must come from Stripe, because the mirror may lag a
+   * webhook by a few seconds.
+   */
+  private async subscriptionOwnedBy(
+    subscriptionId: string,
+    customerId: string,
+  ): Promise<ServiceResult<Stripe.Subscription>> {
+    const subscription = await this.client.subscriptions.retrieve(subscriptionId);
+    const liveCustomerId = customerIdOf(subscription.customer);
+    if (!liveCustomerId || liveCustomerId !== customerId) {
+      logError('billing.subscription_owner_mismatch', { subscriptionId });
+      return failure('FORBIDDEN');
+    }
+    return success(subscription);
+  }
+
   async cancelAtPeriodEnd(
     input: CancelAtPeriodEndInput,
   ): Promise<ServiceResult<{ cancelAtPeriodEnd: boolean; releasedSchedule: boolean }>> {
     try {
-      const subscription = await this.client.subscriptions.retrieve(input.subscriptionId);
-      const customerId = customerIdOf(subscription.customer);
-      if (!customerId || customerId !== input.customerId) {
-        logError('billing.subscription_owner_mismatch', {
-          subscriptionId: input.subscriptionId,
-        });
-        return failure('FORBIDDEN');
-      }
+      const owned = await this.subscriptionOwnedBy(input.subscriptionId, input.customerId);
+      if (isFailure(owned)) return owned;
 
       // A scheduled downgrade must not keep its own phase-level cancel flag;
       // release it first so cancel/reactivate has one authoritative source.
-      const releasedSchedule = await this.releaseSchedule(subscription);
+      const releasedSchedule = await this.releaseSchedule(owned.data);
 
       const updated = await this.client.subscriptions.update(input.subscriptionId, {
         cancel_at_period_end: input.cancel,
@@ -460,22 +463,14 @@ export class StripePaymentGateway implements PaymentGateway {
     input: ReleaseScheduledPlanInput,
   ): Promise<ServiceResult<ReleaseScheduledPlanResult>> {
     try {
-      const subscription = await this.client.subscriptions.retrieve(input.subscriptionId);
-
-      // Defence in depth: the subscription must belong to the customer the
-      // service resolved from the authenticated owner.
-      const customerId = customerIdOf(subscription.customer);
-      if (!customerId || customerId !== input.customerId) {
-        logError('billing.subscription_owner_mismatch', {
-          subscriptionId: input.subscriptionId,
-        });
-        return failure('FORBIDDEN');
-      }
+      const owned = await this.subscriptionOwnedBy(input.subscriptionId, input.customerId);
+      if (isFailure(owned)) return owned;
+      const subscription = owned.data;
 
       // The mirror may lag a webhook. If a scheduled phase already applied,
       // releasing the remaining schedule would tell the user they kept the old
       // plan while Stripe charges the new one; fail closed instead.
-      const livePriceId = subscription.items?.data?.[0]?.price?.id;
+      const livePriceId = subscription.items.data.at(0)?.price.id;
       if (!livePriceId) {
         logError('billing.release_scheduled_plan_missing_price', {
           subscriptionId: input.subscriptionId,
@@ -521,7 +516,7 @@ export class StripePaymentGateway implements PaymentGateway {
     // reported as a plan conflict. A retrieved Price with missing/different
     // metadata stays a hard mismatch.
     const price = await this.client.prices.retrieve(livePriceId);
-    const planKey = price?.metadata?.[`${METADATA_PREFIX}_plan_key`] ?? null;
+    const planKey = price.metadata[`${METADATA_PREFIX}_plan_key`] ?? null;
     if (planKey) {
       logWarn('billing.subscription_price_unmapped', {
         subscriptionId: subscription.id,

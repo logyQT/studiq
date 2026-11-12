@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
@@ -24,14 +25,15 @@ export class OrgService {
   > {
     const supabase = await this.clientFactory();
 
-    const { data: memberships, error: mError } = await supabase
+    const { data: membershipRows, error: mError } = await supabase
       .from('org_members')
       .select('organization_id, org_role_id, org_roles(name, display_name)')
       .eq('user_id', ctx.userId);
 
     if (mError) return toDbFailure(mError);
 
-    if (!memberships || memberships.length === 0) {
+    const memberships = dbRows(membershipRows);
+    if (memberships.length === 0) {
       return success([]);
     }
 
@@ -50,7 +52,7 @@ export class OrgService {
 
     return success(
       memberships.map((m) => {
-        const orgRole = m.org_roles;
+        const orgRole = dbNested(m.org_roles);
         const org = orgMap.get(m.organization_id);
         const roleName = orgRole?.name ?? 'member';
         return {

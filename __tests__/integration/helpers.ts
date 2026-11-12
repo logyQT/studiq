@@ -1,5 +1,6 @@
 import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import type { Database } from '@studiq/server/types/database';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createServerClient } from '@supabase/ssr';
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { asJson } from '#test/helpers/json';
@@ -144,18 +145,25 @@ export async function seedOrganization(name: string) {
     .insert({ name })
     .select()
     .single();
-  if (error || !org) throw new Error(`Failed to create org: ${error?.message}`);
+  if (error) throw new Error(`Failed to create org: ${error.message}`);
 
   // Trigger handle_new_organization already created roles — query them
-  const { data: roles } = await supabase
+  const { data: roleRows } = await supabase
     .from('org_roles')
     .select('id, name')
     .eq('organization_id', org.id);
-  if (!roles || roles.length < 3) throw new Error('Trigger did not create default roles');
+  const roles = dbRows(roleRows);
+  if (roles.length < 3) throw new Error('Trigger did not create default roles');
 
   const roleIds: Record<string, string> = {};
   for (const r of roles) {
     roleIds[r.name] = r.id;
+  }
+  const adminRoleId = roleIds.admin;
+  const teacherRoleId = roleIds.teacher;
+  const memberRoleId = roleIds.member;
+  if (!adminRoleId || !teacherRoleId || !memberRoleId) {
+    throw new Error('Trigger did not create the admin/teacher/member roles');
   }
 
   const { data: group } = await supabase
@@ -167,9 +175,9 @@ export async function seedOrganization(name: string) {
 
   return {
     org,
-    adminRoleId: roleIds.admin,
-    teacherRoleId: roleIds.teacher,
-    memberRoleId: roleIds.member,
+    adminRoleId,
+    teacherRoleId,
+    memberRoleId,
     defaultGroupId: group.id,
   };
 }
@@ -435,9 +443,7 @@ export async function seedQuestion(data: {
       })
       .select('id')
       .single();
-    if (bankError || !bank) {
-      throw bankError ?? new Error('Failed to create question bank');
-    }
+    if (bankError) throw bankError;
     bankId = bank.id;
   }
 
@@ -475,9 +481,7 @@ export async function seedFlashcard(data: {
       })
       .select('id')
       .single();
-    if (deckError || !deck) {
-      throw deckError ?? new Error('Failed to create flashcard deck');
-    }
+    if (deckError) throw deckError;
     deckId = deck.id;
   }
 

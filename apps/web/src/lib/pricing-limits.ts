@@ -1,3 +1,5 @@
+import type { PricingTranslator } from '@/lib/pricing-features';
+
 export const SORTED_LIMIT_KEYS = [
   'max_flashcards',
   'max_decks',
@@ -26,4 +28,13 @@ export function getVisibleLimitKeys(
       !(accountType === 'student' && ORG_ONLY_LIMIT_KEYS.includes(lk)) &&
       plans?.some((p) => lk in p.limits),
   );
+}
+
+/**
+ * next-intl returns the message id itself when a translation is missing, so an unknown
+ * limit key falls back to the key rather than rendering `limit_max_foo`.
+ */
+export function getLimitLabel(key: string, t: PricingTranslator): string {
+  const label = t(`limit_${key}`);
+  return label.startsWith('limit_') ? key : label;
 }

@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-15 — Utworzenie talii (`/app/flashcards`).
@@ -116,8 +116,8 @@ async function createGroupDeck(
 ): Promise<{ name: string; id: string }> {
   const org = tenant.org;
   const group = tenant.group;
-  const manager = tenant.users.manager;
-  if (!org || !group || !manager) {
+  const manager = tenantUser(tenant, 'manager');
+  if (!org || !group) {
     throw new Error(`${CASE} needs the content tenant profile (org, group, manager)`);
   }
 
@@ -250,7 +250,9 @@ test.describe('@case:STU-15 @area:STU @prio:P1 create a deck', () => {
       listed.map((deck) => deck.id),
       'the API lists exactly the created deck',
     ).toEqual([createdDeck.id]);
-    expect(listed[0].visibility, 'the stored deck is „Tylko ja”').toBe('personal');
+    const [listedDeck] = listed;
+    if (!listedDeck) throw new Error(`${CASE} the created deck is not in the API list`);
+    expect(listedDeck.visibility, 'the stored deck is „Tylko ja”').toBe('personal');
 
     // ── Adjacent regression: the label follows ownership, not the page ──────
     const groupDeck = await createGroupDeck(browser, tenant, page);

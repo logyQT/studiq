@@ -2,6 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   AddQuizQuestionsInput,
@@ -10,11 +11,60 @@ import type {
   ReorderQuizQuestionsInput,
   UpdateQuizInput,
 } from '@studiq/server/models/quiz.model';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
+
+/**
+ * A quiz outside the caller's active org is indistinguishable from a missing one on reads,
+ * while the flows that had already verified ownership answer the same row with FORBIDDEN.
+ */
+function ownedQuiz<T extends { organization_id: string }>(
+  quiz: T | null,
+  error: PostgrestError | null,
+  ctx: RequestContext,
+  foreignOrgError: 'NOT_FOUND' | 'FORBIDDEN',
+): ServiceResult<T> {
+  if (error) return toDbFailure(error);
+  if (!quiz) return failure('NOT_FOUND');
+  if (quiz.organization_id !== ctx.activeOrgId) return failure(foreignOrgError);
+  return success(quiz);
+}
 
 export class QuizTeacherService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
+
+  /** The read view: the quiz, its questions and the content each question points at. */
+  private async readQuiz(id: string, ctx: RequestContext) {
+    const supabase = await this.clientFactory();
+
+    const { data: quiz, error } = await supabase
+      .from('quizzes')
+      .select('*, quiz_questions(*, question:questions(id, content, type))')
+      .eq('id', id)
+      .maybeSingle();
+
+    return ownedQuiz(quiz, error, ctx, 'NOT_FOUND');
+  }
+
+  /**
+   * The failure that hides a missing or foreign quiz, or `null` when the caller owns it;
+   * the single-row writes below need the verdict, not the row.
+   */
+  private async quizAccessFailure(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    ctx: RequestContext,
+    foreignOrgError: 'NOT_FOUND' | 'FORBIDDEN' = 'NOT_FOUND',
+  ): Promise<ServiceResult<never> | null> {
+    const { data: quiz, error } = await supabase
+      .from('quizzes')
+      .select('organization_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    const owned = ownedQuiz(quiz, error, ctx, foreignOrgError);
+    return owned.success ? null : owned;
+  }
 
   async create(data: CreateQuizInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     // quizzes.organization_id is NOT NULL: without a verified active org there is no tenant to
@@ -57,23 +107,11 @@ export class QuizTeacherService {
       .order('created_at', { ascending: false });
 
     if (error) return toDbFailure(error);
-    return success(data ?? []);
+    return success(dbRows(data));
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
-    const { data: quiz, error } = await supabase
-      .from('quizzes')
-      .select('*, quiz_questions(*, question:questions(id, content, type))')
-      .eq('id', id)
-      .single();
-
-    if (error) return toDbFailure(error);
-    if (!quiz) return failure('NOT_FOUND');
-    if (quiz.organization_id !== ctx.activeOrgId) return failure('NOT_FOUND');
-
-    return success(quiz);
+    return this.readQuiz(id, ctx);
   }
 
   async bulkSave(
@@ -83,15 +121,8 @@ export class QuizTeacherService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: quiz, error: fetchError } = await supabase
-      .from('quizzes')
-      .select('organization_id')
-      .eq('id', id)
-      .single();
-
-    if (fetchError) return toDbFailure(fetchError);
-    if (!quiz) return failure('NOT_FOUND');
-    if (quiz.organization_id !== ctx.activeOrgId) return failure('FORBIDDEN');
+    const denied = await this.quizAccessFailure(supabase, id, ctx, 'FORBIDDEN');
+    if (denied) return denied;
 
     const { error: updateError } = await supabase
       .from('quizzes')
@@ -138,15 +169,8 @@ export class QuizTeacherService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: quiz, error } = await supabase
-      .from('quizzes')
-      .select('organization_id')
-      .eq('id', id)
-      .single();
-
-    if (error) return toDbFailure(error);
-    if (!quiz) return failure('NOT_FOUND');
-    if (quiz.organization_id !== ctx.activeOrgId) return failure('NOT_FOUND');
+    const denied = await this.quizAccessFailure(supabase, id, ctx);
+    if (denied) return denied;
 
     const updateData: Database['public']['Tables']['quizzes']['Update'] = {};
     if (data.name !== undefined) updateData.name = data.name;
@@ -167,15 +191,8 @@ export class QuizTeacherService {
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: quiz, error } = await supabase
-      .from('quizzes')
-      .select('organization_id')
-      .eq('id', id)
-      .single();
-
-    if (error) return toDbFailure(error);
-    if (!quiz) return failure('NOT_FOUND');
-    if (quiz.organization_id !== ctx.activeOrgId) return failure('NOT_FOUND');
+    const denied = await this.quizAccessFailure(supabase, id, ctx);
+    if (denied) return denied;
 
     const { error: deleteError } = await supabase.from('quizzes').delete().eq('id', id);
     if (deleteError) return toDbFailure(deleteError);
@@ -189,15 +206,8 @@ export class QuizTeacherService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: quiz, error: quizError } = await supabase
-      .from('quizzes')
-      .select('organization_id')
-      .eq('id', id)
-      .single();
-
-    if (quizError) return toDbFailure(quizError);
-    if (!quiz) return failure('NOT_FOUND');
-    if (quiz.organization_id !== ctx.activeOrgId) return failure('NOT_FOUND');
+    const denied = await this.quizAccessFailure(supabase, id, ctx);
+    if (denied) return denied;
 
     // Get current max order_index
     const { data: maxRow } = await supabase
@@ -217,7 +227,7 @@ export class QuizTeacherService {
       .eq('quiz_id', id);
 
     const existingIds = new Set(
-      (existing ?? []).map((r: { question_id: string }) => r.question_id),
+      dbRows(existing).map((r: { question_id: string }) => r.question_id),
     );
 
     const rows = data.questionIds
@@ -237,7 +247,7 @@ export class QuizTeacherService {
       .select();
 
     if (insertError) return toDbFailure(insertError);
-    return success(inserted ?? []);
+    return success(dbRows(inserted));
   }
 
   async removeQuestion(
@@ -247,15 +257,8 @@ export class QuizTeacherService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: quiz, error: quizError } = await supabase
-      .from('quizzes')
-      .select('organization_id')
-      .eq('id', id)
-      .single();
-
-    if (quizError) return toDbFailure(quizError);
-    if (!quiz) return failure('NOT_FOUND');
-    if (quiz.organization_id !== ctx.activeOrgId) return failure('NOT_FOUND');
+    const denied = await this.quizAccessFailure(supabase, id, ctx);
+    if (denied) return denied;
 
     const { error } = await supabase
       .from('quiz_questions')
@@ -274,23 +277,16 @@ export class QuizTeacherService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: quiz, error: quizError } = await supabase
-      .from('quizzes')
-      .select('organization_id')
-      .eq('id', id)
-      .single();
-
-    if (quizError) return toDbFailure(quizError);
-    if (!quiz) return failure('NOT_FOUND');
-    if (quiz.organization_id !== ctx.activeOrgId) return failure('NOT_FOUND');
+    const denied = await this.quizAccessFailure(supabase, id, ctx);
+    if (denied) return denied;
 
     // Update order_index for each question sequentially
-    for (let i = 0; i < data.questionIds.length; i++) {
+    for (const [i, questionId] of data.questionIds.entries()) {
       const { error: updateError } = await supabase
         .from('quiz_questions')
         .update({ order_index: i })
         .eq('quiz_id', id)
-        .eq('question_id', data.questionIds[i]);
+        .eq('question_id', questionId);
 
       if (updateError) return toDbFailure(updateError);
     }
@@ -306,11 +302,10 @@ export class QuizTeacherService {
       .from('quizzes')
       .select('*, quiz_questions(*)')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (quizError) return toDbFailure(quizError);
-    if (!quiz) return failure('NOT_FOUND');
-    if (quiz.organization_id !== ctx.activeOrgId) return failure('FORBIDDEN');
+    const owned = ownedQuiz(quiz, quizError, ctx, 'FORBIDDEN');
+    if (!owned.success) return owned;
 
     // 2. Create assignment
     const { data: assignment, error: assignError } = await supabase
@@ -318,7 +313,7 @@ export class QuizTeacherService {
       .insert({
         organization_id: ctx.activeOrgId,
         created_by: ctx.userId,
-        title: quiz.name,
+        title: owned.data.name,
         quiz_id: id,
       })
       .select()
@@ -327,7 +322,7 @@ export class QuizTeacherService {
     if (assignError) return toDbFailure(assignError);
 
     // 3. Copy questions from quiz to assignment
-    const questions = (quiz.quiz_questions ?? []).map(
+    const questions = dbRows(owned.data.quiz_questions).map(
       (q: { question_id: string; order_index: number; points: number }) => ({
         assignment_id: assignment.id,
         question_id: q.question_id,

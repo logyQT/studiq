@@ -1,8 +1,9 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
+import { decodeCursor, pageParams, readPage } from '@studiq/server/lib/query-list';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateQuestionReportInput,
@@ -82,7 +83,7 @@ export class QuestionReportService {
         .from('questions')
         .select('id, created_by, organization_id')
         .eq('id', target.questionId)
-        .single();
+        .maybeSingle();
 
       if (questionError) return toDbFailure(questionError);
       if (!question) return failure('NOT_FOUND');
@@ -99,7 +100,7 @@ export class QuestionReportService {
         .from('groups')
         .select('id, created_by, organization_id')
         .eq('id', target.groupId)
-        .single();
+        .maybeSingle();
 
       if (groupError) return toDbFailure(groupError);
       if (!group) return failure('NOT_FOUND');
@@ -186,54 +187,42 @@ export class QuestionReportService {
       if (groups.error) return toDbFailure(groups.error);
 
       const targetFilter = [
-        ...(questions.data ?? []).map((r) => `question_id.eq.${r.id}`),
-        ...(groups.data ?? []).map((r) => `group_id.eq.${r.id}`),
+        ...dbRows(questions.data).map((r) => `question_id.eq.${r.id}`),
+        ...dbRows(groups.data).map((r) => `group_id.eq.${r.id}`),
       ].join(',');
       if (!targetFilter) return success({ items: [], nextCursor: null, hasMore: false });
       query = query.or(targetFilter);
     }
 
-    const sortBy = queryParams?.sortBy ?? 'updated_at';
-    const sortOrder = queryParams?.sortOrder ?? 'desc';
-    const sortAsc = sortOrder === 'asc';
-    query = query.order(sortBy, { ascending: sortAsc }).order('id');
+    const paging = pageParams(queryParams, { sortBy: 'updated_at', limit: 24 });
+    query = query.order(paging.sortBy, { ascending: paging.sortAsc }).order('id');
 
-    const pageSize = Math.min(queryParams?.limit ?? 24, 100);
-    query = query.limit(pageSize + 1);
+    query = query.limit(paging.pageSize + 1);
 
-    if (queryParams?.cursor) {
+    if (paging.cursor) {
       let cursor: { v: string | number; id: string };
       try {
-        cursor = decodeCursor(queryParams.cursor);
+        cursor = decodeCursor(paging.cursor);
       } catch {
         return failure('BAD_REQUEST');
       }
-      const op = sortAsc ? 'gt' : 'lt';
+      const op = paging.sortAsc ? 'gt' : 'lt';
       query = query.or(
-        `${sortBy}.${op}.${cursor.v},and(${sortBy}.eq.${cursor.v},id.gt.${cursor.id})`,
+        `${paging.sortBy}.${op}.${cursor.v},and(${paging.sortBy}.eq.${cursor.v},id.gt.${cursor.id})`,
       );
     }
 
-    const { data, error } = await query;
-    if (error) return toDbFailure(error);
-
-    const rows = data ?? [];
-    const hasMore = rows.length > pageSize;
-    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
-
-    const items = sliced.map((r) => ({
-      ...r,
-      isUnread:
-        r.reported_by === ctx.userId
-          ? new Date(r.updated_at) > new Date(r.reporter_last_read_at)
-          : r.teacher_last_read_at == null ||
-            new Date(r.updated_at) > new Date(r.teacher_last_read_at),
-    }));
-
-    const last = sliced[sliced.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last[sortBy], last.id) : null;
-
-    return success({ items, nextCursor, hasMore });
+    return readPage(query, {
+      ...paging,
+      map: (r) => ({
+        ...r,
+        isUnread:
+          r.reported_by === ctx.userId
+            ? new Date(r.updated_at) > new Date(r.reporter_last_read_at)
+            : r.teacher_last_read_at == null ||
+              new Date(r.updated_at) > new Date(r.teacher_last_read_at),
+      }),
+    });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -266,7 +255,7 @@ export class QuestionReportService {
 
     return success({
       report: { ...report, canResolve, canReopen },
-      messages: messages ?? [],
+      messages: dbRows(messages),
     });
   }
 
@@ -320,7 +309,6 @@ export class QuestionReportService {
       .single();
 
     if (error) return toDbFailure(error);
-    if (!updated) return failure('NOT_FOUND');
     return success(updated);
   }
 
@@ -403,7 +391,7 @@ export class QuestionReportService {
 
     if (error) return toDbFailure(error);
 
-    const count = (data ?? []).filter((r) =>
+    const count = dbRows(data).filter((r) =>
       r.reported_by === ctx.userId
         ? new Date(r.updated_at) > new Date(r.reporter_last_read_at)
         : r.teacher_last_read_at == null ||

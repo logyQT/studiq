@@ -7,6 +7,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
@@ -129,10 +130,12 @@ export class InvitationService {
       );
 
       outcomes.forEach((outcome, index) => {
+        const job = allowed[index];
+        if (!job) return;
         const attributes = {
           traceId: ctx.traceId,
           organizationId,
-          invitationId: allowed[index].invitationId,
+          invitationId: job.invitationId,
         };
         if (outcome.status === 'fulfilled') log('invitation.mail_sent', attributes);
         else
@@ -164,7 +167,7 @@ export class InvitationService {
         'email, inviter_id, is_accepted, expires_at, organization_id, target_org_role_id, organizations!inner(name), org_roles!inner(name, organization_id)',
       )
       .eq('token', token)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
 
@@ -175,9 +178,9 @@ export class InvitationService {
       expiresAt: data.expires_at,
       organizationId: data.organization_id ?? null,
       targetOrgRoleId: data.target_org_role_id,
-      organizationName: data.organizations?.name ?? '',
-      orgRoleName: data.org_roles?.name ?? '',
-      roleOrganizationId: data.org_roles?.organization_id ?? null,
+      organizationName: data.organizations.name,
+      orgRoleName: data.org_roles.name,
+      roleOrganizationId: data.org_roles.organization_id,
     };
   }
 
@@ -401,7 +404,8 @@ export class InvitationService {
       }>
     >
   > {
-    if (invitations.length === 0) return failure('BAD_REQUEST');
+    const [firstInvitation] = invitations;
+    if (!firstInvitation) return failure('BAD_REQUEST');
 
     const supabase = await this.clientFactory();
 
@@ -410,7 +414,7 @@ export class InvitationService {
     const targetOrg = await this.resolveTargetOrganization(
       supabase,
       ctx,
-      invitations[0].organizationId,
+      firstInvitation.organizationId,
     );
     if (!targetOrg.success) return targetOrg;
 
@@ -442,7 +446,7 @@ export class InvitationService {
 
     if (roleError) return toDbFailure(roleError);
 
-    const foundRoleIds = new Set((orgRoles ?? []).map((role) => role.id));
+    const foundRoleIds = new Set(dbRows(orgRoles).map((role) => role.id));
     const roleIssues: ZodIssue[] = [];
     invitations.forEach((invite, index) => {
       if (!foundRoleIds.has(invite.targetOrgRoleId)) {
@@ -480,7 +484,7 @@ export class InvitationService {
       .select('id, token, email');
 
     if (insertError) return toDbFailure(insertError);
-    if (created?.length !== invitations.length) return failure('INTERNAL_SERVER');
+    if (created.length !== invitations.length) return failure('INTERNAL_SERVER');
 
     // `INSERT ... SELECT` does not promise result order, so map by e-mail back
     // to the input order the page renders. Duplicate addresses are
@@ -637,7 +641,7 @@ export class InvitationService {
       .from('organizations')
       .select('id, name')
       .eq('id', organizationId)
-      .single();
+      .maybeSingle();
 
     if (orgError || !org) return failure('GONE');
 
@@ -744,12 +748,12 @@ export class InvitationService {
     if (error) return toDbFailure(error);
 
     return success(
-      (data ?? []).map((inv) => {
+      dbRows(data).map((inv) => {
         return {
           id: inv.id,
           email: inv.email,
           targetOrgRoleId: inv.target_org_role_id,
-          orgRoleName: inv.org_roles?.name ?? '',
+          orgRoleName: inv.org_roles.name,
           isAccepted: inv.is_accepted,
           expiresAt: inv.expires_at,
           createdAt: inv.created_at,

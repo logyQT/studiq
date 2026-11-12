@@ -15,6 +15,7 @@ import { QuestionTransferService } from '@studiq/server/services/question-transf
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asService } from '#test/helpers/service-double';
 import { asSupabaseClient } from '#test/helpers/supabase-double';
+import { firstCall, firstRecorded, requiredValue } from '#test/mocks/recorded';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
@@ -359,7 +360,7 @@ describe('QuestionTransferService.importQuestions', () => {
 
     expect(result.success && result.data).toEqual({ imported: 2 });
 
-    const questions = inserts.questions[0];
+    const questions = firstRecorded(inserts.questions);
     expect(questions).toHaveLength(2);
     expect(questions[0]).toMatchObject({
       content: 'One',
@@ -371,14 +372,14 @@ describe('QuestionTransferService.importQuestions', () => {
     });
     expect(new Set(questions.map((r) => r.id)).size).toBe(2);
 
-    const options = inserts.question_options[0];
+    const options = firstRecorded(inserts.question_options);
     expect(options).toEqual([
-      { question_id: questions[0].id, content: 'A', is_correct: true, order_index: 0 },
-      { question_id: questions[0].id, content: 'B', is_correct: false, order_index: 1 },
+      { question_id: firstRecorded(questions).id, content: 'A', is_correct: true, order_index: 0 },
+      { question_id: firstRecorded(questions).id, content: 'B', is_correct: false, order_index: 1 },
     ]);
 
     // "mechanika" and "Mechanika" are the same existing topic, "Optyka" is created.
-    expect(inserts.topics[0]).toEqual([
+    expect(firstRecorded(inserts.topics)).toEqual([
       expect.objectContaining({
         name: 'Optyka',
         created_by: 'teacher-1',
@@ -386,9 +387,9 @@ describe('QuestionTransferService.importQuestions', () => {
         visibility: 'personal',
       }),
     ]);
-    expect(inserts.question_topic_assignments[0]).toEqual([
-      { question_id: questions[0].id, topic_id: 'topic-1' },
-      { question_id: questions[0].id, topic_id: 'topic-2' },
+    expect(firstRecorded(inserts.question_topic_assignments)).toEqual([
+      { question_id: firstRecorded(questions).id, topic_id: 'topic-1' },
+      { question_id: firstRecorded(questions).id, topic_id: 'topic-2' },
     ]);
   });
 
@@ -409,15 +410,22 @@ describe('QuestionTransferService.importQuestions', () => {
 
     await service.importQuestions(ctx, 'bank-1', [q({ topics: ['Optyka'] })]);
 
-    expect(inserts.questions[0][0]).toMatchObject({ organization_id: null });
-    expect(inserts.topics[0][0]).toMatchObject({ name: 'Optyka', organization_id: null });
+    expect(firstRecorded(firstRecorded(inserts.questions))).toMatchObject({
+      organization_id: null,
+    });
+    expect(firstRecorded(firstRecorded(inserts.topics))).toMatchObject({
+      name: 'Optyka',
+      organization_id: null,
+    });
     // The limit count and the topic lookup follow the bank's tenant, not `ctx.activeOrgId`: a
     // personal bucket is `IS NULL`, never `eq(col, null)` (the 22P02/500 case).
-    expect(tables.questions[0].eq.mock.calls.map((call) => call[0])).toEqual(['created_by']);
-    expect(tables.questions[0].is).toHaveBeenCalledWith('organization_id', null);
-    expect(tables.topics[0].is).toHaveBeenCalledWith('organization_id', null);
+    expect(firstRecorded(tables.questions).eq.mock.calls.map((call) => call[0])).toEqual([
+      'created_by',
+    ]);
+    expect(firstRecorded(tables.questions).is).toHaveBeenCalledWith('organization_id', null);
+    expect(firstRecorded(tables.topics).is).toHaveBeenCalledWith('organization_id', null);
     // Counted and charged in the same bucket: the personal plan, not the selected org's.
-    expect(vi.mocked(limitsResolver.checkLimit).mock.calls[0][0].activeOrgId).toBeNull();
+    expect(firstCall(vi.mocked(limitsResolver.checkLimit))[0].activeOrgId).toBeNull();
   });
 
   it('writes into the bank organisation even when no organisation is active', async () => {
@@ -425,11 +433,16 @@ describe('QuestionTransferService.importQuestions', () => {
 
     await service.importQuestions(personalCtx, 'bank-1', [q({ topics: ['Optyka'] })]);
 
-    expect(inserts.questions[0][0]).toMatchObject({ organization_id: 'org-1' });
-    expect(inserts.topics[0][0]).toMatchObject({ name: 'Optyka', organization_id: 'org-1' });
-    expect(tables.questions[0].eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    expect(firstRecorded(firstRecorded(inserts.questions))).toMatchObject({
+      organization_id: 'org-1',
+    });
+    expect(firstRecorded(firstRecorded(inserts.topics))).toMatchObject({
+      name: 'Optyka',
+      organization_id: 'org-1',
+    });
+    expect(firstRecorded(tables.questions).eq).toHaveBeenCalledWith('organization_id', 'org-1');
     // ...and the org's plan counts it, even though no org is selected in the app.
-    expect(vi.mocked(limitsResolver.checkLimit).mock.calls[0][0].activeOrgId).toBe('org-1');
+    expect(firstCall(vi.mocked(limitsResolver.checkLimit))[0].activeOrgId).toBe('org-1');
   });
 
   it('writes no option or topic rows for questions that have none', async () => {
@@ -445,8 +458,8 @@ describe('QuestionTransferService.importQuestions', () => {
     const result = await service.importQuestions(ctx, 'bank-1', [q(), q()]);
 
     expect(result.success).toBe(false);
-    const created = inserts.questions[0].map((r) => r.id);
-    const cleanup = tables.questions.at(-1);
+    const created = firstRecorded(inserts.questions).map((r) => r.id);
+    const cleanup = requiredValue(tables.questions, 'questions builders').at(-1);
     expect(cleanup?.delete).toHaveBeenCalled();
     expect(cleanup?.in).toHaveBeenCalledWith('id', created);
   });
@@ -458,9 +471,11 @@ describe('QuestionTransferService.importQuestions', () => {
     const result = await service.importQuestions(ctx, 'bank-1', many);
 
     expect(result.success).toBe(false);
-    const created = inserts.questions[0].map((r) => r.id);
+    const created = firstRecorded(inserts.questions).map((r) => r.id);
     // One `in (…)` per 100 ids: the whole batch in one request is ~18 KB of query string.
-    const chunks = tables.questions.slice(2).map((b) => stringList(b.in.mock.calls[0][1]));
+    const chunks = requiredValue(tables.questions, 'questions builders')
+      .slice(2)
+      .map((b) => stringList(firstCall(b.in)[1]));
     expect(chunks.map((ids) => ids.length)).toEqual([100, 100, 50]);
     expect(chunks.flat()).toEqual(created);
   });

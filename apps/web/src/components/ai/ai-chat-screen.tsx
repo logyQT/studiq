@@ -99,7 +99,7 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
   );
 
   // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
-  const rawName: unknown = user?.user_metadata?.name;
+  const rawName: unknown = user?.user_metadata.name;
   const firstName =
     (typeof rawName === 'string' ? rawName.split(' ')[0] : undefined) ?? user?.email?.split('@')[0];
 

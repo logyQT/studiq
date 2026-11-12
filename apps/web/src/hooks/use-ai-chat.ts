@@ -264,9 +264,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
       let pendingDeckName = 'Generated Flashcards';
       let finalFlashcardsProcessed = false;
 
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-
+      for (const [i, part] of parts.entries()) {
         if (part.type === 'text') {
           const isLast = i === parts.length - 1;
           const isActiveStream = isStreaming && isLastAssistant && m === lastMsg && isLast;
@@ -291,24 +289,23 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
           continue;
         }
 
-        if (part.type?.startsWith?.('tool-')) {
-          const tp = part;
+        if (part.type.startsWith('tool-')) {
           const toolName = part.type.slice(5);
-          const state = tp.state || 'output-available';
+          const state = part.state || 'output-available';
           const toolStatus = toolStateToStatus(state);
-          const input = tp.input;
+          const input = part.input;
 
           mapped.push({
-            id: tp.toolCallId || `${m.id}-tool-${toolName}-${i}`,
+            id: part.toolCallId || `${m.id}-tool-${toolName}-${i}`,
             role: 'tool_call',
             content: '',
             toolName,
             label:
               toolStateToStatus(state) !== 'complete'
                 ? toolLabel(toolName)
-                : toolResultLabel(toolName, tp.output),
+                : toolResultLabel(toolName, part.output),
             args: input,
-            toolResult: state === 'output-available' ? tp.output : undefined,
+            toolResult: state === 'output-available' ? part.output : undefined,
             status: toolStatus,
             thinkingTraces: [],
           });
@@ -316,7 +313,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
           if (toolName === 'generate_flashcards') {
             if (state === 'output-error') {
               mapped.push({
-                id: `${tp.toolCallId || `${m.id}-tool-${toolName}-${i}`}-error`,
+                id: `${part.toolCallId || `${m.id}-tool-${toolName}-${i}`}-error`,
                 role: 'tool_call',
                 content: '',
                 toolName,
@@ -327,8 +324,8 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
               continue;
             }
 
-            const outputMap: Record<string, unknown> | undefined = tp.output;
-            const inputMap: Record<string, unknown> | undefined = tp.input;
+            const outputMap: Record<string, unknown> | undefined = part.output;
+            const inputMap: Record<string, unknown> | undefined = part.input;
             const flashcardArray = recordsOf(outputMap?.flashcards);
             const isComplete = state === 'output-available';
 
@@ -369,8 +366,8 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
               });
               pendingCards = null;
             }
-            const outputMap: Record<string, unknown> | undefined = tp.output;
-            if (outputMap?.type === 'question' && outputMap?.question) {
+            const outputMap: Record<string, unknown> | undefined = part.output;
+            if (outputMap?.type === 'question' && outputMap.question) {
               const existing = mapped[mapped.length - 1];
               const question = toQuestionData(outputMap.question);
               if (existing && question) {
@@ -380,7 +377,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
           }
 
           if (state === 'output-available' && toolName === 'create_plan') {
-            const outputMap: Record<string, unknown> | undefined = tp.output;
+            const outputMap: Record<string, unknown> | undefined = part.output;
             if (outputMap?.steps) {
               const steps = recordsOf(outputMap.steps);
               const planMsg: ChatMessage = {
@@ -434,7 +431,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
               planMsgRef.planCompleted = true;
             }
 
-            const outputMap: Record<string, unknown> | undefined = tp.output;
+            const outputMap: Record<string, unknown> | undefined = part.output;
             if (outputMap?.type === 'flashcards') {
               const cards =
                 pendingCards && pendingCards.length > 0

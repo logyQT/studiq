@@ -249,7 +249,7 @@ export function EditQuizClient() {
       initialLoaded.current = true;
       setName(quiz.name);
       setDescription(quiz.description ?? '');
-      setQuestions((quiz.quiz_questions ?? []).toSorted((a, b) => a.order_index - b.order_index));
+      setQuestions(quiz.quiz_questions.toSorted((a, b) => a.order_index - b.order_index));
     }
   }, [quiz]);
 
@@ -392,6 +392,7 @@ export function EditQuizClient() {
       if (oldIndex < 0 || newIndex < 0) return prev;
       const next = [...prev];
       const [moved] = next.splice(oldIndex, 1);
+      if (moved === undefined) return prev;
       next.splice(newIndex, 0, moved);
       next.forEach((q, i) => {
         q.order_index = i;
@@ -519,7 +520,7 @@ export function EditQuizClient() {
                 <Badge variant="outline" className="mt-1 text-xs">
                   {'content' in activeDragItem
                     ? activeDragItem.type.replace('_', ' ')
-                    : (activeDragItem.question?.type?.replace('_', ' ') ?? '')}
+                    : (activeDragItem.question?.type.replace('_', ' ') ?? '')}
                 </Badge>
               </div>
               {!('content' in activeDragItem) && (

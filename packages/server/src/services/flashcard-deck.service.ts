@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   accessibleFilter,
   check,
@@ -6,12 +7,6 @@ import {
   resolveGroupResourceIds,
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
-import type { FilterableBuilder } from '@studiq/server/lib/postgrest';
-import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
-import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
-import { createClient } from '@studiq/server/lib/supabase/server';
-import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   BatchDeleteDeckInput,
   BulkCreateDeckInput,
@@ -19,6 +14,18 @@ import type {
   DeckListQuery,
   UpdateDeckInput,
 } from '@studiq/server/models/flashcard-deck.model';
+import {
+  applyAccessFilter,
+  pageParams,
+  pageQuery,
+  pickDefined,
+  toPage,
+} from '@studiq/server/lib/query-list';
+import type { FilterableBuilder } from '@studiq/server/lib/postgrest';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { createClient } from '@studiq/server/lib/supabase/server';
+import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -100,9 +107,10 @@ export class FlashcardDeckService {
       .in('id', ids);
 
     if (error) return toDbFailure(error);
-    if (cards?.length !== new Set(ids).size) return failure('NOT_FOUND');
+    const foundCards = dbRows(cards);
+    if (foundCards.length !== new Set(ids).size) return failure('NOT_FOUND');
 
-    for (const card of cards) {
+    for (const card of foundCards) {
       await check(ctx, Permission.FLASHCARD_UPDATE, card);
     }
     return null;
@@ -123,9 +131,10 @@ export class FlashcardDeckService {
       .in('id', ids);
 
     if (error) return toDbFailure(error);
-    if (decks?.length !== new Set(ids).size) return failure('NOT_FOUND');
+    const foundDecks = dbRows(decks);
+    if (foundDecks.length !== new Set(ids).size) return failure('NOT_FOUND');
 
-    for (const deck of decks) {
+    for (const deck of foundDecks) {
       await check(ctx, Permission.DECK_READ, deck);
     }
     return null;
@@ -167,11 +176,7 @@ export class FlashcardDeckService {
     // query and the total-count query, so `total` always matches the visible set. The cursor and
     // limit are applied to the page query only, which keeps `total` stable while paging.
     const applyFilters = <T extends FilterableBuilder<T>>(q: T): T => {
-      let filtered = q;
-
-      if (filter.or) filtered = filtered.or(filter.or);
-      if (filter.created_by) filtered = filtered.eq('created_by', filter.created_by);
-      if (filter.organization_id) filtered = filtered.eq('organization_id', filter.organization_id);
+      let filtered = applyAccessFilter(q, filter);
 
       // Exclude suspended decks by default
       if (!includeSuspended && suspendedIds.size > 0) {
@@ -201,47 +206,24 @@ export class FlashcardDeckService {
       supabase.from('flashcard_decks').select('id', { count: 'exact', head: true }),
     );
 
-    // Apply sorting with tie-breaker
-    const sortBy = queryParams?.sortBy ?? 'created_at';
-    const sortOrder = queryParams?.sortOrder ?? 'desc';
-    const sortAsc = sortOrder === 'asc';
-    query = query.order(sortBy, { ascending: sortAsc }).order('id');
-
-    // Cursor-based pagination
-    const pageSize = Math.min(queryParams?.limit ?? 24, 100);
-    query = query.limit(pageSize + 1);
-
-    if (queryParams?.cursor) {
-      const { v: cursorVal, id: cursorId } = decodeCursor(queryParams.cursor);
-      const op = sortAsc ? 'gt' : 'lt';
-      query = query.or(
-        `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
-      );
-    }
+    const paging = pageParams(queryParams, { sortBy: 'created_at', limit: 24 });
+    query = pageQuery(query, paging);
 
     const [{ data, error }, { count, error: countError }] = await Promise.all([query, countQuery]);
     if (error) return toDbFailure(error);
     if (countError) return toDbFailure(countError);
 
-    const rows = data ?? [];
-    const hasMore = rows.length > pageSize;
-    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
-    const items = sliced.map((item) => ({
-      ...item,
-      flashcard_count: item.flashcard_count?.[0]?.count ?? 0,
-      groupIds: item.deck_groups?.map((g) => g.group_id) ?? [],
-      suspended: suspendedIds.has(item.id),
-    }));
-    const nextCursor = hasMore
-      ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
-      : null;
-
-    return success({
-      items,
-      nextCursor,
-      hasMore,
-      total: count ?? 0,
+    const page = toPage(data, {
+      ...paging,
+      map: (item) => ({
+        ...item,
+        flashcard_count: dbCount(item.flashcard_count),
+        groupIds: dbRows(item.deck_groups).map((g) => g.group_id),
+        suspended: suspendedIds.has(item.id),
+      }),
     });
+
+    return success({ ...page, total: count ?? 0 });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -252,22 +234,19 @@ export class FlashcardDeckService {
     const filter = await accessibleFilter(ctx, Permission.DECK_READ, 'deck');
     if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
-    let query = supabase
-      .from('flashcard_decks')
-      .select('*, flashcard_count:flashcards(count), deck_groups(group_id)')
-      .eq('id', id);
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
-
-    const { data: deck, error } = await query.single();
+    const { data: deck, error } = await applyAccessFilter(
+      supabase
+        .from('flashcard_decks')
+        .select('*, flashcard_count:flashcards(count), deck_groups(group_id)')
+        .eq('id', id),
+      filter,
+    ).maybeSingle();
     if (error || !deck) return failure('NOT_FOUND');
 
     return success({
       ...deck,
-      flashcard_count: deck.flashcard_count?.[0]?.count ?? 0,
-      groupIds: deck.deck_groups?.map((g) => g.group_id) ?? [],
+      flashcard_count: dbCount(deck.flashcard_count),
+      groupIds: dbRows(deck.deck_groups).map((g) => g.group_id),
       suspended: suspendedIds.has(id),
     });
   }
@@ -348,10 +327,11 @@ export class FlashcardDeckService {
       if (denied) return denied;
     }
 
-    const updateFields: Database['public']['Tables']['flashcard_decks']['Update'] = {};
-    if (data.name !== undefined) updateFields.name = data.name;
-    if (data.description !== undefined) updateFields.description = data.description;
-    if (data.visibility !== undefined) updateFields.visibility = data.visibility;
+    const updateFields = pickDefined({
+      name: data.name,
+      description: data.description,
+      visibility: data.visibility,
+    });
 
     if (Object.keys(updateFields).length > 0) {
       const { data: deck, error } = await supabase
@@ -472,9 +452,10 @@ export class FlashcardDeckService {
       .in('id', data.ids);
 
     if (fetchError) return toDbFailure(fetchError);
-    if (!decks || decks.length === 0) return failure('NOT_FOUND');
+    const ownedDecks = dbRows(decks);
+    if (ownedDecks.length === 0) return failure('NOT_FOUND');
 
-    for (const deck of decks) {
+    for (const deck of ownedDecks) {
       await check(ctx, Permission.DECK_DELETE, deck);
     }
 

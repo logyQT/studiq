@@ -38,7 +38,7 @@ export default function ClassroomMembersPage() {
   useEffect(() => {
     apiGet<Member[]>('/api/v1/organization/members')
       .then((data) => {
-        setMembers(data ?? []);
+        setMembers(data);
         setLoading(false);
         return undefined;
       })

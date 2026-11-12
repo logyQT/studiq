@@ -1,5 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
+import {
+  loadTenant,
+  loginAs,
+  tenantUser,
+  type QaRole,
+  type QaTenant,
+} from '#test/qa/fixtures/tenant';
 
 /**
  * PUB-08 — 404 inside the panels (student / teacher / manager).
@@ -150,8 +156,7 @@ async function expectNotFoundPage(page: Page, panel: Panel): Promise<void> {
 
 /** "Układ panelu (sidebar) pozostaje widoczny" — under the tenant's own user. */
 async function expectPanelChrome(page: Page, panel: Panel, tenant: QaTenant): Promise<void> {
-  const user = tenant.users[panel.role];
-  expect(user, `${CASE} tenant must seed a ${panel.role}`).toBeTruthy();
+  const user = tenantUser(tenant, panel.role);
 
   const bar = sidebar(page);
   await expect(bar).toHaveCount(1);

@@ -97,7 +97,7 @@ export default function StudentGradingClient() {
 
   const getGrade = (questionId: string) =>
     resolveGradeDraft(
-      attempt?.quiz_answers?.find((a) => a.question_id === questionId),
+      attempt?.quiz_answers.find((a) => a.question_id === questionId),
       grades[questionId],
     );
 
@@ -116,7 +116,7 @@ export default function StudentGradingClient() {
   };
 
   const getImages = (questionId: string) => {
-    return attempt?.assignment_answer_images?.filter((img) => img.question_id === questionId) ?? [];
+    return attempt?.assignment_answer_images.filter((img) => img.question_id === questionId) ?? [];
   };
 
   if (isLoading) {
@@ -158,14 +158,14 @@ export default function StudentGradingClient() {
 
       <div className="space-y-6">
         {attempt.quiz_attempt_questions
-          ?.toSorted((a, b) => a.order_index - b.order_index)
+          .toSorted((a, b) => a.order_index - b.order_index)
           .map((aq) => {
-            const studentAnswer = attempt.quiz_answers?.find(
+            const studentAnswer = attempt.quiz_answers.find(
               (a) => a.question_id === aq.question_id,
             );
             const images = getImages(aq.question_id);
             const isAutoGraded = aq.question.type === 'mcq' || aq.question.type === 'true_false';
-            const options = aq.question.question_answers ?? [];
+            const options = aq.question.question_answers;
             const selectedOption = options.find((o) => o.id === studentAnswer?.selected_option_id);
             const correctOptions = options.filter((o) => o.is_correct);
             const grade = getGrade(aq.question_id);

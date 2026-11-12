@@ -98,8 +98,8 @@ describe(`Org-context limit count scope`, () => {
       ])
       .select('id, organization_id')
       .overrideTypes<Array<{ id: string; organization_id: string | null }>, { merge: false }>();
-    if (decksError || !decks) {
-      throw new Error(`[count-scope] deck create failed: ${decksError?.message}`);
+    if (decksError) {
+      throw new Error(`[count-scope] deck create failed: ${decksError.message}`);
     }
     personalDeckId = decks.find((deck) => deck.organization_id === null)!.id;
     orgDeckId = decks.find((deck) => deck.organization_id === fixture.orgId)!.id;
@@ -125,7 +125,7 @@ describe(`Org-context limit count scope`, () => {
   afterAll(async () => {
     await service.from('flashcards').delete().eq('created_by', fixture.user.id);
     await service.from('flashcard_decks').delete().eq('created_by', fixture.user.id);
-    if (fixture?.orgId) await cleanupOrganizationDeep(fixture.orgId);
+    if (fixture.orgId) await cleanupOrganizationDeep(fixture.orgId);
     await service.from('plan_limits').delete().eq('plan_key', orgPlanKey);
     await service.from('subscription_plans').delete().eq('key', orgPlanKey);
   });

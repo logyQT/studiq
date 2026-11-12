@@ -13,7 +13,7 @@ import {
   mockUser,
   seedOrgMembership,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, requiredAt } from '#test/integration/test-utils';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
 
 /** `GET /api/v1/organization/members` returns the rows under `data`. */
@@ -44,7 +44,7 @@ describe(`Members Integration`, () => {
       members: { count: 1 },
     });
     orgId = fixture.orgId!;
-    member = fixture.memberUsers[0];
+    member = requiredAt(fixture.memberUsers, 0, 'seeded member');
 
     const supabase = createServiceClient();
     const { data: adminRole } = await supabase

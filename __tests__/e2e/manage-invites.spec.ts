@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 import { asJson, json } from '#test/helpers/json';
+import { firstRecorded, recordedAt } from '#test/mocks/recorded';
 
 const PASSWORD = 'pass';
 const BULK_INVITES_URL = '/api/v1/organization/invites/bulk';
@@ -140,8 +141,8 @@ test.describe('Manage invitations — role defaults (#241)', () => {
 
     expect(postedBodies).toHaveLength(1);
     // The payload also carries the sender's locale; assert only this test's fields.
-    expect(postedBodies[0].invitations).toHaveLength(1);
-    expect(postedBodies[0].invitations[0]).toMatchObject({
+    expect(firstRecorded(postedBodies).invitations).toHaveLength(1);
+    expect(firstRecorded(firstRecorded(postedBodies).invitations)).toMatchObject({
       email: 'qa-role-reset@example.com',
       targetOrgRoleId: memberRoleId,
     });
@@ -216,8 +217,10 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     }
 
     // Rows keep the submitted order, so address ↔ result is unambiguous.
-    const firstEmail = await page.getByText(emails[0], { exact: true }).boundingBox();
-    const secondEmail = await page.getByText(emails[1], { exact: true }).boundingBox();
+    const firstEmail = await page.getByText(firstRecorded(emails), { exact: true }).boundingBox();
+    const secondEmail = await page
+      .getByText(recordedAt(emails, 1, 'the second address'), { exact: true })
+      .boundingBox();
     expect(firstEmail!.y).toBeLessThan(secondEmail!.y);
   });
 });

@@ -13,7 +13,11 @@ import {
   cleanupTeacherAssignments,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { PUT as questionPut } from '@/app/(backend)/api/v1/questions/[id]/route';
 import { POST as randomizePost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/randomize/route';
 import {
@@ -74,7 +78,7 @@ describe(`No active org guards`, () => {
       orgEducator.user,
       otherUser,
     ]) {
-      if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+      await service.auth.admin.deleteUser(user.id).catch(() => {});
     }
   });
 
@@ -109,7 +113,7 @@ describe(`No active org guards`, () => {
 
   it('PUT /api/v1/questions/{id} updates a personal (null-org) question', async () => {
     mockUser(noOrgStudent.user);
-    const questionId = noOrgStudent.created.questions[0];
+    const questionId = requiredAt(noOrgStudent.created.questions, 0, 'seeded question');
     const content = `no-org-question-updated-${suiteId}`;
 
     const { request, params } = createNextRequestWithParams(
@@ -137,7 +141,7 @@ describe(`No active org guards`, () => {
 
   it('PUT /api/v1/questions/{id} updates the caller own org question without an active org', async () => {
     mockUser(orgEducator.user);
-    const questionId = orgEducator.created.questions[0];
+    const questionId = requiredAt(orgEducator.created.questions, 0, 'seeded question');
     const content = `own-org-question-updated-${suiteId}`;
 
     const { request, params } = createNextRequestWithParams(
@@ -169,8 +173,8 @@ describe(`No active org guards`, () => {
     mockUser(otherUser);
 
     const { request, params } = createNextRequestWithParams(
-      `http://localhost/api/v1/questions/${noOrgStudent.created.questions[0]}`,
-      { id: noOrgStudent.created.questions[0] },
+      `http://localhost/api/v1/questions/${requiredAt(noOrgStudent.created.questions, 0, 'seeded question')}`,
+      { id: requiredAt(noOrgStudent.created.questions, 0, 'seeded question') },
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

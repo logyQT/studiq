@@ -4,12 +4,14 @@ import { SupabaseStripeWebhookRepository } from '@studiq/server/lib/payment/stri
 import { success } from '@studiq/server/lib/service-result';
 import { EntitlementService } from '@studiq/server/services/entitlement.service';
 import { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 // eslint-disable-next-line import/no-named-as-default -- stripe's default export is the Stripe class; the rule sees the `Stripe` namespace.
 import Stripe from 'stripe';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { asJson } from '#test/helpers/json';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/helpers';
+import { requiredAt } from '#test/integration/test-utils';
 
 /**
  * End-to-end webhook → entitlement sync against the real database (#662 §10.2),
@@ -131,6 +133,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     },
     subscriptions: {
       retrieve: () => Promise.resolve(currentSubscription),
+      update: () => Promise.resolve(currentSubscription),
     },
   };
   const webhookService = new StripeWebhookService({
@@ -184,7 +187,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       .select('*')
       .eq('stripe_subscription_id', stripeId);
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return dbRows(data);
   }
 
   async function paymentsForInvoice(invoiceId: string) {
@@ -193,7 +196,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       .select('*')
       .eq('stripe_invoice_id', invoiceId);
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return dbRows(data);
   }
 
   async function eventRow(id: string) {
@@ -222,7 +225,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       .insert({ name: `stripe-webhook-${tag}` })
       .select('id')
       .single();
-    if (orgError || !org) throw new Error(orgError?.message ?? 'org create failed');
+    if (orgError) throw new Error(orgError.message);
     orgId = org.id;
 
     const { data: role, error: roleError } = await service
@@ -231,7 +234,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       .eq('organization_id', orgId)
       .eq('name', 'admin')
       .single();
-    if (roleError || !role) throw new Error(roleError?.message ?? 'admin role missing');
+    if (roleError) throw new Error(roleError.message);
 
     const { error: memberError } = await service.from('org_members').insert({
       organization_id: orgId,
@@ -256,15 +259,11 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     if (customerIds.length > 0) {
       await service.from('billing_customers').delete().in('stripe_customer_id', customerIds);
     }
-    if (student) {
-      await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', student.id);
-    }
-    if (manager) {
-      await service.from('profiles').update({ personal_plan_key: 'launch' }).eq('id', manager.id);
-    }
+    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', student.id);
+    await service.from('profiles').update({ personal_plan_key: 'launch' }).eq('id', manager.id);
     if (orgId) await cleanupOrganizationDeep(orgId);
     for (const user of [student, manager]) {
-      if (user) await service.auth.admin.deleteUser(user.id).catch(() => {});
+      await service.auth.admin.deleteUser(user.id).catch(() => {});
     }
   });
 
@@ -323,7 +322,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       status: 'active',
     });
     // The success page waits for this marker, not the billed mirror row.
-    expect(mirrors[0].entitlement_applied_plan_key).toBe('spark');
+    expect(requiredAt(mirrors, 0, 'billing mirror').entitlement_applied_plan_key).toBe('spark');
 
     // customer.subscription.deleted → the free student tier.
     currentSubscription = subscriptionFixture({
@@ -377,8 +376,8 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
         })
         .select('id')
         .single();
-      if (customerError || !customer) {
-        throw new Error(customerError?.message ?? 'customer insert failed');
+      if (customerError) {
+        throw new Error(customerError.message);
       }
       billingCustomerId = customer.id;
     }
@@ -537,7 +536,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
 
     const renewalRows = await paymentsForInvoice(renewalId);
     expect(renewalRows).toHaveLength(1);
-    expect(renewalRows[0].stripe_checkout_session_id).toBeNull();
+    expect(requiredAt(renewalRows, 0, 'renewal payment').stripe_checkout_session_id).toBeNull();
     expect(await paymentsForInvoice(invoiceId)).toHaveLength(1);
 
     // A failed renewal keeps the plan and writes no payments row. Stripe now
@@ -569,7 +568,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
 
     expect(await profilePlan(student.id)).toBe('spark');
     const mirrors = await subscriptionsFor(stripeSubscriptionId);
-    expect(mirrors[0].status).toBe('past_due');
+    expect(requiredAt(mirrors, 0, 'billing mirror').status).toBe('past_due');
     expect(await paymentsForInvoice(failedInvoiceId)).toHaveLength(0);
   });
 

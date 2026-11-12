@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { dbCount, dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   accessibleFilter,
   check,
@@ -6,11 +7,6 @@ import {
   resolveGroupResourceIds,
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
-import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
-import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
-import { createClient } from '@studiq/server/lib/supabase/server';
-import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   BatchDeleteTopicInput,
   BulkCreateTopicInput,
@@ -18,9 +14,20 @@ import type {
   TopicListQuery,
   UpdateTopicInput,
 } from '@studiq/server/models/topic.model';
-import { groupService } from '@studiq/server/services/group.service';
+import {
+  applyAccessFilter,
+  pageParams,
+  pageQuery,
+  pickDefined,
+  readPage,
+} from '@studiq/server/lib/query-list';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
+import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { createClient } from '@studiq/server/lib/supabase/server';
+import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { groupService } from '@studiq/server/services/group.service';
 
 export class TopicService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -48,7 +55,6 @@ export class TopicService {
       .single();
 
     if (error) return toDbFailure(error);
-    if (!topic) return failure('NOT_FOUND');
 
     if (groupIds.length > 0) {
       const rows = groupIds.map((gid) => ({
@@ -71,13 +77,10 @@ export class TopicService {
     const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
     if (isImpossibleFilter(filter)) return success({ items: [], nextCursor: null, hasMore: false });
 
-    let query = supabase
-      .from('topics')
-      .select('*, flashcard_count:flashcard_topic_assignments(count)');
-    if (filter.or) query = query.or(filter.or);
-
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+    let query = applyAccessFilter(
+      supabase.from('topics').select('*, flashcard_count:flashcard_topic_assignments(count)'),
+      filter,
+    );
 
     // Apply owner filter on top of RBAC
     if (queryParams?.owner === 'mine') query = query.eq('created_by', ctx.userId);
@@ -96,61 +99,27 @@ export class TopicService {
       query = query.or(`name.ilike.%${queryParams.q}%`);
     }
 
-    // Apply sorting with tie-breaker
-    const sortBy = queryParams?.sortBy ?? 'created_at';
-    const sortOrder = queryParams?.sortOrder ?? 'desc';
-    const sortAsc = sortOrder === 'asc';
-    query = query.order(sortBy, { ascending: sortAsc }).order('id');
+    const paging = pageParams(queryParams, { sortBy: 'created_at', limit: 50 });
+    query = pageQuery(query, paging);
 
-    // Cursor-based pagination
-    const pageSize = Math.min(queryParams?.limit ?? 50, 100);
-    query = query.limit(pageSize + 1);
-
-    if (queryParams?.cursor) {
-      const { v: cursorVal, id: cursorId } = decodeCursor(queryParams.cursor);
-      const op = sortAsc ? 'gt' : 'lt';
-      query = query.or(
-        `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
-      );
-    }
-
-    const { data, error } = await query;
-    if (error) return toDbFailure(error);
-
-    const rows = data ?? [];
-    const hasMore = rows.length > pageSize;
-    const sliced = hasMore ? rows.slice(0, pageSize) : rows;
-    const items = sliced.map((item) => ({
-      ...item,
-      flashcard_count: item.flashcard_count?.[0]?.count ?? 0,
-    }));
-    const nextCursor = hasMore
-      ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
-      : null;
-
-    return success({
-      items,
-      nextCursor,
-      hasMore,
+    return readPage(query, {
+      ...paging,
+      map: (item) => ({
+        ...item,
+        flashcard_count: dbCount(item.flashcard_count),
+      }),
     });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.clientFactory();
-
     const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
     if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
-    let query = supabase.from('topics').select('*').eq('id', id);
-    if (filter.or) query = query.or(filter.or);
-    if (filter.organization_id) {
-      query = query.eq('organization_id', filter.organization_id);
-    }
-    if (filter.created_by) {
-      query = query.eq('created_by', filter.created_by);
-    }
-
-    const { data, error } = await query.single();
+    const supabase = await this.clientFactory();
+    const { data, error } = await applyAccessFilter(
+      supabase.from('topics').select('*').eq('id', id),
+      filter,
+    ).maybeSingle();
     if (error || !data) return failure('NOT_FOUND');
     return success(data);
   }
@@ -162,35 +131,30 @@ export class TopicService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const { data: existing, error: fetchError } = await supabase
-      .from('topics')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (fetchError || !existing) return failure('NOT_FOUND');
-    await check(ctx, Permission.TOPIC_UPDATE, existing);
+    const loaded = await this.loadForWrite(supabase, id, ctx, Permission.TOPIC_UPDATE);
+    if (isFailure(loaded)) return loaded;
+    const topic = loaded.data;
 
     const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
+    // Share links belong to the CONTENT's org, not the caller's current UI org;
+    // legacy NULL-org content falls back to the active org.
     if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
-      // The link must belong to the CONTENT's org, not the caller's current UI org.
-      // NULL-org content (legacy personal rows) falls back to the active org.
-      const contentOrgId = existing.organization_id ?? ctx.activeOrgId ?? null;
-      const shareCheck = await groupService.canShareContentToGroups(
+      const canShare = await groupService.canShareContentToGroups(
         ctx,
         requestedGroupIds,
-        contentOrgId,
+        topic.organization_id ?? ctx.activeOrgId ?? null,
       );
-      if (isFailure(shareCheck)) return failure(shareCheck.error);
-      if (!shareCheck.data) return failure('FORBIDDEN');
+      if (isFailure(canShare)) return failure(canShare.error);
+      if (!canShare.data) return failure('FORBIDDEN');
     }
 
-    const updateFields: Database['public']['Tables']['topics']['Update'] = {};
-    if (data.name !== undefined) updateFields.name = data.name;
-    if (data.visibility !== undefined) updateFields.visibility = data.visibility;
+    const updateFields = pickDefined({
+      name: data.name,
+      visibility: data.visibility,
+    });
 
     if (Object.keys(updateFields).length > 0) {
-      const { data: topic, error } = await supabase
+      const { error } = await supabase
         .from('topics')
         .update(updateFields)
         .eq('id', id)
@@ -198,7 +162,6 @@ export class TopicService {
         .single();
 
       if (error) return toDbFailure(error);
-      if (!topic) return failure('NOT_FOUND');
     }
 
     if (requestedGroupIds !== null) {
@@ -217,19 +180,35 @@ export class TopicService {
   async delete(id: string, ctx: RequestContext): Promise<ServiceResult<undefined>> {
     const supabase = await this.clientFactory();
 
-    const { data: existing, error: fetchError } = await supabase
-      .from('topics')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (fetchError || !existing) return failure('NOT_FOUND');
-    await check(ctx, Permission.TOPIC_DELETE, existing);
+    const loaded = await this.loadForWrite(supabase, id, ctx, Permission.TOPIC_DELETE);
+    if (isFailure(loaded)) return loaded;
 
     const { error } = await supabase.from('topics').delete().eq('id', id);
 
     if (error) return toDbFailure(error);
     return success(undefined);
+  }
+
+  /**
+   * Loads the topic a single-row write targets and enforces the caller's
+   * permission on that row. A missing id is `NOT_FOUND` (never `FORBIDDEN`)
+   * so the answer does not confirm that an unreadable topic exists.
+   */
+  private async loadForWrite(
+    supabase: SupabaseClient<Database>,
+    id: string,
+    ctx: RequestContext,
+    permission: string,
+  ): Promise<ServiceResult<Database['public']['Tables']['topics']['Row']>> {
+    const { data: existing, error } = await supabase
+      .from('topics')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error || !existing) return failure('NOT_FOUND');
+    await check(ctx, permission, existing);
+    return success(existing);
   }
 
   async bulkCreate(
@@ -264,9 +243,10 @@ export class TopicService {
       .in('id', data.ids);
 
     if (fetchError) return toDbFailure(fetchError);
-    if (!topics || topics.length === 0) return failure('NOT_FOUND');
+    const rows = dbRows(topics);
+    if (rows.length === 0) return failure('NOT_FOUND');
 
-    for (const topic of topics) {
+    for (const topic of rows) {
       await check(ctx, Permission.TOPIC_DELETE, topic);
     }
 

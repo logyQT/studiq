@@ -184,17 +184,17 @@ test.describe('STU-42 — student stats, content tab', () => {
       tenant.runSuffix,
       'seed with --fresh: every independent run owns a new tenant',
     ).toBeTruthy();
-    const student = tenant.users.student;
-    expect(student, `${CASE} seeds the student under test`).toBeTruthy();
-    if (!student) throw new Error(`${CASE} tenant has no seeded student`);
-
     // Fixture names carry the run suffix, so two seeded tenants never collide.
     const run = tenant.runSuffix ?? tenant.key.slice(-6);
     const deckName = `${CASE} ${run}`;
-    const frontsByLabel = new Map(
-      FIXTURE.map((card) => [card.label, `${card.label} ${run}`] as const),
+    const frontsByLabel = new Map<string, string>(
+      FIXTURE.map((card) => [card.label, `${card.label} ${run}`]),
     );
-    const frontOf = (label: string) => frontsByLabel.get(label)!;
+    const frontOf = (label: string) => {
+      const front = frontsByLabel.get(label);
+      if (!front) throw new Error(`${CASE} has no fixture card „${label}”`);
+      return front;
+    };
 
     // ── Precondition: the tenant student, with a study history of its own ────
     await loginAs(page, tenant, 'student', { locale: 'pl' });

@@ -408,9 +408,9 @@ test.describe('Question bank transfer', () => {
     await expect(radios.nth(2)).toBeChecked();
     await expect(radios.nth(0)).not.toBeChecked();
     const answerInputs = editor.locator('input:not([type="radio"])');
-    await expect(answerInputs.nth(0)).toHaveValue(MCQ.answers[0].content);
-    await expect(answerInputs.nth(1)).toHaveValue(MCQ.answers[1].content);
-    await expect(answerInputs.nth(2)).toHaveValue(MCQ.answers[2].content);
+    for (const [index, answer] of MCQ.answers.entries()) {
+      await expect(answerInputs.nth(index)).toHaveValue(answer.content);
+    }
     await expect(editor.getByRole('combobox').filter({ hasText: TOPIC })).toBeVisible();
     await editor.getByRole('button', { name: cancelButton }).click();
     await expect(editor).not.toBeVisible();

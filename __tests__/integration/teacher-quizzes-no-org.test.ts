@@ -46,9 +46,9 @@ describe('GET /api/v1/teacher/quizzes without an active organization (#147)', ()
   });
 
   afterAll(async () => {
-    if (orgEducator?.orgId) await cleanupOrganizationDeep(orgEducator.orgId);
-    for (const user of [orgLessEducator, orgEducator?.user, outsiderEducator]) {
-      if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+    if (orgEducator.orgId) await cleanupOrganizationDeep(orgEducator.orgId);
+    for (const user of [orgLessEducator, orgEducator.user, outsiderEducator]) {
+      await service.auth.admin.deleteUser(user.id).catch(() => {});
     }
   });
 

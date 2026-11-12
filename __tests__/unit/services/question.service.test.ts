@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { QuestionService } from '@studiq/server/services/question.service';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall } from '#test/mocks/recorded';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
@@ -326,7 +327,7 @@ describe('QuestionService', () => {
 
       await service.list(ctx, { type: 'mcq' });
 
-      const selectArg = c.select.mock.calls[0][0];
+      const selectArg = firstCall(c.select)[0];
       expect(selectArg).toContain('question_topic_assignments(topic_id, topics(id, name))');
       expect(selectArg).not.toContain('!inner');
       expect(c.filter).not.toHaveBeenCalledWith(

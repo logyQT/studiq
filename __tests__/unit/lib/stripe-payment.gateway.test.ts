@@ -10,6 +10,7 @@ import { failure, success } from '@studiq/server/lib/service-result';
 import type { StripeWebhookService } from '@studiq/server/services/stripe-webhook.service';
 import { asJson } from '#test/helpers/json';
 import { asService } from '#test/helpers/service-double';
+import { firstCall, firstRecorded } from '#test/mocks/recorded';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const config: StripeConfig = {
@@ -224,7 +225,7 @@ describe('StripePaymentGateway', () => {
   it('creates the session with classic billing mode, server-side price and metadata', async () => {
     await gateway.createCheckoutSession(personalInput());
 
-    const [params, options] = vi.mocked(client.checkout.sessions.create).mock.calls[0];
+    const [params, options] = firstCall(vi.mocked(client.checkout.sessions.create));
 
     expect(params).toMatchObject({
       mode: 'subscription',
@@ -262,7 +263,7 @@ describe('StripePaymentGateway', () => {
   it('forwards the caller snapshot expiry so idempotent retries match', async () => {
     await gateway.createCheckoutSession(personalInput({ expiresAt: 1_900_000_000 }));
 
-    const [params] = vi.mocked(client.checkout.sessions.create).mock.calls[0];
+    const [params] = firstCall(vi.mocked(client.checkout.sessions.create));
     expect(params.expires_at).toBe(1_900_000_000);
   });
 
@@ -312,7 +313,7 @@ describe('StripePaymentGateway', () => {
       }),
     );
 
-    const [params] = vi.mocked(client.checkout.sessions.create).mock.calls[0];
+    const [params] = firstCall(vi.mocked(client.checkout.sessions.create));
     expect(params.success_url).toBe(
       'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}&plan_id=hub&org_id=org-1',
     );
@@ -764,8 +765,10 @@ describe('StripePaymentGateway', () => {
 
       expect(client.subscriptionSchedules.release).toHaveBeenCalledWith('sched_expanded');
       expect(
-        vi.mocked(client.subscriptionSchedules.release).mock.invocationCallOrder[0],
-      ).toBeLessThan(vi.mocked(client.subscriptions.update).mock.invocationCallOrder[0]);
+        firstRecorded(vi.mocked(client.subscriptionSchedules.release).mock.invocationCallOrder),
+      ).toBeLessThan(
+        firstRecorded(vi.mocked(client.subscriptions.update).mock.invocationCallOrder),
+      );
     });
 
     it('treats an already-released schedule as benign', async () => {

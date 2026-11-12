@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
@@ -238,8 +239,8 @@ async function createQuestion(
 }
 
 function answersOf(question: QuestionRow) {
-  return [...(question.question_answers ?? [])]
-    .toSorted((left, right) => (left.order_index ?? 0) - (right.order_index ?? 0))
+  return [...dbRows(question.question_answers)]
+    .toSorted((left, right) => left.order_index - right.order_index)
     .map((answer) => ({ text: answer.content, correct: answer.is_correct }));
 }
 

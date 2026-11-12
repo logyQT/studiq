@@ -3,6 +3,7 @@ import type { BillingCycle, PaymentOwner } from '@studiq/server/lib/payment/paym
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -137,31 +138,51 @@ function mapPrice(row: {
   };
 }
 
+type CatalogPlanRow = Pick<
+  Database['public']['Tables']['subscription_plans']['Row'],
+  'key' | 'name' | 'price_monthly' | 'currency' | 'is_active' | 'for_account_type' | 'sort_order'
+>;
+
+function mapCatalogPlan(row: CatalogPlanRow): CatalogPlan {
+  return {
+    key: row.key,
+    name: row.name,
+    priceMonthly: row.price_monthly ?? 0,
+    currency: row.currency,
+    isActive: row.is_active ?? true,
+    forAccountType: row.for_account_type,
+    sortOrder: row.sort_order ?? 0,
+  };
+}
+
+/**
+ * The checkout path validates a plan and the webhook grants entitlements from
+ * the same catalog row. One reader keeps both ends on one row→plan mapping.
+ */
+export async function readCatalogPlan(
+  createAdminClient: () => SupabaseClient<Database>,
+  planKey: string,
+): Promise<ServiceResult<CatalogPlan | null>> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('subscription_plans')
+    .select('key, name, price_monthly, currency, is_active, for_account_type, sort_order')
+    .eq('key', planKey)
+    .maybeSingle();
+
+  if (error) return toDbFailure(error);
+  if (!data) return success(null);
+
+  return success(mapCatalogPlan(data));
+}
+
 export class SupabaseStripeBillingRepository implements StripeBillingRepository {
   constructor(
     private readonly createAdminClient: () => SupabaseClient<Database> = createServiceClient,
   ) {}
 
   async getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>> {
-    const supabase = this.createAdminClient();
-    const { data, error } = await supabase
-      .from('subscription_plans')
-      .select('key, name, price_monthly, currency, is_active, for_account_type, sort_order')
-      .eq('key', planKey)
-      .maybeSingle();
-
-    if (error) return toDbFailure(error);
-    if (!data) return success(null);
-
-    return success({
-      key: data.key,
-      name: data.name,
-      priceMonthly: data.price_monthly ?? 0,
-      currency: data.currency ?? 'PLN',
-      isActive: data.is_active ?? true,
-      forAccountType: data.for_account_type,
-      sortOrder: data.sort_order ?? 0,
-    });
+    return readCatalogPlan(this.createAdminClient, planKey);
   }
 
   async isOrgAdmin(orgId: string, userId: string): Promise<ServiceResult<boolean>> {
@@ -357,7 +378,7 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
       .select('id');
 
     if (error) return toDbFailure(error);
-    if (!data || data.length === 0) return failure('NOT_FOUND');
+    if (dbRows(data).length === 0) return failure('NOT_FOUND');
     return success(undefined);
   }
 }

@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -73,10 +73,12 @@ describe(`Org Features (trigger)`, () => {
       teacher: (_name: string): string => 'own',
       member: (name: string): string => (name.endsWith('.read') ? 'group' : 'own'),
     })) {
+      const roleId = roleIds[roleName];
+      if (!roleId) throw new Error(`[setup] org role ${roleName} not seeded`);
       const { data: perms } = await supabase
         .from('org_role_permissions')
         .select('permission_name, scope')
-        .eq('org_role_id', roleIds[roleName]);
+        .eq('org_role_id', roleId);
 
       expect(perms?.length).toBeGreaterThan(0);
       for (const perm of perms ?? []) {
@@ -176,7 +178,7 @@ describe(`Org Features (trigger)`, () => {
     const ctx: RequestContext = {
       traceId: 'org-features',
       userId: student.id,
-      accountType: 'STUDENT',
+      accountType: AccountType.STUDENT,
       activeOrgId: orgId,
       orgRoleId: adminRole.id,
       url: '/api/v1/features/me',
@@ -215,7 +217,7 @@ describe(`Org Features (trigger)`, () => {
     const ctx: RequestContext = {
       traceId: 'org-features-null-role',
       userId: student.id,
-      accountType: 'STUDENT',
+      accountType: AccountType.STUDENT,
       activeOrgId: orgId,
       orgRoleId: null,
       url: '/api/v1/features/me',

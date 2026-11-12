@@ -4,6 +4,7 @@ import { QuestionReportService } from '@studiq/server/services/question-report.s
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { asJson } from '#test/helpers/json';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall, firstRecorded } from '#test/mocks/recorded';
 
 type QueryResult = { data: unknown; error: unknown };
 
@@ -334,7 +335,7 @@ describe('QuestionReportService', () => {
       const result = await service.setStatus('r-1', { status: 'resolved' }, teacherCtx);
 
       expect(result.success).toBe(true);
-      const patch = asJson<Record<string, unknown>>(updateQuery.update.mock.calls[0][0]);
+      const patch = asJson<Record<string, unknown>>(firstCall(updateQuery.update)[0]);
       expect(patch).toEqual(
         expect.objectContaining({ status: 'resolved', resolved_by: 'teacher-1' }),
       );
@@ -389,7 +390,7 @@ describe('QuestionReportService', () => {
       const result = await service.setStatus('r-1', { status: 'resolved' }, managerCtx);
 
       expect(result.success).toBe(true);
-      const patch = asJson<Record<string, unknown>>(updateQuery.update.mock.calls[0][0]);
+      const patch = asJson<Record<string, unknown>>(firstCall(updateQuery.update)[0]);
       expect(patch).toEqual(
         expect.objectContaining({ status: 'resolved', resolved_by: 'manager-1' }),
       );
@@ -548,7 +549,7 @@ describe('QuestionReportService', () => {
       });
       // Reopen lands before the insert (the trigger then bumps updated_at).
       expect(reopenQuery.update.mock.invocationCallOrder[0]).toBeLessThan(
-        insertQuery.insert.mock.invocationCallOrder[0],
+        firstRecorded(insertQuery.insert.mock.invocationCallOrder, 'the insert call order'),
       );
     });
 

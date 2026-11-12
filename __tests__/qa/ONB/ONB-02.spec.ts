@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { json } from '#test/helpers/json';
 import { qaDbNow, resetFirstRunTenant } from '#test/helpers/db-admin';
-import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * ONB-02 — a teacher creates a class without invitations.
@@ -37,7 +37,7 @@ test.describe('ONB-02 — teacher creates a class without invitations', () => {
     // previous attempt already created „Moja Klasa”. Put the account back in its
     // first-run state before logging in, otherwise the /setup gate is gone.
     const attemptStarted = await qaDbNow();
-    await resetFirstRunTenant(tenant.users.teacher.id, attemptStarted);
+    await resetFirstRunTenant(tenantUser(tenant, 'teacher').id, attemptStarted);
 
     // --- Prerequisite ONB-01: an org-less educator lands on /setup ---------
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/setup/ });

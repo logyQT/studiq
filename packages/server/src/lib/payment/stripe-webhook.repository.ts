@@ -4,10 +4,15 @@ import {
   type PaymentRecordResult,
   paymentHistoryWriter,
 } from '@studiq/server/lib/payment/payment-history.repository';
-import { type CatalogPlan, type ListedPrice } from '@studiq/server/lib/payment/stripe-repository';
+import {
+  type CatalogPlan,
+  type ListedPrice,
+  readCatalogPlan,
+} from '@studiq/server/lib/payment/stripe-repository';
 import { failure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -335,12 +340,13 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     const { data: reclaimed, error: retryError } = await claim.select('id, received_at');
 
     if (retryError) return toDbFailure(retryError);
-    if (!reclaimed || reclaimed.length === 0) {
+    const [reclaimedRow] = dbRows(reclaimed);
+    if (!reclaimedRow) {
       // Another delivery won the reclaim race and owns the new lease.
       return success({ outcome: 'busy', receivedAt: null });
     }
 
-    return success({ outcome: 'retry', receivedAt: reclaimed[0].received_at });
+    return success({ outcome: 'retry', receivedAt: reclaimedRow.received_at });
   }
 
   async finishEvent(
@@ -502,8 +508,9 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
 
     const existing = await conditionalUpdate();
     if (existing.error) return toDbFailure(existing.error);
-    if (existing.data && existing.data.length > 0) {
-      return success({ outcome: 'applied', generation: existing.data[0].snapshot_generation });
+    const appliedRow = dbRows(existing.data).at(0);
+    if (appliedRow) {
+      return success({ outcome: 'applied', generation: appliedRow.snapshot_generation });
     }
 
     const current = await supabase
@@ -531,8 +538,9 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     // update once; 0 rows now means a newer generation or an older event.
     const retried = await conditionalUpdate();
     if (retried.error) return toDbFailure(retried.error);
-    if (retried.data && retried.data.length > 0) {
-      return success({ outcome: 'applied', generation: retried.data[0].snapshot_generation });
+    const retriedRow = dbRows(retried.data).at(0);
+    if (retriedRow) {
+      return success({ outcome: 'applied', generation: retriedRow.snapshot_generation });
     }
     return classifyUnapplied();
   }
@@ -625,25 +633,7 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
   }
 
   async getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>> {
-    const supabase = this.createAdminClient();
-    const { data, error } = await supabase
-      .from('subscription_plans')
-      .select('key, name, price_monthly, currency, is_active, for_account_type, sort_order')
-      .eq('key', planKey)
-      .maybeSingle();
-
-    if (error) return toDbFailure(error);
-    if (!data) return success(null);
-
-    return success({
-      key: data.key,
-      name: data.name,
-      priceMonthly: data.price_monthly ?? 0,
-      currency: data.currency ?? 'PLN',
-      isActive: data.is_active ?? true,
-      forAccountType: data.for_account_type,
-      sortOrder: data.sort_order ?? 0,
-    });
+    return readCatalogPlan(this.createAdminClient, planKey);
   }
 
   async findPrice(priceId: string, livemode: boolean): Promise<ServiceResult<ListedPrice | null>> {

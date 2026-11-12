@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { QueryError } from '@/app/(frontend)/components/query-error';
 import { apiGet } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
-import { barHeights, formatBytes, formatCount, total } from '@/lib/stats-format';
+import { barHeight, formatBytes, formatCount, maxValue, total } from '@/lib/stats-format';
 
 const RANGES = [30, 90] as const;
 const SERIES = ['reviews', 'quizAttempts', 'studySessions', 'registrations'] as const;
@@ -54,8 +54,10 @@ export function PlatformStats() {
   const s = stats.data;
 
   const items: DailyStatsItem[] = daily.data?.items ?? [];
-  const values = items.map((item) => item[series]);
-  const heights = barHeights(values);
+  const bars = items.map((item) => ({ date: item.date, value: item[series] }));
+  const values = bars.map((bar) => bar.value);
+  const max = maxValue(values);
+  const chart = bars.map((bar) => ({ ...bar, height: barHeight(bar.value, max) }));
   const dayLabel = new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'short',
@@ -171,12 +173,12 @@ export function PlatformStats() {
                 className="flex h-40 items-end gap-0 overflow-hidden sm:gap-px"
                 aria-hidden="true"
               >
-                {items.map((item, i) => (
+                {chart.map((bar) => (
                   <div
-                    key={item.date}
+                    key={bar.date}
                     className="min-w-0 flex-1 rounded-t bg-primary/80 transition-[height]"
-                    style={{ height: `${heights[i]}%`, minHeight: heights[i] > 0 ? 2 : 0 }}
-                    title={`${dayLabel.format(new Date(`${item.date}T00:00:00Z`))}: ${formatCount(values[i], locale)}`}
+                    style={{ height: `${bar.height}%`, minHeight: bar.height > 0 ? 2 : 0 }}
+                    title={`${dayLabel.format(new Date(`${bar.date}T00:00:00Z`))}: ${formatCount(bar.value, locale)}`}
                   />
                 ))}
               </div>
@@ -189,10 +191,10 @@ export function PlatformStats() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, i) => (
-                    <tr key={item.date}>
-                      <th scope="row">{dayLabel.format(new Date(`${item.date}T00:00:00Z`))}</th>
-                      <td>{formatCount(values[i], locale)}</td>
+                  {bars.map((bar) => (
+                    <tr key={bar.date}>
+                      <th scope="row">{dayLabel.format(new Date(`${bar.date}T00:00:00Z`))}</th>
+                      <td>{formatCount(bar.value, locale)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -4,6 +4,7 @@ import {
 } from '@studiq/server/lib/gradable-questions';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { firstCall, recordedAt } from '#test/mocks/recorded';
 
 type Page = { data: unknown[]; error: unknown };
 
@@ -112,8 +113,10 @@ describe('gradableQuestionCounts (#619)', () => {
 
     expect(result.success).toBe(true);
     expect(client.from).toHaveBeenCalledTimes(2);
-    expect(stringList(builder.in.mock.calls[0][1])).toHaveLength(100);
-    expect(stringList(builder.in.mock.calls[1][1])).toEqual(['a-100']);
+    expect(stringList(firstCall(builder.in)[1])).toHaveLength(100);
+    expect(stringList(recordedAt(builder.in.mock.calls, 1, 'the second in() call')[1])).toEqual([
+      'a-100',
+    ]);
   });
 
   it('pages past the PostgREST 1000-row cap instead of truncating the denominator', async () => {

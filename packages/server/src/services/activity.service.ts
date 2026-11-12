@@ -65,8 +65,8 @@ export class ActivityService {
         'user_id, date, reviews_count, reviews_correct, quizzes_count, quizzes_score, quizzes_total',
       )
       .in('user_id', studentIds)
-      .gte('date', prevRangeStart.toISOString().split('T')[0])
-      .lte('date', now.toISOString().split('T')[0]);
+      .gte('date', prevRangeStart.toISOString().slice(0, 10))
+      .lte('date', now.toISOString().slice(0, 10));
 
     const rows = (activity || []) as Array<{
       user_id: string;
@@ -167,7 +167,7 @@ export class ActivityService {
 
     const result: DailyActivityPoint[] = [];
     for (let i = rangeDays - 1; i >= 0; i--) {
-      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const entry = byDate.get(date);
       result.push({
         date,

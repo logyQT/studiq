@@ -16,7 +16,7 @@ export function UserMenuHeader() {
   const { user } = useAuth();
   const t = useTranslations('DashboardLayout');
   // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
-  const rawName: unknown = user?.user_metadata?.name;
+  const rawName: unknown = user?.user_metadata.name;
   const storedName = typeof rawName === 'string' ? rawName : '';
   const userName = storedName || user?.email?.split('@')[0] || t('default_user');
 
@@ -208,7 +208,7 @@ export function UserMenuItems(props: UserMenuItemsProps) {
     );
 
   // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const rawAccountType: unknown = user?.app_metadata.account_type;
   const accountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
   const dashboardPrefix = dashboardHomeFor(accountType);
 

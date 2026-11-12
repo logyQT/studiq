@@ -21,6 +21,7 @@ import {
   createNextRequest,
   createNextRequestWithParams,
   createTypedServiceClient,
+  requiredAt,
 } from '#test/integration/test-utils';
 import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
 import { GET as getTeacherStats } from '@/app/(backend)/api/v1/flashcards/stats/teacher/route';
@@ -103,7 +104,7 @@ describe('Teacher stats roster (#460)', () => {
       .eq('organization_id', orgId)
       .eq('name', 'member')
       .single();
-    if (roleError || !memberRole) throw new Error('[setup] member role not found');
+    if (roleError) throw new Error('[setup] member role not found');
 
     const { error: memberError } = await service.from('org_members').insert({
       organization_id: orgId,
@@ -123,11 +124,11 @@ describe('Teacher stats roster (#460)', () => {
 
   function fixtureUsers(): TestUserFixture[] {
     return [
-      teacher?.user,
-      orgB?.user,
-      emptyOrg?.user,
-      solo?.user,
-      removal?.user,
+      teacher.user,
+      orgB.user,
+      emptyOrg.user,
+      solo.user,
+      removal.user,
       ...learners.teacher,
       ...learners.orgB,
       ...learners.emptyOrg,
@@ -188,7 +189,7 @@ describe('Teacher stats roster (#460)', () => {
       await cleanupFlashcards(user.id);
       await cleanupFlashcardDecks(user.id);
     }
-    for (const orgId of [teacher?.orgId, orgB?.orgId, emptyOrg?.orgId, removal?.orgId]) {
+    for (const orgId of [teacher.orgId, orgB.orgId, emptyOrg.orgId, removal.orgId]) {
       if (orgId) await cleanupOrganizationDeep(orgId);
     }
   });
@@ -199,7 +200,10 @@ describe('Teacher stats roster (#460)', () => {
     expect(baseline.summary.rosterStudents).toBe(2);
     expect(baseline.summary.practicingStudents).toBe(0);
 
-    await insertPractice(learners.teacher[0].id, teacher.created.flashcards[0]);
+    await insertPractice(
+      requiredAt(learners.teacher, 0, 'seeded learner').id,
+      requiredAt(teacher.created.flashcards, 0, 'seeded flashcard'),
+    );
 
     const after = await fetchStats(teacher, teacher.orgId);
     expect(after.summary.rosterStudents).toBe(2);
@@ -216,7 +220,7 @@ describe('Teacher stats roster (#460)', () => {
 
     const { error: memberError } = await service.from('group_members').insert({
       group_id: secondGroup!.id,
-      user_id: learners.teacher[1].id,
+      user_id: requiredAt(learners.teacher, 1, 'seeded learner').id,
       role: 'member',
     });
     expect(memberError).toBeNull();
@@ -226,9 +230,9 @@ describe('Teacher stats roster (#460)', () => {
   });
 
   it('keeps the practice count when the student is removed from the org', async () => {
-    const student = learners.removal[0];
+    const student = requiredAt(learners.removal, 0, 'seeded learner');
 
-    await insertPractice(student.id, removal.created.flashcards[0]);
+    await insertPractice(student.id, requiredAt(removal.created.flashcards, 0, 'seeded flashcard'));
 
     const beforeRemoval = await fetchStats(removal, removal.orgId);
     expect(beforeRemoval.summary.rosterStudents).toBe(1);
@@ -250,7 +254,7 @@ describe('Teacher stats roster (#460)', () => {
   });
 
   it('does not count the teacher practising their own deck', async () => {
-    const flashcardId = teacher.created.flashcards[0];
+    const flashcardId = requiredAt(teacher.created.flashcards, 0, 'seeded flashcard');
     mockUser(teacher.user);
 
     const { request, params } = createNextRequestWithParams(
@@ -291,7 +295,7 @@ describe('Teacher stats roster (#460)', () => {
   });
 
   it('rejects a cross-tenant org id and a foreign user id over a real session', async () => {
-    const member = learners.teacher[0];
+    const member = requiredAt(learners.teacher, 0, 'seeded learner');
     const session = newClient();
     const { error: signInError } = await session.auth.signInWithPassword({
       email: member.email,
@@ -327,7 +331,7 @@ describe('Teacher stats roster (#460)', () => {
 
     // anon still has no EXECUTE grant.
     const anonResult = await newClient().rpc('get_teacher_stats', {
-      p_flashcard_ids: [teacher.created.flashcards[0]],
+      p_flashcard_ids: [requiredAt(teacher.created.flashcards, 0, 'seeded flashcard')],
       p_user_id: teacher.user.id,
     });
     expect(anonResult.error?.code).toBe('42501');

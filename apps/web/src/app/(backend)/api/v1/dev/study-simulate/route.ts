@@ -1,4 +1,5 @@
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import type { LearningState } from '@studiq/server/models/flashcard-spaced-repetition.model';
@@ -24,7 +25,7 @@ function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+    [a[i], a[j]] = [a[j]!, a[i]!];
   }
   return a;
 }
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: membershipError.message }, { status: 500 });
     }
 
-    const orgIds = [...new Set((memberships ?? []).map((m) => m.organization_id))];
+    const orgIds = [...new Set(dbRows(memberships).map((m) => m.organization_id))];
 
     let query = supabase.from('flashcards').select('id');
     query =
@@ -82,7 +83,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
-    if (!allFlashcards || allFlashcards.length === 0) {
+    const cards = dbRows(allFlashcards);
+
+    if (cards.length === 0) {
       return NextResponse.json({ updated: 0, cards: 0, errors: ['No flashcards found'] });
     }
 
@@ -92,16 +95,16 @@ export async function POST(req: NextRequest) {
       .eq('user_id', profile.id)
       .in(
         'flashcard_id',
-        allFlashcards.map((f) => f.id),
+        cards.map((f) => f.id),
       );
 
-    const stateByCard = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
+    const stateByCard = new Map(dbRows(states).map((s) => [s.flashcard_id, s]));
 
     const now = new Date();
-    const due: typeof allFlashcards = [];
-    const notDue: typeof allFlashcards = [];
+    const due: typeof cards = [];
+    const notDue: typeof cards = [];
 
-    for (const fc of allFlashcards) {
+    for (const fc of cards) {
       const state = stateByCard.get(fc.id);
       if (!state || new Date(state.next_review_at) <= now) {
         due.push(fc);
@@ -110,7 +113,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let selected: typeof allFlashcards;
+    let selected: typeof cards;
 
     if (due.length >= limit) {
       selected = shuffle(due).slice(0, limit);

@@ -41,6 +41,21 @@ export interface QaTenant {
 }
 
 export type QaRole = keyof NonNullable<QaTenant['users']>;
+type QaUser = NonNullable<QaTenant['users'][string]>;
+
+/**
+ * A seeded account addressed by its role key.
+ *
+ * The roster is an open record (a profile may declare any key it likes), so a
+ * key the spec names but the tenant did not seed is a real possibility — a case
+ * pointed at another case's tenant. That has to fail here, with the role named,
+ * instead of surfacing as `undefined.email` two steps into the login form.
+ */
+export function tenantUser(tenant: QaTenant, role: QaRole): QaUser {
+  const user = tenant.users[role];
+  if (!user) throw new Error(`tenant ${tenant.case} has no seeded ${role} user`);
+  return user;
+}
 
 const HOST = new URL(process.env.QA_APP_URL ?? 'http://localhost:3010').hostname;
 
@@ -131,10 +146,7 @@ export async function loginAs(
   role: QaRole,
   options: LoginOptions = {},
 ): Promise<void> {
-  const user = tenant.users[role];
-  if (!user) {
-    throw new Error(`tenant ${tenant.case} has no seeded ${role} user`);
-  }
+  const user = tenantUser(tenant, role);
   const res = await page.request.post('/api/v1/auth/login', {
     data: { email: user.email, password: user.password },
     // `maxRetries` only retries `ECONNRESET` (never an HTTP status), so a real

@@ -31,7 +31,7 @@ export default function AppBillingPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   // `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
-  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const rawAccountType: unknown = user?.app_metadata.account_type;
   const accountType =
     (typeof rawAccountType === 'string' ? rawAccountType : undefined) ?? 'student';
   const { data: plan, isLoading } = useApiQuery<PlanInfo>({
@@ -126,6 +126,7 @@ export default function AppBillingPage() {
               <div className="space-y-1.5">
                 {visibleLimits.map((key) => {
                   const value = plan.limits[key];
+                  if (value === undefined) return null;
                   return (
                     <div key={key} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">{getLimitLabel(key)}</span>

@@ -91,7 +91,7 @@ export function useOrgs() {
       if (!navigate) return;
 
       const switchedOrg = orgs.find((o) => o.id === orgId);
-      const rawAccountType: unknown = user?.app_metadata?.account_type;
+      const rawAccountType: unknown = user?.app_metadata.account_type;
       const jwtAccountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
       const ROLE_TO_ACCOUNT_TYPE: Record<string, string> = {
         admin: 'manager',
@@ -107,7 +107,7 @@ export function useOrgs() {
   });
 
   const activeOrg = orgs.find((o) => o.isActive) || null;
-  const rawAccountType: unknown = user?.app_metadata?.account_type;
+  const rawAccountType: unknown = user?.app_metadata.account_type;
   const jwtAccountType = typeof rawAccountType === 'string' ? rawAccountType : undefined;
   const needsOnboarding = resolveNeedsOnboarding({
     orgsCount: orgs.length,
@@ -116,15 +116,17 @@ export function useOrgs() {
     accountType: jwtAccountType,
   });
 
+  const firstOrg = orgs[0];
+
   useEffect(() => {
-    if (needsOnboarding) return;
-    if (!isLoading && orgs.length > 0 && !activeOrg && !hasAutoSelected.current) {
+    if (needsOnboarding || !firstOrg) return;
+    if (!isLoading && !activeOrg && !hasAutoSelected.current) {
       hasAutoSelected.current = true;
       // No `navigate`: right after login this runs while the user is being
       // routed to the `?next=` deep link, and a dashboard push would win (#458).
-      switchOrgMutation.mutate({ orgId: orgs[0].id });
+      switchOrgMutation.mutate({ orgId: firstOrg.id });
     }
-  }, [needsOnboarding, orgs, activeOrg, isLoading, switchOrgMutation]);
+  }, [needsOnboarding, firstOrg, activeOrg, isLoading, switchOrgMutation]);
 
   return {
     orgs,

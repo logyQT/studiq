@@ -72,7 +72,7 @@ function scorePercent(
   },
   gradable: number | undefined,
 ): number | null {
-  const max = row.assignment_id ? (row.total_points ?? row.total_questions ?? 0) : (gradable ?? 0);
+  const max = row.assignment_id ? (row.total_points ?? row.total_questions) : (gradable ?? 0);
   if (max <= 0) return null;
   return Math.round(Math.min(100, Math.max(0, ((row.score ?? 0) / max) * 100)));
 }

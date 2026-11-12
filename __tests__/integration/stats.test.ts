@@ -123,8 +123,8 @@ describe(`Stats Integration`, () => {
       })
       .select('id')
       .single();
-    if (extraBankError || !extraBank) {
-      throw new Error(`[setup] extra bank insert failed: ${extraBankError?.message}`);
+    if (extraBankError) {
+      throw new Error(`[setup] extra bank insert failed: ${extraBankError.message}`);
     }
     extraBankId = extraBank.id;
 
@@ -187,7 +187,7 @@ describe(`Stats Integration`, () => {
       })
       .select('id')
       .single();
-    if (quizError || !quiz) throw new Error(`[setup] quiz insert failed: ${quizError?.message}`);
+    if (quizError) throw new Error(`[setup] quiz insert failed: ${quizError.message}`);
 
     const { data: assignment, error: assignmentError } = await service
       .from('teacher_assignments')
@@ -200,8 +200,8 @@ describe(`Stats Integration`, () => {
       })
       .select('id')
       .single();
-    if (assignmentError || !assignment) {
-      throw new Error(`[setup] assignment insert failed: ${assignmentError?.message}`);
+    if (assignmentError) {
+      throw new Error(`[setup] assignment insert failed: ${assignmentError.message}`);
     }
 
     const { error } = await service.from('quiz_attempts').insert([
@@ -476,7 +476,7 @@ describe(`Stats Integration`, () => {
         })
         .select('id')
         .single();
-      if (bankError || !bank) throw new Error(`[setup] bank: ${bankError?.message}`);
+      if (bankError) throw new Error(`[setup] bank: ${bankError.message}`);
 
       const { data: questions, error: questionsError } = await service
         .from('questions')
@@ -489,8 +489,8 @@ describe(`Stats Integration`, () => {
           })),
         )
         .select('id');
-      if (questionsError || !questions) {
-        throw new Error(`[setup] questions: ${questionsError?.message}`);
+      if (questionsError) {
+        throw new Error(`[setup] questions: ${questionsError.message}`);
       }
 
       const now = Date.now();
@@ -506,7 +506,7 @@ describe(`Stats Integration`, () => {
         })
         .select('id')
         .single();
-      if (attemptError || !attempt) throw new Error(`[setup] attempt: ${attemptError?.message}`);
+      if (attemptError) throw new Error(`[setup] attempt: ${attemptError.message}`);
 
       const { error: linkError } = await service.from('quiz_attempt_questions').insert(
         questions.map((question, index) => ({
@@ -700,7 +700,7 @@ describe(`Stats Integration`, () => {
         })
         .select('id')
         .single();
-      if (bankError || !bank) throw new Error(`[setup] bank insert failed: ${bankError?.message}`);
+      if (bankError) throw new Error(`[setup] bank insert failed: ${bankError.message}`);
       pqBankId = bank.id;
 
       const { data: foreignBank, error: foreignBankError } = await service
@@ -713,8 +713,8 @@ describe(`Stats Integration`, () => {
         })
         .select('id')
         .single();
-      if (foreignBankError || !foreignBank) {
-        throw new Error(`[setup] foreign bank insert failed: ${foreignBankError?.message}`);
+      if (foreignBankError) {
+        throw new Error(`[setup] foreign bank insert failed: ${foreignBankError.message}`);
       }
       pqForeignBankId = foreignBank.id;
 
@@ -758,8 +758,8 @@ describe(`Stats Integration`, () => {
           },
         ])
         .select('id, content');
-      if (questionsError || !questions) {
-        throw new Error(`[setup] questions insert failed: ${questionsError?.message}`);
+      if (questionsError) {
+        throw new Error(`[setup] questions insert failed: ${questionsError.message}`);
       }
       const questionId = (content: string) => {
         const row = questions.find((q) => q.content === content);
@@ -785,8 +785,8 @@ describe(`Stats Integration`, () => {
           })),
         )
         .select('id, started_at');
-      if (attemptsError || !memberAttempts) {
-        throw new Error(`[setup] attempts insert failed: ${attemptsError?.message}`);
+      if (attemptsError) {
+        throw new Error(`[setup] attempts insert failed: ${attemptsError.message}`);
       }
       // Worst-first within the fixture: the first two attempts answer correctly.
       const attemptIds = [...memberAttempts]
@@ -822,8 +822,8 @@ describe(`Stats Integration`, () => {
           },
         ])
         .select('id, user_id');
-      if (extraAttemptsError || !extraAttempts) {
-        throw new Error(`[setup] extra attempts insert failed: ${extraAttemptsError?.message}`);
+      if (extraAttemptsError) {
+        throw new Error(`[setup] extra attempts insert failed: ${extraAttemptsError.message}`);
       }
       const outsiderAttemptId = extraAttempts.find((a) => a.user_id === pqOutsider.id)?.id;
       const teacherAttemptId = extraAttempts.find((a) => a.user_id === pqTeacher.user.id)?.id;

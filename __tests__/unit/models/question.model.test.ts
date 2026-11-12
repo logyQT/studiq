@@ -36,7 +36,7 @@ describe('CreateQuestionSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
     }
   });
 
@@ -81,8 +81,8 @@ describe('CreateQuestionSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path).toEqual(['answers']);
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
+      expect(result.error.issues[0]?.path).toEqual(['answers']);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
     }
   });
 
@@ -161,8 +161,8 @@ describe('UpdateQuestionSchema', () => {
     const result = UpdateQuestionSchema.safeParse({ type: 'mcq', answers: [] });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path).toEqual(['answers']);
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
+      expect(result.error.issues[0]?.path).toEqual(['answers']);
+      expect(result.error.issues[0]?.message).toBe(ValidationErrorCode.INVALID_INPUT);
     }
   });
 });

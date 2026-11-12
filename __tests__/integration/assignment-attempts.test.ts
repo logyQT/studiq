@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import {
   type BeforeResult,
   before,
@@ -15,7 +16,11 @@ import {
   mockUser,
   seedOrgMembership,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { asJson, json } from '#test/helpers/json';
 import { GET as assignmentGet } from '@/app/(backend)/api/v1/assignments/[id]/route';
 import { POST as assignmentStart } from '@/app/(backend)/api/v1/assignments/[id]/start/route';
@@ -119,7 +124,7 @@ describe(`Assignment Attempts Integration`, () => {
       .eq('user_id', userId)
       .is('completed_at', null);
     if (error) throw new Error(`Failed to count open attempts: ${error.message}`);
-    return (data ?? []).length;
+    return dbRows(data).length;
   }
 
   async function setMaxAttempts(maxAttempts: number): Promise<void> {
@@ -142,7 +147,7 @@ describe(`Assignment Attempts Integration`, () => {
 
   async function submitAttempt(attemptBody: StartBody): Promise<SubmitBody> {
     const attemptId = attemptBody.data.id;
-    const [firstQuestion] = attemptBody.data.questions;
+    const firstQuestion = requiredAt(attemptBody.data.questions, 0, 'attempt question');
 
     mockUser(student.user);
     const { request, params } = createNextRequestWithParams(
@@ -394,14 +399,14 @@ describe(`Assignment Attempts Integration`, () => {
     const body = await json<DetailBody>(response);
 
     expect(response.status).toBe(200);
-    expect(body.data.attempt?.id).toBe(started.body.data.id);
-    expect(body.data.attempt?.completed_at).toBeNull();
+    expect(body.data.attempt.id).toBe(started.body.data.id);
+    expect(body.data.attempt.completed_at).toBeNull();
   });
 
   it('a submitted attempt cannot start again when max_attempts is 1 (#369)', async () => {
     const started = await startAs(student.user);
     const attemptId = started.body.data.id;
-    const [firstQuestion] = started.body.data.questions;
+    const firstQuestion = requiredAt(started.body.data.questions, 0, 'attempt question');
 
     mockUser(student.user);
     const { request, params } = createNextRequestWithParams(

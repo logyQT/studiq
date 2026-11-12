@@ -4,6 +4,7 @@ import { error as logError, warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@studiq/server/types/database';
 
@@ -88,7 +89,7 @@ export class UserAdminService {
     let purged = 0;
     let failed = 0;
 
-    for (const row of expired ?? []) {
+    for (const row of dbRows(expired)) {
       const result = await this.deleteAccount(supabase, row.id);
       if (result.success) purged += 1;
       else failed += 1;
@@ -164,7 +165,7 @@ export class UserAdminService {
           deletedAt: p.deleted_at,
           purgeAt: p.purge_at,
           accountType:
-            typeof data.user?.app_metadata?.account_type === 'string'
+            typeof data.user?.app_metadata.account_type === 'string'
               ? data.user.app_metadata.account_type
               : null,
           bannedUntil: data.user?.banned_until ?? null,
@@ -235,7 +236,7 @@ export class UserAdminService {
       return toDbFailure(error);
     }
 
-    const users = await this.enrich(profiles ?? [], supabase);
+    const users = await this.enrich(dbRows(profiles), supabase);
 
     return success({ users, total: count ?? 0, page: query.page, perPage: query.perPage });
   }
@@ -304,7 +305,6 @@ export class UserAdminService {
       logError('user-admin: auth.admin.getUserById failed', { userId: id, error: fetchError });
       return failure('INTERNAL_SERVER');
     }
-    if (!current.user) return failure('NOT_FOUND');
 
     const { data, error } = await supabase.auth.admin.updateUserById(id, {
       app_metadata: { ...current.user.app_metadata, account_type: accountType },
@@ -358,7 +358,7 @@ export class UserAdminService {
       .select('id');
 
     if (error) return toDbFailure(error);
-    if (!updated?.length) return failure('NOT_FOUND');
+    if (dbRows(updated).length === 0) return failure('NOT_FOUND');
     return success({ purgeAt });
   }
 
@@ -387,7 +387,7 @@ export class UserAdminService {
       .select('id');
 
     if (error) return toDbFailure(error);
-    if (!updated?.length) return failure('NOT_FOUND');
+    if (dbRows(updated).length === 0) return failure('NOT_FOUND');
 
     const { error: unbanError } = await supabase.auth.admin.updateUserById(id, {
       ban_duration: 'none',

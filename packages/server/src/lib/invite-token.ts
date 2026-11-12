@@ -27,7 +27,7 @@ export function normalizeInviteToken(value: string): string | null {
 
   const match = TOKEN_PARAM.exec(trimmed);
   if (match) {
-    const token = safeDecode(match[1]).trim();
+    const token = safeDecode(match[1]!).trim();
     if (!token) return null;
     // Only the generated 32-hex form is case-folded; an opaque legacy token is
     // matched byte-for-byte by the database.

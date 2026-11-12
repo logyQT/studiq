@@ -1,6 +1,12 @@
 import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtures/tenant';
+import {
+  loadTenant,
+  loginAs,
+  tenantUser,
+  type QaRole,
+  type QaTenant,
+} from '#test/qa/fixtures/tenant';
 
 /**
  * MGR-SEAT-02 — assigning a seat to a member.
@@ -492,7 +498,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       userId: userId(tenant, 'student'),
       poolId: pools.get('ace')!.id,
       planKey: 'ace',
-      userEmail: tenant.users.student.email,
+      userEmail: tenantUser(tenant, 'student').email,
     });
     const poolsAfterAssign = (
       await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))

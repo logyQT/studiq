@@ -1,10 +1,12 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { applyAccessFilter } from '@studiq/server/lib/query-list';
 import type { FilterableBuilderWithExtra } from '@studiq/server/lib/postgrest';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   CreateQuestionInput,
@@ -99,7 +101,6 @@ export class QuestionService {
       .single();
 
     if (qError) return toDbFailure(qError);
-    if (!question) return failure('NOT_FOUND');
 
     if (data.answers.length > 0) {
       const answersToInsert = data.answers.map((a) => ({
@@ -148,11 +149,7 @@ export class QuestionService {
     // One place applies the filter chain, so the rows of a page and the total that drives the
     // pager can never be scoped differently.
     const applyFilters = <T extends FilterableBuilderWithExtra<T>>(q: T): T => {
-      let query = q;
-
-      if (filter.or) query = query.or(filter.or);
-      if (filter.created_by) query = query.eq('created_by', filter.created_by);
-      if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+      let query = applyAccessFilter(q, filter);
 
       if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
       // The topic embed must be `!inner` for the filter to narrow the parent rows —
@@ -195,7 +192,7 @@ export class QuestionService {
       return success({ items: [], total: total ?? 0, page, limit });
     }
     if (error) return toDbFailure(error);
-    const rows = data ?? [];
+    const rows = dbRows(data);
     const items = rows.map((row) => withTopics(row));
     return success(paged ? { items, total: count ?? items.length, page, limit } : items);
   }
@@ -224,7 +221,7 @@ export class QuestionService {
       .eq('bank_id', bankId);
     if (error) return toDbFailure(error);
 
-    const rows = data ?? [];
+    const rows = dbRows(data);
     return success({ questions: rows.map((row) => withTopics(row)), total: count ?? rows.length });
   }
 
@@ -234,13 +231,10 @@ export class QuestionService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
     if (isImpossibleFilter(filter)) return failure('NOT_FOUND');
 
-    let query = supabase.from('questions').select(QUESTION_SELECT).eq('id', id);
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
-
-    const { data: question, error } = await query.single();
+    const { data: question, error } = await applyAccessFilter(
+      supabase.from('questions').select(QUESTION_SELECT).eq('id', id),
+      filter,
+    ).maybeSingle();
     if (error || !question) return failure('NOT_FOUND');
     return success(withTopics(question));
   }

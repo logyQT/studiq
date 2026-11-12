@@ -1,6 +1,7 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrgRoleService } from '@studiq/server/services/org-role.service';
 import type { Database } from '@studiq/server/types/database';
+import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useRealSupabase, cleanupOrganizationDeep } from '#test/integration/helpers';
@@ -33,7 +34,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
       .insert({ name })
       .select('id')
       .single();
-    if (error || !data) throw new Error(`org create failed: ${error?.message}`);
+    if (error) throw new Error(`org create failed: ${error.message}`);
     return data.id;
   }
 
@@ -44,7 +45,7 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
       .eq('organization_id', orgId)
       .eq('name', roleName)
       .single();
-    if (error || !data) throw new Error(`role ${roleName} not found: ${error?.message}`);
+    if (error) throw new Error(`role ${roleName} not found: ${error.message}`);
     return data.id;
   }
 
@@ -55,14 +56,14 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
       .eq('org_role_id', roleIdToRead)
       .order('permission_name');
     if (error) throw new Error(`permissions read failed: ${error.message}`);
-    return data ?? [];
+    return dbRows(data);
   }
 
   function ctx(overrides: Partial<RequestContext>): RequestContext {
     return {
       traceId: `org-scope-${suiteId}`,
       userId: `user-${suiteId}`,
-      accountType: 'MANAGER',
+      accountType: AccountType.MANAGER,
       activeOrgId: orgA,
       orgRoleId: orgARoleId,
       url: '/api/v1/organization/roles/x/permissions',
@@ -99,8 +100,8 @@ describe(`OrgRoleService.setPermissions org scope`, () => {
       })
       .select('id')
       .single();
-    if (customError || !customRole) {
-      throw new Error(`custom role create failed: ${customError?.message}`);
+    if (customError) {
+      throw new Error(`custom role create failed: ${customError.message}`);
     }
     orgACustomRole = customRole.id;
   });

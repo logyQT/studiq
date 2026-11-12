@@ -31,7 +31,7 @@ export function BreadcrumbProvider({ children }: { children: React.ReactNode }) 
   const publish = useCallback((segment: string, label: string, owner: string) => {
     setEntries((previous) => {
       const current = previous[segment];
-      if (current?.label === label && current?.owner === owner) return previous;
+      if (current?.label === label && current.owner === owner) return previous;
       return { ...previous, [segment]: { label, owner } };
     });
   }, []);

@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs, tenantUser, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
  * LIM-04 — the Launch organization's two hard boundaries: 3 groups and 5 members,
@@ -129,8 +129,7 @@ function groupRow(page: Page, name: string) {
 async function removeInviteesIfJoined(page: Page, tenant: QaTenant): Promise<void> {
   const members = await listMembers(page);
   for (const role of ['invitee1', 'invitee2'] as const) {
-    const invitee = tenant.users[role];
-    expect(invitee, `${CASE} needs the seeded ${role} account`).toBeTruthy();
+    const invitee = tenantUser(tenant, role);
     if (!members.some((member) => member.id === invitee.id)) continue;
     const res = await page.request.delete(`${MEMBERS_URL}?userId=${invitee.id}`);
     expect(res.status(), `cleanup DELETE ${role}`).toBe(200);
@@ -228,13 +227,8 @@ test.describe('LIM-04 — Launch organization limits: 3 groups, 5 members', () =
       );
     }
     const org = tenant.org;
-    const invitee1 = tenant.users.invitee1;
-    const invitee2 = tenant.users.invitee2;
-    if (!invitee1 || !invitee2) {
-      throw new Error(
-        `${CASE} fixture incomplete: run \`bun scripts/qa-tenant.ts ${CASE} --fresh\``,
-      );
-    }
+    const invitee1 = tenantUser(tenant, 'invitee1');
+    const invitee2 = tenantUser(tenant, 'invitee2');
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -249,6 +243,8 @@ test.describe('LIM-04 — Launch organization limits: 3 groups, 5 members', () =
     expect(plan.data.key, 'the organization plan is Launch').toBe('launch');
     const groupLimit = plan.data.limits.max_groups;
     const memberLimit = plan.data.limits.max_students;
+    if (memberLimit === undefined)
+      throw new Error(`${CASE} the plan carries no max_students limit`);
     expect({ groupLimit, memberLimit }, 'the Launch boundaries').toEqual({
       groupLimit: 3,
       memberLimit: 5,
@@ -371,8 +367,10 @@ test.describe('LIM-04 — Launch organization limits: 3 groups, 5 members', () =
     await expect(page.locator('#token')).toHaveValue('');
     const orgs1 = await getJson<MyOrg[]>(page, '/api/v1/me/orgs');
     expect(orgs1.data, 'the first invitee is now a member of the tenant org').toHaveLength(1);
-    expect(orgs1.data[0].id).toBe(org.id);
-    expect(orgs1.data[0].orgRoleName).toBe('member');
+    const [joinedOrg] = orgs1.data;
+    if (!joinedOrg) throw new Error(`${CASE} the first invitee joined no organization`);
+    expect(joinedOrg.id).toBe(org.id);
+    expect(joinedOrg.orgRoleName).toBe('member');
 
     // The second invitee is refused by the same limit.
     await context.clearCookies();

@@ -85,7 +85,7 @@ interface AssignmentDetail {
       id: string;
       content: string;
       type: string;
-    };
+    } | null;
   }>;
 }
 
@@ -123,6 +123,7 @@ interface PaginatedBanks {
 function arrayMove<T>(arr: T[], from: number, to: number): T[] {
   const copy = [...arr];
   const [moved] = copy.splice(from, 1);
+  if (moved === undefined) return copy;
   copy.splice(to, 0, moved);
   return copy;
 }

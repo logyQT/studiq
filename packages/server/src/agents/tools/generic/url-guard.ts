@@ -6,7 +6,8 @@ const BLOCKED_HOSTNAMES = new Set(['localhost', '0.0.0.0']);
 function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) return true;
-  const [a, b] = parts;
+  const a = parts[0] ?? -1;
+  const b = parts[1] ?? -1;
   if (a === 0) return true;
   if (a === 127) return true;
   if (a === 10) return true;

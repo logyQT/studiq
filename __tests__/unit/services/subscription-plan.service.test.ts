@@ -134,8 +134,8 @@ describe('SubscriptionPlanService', () => {
 
       expect(result.success).toBe(true);
       expect(expectSuccess(result)).toHaveLength(1);
-      expect(expectSuccess(result)[0].features).toEqual(['quiz']);
-      expect(expectSuccess(result)[0].limits.max_groups).toBe(3);
+      expect(expectSuccess(result)[0]?.features).toEqual(['quiz']);
+      expect(expectSuccess(result)[0]?.limits.max_groups).toBe(3);
     });
 
     it('maps for_account_type to forAccountType, defaulting to null', async () => {
@@ -150,8 +150,8 @@ describe('SubscriptionPlanService', () => {
       const result = await service.listActive();
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result)[0].forAccountType).toBe('manager');
-      expect(expectSuccess(result)[1].forAccountType).toBeNull();
+      expect(expectSuccess(result)[0]?.forAccountType).toBe('manager');
+      expect(expectSuccess(result)[1]?.forAccountType).toBeNull();
     });
 
     it('filters by account type', async () => {

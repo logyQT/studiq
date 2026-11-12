@@ -12,7 +12,11 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  createNextRequest,
+  createNextRequestWithParams,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { GET as getById, PUT as update } from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
 import { POST as batchAction } from '@/app/(backend)/api/v1/flashcards/decks/batch/[action]/route';
 import {
@@ -127,8 +131,8 @@ describe(`Flashcard Deck Suspend`, () => {
       groups: 2,
     });
     orgId = teacher.orgId!;
-    groupA = teacher.groups[1];
-    const groupB = teacher.groups[2];
+    groupA = requiredAt(teacher.groups, 1, 'seeded group');
+    const groupB = requiredAt(teacher.groups, 2, 'seeded group');
 
     // The API creates groups without enrolling their creator; deck group-sharing is
     // only allowed to groups the caller actually teaches (#140).

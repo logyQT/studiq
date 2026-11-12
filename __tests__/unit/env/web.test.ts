@@ -80,7 +80,7 @@ function spawnSleeper(extra: string[], env: NodeJS.ProcessEnv = baseEnv()): Prom
   });
   return new Promise((resolve, reject) => {
     let stdout = '';
-    outer.stdout?.on('data', (chunk: Buffer | string) => {
+    outer.stdout.on('data', (chunk: Buffer | string) => {
       stdout += String(chunk);
     });
     outer.on('error', reject);
@@ -104,7 +104,7 @@ async function waitForCommand(pid: number, needle: string): Promise<void> {
       encoding: 'utf8',
       timeout: 5_000,
     });
-    if (result.status === 0 && (result.stdout ?? '').includes(needle)) return;
+    if (result.status === 0 && result.stdout.includes(needle)) return;
     await new Promise((done) => setTimeout(done, 25));
   }
   throw new Error(`process ${pid} never showed '${needle}' in its command`);

@@ -70,10 +70,12 @@ export function selectBootstrapPrices(
 
     if (!plan.isActive) continue;
 
-    let valid = true;
+    // A boolean flag would be narrowed to `true`: the only assignment happens
+    // inside `fail`, which the checker does not model. The error count is the
+    // signal the loop can actually test.
+    const errorCountBefore = errors.length;
     const fail = (message: string) => {
       errors.push(`${plan.key}: ${message}`);
-      valid = false;
     };
 
     const amount = plan.priceMonthly ?? 0;
@@ -92,7 +94,7 @@ export function selectBootstrapPrices(
     if (!/^[a-z0-9_]+$/.test(plan.key)) {
       fail('key must match /^[a-z0-9_]+$/ so it can be used in a lookup key');
     }
-    if (!plan.name?.trim()) {
+    if (!plan.name.trim()) {
       fail('name is empty');
     }
 
@@ -101,7 +103,7 @@ export function selectBootstrapPrices(
       fail(`currency must be ${BOOTSTRAP_CURRENCY}, got "${plan.currency ?? ''}"`);
     }
 
-    if (!valid) continue;
+    if (errors.length > errorCountBefore) continue;
 
     prices.push({
       planKey: plan.key,
@@ -186,7 +188,7 @@ export function priceMatches(
     price.currency.toLowerCase() === row.currency &&
     price.unit_amount === row.unitAmount &&
     price.recurring?.interval === row.interval &&
-    price.recurring?.interval_count === 1 &&
+    price.recurring.interval_count === 1 &&
     price.tax_behavior === BOOTSTRAP_TAX_BEHAVIOR
   );
 }

@@ -108,7 +108,7 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
   }
   return shuffled;
 }
@@ -287,7 +287,7 @@ export default function SessionClient(props: SessionClientProps) {
           setCards(shuffleArray(mapped));
           setHasMore(mapped.length >= batchSize);
         }
-        if (!cancelled) setLoaded(true);
+        setLoaded(true);
       } catch {
         if (!cancelled) setError('FETCH_FAILED');
       } finally {
@@ -403,7 +403,7 @@ export default function SessionClient(props: SessionClientProps) {
           durationMs,
           cardsStudied: totalAnswered,
           cardsCorrect: correctCount,
-          deckIds: deckIds ?? [],
+          deckIds,
           mode: modeStr,
         }),
       }).catch(() => {});

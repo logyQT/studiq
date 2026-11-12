@@ -30,7 +30,7 @@ export const generateFlashcardsTool = tool({
         agentName: 'general',
         eventType: 'tool_call',
         label: 'generate_flashcards start',
-        data: { task: task?.slice(0, 100), inputCount: flashcards?.length, deckName: deck_name },
+        data: { task: task.slice(0, 100), inputCount: flashcards.length, deckName: deck_name },
       });
 
       const parsed = parseFlashcards(flashcards);
