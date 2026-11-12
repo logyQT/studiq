@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@studiq/ui';
-import { ArrowRight, Eye, MoreVertical } from 'lucide-react';
+import { ArrowRight, CheckSquare, Eye, MoreVertical } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
@@ -50,6 +50,7 @@ export const QuestionBankCard = memo(
   }: QuestionBankCardProps) {
     const router = useRouter();
     const gradientHex = getGradientHex(bank.id);
+    const bankHref = `${basePath}/${bank.id}`;
 
     return (
       <Card
@@ -60,7 +61,7 @@ export const QuestionBankCard = memo(
           if (isSelecting) {
             onToggleSelect();
           } else {
-            router.push(`${basePath}/${bank.id}`);
+            router.push(bankHref);
           }
         }}
       >
@@ -156,16 +157,19 @@ export const QuestionBankCard = memo(
                   so clicks on its items still bubble through the React tree. Stop them here
                   or item activation triggers Card's onClick (router.push) and unmounts the dialog. */}
               <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                {canUpdate && (
-                  <DropdownMenuItem onSelect={onEdit}>{t('common_edit')}</DropdownMenuItem>
-                )}
                 <DropdownMenuItem
                   onSelect={() => {
                     onSelect();
                     onToggleSelect();
                   }}
                 >
-                  {t('common_manage')}
+                  <CheckSquare className="mr-2 h-4 w-4" /> {t('select_banks')}
+                </DropdownMenuItem>
+                {canUpdate && (
+                  <DropdownMenuItem onSelect={onEdit}>{t('common_edit')}</DropdownMenuItem>
+                )}
+                <DropdownMenuItem onSelect={() => router.push(bankHref)}>
+                  {canUpdate ? t('common_manage') : t('view_bank')}
                 </DropdownMenuItem>
                 {canDelete && (
                   <DropdownMenuItem onSelect={onDelete} className="text-destructive">
@@ -253,16 +257,19 @@ export const QuestionBankCard = memo(
                   </DropdownMenuTrigger>
                   {/* Portaled to body but still in the Card's React subtree — see mobile variant. */}
                   <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                    {canUpdate && (
-                      <DropdownMenuItem onSelect={onEdit}>{t('common_edit')}</DropdownMenuItem>
-                    )}
                     <DropdownMenuItem
                       onSelect={() => {
                         onSelect();
                         onToggleSelect();
                       }}
                     >
-                      {t('common_manage')}
+                      <CheckSquare className="mr-2 h-4 w-4" /> {t('select_banks')}
+                    </DropdownMenuItem>
+                    {canUpdate && (
+                      <DropdownMenuItem onSelect={onEdit}>{t('common_edit')}</DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onSelect={() => router.push(bankHref)}>
+                      {canUpdate ? t('common_manage') : t('view_bank')}
                     </DropdownMenuItem>
                     {canDelete && (
                       <DropdownMenuItem onSelect={onDelete} className="text-destructive">
