@@ -47,7 +47,7 @@ case; environment-wide values need the coordination below:
   a bug: it is out of scope for the corpus unless the case under test covers it.
 - **`apps/admin` is out of scope for QA** — do not start it, sign requests for
   it, or file findings against it. No case requires it.
-- The observability backend is reachable through the `grafana` MCP server.
+- The observability backend is reachable through the `grafana` MCP server. If it is not, follow the escalation in the observability section — do not proceed with a fabricated trace id.
 - `gh` is authed as logyQT; issues live in logyQT/studiq.
 
 ### Browser — use the session browser
@@ -108,7 +108,7 @@ A `grafana` MCP server is connected. Call it from Code Mode as `tools["grafana"]
 
 **`<service>` below is the telemetry service name assigned to your session.** `env:ensure` sets it to `studiq-<branch>` for the app it starts; read `OTEL_SERVICE_NAME` from that process (or derive it from the branch) rather than assuming `studiq`. In a parallel environment every filter must use **your** service name or you will read another agent's telemetry.
 
-The observability backend is **one stack per machine**, not per worktree. Never start or stop `docker compose` from your worktree. If it is down, run `bun run env:doctor` and start it from the primary checkout it prints (on this VM `/workspaces/studiq`).
+The observability backend is **one stack per machine**, not per worktree. Never start or stop `docker compose` from your worktree. If it is down, run `bun run env:doctor` and `bun run env:observability`. If you own the primary checkout, start it there once (the doctor prints the exact command) and re-run `bun run env:observability ensure`; if you do not own it, **stop** and report `BLOCKED/env` with both outputs, asking the coordinator/operator to start it. Never substitute a local correlation id for a trace id.
 
 Pinpoint workflow (run after a failing request appears in the browser):
 
@@ -124,8 +124,8 @@ Gotchas:
 
 - Times: no offset = UTC. Use RFC3339 (`2026-10-19T14:00:00Z`) or relative (`now-15m`); pass the wall-clock window of the step you just ran.
 - Export is batched (~15s): if a trace isn't there yet, re-query once before concluding "no data".
-- **No `x-trace-id` on an authenticated response, or empty Tempo/Loki while the app responds → the environment is stale, telemetry is off, or you filtered the wrong `<service>`.** Re-check the session environment; report as `env`, never as a bug.
-- If a datasource is unhealthy (`check_datasources_health()`), say so and fall back to browser + DB evidence — don't present a guess as a confirmed root cause.
+- **No `x-trace-id` on an authenticated response, or empty Tempo/Loki while the app responds → the environment is stale, telemetry is off, or you filtered the wrong `<service>`.** Re-check the session environment and **stop**: report `BLOCKED/env` with `env:doctor`/`env:observability`; never invent an id or report it as a bug.
+- If a datasource is unhealthy (`check_datasources_health()`, or the MCP itself is unavailable), **do not** fabricate a trace id or downgrade to a vague "server error". Mark the finding `BLOCKED/env`, include the doctor output, and escalate. A browser-only fallback is acceptable only for a purely visual/front-end issue; say explicitly that no server telemetry was needed.
 
 ## How to report
 
@@ -137,7 +137,7 @@ Gotchas:
 - One bug = one issue. If the scenario exposes several distinct defects, **file each one as its own issue** with its own evidence. Do not hold any of them for approval, and do not use a blocking question tool.
 - Language: ENGLISH (repo convention). Always check duplicates before filing (same search as above).
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
-- Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or state explicitly that observability was unavailable; evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).
+- Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or mark the finding `BLOCKED/env` with the `env:doctor`/`env:observability` output; never file a root cause you could not observe. Evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).
 - Evidence: **attach the browser screenshot(s) themselves** — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files), or `gh issue comment <n> --attach ...` to add them to an existing issue. Save the files somewhere writable (`/tmp/qa-<case>/` if the session temp dir is not), and put console/network + Grafana findings in the body. A filename, path or "see qa-*.png" is **not evidence**: the uploaded image must be on the issue. For a visual defect, capture the failing state immediately before you file it. In review-worker mode (report-only, no issue filing) upload the same screenshots with `gh pr comment <n> --attach ...` and cite that link.
 
 ### End of session — always end with this plain-text report

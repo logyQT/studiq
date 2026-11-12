@@ -113,6 +113,25 @@ container reaches the host's Grafana):
 with the token supplied by the same file, e.g.
 `-e GRAFANA_SERVICE_ACCOUNT_TOKEN="$(cat ~/.config/studiq/observability/grafana-mcp-token)"`.
 
+## If the stack or MCP is down
+
+Do **not** substitute a local correlation id for a trace id, and do not file a
+server-side root cause you could not observe. Run:
+
+```bash
+bun run env:doctor          # health, primary path, exact start command
+bun run env:observability   # MCP auth state and token path
+```
+
+- **You own the primary checkout:** start the stack there
+  (`cd <primary> && docker compose up -d`), wait for health, then run
+  `bun run env:observability ensure`.
+- **You do not own it** (a worktree/agent session): stop, report `BLOCKED/env`
+  with both outputs, and ask the coordinator/operator to start it. Never start
+  or stop a stack you do not own.
+- A response with no `x-trace-id`, or empty Tempo/Loki while the app answers, is
+  an environment fault, not a product bug. Do not invent an id to fill the gap.
+
 ## The loop
 
 ### 1. Reproduce in the browser

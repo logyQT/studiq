@@ -8,7 +8,7 @@ import { probePortBind } from '../lib/net';
 import { probeHttp } from '../lib/health';
 import { ensureGrafanaToken } from '../lib/grafana';
 import { readRegistry } from '../lib/registry';
-import { REPO_ROOT, canon, currentBranchRef } from '../lib/repo';
+import { REPO_ROOT, canon, currentBranchRef, primaryCheckoutPath } from '../lib/repo';
 import {
   probeStackStatus,
   readListedStackRuntime,
@@ -102,7 +102,11 @@ async function ensureGrafanaBestEffort(): Promise<void> {
       writeStderrLine(
         "env: Grafana MCP token minted — run 'opencode service restart' (or start a new session) to pick it up",
       );
-    } else if (!status.ok && status.state !== 'unreachable') {
+    } else if (status.state === 'unreachable') {
+      writeStderrLine(
+        `env: observability stack is down — traces/logs are unavailable; start it from the primary: cd "${primaryCheckoutPath()}" && docker compose up -d`,
+      );
+    } else if (!status.ok) {
       writeStderrLine(
         `env: Grafana MCP auth ${status.state}; run 'bun run env:observability'${status.detail ? ` (${status.detail})` : ''}`,
       );

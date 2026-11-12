@@ -296,6 +296,9 @@ async function buildReport(): Promise<DoctorReport> {
   );
   if (!observability.up) {
     lines.push('  note       start it once from the primary checkout, never from a worktree');
+    lines.push(
+      '  note       traces/logs are not readable by agents; do not substitute a local trace id',
+    );
     if (!observability.primaryReady) {
       lines.push(`  note       update the primary first: git -C "${observability.primary}" pull`);
     }
@@ -304,6 +307,10 @@ async function buildReport(): Promise<DoctorReport> {
         '  note       a partial/legacy stack is holding a port; identify it with `docker compose ls` and stop that project from its own directory',
       );
     }
+  } else if (observability.auth !== 'ok') {
+    lines.push(
+      '  note       the MCP token is not valid — run `bun run env:observability`; do not substitute a local trace id',
+    );
   }
 
   lines.push('', '▸ Ports');

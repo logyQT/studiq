@@ -152,6 +152,11 @@ Reply with a table and exactly one fenced `json` block, nothing after it:
 check could not run (env, unrun prerequisite, API-only) — say why, never guess;
 use `N/D` only for a human-provided fixture the case names. State which edge-case
 rows you exercised and which you skipped. File confirmed defects per the QA skill.
+
+If observability is down and the claim needs server evidence, return `BLOCKED`
+with `env: "broken: observability down"` and the `env:doctor` / `env:observability`
+output — do not PASS the claim on a client-only shortcut, and never fabricate a
+trace id.
 ````
 
 ## Step 5 — Supporting evidence (not proof)

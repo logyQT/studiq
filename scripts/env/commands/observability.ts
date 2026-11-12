@@ -8,6 +8,7 @@ import {
   type GrafanaStatus,
 } from '../lib/grafana';
 import { printJson, writeLine } from '../lib/output';
+import { primaryCheckoutPath } from '../lib/repo';
 
 function printStatus(status: GrafanaStatus, mode: 'status' | 'ensure'): void {
   writeLine('▸ Grafana MCP');
@@ -20,6 +21,10 @@ function printStatus(status: GrafanaStatus, mode: 'status' | 'ensure'): void {
     writeLine(`  token      ${status.tokenFile}`);
   }
   writeLine(`  mcp        ${status.mcpBinary ? 'mcp-grafana on PATH' : 'mcp-grafana NOT on PATH'}`);
+  if (status.state === 'unreachable') {
+    writeLine(`  start      cd "${primaryCheckoutPath()}" && docker compose up -d`);
+    writeLine('  note       fix the stack before diagnosing; never substitute a local trace id');
+  }
   if (status.detail && !status.ok) writeLine(`  detail     ${status.detail}`);
   if (mode === 'ensure' && status.minted) {
     writeLine(

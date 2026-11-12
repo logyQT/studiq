@@ -439,6 +439,10 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:7001`.
 > best-effort, and `opencode.jsonc` reads it with `{file:...}`. `env:doctor`
 > reports `observability.auth`; after a re-mint, run `opencode service restart`
 > (a config reload does not respawn an already-running MCP server).
+> If the stack or MCP is down, agents must not substitute a local correlation id
+> for a trace id or file a server-side root cause without the span/log. Run
+> `bun run env:doctor` and `bun run env:observability`; if you do not own the
+> primary checkout, stop and report `BLOCKED/env` for the coordinator to start it.
 
 - SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
   exporter + `PeriodicExportingMetricReader` + `BatchLogRecordProcessor` over a

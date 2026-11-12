@@ -280,6 +280,36 @@ instead of `next dev`:
 bun run env:build && bun run env:serve   # or: bun run env:ensure --profile web
 ```
 
+### 3b. Agent observability (first run)
+
+The Grafana MCP needs the machine-wide stack and one service-account token.
+Start the stack **before** `env:ensure` so that run mints the token:
+
+```bash
+docker compose ls                    # already running? skip the next line
+cd "$(git worktree list | head -1 | awk '{print $1}')"
+docker compose up -d                 # ~1-2 min warm, 3-4 min on a cold image pull
+```
+
+Back in your checkout:
+
+```bash
+bun run env:ensure --profile web     # starts Supabase/build/serve and mints the token
+bun run env:observability            # expect: auth ok (studiq-mcp, Viewer)
+```
+
+If the stack started after `env:ensure`, mint explicitly with
+`bun run env:observability ensure`. If this OpenCode session was already running
+before the token existed, `opencode service restart` (the `{file:...}` token is
+read at config load). `mcp-grafana` must be on PATH — it is baked into the dev
+image (`which mcp-grafana`).
+
+The observability/MCP part is under two minutes warm; the Supabase native
+stack + first build is the long pole in step 3. If the stack is already up
+(`docker compose ls`), do not start a second one. If you are in a worktree and
+the stack is down, do not start it yourself: report `BLOCKED/env` with
+`bun run env:doctor` and ask the primary owner/coordinator.
+
 ### 4. Where values live
 
 There is no generated env file to edit. `.env.local` (plus the process
@@ -397,7 +427,7 @@ The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it (`dev:
 `dev:admin` never called it: they stay as human-only conveniences (`dev:admin` is the `apps/admin` HMR on
 `127.0.0.1:4000`; `env` has no admin equivalent).
 
-### 9. Start the machine-wide observability stack (recommended)
+### 9. Start the machine-wide observability stack (required for agent diagnosis)
 
 There is **one observability stack per machine**, shared by every checkout,
 worktree and agent. It belongs to the **primary checkout** — on this VM
@@ -414,6 +444,8 @@ The Compose project name is fixed (`studiq-observability`) and the host ports
 are fixed, so a second `docker compose up` from a worktree would conflict with
 or mutate the same stack rather than create an isolated one. `bun run env:doctor`
 prints the current health, the primary path and this exact start command.
+After it is healthy, `bun run env:observability ensure` (or re-running
+`env:ensure`) mints the agent MCP token; see step 3b.
 
 > The primary checkout must contain the fixed project name. If `env:doctor` says
 > its compose file predates it, update that checkout first

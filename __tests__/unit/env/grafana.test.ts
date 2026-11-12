@@ -231,6 +231,17 @@ describe('env:observability', () => {
     expect(parseJsonObject(result.stdout)).toMatchObject({ state: 'unreachable', ok: false });
   });
 
+  it('exits 4 when ensure cannot reach the stack', async () => {
+    const harness = newHarness();
+
+    const result = await harness.run(['observability', 'ensure', '--json'], {
+      GRAFANA_URL: 'http://127.0.0.1:1',
+    });
+
+    expect(result.status).toBe(4);
+    expect(parseJsonObject(result.stdout)).toMatchObject({ state: 'unreachable', ok: false });
+  });
+
   it('exits 2 when --force is used without ensure', async () => {
     const harness = newHarness();
 
