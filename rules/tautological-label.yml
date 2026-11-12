@@ -1,0 +1,40 @@
+id: tautological-label
+language: Tsx
+severity: error
+message: >-
+  Label repeats the value it is labelling (often the placeholder), so it adds no
+  information. Keep one (AGENTS.md → Tautology Is Harmful).
+files:
+  - '**/*.tsx'
+rule:
+  all:
+    - any:
+        - kind: jsx_self_closing_element
+        - kind: jsx_opening_element
+    # Match the attributes structurally, not with a full-element pattern: a
+    # pattern pins the exact attribute list and the literal value form, so
+    # `label="X" placeholder="X" id="x"` and `label={t('x')} placeholder={t('x')}`
+    # both slipped through the previous version. `stopBy` keeps the search on
+    # this tag, so a wrapper is not reported for a child's matching pair.
+    - has:
+        kind: jsx_attribute
+        stopBy:
+          any:
+            - kind: jsx_element
+            - kind: jsx_self_closing_element
+        all:
+          - has: { kind: property_identifier, regex: '^label$' }
+          - any:
+              - has: { kind: string, pattern: $TEXT }
+              - has: { kind: jsx_expression, pattern: $TEXT }
+    - has:
+        kind: jsx_attribute
+        stopBy:
+          any:
+            - kind: jsx_element
+            - kind: jsx_self_closing_element
+        all:
+          - has: { kind: property_identifier, regex: '^placeholder$' }
+          - any:
+              - has: { kind: string, pattern: $TEXT }
+              - has: { kind: jsx_expression, pattern: $TEXT }

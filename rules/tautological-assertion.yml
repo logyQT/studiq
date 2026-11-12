@@ -1,0 +1,13 @@
+id: tautological-assertion
+language: TypeScript
+severity: error
+message: >-
+  Assertion compares a value with itself, so it cannot fail. Assert the expected
+  outcome instead (AGENTS.md → Tautology Is Harmful).
+files:
+  - '**/*.ts'
+rule:
+  any:
+    - pattern: expect($X).toBe($X)
+    - pattern: expect($X).toEqual($X)
+    - pattern: expect($X).toStrictEqual($X)

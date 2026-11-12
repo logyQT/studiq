@@ -1,0 +1,38 @@
+id: comment-narrates-diff
+snapshots:
+  "// deleted the legacy helper\n":
+    labels:
+      - source: // deleted the legacy helper
+        style: primary
+        start: 0
+        end: 28
+  "// no longer reads the cookie\n":
+    labels:
+      - source: // no longer reads the cookie
+        style: primary
+        start: 0
+        end: 29
+  "// now uses the new API\n":
+    labels:
+      - source: // now uses the new API
+        style: primary
+        start: 0
+        end: 23
+  "// previously named Foo\n":
+    labels:
+      - source: // previously named Foo
+        style: primary
+        start: 0
+        end: 23
+  "// removed the old path\n":
+    labels:
+      - source: // removed the old path
+        style: primary
+        start: 0
+        end: 23
+  "// was handled upstream\n":
+    labels:
+      - source: // was handled upstream
+        style: primary
+        start: 0
+        end: 23

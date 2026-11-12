@@ -1,0 +1,14 @@
+id: comment-narrates-diff-tsx
+snapshots:
+  "// now uses the new API\n":
+    labels:
+      - source: // now uses the new API
+        style: primary
+        start: 0
+        end: 23
+  "// removed the old path\n":
+    labels:
+      - source: // removed the old path
+        style: primary
+        start: 0
+        end: 23

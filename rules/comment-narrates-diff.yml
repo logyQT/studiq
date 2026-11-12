@@ -1,0 +1,18 @@
+id: comment-narrates-diff
+language: TypeScript
+severity: error
+message: >-
+  Comment narrates a change instead of documenting the code. Git history is the
+  changelog (AGENTS.md → Tautology Is Harmful).
+files:
+  - '**/*.ts'
+rule:
+  all:
+    - kind: comment
+    - any:
+        # "// removed the old path", "// deleted the legacy helper"
+        - regex: '(?i)^//\s*(removed|deleted)\s+(the\s+)?(old|previous|legacy|unused|former)\b'
+        # "// was handled upstream", "// previously named Foo"
+        - regex: '(?i)^//\s*(was|previously)\s+(handled|done|used|named|called|returned|stored|kept)\b'
+        # "// now uses the new API", "// no longer reads the cookie"
+        - regex: '(?i)^//\s*(now|no longer)\s+(uses?|returns?|calls?|reads?|writes?|stores?|keeps?)\b'

@@ -1,0 +1,25 @@
+id: comment-narrates-diff
+valid:
+  # Rationale that happens to start with a past-tense verb.
+  - |
+    // Removed by #595: forwarded so the schema rejects it
+  - |
+    // removed from the list only after validation
+  - |
+    // This was handled in 2023 by the legacy importer
+  # A block comment is not the line-comment shape this rule targets.
+  - |
+    /* now uses the new API */
+invalid:
+  - |
+    // removed the old path
+  - |
+    // deleted the legacy helper
+  - |
+    // was handled upstream
+  - |
+    // previously named Foo
+  - |
+    // now uses the new API
+  - |
+    // no longer reads the cookie
