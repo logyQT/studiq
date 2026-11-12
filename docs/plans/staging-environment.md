@@ -3,6 +3,8 @@
 **Status:** proposed, not started  
 **Target:** a persistent staging environment for release candidates, agent regression runs, final QA and manual testing.
 
+> See also: [`env-tool.md`](env-tool.md) for the local environment; [`deployment.md`](../deployment.md) for production.
+
 ## 1. Goals
 
 - One stable URL for the web app: `https://staging.<domain>`.

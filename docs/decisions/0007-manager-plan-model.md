@@ -102,4 +102,4 @@ preserves the purchase context if a reset is ever wanted.
 - `packages/server/src/services/limits.resolver.ts`
 - `packages/server/src/services/subscription-plan.service.ts`
 - `apps/web/src/app/(frontend)/pricing/_components/pricing-content.tsx`
-- `docs/limits.md`, `docs/plans/seat-based-licensing.md`
+- `docs/limits.md`, `docs/plans/archive/seat-based-licensing.md`

@@ -261,7 +261,7 @@ latency, error rate while developing. Catches regressions before they ship.
 5. Read Prometheus metrics for the time window to see the aggregate impact.
 6. Fix, then watch the dashboard recover.
 
-See [`docs/observability-debugging.md`](../observability-debugging.md) for the
+See [`docs/observability-debugging.md`](../../observability-debugging.md) for the
 full agent-driven loop.
 
 ## Open Questions

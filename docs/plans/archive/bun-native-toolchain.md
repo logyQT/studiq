@@ -2,7 +2,7 @@
 
 Status: **phase 1 (#438) and the strict core (#984) implemented**; the `perf` and `style` tiers
 are deliberately rejected. Remaining follow-ups and the evidence behind those decisions:
-[`docs/audits/173-bun-strictness-premise.md`](../audits/173-bun-strictness-premise.md).
+[`docs/audits/173-bun-strictness-premise.md`](../../audits/173-bun-strictness-premise.md).
 
 PR #173 (`experimental/bun-native-linter`) bundled two different changes:
 
@@ -134,7 +134,7 @@ Landed deliberately:
 - typed test boundaries (`json<T>` / `asJson<T>`, typed doubles) instead of `any`.
 
 Rejected, with measurements in
-[`docs/audits/173-bun-strictness-premise.md`](../audits/173-bun-strictness-premise.md):
+[`docs/audits/173-bun-strictness-premise.md`](../../audits/173-bun-strictness-premise.md):
 
 - **`perf` tier** — ~1,700 findings, only 3 auto-fixable, dominated by `no-await-in-loop` on
   intentional sequential I/O.

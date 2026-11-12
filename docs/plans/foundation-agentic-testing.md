@@ -3,7 +3,7 @@
 > **AI architecture reference:** [`docs/ai.md`](../ai.md) — unified doc covering architecture, tools, security, and extension guide.
 
 Status: ACTIVE
-Last updated: 2026-10-24
+Last updated: 2026-11-12
 
 > **Historical admin-auth note:** the PEM gate described in this plan was
 > removed. `apps/admin` is internal, has no app-level auth, and is not deployed;
@@ -45,11 +45,11 @@ Last updated: 2026-10-24
 
 - Phase A first (independent, immediate value) ✅
 - Phase B before Phase C (de-tangle before moving code into packages) ✅
-- Phase B.5 (seat cleanup) before Phase C — C2 extracts the post-cleanup FeatureResolver
-- Phase C: monorepo scaffold + admin detach (C1-C7 done) ✅, admin rebuild + server extraction next
-- Phase E: move main app to `apps/web/` (after admin is stable)
+- Phase B.5 (seat cleanup) before Phase C — C2 extracts the post-cleanup FeatureResolver ✅
+- Phase C: monorepo scaffold + admin detach — C1-C14 complete, C8 deferred ✅
+- Phase E: main app moved to `apps/web/` ✅
 - Phase D: agentic testing — **split and deferred**: mechanical cases become the deterministic
-  Playwright suite in [`docs/e2e-campaign.md`](archive/e2e-campaign.md); judgement-heavy cases stay
+  Playwright suite in [`archive/e2e-campaign.md`](archive/e2e-campaign.md); judgement-heavy cases stay
   agentic (see [PR #77](https://github.com/logyQT/studiq/pull/77))
 
 ---
@@ -122,17 +122,11 @@ themselves — they are not API-flow suites and intentionally stay on service-ro
 `TEST_USERS`/`seedOrganization`/`seedQuestion` remain referenced ONLY by the suites
 above (plus their definitions in `helpers.ts`); the API-first suites run without them.
 
-### Handoff: test parallelism (next task)
-
-Phase A done → next agent should pick up `docs/plans/test-parallelism.md` (full prompt):
-enable file parallelism + in-file concurrency + a 3×-side-by-side self-stress (every test
-runs as 3 concurrent copies) to prove isolation and catch flakes in one pass.
-
 ---
 
 ## Phase B — Decouple flags / perms / limits
 
-Status: NOT STARTED
+Status: COMPLETE
 
 ### Tasks
 
@@ -152,41 +146,42 @@ Status: NOT STARTED
 
 ## Phase B.5 — Seat licensing cleanup (opt-in per-user upgrades)
 
-Status: NOT STARTED — separate PR off main, merged BEFORE Phase C starts.
+Status: COMPLETE — landed before Phase C; checkout quantity wiring deferred to #662 / #1019.
 
 Why: seats are the per-headcount add-on ("green-light one teacher's AI quota,
-not an org-wide upgrade for everyone"). The current implementation is inert
-bookkeeping that conflicts with that intent: pools are pre-seeded at org
-creation from `plan_seat_allocations`, nothing can grow a pool, assignment
-isn't role-aware, and `FeatureResolver` swaps a seat plan in wholesale —
+not an org-wide upgrade for everyone"). The pre-B.5 implementation was inert
+bookkeeping that conflicted with that intent: pools were pre-seeded at org
+creation from `plan_seat_allocations`, nothing could grow a pool, assignment
+wasn't role-aware, and `FeatureResolver` swapped a seat plan in wholesale —
 letting a campus seat grant `org.manage`/`member.manage`/`role.builder` to a
-member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
+member. Cleaning the axis before C2 moved `FeatureResolver` into
+`packages/authz` removed that leak.
 
 ### Tasks (scope of the seats PR)
 
-- [ ] S1 Drop default pool seeding — remove seat-pool creation from
+- [x] S1 Drop default pool seeding — remove seat-pool creation from
       `handle_new_organization` (`20260708000002` + `20260714000003`) and the
       `plan_seat_allocations` seed in `seeds/00_plans.sql`; drop the
       `plan_seat_allocations` table (clean drop migration)
-- [ ] S2 Pools are on-demand only — `seat.service` creates a pool when a seat
+- [x] S2 Pools are on-demand only — `seat.service` creates a pool when a seat
       is added/purchased (addPool), never at org creation; `listPools` shows
       only realized purchases
-- [ ] S3 Fix `FeatureResolver` precedence: seat plan = additive upgrade over
+- [x] S3 Fix `FeatureResolver` precedence: seat plan = additive upgrade over
       the org-role base, then re-apply role restrictions per key so a
       non-admin role can never inherit org.manage/member.manage/role.builder
       through a seat (privilege leak)
-- [ ] S4 Role-aware assignment — `seat.service` validates pool plan vs target
+- [x] S4 Role-aware assignment — `seat.service` validates pool plan vs target
       account_type/org role (teacher→educator tier, student→student tier);
       the seats UI suggests the compatible seat per member instead of a
       free-for-all branded-pool menu
-- [ ] S5 Seats API + `manage/seats` page: pools = purchased quantities
+- [x] S5 Seats API + `manage/seats` page: pools = purchased quantities
       (add-to-pool on buy; checkout wiring comes later — after the monorepo
       PRs, mechanics first)
-- [ ] S6 Migrate tests to new semantics: `seats.test.ts` (integration),
+- [x] S6 Migrate tests to new semantics: `seats.test.ts` (integration),
       `seat.service.test.ts` / `seat.controller.test.ts` (unit),
       `feature.resolver.test.ts` seat-precedence cases; drop coverage of
       default/seeded pools
-- [ ] Verify: lint clean + unit + integration green; seats PR merged before
+- [x] Verify: lint clean + unit + integration green; seats PR merged before
       Phase C starts
 
 ### Open (deferred with billing)
@@ -198,7 +193,7 @@ member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
 
 ## Phase C — Detach admin panel (monorepo)
 
-> **Prerequisite:** Before starting C, clean up legacy AI dead code — see `docs/ai.md` → "Dead code to remove" section. The B.5 refactor agent may still be modifying some of these files.
+> **Prerequisite (met):** legacy AI dead code was removed before C — see `docs/ai.md` → "Dead code to remove"; B.5 landed before C2.
 
 Status: C1-C14 COMPLETE, C8 DEFERRED (see decisions)
 

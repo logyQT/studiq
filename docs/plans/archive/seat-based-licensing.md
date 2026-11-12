@@ -44,7 +44,7 @@ create table public.org_seat_assignments (
 
 ## Feature resolution (Phase 2, supersedes Phase 1)
 
-The full chain is canonical in [`docs/limits.md`](../limits.md). The seat adds
+The full chain is canonical in [`docs/limits.md`](../../limits.md). The seat adds
 one delta:
 
 ```

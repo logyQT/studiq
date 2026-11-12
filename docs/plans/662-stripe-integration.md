@@ -1485,7 +1485,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 
 ### Phase 5 — docs, pilot, default
 
-- `docs/api.md`, `docs/database.md`, `docs/ROADMAP.md`, `docs/testing.md`.
+- `docs/deployment.md#billing-endpoints`, `docs/database.md`, `docs/ROADMAP.md`, `docs/testing.md`.
 - Bootstrap + CLI runbook in `docs/ONBOARDING.md` or `docs/deployment.md`.
 - Pilot **one plan** (e.g. `spark`) in one environment; watch `billing.*` logs and the webhook failure rate.
 - Production now always runs Stripe (`APP_ENV=production`); `mock` stays the default in dev/CI/QA and is a production boot error.
@@ -1543,7 +1543,7 @@ Never run this on PRs from forks; it needs network + a shared sandbox. Document 
 | 21  | Cancel / reactivate                                                                                                | `apps/web/src/app/(backend)/api/v1/billing/cancel/route.ts`, gateway                                                                                                    | `billing.cancel.test.ts`             |
 | 22  | Rebuild the three billing pages + invoice link + i18n                                                              | `apps/web/src/app/(frontend)/{app,edu,manage}/billing/page.tsx`, `apps/web/src/components/account/PaymentHistoryContent.tsx`, `apps/web/src/i18n/messages/{pl,en}.json` | component/E2E                        |
 | 23  | Opt-in Stripe test-mode suite                                                                                      | `__tests__/integration/stripe-sandbox.test.ts`                                                                                                                          | `RUN_STRIPE_TESTS=1`                 |
-| 24  | Docs                                                                                                               | `docs/api.md`, `docs/database.md`, `docs/ROADMAP.md`, `docs/testing.md`, `docs/ONBOARDING.md`                                                                           | `bun run lint`                       |
+| 24  | Docs                                                                                                               | `docs/deployment.md#billing-endpoints`, `docs/database.md`, `docs/ROADMAP.md`, `docs/testing.md`, `docs/ONBOARDING.md`                                                  | `bun run lint`                       |
 | 25  | Pilot one plan; monitor `billing.*`; decide on production default                                                  | —                                                                                                                                                                       | manual                               |
 
 ### 12.3 What blocked the design at planning time (historical — resolved by phases 1–5)
