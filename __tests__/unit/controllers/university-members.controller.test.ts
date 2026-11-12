@@ -100,7 +100,7 @@ describe('OrganizationMemberController', () => {
       expect(response).toHaveProperty('error', 'UNPROCESSABLE_ENTITY');
     });
 
-    it('returns error when service returns failure', async () => {
+    it('returns 403 when service fails with FORBIDDEN', async () => {
       mockService.changeRole.mockResolvedValueOnce(failure('FORBIDDEN'));
 
       const response = await controller.changeRole(mockCtx, {
@@ -113,7 +113,7 @@ describe('OrganizationMemberController', () => {
       expect(response).toHaveProperty('error', 'FORBIDDEN');
     });
 
-    it('returns error when service returns failure', async () => {
+    it('returns 500 when service fails with INTERNAL_SERVER', async () => {
       mockService.changeRole.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.changeRole(mockCtx, {
@@ -146,7 +146,7 @@ describe('OrganizationMemberController', () => {
       expect(response).toHaveProperty('error', 'BAD_REQUEST');
     });
 
-    it('returns error when service returns failure', async () => {
+    it('returns 403 when service fails with FORBIDDEN', async () => {
       mockService.removeMember.mockResolvedValueOnce(failure('FORBIDDEN'));
 
       const response = await controller.removeMember(mockCtx, 'user-123');
@@ -156,7 +156,7 @@ describe('OrganizationMemberController', () => {
       expect(response).toHaveProperty('error', 'FORBIDDEN');
     });
 
-    it('returns error when service returns failure', async () => {
+    it('returns 500 when service fails with INTERNAL_SERVER', async () => {
       mockService.removeMember.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.removeMember(mockCtx, 'user-123');
