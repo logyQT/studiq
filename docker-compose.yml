@@ -67,8 +67,11 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
     environment:
-      # Applied on first boot only. An existing grafana_data volume keeps the
-      # old admin password; reset it with `docker compose exec grafana grafana cli admin reset-admin-password <pw>`.
+      # Interpolated from the environment `docker compose up -d` runs in (or a
+      # `.env` beside this file), never from `.env.local`, which only the env
+      # tool reads for minting. Applied on first boot only: an existing
+      # grafana_data volume keeps the old admin password; reset it with
+      # `docker compose exec grafana grafana cli admin reset-admin-password <pw>`.
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     depends_on:

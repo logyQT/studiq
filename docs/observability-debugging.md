@@ -87,9 +87,22 @@ opencode service restart
 
 A session started after the mint needs neither step.
 
-`GRAFANA_URL` defaults to `http://localhost:7001`. The admin credential used
-**only** for minting comes from `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`
-(default `admin` / `admin`; set them in `.env.local` for a non-default stack).
+`GRAFANA_URL` defaults to `http://localhost:7001` and is what
+`env:observability` / `env:doctor` reach; the agent MCP target is the URL in
+`opencode.jsonc`. The token file is machine-wide, so pointing `GRAFANA_URL` at a
+different Grafana also needs `opencode.jsonc` changed (the MCP keeps calling
+`localhost:7001`) and a re-mint with
+`bun run env:observability ensure --force` — otherwise the MCP gets 401 while
+the CLI looks healthy.
+
+The admin credential used **only** for minting comes from
+`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` (default `admin` / `admin`).
+Docker Compose does not read `.env.local`: `docker compose up -d` interpolates
+those names from its own environment, or from a `.env` file beside the compose
+file in the primary checkout, so that source must hold the same value. An
+existing `grafana_data` volume keeps its first-boot password; reset it with
+`docker compose exec grafana grafana cli admin reset-admin-password <pw>`.
+
 The `mcp-grafana` binary must be on the OpenCode server's PATH.
 
 The MCP starts with `--disable-admin --disable-write`: the debugging loop below

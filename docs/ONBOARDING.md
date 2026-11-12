@@ -266,6 +266,9 @@ bun run env:ensure --profile web
 ```
 
 > First run may take several minutes while the native stack artifacts download.
+> On a fresh machine, start the machine-wide observability stack first
+> ([step 9](#9-start-the-machine-wide-observability-stack-required-for-agent-diagnosis));
+> then this pass also mints the Grafana MCP token (step 3b).
 
 `env:ensure` starts (or resumes) **this branch's** Supabase stack, discovers its
 URLs/keys with `supabase stack status --output-format json`, **exports** them to
@@ -280,26 +283,19 @@ instead of `next dev`:
 bun run env:build && bun run env:serve   # or: bun run env:ensure --profile web
 ```
 
-### 3b. Agent observability (first run)
+### 3b. Mint the agent MCP token
 
-The Grafana MCP needs the machine-wide stack and one service-account token.
-Start the stack **before** `env:ensure` so that run mints the token:
-
-```bash
-docker compose ls                    # already running? skip the next line
-cd "$(git worktree list | head -1 | awk '{print $1}')"
-docker compose up -d                 # ~1-2 min warm, 3-4 min on a cold image pull
-```
-
-Back in your checkout:
+The Grafana MCP needs the machine-wide stack (starting it is [step 9](#9-start-the-machine-wide-observability-stack-required-for-agent-diagnosis))
+and one service-account token. On a fresh machine, start that stack first so
+this run mints the token; if the stack starts later, mint explicitly with
+`bun run env:observability ensure`.
 
 ```bash
 bun run env:ensure --profile web     # starts Supabase/build/serve and mints the token
 bun run env:observability            # expect: auth ok (studiq-mcp, Viewer)
 ```
 
-If the stack started after `env:ensure`, mint explicitly with
-`bun run env:observability ensure`. If this OpenCode session was already running
+If this OpenCode session was already running
 before the token existed, `opencode service restart` (the `{file:...}` token is
 read at config load). `mcp-grafana` must be on PATH — it is baked into the dev
 image (`which mcp-grafana`).
@@ -634,6 +630,7 @@ Run the deterministic gates locally before pushing: `bun run lint`,
 | `bun run env:down [--all]`              | Stop this checkout's web (+ this stack with `--all`)                             |
 | `bun run env:reset-db --yes`            | Reset this branch's DB + load seeds                                              |
 | `bun run env:doctor`                    | Explain missing / owned / colliding state                                        |
+| `bun run env:observability`             | `status`/`ensure` `[--force]`: validate/mint the Grafana MCP token               |
 | `bun run env:ports`                     | Print a free `APP_PORT` (stack ports are dynamic)                                |
 | `bun run env:supa status`               | This stack's URLs, keys and service state                                        |
 | `bun run env:supa db diff -f <name>`    | Generate migration from current changes                                          |

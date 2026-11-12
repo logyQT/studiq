@@ -111,6 +111,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run env:down`                 | Stop this checkout's web server; `env:down --all` also stops **this branch's** Supabase stack (data kept)                                                      |
 | `bun run env:reset-db`             | Destructive `supabase db reset` for **this branch's** stack (`--yes`)                                                                                          |
 | `bun run env:doctor`               | Explain missing / owned / colliding state (exit 1 on a real conflict)                                                                                          |
+| `bun run env:observability`        | `status`/`ensure` `[--force]`: validate or mint the Grafana MCP token (read-only by default)                                                                   |
 | `bun run env:ports`                | Print a free `APP_PORT` (`--json`); Supabase ports are assigned per stack                                                                                      |
 | `bun run env:logs`                 | Follow `.dev/web.log` + this stack's logs (`--no-follow` for the last 100)                                                                                     |
 
