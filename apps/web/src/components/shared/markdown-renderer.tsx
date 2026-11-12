@@ -89,7 +89,7 @@ function MarkdownListItem({ children }: MarkdownElementProps<'li'>) {
 }
 
 function MarkdownPre({ children }: MarkdownElementProps<'pre'>) {
-  return <>{children}</>;
+  return children;
 }
 
 function MarkdownCode({ className: codeClassName, children }: MarkdownElementProps<'code'>) {

@@ -69,6 +69,8 @@ suspicious = "warn"
 "@typescript-eslint/no-unused-vars" = "error"
 "@typescript-eslint/no-explicit-any" = "error"
 "react-hooks/exhaustive-deps" = "error"
+"vitest/no-identical-title" = "error"
+"react/jsx-no-useless-fragment" = "error"
 # Bun also ships `exhaustive-effect-dependencies`, a duplicate of the rule above
 # that fires on the same dependency arrays. Keep the ESLint-compatible name and
 # turn the duplicate off here instead of suppressing it inline at six call sites.
