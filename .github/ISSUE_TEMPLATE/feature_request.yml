@@ -1,0 +1,56 @@
+name: Feature request
+description: Suggest an improvement, or describe a problem worth solving.
+title: '[Feature] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first; a proposed solution is welcome but optional.
+
+        Do not use this form for something that is broken — open a **bug report** instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: Who runs into this, on which dashboard, and what do they have to do instead today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should the app do? A sketch, a screenshot of a similar tool, or the flow in words.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Student dashboard
+        - Teacher dashboard
+        - University manager dashboard
+        - Quizzes and attempts
+        - Flashcards and study
+        - Question banks
+        - AI assistant
+        - Plans and payments
+        - Account and settings
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What do you do today, and why is it not enough?
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Related issues, constraints, or how often this comes up.
+    validations:
+      required: false

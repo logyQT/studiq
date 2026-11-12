@@ -89,6 +89,7 @@ Full setup (Docker, env vars, seeding, Playwright) is in the
 | [Observability & Debugging](docs/observability-debugging.md) | Local telemetry stack and debugging workflow     |
 | [Deployment](docs/deployment.md)                             | Hosting, environment, production                 |
 | [Decisions](docs/decisions/)                                 | Architecture Decision Records                    |
+| [Contributing](CONTRIBUTING.md)                              | Conventional commits, issue reporting            |
 
 ## Scripts
 

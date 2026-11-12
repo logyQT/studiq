@@ -1,0 +1,65 @@
+name: Bug report
+description: Something is broken, or behaves differently than it should.
+title: '[Bug] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One bug per issue. Search open **and closed** issues for the same behaviour first.
+
+        Do not file security problems here — email support@studiq.pl instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: One or two sentences. What were you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: In order, starting from a clean state. Mention the active organization if the feature is org-scoped.
+      placeholder: |
+        1. Sign in as ...
+        2. Open ...
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Production or local build, browser and version, UI language, account type.
+      placeholder: Local build, Firefox 141, pl, teacher account
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: |
+        A screenshot for anything visual. For an API failure, the request (method, URL, status)
+        and the `x-trace-id` response header when present. Paste console errors rather than describing them.
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Frequency (always / sometimes), whether it worked before, related issues.
+    validations:
+      required: false
