@@ -1410,7 +1410,10 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        const row = firstRecorded(asJson<Array<{ attempt: { id: string } }>>(result.data));
+        const row = firstRecorded(
+          asJson<Array<{ attempt: { id: string } }>>(result.data),
+          'the student attempt row',
+        );
         expect(row.attempt.id).toBe('attempt-newest');
       }
     });

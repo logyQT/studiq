@@ -325,6 +325,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         <Button
           variant={includeSuspended ? 'default' : 'outline'}
           size="sm"
+          aria-label={t('show_suspended')}
+          aria-pressed={includeSuspended}
           onClick={() => setIncludeSuspended(!includeSuspended)}
           className="gap-1.5"
         >

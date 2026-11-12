@@ -1,4 +1,5 @@
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
+import { partialList } from '@studiq/server/lib/partial-result';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import { z } from '@studiq/server/lib/zod';
 import { tool } from 'ai';
@@ -16,7 +17,7 @@ export const extractConceptsTool = tool({
   inputSchema: z.object({
     material: z.string().describe('The educational material to analyze'),
     maxTerms: z.number().optional().describe('Maximum number of terms to extract'),
-    terms: z.array(termSchema).optional().describe('The extracted terms with definitions'),
+    terms: z.array(termSchema).describe('The extracted terms with definitions'),
   }),
   execute: ({ terms }) => {
     const cid = conversationStorage.getStore()?.conversationId;
@@ -25,7 +26,7 @@ export const extractConceptsTool = tool({
       agentName: 'general',
       eventType: 'tool_call',
       label: 'extract_concepts',
-      data: { termCount: terms?.length ?? 0 },
+      data: { termCount: partialList(terms).length },
     });
     return { terms };
   },

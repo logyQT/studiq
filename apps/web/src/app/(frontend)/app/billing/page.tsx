@@ -18,7 +18,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { BillingSubscriptionCard } from '@/components/billing/BillingSubscriptionCard';
 import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
-import { getVisibleLimitKeys } from '@/lib/pricing-limits';
+import { getLimitLabel as getLimitLabelShared, getVisibleLimitKeys } from '@/lib/pricing-limits';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { invoiceHistoryPath } from '@/lib/billing-subscription';
@@ -74,8 +74,7 @@ export default function AppBillingPage() {
   }
 
   function getLimitLabel(key: string): string {
-    const label = pt(`limit_${key}`);
-    return label.startsWith('limit_') ? key : label;
+    return getLimitLabelShared(key, pt);
   }
 
   const visibleLimits = getVisibleLimitKeys([plan], accountType);

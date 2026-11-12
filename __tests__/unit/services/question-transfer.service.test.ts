@@ -360,7 +360,7 @@ describe('QuestionTransferService.importQuestions', () => {
 
     expect(result.success && result.data).toEqual({ imported: 2 });
 
-    const questions = firstRecorded(inserts.questions);
+    const questions = firstRecorded(inserts.questions, 'the inserted questions');
     expect(questions).toHaveLength(2);
     expect(questions[0]).toMatchObject({
       content: 'One',
@@ -372,7 +372,7 @@ describe('QuestionTransferService.importQuestions', () => {
     });
     expect(new Set(questions.map((r) => r.id)).size).toBe(2);
 
-    const options = firstRecorded(inserts.question_options);
+    const options = firstRecorded(inserts.question_options, 'the inserted question options');
     expect(options).toEqual([
       { question_id: firstRecorded(questions).id, content: 'A', is_correct: true, order_index: 0 },
       { question_id: firstRecorded(questions).id, content: 'B', is_correct: false, order_index: 1 },

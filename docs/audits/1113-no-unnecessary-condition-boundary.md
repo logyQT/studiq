@@ -21,8 +21,9 @@ change runtime behaviour on partial payloads (74 unit tests across 22 files went
 exists to prevent.
 
 So the types were fixed first. The rule is now enabled as an `error` and reports **0 findings**
-across `apps/web/src`, `packages` and `__tests__` — with no suppressions, no `@ts-expect-error`
-and an empty ledger.
+across `apps/web/src`, `packages` and `__tests__`, with an empty suppression ledger and no
+`@ts-expect-error`. One justified inline disable survives (§4.4): the browser-side
+`question_answers` embed, which the server-only row helper cannot type.
 
 ---
 
@@ -38,7 +39,7 @@ ratchet — it had to reach 0 before the rule could move from the command line i
 
 | state                                     | findings | files |
 | ----------------------------------------- | -------: | ----: |
-| `main` before #1122                       |      905 |   281 |
+| `main` before #1122                       |      905 |   278 |
 | `main` after #1122 (dead conditions only) |      889 |   273 |
 | after `noUncheckedIndexedAccess`          |      653 |   155 |
 | after the boundary helpers (§4)           |    **0** |     0 |
@@ -103,7 +104,9 @@ and a stale index after a refetch are normal runtime events.
 ### 4.1 Absence as an outcome
 
 - Reads where "no row" is a domain answer use `.maybeSingle()`: get-by-id, membership/scope
-  lookups, `verifyOwnership`, settings reads, attempt lookups.
+  lookups, ownership fetches, settings reads, attempt lookups. The few helpers that keep
+  `.single()` (e.g. `verifyOwnership` in `teacher-assignment.service.ts`) rely on `PGRST116`
+  mapping to `NOT_FOUND`, which is the same outcome.
 - `.single()` stays where zero rows is a server fault: insert/update `.select().single()` and the
   reads backing a `PGRST116` branch. Their `if (!row)` guards were genuinely dead and are gone.
 - Unit tests keep mocking `{ data: null, error: null }` for the absence path — that is exactly
@@ -146,6 +149,11 @@ and `JSON.stringify(x) ?? ''` where `stringify`'s lib type is optimistic.
 
 One suppression was **removed**: `markdown-renderer.tsx` no longer needs an inline disable because
 the `div` attribute list now carries the same type-required fallback as `span`.
+
+One remains, deliberately: `create-from-question-dialog.tsx` reads a question whose
+`question_answers` embed a partial client payload can omit. The boundary helpers are server
+modules, so the browser keeps its documented `?? []` with an inline disable — allowed by
+`scripts/check-suppressions-empty.ts`, which guards the _ledger_, not justified inline disables.
 
 ---
 

@@ -547,12 +547,13 @@ export class FlashcardService {
     deckId: string,
     ctx: RequestContext,
   ): Promise<ServiceResult<Database['public']['Tables']['flashcard_decks']['Row']>> {
-    const { data: deck } = await supabase
+    const { data: deck, error } = await supabase
       .from('flashcard_decks')
       .select('*')
       .eq('id', deckId)
-      .single();
+      .maybeSingle();
 
+    if (error) return toDbFailure(error);
     if (!deck) return failure('NOT_FOUND');
     await check(ctx, Permission.DECK_UPDATE, deck);
     return success(deck);

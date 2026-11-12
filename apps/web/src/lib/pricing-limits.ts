@@ -31,10 +31,12 @@ export function getVisibleLimitKeys(
 }
 
 /**
- * next-intl returns the message id itself when a translation is missing, so an unknown
- * limit key falls back to the key rather than rendering `limit_max_foo`.
+ * Human readable label for a plan limit key such as `max_flashcards`.
+ * next-intl returns the namespaced message id (`PricingPage.limit_…`) for a
+ * missing message, so presence is checked with `t.has`; an unknown key falls
+ * back to the key itself, never a raw message id.
  */
 export function getLimitLabel(key: string, t: PricingTranslator): string {
-  const label = t(`limit_${key}`);
-  return label.startsWith('limit_') ? key : label;
+  const messageKey = `limit_${key}`;
+  return t.has(messageKey) ? t(messageKey) : key;
 }
