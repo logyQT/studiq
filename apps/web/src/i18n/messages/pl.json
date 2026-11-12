@@ -192,7 +192,9 @@
     "quiz_not_found": "Nie znaleziono quizu",
     "quiz_not_found_desc": "Ten quiz mógł zostać usunięty lub nie masz do niego dostępu.",
     "attempt_not_found": "Nie znaleziono próby",
-    "attempt_not_found_desc": "Ta próba quizu mogła zostać usunięta lub nie masz do niej dostępu."
+    "attempt_not_found_desc": "Ta próba quizu mogła zostać usunięta lub nie masz do niej dostępu.",
+    "bank_not_found": "Nie znaleziono banku pytań",
+    "bank_not_found_desc": "Ten bank pytań mógł zostać usunięty lub nie masz do niego dostępu."
   },
   "Navbar": {
     "logo": "StudiQ",
@@ -2626,6 +2628,7 @@
   },
   "QuestionBankDetail": {
     "load_error": "Nie udało się wczytać pytań.",
+    "bank_load_error": "Nie udało się wczytać banku pytań.",
     "retry": "Spróbuj ponownie",
     "title": "Pytania",
     "create_question": "Utwórz pytanie",
