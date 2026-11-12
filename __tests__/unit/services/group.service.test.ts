@@ -311,11 +311,24 @@ describe('GroupService', () => {
     });
 
     it('deletes a group', async () => {
-      mock.from.mockReturnValueOnce(qb(undefined));
+      const deleteBuilder = qb([{ id: 'g-1' }]);
+      mock.from.mockReturnValueOnce(deleteBuilder);
 
       const result = await service.deleteGroup(ctx, 'g-1');
 
       expect(result.success).toBe(true);
+      expect(deleteBuilder.select).toHaveBeenCalledWith('id');
+    });
+
+    it('returns NOT_FOUND when the group belongs to another org', async () => {
+      // The org filter matches zero rows: PostgREST reports no error, so an
+      // un-projected delete looks identical to a successful one (#1124).
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.deleteGroup(ctx, 'group-of-another-org');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
 
     it('returns error on DB failure', async () => {
@@ -361,7 +374,7 @@ describe('GroupService', () => {
 
     it('lets an educator delete a group they created', async () => {
       mock.from.mockReturnValueOnce(qb({ created_by: 'test-user-id' }));
-      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb([{ id: 'g-1' }]));
 
       const result = await service.deleteGroup(educatorCtx, 'g-1');
 
