@@ -138,8 +138,7 @@ Gotchas:
 - Language: ENGLISH (repo convention). Always check duplicates before filing (same search as above).
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
 - Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or state explicitly that observability was unavailable; evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).
-- Evidence: attach browser screenshot(s) directly — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files). Get the paths from the session's screenshot tool. Put console/network + Grafana findings in the body.
-- **Name the evidence.** Every screenshot that supports a finding must be cited by its exact filename in that finding's evidence and in the body you hand to the manager. The manager's filing tool attaches cited files automatically and falls back to the last shots your session captured; an issue with no screenshot at all is filed only with an explicit waiver. For a visual defect, capture the failing state immediately before you hold or file it.
+- Evidence: **attach the browser screenshot(s) themselves** — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files), or `gh issue comment <n> --attach ...` to add them to an existing issue. Save the files somewhere writable (`/tmp/qa-<case>/` if the session temp dir is not), and put console/network + Grafana findings in the body. A filename, path or "see qa-*.png" is **not evidence**: the uploaded image must be on the issue. For a visual defect, capture the failing state immediately before you file it. In review-worker mode (report-only, no issue filing) upload the same screenshots with `gh pr comment <n> --attach ...` and cite that link.
 
 ### End of session — always end with this plain-text report
 
@@ -147,7 +146,7 @@ Finish every scenario with these three sections in plain text, as your final
 message. No tool calls after it — I read this when I get back.
 
 1. **Filed** — every issue you created, one line each: `#<number> — <title>` + the labels you used. Include out-of-scope findings and `needs-design` issues; everything confirmed belongs here.
-2. **Found but not filed** — this must be exactly `None — everything confirmed was filed.` If anything is listed here, you stopped short: file it now, or state the concrete blocker (missing GitHub auth, duplicate, cannot reproduce). Max 4 sentences per entry, and always include the exact screenshot filename(s).
+2. **Found but not filed** — this must be exactly `None — everything confirmed was filed.` If anything is listed here, you stopped short: file it now, or state the concrete blocker (missing GitHub auth, duplicate, cannot reproduce). Max 4 sentences per entry, and attach/cite the uploaded evidence (never a bare local path).
 3. **Decisions I need** — only product/design calls, and each one must already be filed with `needs-design`: `#<number> — <question>` + the options you proposed. If none, say `None.` Never leave a decision as an unfiled question.
 
 ### Machine-readable summary (required)
