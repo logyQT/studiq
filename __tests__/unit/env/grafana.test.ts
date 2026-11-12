@@ -193,6 +193,18 @@ describe('Grafana MCP token', () => {
     expect(fixture.mintCount).toBe(1);
   });
 
+  it('reports a stale token instead of throwing when the token file is unreadable', async () => {
+    const fixture = await startFixture();
+    mkdirSync(tokenFile(), { recursive: true });
+
+    const status = await grafana.inspectGrafana();
+
+    expect(status.state).toBe('stale-token');
+    expect(status.mintError).toBeNull();
+    expect(status.detail).toMatch(/token file/);
+    expect(fixture.mintCount).toBe(0);
+  });
+
   it('reports unreachable instead of throwing when the stack is down', async () => {
     process.env.GRAFANA_URL = 'http://127.0.0.1:1';
 

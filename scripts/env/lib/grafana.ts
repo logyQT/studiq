@@ -212,7 +212,15 @@ export async function inspectGrafana(
     return { ...base, detail: `health HTTP ${health}` };
   }
 
-  const token = readGrafanaToken(tokenFile);
+  let token: string | null;
+  try {
+    token = readGrafanaToken(tokenFile);
+  } catch (error) {
+    // Doctor/observability are the escalation path: an unreadable file must
+    // still produce a report instead of throwing before any output.
+    const code = isErrnoException(error) ? error.code : 'unknown';
+    return { ...base, state: 'stale-token', detail: `token file unreadable (${code})` };
+  }
   if (!token) return { ...base, state: 'no-token' };
 
   const code = await probeHttpWithHeaders(

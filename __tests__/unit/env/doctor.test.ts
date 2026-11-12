@@ -139,6 +139,40 @@ describe('env:doctor', () => {
     expect(report.problems).toEqual([]);
   });
 
+  it('reports a stale token when the token file cannot be read', async () => {
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.setStatusFixture(stoppedStackFixture());
+    const fixture = await startGrafanaServer({ token: 'glsa_valid' });
+    harness.track(() => fixture.close());
+    const dir = join(harness.dir, '.config', 'studiq', 'observability');
+    // A directory at the token path reproduces EISDIR deterministically; chmod
+    // 000 is not reliable under root, where CI may run.
+    mkdirSync(join(dir, 'grafana-mcp-token'), { recursive: true });
+    writeFileSync(
+      join(dir, 'grafana-mcp.json'),
+      JSON.stringify({
+        serviceAccountId: 1,
+        serviceAccountName: 'studiq-mcp',
+        role: 'Viewer',
+        tokenId: 7,
+        tokenName: 'mcp-test',
+        mintedAt: new Date().toISOString(),
+        url: fixture.url,
+      }),
+      { mode: 0o600 },
+    );
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      GRAFANA_URL: fixture.url,
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(report).toHaveProperty('observability.auth', 'stale-token');
+  });
+
   it('does not warn about a missing registry directory', async () => {
     const appPort = await firstBindablePort(APP_PORT_BASE);
     const harness = newHarness();
