@@ -13,6 +13,10 @@ export function createPendingSave(delayMs = 500): PendingSave {
   let queued: (() => Promise<unknown>) | undefined;
   // Saves run one after another so a flush always observes the newest write.
   let tail: Promise<unknown> = Promise.resolve();
+  // A background save that failed is retried by the next flush: otherwise a
+  // publish right after a transient failure would still send a targets-less
+  // publish and be rejected.
+  let retry: (() => Promise<unknown>) | undefined;
 
   function clearTimer(): void {
     if (timer !== undefined) {
@@ -23,11 +27,17 @@ export function createPendingSave(delayMs = 500): PendingSave {
 
   function start(save: () => Promise<unknown>): Promise<void> {
     const result = tail.then(() => save());
-    // A failed save must not block the next one; `flush` still surfaces its own error.
-    tail = result.then(
-      () => undefined,
-      () => undefined,
+    const tracked = result.then(
+      () => {
+        if (retry === save) retry = undefined;
+        return undefined;
+      },
+      () => {
+        retry = save;
+        return undefined;
+      },
     );
+    tail = tracked;
     return result.then(() => undefined);
   }
 
@@ -44,8 +54,9 @@ export function createPendingSave(delayMs = 500): PendingSave {
     },
     async flush() {
       clearTimer();
-      const next = queued;
+      const next = queued ?? retry;
       queued = undefined;
+      retry = undefined;
       if (next) await start(next);
       else await tail;
     },

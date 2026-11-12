@@ -72,3 +72,35 @@ describe('assignment publish ordering (#1126)', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 });
+
+describe('assignment publish after a failed background save (#1126)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('retries the failed save before publishing instead of sending a targets-less publish', async () => {
+    const events: string[] = [];
+    let attempts = 0;
+    const save = vi.fn(() => {
+      attempts += 1;
+      events.push(`targets:${attempts}`);
+      return attempts === 1 ? Promise.reject(new Error('transient')) : Promise.resolve();
+    });
+    const publish = vi.fn(() => {
+      events.push('publish');
+      return Promise.resolve();
+    });
+    const targets = createPendingSave();
+
+    targets.schedule(save);
+    await vi.advanceTimersByTimeAsync(500);
+
+    await publishWithPendingTargets(targets, publish);
+
+    expect(events).toEqual(['targets:1', 'targets:2', 'publish']);
+  });
+});
