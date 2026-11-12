@@ -55,7 +55,7 @@ The Next.js app sends OTLP (traces + metrics + logs) to the collector on
 `OTEL_SERVICE_NAME` (`studiq-<branch>`) so one collector can tell worktrees apart;
 an explicit value in `.env.local` wins. Make sure `OTEL_SDK_DISABLED` is **not**
 `true` when you want telemetry. See the
-[plan doc](./plans/prometheus-metrics-monitoring.md).
+[plan doc](./plans/archive/prometheus-metrics-monitoring.md).
 
 ## Configure the Grafana MCP
 

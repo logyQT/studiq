@@ -6,7 +6,8 @@ unblocked.
 
 Replaces `scripts/dev` and the `dev:*` sprawl. Scope: local development and agent workflows; not CI, not hosted,
 not production. Related: [#1077](https://github.com/logyQT/studiq/issues/1077),
-[ADR-0010](../decisions/0010-env-ssot.md), [native runtime audit](../audits/supabase-native-runtime.md). Where
+[ADR-0010](../decisions/0010-env-ssot.md), [native runtime audit](../audits/supabase-native-runtime.md),
+[staging environment](staging-environment.md), [deployment](../deployment.md). Where
 this document and older drafts disagree, **this document wins**.
 
 ## 0. Problem and goals

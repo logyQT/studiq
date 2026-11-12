@@ -1,5 +1,7 @@
 # Deployment
 
+> Local development uses the [`env` tool](./plans/env-tool.md); hosted staging is specified in [`staging-environment.md`](./plans/staging-environment.md).
+
 ## Hosting
 
 ### Recommended Setup
