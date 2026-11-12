@@ -57,15 +57,15 @@ ports. For `env:ensure`, only `APP_PORT` (default `3000`) can collide —
 `bun run env:ports` suggests a free one, and `bun run env:doctor` explains
 anything it doesn't like. One environment per checkout: a second stack or
 server in the same checkout is refused — use another worktree. The optional
-admin panel (`:4000`, loopback) and Grafana (`:3001`) use fixed host ports and
-can collide across worktrees.
+admin panel (`:4000`, loopback) uses a fixed host port; observability is one
+machine-wide stack on `:7001`/`:7xxx`, owned by the primary checkout.
 
 The admin panel and observability stack are opt-in and outside the `env` tool:
 
 ```bash
 bun run dev:admin                    # apps/admin HMR on 127.0.0.1:4000 (human-only)
 bun run build:admin && bun run start:admin  # production build + serve
-docker compose up -d                 # Grafana on :3001
+docker compose up -d                 # Grafana on :7001 (primary checkout only)
 ```
 
 `.env.vault` is **opt-in**: a fresh checkout runs from `.env.local` alone. Only
@@ -172,10 +172,10 @@ LLM_REASONING_EFFORT=                            # low | medium | high (unset = 
 
 # ── OpenTelemetry (optional) ──────────────────────────────────────────
 # Read by apps/web/src/instrumentation.ts. Traces + metrics + logs all go to
-# the OTel Collector started by `docker compose up -d` (Grafana at :3001).
+# the OTel Collector started by `docker compose up -d` (Grafana at :7001).
 # Telemetry is ON by default — leave OTEL_SDK_DISABLED unset. Set it to "true"
 # only to turn traces/metrics/logs off entirely (e.g. tests, CI).
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318  # OTLP collector (SDK default shown)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:7318  # local machine-wide collector
 # OTEL_SDK_DISABLED=true
 
 # ── Admin app only (same root .env.local) ─────────────────────────────

@@ -31,7 +31,8 @@ id; the workflow is also named `pr-triage`, so the two match on purpose.
 - `scope` — diff router. Publishes `app` and `qa_shards`; docs-only,
   `apps/admin`-only and QA-only PRs skip the jobs they cannot affect. `checks`
   is deliberately ungated (ADR-0008).
-- `checks` — `format:check`, `lint`, `env:check`, `env:scan`, `knip`,
+- `checks` — `format:check`, `lint`, `review:static --rules-only` (the ast-grep
+  tautology rules and their tests), `env:check`, `env:scan`, `knip`,
   `typecheck:all`, then the duplication gate (PR: new clones vs the base
   branch; nightly: dashboard + trend report, see [Duplication](#duplication)).
 - `unit` / `integration` — gated on `scope.app`.
@@ -66,6 +67,14 @@ maintain:
   stored. The Markdown report goes to the run summary and the whole report
   directory is uploaded as the `jscpd-dashboard` artifact (90 days). Lower the
   threshold as the number drops.
+- **Dead-code entry points** — the dashboard builds its import graph from
+  `deadCode.entry` in `.jscpd.json`. Next.js file conventions
+  (`app/**/page.tsx`, `layout.tsx`, `route.ts`, …), `proxy.ts`,
+  `i18n/request.ts` and the operator scripts (`check-*.ts`, `qa-*.ts`,
+  `load-test/*.ts`, …) are entry points by definition, not dead code. The globs
+  are matched relative to each scan root (`proxy.ts`, not
+  `apps/web/src/proxy.ts`). Without them 19 live files read as dead — 3.4%
+  instead of 0.2% — and the health score shows C 64 instead of B 70.
 - **Hooks** — `pre-commit` runs `bun run dup:changed` (working tree vs `HEAD`,
   baseline kept in Git-ignored `.tmp/`); `pre-push` runs `bun run dup:base`
   (the same comparison as CI). Hooks are local feedback; the CI step is the
@@ -122,6 +131,7 @@ The `checks` job is:
 ```bash
 bun run format:check
 bun run lint
+bun run review:static -- --rules-only
 bun run env:check
 bun run env:scan
 bun run knip

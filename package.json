@@ -15,6 +15,7 @@
     "typecheck:all": "bun check && bun run typecheck && bun run typecheck:packages",
     "lint": "bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts && bun scripts/check-adr-numbering.ts && bun scripts/check-hardcoded-urls.ts && bun scripts/check-suppressions-empty.ts && bun scripts/check-env-inventory.ts",
     "lint:all": "bun run typecheck:all && bun run lint",
+    "review:static": "bun scripts/review-static.ts",
     "check:lockfile-age": "bun scripts/check-lockfile-age.ts",
     "env:check": "varlock load --agent",
     "env:check:quiet": "varlock load --agent >/dev/null 2>&1",
@@ -85,6 +86,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@ast-grep/cli": "0.51.1",
     "@playwright/test": "^1.64.1",
     "@types/bun": "^1.4.4",
     "@types/node": "^26.6.6",

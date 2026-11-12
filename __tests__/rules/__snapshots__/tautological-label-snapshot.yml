@@ -1,0 +1,247 @@
+id: tautological-label
+snapshots:
+  "<Field label=\"Email\" placeholder=\"Email\" description=\"Your address\">\n  <span />\n</Field>\n":
+    labels:
+      - source: <Field label="Email" placeholder="Email" description="Your address">
+        style: primary
+        start: 0
+        end: 68
+      - source: label
+        style: secondary
+        start: 7
+        end: 12
+      - source: '"Email"'
+        style: secondary
+        start: 13
+        end: 20
+      - source: label="Email"
+        style: secondary
+        start: 7
+        end: 20
+      - source: placeholder
+        style: secondary
+        start: 21
+        end: 32
+      - source: '"Email"'
+        style: secondary
+        start: 33
+        end: 40
+      - source: placeholder="Email"
+        style: secondary
+        start: 21
+        end: 40
+  "<Input\n  id=\"email\"\n  label={t('email')}\n  placeholder={t('email')}\n/>\n":
+    labels:
+      - source: |-
+          <Input
+            id="email"
+            label={t('email')}
+            placeholder={t('email')}
+          />
+        style: primary
+        start: 0
+        end: 70
+      - source: label
+        style: secondary
+        start: 22
+        end: 27
+      - source: "{t('email')}"
+        style: secondary
+        start: 28
+        end: 40
+      - source: label={t('email')}
+        style: secondary
+        start: 22
+        end: 40
+      - source: placeholder
+        style: secondary
+        start: 43
+        end: 54
+      - source: "{t('email')}"
+        style: secondary
+        start: 55
+        end: 67
+      - source: placeholder={t('email')}
+        style: secondary
+        start: 43
+        end: 67
+  "<Input id=\"email\" placeholder=\"Email\" label=\"Email\" />\n":
+    labels:
+      - source: <Input id="email" placeholder="Email" label="Email" />
+        style: primary
+        start: 0
+        end: 54
+      - source: label
+        style: secondary
+        start: 38
+        end: 43
+      - source: '"Email"'
+        style: secondary
+        start: 44
+        end: 51
+      - source: label="Email"
+        style: secondary
+        start: 38
+        end: 51
+      - source: placeholder
+        style: secondary
+        start: 18
+        end: 29
+      - source: '"Email"'
+        style: secondary
+        start: 30
+        end: 37
+      - source: placeholder="Email"
+        style: secondary
+        start: 18
+        end: 37
+  "<Input label=\"Email\" placeholder=\"Email\" />\n":
+    labels:
+      - source: <Input label="Email" placeholder="Email" />
+        style: primary
+        start: 0
+        end: 43
+      - source: label
+        style: secondary
+        start: 7
+        end: 12
+      - source: '"Email"'
+        style: secondary
+        start: 13
+        end: 20
+      - source: label="Email"
+        style: secondary
+        start: 7
+        end: 20
+      - source: placeholder
+        style: secondary
+        start: 21
+        end: 32
+      - source: '"Email"'
+        style: secondary
+        start: 33
+        end: 40
+      - source: placeholder="Email"
+        style: secondary
+        start: 21
+        end: 40
+  "<Input label=\"Email\" placeholder=\"Email\" id=\"email\" onChange={onChange} />\n":
+    labels:
+      - source: <Input label="Email" placeholder="Email" id="email" onChange={onChange} />
+        style: primary
+        start: 0
+        end: 74
+      - source: label
+        style: secondary
+        start: 7
+        end: 12
+      - source: '"Email"'
+        style: secondary
+        start: 13
+        end: 20
+      - source: label="Email"
+        style: secondary
+        start: 7
+        end: 20
+      - source: placeholder
+        style: secondary
+        start: 21
+        end: 32
+      - source: '"Email"'
+        style: secondary
+        start: 33
+        end: 40
+      - source: placeholder="Email"
+        style: secondary
+        start: 21
+        end: 40
+  "<Input label={'Email'} placeholder={'Email'} />\n":
+    labels:
+      - source: <Input label={'Email'} placeholder={'Email'} />
+        style: primary
+        start: 0
+        end: 47
+      - source: label
+        style: secondary
+        start: 7
+        end: 12
+      - source: "{'Email'}"
+        style: secondary
+        start: 13
+        end: 22
+      - source: label={'Email'}
+        style: secondary
+        start: 7
+        end: 22
+      - source: placeholder
+        style: secondary
+        start: 23
+        end: 34
+      - source: "{'Email'}"
+        style: secondary
+        start: 35
+        end: 44
+      - source: placeholder={'Email'}
+        style: secondary
+        start: 23
+        end: 44
+  "<Input label={t('email')} placeholder={t('email')} onChange={onChange} />\n":
+    labels:
+      - source: <Input label={t('email')} placeholder={t('email')} onChange={onChange} />
+        style: primary
+        start: 0
+        end: 73
+      - source: label
+        style: secondary
+        start: 7
+        end: 12
+      - source: "{t('email')}"
+        style: secondary
+        start: 13
+        end: 25
+      - source: label={t('email')}
+        style: secondary
+        start: 7
+        end: 25
+      - source: placeholder
+        style: secondary
+        start: 26
+        end: 37
+      - source: "{t('email')}"
+        style: secondary
+        start: 38
+        end: 50
+      - source: placeholder={t('email')}
+        style: secondary
+        start: 26
+        end: 50
+  "<Wrapper>\n  <Input label=\"Email\" placeholder=\"Email\" />\n</Wrapper>\n":
+    labels:
+      - source: <Input label="Email" placeholder="Email" />
+        style: primary
+        start: 12
+        end: 55
+      - source: label
+        style: secondary
+        start: 19
+        end: 24
+      - source: '"Email"'
+        style: secondary
+        start: 25
+        end: 32
+      - source: label="Email"
+        style: secondary
+        start: 19
+        end: 32
+      - source: placeholder
+        style: secondary
+        start: 33
+        end: 44
+      - source: '"Email"'
+        style: secondary
+        start: 45
+        end: 52
+      - source: placeholder="Email"
+        style: secondary
+        start: 33
+        end: 52

@@ -22,8 +22,9 @@ const harnesses: Harness[] = [];
 /**
  * Doctor bind-checks a live `APP_PORT`, so this file must own a port that no
  * other [parallel] unit file can bind. The shared 3000-3999 range is exactly
- * where the other env files used to collide (and this host permanently holds
- * :3001), hence a per-file base outside it and below the ephemeral range.
+ * where the other env files used to collide, and a host may permanently hold
+ * one of those ports (a docker proxy, say), hence a per-file base outside it
+ * and below the ephemeral range.
  */
 const APP_PORT_BASE = appPortBase();
 

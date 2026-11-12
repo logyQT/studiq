@@ -1,0 +1,17 @@
+id: comment-narrates-diff-tsx
+valid:
+  - |
+    // Removed by #595: forwarded so the schema rejects it
+  # The JSX form is the same comment node, so the rationale sample must hold there too.
+  - |
+    const ok = <div>{/* Removed by #595: forwarded so the schema rejects it */}</div>;
+invalid:
+  - |
+    // removed the old path
+  - |
+    // now uses the new API
+  # JSX comments are block comments, not `//`; the rule must still see them.
+  - |
+    const a = <div>{/* now uses the new API */}</div>;
+  - |
+    const b = <div>{/* removed the old path */}</div>;

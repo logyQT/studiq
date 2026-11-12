@@ -1,0 +1,56 @@
+id: tautological-label
+valid:
+  # A label that says something different from the placeholder.
+  - |
+    <Input label="Email" placeholder="Enter your email" />
+  # Only one of the two attributes.
+  - |
+    <Input label="Email" />
+  - |
+    <Input placeholder="Email" />
+  # `aria-label` is not the visible label prop.
+  - |
+    <Input aria-label="Email" placeholder="Email" />
+  # Different translated keys.
+  - |
+    <Input label={t('email')} placeholder={t('email_placeholder')} />
+  # A wrapper has no label of its own; a split pair across wrapper and child is
+  # not a match. Pins the scoping in the rule, which has no `stopBy` to lean on.
+  - |
+    <Field label="Email">
+      <Input placeholder="Email" />
+    </Field>
+invalid:
+  # The child that owns both attributes is reported; the wrapper around it is
+  # not. The snapshot pins exactly one match, starting at `<Input`.
+  - |
+    <Wrapper>
+      <Input label="Email" placeholder="Email" />
+    </Wrapper>
+  # Two attributes, string values.
+  - |
+    <Input label="Email" placeholder="Email" />
+  # Extra attributes must not hide the duplicate.
+  - |
+    <Input label="Email" placeholder="Email" id="email" onChange={onChange} />
+  # Attribute order does not matter.
+  - |
+    <Input id="email" placeholder="Email" label="Email" />
+  # Translation expression on both sides.
+  - |
+    <Input label={t('email')} placeholder={t('email')} onChange={onChange} />
+  # A JSX expression holding a string literal.
+  - |
+    <Input label={'Email'} placeholder={'Email'} />
+  # Element with children.
+  - |
+    <Field label="Email" placeholder="Email" description="Your address">
+      <span />
+    </Field>
+  # Multiline attributes.
+  - |
+    <Input
+      id="email"
+      label={t('email')}
+      placeholder={t('email')}
+    />

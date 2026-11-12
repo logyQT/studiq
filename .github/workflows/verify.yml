@@ -319,6 +319,8 @@ jobs:
         run: bun run format:check
       - name: Lint
         run: bun run lint
+      - name: Tautology rules (ast-grep)
+        run: bun run review:static -- --rules-only
       - name: Env schema
         run: bun run env:check
       # `env:scan` finds *resolved* sensitive values, so on a bare PR it has
