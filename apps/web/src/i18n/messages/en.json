@@ -340,7 +340,9 @@
     "quiz_not_found": "Quiz not found",
     "quiz_not_found_desc": "This quiz may have been deleted or you don't have access to it.",
     "attempt_not_found": "Attempt not found",
-    "attempt_not_found_desc": "This quiz attempt may have been deleted or you don't have access to it."
+    "attempt_not_found_desc": "This quiz attempt may have been deleted or you don't have access to it.",
+    "bank_not_found": "Question bank not found",
+    "bank_not_found_desc": "This question bank may have been deleted or you don't have access to it."
   },
   "PasswordResetPage": {
     "title": "Forgot your password?",
@@ -2594,6 +2596,7 @@
     "sort_recent": "Recently Updated",
     "n_questions": "{count, plural, one {# question} other {# questions}}",
     "manage_bank": "Manage Bank",
+    "select_banks": "Select banks",
     "view_bank": "View Bank",
     "visibility_label": "Visibility",
     "visibility_personal": "Only me",
@@ -2644,6 +2647,7 @@
   },
   "QuestionBankDetail": {
     "load_error": "Could not load the questions.",
+    "bank_load_error": "Could not load the question bank.",
     "retry": "Try again",
     "title": "Questions",
     "create_question": "Create Question",

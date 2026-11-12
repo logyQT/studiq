@@ -65,8 +65,8 @@ seeded tenant instead:
   buttons „Anuluj” / „Usuń”. „Anuluj” closes it and leaves the group untouched; „Usuń”
   shows „Grupa usunięta”, removes the row and the row is gone from the API, while the two
   seeded groups (and their counts) stay.
-- Same deep-link race as MGR-INV-03: the **first** hard load of `/manage/groups` right
-  after an API login that has no active-organization cookie yet can answer `403` and
-  render the error/empty state until it is reloaded. The spec therefore enters the page the
-  way a user does (login → `/manage` dashboard → „Grupy” in the sidebar), which settles the
-  active org first.
+- The deep-link race (#1125) is fixed: a **first** hard load of `/manage/groups` right
+  after an API login now waits for the active organization before it sends the group
+  request, so it lists the seeded groups on the first load instead of answering `403`
+  and rendering the error/empty state. The spec still enters the page the way a user does
+  (login → `/manage` dashboard → „Grupy” in the sidebar).

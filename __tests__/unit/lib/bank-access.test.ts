@@ -77,6 +77,9 @@ describe('messages', () => {
       const messages = readMessages(locale);
       expect(messageValue(messages, 'QuestionBankDetail', 'read_only_notice')).toBeTruthy();
       expect(messageValue(messages, 'QuestionBankDetail', 'no_questions_read_only')).toBeTruthy();
+      expect(messageValue(messages, 'QuestionBankDetail', 'bank_load_error')).toBeTruthy();
+      expect(messageValue(messages, 'EntityNotFound', 'bank_not_found')).toBeTruthy();
+      expect(messageValue(messages, 'EntityNotFound', 'bank_not_found_desc')).toBeTruthy();
       expect(messageValue(messages, 'QuestionBankManagement', 'view_bank')).toBeTruthy();
     });
   }
