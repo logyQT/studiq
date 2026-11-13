@@ -23,6 +23,7 @@ import { runDoctor } from './commands/doctor';
 import { runDown } from './commands/down';
 import { runEnsure } from './commands/ensure';
 import { runLogs } from './commands/logs';
+import { runObservability } from './commands/observability';
 import { runPorts } from './commands/ports';
 import { runResetDb } from './commands/reset-db';
 import { runServe } from './commands/serve';
@@ -64,6 +65,8 @@ async function dispatch(parsed: ParsedCommand): Promise<number> {
       return runSetup(parsed);
     case 'verify':
       return runVerify(parsed);
+    case 'observability':
+      return runObservability(parsed);
   }
 }
 

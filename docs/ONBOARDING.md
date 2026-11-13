@@ -266,6 +266,9 @@ bun run env:ensure --profile web
 ```
 
 > First run may take several minutes while the native stack artifacts download.
+> On a fresh machine, start the machine-wide observability stack first
+> ([step 9](#9-start-the-machine-wide-observability-stack-required-for-agent-diagnosis));
+> then this pass also mints the Grafana MCP token (step 3b).
 
 `env:ensure` starts (or resumes) **this branch's** Supabase stack, discovers its
 URLs/keys with `supabase stack status --output-format json`, **exports** them to
@@ -279,6 +282,29 @@ instead of `next dev`:
 ```bash
 bun run env:build && bun run env:serve   # or: bun run env:ensure --profile web
 ```
+
+### 3b. Mint the agent MCP token
+
+The Grafana MCP needs the machine-wide stack (starting it is [step 9](#9-start-the-machine-wide-observability-stack-required-for-agent-diagnosis))
+and one service-account token. On a fresh machine, start that stack first so
+this run mints the token; if the stack starts later, mint explicitly with
+`bun run env:observability ensure`.
+
+```bash
+bun run env:ensure --profile web     # starts Supabase/build/serve and mints the token
+bun run env:observability            # expect: auth ok (studiq-mcp, Viewer)
+```
+
+If this OpenCode session was already running
+before the token existed, `opencode service restart` (the `{file:...}` token is
+read at config load). `mcp-grafana` must be on PATH — it is baked into the dev
+image (`which mcp-grafana`).
+
+The observability/MCP part is under two minutes warm; the Supabase native
+stack + first build is the long pole in step 3. If the stack is already up
+(`docker compose ls`), do not start a second one. If you are in a worktree and
+the stack is down, do not start it yourself: report `BLOCKED/env` with
+`bun run env:doctor` and ask the primary owner/coordinator.
 
 ### 4. Where values live
 
@@ -397,7 +423,7 @@ The cutover deleted `scripts/dev` and the `dev:*` wrappers that called it (`dev:
 `dev:admin` never called it: they stay as human-only conveniences (`dev:admin` is the `apps/admin` HMR on
 `127.0.0.1:4000`; `env` has no admin equivalent).
 
-### 9. Start the machine-wide observability stack (recommended)
+### 9. Start the machine-wide observability stack (required for agent diagnosis)
 
 There is **one observability stack per machine**, shared by every checkout,
 worktree and agent. It belongs to the **primary checkout** — on this VM
@@ -414,6 +440,8 @@ The Compose project name is fixed (`studiq-observability`) and the host ports
 are fixed, so a second `docker compose up` from a worktree would conflict with
 or mutate the same stack rather than create an isolated one. `bun run env:doctor`
 prints the current health, the primary path and this exact start command.
+After it is healthy, `bun run env:observability ensure` (or re-running
+`env:ensure`) mints the agent MCP token; see step 3b.
 
 > The primary checkout must contain the fixed project name. If `env:doctor` says
 > its compose file predates it, update that checkout first
@@ -430,13 +458,21 @@ traces from different worktrees are distinguishable in one collector; set
 either key in `.env.local` to override it. If you previously pinned the old
 `http://localhost:4318` there, update or remove it — an explicit value wins.
 
-| UI                          | URL                   |
-| --------------------------- | --------------------- |
-| Grafana (`admin` / `admin`) | http://localhost:7001 |
-| Prometheus                  | http://localhost:7090 |
-| Loki                        | http://localhost:7100 |
-| Tempo                       | http://localhost:7200 |
-| OTLP intake                 | http://localhost:7318 |
+| UI                                      | URL                   |
+| --------------------------------------- | --------------------- |
+| Grafana (`admin` / `admin`, local-only) | http://localhost:7001 |
+| Prometheus                              | http://localhost:7090 |
+| Loki                                    | http://localhost:7100 |
+| Tempo                                   | http://localhost:7200 |
+| OTLP intake                             | http://localhost:7318 |
+
+The Grafana admin login is `admin` / `admin` by default and is **local-only**
+(the stack publishes on `127.0.0.1`). To set a different password, run the start
+command from the primary checkout with `GRAFANA_ADMIN_PASSWORD` exported
+(`GRAFANA_ADMIN_PASSWORD='<pw>' docker compose up -d`), or run
+`docker compose --env-file .env.local up -d` there with the key in `.env.local` —
+the repo's only hand-edited values file. Never create a root `.env`: `bun run
+lint` rejects it.
 
 To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace →
 Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).
@@ -602,6 +638,7 @@ Run the deterministic gates locally before pushing: `bun run lint`,
 | `bun run env:down [--all]`              | Stop this checkout's web (+ this stack with `--all`)                             |
 | `bun run env:reset-db --yes`            | Reset this branch's DB + load seeds                                              |
 | `bun run env:doctor`                    | Explain missing / owned / colliding state                                        |
+| `bun run env:observability`             | `status`/`ensure` `[--force]`: validate/mint the Grafana MCP token               |
 | `bun run env:ports`                     | Print a free `APP_PORT` (stack ports are dynamic)                                |
 | `bun run env:supa status`               | This stack's URLs, keys and service state                                        |
 | `bun run env:supa db diff -f <name>`    | Generate migration from current changes                                          |

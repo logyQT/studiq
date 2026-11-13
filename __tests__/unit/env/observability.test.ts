@@ -147,16 +147,31 @@ describe('observabilityLabel', () => {
 });
 
 describe('docker-compose host ports', () => {
-  it('publishes exactly the host → container pairs in OBSERVABILITY_PORTS', () => {
+  it('publishes exactly the host → container pairs in OBSERVABILITY_PORTS on loopback', () => {
     const compose = readFileSync(join(process.cwd(), 'docker-compose.yml'), 'utf8');
-    const published = [...compose.matchAll(/'(\d+):(\d+)'/g)]
-      .map((match) => [Number(match[1]), Number(match[2])] as const)
-      .toSorted(([a], [b]) => a - b);
+    const published = compose
+      .split('\n')
+      .map((line) => /^\s*-\s*'([^']+)'\s*(?:#.*)?$/.exec(line)?.[1] ?? null)
+      .filter((value): value is string => value !== null)
+      .filter((value) => /^(?:[^:]+:)?\d+:\d+$/.test(value))
+      .map((value) => {
+        const parts = value.split(':');
+        return {
+          host: parts.length === 3 ? parts[0] : null,
+          hostPort: Number(parts[parts.length - 2]),
+          containerPort: Number(parts[parts.length - 1]),
+        };
+      })
+      .toSorted((a, b) => a.hostPort - b.hostPort);
     const expected = OBSERVABILITY_PORT_KEYS.map(
       (service) => [observability.OBSERVABILITY_PORTS[service], CONTAINER_PORTS[service]] as const,
     ).toSorted(([a], [b]) => a - b);
 
-    expect(published).toEqual(expected);
+    // The stack is admin-capable: publishing it beyond loopback is a real exposure.
+    expect(published.every((entry) => entry.host === '127.0.0.1')).toBe(true);
+    expect(published.map((entry) => [entry.hostPort, entry.containerPort] as const)).toEqual(
+      expected,
+    );
   });
 });
 
